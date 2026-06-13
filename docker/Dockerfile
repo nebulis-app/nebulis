@@ -5,7 +5,6 @@ WORKDIR /app
 
 # Install dependencies first (cache layer)
 COPY package.json pnpm-lock.yaml ./
-COPY patches/ ./patches/
 RUN npm install -g pnpm@10.4.0 \
   && pnpm install --frozen-lockfile --config.strict-dep-builds=false
 
@@ -29,7 +28,6 @@ WORKDIR /app
 
 # Copy package files and install production deps + tsx
 COPY package.json pnpm-lock.yaml .npmrc ./
-COPY patches/ ./patches/
 RUN npm install -g pnpm@10.4.0 \
   && pnpm install --frozen-lockfile --prod --config.strict-dep-builds=false \
   && pnpm rebuild better-sqlite3 sharp \

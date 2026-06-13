@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.1 (146) - June 12, 2026
+## 1.3.1 (149) - June 12, 2026
 
 ### New
 - Nightly Maintenance (Settings, General): the server runs upkeep tasks each night at a time you choose. Pre-caches Planner thumbnails for tonight's visible objects, checks for catalog pack updates, clears junk files from the library, and pre-warms the weather forecast. Each task has its own on/off toggle.

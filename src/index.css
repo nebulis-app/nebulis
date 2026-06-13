@@ -1,0 +1,493 @@
+@import "tailwindcss";
+
+@theme {
+  /* Color palette - Deep space inspired, warm and professional */
+  --color-slate-950: #0a0e17;
+  --color-slate-900: #0f1524;
+  --color-slate-800: #1a2235;
+  --color-slate-700: #263049;
+  --color-slate-600: #374766;
+  --color-slate-500: #546b8a;
+  --color-slate-400: #7b93b3;
+  --color-slate-300: #a8bdd4;
+  --color-slate-200: #d0dae8;
+  --color-slate-100: #e8edf4;
+  --color-slate-50: #f4f6fa;
+
+  /* Accent - warm amber/gold for a celestial feel */
+  --color-accent-50: #fffbeb;
+  --color-accent-100: #fef3c7;
+  --color-accent-200: #fde68a;
+  --color-accent-300: #fcd34d;
+  --color-accent-400: #fbbf24;
+  --color-accent-500: #f59e0b;
+  --color-accent-600: #d97706;
+  --color-accent-700: #b45309;
+
+  /* Secondary accent - cool teal */
+  --color-teal-50: #f0fdfa;
+  --color-teal-100: #ccfbf1;
+  --color-teal-200: #99f6e4;
+  --color-teal-300: #5eead4;
+  --color-teal-400: #2dd4bf;
+  --color-teal-500: #14b8a6;
+  --color-teal-600: #0d9488;
+
+  /* Danger */
+  --color-danger-500: #ef4444;
+  --color-danger-600: #dc2626;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+}
+
+/* Keyboard focus safety net — every focusable element gets a visible indicator.
+   Elements with explicit focus-visible:outline-none / focus-visible:ring-* override
+   this via Tailwind's utilities layer (higher priority than @layer base). */
+@layer base {
+  *:focus-visible {
+    outline: 2px solid var(--color-accent-500);
+    outline-offset: 2px;
+  }
+}
+
+* {
+  scrollbar-width: thin;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+html {
+  transition: background-color 0.3s ease, color 0.3s ease;
+  overflow-x: hidden;
+}
+
+/* ─── Light theme ─────────────────────────────────────────────── */
+.light body {
+  background-color: var(--color-slate-50);
+  color: var(--color-slate-800);
+}
+
+/* ─── Dark theme ──────────────────────────────────────────────── */
+.dark {
+  color-scheme: dark;
+}
+.dark body {
+  background-color: var(--color-slate-950);
+  color: var(--color-slate-200);
+}
+
+/* ─── Space theme ─────────────────────────────────────────────── */
+.space {
+  color-scheme: dark;
+}
+.space body {
+  background-color: #06050f;
+  color: #c8c3e0;
+}
+
+/* Glass surfaces — panels become translucent so stars bleed through */
+.space .bg-slate-950 { background-color: rgba(6, 5, 15, 0.96); }
+.space .bg-slate-900 {
+  background-color: rgba(13, 11, 31, 0.68);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.space .bg-slate-800 {
+  background-color: rgba(22, 19, 48, 0.62);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.space .border-slate-800 { border-color: rgba(48, 42, 92, 0.72); }
+.space .border-slate-700 { border-color: rgba(66, 58, 112, 0.68); }
+.space .text-slate-200 { color: #c8c3e0; }
+.space .text-slate-300 { color: #a9a2c8; }
+.space .text-slate-400 { color: #8880aa; }
+.space .text-slate-500 { color: #6b6290; }
+.space .text-slate-600 { color: #4e4670; }
+.space .text-white { color: #e8e4f8; }
+.space .text-accent-400 { color: #a78bfa; }
+.space .text-accent-500 { color: #8b5cf6; }
+.space .bg-accent-500 { background-color: #8b5cf6; }
+.space .bg-accent-500\/10 { background-color: rgba(139, 92, 246, 0.1); }
+.space .bg-accent-500\/15 { background-color: rgba(139, 92, 246, 0.15); }
+.space .hover\:bg-accent-600:hover { background-color: #7c3aed; }
+.space .shadow-accent-500\/20 { --tw-shadow-color: rgba(139, 92, 246, 0.2); }
+.space .ring-accent-500\/40 { --tw-ring-color: rgba(139, 92, 246, 0.4); }
+.space .border-accent-500\/30 { border-color: rgba(139, 92, 246, 0.3); }
+
+/* ── Star field + nebula clouds ── */
+.space body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: #06050f;
+  background-image:
+    /* ── Milky Way arm: faint diagonal luminous band ── */
+    linear-gradient(118deg, transparent 8%, rgba(110,80,190,0.03) 28%, rgba(90,65,170,0.055) 50%, rgba(75,55,155,0.035) 70%, transparent 90%),
+
+    /* ── Nebula clouds ── */
+    /* Violet anchor — upper-right */
+    radial-gradient(ellipse 58% 46% at 84% 10%, rgba(139,92,246,0.24) 0%, transparent 65%),
+    /* Electric violet inner core */
+    radial-gradient(ellipse 38% 30% at 80%  7%, rgba(167,139,250,0.20) 0%, transparent 52%),
+    /* Hot magenta emission — upper-left (Cygnus-like) */
+    radial-gradient(ellipse 50% 44% at 15% 22%, rgba(236,72,153,0.18) 0%, transparent 62%),
+    /* Magenta outer halo */
+    radial-gradient(ellipse 34% 46% at  6% 44%, rgba(219,39,119,0.13) 0%, transparent 55%),
+    /* Teal-cyan reflection — lower-left (Pleiades blue haze) */
+    radial-gradient(ellipse 46% 58% at 10% 74%, rgba(20,184,166,0.16) 0%, transparent 60%),
+    /* Deep blue molecular cloud */
+    radial-gradient(ellipse 36% 50% at  3% 58%, rgba(59,130,246,0.11) 0%, transparent 58%),
+    /* Warm amber — upper-center (Orion core orange) */
+    radial-gradient(ellipse 40% 32% at 44%  6%, rgba(251,146,60,0.10) 0%, transparent 58%),
+    /* Indigo center wash */
+    radial-gradient(ellipse 72% 56% at 50% 48%, rgba(88,48,168,0.06) 0%, transparent 72%),
+    /* Vivid crimson H-alpha — center-right */
+    radial-gradient(ellipse 56% 46% at 79% 63%, rgba(185,28,28,0.22) 0%, transparent 58%),
+    /* Deep rose outer halo of red region */
+    radial-gradient(ellipse 70% 54% at 82% 70%, rgba(159,18,57,0.12) 0%, transparent 65%),
+    /* Magenta fringe — right edge */
+    radial-gradient(ellipse 36% 34% at 97% 78%, rgba(219,39,119,0.13) 0%, transparent 52%),
+    /* Crimson — bottom-center */
+    radial-gradient(ellipse 48% 36% at 34% 91%, rgba(220,38,38,0.15) 0%, transparent 56%),
+    /* Teal accent — bottom-right */
+    radial-gradient(ellipse 34% 28% at 89% 95%, rgba(6,182,212,0.10) 0%, transparent 52%),
+
+    /* ── Supergiant stars 4 px — anchor points, colored ── */
+    radial-gradient(4px   4px   at 29%  3%, rgba(200,225,255,1.00), transparent),   /* blue-white */
+    radial-gradient(4px   4px   at 71% 91%, rgba(255,165, 70,0.96), transparent),   /* orange giant */
+    radial-gradient(3.5px 3.5px at 13% 96%, rgba(255,240,140,0.94), transparent),   /* yellow giant */
+    radial-gradient(3.5px 3.5px at 97%  5%, rgba(255,255,245,0.96), transparent),   /* warm white */
+    radial-gradient(3.5px 3.5px at 50% 97%, rgba(180,215,255,0.92), transparent),   /* blue */
+
+    /* ── Large stars 2.5–3 px ── */
+    radial-gradient(3px   3px   at  7% 11%, rgba(255,255,255,0.96), transparent),
+    radial-gradient(2.5px 2.5px at 23%  7%, rgba(200,218,255,0.92), transparent),
+    radial-gradient(3px   3px   at 67%  4%, rgba(255,255,255,0.90), transparent),
+    radial-gradient(2.5px 2.5px at 88% 21%, rgba(222,208,255,0.86), transparent),
+    radial-gradient(3px   3px   at 44% 17%, rgba(255,255,255,0.92), transparent),
+    radial-gradient(2.5px 2.5px at 91% 46%, rgba(255,255,255,0.84), transparent),
+    radial-gradient(3px   3px   at  3% 73%, rgba(200,218,255,0.88), transparent),
+    radial-gradient(2.5px 2.5px at 54% 79%, rgba(255,255,255,0.90), transparent),
+    radial-gradient(3px   3px   at 78% 91%, rgba(255,235,230,0.82), transparent),
+    radial-gradient(3px   3px   at 62% 33%, rgba(255,255,255,0.86), transparent),
+    radial-gradient(2.5px 2.5px at 19% 52%, rgba(200,218,255,0.82), transparent),
+    radial-gradient(3px   3px   at 38% 68%, rgba(255,255,255,0.84), transparent),
+    radial-gradient(2.5px 2.5px at 85% 38%, rgba(222,208,255,0.80), transparent),
+
+    /* ── Colored large stars — blue, orange, yellow scattered in ── */
+    radial-gradient(2.5px 2.5px at 47% 42%, rgba(147,197,253,0.90), transparent),   /* blue */
+    radial-gradient(2.5px 2.5px at 33% 25%, rgba(255,165, 70,0.86), transparent),   /* orange */
+    radial-gradient(2px   2px   at 74% 18%, rgba(254,240,138,0.84), transparent),   /* yellow */
+    radial-gradient(2.5px 2.5px at 11% 84%, rgba(147,197,253,0.80), transparent),   /* blue */
+    radial-gradient(2px   2px   at 89% 72%, rgba(255,165, 70,0.76), transparent),   /* orange */
+    radial-gradient(2px   2px   at 58% 55%, rgba(254,240,138,0.74), transparent),   /* yellow */
+    radial-gradient(2px   2px   at 26% 79%, rgba(180,215,255,0.78), transparent),   /* blue-white */
+    radial-gradient(2px   2px   at 64% 72%, rgba(255,200,150,0.72), transparent),   /* warm orange */
+
+    /* ── Medium stars 1.5 px ── */
+    radial-gradient(1.5px 1.5px at 14% 27%, rgba(255,255,255,0.70), transparent),
+    radial-gradient(1.5px 1.5px at 32% 41%, rgba(167,139,250,0.76), transparent),
+    radial-gradient(1.5px 1.5px at 57% 24%, rgba(255,255,255,0.66), transparent),
+    radial-gradient(1.5px 1.5px at 73% 37%, rgba(200,218,255,0.70), transparent),
+    radial-gradient(1.5px 1.5px at 41% 54%, rgba(255,255,255,0.64), transparent),
+    radial-gradient(1.5px 1.5px at 18% 62%, rgba(255,255,255,0.62), transparent),
+    radial-gradient(1.5px 1.5px at 80% 69%, rgba(167,139,250,0.66), transparent),
+    radial-gradient(1.5px 1.5px at 61% 81%, rgba(255,255,255,0.64), transparent),
+    radial-gradient(1.5px 1.5px at 27% 87%, rgba(200,218,255,0.62), transparent),
+    radial-gradient(1.5px 1.5px at 92% 14%, rgba(255,255,255,0.66), transparent),
+    radial-gradient(1.5px 1.5px at  5% 37%, rgba(255,255,255,0.58), transparent),
+    radial-gradient(1.5px 1.5px at 48% 67%, rgba(255,255,255,0.62), transparent),
+    radial-gradient(1.5px 1.5px at 36% 13%, rgba(255,255,255,0.68), transparent),
+    radial-gradient(1.5px 1.5px at 69% 58%, rgba(255,228,218,0.64), transparent),
+    radial-gradient(1.5px 1.5px at 22% 35%, rgba(255,255,255,0.58), transparent),
+    radial-gradient(1.5px 1.5px at 45% 88%, rgba(200,218,255,0.60), transparent),
+    radial-gradient(1.5px 1.5px at 66% 46%, rgba(255,255,255,0.56), transparent),
+    radial-gradient(1.5px 1.5px at 83% 24%, rgba(167,139,250,0.62), transparent),
+    radial-gradient(1.5px 1.5px at 96% 57%, rgba(255,255,255,0.54), transparent),
+    radial-gradient(1.5px 1.5px at  2% 19%, rgba(200,218,255,0.56), transparent),
+
+    /* ── Small stars 1 px ── */
+    radial-gradient(1px 1px at  8%  5%, rgba(255,255,255,0.54), transparent),
+    radial-gradient(1px 1px at 17% 44%, rgba(255,255,255,0.50), transparent),
+    radial-gradient(1px 1px at 25% 19%, rgba(255,255,255,0.46), transparent),
+    radial-gradient(1px 1px at 37% 32%, rgba(200,218,255,0.50), transparent),
+    radial-gradient(1px 1px at 47%  8%, rgba(255,255,255,0.46), transparent),
+    radial-gradient(1px 1px at 51% 39%, rgba(255,255,255,0.44), transparent),
+    radial-gradient(1px 1px at 62% 49%, rgba(167,139,250,0.52), transparent),
+    radial-gradient(1px 1px at 70% 17%, rgba(255,255,255,0.44), transparent),
+    radial-gradient(1px 1px at 82% 32%, rgba(255,255,255,0.42), transparent),
+    radial-gradient(1px 1px at 95% 61%, rgba(255,255,255,0.46), transparent),
+    radial-gradient(1px 1px at 10% 77%, rgba(255,255,255,0.44), transparent),
+    radial-gradient(1px 1px at 21% 91%, rgba(255,255,255,0.40), transparent),
+    radial-gradient(1px 1px at 31% 64%, rgba(200,218,255,0.44), transparent),
+    radial-gradient(1px 1px at 42% 77%, rgba(255,255,255,0.40), transparent),
+    radial-gradient(1px 1px at 55% 92%, rgba(255,255,255,0.44), transparent),
+    radial-gradient(1px 1px at 68% 61%, rgba(167,139,250,0.46), transparent),
+    radial-gradient(1px 1px at 76% 81%, rgba(255,232,226,0.42), transparent),
+    radial-gradient(1px 1px at 86% 94%, rgba(255,255,255,0.40), transparent),
+    radial-gradient(1px 1px at 93% 29%, rgba(255,255,255,0.44), transparent),
+    radial-gradient(1px 1px at  2% 54%, rgba(255,255,255,0.36), transparent),
+    radial-gradient(1px 1px at 34% 51%, rgba(255,255,255,0.40), transparent),
+    radial-gradient(1px 1px at 56% 71%, rgba(200,218,255,0.40), transparent),
+    radial-gradient(1px 1px at 72% 49%, rgba(255,255,255,0.36), transparent),
+    radial-gradient(1px 1px at 88%  9%, rgba(255,255,255,0.40), transparent),
+    radial-gradient(1px 1px at 15% 59%, rgba(255,255,255,0.38), transparent),
+    radial-gradient(1px 1px at 29% 12%, rgba(200,218,255,0.36), transparent),
+    radial-gradient(1px 1px at 43% 62%, rgba(255,255,255,0.34), transparent),
+    radial-gradient(1px 1px at 59% 28%, rgba(167,139,250,0.38), transparent),
+    radial-gradient(1px 1px at 77% 45%, rgba(255,255,255,0.36), transparent),
+    radial-gradient(1px 1px at 90% 87%, rgba(255,255,255,0.34), transparent),
+    radial-gradient(1px 1px at  6% 66%, rgba(200,218,255,0.32), transparent),
+    radial-gradient(1px 1px at 38% 94%, rgba(255,255,255,0.32), transparent),
+
+    /* ── Dim background stars ── */
+    radial-gradient(1px 1px at 12% 14%, rgba(255,255,255,0.24), transparent),
+    radial-gradient(1px 1px at 28% 71%, rgba(255,255,255,0.20), transparent),
+    radial-gradient(1px 1px at 46% 29%, rgba(255,255,255,0.22), transparent),
+    radial-gradient(1px 1px at 60%  9%, rgba(255,255,255,0.24), transparent),
+    radial-gradient(1px 1px at 75% 27%, rgba(255,255,255,0.20), transparent),
+    radial-gradient(1px 1px at 83% 54%, rgba(255,255,255,0.18), transparent),
+    radial-gradient(1px 1px at 16% 39%, rgba(255,255,255,0.22), transparent),
+    radial-gradient(1px 1px at 39% 84%, rgba(255,255,255,0.18), transparent),
+    radial-gradient(1px 1px at 65% 37%, rgba(255,255,255,0.22), transparent),
+    radial-gradient(1px 1px at 90% 74%, rgba(255,255,255,0.18), transparent),
+    radial-gradient(1px 1px at  4% 88%, rgba(255,255,255,0.18), transparent),
+    radial-gradient(1px 1px at 50% 50%, rgba(255,255,255,0.16), transparent),
+    radial-gradient(1px 1px at 23% 48%, rgba(255,255,255,0.16), transparent),
+    radial-gradient(1px 1px at 71% 76%, rgba(255,255,255,0.14), transparent),
+    radial-gradient(1px 1px at 87% 42%, rgba(255,255,255,0.16), transparent),
+    radial-gradient(1px 1px at  9% 31%, rgba(255,255,255,0.14), transparent),
+    radial-gradient(1px 1px at 52% 18%, rgba(255,255,255,0.16), transparent),
+    radial-gradient(1px 1px at 35% 73%, rgba(255,255,255,0.14), transparent),
+    radial-gradient(1px 1px at 79% 11%, rgba(255,255,255,0.14), transparent),
+    radial-gradient(1px 1px at 96% 95%, rgba(255,255,255,0.12), transparent);
+}
+
+/* First twinkling layer — colored stars matching nearby nebulas */
+.space body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(2px   2px   at 20% 30%, rgba(255,255,255,0.90), transparent),
+    radial-gradient(1.5px 1.5px at 40% 70%, rgba(255,255,255,0.80), transparent),
+    radial-gradient(2.5px 2.5px at 60% 15%, rgba(200,218,255,0.92), transparent),
+    radial-gradient(2px   2px   at 75% 55%, rgba(167,139,250,0.84), transparent),
+    radial-gradient(1.5px 1.5px at 95% 40%, rgba(255,255,255,0.74), transparent),
+    radial-gradient(2px   2px   at 10% 85%, rgba(255,255,255,0.82), transparent),
+    radial-gradient(1.5px 1.5px at 55% 48%, rgba(200,218,255,0.74), transparent),
+    radial-gradient(2.5px 2.5px at 30% 22%, rgba(255,255,255,0.88), transparent),
+    /* Warm stars near crimson nebula */
+    radial-gradient(2px   2px   at 79% 63%, rgba(255,210,200,0.80), transparent),
+    radial-gradient(1.5px 1.5px at 69% 76%, rgba(255,190,180,0.70), transparent),
+    radial-gradient(2px   2px   at 85% 85%, rgba(255,255,255,0.76), transparent),
+    radial-gradient(1.5px 1.5px at 50% 92%, rgba(255,255,255,0.66), transparent),
+    /* Teal-tinted near cyan nebula */
+    radial-gradient(2px   2px   at 12% 68%, rgba(160,240,228,0.72), transparent),
+    radial-gradient(1.5px 1.5px at  5% 60%, rgba(130,220,210,0.66), transparent),
+    /* Pink-tinted near magenta nebula */
+    radial-gradient(2px   2px   at 19% 18%, rgba(255,185,215,0.70), transparent),
+    radial-gradient(1.5px 1.5px at 10% 35%, rgba(255,165,205,0.64), transparent),
+    /* Yellow near amber region */
+    radial-gradient(1.5px 1.5px at 42%  4%, rgba(255,245,130,0.68), transparent);
+  animation: twinkle 4s ease-in-out infinite alternate;
+}
+
+/* Second twinkling layer — offset phase */
+html.space::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(2.5px 2.5px at 35% 15%, rgba(255,255,255,0.86), transparent),
+    radial-gradient(2px   2px   at 52% 60%, rgba(167,139,250,0.82), transparent),
+    radial-gradient(1.5px 1.5px at 84% 30%, rgba(255,255,255,0.70), transparent),
+    radial-gradient(2.5px 2.5px at 14% 50%, rgba(200,218,255,0.84), transparent),
+    radial-gradient(1.5px 1.5px at 63% 87%, rgba(255,255,255,0.66), transparent),
+    radial-gradient(2px   2px   at 77%  8%, rgba(255,255,255,0.80), transparent),
+    radial-gradient(1.5px 1.5px at 28% 95%, rgba(220,202,255,0.64), transparent),
+    radial-gradient(2px   2px   at 43% 38%, rgba(255,255,255,0.76), transparent),
+    /* Warm near red nebula */
+    radial-gradient(2px   2px   at 72% 70%, rgba(255,205,195,0.66), transparent),
+    radial-gradient(1.5px 1.5px at 33% 82%, rgba(255,218,210,0.62), transparent),
+    /* Orange giant pulse */
+    radial-gradient(2.5px 2.5px at 90% 55%, rgba(255,165,70,0.80), transparent),
+    /* Blue near teal nebula */
+    radial-gradient(2px   2px   at  8% 75%, rgba(147,197,253,0.76), transparent),
+    /* Yellow near amber */
+    radial-gradient(1.5px 1.5px at 39% 10%, rgba(255,245,120,0.68), transparent),
+    /* Magenta near pink nebula */
+    radial-gradient(1.5px 1.5px at 18% 27%, rgba(255,170,220,0.66), transparent);
+  animation: twinkle2 7s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes twinkle {
+  0%   { opacity: 0.28; }
+  100% { opacity: 1.00; }
+}
+
+@keyframes twinkle2 {
+  0%   { opacity: 0.18; }
+  100% { opacity: 0.96; }
+}
+
+/* Safari 15 / macOS 12: backdrop-filter composites against browser chrome at the
+   viewport top instead of the page background, making the nav appear lighter.
+   Default to opaque; restore glass for Safari 16+, Chrome 105+, Firefox 110+
+   (all of which support container query units and fixed the compositing bug). */
+.dark nav {
+  background-color: #0a0e17 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+@supports (width: 1cqw) {
+  .dark nav {
+    background-color: rgba(10, 14, 23, 0.8) !important;
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+  }
+}
+
+/* Space theme nav: glass with blur and purple border glow */
+.space nav {
+  background: rgba(10, 8, 24, 0.86) !important;
+  backdrop-filter: blur(22px) !important;
+  -webkit-backdrop-filter: blur(22px) !important;
+  border-color: rgba(48, 40, 96, 0.80) !important;
+  box-shadow: 0 1px 0 rgba(139, 92, 246, 0.15) !important;
+}
+
+/* ─── Night theme (astronomy red) ─────────────────────────────── */
+/* Pure black background, deep red text — preserves dark adaptation */
+.night {
+  color-scheme: dark;
+}
+.night body {
+  background-color: #000000;
+  color: #cc3333;
+}
+/* Override all slate grays to red-tinted */
+.night .bg-slate-950 { background-color: #000000; }
+.night .bg-slate-900 { background-color: #0a0000; }
+.night .bg-slate-800 { background-color: #1a0505; }
+.night .border-slate-800 { border-color: #2a0808; }
+.night .border-slate-700 { border-color: #3a0c0c; }
+.night .border-slate-200 { border-color: #2a0808; }
+.night .text-slate-100 { color: #cc3333; }
+.night .text-slate-200 { color: #b82e2e; }
+.night .text-slate-300 { color: #a02828; }
+.night .text-slate-400 { color: #882222; }
+.night .text-slate-500 { color: #661a1a; }
+.night .text-slate-600 { color: #4d1414; }
+.night .text-white { color: #dd3333; }
+/* All accents become red */
+.night .text-accent-400 { color: #cc3333; }
+.night .text-accent-500 { color: #aa2222; }
+.night .text-accent-600 { color: #882222; }
+.night .bg-accent-500 { background-color: #8b1a1a; }
+.night .bg-accent-500\/10 { background-color: rgba(139, 26, 26, 0.1); }
+.night .bg-accent-500\/15 { background-color: rgba(139, 26, 26, 0.15); }
+.night .hover\:bg-accent-600:hover { background-color: #6b1515; }
+.night .shadow-accent-500\/20 { --tw-shadow-color: rgba(139, 26, 26, 0.2); }
+.night .ring-accent-500\/40 { --tw-ring-color: rgba(139, 26, 26, 0.4); }
+.night .border-accent-500\/30 { border-color: rgba(139, 26, 26, 0.3); }
+/* Teal accents also go red */
+.night .text-teal-400 { color: #993030; }
+.night .text-teal-500 { color: #882222; }
+.night .bg-teal-500\/10 { background-color: rgba(136, 34, 34, 0.1); }
+/* Backgrounds */
+.night .bg-white { background-color: #0a0000; }
+.night .bg-white\/80 { background-color: rgba(10, 0, 0, 0.8); }
+.night .bg-slate-50 { background-color: #000000; }
+.night .bg-slate-100 { background-color: #0a0000; }
+
+/* Night mode nav */
+.night nav {
+  background: rgba(0, 0, 0, 0.95) !important;
+  border-color: #2a0808 !important;
+}
+
+/* Night mode: make images dimmer to protect dark adaptation */
+.night img {
+  filter: brightness(0.5) saturate(0.3);
+}
+.night img:hover {
+  filter: brightness(0.7) saturate(0.5);
+  transition: filter 0.3s ease;
+}
+
+/* Night mode scrollbars */
+.night ::-webkit-scrollbar {
+  width: 8px;
+}
+.night ::-webkit-scrollbar-track {
+  background: #000;
+}
+.night ::-webkit-scrollbar-thumb {
+  background: #2a0808;
+  border-radius: 4px;
+}
+
+/* ─── Shared dark-base styles ─────────────────────────────────── */
+.dark-base ::-webkit-scrollbar {
+  width: 8px;
+}
+.dark ::-webkit-scrollbar-track {
+  background: var(--color-slate-900);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--color-slate-700);
+  border-radius: 4px;
+}
+
+/* ─── Shared utilities ────────────────────────────────────────── */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px -8px rgba(0, 0, 0, 0.3);
+}
+
+.fits-container canvas {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+.img-placeholder {
+  background: linear-gradient(135deg, var(--color-slate-800) 0%, var(--color-slate-700) 100%);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes progress-slide {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(150%); }
+  100% { transform: translateX(150%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

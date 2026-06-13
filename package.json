@@ -1,0 +1,122 @@
+{
+  "name": "nebulis-web",
+  "private": true,
+  "version": "1.3.1",
+  "buildNumber": 146,
+  "type": "module",
+  "packageManager": "pnpm@10.30.3",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"tsx watch server/index.ts\"",
+    "dev:client": "vite",
+    "dev:server": "tsx watch server/index.ts",
+    "build": "tsc -b && vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "update-catalog": "node scripts/download-catalog.mjs",
+    "sharpless:refresh": "npx tsx scripts/build-sharpless-catalog.ts",
+    "typecheck:server": "tsc --noEmit -p server/tsconfig.json",
+    "docker:build": "docker compose -f docker/docker-compose.yml build",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d --force-recreate",
+    "docker:up:build": "docker compose -f docker/docker-compose.yml up -d --build --force-recreate",
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "docker:logs": "docker compose -f docker/docker-compose.yml logs -f",
+    "docker:restart": "docker compose -f docker/docker-compose.yml restart"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@tanstack/react-query": "^5.95.2",
+    "archiver": "^7.0.0",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.8.0",
+    "bonjour-service": "^1.3.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.7.0",
+    "multer": "^2.1.1",
+    "pino": "^9.5.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.15.0",
+    "satellite.js": "^7.0.0",
+    "sharp": "^0.34.5",
+    "suncalc": "^1.9.0",
+    "tar": "^7.5.15",
+    "uuid": "^14.0.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1048.0",
+    "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.59.1",
+    "@tailwindcss/vite": "^4.2.4",
+    "@types/archiver": "^7.0.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsdom": "^28.0.1",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/leaflet": "^1.9.21",
+    "@types/mime-types": "^3.0.1",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^24.12.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/suncalc": "^1.9.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^4.1.5",
+    "@yao-pkg/pkg": "^6.15.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "fast-check": "^3.23.2",
+    "globals": "^17.4.0",
+    "jsdom": "^29.0.1",
+    "mime-types": "^3.0.2",
+    "pino-pretty": "^11.3.0",
+    "resedit": "^3.0.2",
+    "tailwindcss": "^4.2.4",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.57.0",
+    "vite": "^8.0.14",
+    "vitest": "^4.1.2"
+  },
+  "overrides": {
+    "path-to-regexp": "^8.4.0",
+    "brace-expansion": "^2.0.3",
+    "qs": "^6.15.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "sharp"
+    ],
+    "supportedArchitectures": {
+      "os": [
+        "darwin",
+        "linux"
+      ],
+      "cpu": [
+        "arm64",
+        "x64"
+      ]
+    },
+    "patchedDependencies": {}
+  },
+  "volta": {
+    "node": "24.16.0"
+  }
+}

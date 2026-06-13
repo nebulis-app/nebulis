@@ -1,0 +1,38 @@
+services:
+  nebulis:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: nebulis
+    restart: unless-stopped
+    ports:
+      # Change 8080 to any free port on your host.
+      - "8080:8080"
+      - "47890:47890/udp"
+    volumes:
+      # Persist settings and observation notes across container restarts
+      - nebulis-data:/app/data
+      # Expose macOS-mounted USB volumes to the container so Dwarf telescope
+      # detection finds them. The Linux-side detector scans /media/* — by
+      # bind-mounting the host's /Volumes there read-only, any plugged-in
+      # Dwarf drive becomes visible without changing the detector code.
+      # On Docker Desktop for Mac, /Volumes must be added under Settings →
+      # Resources → File Sharing for this mount to succeed.
+      # On a Linux host, change the host side to /media or /mnt instead.
+      - /Volumes:/media:ro
+    environment:
+      - PORT=8080
+      - NODE_ENV=production
+      # Set this to your server's LAN IP so UDP discovery returns the correct
+      # address when running in Docker (containers can't see the host's external IP).
+      # Example: ADVERTISED_HOST=192.168.1.119
+      # - ADVERTISED_HOST=
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  nebulis-data:

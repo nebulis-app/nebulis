@@ -1,0 +1,39 @@
+# ── Dependencies & build output ──────────────────────────────────────
+node_modules
+dist
+.pnpm-store
+# native installers + DMGs/exes (multi-GB); never needed in the image
+releases
+coverage
+test-results
+playwright-report
+
+# ── Secrets & local config ───────────────────────────────────────────
+# Never ship credentials into the build context or any image layer.
+.env
+.env.*
+seestar-settings.json
+/data/
+data
+
+# ── Version control & editors ────────────────────────────────────────
+.git
+.gitignore
+.vscode
+.idea
+
+# ── Docs & internal notes (CHANGELOG is bundled, so keep it) ──────────
+*.md
+!CHANGELOG.md
+docs
+internal-doc
+church-audit
+.claude
+
+# ── Tests & tooling not used by the production build ─────────────────
+tests
+installers
+.github
+# match at any depth (a bare pattern only matches the context root)
+**/*.log
+**/.DS_Store

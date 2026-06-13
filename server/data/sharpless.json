@@ -1,0 +1,2819 @@
+[
+  {
+    "id": "Sh2-1",
+    "raDeg": 239.71337,
+    "decDeg": -26.12052,
+    "sizeArcmin": 150,
+    "commonName": null,
+    "ngcRef": "IC1470",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-2",
+    "raDeg": 256.0276,
+    "decDeg": -38.14249,
+    "sizeArcmin": 60,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-3",
+    "raDeg": 258.43764,
+    "decDeg": -38.50311,
+    "sizeArcmin": 12,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-4",
+    "raDeg": 259.95327,
+    "decDeg": -39.33875,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-5",
+    "raDeg": 260.01446,
+    "decDeg": -38.45477,
+    "sizeArcmin": 100,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-6",
+    "raDeg": 258.76714,
+    "decDeg": -37.11654,
+    "sizeArcmin": 4,
+    "commonName": "Bug Nebula",
+    "ngcRef": "NGC6302",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-7",
+    "raDeg": 240.08235,
+    "decDeg": -22.95064,
+    "sizeArcmin": 240,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-8",
+    "raDeg": 260.35353,
+    "decDeg": -36.03469,
+    "sizeArcmin": 120,
+    "commonName": null,
+    "ngcRef": "NGC6334",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-9",
+    "raDeg": 245.29539,
+    "decDeg": -25.58944,
+    "sizeArcmin": 80,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-10",
+    "raDeg": 259.75006,
+    "decDeg": -34.09032,
+    "sizeArcmin": 60,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-11",
+    "raDeg": 261.62897,
+    "decDeg": -34.20569,
+    "sizeArcmin": 90,
+    "commonName": "War and Peace Nebula",
+    "ngcRef": "NGC6357",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-12",
+    "raDeg": 263.98408,
+    "decDeg": -32.59959,
+    "sizeArcmin": 120,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-13",
+    "raDeg": 262.619,
+    "decDeg": -31.56268,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-14",
+    "raDeg": 262.577,
+    "decDeg": -30.263,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-15",
+    "raDeg": 267.64331,
+    "decDeg": -31.26409,
+    "sizeArcmin": 30,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-16",
+    "raDeg": 266.96754,
+    "decDeg": -29.30385,
+    "sizeArcmin": 20,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-17",
+    "raDeg": 266.53669,
+    "decDeg": -28.858,
+    "sizeArcmin": 25,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-18",
+    "raDeg": 267.19197,
+    "decDeg": -29.25167,
+    "sizeArcmin": 4,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-19",
+    "raDeg": 267.34031,
+    "decDeg": -29.11689,
+    "sizeArcmin": 12,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-20",
+    "raDeg": 267.30961,
+    "decDeg": -28.66716,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-21",
+    "raDeg": 267.9127,
+    "decDeg": -28.89466,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-22",
+    "raDeg": 268.76575,
+    "decDeg": -25.03615,
+    "sizeArcmin": 60,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-23",
+    "raDeg": 243.35258,
+    "decDeg": -8.37228,
+    "sizeArcmin": 50,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-24",
+    "raDeg": 242.76586,
+    "decDeg": -7.07728,
+    "sizeArcmin": 30,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-25",
+    "raDeg": 271.35848,
+    "decDeg": -24.39425,
+    "sizeArcmin": 90,
+    "commonName": "Lagoon Nebula",
+    "ngcRef": null,
+    "messierRef": "M8"
+  },
+  {
+    "id": "Sh2-26",
+    "raDeg": 269.74596,
+    "decDeg": -23.32653,
+    "sizeArcmin": 20,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-27",
+    "raDeg": 249.30171,
+    "decDeg": -10.56973,
+    "sizeArcmin": 480,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-28",
+    "raDeg": 270.67402,
+    "decDeg": -23.58419,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-29",
+    "raDeg": 272.62881,
+    "decDeg": -23.99855,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": "NGC6559",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-30",
+    "raDeg": 270.89248,
+    "decDeg": -23.01536,
+    "sizeArcmin": 20,
+    "commonName": "Trifid Nebula",
+    "ngcRef": "NGC6514",
+    "messierRef": "M20"
+  },
+  {
+    "id": "Sh2-31",
+    "raDeg": 272.82645,
+    "decDeg": -23.79662,
+    "sizeArcmin": 8,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-32",
+    "raDeg": 272.72473,
+    "decDeg": -23.64759,
+    "sizeArcmin": 8,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-33",
+    "raDeg": 239.96823,
+    "decDeg": -1.61745,
+    "sizeArcmin": 35,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-34",
+    "raDeg": 271.60208,
+    "decDeg": -21.65839,
+    "sizeArcmin": 90,
+    "commonName": "Forgotten Nebula",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-35",
+    "raDeg": 273.96123,
+    "decDeg": -20.25207,
+    "sizeArcmin": 20,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-36",
+    "raDeg": 241.3764,
+    "decDeg": 0.39448,
+    "sizeArcmin": 45,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-37",
+    "raDeg": 274.4297,
+    "decDeg": -19.66416,
+    "sizeArcmin": 20,
+    "commonName": "Twiddlebug Nebula",
+    "ngcRef": "IC1283",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-38",
+    "raDeg": 272.18977,
+    "decDeg": -18.26917,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-39",
+    "raDeg": 274.19371,
+    "decDeg": -18.64973,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-40",
+    "raDeg": 273.00909,
+    "decDeg": -17.74451,
+    "sizeArcmin": 15,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-41",
+    "raDeg": 273.96427,
+    "decDeg": -18.23526,
+    "sizeArcmin": 90,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-42",
+    "raDeg": 272.57422,
+    "decDeg": -16.81536,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-43",
+    "raDeg": 274.10531,
+    "decDeg": -17.40052,
+    "sizeArcmin": 15,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-44",
+    "raDeg": 274.12323,
+    "decDeg": -16.73364,
+    "sizeArcmin": 60,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-45",
+    "raDeg": 275.19216,
+    "decDeg": -16.17325,
+    "sizeArcmin": 60,
+    "commonName": "Omega Nebula",
+    "ngcRef": "NGC6618",
+    "messierRef": "M17"
+  },
+  {
+    "id": "Sh2-46",
+    "raDeg": 271.54643,
+    "decDeg": -14.15854,
+    "sizeArcmin": 25,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-47",
+    "raDeg": 274.43641,
+    "decDeg": -15.61388,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-48",
+    "raDeg": 275.60055,
+    "decDeg": -14.58588,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-49",
+    "raDeg": 274.66923,
+    "decDeg": -13.96154,
+    "sizeArcmin": 90,
+    "commonName": "Eagle Nebula",
+    "ngcRef": "NGC6611",
+    "messierRef": "M16"
+  },
+  {
+    "id": "Sh2-50",
+    "raDeg": 276.3767,
+    "decDeg": -14.71171,
+    "sizeArcmin": 35,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-51",
+    "raDeg": 280.19471,
+    "decDeg": -16.55835,
+    "sizeArcmin": 35,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-52",
+    "raDeg": 296.94518,
+    "decDeg": -23.08748,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-53",
+    "raDeg": 276.31148,
+    "decDeg": -13.22893,
+    "sizeArcmin": 15,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-54",
+    "raDeg": 274.47148,
+    "decDeg": -11.73001,
+    "sizeArcmin": 140,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-55",
+    "raDeg": 278.04628,
+    "decDeg": -11.7621,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-56",
+    "raDeg": 277.77587,
+    "decDeg": -9.71461,
+    "sizeArcmin": 7,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-57",
+    "raDeg": 277.64001,
+    "decDeg": -8.61587,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-58",
+    "raDeg": 277.86348,
+    "decDeg": -8.46371,
+    "sizeArcmin": 8,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-59",
+    "raDeg": 279.2548,
+    "decDeg": -7.60027,
+    "sizeArcmin": 20,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-60",
+    "raDeg": 279.17103,
+    "decDeg": -6.70103,
+    "sizeArcmin": 20,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-61",
+    "raDeg": 278.22967,
+    "decDeg": -5.01001,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-62",
+    "raDeg": 276.89353,
+    "decDeg": -3.85619,
+    "sizeArcmin": 4,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-63",
+    "raDeg": 299.42993,
+    "decDeg": -14.11566,
+    "sizeArcmin": 55,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-64",
+    "raDeg": 277.89971,
+    "decDeg": -1.91305,
+    "sizeArcmin": 25,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-65",
+    "raDeg": 281.74218,
+    "decDeg": -3.74294,
+    "sizeArcmin": 7,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-66",
+    "raDeg": 281.37549,
+    "decDeg": -1.99636,
+    "sizeArcmin": 8,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-67",
+    "raDeg": 282.35387,
+    "decDeg": -2.35371,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-68",
+    "raDeg": 276.29791,
+    "decDeg": 0.85494,
+    "sizeArcmin": 8,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-69",
+    "raDeg": 281.1091,
+    "decDeg": -0.28216,
+    "sizeArcmin": 20,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-70",
+    "raDeg": 273.66217,
+    "decDeg": 7.06303,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-71",
+    "raDeg": 285.5113,
+    "decDeg": 2.15968,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-72",
+    "raDeg": 285.95991,
+    "decDeg": 2.3139,
+    "sizeArcmin": 25,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-73",
+    "raDeg": 242.78177,
+    "decDeg": 21.874,
+    "sizeArcmin": 75,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-74",
+    "raDeg": 287.20425,
+    "decDeg": 5.609,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-75",
+    "raDeg": 284.81414,
+    "decDeg": 7.12001,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-76",
+    "raDeg": 284.10724,
+    "decDeg": 7.81337,
+    "sizeArcmin": 7,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-77",
+    "raDeg": 297.072,
+    "decDeg": 1.14792,
+    "sizeArcmin": 8,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-78",
+    "raDeg": 285.79639,
+    "decDeg": 14.12956,
+    "sizeArcmin": 12,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-79",
+    "raDeg": 290.82683,
+    "decDeg": 13.97609,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-80",
+    "raDeg": 287.87058,
+    "decDeg": 16.8657,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-81",
+    "raDeg": 300.30616,
+    "decDeg": 11.7927,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-82",
+    "raDeg": 292.58649,
+    "decDeg": 18.27555,
+    "sizeArcmin": 9,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-83",
+    "raDeg": 291.13397,
+    "decDeg": 20.79586,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-84",
+    "raDeg": 297.26664,
+    "decDeg": 18.40028,
+    "sizeArcmin": 15,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-85",
+    "raDeg": 285.82178,
+    "decDeg": 25.83038,
+    "sizeArcmin": 6,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-86",
+    "raDeg": 295.79039,
+    "decDeg": 23.28761,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": "NGC6820",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-87",
+    "raDeg": 296.60292,
+    "decDeg": 24.62811,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-88",
+    "raDeg": 296.49512,
+    "decDeg": 25.34387,
+    "sizeArcmin": 25,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-89",
+    "raDeg": 297.51004,
+    "decDeg": 26.48608,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-90",
+    "raDeg": 297.30546,
+    "decDeg": 26.86766,
+    "sizeArcmin": 6,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-91",
+    "raDeg": 293.89185,
+    "decDeg": 29.60445,
+    "sizeArcmin": 120,
+    "commonName": "SNR G65.3+5.7",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-92",
+    "raDeg": 296.66378,
+    "decDeg": 28.24548,
+    "sizeArcmin": 50,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-93",
+    "raDeg": 298.75508,
+    "decDeg": 27.21349,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-94",
+    "raDeg": 291.96502,
+    "decDeg": 31.4706,
+    "sizeArcmin": 25,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-95",
+    "raDeg": 298.75718,
+    "decDeg": 29.29693,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-96",
+    "raDeg": 292.17522,
+    "decDeg": 32.68923,
+    "sizeArcmin": 25,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-97",
+    "raDeg": 299.02193,
+    "decDeg": 30.26591,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-98",
+    "raDeg": 299.68552,
+    "decDeg": 31.4216,
+    "sizeArcmin": 15,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-99",
+    "raDeg": 300.21263,
+    "decDeg": 33.49283,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-100",
+    "raDeg": 300.46321,
+    "decDeg": 33.5116,
+    "sizeArcmin": 4,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-101",
+    "raDeg": 299.98969,
+    "decDeg": 35.29104,
+    "sizeArcmin": 20,
+    "commonName": "Tulip Nebula",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-102",
+    "raDeg": 307.94613,
+    "decDeg": 30.60515,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-103",
+    "raDeg": 312.6353,
+    "decDeg": 30.92345,
+    "sizeArcmin": 210,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-104",
+    "raDeg": 304.43809,
+    "decDeg": 36.74446,
+    "sizeArcmin": 7,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-105",
+    "raDeg": 303.01159,
+    "decDeg": 38.34965,
+    "sizeArcmin": 18,
+    "commonName": "Crescent Nebula",
+    "ngcRef": "NGC6888",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-106",
+    "raDeg": 306.8653,
+    "decDeg": 37.39707,
+    "sizeArcmin": 3,
+    "commonName": "Celestial Snow Angel",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-107",
+    "raDeg": 310.6951,
+    "decDeg": 36.34282,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-108",
+    "raDeg": 305.64784,
+    "decDeg": 40.2543,
+    "sizeArcmin": 180,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-109",
+    "raDeg": 308.41026,
+    "decDeg": 40.34248,
+    "sizeArcmin": 1080,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-110",
+    "raDeg": 320.20359,
+    "decDeg": 32.45786,
+    "sizeArcmin": 50,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-111",
+    "raDeg": 325.47205,
+    "decDeg": 30.1057,
+    "sizeArcmin": 90,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-112",
+    "raDeg": 308.45984,
+    "decDeg": 45.65981,
+    "sizeArcmin": 15,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-113",
+    "raDeg": 320.20074,
+    "decDeg": 38.09134,
+    "sizeArcmin": 15,
+    "commonName": "Flying Dragon Nebula",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-114",
+    "raDeg": 320.29504,
+    "decDeg": 38.70862,
+    "sizeArcmin": 9,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-115",
+    "raDeg": 308.64168,
+    "decDeg": 46.87793,
+    "sizeArcmin": 50,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-116",
+    "raDeg": 308.08021,
+    "decDeg": 47.35701,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-117",
+    "raDeg": 314.694,
+    "decDeg": 44.32186,
+    "sizeArcmin": 240,
+    "commonName": "North America Nebula",
+    "ngcRef": "NGC7000",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-118",
+    "raDeg": 324.25472,
+    "decDeg": 40.21572,
+    "sizeArcmin": 480,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-119",
+    "raDeg": 319.60746,
+    "decDeg": 43.9378,
+    "sizeArcmin": 160,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-120",
+    "raDeg": 315.94629,
+    "decDeg": 49.88073,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-121",
+    "raDeg": 316.30292,
+    "decDeg": 49.64979,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-122",
+    "raDeg": 347.19705,
+    "decDeg": 14.92496,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-123",
+    "raDeg": 325.59495,
+    "decDeg": 44.54006,
+    "sizeArcmin": 13,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-124",
+    "raDeg": 324.59048,
+    "decDeg": 50.3513,
+    "sizeArcmin": 70,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-125",
+    "raDeg": 328.38825,
+    "decDeg": 47.27172,
+    "sizeArcmin": 9,
+    "commonName": "Cocoon Nebula",
+    "ngcRef": "IC5146",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-126",
+    "raDeg": 338.36463,
+    "decDeg": 38.58223,
+    "sizeArcmin": 160,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-127",
+    "raDeg": 322.17463,
+    "decDeg": 54.62075,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-128",
+    "raDeg": 323.03677,
+    "decDeg": 55.85926,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-129",
+    "raDeg": 317.93718,
+    "decDeg": 59.9613,
+    "sizeArcmin": 140,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-130",
+    "raDeg": 310.74854,
+    "decDeg": 63.22847,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-131",
+    "raDeg": 324.75134,
+    "decDeg": 57.48586,
+    "sizeArcmin": 170,
+    "commonName": "Elephant's Trunk Nebula",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-132",
+    "raDeg": 334.69864,
+    "decDeg": 56.13479,
+    "sizeArcmin": 90,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-133",
+    "raDeg": 322.24978,
+    "decDeg": 64.30521,
+    "sizeArcmin": 80,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-134",
+    "raDeg": 332.8745,
+    "decDeg": 59.41033,
+    "sizeArcmin": 160,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-135",
+    "raDeg": 335.54853,
+    "decDeg": 58.73837,
+    "sizeArcmin": 15,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-136",
+    "raDeg": 319.12366,
+    "decDeg": 68.25316,
+    "sizeArcmin": 5,
+    "commonName": "Ghost Nebula",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-137",
+    "raDeg": 329.27983,
+    "decDeg": 64.69364,
+    "sizeArcmin": 90,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-138",
+    "raDeg": 338.16473,
+    "decDeg": 58.4818,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-139",
+    "raDeg": 338.75159,
+    "decDeg": 58.21725,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-140",
+    "raDeg": 334.78265,
+    "decDeg": 63.28538,
+    "sizeArcmin": 30,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-141",
+    "raDeg": 337.12694,
+    "decDeg": 61.64467,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-142",
+    "raDeg": 341.89888,
+    "decDeg": 58.06104,
+    "sizeArcmin": 30,
+    "commonName": null,
+    "ngcRef": "NGC7380",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-143",
+    "raDeg": 342.56215,
+    "decDeg": 57.71304,
+    "sizeArcmin": 4,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-144",
+    "raDeg": 341.21737,
+    "decDeg": 59.89228,
+    "sizeArcmin": 4,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-145",
+    "raDeg": 336.39012,
+    "decDeg": 64.30859,
+    "sizeArcmin": 90,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-146",
+    "raDeg": 342.35976,
+    "decDeg": 59.92914,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-147",
+    "raDeg": 343.87375,
+    "decDeg": 58.46681,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-148",
+    "raDeg": 344.0509,
+    "decDeg": 58.5173,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-149",
+    "raDeg": 344.10149,
+    "decDeg": 58.53411,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-150",
+    "raDeg": 337.79976,
+    "decDeg": 65.11399,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-151",
+    "raDeg": 345.76396,
+    "decDeg": 57.07173,
+    "sizeArcmin": 20,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-152",
+    "raDeg": 344.65741,
+    "decDeg": 58.7856,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-153",
+    "raDeg": 344.8102,
+    "decDeg": 58.736,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-154",
+    "raDeg": 342.85261,
+    "decDeg": 61.18062,
+    "sizeArcmin": 60,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-155",
+    "raDeg": 344.18243,
+    "decDeg": 62.61772,
+    "sizeArcmin": 60,
+    "commonName": "Cave Nebula",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-156",
+    "raDeg": 346.29397,
+    "decDeg": 60.25638,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-157",
+    "raDeg": 349.01486,
+    "decDeg": 60.04555,
+    "sizeArcmin": 90,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-158",
+    "raDeg": 348.41795,
+    "decDeg": 61.51105,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": "NGC7538",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-159",
+    "raDeg": 348.92978,
+    "decDeg": 61.1454,
+    "sizeArcmin": 7,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-160",
+    "raDeg": 346.4487,
+    "decDeg": 64.67346,
+    "sizeArcmin": 80,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-161",
+    "raDeg": 348.87278,
+    "decDeg": 61.86196,
+    "sizeArcmin": 55,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-162",
+    "raDeg": 350.17555,
+    "decDeg": 61.19768,
+    "sizeArcmin": 40,
+    "commonName": "Bubble Nebula",
+    "ngcRef": "NGC7635",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-163",
+    "raDeg": 353.33168,
+    "decDeg": 60.78567,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-164",
+    "raDeg": 354.60656,
+    "decDeg": 59.97042,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-165",
+    "raDeg": 354.9545,
+    "decDeg": 61.93743,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-166",
+    "raDeg": 355.54349,
+    "decDeg": 60.97129,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-167",
+    "raDeg": 353.84364,
+    "decDeg": 64.85295,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-168",
+    "raDeg": 358.26593,
+    "decDeg": 60.47298,
+    "sizeArcmin": 7,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-169",
+    "raDeg": 358.49492,
+    "decDeg": 60.37307,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-170",
+    "raDeg": 0.42658,
+    "decDeg": 64.62344,
+    "sizeArcmin": 20,
+    "commonName": "Little Rosette Nebula",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-171",
+    "raDeg": 1.16774,
+    "decDeg": 67.15675,
+    "sizeArcmin": 180,
+    "commonName": null,
+    "ngcRef": "NGC7822",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-172",
+    "raDeg": 3.8872,
+    "decDeg": 61.2559,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-173",
+    "raDeg": 5.46623,
+    "decDeg": 61.73818,
+    "sizeArcmin": 30,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-174",
+    "raDeg": 356.70525,
+    "decDeg": 80.93887,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-175",
+    "raDeg": 6.83006,
+    "decDeg": 64.7036,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-176",
+    "raDeg": 7.91363,
+    "decDeg": 57.2857,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-177",
+    "raDeg": 7.88783,
+    "decDeg": 62.46908,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-178",
+    "raDeg": 334.73437,
+    "decDeg": 87.7616,
+    "sizeArcmin": 420,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-179",
+    "raDeg": 10.10582,
+    "decDeg": 62.866,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-180",
+    "raDeg": 12.19455,
+    "decDeg": 62.92904,
+    "sizeArcmin": 15,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-181",
+    "raDeg": 12.31947,
+    "decDeg": 65.21215,
+    "sizeArcmin": 15,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-182",
+    "raDeg": 12.56947,
+    "decDeg": 64.74499,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-183",
+    "raDeg": 13.4992,
+    "decDeg": 65.70977,
+    "sizeArcmin": 35,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-184",
+    "raDeg": 13.21153,
+    "decDeg": 56.61029,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": "NGC281",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-185",
+    "raDeg": 15.00007,
+    "decDeg": 60.98968,
+    "sizeArcmin": 120,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-186",
+    "raDeg": 17.21296,
+    "decDeg": 63.13407,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-187",
+    "raDeg": 20.7824,
+    "decDeg": 61.85665,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-188",
+    "raDeg": 22.66397,
+    "decDeg": 58.36676,
+    "sizeArcmin": 9,
+    "commonName": "Simeis 22",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-189",
+    "raDeg": 33.03563,
+    "decDeg": 64.1717,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-190",
+    "raDeg": 38.34648,
+    "decDeg": 61.44232,
+    "sizeArcmin": 150,
+    "commonName": "Heart Nebula",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-191",
+    "raDeg": 39.16388,
+    "decDeg": 59.63736,
+    "sizeArcmin": 2,
+    "commonName": "Maffei 1",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-192",
+    "raDeg": 41.8091,
+    "decDeg": 61.98796,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-193",
+    "raDeg": 41.8856,
+    "decDeg": 62.00414,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-194",
+    "raDeg": 41.83301,
+    "decDeg": 61.9378,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-195",
+    "raDeg": 40.0252,
+    "decDeg": 59.64883,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-196",
+    "raDeg": 42.83004,
+    "decDeg": 62.23147,
+    "sizeArcmin": 4,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-197",
+    "raDeg": 40.48094,
+    "decDeg": 59.64604,
+    "sizeArcmin": 5,
+    "commonName": "Maffei 2",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-198",
+    "raDeg": 42.50761,
+    "decDeg": 59.69999,
+    "sizeArcmin": 9,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-199",
+    "raDeg": 43.63988,
+    "decDeg": 60.40938,
+    "sizeArcmin": 120,
+    "commonName": "Soul Nebula",
+    "ngcRef": "IC1848",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-200",
+    "raDeg": 47.68781,
+    "decDeg": 62.81549,
+    "sizeArcmin": 6,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-201",
+    "raDeg": 45.79322,
+    "decDeg": 60.47835,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-202",
+    "raDeg": 49.71475,
+    "decDeg": 59.634,
+    "sizeArcmin": 170,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-203",
+    "raDeg": 50.50429,
+    "decDeg": 54.87779,
+    "sizeArcmin": 45,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-204",
+    "raDeg": 58.94023,
+    "decDeg": 57.42894,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-205",
+    "raDeg": 59.03402,
+    "decDeg": 53.19439,
+    "sizeArcmin": 120,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-206",
+    "raDeg": 60.80448,
+    "decDeg": 51.32953,
+    "sizeArcmin": 50,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-207",
+    "raDeg": 65.02069,
+    "decDeg": 53.14366,
+    "sizeArcmin": 4,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-208",
+    "raDeg": 64.94126,
+    "decDeg": 52.97767,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-209",
+    "raDeg": 62.76254,
+    "decDeg": 51.16295,
+    "sizeArcmin": 14,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-210",
+    "raDeg": 67.74623,
+    "decDeg": 52.55291,
+    "sizeArcmin": 20,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-211",
+    "raDeg": 69.24084,
+    "decDeg": 50.93935,
+    "sizeArcmin": 2,
+    "commonName": "Tribble Nebulae",
+    "ngcRef": "NGC1624",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-212",
+    "raDeg": 70.15735,
+    "decDeg": 50.38102,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-213",
+    "raDeg": 65.17903,
+    "decDeg": 44.92488,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-214",
+    "raDeg": 65.39544,
+    "decDeg": 44.37295,
+    "sizeArcmin": 4,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-215",
+    "raDeg": 64.38731,
+    "decDeg": 42.61494,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-216",
+    "raDeg": 71.23764,
+    "decDeg": 46.82085,
+    "sizeArcmin": 80,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-217",
+    "raDeg": 74.69799,
+    "decDeg": 48.00569,
+    "sizeArcmin": 9,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-218",
+    "raDeg": 85.31906,
+    "decDeg": 52.18841,
+    "sizeArcmin": 70,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-219",
+    "raDeg": 74.03341,
+    "decDeg": 47.39515,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-220",
+    "raDeg": 60.15988,
+    "decDeg": 36.61725,
+    "sizeArcmin": 320,
+    "commonName": "California Nebula",
+    "ngcRef": "NGC1499",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-221",
+    "raDeg": 75.41672,
+    "decDeg": 46.34883,
+    "sizeArcmin": 120,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-222",
+    "raDeg": 67.54104,
+    "decDeg": 35.27006,
+    "sizeArcmin": 6,
+    "commonName": null,
+    "ngcRef": "NGC1579",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-223",
+    "raDeg": 79.29958,
+    "decDeg": 42.21184,
+    "sizeArcmin": 70,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-224",
+    "raDeg": 81.81718,
+    "decDeg": 42.97119,
+    "sizeArcmin": 30,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-225",
+    "raDeg": 81.75158,
+    "decDeg": 40.62162,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-226",
+    "raDeg": 77.77844,
+    "decDeg": 37.99261,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-227",
+    "raDeg": 79.97199,
+    "decDeg": 38.95518,
+    "sizeArcmin": 20,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-228",
+    "raDeg": 78.39635,
+    "decDeg": 37.45339,
+    "sizeArcmin": 8,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-229",
+    "raDeg": 79.07912,
+    "decDeg": 34.46337,
+    "sizeArcmin": 65,
+    "commonName": "Flaming Star Nebula",
+    "ngcRef": "IC405",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-230",
+    "raDeg": 80.62654,
+    "decDeg": 34.13193,
+    "sizeArcmin": 300,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-231",
+    "raDeg": 84.83154,
+    "decDeg": 35.92495,
+    "sizeArcmin": 12,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-232",
+    "raDeg": 85.61121,
+    "decDeg": 36.20077,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-233",
+    "raDeg": 84.67948,
+    "decDeg": 35.79308,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-234",
+    "raDeg": 82.03242,
+    "decDeg": 34.43514,
+    "sizeArcmin": 12,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-235",
+    "raDeg": 85.25583,
+    "decDeg": 35.85418,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-236",
+    "raDeg": 80.64097,
+    "decDeg": 33.36507,
+    "sizeArcmin": 55,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-237",
+    "raDeg": 82.85604,
+    "decDeg": 34.27722,
+    "sizeArcmin": 7,
+    "commonName": null,
+    "ngcRef": "NGC1931",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-238",
+    "raDeg": 65.45826,
+    "decDeg": 19.53771,
+    "sizeArcmin": 1,
+    "commonName": "Hind's Nebula",
+    "ngcRef": "NGC1555",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-239",
+    "raDeg": 67.8225,
+    "decDeg": 18.11669,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-240",
+    "raDeg": 85.25138,
+    "decDeg": 28.10372,
+    "sizeArcmin": 180,
+    "commonName": "Simeis 147",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-241",
+    "raDeg": 91.03045,
+    "decDeg": 30.24778,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-242",
+    "raDeg": 87.96408,
+    "decDeg": 27.01071,
+    "sizeArcmin": 7,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-243",
+    "raDeg": 84.84384,
+    "decDeg": 23.29072,
+    "sizeArcmin": 6,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-244",
+    "raDeg": 83.62806,
+    "decDeg": 21.95238,
+    "sizeArcmin": 5,
+    "commonName": "Crab Nebula",
+    "ngcRef": "NGC1952",
+    "messierRef": "M1"
+  },
+  {
+    "id": "Sh2-245",
+    "raDeg": 60.63938,
+    "decDeg": 4.12858,
+    "sizeArcmin": 720,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-246",
+    "raDeg": 75.53997,
+    "decDeg": 14.0957,
+    "sizeArcmin": 65,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-247",
+    "raDeg": 92.12644,
+    "decDeg": 21.61996,
+    "sizeArcmin": 9,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-248",
+    "raDeg": 94.16117,
+    "decDeg": 22.50026,
+    "sizeArcmin": 50,
+    "commonName": "Jellyfish Nebula",
+    "ngcRef": "IC443",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-249",
+    "raDeg": 95.24265,
+    "decDeg": 23.0898,
+    "sizeArcmin": 80,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-250",
+    "raDeg": 70.04718,
+    "decDeg": 7.36284,
+    "sizeArcmin": 10,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-251",
+    "raDeg": 68.20762,
+    "decDeg": 5.86273,
+    "sizeArcmin": 35,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-252",
+    "raDeg": 92.41393,
+    "decDeg": 20.50044,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-253",
+    "raDeg": 96.43302,
+    "decDeg": 20.02811,
+    "sizeArcmin": 5,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-254",
+    "raDeg": 93.0871,
+    "decDeg": 18.04378,
+    "sizeArcmin": 11,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-255",
+    "raDeg": 93.28635,
+    "decDeg": 17.97517,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-256",
+    "raDeg": 93.16101,
+    "decDeg": 17.94305,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-257",
+    "raDeg": 93.21136,
+    "decDeg": 17.9759,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-258",
+    "raDeg": 93.38579,
+    "decDeg": 17.9242,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-259",
+    "raDeg": 92.90571,
+    "decDeg": 17.44551,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-260",
+    "raDeg": 73.78281,
+    "decDeg": 5.66173,
+    "sizeArcmin": 22,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-261",
+    "raDeg": 92.23834,
+    "decDeg": 15.80191,
+    "sizeArcmin": 45,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-262",
+    "raDeg": 76.68849,
+    "decDeg": 6.16787,
+    "sizeArcmin": 20,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-263",
+    "raDeg": 80.43616,
+    "decDeg": 8.39904,
+    "sizeArcmin": 22,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-264",
+    "raDeg": 83.80222,
+    "decDeg": 9.93344,
+    "sizeArcmin": 390,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-265",
+    "raDeg": 79.65159,
+    "decDeg": 7.43982,
+    "sizeArcmin": 70,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-266",
+    "raDeg": 94.70767,
+    "decDeg": 15.27791,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-267",
+    "raDeg": 93.97228,
+    "decDeg": 14.26833,
+    "sizeArcmin": 4,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-268",
+    "raDeg": 92.56272,
+    "decDeg": 13.33196,
+    "sizeArcmin": 60,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-269",
+    "raDeg": 93.64269,
+    "decDeg": 13.8215,
+    "sizeArcmin": 4,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-270",
+    "raDeg": 92.55743,
+    "decDeg": 12.81532,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-271",
+    "raDeg": 93.72767,
+    "decDeg": 12.35394,
+    "sizeArcmin": 2,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-272",
+    "raDeg": 93.7525,
+    "decDeg": 12.33703,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-273",
+    "raDeg": 100.20211,
+    "decDeg": 9.90797,
+    "sizeArcmin": 250,
+    "commonName": null,
+    "ngcRef": "NGC2264",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-274",
+    "raDeg": 112.27875,
+    "decDeg": 13.26189,
+    "sizeArcmin": 8,
+    "commonName": "Medusa Nebula",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-275",
+    "raDeg": 97.92871,
+    "decDeg": 4.92959,
+    "sizeArcmin": 100,
+    "commonName": "Rosette Nebula",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-276",
+    "raDeg": 81.86717,
+    "decDeg": -3.96524,
+    "sizeArcmin": 1200,
+    "commonName": "Barnard's Loop",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-277",
+    "raDeg": 85.18178,
+    "decDeg": -2.44714,
+    "sizeArcmin": 120,
+    "commonName": "Flame Nebula",
+    "ngcRef": "NGC2024",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-278",
+    "raDeg": 79.95097,
+    "decDeg": -5.66363,
+    "sizeArcmin": 50,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-279",
+    "raDeg": 83.83397,
+    "decDeg": -4.80089,
+    "sizeArcmin": 20,
+    "commonName": "Running Man Nebula",
+    "ngcRef": "NGC1973",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-280",
+    "raDeg": 98.58056,
+    "decDeg": 2.53987,
+    "sizeArcmin": 40,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-281",
+    "raDeg": 83.7275,
+    "decDeg": -5.46656,
+    "sizeArcmin": 60,
+    "commonName": "Orion Nebula",
+    "ngcRef": "NGC1976",
+    "messierRef": "M42"
+  },
+  {
+    "id": "Sh2-282",
+    "raDeg": 99.49569,
+    "decDeg": 1.51436,
+    "sizeArcmin": 35,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-283",
+    "raDeg": 99.66299,
+    "decDeg": 0.71271,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-284",
+    "raDeg": 101.25842,
+    "decDeg": 0.23074,
+    "sizeArcmin": 80,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-285",
+    "raDeg": 103.8015,
+    "decDeg": -0.51014,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-286",
+    "raDeg": 103.63854,
+    "decDeg": -4.50878,
+    "sizeArcmin": 6,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-287",
+    "raDeg": 104.88602,
+    "decDeg": -4.8039,
+    "sizeArcmin": 12,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-288",
+    "raDeg": 107.14125,
+    "decDeg": -4.30834,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-289",
+    "raDeg": 101.48581,
+    "decDeg": -7.33844,
+    "sizeArcmin": 11,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-290",
+    "raDeg": 133.54619,
+    "decDeg": 8.92114,
+    "sizeArcmin": 17,
+    "commonName": "Abell 31",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-291",
+    "raDeg": 103.8549,
+    "decDeg": -8.02765,
+    "sizeArcmin": 8,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-292",
+    "raDeg": 106.1075,
+    "decDeg": -10.44896,
+    "sizeArcmin": 21,
+    "commonName": "Seagull Nebula",
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-293",
+    "raDeg": 105.44878,
+    "decDeg": -11.30949,
+    "sizeArcmin": 11,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-294",
+    "raDeg": 109.14375,
+    "decDeg": -9.44379,
+    "sizeArcmin": 7,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-295",
+    "raDeg": 105.67242,
+    "decDeg": -11.4616,
+    "sizeArcmin": 8,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-296",
+    "raDeg": 106.45022,
+    "decDeg": -11.21887,
+    "sizeArcmin": 200,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-297",
+    "raDeg": 106.31426,
+    "decDeg": -12.33432,
+    "sizeArcmin": 7,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-298",
+    "raDeg": 109.65818,
+    "decDeg": -13.19869,
+    "sizeArcmin": 22,
+    "commonName": "Thor's Helmet",
+    "ngcRef": "NGC2359",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-299",
+    "raDeg": 112.66566,
+    "decDeg": -15.2928,
+    "sizeArcmin": 1,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-300",
+    "raDeg": 112.76462,
+    "decDeg": -15.41036,
+    "sizeArcmin": 3,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-301",
+    "raDeg": 107.45351,
+    "decDeg": -18.47856,
+    "sizeArcmin": 9,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-302",
+    "raDeg": 112.92453,
+    "decDeg": -16.97853,
+    "sizeArcmin": 21,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-303",
+    "raDeg": 103.50748,
+    "decDeg": -22.42506,
+    "sizeArcmin": 90,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-304",
+    "raDeg": 100.86086,
+    "decDeg": -24.13331,
+    "sizeArcmin": 200,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-305",
+    "raDeg": 112.53374,
+    "decDeg": -18.52508,
+    "sizeArcmin": 4,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-306",
+    "raDeg": 112.65302,
+    "decDeg": -19.10952,
+    "sizeArcmin": 30,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-307",
+    "raDeg": 113.88321,
+    "decDeg": -18.75386,
+    "sizeArcmin": 6,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-308",
+    "raDeg": 103.54053,
+    "decDeg": -23.94212,
+    "sizeArcmin": 35,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-309",
+    "raDeg": 113.02529,
+    "decDeg": -19.42955,
+    "sizeArcmin": 12,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-310",
+    "raDeg": 108.264,
+    "decDeg": -24.58638,
+    "sizeArcmin": 480,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-311",
+    "raDeg": 118.08662,
+    "decDeg": -26.44106,
+    "sizeArcmin": 45,
+    "commonName": null,
+    "ngcRef": "NGC2467",
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-312",
+    "raDeg": 134.79051,
+    "decDeg": -25.68856,
+    "sizeArcmin": 720,
+    "commonName": null,
+    "ngcRef": null,
+    "messierRef": null
+  },
+  {
+    "id": "Sh2-313",
+    "raDeg": 193.38182,
+    "decDeg": -22.8599,
+    "sizeArcmin": 12,
+    "commonName": "Abell 35",
+    "ngcRef": null,
+    "messierRef": null
+  }
+]

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Nebulis</Name>
+  <Repository>ghcr.io/nebulis-app/nebulis:latest</Repository>
+  <Registry>https://github.com/nebulis-app/nebulis/pkgs/container/nebulis</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/nebulis-app/nebulis/issues</Support>
+  <Project>https://github.com/nebulis-app/nebulis</Project>
+  <Overview>Nebulis is a self-hosted image library, observation planner, and sky forecast for smart telescopes. It works natively with ZWO SeeStar and DWARFLAB scopes, and imports any folder of images over your local network. Every capture is thumbnailed and matched against the Messier, NGC, IC, and Sharpless catalogs (5,000+ deep-sky objects), so you can filter your whole library by object, date, or telescope. Plan tomorrow night with live altitude curves and an hourly 0 to 100 visibility score that blends cloud cover, seeing, moon phase, and humidity. Inspect raw FITS frames and headers before you stack, with automatic satellite and airplane trail detection. Runs on Mac, Windows, iOS, tvOS, and Android, entirely on your local network with no cloud account required.</Overview>
+  <Beta>False</Beta>
+  <Category>MediaApp:Photos Productivity:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/nebulis-app/nebulis/main/templates/nebulis.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/nebulis-app/nebulis/main/public/nebulis-64.png</Icon>
+  <Date>2026-06-13</Date>
+  <Changes></Changes>
+
+  <Config Name="Web UI Port" Target="8080" Default="8080" Mode="tcp" Description="Port for the Nebulis web interface." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Discovery Port" Target="47890" Default="47890" Mode="udp" Description="UDP port used for local network auto-discovery by the iOS/tvOS app." Type="Port" Display="advanced" Required="false" Mask="false">47890</Config>
+  <Config Name="Data Directory" Target="/app/data" Default="/mnt/user/appdata/nebulis" Mode="rw" Description="Stores the database, settings, thumbnails, and cache." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/nebulis</Config>
+</Container>

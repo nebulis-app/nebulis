@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Maintainer>
+  <Icon>https://raw.githubusercontent.com/nebulis-app/nebulis/main/public/nebulis-64.png</Icon>
+  <Profile>
+    Nebulis is a self-hosted image library, observation planner, and sky forecast for smart telescopes. It works natively with ZWO SeeStar and DWARFLAB scopes, and imports any folder of images over your local network. Every capture is thumbnailed and matched against the Messier, NGC, IC, and Sharpless catalogs (5,000+ deep-sky objects), so you can filter your whole library by object, date, or telescope. Plan tomorrow night with live altitude curves and an hourly 0 to 100 visibility score that blends cloud cover, seeing, moon phase, and humidity. Inspect raw FITS frames and headers before you stack, with automatic satellite and airplane trail detection. Runs on Mac, Windows, iOS, tvOS, and Android, entirely on your local network with no cloud account required For more information visit https://nebulis.app.
+  </Profile>
+</Maintainer>

@@ -33,6 +33,16 @@ function readStoredSort(): SortKey {
 
 const ALL_TELESCOPES_FILTER = '__all__';
 
+// Catalog "family" keywords. Searching a bare family name (e.g. "Messier")
+// surfaces every object in that catalog by testing its catalogId + aliases,
+// so M81 ("Bode's Galaxy") shows up even though its name has no "Messier".
+// `numbered` turns "messier 81" → "m81", "caldwell 20" → "c20", etc.
+const CATALOG_FAMILIES: { name: string; prefix: string; test: (id: string) => boolean }[] = [
+  { name: 'messier',   prefix: 'm',     test: id => /^M\d{1,3}$/i.test(id) },
+  { name: 'caldwell',  prefix: 'c',     test: id => /^C\d{1,3}$/i.test(id) },
+  { name: 'sharpless', prefix: 'sh2-',  test: id => /^SH2-\d+$/i.test(id) },
+];
+
 export function Gallery() {
   const { isDark, isNight, isSpace } = useTheme();
   const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-accent-500';
@@ -122,12 +132,28 @@ export function Gallery() {
   });
 
   const filtered = useMemo(() => {
+    const s = search.toLowerCase().trim();
+    // "messier 81" → "m81", "caldwell 20" → "c20", "sharpless 298" → "sh2-298"
+    const numbered = s.match(/^(messier|caldwell|sharpless)\s*(\d+)$/);
+    const effectiveTerm = numbered
+      ? `${CATALOG_FAMILIES.find(f => f.name === numbered[1])!.prefix}${numbered[2]}`
+      : s;
+    // Bare family keyword (≥3 chars, no number) → show the whole catalog.
+    const family = !numbered && s.length >= 3
+      ? CATALOG_FAMILIES.find(f => f.name.startsWith(s))
+      : undefined;
+
     const list = objects?.filter(obj => {
+      const matchesFamily = family
+        ? [obj.catalogId, ...(obj.aliases ?? [])].some(id => family.test(id))
+        : false;
       const matchesSearch =
         !search ||
-        obj.name.toLowerCase().includes(search.toLowerCase()) ||
-        obj.catalogId.toLowerCase().includes(search.toLowerCase()) ||
-        obj.constellation.toLowerCase().includes(search.toLowerCase());
+        matchesFamily ||
+        obj.name.toLowerCase().includes(effectiveTerm) ||
+        obj.catalogId.toLowerCase().includes(effectiveTerm) ||
+        obj.constellation.toLowerCase().includes(effectiveTerm) ||
+        (obj.aliases ?? []).some(a => a.toLowerCase().startsWith(effectiveTerm));
 
       const selectedFilter = objectFilters.find(filter => filter.label === typeFilter);
       const matchesType =

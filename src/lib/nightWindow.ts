@@ -25,10 +25,11 @@ export function localMidnight(date: Date): Date {
  * mid-capture. Keep in sync with NightDate.swift in the iOS client and the
  * default-date anchor in server/routes/planner.ts.
  */
-export function plannerToday(now: Date = new Date()): Date {
-  const d = localMidnight(now);
-  if (now.getHours() < 7) d.setDate(d.getDate() - 1);
-  return d;
+export function plannerToday(now: Date = new Date(), timeZone?: string): Date {
+  const todayKey = timeZone ? localDateKeyInTimeZone(now, timeZone) : localDateKey(now);
+  const hour = timeZone ? localHourInTimeZone(now, timeZone) : now.getHours();
+  const key = hour < 7 ? addDaysToDateKey(todayKey, -1) : todayKey;
+  return dateFromKey(key);
 }
 
 /**
@@ -48,7 +49,7 @@ export function nightWindowFor(date: Date, lat: number, lon: number): { start: D
 
   // SunCalc returns Invalid Date when an event doesn't occur (e.g. astronomical
   // twilight never reaches at high summer latitudes). Fall back to nautical
-  // twilight, then a fixed 21:00-04:30 window if even that doesn't resolve.
+  // twilight. If even that does not occur, report no dark window.
   const validStart = start instanceof Date && !isNaN(start.getTime());
   const validEnd = end instanceof Date && !isNaN(end.getTime());
   if (validStart && validEnd) return { start, end };
@@ -69,6 +70,56 @@ export function localDateKey(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
+}
+
+/** Format as YYYY-MM-DD in a specific IANA timezone. */
+export function localDateKeyInTimeZone(d: Date, timeZone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(d);
+    const get = (type: string) => parts.find(p => p.type === type)?.value ?? '00';
+    return `${get('year')}-${get('month')}-${get('day')}`;
+  } catch {
+    return localDateKey(d);
+  }
+}
+
+/**
+ * Planner calendar key for an instant. Times after midnight but before the
+ * morning rollover still belong to the previous evening's plan.
+ */
+export function plannerDateKeyForInstant(d: Date, timeZone?: string): string {
+  const key = timeZone ? localDateKeyInTimeZone(d, timeZone) : localDateKey(d);
+  const hour = timeZone ? localHourInTimeZone(d, timeZone) : d.getHours();
+  return hour < 7 ? addDaysToDateKey(key, -1) : key;
+}
+
+export function dateFromKey(key: string): Date {
+  const [year, month, day] = key.split('-').map(Number);
+  return new Date(year ?? 1970, (month ?? 1) - 1, day ?? 1, 12, 0, 0);
+}
+
+function localHourInTimeZone(d: Date, timeZone: string): number {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(d);
+    return parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+  } catch {
+    return d.getHours();
+  }
+}
+
+function addDaysToDateKey(key: string, days: number): string {
+  const [year, month, day] = key.split('-').map(Number);
+  const shifted = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, (day ?? 1) + days, 12, 0, 0));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`;
 }
 
 /** "Sat, May 17, 2026" */

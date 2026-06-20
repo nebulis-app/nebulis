@@ -35,6 +35,7 @@ import { enrichObjectData } from '../lib/localLibrary.js';
 import { DATA_DIR } from '../lib/paths.js';
 import { caldwellToNgcId } from '../lib/caldwellCatalog.js';
 import { getOverride, saveOverride, deleteOverride, getOverrideRecord } from '../lib/catalogOverrides.js';
+import { lookupTimeZoneForCoordinates } from '../lib/observerTimezone.js';
 
 /** Max requested thumbnail size — caps Sharp work and disk usage. */
 const MAX_REQUEST_DIMENSION = 1920;
@@ -748,8 +749,84 @@ router.get('/geocode/reverse', async (req: Request, res: Response) => {
     res.apiError(400, 'INVALID_PARAMS', 'lat and lon are required');
     return;
   }
-  const city = await reverseGeocode(lat, lon);
-  res.apiSuccess({ city });
+  const [city, timezone] = await Promise.all([
+    reverseGeocode(lat, lon),
+    lookupTimeZoneForCoordinates(lat, lon),
+  ]);
+  res.apiSuccess({ city, timezone });
+});
+
+// ─── Forward geocode (city / place search) ───────────────────────────────
+// Open-Meteo geocoding: free, no API key, CORS-friendly, and already the
+// source of the weather forecast. Returns lat/lon plus the IANA timezone, so
+// selecting a place can also set the planner/forecast timezone correctly.
+interface ForwardGeocodeResult {
+  name: string;
+  label: string;
+  latitude: number;
+  longitude: number;
+  timezone: string | null;
+  country: string | null;
+  admin1: string | null;
+}
+
+// In-memory only (search queries are varied and transient — no disk cache like
+// the coordinate-keyed reverse lookup). Bounded so a long typing session can't
+// grow it without limit.
+const geocodeSearchCache = new Map<string, ForwardGeocodeResult[]>();
+const GEOCODE_SEARCH_CACHE_MAX = 200;
+
+async function forwardGeocode(query: string): Promise<ForwardGeocodeResult[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const key = q.toLowerCase();
+  const cached = geocodeSearchCache.get(key);
+  if (cached) return cached;
+  try {
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=8&language=en&format=json`;
+    const resp = await fetch(url, {
+      signal: AbortSignal.timeout(8000),
+      headers: { 'User-Agent': 'Nebulis/1.0 (astronomy observation app)' },
+    });
+    if (!resp.ok) return [];
+    const data: unknown = await resp.json();
+    const rawResults: unknown[] =
+      data !== null && typeof data === 'object' && 'results' in data && Array.isArray(data.results)
+        ? data.results
+        : [];
+    const results: ForwardGeocodeResult[] = [];
+    for (const r of rawResults) {
+      if (r === null || typeof r !== 'object') continue;
+      const rec = r as Record<string, unknown>;
+      const name = typeof rec.name === 'string' ? rec.name : null;
+      const latitude = typeof rec.latitude === 'number' ? rec.latitude : null;
+      const longitude = typeof rec.longitude === 'number' ? rec.longitude : null;
+      if (!name || latitude === null || longitude === null) continue;
+      const admin1 = typeof rec.admin1 === 'string' ? rec.admin1 : null;
+      const country = typeof rec.country === 'string' ? rec.country : null;
+      const timezone = typeof rec.timezone === 'string' ? rec.timezone : null;
+      const label = [name, admin1, country].filter(Boolean).join(', ');
+      results.push({ name, label, latitude, longitude, timezone, country, admin1 });
+    }
+    if (geocodeSearchCache.size >= GEOCODE_SEARCH_CACHE_MAX) {
+      const firstKey = geocodeSearchCache.keys().next().value;
+      if (firstKey !== undefined) geocodeSearchCache.delete(firstKey);
+    }
+    geocodeSearchCache.set(key, results);
+    return results;
+  } catch {
+    return []; // network error — caller shows "no results"
+  }
+}
+
+router.get('/geocode/search', async (req: Request, res: Response) => {
+  const q = typeof req.query.q === 'string' ? req.query.q : '';
+  if (q.trim().length < 2) {
+    res.apiSuccess([]);
+    return;
+  }
+  const results = await forwardGeocode(q);
+  res.apiSuccess(results);
 });
 
 // Get specific catalog entry by ID (must be after /:id/image and /:id/info)

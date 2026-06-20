@@ -159,10 +159,13 @@ const spec = {
           totalVisible:   { type: 'integer' },
           nightStart:     nullable({ ...isoDate }),
           nightEnd:       nullable({ ...isoDate }),
+          sunset:         nullable({ ...isoDate }),
+          sunrise:        nullable({ ...isoDate }),
           moonIllumination: { type: 'integer', minimum: 0, maximum: 100, description: 'Moon illumination %' },
           moonPhase:      { type: 'string', example: 'Waxing Crescent' },
           observerLat:    nullable({ type: 'number' }),
           observerLon:    nullable({ type: 'number' }),
+          observerTimezone: nullable(strEx('America/Chicago')),
         },
       },
 

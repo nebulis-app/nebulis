@@ -22,6 +22,8 @@ interface AltitudeBandChartProps {
   observerLat: number;
   observerLon: number;
   minAlt?: number;
+  /** IANA timezone for tick/tooltip labels. Defaults to machine-local. */
+  observerTimezone?: string;
 }
 
 // Default / minimum chart height. The rendered height is measured at runtime
@@ -66,6 +68,7 @@ export function AltitudeBandChart({
   observerLat,
   observerLon,
   minAlt,
+  observerTimezone,
 }: AltitudeBandChartProps) {
   const { isDark } = useTheme();
 
@@ -135,8 +138,8 @@ export function AltitudeBandChart({
   };
 
   // Build hour ticks. Hour-tick set from scheduleGeometry to match the
-  // timeline above.
-  const ticks = hourTicks(nightStart, nightEnd);
+  // timeline above (same observer-zone snapping).
+  const ticks = hourTicks(nightStart, nightEnd, observerTimezone);
 
   // Y-axis tick lines at 10° intervals (clamped to range).
   const yTicks: number[] = [];
@@ -271,7 +274,7 @@ export function AltitudeBandChart({
                 fontSize={11}
                 fill={textColor}
               >
-                {formatHm(t)}
+                {formatHm(t, observerTimezone)}
               </text>
             </g>
           );
@@ -344,6 +347,7 @@ export function AltitudeBandChart({
             alt={hover.alt}
             isDark={isDark}
             axisColor={axisColor}
+            timeZone={observerTimezone}
           />
         )}
       </svg>
@@ -364,6 +368,7 @@ interface HoverOverlayProps {
   alt: number;
   isDark: boolean;
   axisColor: string;
+  timeZone?: string;
 }
 
 function HoverOverlay({
@@ -377,6 +382,7 @@ function HoverOverlay({
   alt,
   isDark,
   axisColor,
+  timeZone,
 }: HoverOverlayProps) {
   // Tooltip box: pick a side that keeps the box inside the plot. Width is a
   // generous estimate so single-line copy ("M 81 · 02:35 · 47°") never overflows.
@@ -394,8 +400,7 @@ function HoverOverlay({
   const dotColor = 'rgb(52 211 153)';
   const dotRing = isDark ? 'rgb(15 23 42)' : 'rgb(255 255 255)';
 
-  const hh = String(time.getHours()).padStart(2, '0');
-  const mm = String(time.getMinutes()).padStart(2, '0');
+  const timeLabel = formatHm(time, timeZone);
 
   return (
     <g pointerEvents="none">
@@ -410,7 +415,7 @@ function HoverOverlay({
         {objectName}
       </text>
       <text x={tooltipX + 8} y={tooltipY + 28} fontSize={11} fill={subColor}>
-        {hh}:{mm} · {Math.round(alt)}° altitude
+        {timeLabel} · {Math.round(alt)}° altitude
       </text>
     </g>
   );

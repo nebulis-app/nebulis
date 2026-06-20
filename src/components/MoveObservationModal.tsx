@@ -70,6 +70,10 @@ export function MoveObservationModal({ isOpen, onClose, objectId, date, displayN
       await queryClient.invalidateQueries({ queryKey: ['library-sessions', selectedTarget.id] });
       await queryClient.invalidateQueries({ queryKey: ['library-objects'] });
       await queryClient.invalidateQueries({ queryKey: ['observations'] });
+      await queryClient.invalidateQueries({ queryKey: ['processedImages', objectId, date] });
+      await queryClient.invalidateQueries({ queryKey: ['processedImages', selectedTarget.id, date] });
+      await queryClient.invalidateQueries({ queryKey: ['all-processed-images', objectId] });
+      await queryClient.invalidateQueries({ queryKey: ['all-processed-images', selectedTarget.id] });
       navigate(`/observations/${encodeURIComponent(selectedTarget.id)}/${encodeURIComponent(date)}`);
     } catch (err) {
       setMoveError(err instanceof Error ? err.message : 'Move failed');

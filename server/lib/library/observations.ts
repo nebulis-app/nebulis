@@ -165,7 +165,9 @@ export function getLocalSessions(objectId: string) {
 
   const sessionMap = new Map<string, {
     fileCount: number;
-    stackedCount: number;
+    // Distinct stacked captures, keyed by basename so the FITS and the JPG of
+    // the same stack count once (not twice).
+    stackedKeys: Set<string>;
     fitsCount: number;
     subFrameCount: number;
     imageCount: number;
@@ -173,6 +175,15 @@ export function getLocalSessions(objectId: string) {
     stackedImageFile: string | null; // Stacked_*.jpg (non-thumbnail)
     anyImageFile: string | null;     // any other .jpg/.png fallback
   }>();
+
+  // Processed-image counts per session date (separate `sessionProcessedImages`
+  // table; these files live under `<folder>/processed/`, not the object root).
+  const processedCountByDate = new Map<string, number>();
+  for (const r of db.prepare<[string], { date: string; n: number }>(
+    'SELECT date, COUNT(*) as n FROM sessionProcessedImages WHERE objectId = ? GROUP BY date',
+  ).all(objectId)) {
+    processedCountByDate.set(r.date, r.n);
+  }
 
   interface SessionRow {
     date: string;
@@ -210,7 +221,7 @@ export function getLocalSessions(objectId: string) {
   for (const r of sessionRows) {
     if (r.date === 'unknown') continue; // stale rows from old imports — skip
     if (!deletedSessions.has(r.date) && !sessionMap.has(r.date)) {
-      sessionMap.set(r.date, { fileCount: 0, stackedCount: 0, fitsCount: 0, subFrameCount: 0, imageCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null });
+      sessionMap.set(r.date, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null });
     }
     if (r.temperature != null) {
       weatherMap.set(r.date, {
@@ -233,10 +244,11 @@ export function getLocalSessions(objectId: string) {
         date,
         objectId,
         fileCount: stats.fileCount,
-        stackedCount: stats.stackedCount,
+        stackedCount: stats.stackedKeys.size,
         fitsCount: stats.fitsCount,
         subFrameCount: stats.subFrameCount,
         imageCount: stats.imageCount,
+        processedCount: processedCountByDate.get(date) ?? 0,
         thumbnailUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/thumbnail`,
         filesUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/files`,
         weather: weatherMap.get(date) || null,
@@ -251,11 +263,11 @@ export function getLocalSessions(objectId: string) {
     const sessionKey = parsed.date;
     if (deletedSessions.has(sessionKey)) continue;
     if (!sessionMap.has(sessionKey)) {
-      sessionMap.set(sessionKey, { fileCount: 0, stackedCount: 0, fitsCount: 0, subFrameCount: 0, imageCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null });
+      sessionMap.set(sessionKey, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null });
     }
     const s = sessionMap.get(sessionKey)!;
     s.fileCount++;
-    if (parsed.type === 'stacked') s.stackedCount++;
+    if (parsed.type === 'stacked') s.stackedKeys.add(fname.slice(0, fname.length - path.extname(fname).length));
     if (parsed.isThumbnail && !s.thumbnailFile) s.thumbnailFile = fname;
     const isViewableImage = parsed.extension === '.jpg' || parsed.extension === '.jpeg'
       || parsed.extension === '.png' || parsed.extension === '.tif' || parsed.extension === '.tiff';
@@ -278,10 +290,11 @@ export function getLocalSessions(objectId: string) {
       date,
       objectId,
       fileCount: stats.fileCount,
-      stackedCount: stats.stackedCount,
+      stackedCount: stats.stackedKeys.size,
       fitsCount: stats.fitsCount,
       subFrameCount: stats.subFrameCount,
       imageCount: stats.imageCount,
+      processedCount: processedCountByDate.get(date) ?? 0,
       thumbnailUrl: (() => {
         // User-crowned session image wins over the auto-picked file so the
         // object-page card matches the hero shown on the observation page.
@@ -383,6 +396,14 @@ export function getLocalObservations() {
   );
   const objects = getLocalObservationsObjsStmt.all();
 
+  // Processed-image counts for every session in one pass, keyed `objectId|date`.
+  const processedCountByKey = new Map<string, number>();
+  for (const r of db.prepare<[], { objectId: string; date: string; n: number }>(
+    'SELECT objectId, date, COUNT(*) as n FROM sessionProcessedImages GROUP BY objectId, date',
+  ).all()) {
+    processedCountByKey.set(`${r.objectId}|${r.date}`, r.n);
+  }
+
   const observations: Array<{
     id: string;
     objectId: string;
@@ -396,6 +417,8 @@ export function getLocalObservations() {
     fileCount: number;
     stackedCount: number;
     fitsCount: number;
+    subFrameCount: number;
+    processedCount: number;
     thumbnailUrl: string;
     ra: string | null;
     dec: string | null;
@@ -424,8 +447,11 @@ export function getLocalObservations() {
     const sessionMap = new Map<string, {
       timestamps: string[];
       fileCount: number;
-      stackedCount: number;
+      // Distinct stacked captures, keyed by basename so a FITS+JPG pair of the
+      // same stack counts once.
+      stackedKeys: Set<string>;
       fitsCount: number;
+      subFrameCount: number;
       stackedImageFile: string | null;
     }>();
 
@@ -433,7 +459,7 @@ export function getLocalObservations() {
     for (const d of sessions) {
       if (d === 'unknown') continue;
       if (!sessionMap.has(d)) {
-        sessionMap.set(d, { timestamps: [], fileCount: 0, stackedCount: 0, fitsCount: 0, stackedImageFile: null });
+        sessionMap.set(d, { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null });
       }
     }
 
@@ -443,12 +469,13 @@ export function getLocalObservations() {
       if (!parsed.date) continue; // skip files we can't assign a session date to
       const date = parsed.date;
       if (!sessionMap.has(date)) {
-        sessionMap.set(date, { timestamps: [], fileCount: 0, stackedCount: 0, fitsCount: 0, stackedImageFile: null });
+        sessionMap.set(date, { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null });
       }
       const s = sessionMap.get(date)!;
       s.fileCount++;
       if (parsed.timestamp) s.timestamps.push(parsed.timestamp);
-      if (parsed.type === 'stacked') s.stackedCount++;
+      if (parsed.type === 'stacked') s.stackedKeys.add(fname.slice(0, fname.length - path.extname(fname).length));
+      if (parsed.type === 'sub') s.subFrameCount++;
       const ext = parsed.extension?.toLowerCase();
       if (ext === '.fit' || ext === '.fits') s.fitsCount++;
       const isViewableImage = ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.tif' || ext === '.tiff';
@@ -473,8 +500,10 @@ export function getLocalObservations() {
         startTime: sorted.length > 0 ? sorted[0] : null,
         endTime: sorted.length > 0 ? sorted[sorted.length - 1] : null,
         fileCount: session.fileCount,
-        stackedCount: session.stackedCount,
+        stackedCount: session.stackedKeys.size,
         fitsCount: session.fitsCount,
+        subFrameCount: session.subFrameCount,
+        processedCount: processedCountByKey.get(`${objectId}|${date}`) ?? 0,
         thumbnailUrl: (() => {
           const crowned = sessionImageMap.get(date);
           if (crowned) return `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(crowned)}`;
@@ -511,9 +540,15 @@ export function getLocalObservationDetail(objectId: string, date: string) {
     .map(f => f.timestamp)
     .sort();
 
-  const stackedCount = files.filter(f => f.fileType === 'stacked').length;
+  // Distinct stacked captures: a stack exported as both FITS and JPG shares a
+  // basename, so dedupe on the name-without-extension to count it once.
+  const stackedCount = new Set(
+    files.filter(f => f.fileType === 'stacked')
+      .map(f => f.name.slice(0, f.name.length - path.extname(f.name).length)),
+  ).size;
   const fitsCount = files.filter(f => f.type === 'fits').length;
   const subFrameCount = files.filter(f => f.fileType === 'sub').length;
+  const processedCount = stmts.getProcessedImages.all(objectId, date).length;
 
   const note = getNote(objectId, date) || null;
 
@@ -579,6 +614,7 @@ export function getLocalObservationDetail(objectId: string, date: string) {
     stackedCount,
     fitsCount,
     subFrameCount,
+    processedCount,
     thumbnailUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/thumbnail`,
     ra: obj?.ra || null,
     dec: obj?.dec || null,
@@ -826,6 +862,36 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
     }
   }
 
+  // Processed images live in a separate `<objectFolder>/processed/` directory
+  // with rows in `sessionProcessedImages` keyed by objectId+date. Their
+  // `proc_*` filenames never parse to a session date, so the loop above skips
+  // them — move their files and reassign their rows explicitly.
+  const processedRows = stmts.getProcessedImages.all(fromObjectId, date);
+  if (processedRows.length > 0) {
+    const fromProcessedDir = path.join(fromDir, 'processed');
+    const toProcessedDir = path.join(toDir, 'processed');
+    if (!fs.existsSync(toProcessedDir)) fs.mkdirSync(toProcessedDir, { recursive: true });
+    for (const row of processedRows) {
+      const src = path.join(fromProcessedDir, row.filename);
+      const dest = path.join(toProcessedDir, row.filename);
+      if (!fs.existsSync(src)) continue; // row's file already gone — DB row still reassigned below
+      if (fs.existsSync(dest)) {
+        try { fs.unlinkSync(src); } catch { /* ignore */ }
+      } else {
+        try {
+          fs.renameSync(src, dest);
+        } catch (renameErr) {
+          if ((renameErr as NodeJS.ErrnoException).code === 'EXDEV') {
+            fs.copyFileSync(src, dest);
+            fs.unlinkSync(src);
+          } else {
+            throw renameErr;
+          }
+        }
+      }
+    }
+  }
+
   // Update DB in a transaction
   const updateDb = db.transaction(() => {
     // Ensure target object exists in DB
@@ -843,6 +909,10 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
 
     // Move note if one exists
     db.prepare('UPDATE notes SET objectId = ? WHERE objectId = ? AND date = ?')
+      .run(toObjectId, fromObjectId, date);
+
+    // Reassign processed-image rows so they surface under the target object.
+    db.prepare('UPDATE sessionProcessedImages SET objectId = ? WHERE objectId = ? AND date = ?')
       .run(toObjectId, fromObjectId, date);
 
     // Recount files for both objects

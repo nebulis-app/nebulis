@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import SunCalc from 'suncalc';
 import { getSettingsData } from '../lib/telescopes.js';
+import { addDaysToDateKey, localDateKey, localParts, zonedDateTimeToUtc } from '../lib/timezone.js';
 
 const router = Router();
 
@@ -36,9 +37,12 @@ interface AstroConditions {
   moonSet: string | null;
   sunset: string;
   sunrise: string;
-  astronomicalTwilightEnd: string;   // When it's truly dark
-  astronomicalTwilightStart: string; // When dawn begins
-  darkHours: number;
+  astronomicalTwilightEnd: string;   // When it's truly dark (empty if never occurs)
+  astronomicalTwilightStart: string; // When dawn begins (empty if never occurs)
+  nauticalTwilightEnd: string;       // Nautical dusk fallback
+  nauticalTwilightStart: string;     // Nautical dawn fallback
+  darkHours: number;                 // Hours of astronomical dark (0 if never occurs)
+  nauticalDarkHours: number;         // Hours of nautical dark (fallback for high-lat summers)
 }
 
 // ─── 7Timer astronomy forecast ──────────────────────────────────
@@ -57,7 +61,9 @@ async function fetchOpenMeteo(lat: number, lon: number) {
     `latitude=${lat}`,
     `longitude=${lon}`,
     'hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,temperature_2m,dew_point_2m,wind_speed_10m,visibility,precipitation_probability,wind_speed_500hPa,cape',
-    'forecast_days=3',
+    // 4 days, not 3: the 3rd rated night (d=2) runs to ~06:00 on the 4th
+    // calendar day, so a 3-day window would average only its evening hours.
+    'forecast_days=4',
     'timezone=auto',
   ].join('&');
   const url = `https://api.open-meteo.com/v1/forecast?${params}`;
@@ -99,6 +105,10 @@ async function buildForecast(lat: number, lon: number) {
 
   const openMeteo = openMeteoData.status === 'fulfilled' ? openMeteoData.value : null;
   const sevenTimer = sevenTimerData.status === 'fulfilled' ? sevenTimerData.value : null;
+  const forecastTimezone =
+    (openMeteo?.timezone as string | undefined) ||
+    (getSettingsData().timezone as string | undefined) ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Build hourly forecast from Open-Meteo (primary)
   const hours: ForecastHour[] = [];
@@ -106,8 +116,9 @@ async function buildForecast(lat: number, lon: number) {
   if (openMeteo?.hourly) {
     const h = openMeteo.hourly;
     for (let i = 0; i < (h.time?.length || 0); i++) {
+      const time = parseOpenMeteoHour(h.time[i], forecastTimezone);
       hours.push({
-        time: h.time[i],
+        time: time.toISOString(),
         cloudCover: h.cloud_cover?.[i] ?? 0,
         cloudCoverLow: h.cloud_cover_low?.[i] ?? 0,
         cloudCoverMid: h.cloud_cover_mid?.[i] ?? 0,
@@ -173,44 +184,60 @@ async function buildForecast(lat: number, lon: number) {
     }
   }
 
+  // SunCalc returns Invalid Date (not null/undefined) when an event doesn't
+  // occur (e.g. astronomical dark in a UK summer). Invalid Date is truthy so
+  // optional-chaining doesn't protect toISOString() — validate explicitly.
+  const validDate = (d: unknown): Date | null =>
+    d instanceof Date && !isNaN(d.getTime()) ? d : null;
+  const safeIso = (d: unknown): string => validDate(d)?.toISOString() ?? '';
+
   // Calculate astronomical conditions
   const now = new Date();
-  const tonight = new Date(now);
-  tonight.setHours(20, 0, 0, 0);
+  const tonightDate = defaultNightDate(now, forecastTimezone);
+  const tonight = zonedDateTimeToUtc(tonightDate, { hour: 20 }, forecastTimezone);
 
   const sunTimes = SunCalc.getTimes(tonight, lat, lon);
   const tomorrowSunTimes = SunCalc.getTimes(new Date(tonight.getTime() + 86400000), lat, lon);
   const moonTimes = SunCalc.getMoonTimes(tonight, lat, lon);
   const moonIllum = SunCalc.getMoonIllumination(tonight);
 
-  const sunset = sunTimes.sunset || sunTimes.dusk;
-  const sunrise = tomorrowSunTimes.sunrise || tomorrowSunTimes.dawn;
-  const astroEnd = sunTimes.night;
-  const astroStart = tomorrowSunTimes.nightEnd;
+  const sunset = validDate(sunTimes.sunset) ?? validDate(sunTimes.dusk);
+  const sunrise = validDate(tomorrowSunTimes.sunrise) ?? validDate(tomorrowSunTimes.dawn);
+  const astroEnd = validDate(sunTimes.night);
+  const astroStart = validDate(tomorrowSunTimes.nightEnd);
+  const nauticalEnd = validDate(sunTimes.nauticalDusk);
+  const nauticalStart = validDate(tomorrowSunTimes.nauticalDawn);
 
   let darkHours = 0;
   if (astroEnd && astroStart) {
     darkHours = Math.max(0, (astroStart.getTime() - astroEnd.getTime()) / 3600000);
   }
 
+  let nauticalDarkHours = 0;
+  if (nauticalEnd && nauticalStart) {
+    nauticalDarkHours = Math.max(0, (nauticalStart.getTime() - nauticalEnd.getTime()) / 3600000);
+  }
+
   const astro: AstroConditions = {
     moonIllumination: Math.round(moonIllum.fraction * 100),
     moonPhase: getMoonPhaseName(moonIllum.phase),
-    moonRise: moonTimes.rise?.toISOString() || null,
-    moonSet: moonTimes.set?.toISOString() || null,
-    sunset: sunset?.toISOString() || '',
-    sunrise: sunrise?.toISOString() || '',
-    astronomicalTwilightEnd: astroEnd?.toISOString() || '',
-    astronomicalTwilightStart: astroStart?.toISOString() || '',
+    moonRise: safeIso(moonTimes.rise) || null,
+    moonSet: safeIso(moonTimes.set) || null,
+    sunset: safeIso(sunset),
+    sunrise: safeIso(sunrise),
+    astronomicalTwilightEnd: safeIso(astroEnd),
+    astronomicalTwilightStart: safeIso(astroStart),
+    nauticalTwilightEnd: safeIso(nauticalEnd),
+    nauticalTwilightStart: safeIso(nauticalStart),
     darkHours: Math.round(darkHours * 10) / 10,
+    nauticalDarkHours: Math.round(nauticalDarkHours * 10) / 10,
   };
 
   // Rate each night (next 3 nights)
   const nightRatings = [];
   for (let d = 0; d < 3; d++) {
-    const nightDate = new Date(now);
-    nightDate.setDate(nightDate.getDate() + d);
-    nightDate.setHours(22, 0, 0, 0);
+    const ratingDate = addDaysToDateKey(tonightDate, d);
+    const nightDate = zonedDateTimeToUtc(ratingDate, { hour: 22 }, forecastTimezone);
 
     const nightHours = hours.filter(h => {
       const hDate = new Date(h.time);
@@ -239,11 +266,8 @@ async function buildForecast(lat: number, lon: number) {
     else if (score >= 20) rating = 'Poor';
     else rating = 'Bad';
 
-    const yy = nightDate.getFullYear();
-    const mm = String(nightDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(nightDate.getDate()).padStart(2, '0');
     nightRatings.push({
-      date: `${yy}-${mm}-${dd}`,
+      date: ratingDate,
       score,
       rating,
       avgCloudCover: Math.round(avgCloud),
@@ -255,6 +279,7 @@ async function buildForecast(lat: number, lon: number) {
 
   return {
     location: { lat, lon },
+    timezone: forecastTimezone,
     hourly: hours,
     tonight: astro,
     nightRatings,
@@ -335,6 +360,18 @@ function parseSevenTimerInit(init: string): Date {
   const d = init.slice(6, 8);
   const h = init.slice(8, 10);
   return new Date(`${y}-${m}-${d}T${h}:00:00Z`);
+}
+
+function parseOpenMeteoHour(value: string, timeZone: string): Date {
+  const [datePart, timePart = '00:00'] = value.split('T');
+  const [hour = 0, minute = 0, second = 0] = timePart.split(':').map(Number);
+  return zonedDateTimeToUtc(datePart, { hour, minute, second }, timeZone);
+}
+
+function defaultNightDate(now: Date, timeZone: string): string {
+  const parts = localParts(now, timeZone);
+  const today = localDateKey(now, timeZone);
+  return parts.hour >= 7 ? today : addDaysToDateKey(today, -1);
 }
 
 function getMoonPhaseName(phase: number): string {

@@ -77,6 +77,10 @@ export interface NightWindow {
   astronomicalDusk: Date | null;
   nightStart: Date | null;   // astronomical dusk
   nightEnd: Date | null;     // astronomical dawn
+  dusk: Date | null;
+  dawn: Date | null;
+  sunset: Date | null;
+  sunrise: Date | null;
 }
 
 /**
@@ -103,6 +107,10 @@ export function getNightWindow(date: Date, lat: number, lon: number): NightWindo
     astronomicalDusk: validDate(times.night),
     nightStart: validDate(times.night),
     nightEnd: validDate(nextTimes.nightEnd),
+    dusk: validDate(times.dusk),
+    dawn: validDate(nextTimes.dawn),
+    sunset: validDate(times.sunset),
+    sunrise: validDate(nextTimes.sunrise),
   };
 }
 

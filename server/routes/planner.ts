@@ -19,6 +19,8 @@ import { getAll as getWishlistAll } from '../lib/wishlist.js';
 import { getLocalObjects } from '../lib/localLibrary.js';
 import { getCatalog, search as searchDso, filterCatalog, getById } from '../lib/dsoCatalog.js';
 import { altAz, getNightWindow, visibilityWindow, altitudeCurve, moonPhaseName } from '../lib/astroCalc.js';
+import { addDaysToDateKey, localDateKey, localParts, zonedDateTimeToUtc } from '../lib/timezone.js';
+import { observerTimezoneForCoordinates } from '../lib/observerTimezone.js';
 import SunCalc from 'suncalc';
 
 const router = Router();
@@ -70,11 +72,28 @@ interface PlannerCache {
 const plannerCache = new Map<string, PlannerCache>();
 
 function plannerCacheKey(
-  lat: number, lon: number, dateParam: string | undefined,
+  lat: number, lon: number, observerTimezone: string, dateParam: string | undefined,
   minAlt: number, typeFilter: string | undefined, horizonProfile: number[] | undefined,
 ): string {
   const hp = horizonProfile ? horizonProfile.join(',') : '';
-  return `${lat}:${lon}:${dateParam ?? 'today'}:${minAlt}:${typeFilter ?? ''}:${hp}`;
+  return `${lat}:${lon}:${observerTimezone}:${dateParam ?? 'today'}:${minAlt}:${typeFilter ?? ''}:${hp}`;
+}
+
+function resolvePlannerDarkWindow(night: ReturnType<typeof getNightWindow>): { nightStart: Date; nightEnd: Date } | null {
+  const start = night.nightStart ?? night.nauticalDusk;
+  const end = night.nightEnd ?? night.nauticalDawn;
+  if (!start || !end || end.getTime() <= start.getTime()) return null;
+  return { nightStart: start, nightEnd: end };
+}
+
+function resolvePlannerTimelineWindow(night: ReturnType<typeof getNightWindow>): { start: Date; end: Date } | null {
+  // Always use sunset→sunrise for the droppable timeline so users can schedule
+  // twilight sessions. The dark window is shown as markers inside this wider
+  // range but does not constrain where blocks can be placed.
+  const start = night.sunset ?? night.dusk ?? resolvePlannerDarkWindow(night)?.nightStart;
+  const end = night.sunrise ?? night.dawn ?? resolvePlannerDarkWindow(night)?.nightEnd;
+  if (!start || !end || end.getTime() <= start.getTime()) return null;
+  return { start, end };
 }
 
 // GET /api/v1/planner/tonight
@@ -95,29 +114,64 @@ router.get('/tonight', async (req: Request, res: Response) => {
       targets: [],
       nightStart: null,
       nightEnd: null,
+      sunset: null,
+      sunrise: null,
+      timelineStart: null,
+      timelineEnd: null,
       moonIllumination: 0,
       moonPhase: 'Unknown',
+      observerTimezone: null,
     });
     return;
   }
 
   const now = new Date();
+  const observerTimezone = await observerTimezoneForCoordinates(
+    lat,
+    lon,
+    typeof settings.timezone === 'string' ? settings.timezone : null,
+  );
   // Anchor the night-window calculation at noon of the requested date (or
   // the default "tonight" anchor, if no date supplied). getNightWindow
   // searches forward from the anchor for the next dusk-to-dawn pair, which
   // matches "the night that begins on this calendar date."
   const dateParam = queryParsed.data.date;
-  const anchor = dateParam ? parseLocalNoon(dateParam) : defaultNightAnchor(now);
+  const anchor = dateParam
+    ? parseLocalNoon(dateParam, observerTimezone)
+    : defaultNightAnchor(now, observerTimezone);
   const night = getNightWindow(anchor, lat, lon);
 
-  // Fallback windows: if astronomical twilight doesn't resolve (polar summer),
-  // use anchor+2h to anchor+10h so the API never returns null bounds.
-  const nightStart = night.nightStart ?? new Date(anchor.getTime() + 2 * 3600000);
-  const nightEnd = night.nightEnd ?? new Date(nightStart.getTime() + 8 * 3600000);
+  const darkWindow = resolvePlannerDarkWindow(night);
+  const timelineWindow = resolvePlannerTimelineWindow(night);
+  if (!timelineWindow) {
+    const moonData = SunCalc.getMoonIllumination(now);
+    const payload = {
+      locationSet: true,
+      targets: [],
+      totalVisible: 0,
+      nightStart: null,
+      nightEnd: null,
+      sunset: night.sunset?.toISOString() ?? null,
+      sunrise: night.sunrise?.toISOString() ?? null,
+      timelineStart: null,
+      timelineEnd: null,
+      moonIllumination: Math.round(moonData.fraction * 100),
+      moonPhase: moonPhaseName(moonData.phase),
+      observerLat: lat,
+      observerLon: lon,
+      observerTimezone,
+    };
+    res.apiSuccess(payload);
+    return;
+  }
+  const nightStart = darkWindow?.nightStart ?? null;
+  const nightEnd = darkWindow?.nightEnd ?? null;
+  const planningStart = darkWindow?.nightStart ?? timelineWindow.start;
+  const planningEnd = darkWindow?.nightEnd ?? timelineWindow.end;
 
   // Sample moon at the chosen night's midpoint, not "now," so future/past
   // dates get the right illumination + phase.
-  const moonSampleAt = new Date((nightStart.getTime() + nightEnd.getTime()) / 2);
+  const moonSampleAt = new Date((planningStart.getTime() + planningEnd.getTime()) / 2);
   const moonData = SunCalc.getMoonIllumination(moonSampleAt);
   const moonIllumination = Math.round(moonData.fraction * 100);
   const moonPhase = moonPhaseName(moonData.phase);
@@ -139,7 +193,7 @@ router.get('/tonight', async (req: Request, res: Response) => {
 
   // Return cached result if still fresh. "today" queries include altNow/azNow
   // which drift over time, so they use a shorter TTL than date-specific ones.
-  const cacheKey = plannerCacheKey(lat, lon, dateParam, minAlt, typeFilter, horizonProfile);
+  const cacheKey = plannerCacheKey(lat, lon, observerTimezone, dateParam, minAlt, typeFilter, horizonProfile);
   const cached = plannerCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     res.apiSuccess(cached.payload);
@@ -163,7 +217,7 @@ router.get('/tonight', async (req: Request, res: Response) => {
       continue;
     }
 
-    const window = visibilityWindow(entry.ra, entry.dec, lat, lon, nightStart, nightEnd, minAlt, horizonProfile);
+    const window = visibilityWindow(entry.ra, entry.dec, lat, lon, planningStart, planningEnd, minAlt, horizonProfile);
     // Skip if never geometrically above minAlt, or never above the horizon profile
     if (window.maxAlt < minAlt || !window.rises) continue;
 
@@ -200,12 +254,17 @@ router.get('/tonight', async (req: Request, res: Response) => {
     locationSet: true,
     targets,
     totalVisible: targets.length,
-    nightStart: nightStart.toISOString(),
-    nightEnd: nightEnd.toISOString(),
+    nightStart: nightStart?.toISOString() ?? null,
+    nightEnd: nightEnd?.toISOString() ?? null,
+    sunset: night.sunset?.toISOString() ?? null,
+    sunrise: night.sunrise?.toISOString() ?? null,
+    timelineStart: timelineWindow.start.toISOString(),
+    timelineEnd: timelineWindow.end.toISOString(),
     moonIllumination,
     moonPhase,
     observerLat: lat,
     observerLon: lon,
+    observerTimezone,
   };
 
   // Cache: 2 min for "tonight" (altNow drifts), 10 min for specific dates.
@@ -216,7 +275,7 @@ router.get('/tonight', async (req: Request, res: Response) => {
 });
 
 // GET /api/v1/planner/curve/:objectId
-router.get('/curve/:objectId', (req: Request, res: Response) => {
+router.get('/curve/:objectId', async (req: Request, res: Response) => {
   const settings = loadSettings();
   const lat = typeof settings.latitude === 'number' ? settings.latitude : null;
   const lon = typeof settings.longitude === 'number' ? settings.longitude : null;
@@ -225,6 +284,11 @@ router.get('/curve/:objectId', (req: Request, res: Response) => {
     res.apiError(400, 'NO_LOCATION', 'Observer location not set in settings');
     return;
   }
+  const observerTimezone = await observerTimezoneForCoordinates(
+    lat,
+    lon,
+    typeof settings.timezone === 'string' ? settings.timezone : null,
+  );
 
   const entry = getById(String(req.params.objectId));
   if (!entry) {
@@ -232,10 +296,15 @@ router.get('/curve/:objectId', (req: Request, res: Response) => {
     return;
   }
 
-  const now = new Date();
-  const night = getNightWindow(now, lat, lon);
-  const nightStart = night.nightStart ?? new Date(now.getTime() + 2 * 3600000);
-  const nightEnd = night.nightEnd ?? new Date(nightStart.getTime() + 8 * 3600000);
+  const anchor = defaultNightAnchor(new Date(), observerTimezone);
+  const night = getNightWindow(anchor, lat, lon);
+  const timelineWindow = resolvePlannerTimelineWindow(night);
+  if (!timelineWindow) {
+    res.apiError(422, 'NO_PLANNING_WINDOW', 'No sunset-to-sunrise planning window occurs for this location tonight');
+    return;
+  }
+  const nightStart = timelineWindow.start;
+  const nightEnd = timelineWindow.end;
 
   const curve = altitudeCurve(entry.ra, entry.dec, lat, lon, nightStart, nightEnd, 15);
 
@@ -294,9 +363,8 @@ router.get('/:id', (req: Request, res: Response) => {
  * keeps the day-boundary unambiguous and gives getNightWindow a clean anchor:
  * the night that starts that evening, not the previous night.
  */
-function parseLocalNoon(yyyymmdd: string): Date {
-  const [y, m, d] = yyyymmdd.split('-').map(Number);
-  return new Date(y, (m ?? 1) - 1, d ?? 1, 12, 0, 0);
+function parseLocalNoon(yyyymmdd: string, timeZone?: string): Date {
+  return zonedDateTimeToUtc(yyyymmdd, { hour: 12 }, timeZone);
 }
 
 /**
@@ -307,12 +375,12 @@ function parseLocalNoon(yyyymmdd: string): Date {
  * Keep the 07:00 rollover in sync with plannerToday() in src/lib/nightWindow.ts
  * and NightDate.swift in the iOS client.
  */
-function defaultNightAnchor(now: Date): Date {
-  if (now.getHours() >= 7) return now;
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  yesterday.setHours(12, 0, 0, 0);
-  return yesterday;
+function defaultNightAnchor(now: Date, timeZone?: string): Date {
+  const parts = localParts(now, timeZone);
+  const today = localDateKey(now, timeZone);
+  const nightDate = parts.hour >= 7 ? today : addDaysToDateKey(today, -1);
+  return parseLocalNoon(nightDate, timeZone);
 }
 
 export { router as plannerRouter };
+export { defaultNightAnchor, parseLocalNoon, resolvePlannerDarkWindow, resolvePlannerTimelineWindow };

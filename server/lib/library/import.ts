@@ -44,6 +44,7 @@ import {
   normalizeObjectId,
   isRealFile,
 } from '../telescopeFiles.js';
+import { resolveCanonicalId } from '../catalogAliases.js';
 import { exifDateFromBuffer, exifDateFromFile } from '../exifDate.js';
 import {
   stmts,
@@ -383,6 +384,8 @@ export async function runImport(
   targetDate?: string,
   options?: RunImportOptions,
 ): Promise<void> {
+  // Resolve aliases so "C30" and "NGC7331" always land on the same objectId.
+  if (targetObjectId) targetObjectId = resolveCanonicalId(targetObjectId);
   const baseProfile = options?.telescopeId ? getProfileById(options.telescopeId) : null;
   if (!baseProfile) {
     importStatus.error = 'No telescope was selected for this import. Open Settings, Hardware, and pick the telescope you want to pull from.';
@@ -549,8 +552,8 @@ export async function runImport(
       debugLog('import:discover', `Dwarf: found ${discovered.length} object(s) total`);
       if (discovered.length > 0) debugLog('import:discover', `Objects: ${discovered.map(o => o.folderName).join(', ')}`);
       toImport = discovered
-        .filter(o => !targetObjectId || normalizeObjectId(o.folderName) === targetObjectId)
-        .filter(o => !index.objects[normalizeObjectId(o.folderName)]?.deleted)
+        .filter(o => !targetObjectId || resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId)
+        .filter(o => !index.objects[resolveCanonicalId(normalizeObjectId(o.folderName))]?.deleted)
         .map(o => ({
           objectName: o.folderName,
           subFolderName: null,
@@ -608,18 +611,18 @@ export async function runImport(
 
       toImport = [
         ...(targetObjectId
-          ? normalFolders.filter(e => normalizeObjectId(e.name) === targetObjectId)
+          ? normalFolders.filter(e => resolveCanonicalId(normalizeObjectId(e.name)) === targetObjectId)
           : normalFolders
         )
-          .filter(e => !index.objects[normalizeObjectId(e.name)]?.deleted)
+          .filter(e => !index.objects[resolveCanonicalId(normalizeObjectId(e.name))]?.deleted)
           .map(objEntry => ({
             objectName: objEntry.name,
             subFolderName: subFolders.find(s => getObjectFromSubFolder(s.name) === objEntry.name)?.name ?? null,
             dwarfSessionFolders: [],
           })),
         ...expandedEntries
-          .filter(e => !targetObjectId || normalizeObjectId(e.objectName) === targetObjectId)
-          .filter(e => !index.objects[normalizeObjectId(e.objectName)]?.deleted),
+          .filter(e => !targetObjectId || resolveCanonicalId(normalizeObjectId(e.objectName)) === targetObjectId)
+          .filter(e => !index.objects[resolveCanonicalId(normalizeObjectId(e.objectName))]?.deleted),
       ];
     }
 
@@ -728,7 +731,7 @@ export async function runImport(
       // folder with no importable .fit/.jpg/sub files and no prior import
       // record — otherwise the gallery fills with placeholder entries that
       // have zero sessions.
-      const objIdNormalized = normalizeObjectId(objectName);
+      const objIdNormalized = resolveCanonicalId(normalizeObjectId(objectName));
       const hasPriorImport = !!index.objects[objIdNormalized];
       debugLog('import:object', `${objectName}: ${allFiles.length} file(s) to process${hasPriorImport ? ' (prior import exists)' : ' (new object)'}`);
       if (allFiles.length === 0 && !hasPriorImport) {
@@ -737,7 +740,7 @@ export async function runImport(
         continue;
       }
 
-      const objLocalDir = safeObjectDir(objectName);
+      const objLocalDir = safeObjectDir(objIdNormalized);
       if (!objLocalDir) {
         console.warn(`[import] Skipping object with unsafe name: ${objectName}`);
         importStatus.objectsDone++;
@@ -849,8 +852,8 @@ export async function runImport(
         fileCount = existingLocal.length;
       } catch { /* ignore */ }
 
-      index.objects[normalizeObjectId(objectName)] = {
-        folderName: objectName,
+      index.objects[objIdNormalized] = {
+        folderName: objIdNormalized,
         sessions: Array.from(sessionSet).sort(),
         fileCount,
         lastImport: new Date().toISOString(),
@@ -865,7 +868,7 @@ export async function runImport(
       // enriched and returns immediately if so — no network calls wasted.
       try {
         debugLog('import:object', `${objectName}: enriching catalog data`);
-        await enrichObjectData(normalizeObjectId(objectName));
+        await enrichObjectData(objIdNormalized);
         debugLog('import:object', `${objectName}: enrichment complete`);
       } catch {
         debugLog('import:object', `${objectName}: enrichment failed (non-fatal)`);
@@ -874,7 +877,7 @@ export async function runImport(
       // Fetch historical weather for sessions missing weather data
       try {
         debugLog('import:object', `${objectName}: backfilling weather`);
-        await backfillSessionWeather(normalizeObjectId(objectName));
+        await backfillSessionWeather(objIdNormalized);
         debugLog('import:object', `${objectName}: weather backfill complete`);
       } catch (err) {
         console.warn(`[import] Weather backfill failed for "${objectName}":`, err instanceof Error ? err.message : err);
@@ -883,7 +886,7 @@ export async function runImport(
 
       // Save this object to SQLite immediately so files aren't orphaned if the
       // server crashes before the end-of-loop saveIndex() call.
-      const objId = normalizeObjectId(objectName);
+      const objId = objIdNormalized;
       const objMeta = index.objects[objId];
       try {
         db.transaction(() => {
@@ -1444,7 +1447,7 @@ export async function runFolderImport(folderPath: string): Promise<void> {
       // Skip empty folders. SeeStar can leave an empty object directory after
       // a failed/aborted session — don't create a placeholder library object
       // for one with nothing in it and no prior import record.
-      const objIdNormalized = normalizeObjectId(objectName);
+      const objIdNormalized = resolveCanonicalId(normalizeObjectId(objectName));
       const hasPriorImport = !!index.objects[objIdNormalized];
       debugLog('folder-import', `"${objectName}": ${allFiles.length} file(s) after filtering${hasPriorImport ? ' (prior import exists)' : ' (new object)'}`);
       if (allFiles.length === 0 && !hasPriorImport) {
@@ -1453,7 +1456,7 @@ export async function runFolderImport(folderPath: string): Promise<void> {
         continue;
       }
 
-      const objLocalDir = safeObjectDir(objectName);
+      const objLocalDir = safeObjectDir(objIdNormalized);
       if (!objLocalDir) {
         console.warn(`[import] Skipping object with unsafe name: ${objectName}`);
         importStatus.objectsDone++;
@@ -1525,8 +1528,8 @@ export async function runFolderImport(folderPath: string): Promise<void> {
         fileCount = existing.length;
       } catch { /* ignore */ }
 
-      index.objects[normalizeObjectId(objectName)] = {
-        folderName: objectName,
+      index.objects[objIdNormalized] = {
+        folderName: objIdNormalized,
         sessions: Array.from(sessionSet).sort(),
         fileCount,
         lastImport: new Date().toISOString(),
@@ -1538,7 +1541,7 @@ export async function runFolderImport(folderPath: string): Promise<void> {
 
       // Fetch historical weather for sessions missing weather data
       try {
-        await backfillSessionWeather(normalizeObjectId(objectName));
+        await backfillSessionWeather(objIdNormalized);
       } catch (err) {
         console.warn(`[import] Weather backfill failed for "${objectName}":`, err instanceof Error ? err.message : err);
       }
@@ -1683,9 +1686,9 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
       const objPlan = planByFolder.get(source.folderName)!;
       importStatus.currentObject = source.folderName;
 
-      const targetObjectId = normalizeObjectId(
+      const targetObjectId = resolveCanonicalId(normalizeObjectId(
         (objPlan.targetObjectId || source.folderName).trim(),
-      );
+      ));
       if (!targetObjectId) {
         console.warn(`[folder-import] Skipping "${source.folderName}": empty target id`);
         importStatus.objectsDone++;

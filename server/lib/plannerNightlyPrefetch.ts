@@ -19,6 +19,7 @@ import { prefetchSkyImage } from './skyImage.js';
 import { purgeJunkFiles, purgeStaleImportTmp } from './library/housekeeping.js';
 import { refreshForecastCache } from '../routes/forecast.js';
 import { checkAndUpdatePacks } from './catalogPack/updater.js';
+import { addDaysToDateKey, localDateKey, localParts, zonedDateTimeToUtc } from './timezone.js';
 
 // ─── Scheduler state ──────────────────────────────────────────────────────────
 
@@ -151,12 +152,18 @@ export async function runPlannerNightlyPrefetch(): Promise<void> {
 
   const minAlt = (settings.minAlt as number | undefined) ?? 20;
   const horizonProfile = (settings.horizonProfile as number[] | undefined) ?? Array(36).fill(0);
+  const tz = (settings.timezone as string | undefined) || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const now = new Date();
-  const night = getNightWindow(now, lat, lon);
-  // Polar-summer fallback mirrors the planner route's behavior
-  const nightStart = night.nightStart ?? new Date(now.getTime() + 2 * 3_600_000);
-  const nightEnd   = night.nightEnd   ?? new Date(nightStart.getTime() + 8 * 3_600_000);
+  const anchor = defaultNightAnchor(now, tz);
+  const night = getNightWindow(anchor, lat, lon);
+  const nightStart = night.nightStart ?? night.nauticalDusk;
+  const nightEnd = night.nightEnd ?? night.nauticalDawn;
+  if (!nightStart || !nightEnd || nightEnd.getTime() <= nightStart.getTime()) {
+    console.log('[planner-prefetch] Skipping, no astronomical or nautical dark window tonight');
+    updateSettingsData({ plannerPrefetchLastRun: Date.now() });
+    return;
+  }
 
   // Identify all catalog objects visible tonight from this location
   const catalog = getCatalog();
@@ -207,17 +214,17 @@ function parseHHMM(timeStr: string): { hh: number; mm: number } {
 }
 
 function localTime(date: Date, tz: string): { hh: number; mm: number; dateStr: string } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(date);
-
-  const get = (type: string) => parts.find(p => p.type === type)?.value ?? '00';
+  const parts = localParts(date, tz);
   return {
-    hh: parseInt(get('hour'), 10),
-    mm: parseInt(get('minute'), 10),
-    dateStr: `${get('year')}-${get('month')}-${get('day')}`,
+    hh: parts.hour,
+    mm: parts.minute,
+    dateStr: localDateKey(date, tz),
   };
+}
+
+function defaultNightAnchor(now: Date, timeZone: string): Date {
+  const parts = localParts(now, timeZone);
+  const today = localDateKey(now, timeZone);
+  const nightDate = parts.hour >= 7 ? today : addDaysToDateKey(today, -1);
+  return zonedDateTimeToUtc(nightDate, { hour: 12 }, timeZone);
 }

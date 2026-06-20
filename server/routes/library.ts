@@ -79,6 +79,7 @@ import { hasCachedCatalogImage, fovForEntry, findCachedMaster, prefetchObjectWik
 import { prefetchSkyImage } from '../lib/skyImage.js';
 import { getById as getDsoById } from '../lib/dsoCatalog.js';
 import { caldwellToNgcId } from '../lib/caldwellCatalog.js';
+import { resolveCanonicalId } from '../lib/catalogAliases.js';
 import { getSettingsData } from '../lib/telescopes.js';
 import { queryString } from '../lib/queryHelpers.js';
 
@@ -591,10 +592,14 @@ const VARIANT_LABELS: Record<string, string> = {
   lum: 'Luminance', luminance: 'Luminance',
   nb: 'Narrowband', narrowband: 'Narrowband', broadband: 'Broadband',
   bicolor: 'Bicolor', tricolor: 'Tricolor', hargb: 'HaRGB',
+  photo: 'Photo', video: 'Video',
 };
 
+// Keep this suffix list in sync with normalizeCatalogId (telescopeFiles.ts):
+// any suffix the normalizer strips for grouping must be recognized here so the
+// folded variant gets a clean label instead of falling back to its raw id.
 function extractVariantLabel(objectId: string): string | null {
-  const m = objectId.match(/[_\s]+(mosai[ck]|mosiac|panel\d*|ha|oiii|sii|sho|hoo|rgb|lrgb|nb|narrowband|broadband|luminance|lum|bicolor|tricolor|hargb)\s*\d*$/i);
+  const m = objectId.match(/[_\s]+(mosai[ck]|mosiac|panel\d*|ha|oiii|sii|sho|hoo|rgb|lrgb|nb|narrowband|broadband|luminance|lum|bicolor|tricolor|hargb|photo|video)\s*\d*$/i);
   if (!m) return null;
   const key = m[1].toLowerCase().replace(/\d+$/, '');
   return VARIANT_LABELS[key] ?? (m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase());
@@ -603,26 +608,56 @@ function extractVariantLabel(objectId: string): string | null {
 function groupByVariants(objects: ReturnType<typeof getLocalObjects>) {
   const groups = new Map<string, typeof objects>();
   for (const obj of objects) {
-    const key = obj.catalogId;
+    // Resolve the catalogId through catalog aliases so a variant captured under
+    // an alias name groups with its canonical primary — e.g. "NGC224_Mosaic"
+    // (catalogId "NGC224") folds into the "M31" card instead of showing as a
+    // separate "NGC224" card.
+    const key = resolveCanonicalId(obj.catalogId);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(obj);
   }
 
+  const maxStr = (a: string | null | undefined, b: string | null | undefined) =>
+    (a ?? '') >= (b ?? '') ? (a ?? null) : (b ?? null);
+
   const result: (typeof objects[0] & { variants: { objectId: string; label: string }[] })[] = [];
-  for (const group of groups.values()) {
+  for (const [key, group] of groups.entries()) {
     if (group.length === 1) {
       result.push({ ...group[0], variants: [] });
       continue;
     }
-    // Primary = the entry whose id matches its catalogId; fall back to shortest id
+    // Primary = the entry whose id is the canonical key, else the entry whose id
+    // matches its own catalogId, else the shortest id.
     const primary =
+      group.find(o => o.id === key) ??
       group.find(o => o.id === o.catalogId) ??
       [...group].sort((a, b) => a.id.length - b.id.length)[0];
     const variants = group
       .filter(o => o.id !== primary.id)
       .map(o => ({ objectId: o.id, label: extractVariantLabel(o.id) ?? o.id }));
-    const totalSessionCount = group.reduce((sum, o) => sum + o.sessionCount, 0);
-    result.push({ ...primary, sessionCount: totalSessionCount, variants });
+
+    // Aggregate recency and telescope coverage across the whole group so the
+    // card's session/import sorts, telescope facet filter, and telescope dots
+    // reflect every variant — not just the primary's own data.
+    const totalSessionCount = group.reduce((sum, o) => sum + (o.sessionCount ?? 0), 0);
+    const lastSessionDate = group.reduce<string | null>((acc, o) => maxStr(acc, o.lastSessionDate), null);
+    const lastImport = group.reduce<string>((acc, o) => maxStr(acc, o.lastImport) ?? acc, primary.lastImport);
+    const telescopeIds: string[] = [];
+    const seenTelescopes = new Set<string>();
+    for (const o of group) {
+      for (const id of o.telescopeIds ?? []) {
+        if (!seenTelescopes.has(id)) { seenTelescopes.add(id); telescopeIds.push(id); }
+      }
+    }
+
+    result.push({
+      ...primary,
+      sessionCount: totalSessionCount,
+      lastSessionDate,
+      lastImport,
+      telescopeIds,
+      variants,
+    });
   }
   return result;
 }

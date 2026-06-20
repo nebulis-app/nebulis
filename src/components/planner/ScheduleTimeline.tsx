@@ -40,6 +40,8 @@ interface ScheduleTimelineProps {
   /** Reports the runtime pixels-per-minute scale so the page's drag/drop math
    *  (which converts pointer pixels to times) matches what's rendered here. */
   onScaleChange?: (pxPerMinute: number) => void;
+  /** IANA timezone for displaying tick labels (e.g. "Europe/London"). Defaults to machine-local. */
+  observerTimezone?: string;
 }
 
 /**
@@ -90,9 +92,10 @@ function assignLanes(sessions: PlannedSession[]): { laneIndex: Map<number, numbe
 }
 
 export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps>(function ScheduleTimeline(
-  { nightStart, nightEnd, darkStart, darkEnd, sessions, visibilityById, moonById, dragDeltaById, resizeDeltaById, onDelete, onResize, onShowDetails, onScaleChange },
+  { nightStart, nightEnd, darkStart, darkEnd, sessions, visibilityById, moonById, dragDeltaById, resizeDeltaById, onDelete, onResize, onShowDetails, onScaleChange, observerTimezone },
   ref,
 ) {
+  const fmtHm = (d: Date) => formatHm(d, observerTimezone);
   const { isDark } = useTheme();
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: 'schedule' });
 
@@ -126,7 +129,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
     onScaleChange?.(pxPerMinute);
   }, [pxPerMinute, onScaleChange]);
 
-  const ticks = useMemo(() => hourTicks(nightStart, nightEnd), [nightStart, nightEnd]);
+  const ticks = useMemo(() => hourTicks(nightStart, nightEnd, observerTimezone), [nightStart, nightEnd, observerTimezone]);
   const { laneIndex, laneCount } = useMemo(() => assignLanes(sessions), [sessions]);
 
   // Detect overlap per session for the warning badge (only flagged when
@@ -150,9 +153,13 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
     <div className={`flex flex-col h-full min-h-0 ${isDark ? 'bg-slate-950/40' : 'bg-slate-50'}`}>
       <div className={`flex items-center justify-between p-3 border-b ${isDark ? 'border-slate-800 text-slate-200' : 'border-slate-200 text-slate-700'}`}>
         <div className="text-sm font-medium">Night schedule</div>
-        <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-          {formatHm(darkStart ?? nightStart)} – {formatHm(darkEnd ?? nightEnd)}
-        </div>
+        {darkStart && darkEnd && (
+          <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+            <span className="font-medium">Dark window:</span>{' '}
+            {fmtHm(darkStart)} – {fmtHm(darkEnd)}{' '}
+            ({Math.round((minutesBetween(darkStart, darkEnd) / 60) * 10) / 10}h)
+          </div>
+        )}
       </div>
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
         <div
@@ -172,7 +179,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
               }}
             >
               <span className={`absolute bottom-1.5 right-2 text-[10px] select-none ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                darkness {darkStart ? formatHm(darkStart) : ''}
+                darkness {darkStart ? fmtHm(darkStart) : ''}
               </span>
             </div>
           )}
@@ -194,7 +201,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
               }}
             >
               <span className={`absolute top-1.5 right-2 text-[10px] select-none ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                dawn {darkEnd ? formatHm(darkEnd) : ''}
+                dawn {darkEnd ? fmtHm(darkEnd) : ''}
               </span>
             </div>
           )}
@@ -214,7 +221,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
                 style={{ top: `${top}px` }}
               >
                 <span className={`absolute -top-2 left-2 text-[10px] px-1 ${isDark ? 'bg-slate-950/40 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
-                  {formatHm(t)}
+                  {fmtHm(t)}
                 </span>
               </div>
             );
@@ -250,6 +257,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
                 onResize={onResize}
                 onShowDetails={() => onShowDetails(s)}
                 dragDeltaY={dragDeltaById.get(s.id)}
+                isSaving={s.id < 0}
               />
             );
           })}

@@ -9,6 +9,26 @@ export const fetchLocationName = (lat: number, lon: number) =>
   fetchJSON<{ city: string | null }>(`/catalog/geocode/reverse?lat=${lat}&lon=${lon}`)
     .then(r => r.city)
     .catch(() => null);
+export const fetchLocationInfo = (lat: number, lon: number) =>
+  fetchJSON<{ city: string | null; timezone: string | null }>(`/catalog/geocode/reverse?lat=${lat}&lon=${lon}`)
+    .catch(() => ({ city: null, timezone: null }));
+
+export interface GeocodeSearchResult {
+  name: string;
+  /** "Asheville, North Carolina, United States" */
+  label: string;
+  latitude: number;
+  longitude: number;
+  /** IANA zone, e.g. "America/New_York". May be null. */
+  timezone: string | null;
+  country: string | null;
+  admin1: string | null;
+}
+
+/** Forward geocode a city/place name to ranked candidates (Open-Meteo). */
+export const searchLocations = (q: string) =>
+  fetchJSON<GeocodeSearchResult[]>(`/catalog/geocode/search?q=${encodeURIComponent(q)}`)
+    .catch(() => [] as GeocodeSearchResult[]);
 export const getCatalogEntry = (id: string) => fetchJSON<CatalogEntry>(`/catalog/${encodeURIComponent(id)}`);
 
 // Catalog object info (fetched lazily from library DB / catalogCache / static catalog)

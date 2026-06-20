@@ -97,16 +97,83 @@ export function computeAltitudeCurve(
 }
 
 /**
- * Build the local "tonight" 24h window: the most recent past (or current) local
- * noon through the following local noon. Always contains "now".
+ * Build the "tonight" 24h window: the most recent past (or current) local noon
+ * through the following local noon. Always contains "now".
+ *
+ * When `timeZone` (an IANA zone) is given, "noon" means noon in that zone, so a
+ * chart with fixed noon-anchored hour ticks stays correct for an observer whose
+ * configured location differs from the viewing device's clock. Without it, the
+ * window is anchored to the device's local noon (DST-safe via setDate).
  */
-export function buildTonightWindow(now: Date = new Date()): { start: Date; end: Date } {
-  const start = new Date(now);
-  start.setHours(12, 0, 0, 0);
-  if (now.getTime() < start.getTime()) {
-    start.setDate(start.getDate() - 1);
+export function buildTonightWindow(now: Date = new Date(), timeZone?: string): { start: Date; end: Date } {
+  if (!timeZone) {
+    const start = new Date(now);
+    start.setHours(12, 0, 0, 0);
+    if (now.getTime() < start.getTime()) {
+      start.setDate(start.getDate() - 1);
+    }
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { start, end };
   }
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { start, end };
+
+  const p = zonedParts(now, timeZone);
+  // Before local noon, the current noon-to-noon window opened yesterday.
+  const [sy, sm, sd] = p.hour < 12 ? shiftYmd(p.year, p.month, p.day, -1) : [p.year, p.month, p.day];
+  const [ey, em, ed] = shiftYmd(sy, sm, sd, 1);
+  return {
+    start: wallTimeToUtc(sy, sm, sd, 12, timeZone),
+    end: wallTimeToUtc(ey, em, ed, 12, timeZone),
+  };
+}
+
+/** Calendar Y/M/D parts of an instant evaluated in `timeZone`. */
+function zonedParts(d: Date, timeZone: string): { year: number; month: number; day: number; hour: number } {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(d);
+    const get = (type: string) => parseInt(parts.find(p => p.type === type)?.value ?? '0', 10);
+    return { year: get('year'), month: get('month'), day: get('day'), hour: get('hour') };
+  } catch {
+    return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(), hour: d.getHours() };
+  }
+}
+
+/** Shift a Y/M/D triple by whole days, normalizing month/year rollover. */
+function shiftYmd(year: number, month: number, day: number, days: number): [number, number, number] {
+  const u = new Date(Date.UTC(year, month - 1, day + days, 12, 0, 0));
+  return [u.getUTCFullYear(), u.getUTCMonth() + 1, u.getUTCDate()];
+}
+
+/** UTC instant for a wall-clock time interpreted in `timeZone`. Solves the
+ *  zone offset (incl. DST) by iterative refinement, matching the server's
+ *  zonedDateTimeToUtc. */
+function wallTimeToUtc(year: number, month: number, day: number, hour: number, timeZone: string): Date {
+  const targetWall = Date.UTC(year, month - 1, day, hour, 0, 0);
+  let utcMs = targetWall;
+  for (let i = 0; i < 4; i++) {
+    let actualWall: number;
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(new Date(utcMs));
+      const get = (type: string) => parseInt(parts.find(p => p.type === type)?.value ?? '0', 10);
+      actualWall = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+    } catch {
+      return new Date(targetWall);
+    }
+    const delta = targetWall - actualWall;
+    if (delta === 0) break;
+    utcMs += delta;
+  }
+  return new Date(utcMs);
 }

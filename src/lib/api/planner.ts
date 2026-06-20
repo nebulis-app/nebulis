@@ -31,6 +31,7 @@ export interface NightRating {
 
 interface ForecastData {
   location: { lat: number; lon: number };
+  timezone: string | null;
   hourly: ForecastHour[];
   tonight: {
     moonIllumination: number;
@@ -41,7 +42,10 @@ interface ForecastData {
     sunrise: string;
     astronomicalTwilightEnd: string;
     astronomicalTwilightStart: string;
+    nauticalTwilightEnd: string;
+    nauticalTwilightStart: string;
     darkHours: number;
+    nauticalDarkHours: number;
   };
   nightRatings: NightRating[];
   sources: { weather: string | null; seeing: string | null };
@@ -80,10 +84,15 @@ export interface PlannerResponse {
   totalVisible: number;
   nightStart: string | null;
   nightEnd: string | null;
+  sunset: string | null;
+  sunrise: string | null;
+  timelineStart?: string | null;
+  timelineEnd?: string | null;
   moonIllumination: number;
   moonPhase: string;
   observerLat?: number;
   observerLon?: number;
+  observerTimezone?: string | null;
 }
 
 export interface DsoEntry {

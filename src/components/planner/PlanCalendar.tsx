@@ -9,20 +9,21 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { listPlannedSessions } from '../../lib/api/plannedSessions';
-import { localDateKey, plannerToday, sameLocalDay } from '../../lib/nightWindow';
+import { localDateKey, plannerDateKeyForInstant, plannerToday, sameLocalDay } from '../../lib/nightWindow';
 import { useTheme } from '../../hooks/useTheme';
 
 interface PlanCalendarProps {
   selectedDate: Date;
+  observerTimezone?: string;
   onSelect: (date: Date) => void;
   onClose: () => void;
 }
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-export function PlanCalendar({ selectedDate, onSelect, onClose }: PlanCalendarProps) {
+export function PlanCalendar({ selectedDate, observerTimezone, onSelect, onClose }: PlanCalendarProps) {
   const { isDark } = useTheme();
-  const today = useMemo(() => plannerToday(), []);
+  const today = useMemo(() => plannerToday(new Date(), observerTimezone), [observerTimezone]);
   // Month being viewed in the popover — separate from the selected date so
   // the user can flip through months without losing their pick.
   const [viewMonth, setViewMonth] = useState(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
@@ -41,10 +42,10 @@ export function PlanCalendar({ selectedDate, onSelect, onClose }: PlanCalendarPr
     const set = new Set<string>();
     for (const s of sessionsQuery.data ?? []) {
       const start = new Date(s.startTime);
-      set.add(localDateKey(start));
+      set.add(plannerDateKeyForInstant(start, observerTimezone));
     }
     return set;
-  }, [sessionsQuery.data]);
+  }, [sessionsQuery.data, observerTimezone]);
 
   // Build the 6×7 grid of cells starting at the Sunday on or before the 1st.
   const cells = useMemo(() => {

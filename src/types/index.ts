@@ -118,6 +118,8 @@ export interface AstroObject {
   primaryTelescopeId?: string | null;
   /** Distinct telescopes that have captured this object, recency-sorted. */
   telescopeIds?: string[];
+  /** All catalog aliases for this object (e.g. ["C30"] for NGC7331). */
+  aliases?: string[];
 }
 
 export interface SessionWeather {
@@ -139,6 +141,7 @@ export interface Session {
   fitsCount: number;
   subFrameCount: number;
   imageCount: number;
+  processedCount: number;
   thumbnailUrl: string;
   filesUrl: string;
   weather: SessionWeather | null;

@@ -39,6 +39,8 @@ function smoothHours(hours: ForecastHour[]): ForecastHour[] {
 function calculateVisibilityScore(
   hour: ForecastHour,
   moonIllumination: number,
+  timeZone?: string,
+  darkWindow?: { start: number; end: number } | null,
 ): VisibilityResult {
   // Cloud Cover (60% weight): 0% = 1.0, 100% = 0.0
   const cloudScore = 1 - hour.cloudCover / 100;
@@ -62,9 +64,17 @@ function calculateVisibilityScore(
     seeingScore = Math.max(0, seeingScore - capePenalty);
   }
 
-  // Moon (20% weight): penalty for high illumination during night hours
-  const hourOfDay = new Date(hour.time).getHours();
-  const isNight = hourOfDay >= 19 || hourOfDay <= 5;
+  // Moon (20% weight): penalty for high illumination, but only while it's
+  // actually dark. Prefer the real dark window (astronomical/nautical twilight)
+  // so deep-winter early-dark and high-summer pre-dawn hours are classed
+  // correctly; fall back to a fixed 19:00-05:00 band if no window is known.
+  const tMs = new Date(hour.time).getTime();
+  const isNight = darkWindow
+    ? tMs >= darkWindow.start && tMs <= darkWindow.end
+    : (() => {
+        const hourOfDay = localHour(new Date(hour.time), timeZone);
+        return hourOfDay >= 19 || hourOfDay <= 5;
+      })();
   const moonPenalty = isNight ? (1 - moonIllumination / 100) : 1.0;
 
   // Transparency bonus: based on humidity (high humidity = poor transparency)
@@ -157,14 +167,36 @@ export function ForecastPage() {
     staleTime: 600_000,
   });
 
-  // Filter to astronomical dark hours only (astro dusk → astro dawn), then smooth cloud cover
-  // over adjacent hours to remove NWP model noise before scoring.
+  const tz = forecast?.timezone || appSettings?.timezone || undefined;
+  const fmt = (iso: string) => formatTime(iso, tz);
+
+  // The precise dark window for moon-penalty calculations. Prefer astronomical
+  // twilight, fall back to nautical. May be null at high latitudes in summer.
+  const darkWindow: { start: number; end: number } | null = (() => {
+    if (!forecast) return null;
+    const windowStart = forecast.tonight.astronomicalTwilightEnd || forecast.tonight.nauticalTwilightEnd;
+    const windowEnd = forecast.tonight.astronomicalTwilightStart || forecast.tonight.nauticalTwilightStart;
+    if (!windowStart || !windowEnd) return null;
+    return { start: new Date(windowStart).getTime(), end: new Date(windowEnd).getTime() };
+  })();
+
+  // The window used to filter the hourly strip. When there's no astronomical or
+  // nautical dark (e.g. high-latitude summer), fall back to the full
+  // sunset→sunrise span so the hourly forecast is always shown.
+  const hourlyWindow: { start: number; end: number } | null = (() => {
+    if (!forecast) return null;
+    if (darkWindow) return darkWindow;
+    const s = forecast.tonight.sunset;
+    const e = forecast.tonight.sunrise;
+    if (!s || !e) return null;
+    return { start: new Date(s).getTime(), end: new Date(e).getTime() };
+  })();
+
+  // Filter the hourly strip to the usable night window with a 1-hour buffer.
   const tonightHours = smoothHours((forecast?.hourly || []).filter(h => {
-    if (!forecast) return false;
+    if (!hourlyWindow) return false;
     const t = new Date(h.time).getTime();
-    const darkStart = new Date(forecast.tonight.astronomicalTwilightEnd).getTime();
-    const darkEnd = new Date(forecast.tonight.astronomicalTwilightStart).getTime();
-    return t >= darkStart - 3600000 && t <= darkEnd + 3600000;
+    return t >= hourlyWindow.start - 3600000 && t <= hourlyWindow.end + 3600000;
   }));
 
   return (
@@ -270,9 +302,33 @@ export function ForecastPage() {
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <InfoCard icon={<Moon className="w-4 h-4" />} label="Moon" value={forecast.tonight.moonPhase} sub={`${forecast.tonight.moonIllumination}% illuminated`} isDark={isDark} />
-              <InfoCard icon={<Sun className="w-4 h-4" />} label="Dark Hours" value={`${forecast.tonight.darkHours}h`} sub="Astronomical dark" isDark={isDark} />
-              <InfoCard icon={<Sunset className="w-4 h-4" />} label="Sunset" value={formatTime(forecast.tonight.sunset)} sub={`Astro dark ${formatTime(forecast.tonight.astronomicalTwilightEnd)}`} isDark={isDark} />
-              <InfoCard icon={<Sun className="w-4 h-4" />} label="Sunrise" value={formatTime(forecast.tonight.sunrise)} sub={`Astro dawn ${formatTime(forecast.tonight.astronomicalTwilightStart)}`} isDark={isDark} />
+              {forecast.tonight.darkHours > 0 ? (
+                <InfoCard icon={<Sun className="w-4 h-4" />} label="Dark Hours" value={`${forecast.tonight.darkHours}h`} sub="Astronomical dark" isDark={isDark} />
+              ) : (
+                <InfoCard icon={<Sun className="w-4 h-4" />} label="Dark Hours" value={`${forecast.tonight.nauticalDarkHours}h`} sub="Nautical dark" isDark={isDark} />
+              )}
+              <InfoCard
+                icon={<Sunset className="w-4 h-4" />}
+                label="Sunset"
+                value={fmt(forecast.tonight.sunset)}
+                sub={forecast.tonight.astronomicalTwilightEnd
+                  ? `Astro dark ${fmt(forecast.tonight.astronomicalTwilightEnd)}`
+                  : forecast.tonight.nauticalTwilightEnd
+                    ? `Nautical dark ${fmt(forecast.tonight.nauticalTwilightEnd)}`
+                    : 'No dark window'}
+                isDark={isDark}
+              />
+              <InfoCard
+                icon={<Sun className="w-4 h-4" />}
+                label="Sunrise"
+                value={fmt(forecast.tonight.sunrise)}
+                sub={forecast.tonight.astronomicalTwilightStart
+                  ? `Astro dawn ${fmt(forecast.tonight.astronomicalTwilightStart)}`
+                  : forecast.tonight.nauticalTwilightStart
+                    ? `Nautical dawn ${fmt(forecast.tonight.nauticalTwilightStart)}`
+                    : 'No dark window'}
+                isDark={isDark}
+              />
             </div>
           </div>
 
@@ -296,6 +352,8 @@ export function ForecastPage() {
                         onSelect={() => setSelectedHour(selectedHour?.time === h.time ? null : h)}
                         isDark={isDark}
                         tempUnit={tempUnit}
+                        timeZone={tz}
+                        darkWindow={darkWindow}
                       />
                     ))}
                   </div>
@@ -309,6 +367,8 @@ export function ForecastPage() {
                     isDark={isDark}
                     onClose={() => setSelectedHour(null)}
                     tempUnit={tempUnit}
+                    timeZone={tz}
+                    darkWindow={darkWindow}
                   />
                 )}
 
@@ -320,7 +380,7 @@ export function ForecastPage() {
               </>
             ) : (
               <p className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                No nighttime hours in forecast window
+                No hourly data available for tonight's observing window.
               </p>
             )}
           </div>
@@ -332,18 +392,20 @@ export function ForecastPage() {
 
 // ─── Hour Column with Visibility Score ───────────────────────────────
 
-function HourColumn({ hour, moonIllumination, isSelected, onSelect, isDark, tempUnit }: {
+function HourColumn({ hour, moonIllumination, isSelected, onSelect, isDark, tempUnit, timeZone, darkWindow }: {
   hour: ForecastHour;
   moonIllumination: number;
   isSelected: boolean;
   onSelect: () => void;
   isDark: boolean;
   tempUnit: 'celsius' | 'fahrenheit';
+  timeZone?: string;
+  darkWindow?: { start: number; end: number } | null;
 }) {
   const time = new Date(hour.time);
-  const timeStr = time.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+  const timeStr = time.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true, ...(timeZone ? { timeZone } : {}) });
 
-  const vis = calculateVisibilityScore(hour, moonIllumination);
+  const vis = calculateVisibilityScore(hour, moonIllumination, timeZone, darkWindow);
 
   const cloudColor = hour.cloudCover < 25 ? 'bg-emerald-500' : hour.cloudCover < 50 ? 'bg-blue-500' : hour.cloudCover < 75 ? 'bg-amber-500' : 'bg-red-500';
 
@@ -400,16 +462,18 @@ function HourColumn({ hour, moonIllumination, isSelected, onSelect, isDark, temp
 
 // ─── Expanded Hour Detail Panel ──────────────────────────────────────
 
-function HourDetail({ hour, moonIllumination, isDark, onClose, tempUnit }: {
+function HourDetail({ hour, moonIllumination, isDark, onClose, tempUnit, timeZone, darkWindow }: {
   hour: ForecastHour;
   moonIllumination: number;
   isDark: boolean;
   onClose: () => void;
   tempUnit: 'celsius' | 'fahrenheit';
+  timeZone?: string;
+  darkWindow?: { start: number; end: number } | null;
 }) {
-  const vis = calculateVisibilityScore(hour, moonIllumination);
+  const vis = calculateVisibilityScore(hour, moonIllumination, timeZone, darkWindow);
   const time = new Date(hour.time);
-  const timeStr = time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const timeStr = time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, ...(timeZone ? { timeZone } : {}) });
 
   return (
     <div className={`mt-4 p-5 rounded-xl border transition-all ${scoreBgColor(vis.score, isDark)}`}>
@@ -574,11 +638,30 @@ function HourlyLegend({ isDark }: { isDark: boolean }) {
   );
 }
 
-function formatTime(iso: string): string {
+function formatTime(iso: string, timeZone?: string): string {
   if (!iso) return '-';
   try {
-    return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return new Date(iso).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      ...(timeZone ? { timeZone } : {}),
+    });
   } catch {
     return '-';
+  }
+}
+
+function localHour(date: Date, timeZone?: string): number {
+  if (!timeZone) return date.getHours();
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(date);
+    return parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+  } catch {
+    return date.getHours();
   }
 }

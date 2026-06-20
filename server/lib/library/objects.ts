@@ -15,6 +15,7 @@ import {
   normalizeCatalogId,
   isRealFile,
 } from '../telescopeFiles.js';
+import { resolveCanonicalId, expandSearchAliases, getAliasesForCanonical } from '../catalogAliases.js';
 import { getCatalogEntry } from '../../data/catalog.js';
 import { SOLAR_SYSTEM_LOOKUP_KEYS } from '../../data/solar-system-catalog.js';
 import { parseFitsHeader } from '../fitsParser.js';
@@ -253,6 +254,216 @@ db.prepare('CREATE INDEX IF NOT EXISTS idx_sessionProcessedImages_session ON ses
     migrateIds();
     db.pragma('foreign_keys = ON');
     console.log(`[library] objectId normalization complete`);
+  }
+}
+
+// Migrate: resolve catalog aliases to canonical IDs (e.g. "C30" → "NGC7331")
+// DB operations only — file repair is handled separately by repairAliasDirectories().
+{
+  const allIds = db.prepare<[], { objectId: string }>('SELECT objectId FROM libraryObjects').all();
+  const aliasRows = allIds.filter(({ objectId }) => resolveCanonicalId(objectId) !== objectId);
+
+  if (aliasRows.length > 0) {
+    console.log(`[library] Migrating ${aliasRows.length} object(s): resolving catalog aliases to canonical IDs...`);
+    db.pragma('foreign_keys = OFF');
+    const migrateAliases = db.transaction(() => {
+      for (const { objectId } of aliasRows) {
+        const canonical = resolveCanonicalId(objectId);
+        const canonicalExists = db.prepare<[string], { objectId: string }>('SELECT objectId FROM libraryObjects WHERE objectId = ?').get(canonical);
+
+        if (!canonicalExists) {
+          // Simple rename: update objectId, preserve folderName for disk access
+          db.prepare(`UPDATE libraryObjects SET folderName = ? WHERE objectId = ? AND (folderName = objectId OR folderName IS NULL OR folderName = '')`).run(objectId, objectId);
+          db.prepare(`UPDATE notes SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`DELETE FROM wishlist WHERE objectId = ?`).run(canonical);
+          db.prepare(`UPDATE wishlist SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`DELETE FROM favorites WHERE objectId = ?`).run(canonical);
+          db.prepare(`UPDATE favorites SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`INSERT OR IGNORE INTO librarySessions (objectId, date, telescopeId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage) SELECT ?, date, telescopeId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage FROM librarySessions WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`DELETE FROM librarySessions WHERE objectId = ?`).run(objectId);
+          db.prepare(`INSERT OR IGNORE INTO libraryDeletedSessions (objectId, date) SELECT ?, date FROM libraryDeletedSessions WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`DELETE FROM libraryDeletedSessions WHERE objectId = ?`).run(objectId);
+          db.prepare(`UPDATE sessionProcessedImages SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`INSERT OR IGNORE INTO libraryObjects (objectId, folderName, fileCount, lastImport, deleted, deletedAt, galleryImage, catalogId, objectName, objectType, constellation, description, magnitude, ra, dec, distanceLy, wikiUrl, sizeArcmin) SELECT ?, folderName, fileCount, lastImport, deleted, deletedAt, galleryImage, catalogId, objectName, objectType, constellation, description, magnitude, ra, dec, distanceLy, wikiUrl, sizeArcmin FROM libraryObjects WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`DELETE FROM libraryObjects WHERE objectId = ?`).run(objectId);
+        } else {
+          // Merge: fold alias sessions into the canonical row, then drop the alias
+          db.prepare(`INSERT OR IGNORE INTO librarySessions (objectId, date, telescopeId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage) SELECT ?, date, telescopeId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage FROM librarySessions WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`DELETE FROM librarySessions WHERE objectId = ?`).run(objectId);
+          db.prepare(`INSERT OR IGNORE INTO libraryDeletedSessions (objectId, date) SELECT ?, date FROM libraryDeletedSessions WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`DELETE FROM libraryDeletedSessions WHERE objectId = ?`).run(objectId);
+          db.prepare(`UPDATE sessionProcessedImages SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`UPDATE notes SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`DELETE FROM wishlist WHERE objectId = ?`).run(canonical);
+          db.prepare(`UPDATE wishlist SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`DELETE FROM favorites WHERE objectId = ?`).run(canonical);
+          db.prepare(`UPDATE favorites SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
+          // Sum file counts and take the most recent lastImport
+          db.prepare(`
+            UPDATE libraryObjects SET
+              fileCount  = fileCount + (SELECT fileCount FROM libraryObjects WHERE objectId = ?),
+              lastImport = MAX(lastImport, (SELECT lastImport FROM libraryObjects WHERE objectId = ?))
+            WHERE objectId = ?
+          `).run(objectId, objectId, canonical);
+          db.prepare(`DELETE FROM libraryObjects WHERE objectId = ?`).run(objectId);
+        }
+      }
+    });
+    migrateAliases();
+    db.pragma('foreign_keys = ON');
+    console.log(`[library] catalog alias normalization complete`);
+  }
+}
+
+/**
+ * Normalize library directories that contain spaces in their names by merging
+ * them into their space-free equivalents (e.g. "NGC 7331/" → "NGC7331/").
+ *
+ * This is needed because:
+ *  - SeeStar sometimes names folders with spaces ("NGC 7331")
+ *  - The space-stripping DB migration preserved folderName with spaces to avoid
+ *    breaking file access, but never renamed the physical directory
+ *  - repairAliasDirectories creates canonical dirs (no spaces) when it moves
+ *    alias files, leaving two directories for the same object
+ *
+ * Run before repairAliasDirectories so alias repair always finds the right target.
+ * Safe to run on every startup — idempotent once space dirs are gone.
+ */
+export function repairSpaceDirectories(): void {
+  try {
+    const LIBRARY_DIR = getLibraryDir();
+    if (!fs.existsSync(LIBRARY_DIR)) return;
+
+    for (const entry of fs.readdirSync(LIBRARY_DIR, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const noSpaceName = entry.name.replace(/\s+/g, '');
+      if (noSpaceName === entry.name) continue; // no spaces — nothing to do
+
+      const spaceDir = path.join(LIBRARY_DIR, entry.name);
+      const canonDir = path.join(LIBRARY_DIR, noSpaceName);
+
+      try {
+        if (!fs.existsSync(canonDir)) {
+          // No canonical dir yet: atomic rename (fast path, no file-by-file copy).
+          fs.renameSync(spaceDir, canonDir);
+          console.log(`[library] SpaceRepair: renamed "${entry.name}/" → "${noSpaceName}/"`);
+        } else {
+          // Both dirs exist (e.g. "NGC 7331" + "NGC7331"): merge space dir into
+          // canonical dir, then remove the now-empty space dir.
+          _mergeIntoDir(spaceDir, canonDir);
+          try {
+            if (fs.readdirSync(spaceDir).length === 0) fs.rmdirSync(spaceDir);
+          } catch { /* ignore — non-empty means some files couldn't be moved */ }
+          console.log(`[library] SpaceRepair: merged "${entry.name}/" into "${noSpaceName}/"`);
+        }
+
+        // Update DB: find row by old folderName (space) or by objectId (no-space)
+        // and normalise folderName + recount files.
+        const row =
+          db.prepare<[string], { objectId: string }>(
+            'SELECT objectId FROM libraryObjects WHERE folderName = ?'
+          ).get(entry.name) ??
+          db.prepare<[string], { objectId: string }>(
+            'SELECT objectId FROM libraryObjects WHERE objectId = ?'
+          ).get(noSpaceName);
+
+        if (row) {
+          const fileCount = _countFiles(canonDir);
+          db.prepare('UPDATE libraryObjects SET folderName = ?, fileCount = ? WHERE objectId = ?')
+            .run(noSpaceName, fileCount, row.objectId);
+        }
+      } catch (err) {
+        console.warn(`[library] SpaceRepair: "${entry.name}":`, err instanceof Error ? err.message : err);
+      }
+    }
+  } catch (err) {
+    console.warn('[library] repairSpaceDirectories failed:', err instanceof Error ? err.message : err);
+  }
+}
+
+function _mergeIntoDir(from: string, to: string): void {
+  for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
+    const src = path.join(from, entry.name);
+    const dst = path.join(to, entry.name);
+    if (entry.isFile()) {
+      if (!fs.existsSync(dst)) fs.renameSync(src, dst);
+    } else if (entry.isDirectory()) {
+      if (!fs.existsSync(dst)) {
+        fs.renameSync(src, dst); // subdir doesn't exist in target — move whole thing
+      } else {
+        _mergeIntoDir(src, dst);
+        try { fs.rmdirSync(src); } catch { /* non-empty, leave it */ }
+      }
+    }
+  }
+}
+
+function _countFiles(dir: string): number {
+  return fs.readdirSync(dir).filter(f => {
+    try { return fs.statSync(path.join(dir, f)).isFile(); } catch { return false; }
+  }).length;
+}
+
+/**
+ * Scan the library directory for subdirectories whose names are catalog aliases
+ * (e.g. "C30") and move their files into the canonical object's directory.
+ *
+ * The target directory is always the one the DB's existing folderName points to —
+ * never the raw canonical ID string. This prevents creating a new directory when
+ * the object's files live in a folder with a different format (e.g. "NGC 7331"
+ * with a space). folderName is never modified here; only fileCount is updated.
+ */
+export function repairAliasDirectories(): void {
+  try {
+    const LIBRARY_DIR = getLibraryDir();
+    if (!fs.existsSync(LIBRARY_DIR)) return;
+    const entries = fs.readdirSync(LIBRARY_DIR, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const canonical = resolveCanonicalId(entry.name);
+      if (canonical === entry.name) continue;
+
+      const canonRow = db.prepare<[string], { folderName: string }>(
+        'SELECT folderName FROM libraryObjects WHERE objectId = ?'
+      ).get(canonical);
+      if (!canonRow) continue;
+
+      const aliasDir  = path.join(LIBRARY_DIR, entry.name);
+      const targetDir = path.join(LIBRARY_DIR, canonRow.folderName);
+      if (path.resolve(aliasDir) === path.resolve(targetDir)) continue;
+
+      try {
+        if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+        let moved = 0;
+        for (const fname of fs.readdirSync(aliasDir)) {
+          const src = path.join(aliasDir, fname);
+          if (!fs.statSync(src).isFile()) continue;
+          const dst = path.join(targetDir, fname);
+          if (!fs.existsSync(dst)) {
+            fs.renameSync(src, dst);
+            moved++;
+          }
+        }
+        // Remove alias dir if now empty
+        const remaining = fs.readdirSync(aliasDir).filter(f => {
+          try { return fs.statSync(path.join(aliasDir, f)).isFile(); } catch { return false; }
+        });
+        if (remaining.length === 0) try { fs.rmdirSync(aliasDir); } catch { /* in use */ }
+
+        if (moved > 0) {
+          const fileCount = fs.readdirSync(targetDir).filter(f => {
+            try { return fs.statSync(path.join(targetDir, f)).isFile(); } catch { return false; }
+          }).length;
+          db.prepare('UPDATE libraryObjects SET fileCount = ? WHERE objectId = ?')
+            .run(fileCount, canonical);
+          console.log(`[library] Repair: moved ${moved} file(s) from "${entry.name}/" to "${canonRow.folderName}/"`);
+        }
+      } catch (err) {
+        console.warn(`[library] Repair: could not process "${entry.name}":`, err instanceof Error ? err.message : err);
+      }
+    }
+  } catch (err) {
+    console.warn('[library] repairAliasDirectories failed:', err instanceof Error ? err.message : err);
   }
 }
 
@@ -777,11 +988,33 @@ export function findFallbackObservationImage(objectId: string): string | null {
   return best ? `${folderName}/${best}` : null;
 }
 
+// Negative cache for the fallback-image scan. An object with no resolvable
+// on-disk image otherwise `readdirSync`s its folder on every `getLocalObjects`
+// call — cheap on a local SSD, but seconds across a whole library on a network
+// or external drive. We remember the miss keyed on the object's `lastImport`:
+// a fresh import (the only way an auto-resolvable image appears for an object
+// that has none) changes `lastImport` and re-triggers the scan. Custom and
+// processed images set `galleryImage` directly, so they never reach this path.
+// A TTL backstop covers any out-of-band file additions.
+const fallbackMissCache = new Map<string, { lastImport: string | null; at: number }>();
+const FALLBACK_MISS_TTL_MS = 5 * 60 * 1000;
+
 export function getLocalObjects(userId = '', search = '') {
   const LIBRARY_DIR = getLibraryDir();
   ensureLibraryDir();
   const objects = search.trim()
-    ? stmts.searchObjects.all(`%${search}%`, `%${search}%`, `%${search}%`)
+    ? (() => {
+        const terms = expandSearchAliases(search.trim());
+        if (terms.length === 1) {
+          const t = `%${terms[0]}%`;
+          return stmts.searchObjects.all(t, t, t);
+        }
+        const conds = terms.map(() => `(objectName LIKE ? OR objectId LIKE ? OR catalogId LIKE ?)`).join(' OR ');
+        const params = terms.flatMap(t => [`%${t}%`, `%${t}%`, `%${t}%`]);
+        return db.prepare<unknown[], LibraryObjectRow>(
+          `SELECT * FROM libraryObjects WHERE deleted = 0 AND (${conds})`
+        ).all(...params);
+      })()
     : stmts.getAllObjects.all();
 
   const settings = getSettingsData();
@@ -822,12 +1055,24 @@ export function getLocalObjects(userId = '', search = '') {
 
     // Lazily resolve a fallback gallery image for objects that don't have one set.
     // Persists to DB so subsequent list calls are fast (no filesystem scan).
+    // A negative-result cache (keyed on lastImport) avoids re-scanning the folder
+    // on every load for objects that have no resolvable image yet.
     let galleryImage = obj.galleryImage || null;
     if (!galleryImage) {
-      const fallback = findFallbackObservationImage(obj.objectId);
-      if (fallback) {
-        stmts.setGalleryImage.run(fallback, obj.objectId);
-        galleryImage = fallback;
+      const miss = fallbackMissCache.get(obj.objectId);
+      const missStillValid =
+        miss != null &&
+        miss.lastImport === (obj.lastImport ?? null) &&
+        Date.now() - miss.at < FALLBACK_MISS_TTL_MS;
+      if (!missStillValid) {
+        const fallback = findFallbackObservationImage(obj.objectId);
+        if (fallback) {
+          stmts.setGalleryImage.run(fallback, obj.objectId);
+          galleryImage = fallback;
+          fallbackMissCache.delete(obj.objectId);
+        } else {
+          fallbackMissCache.set(obj.objectId, { lastImport: obj.lastImport ?? null, at: Date.now() });
+        }
       }
     }
 
@@ -838,8 +1083,20 @@ export function getLocalObjects(userId = '', search = '') {
     // image to the same gallery_<id>.jpg path keeps galleryImage identical, so
     // without mtime here the client URL would never change and the browser
     // would keep serving its cached tile for up to 24h.
+    //
+    // Only user-set images are overwritten in place, so only they need the
+    // per-object `statSync`. Auto-resolved observation images get new filenames
+    // on each capture (never overwritten), so a bare path is already a stable,
+    // correct cache key — and skipping the stat avoids N blocking filesystem
+    // calls per list load on telescope-preferred libraries (especially on
+    // network/external drives). The thumbnail endpoint still keys its own disk
+    // cache on the source mtime, so server-side regeneration is unaffected.
     let galleryImageVersion: string | null = exposedGalleryImage;
-    if (exposedGalleryImage && !exposedGalleryImage.startsWith('catalog-source:')) {
+    if (
+      exposedGalleryImage &&
+      obj.galleryImageUserSet &&
+      !exposedGalleryImage.startsWith('catalog-source:')
+    ) {
       try {
         const abs = path.join(LIBRARY_DIR, exposedGalleryImage);
         const mtimeMs = fs.statSync(abs).mtimeMs;
@@ -879,6 +1136,7 @@ export function getLocalObjects(userId = '', search = '') {
       galleryImageVersion,
       primaryTelescopeId: obj.primaryTelescopeId ?? null,
       telescopeIds,
+      aliases: getAliasesForCanonical(obj.objectId),
     };
   });
 }

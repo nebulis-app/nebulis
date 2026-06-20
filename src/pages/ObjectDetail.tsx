@@ -72,6 +72,17 @@ export function ObjectDetail() {
         : [objectId ?? ''],
   [allObjects, objectId, baseObject]);
 
+  // Cross-catalog aliases for this object (e.g. NGC7000 → C20, Sh2-117).
+  // Prettify the Sharpless prefix and order by catalog familiarity so the
+  // "Also known as" row reads cleanly: Messier, Caldwell, NGC, IC, Sharpless.
+  const aliasList = useMemo<string[]>(() => {
+    const raw = baseObject?.aliases ?? [];
+    const pretty = raw.map(a => (/^SH2-/i.test(a) ? a.replace(/^SH2-/i, 'Sh2-') : a));
+    const rank = (s: string) =>
+      /^M\d/.test(s) ? 0 : /^C\d/.test(s) ? 1 : /^NGC/i.test(s) ? 2 : /^IC/i.test(s) ? 3 : /^Sh2-/i.test(s) ? 4 : 5;
+    return [...new Set(pretty)].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  }, [baseObject?.aliases]);
+
   const deleteObjectMutation = useMutation({
     mutationFn: () => deleteLibraryObject(activeObjectId),
     onSuccess: () => {
@@ -348,6 +359,22 @@ export function ObjectDetail() {
                     <ExternalLink className="w-3.5 h-3.5" />
                     Wikipedia
                   </a>
+                )}
+
+                {aliasList.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 pt-1">
+                    <span className={`text-[11px] font-semibold uppercase tracking-widest ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                      Also known as
+                    </span>
+                    {aliasList.map(alias => (
+                      <span
+                        key={alias}
+                        className={`text-xs font-medium px-2 py-0.5 rounded-md ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}
+                      >
+                        {alias}
+                      </span>
+                    ))}
+                  </div>
                 )}
               </div>
 
@@ -685,7 +712,7 @@ function SessionCard({
   onDelete,
 }: {
   objectId: string;
-  session: { id: string; date: string; fileCount: number; stackedCount: number; fitsCount: number; imageCount: number; thumbnailUrl: string };
+  session: { id: string; date: string; fileCount: number; stackedCount: number; fitsCount: number; imageCount: number; subFrameCount: number; processedCount: number; thumbnailUrl: string };
   variantLabel?: string;
   isDark: boolean;
   onDelete?: () => void;
@@ -756,7 +783,21 @@ function SessionCard({
                 {session.stackedCount} stacked
               </span>
             )}
-            <span>{session.imageCount} images</span>
+            {session.subFrameCount > 0 && (
+              <span className="flex items-center gap-1">
+                <Image className="w-3 h-3" />
+                {session.subFrameCount} subs
+              </span>
+            )}
+            {session.processedCount > 0 && (
+              <span className="flex items-center gap-1">
+                <Pencil className="w-3 h-3" />
+                {session.processedCount} processed
+              </span>
+            )}
+            {session.stackedCount === 0 && session.subFrameCount === 0 && session.processedCount === 0 && (
+              <span>No files</span>
+            )}
           </div>
         </div>
       </Link>

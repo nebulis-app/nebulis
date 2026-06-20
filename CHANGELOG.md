@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.3.2 (157) - June 17, 2026
+
+### Heads-up: your library object count may go down
+This release recognizes when the same target was captured under different catalog names and **merges them into a single object**. For example C30 and NGC 7331, SH2‑298 and NGC 2359, or "Lunar" and "Moon" used to appear as separate cards in some scenarios, now they're combined. As a result, your total object count can drop after updating.
+
+**Nothing is deleted.** All observations from the merged entries are combined under the one object, and their image files are moved into the canonical object's folder automatically on first launch (you'll see "moved … to …" lines in the server log). Folder names are also normalized (e.g. "NGC 7331" → "NGC7331"). This runs once at startup; if you don't see it take effect, fully quit and relaunch the app.
+
+### New
+- Cross-catalog object merging — the same object imported under different designations (Messier ↔ NGC/IC ↔ Caldwell ↔ Sharpless, plus Moon/Lunar and Sun/Solar) is now combined into one library entry instead of showing duplicate cards.
+- "Also known as" — an object's detail page now lists its other catalog designations (e.g. NGC7000 shows C20, Sh2‑117).
+- Smarter library search — searching a catalog name like "Messier", "Caldwell", or "Sharpless" lists every object you own in that catalog (so "Messier" now includes M81 even though it's named "Bode's Galaxy"); "messier 81" also works. Searching any single designation (e.g. C30) finds the object under its primary name (NGC7331) and vice‑versa.
+- Planner timeline expanded - Timeline now spans sunset→sunrise (full dark window), with the astronomical dark period shown as markers rather than clipping to it.
+- Timezone handling overhaul — Timezone data now flows consistently through planner, forecast, and all date/time displays.
+
+### Bug Fixes
+- Library/processed images — Processed images now move along with their observation when the observation is moved; per-session counts are cleaned up properly.
+- Planner timeline precision — Snap interval reduced from 15 min → 10 min; default block duration changed to 60 minutes.
+- Planner timeline width — Enforced a 10‑hour minimum timeline width so short dark windows don't compress the view into unusability.
+- Planner object overlap — snapToGrid simplified by removing the unused nightStart parameter (part of the overlap fix).
+- Weather forecast timezone — Forecast times now display in the observer's configured timezone (not the server's), derived from the Open‑Meteo API response instead of app-level settings.
+- High-latitude / midnight sun — When astronomical darkness never occurs (e.g. northern summer), falls back to nautical twilight for forecast conditions and planner dark‑window calculations.
+- SunCalc edge case — Guard against Invalid Date from SunCalc when computing forecast astronomical conditions.
+
 ## 1.3.1 (149) - June 12, 2026
 
 ### New

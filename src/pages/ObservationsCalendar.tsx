@@ -8,7 +8,8 @@ import {
   Clock,
   Star,
   Layers,
-  FileImage,
+  Image as ImageIcon,
+  Pencil,
   NotebookPen,
   Telescope as TelescopeIcon,
 } from 'lucide-react';
@@ -29,6 +30,8 @@ interface Observation {
   fileCount: number;
   stackedCount: number;
   fitsCount: number;
+  subFrameCount: number;
+  processedCount: number;
   thumbnailUrl: string;
   ra: string | null;
   dec: string | null;
@@ -510,15 +513,21 @@ export function ObservationsCalendar() {
                 {/* Stats */}
                 <div className={`flex items-center gap-4 text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                   {obs.stackedCount > 0 && (
-                    <span className="flex items-center gap-1">
+                    <span className="flex items-center gap-1" title="Stacked images">
                       <Layers className="w-3.5 h-3.5 text-accent-500" />
                       {obs.stackedCount}
                     </span>
                   )}
-                  {obs.fitsCount > 0 && (
-                    <span className="flex items-center gap-1">
-                      <FileImage className="w-3.5 h-3.5" />
-                      {obs.fitsCount}
+                  {obs.subFrameCount > 0 && (
+                    <span className="flex items-center gap-1" title="Sub-frames">
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      {obs.subFrameCount}
+                    </span>
+                  )}
+                  {obs.processedCount > 0 && (
+                    <span className="flex items-center gap-1" title="Processed images">
+                      <Pencil className="w-3.5 h-3.5" />
+                      {obs.processedCount}
                     </span>
                   )}
                   <span>{obs.fileCount} files</span>

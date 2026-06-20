@@ -13,6 +13,9 @@ interface AltitudeChartProps {
   lon: number;
   /** Minimum altitude line (degrees). Pulled from user settings. */
   minAlt?: number;
+  /** IANA timezone for the noon-anchored window and time labels. Defaults to
+   *  the viewing device's clock. */
+  timeZone?: string;
   isDark: boolean;
   /**
    * Fired while the user scrubs the curve, with the time/alt/az under the
@@ -30,12 +33,12 @@ interface AltitudeChartProps {
  * with fixed 4-hour tick labels (12, 16, 20, 00, 04, 08, 12) and a marker
  * showing the object's current position.
  */
-export function AltitudeChart({ ra, dec, lat, lon, minAlt, isDark, onScrub }: AltitudeChartProps) {
+export function AltitudeChart({ ra, dec, lat, lon, minAlt, timeZone, isDark, onScrub }: AltitudeChartProps) {
   const { samples, start, end } = useMemo(() => {
-    const { start, end } = buildTonightWindow();
+    const { start, end } = buildTonightWindow(new Date(), timeZone);
     const samples = computeAltitudeCurve(ra, dec, lat, lon, start, end, 15);
     return { samples, start, end };
-  }, [ra, dec, lat, lon]);
+  }, [ra, dec, lat, lon, timeZone]);
 
   const { pathD, currentPoint } = useMemo(() => {
     const startMs = start.getTime();
@@ -174,7 +177,7 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, isDark, onScrub }: Al
   const headerAlt = activePoint ? Math.round(activePoint.alt) : 0;
   const headerDir = activePoint ? azToCompass(activePoint.az) : '';
   const headerLabel = hover
-    ? hover.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+    ? hover.time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(timeZone ? { timeZone } : {}) })
     : currentPoint
       ? 'Current Altitude'
       : '';

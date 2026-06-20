@@ -9,12 +9,65 @@
  * Priority: M# > NGC#/IC# > Sh2-N > C# (Caldwell resolves to NGC/IC)
  *
  * Coverage:
- *   - Caldwell C1–C109 → NGC/IC (109 entries)
+ *   - NGC/IC → Messier for all 110 Messier objects with NGC/IC designations
+ *   - Caldwell C1–C109 → NGC/IC (C9=Sh2-155 and C41=Hyades have no NGC/IC)
  *   - Sharpless Sh2-N → M# or NGC/IC where a cross-reference exists (39 entries)
+ *   - Solar-system common names (Lunar→Moon, Solar→Sun) so cross-telescope
+ *     capture-mode names fold into one card
+ *
+ * Note: M24 (Sagittarius Star Cloud), M40 (Winnecke 4), and M45 (Pleiades)
+ * have no NGC/IC designations so no alias is needed for them.
+ * M102 is disputed; mapped to NGC5866 (Spindle Galaxy) per modern consensus.
  */
 
 /** Maps normalised alias (uppercase, no spaces) → canonical ID string. */
 const ALIASES = new Map<string, string>([
+  // ── NGC/IC → Messier (Messier is canonical) ──────────────────────────────
+  ['NGC1952', 'M1'],   ['NGC7089', 'M2'],   ['NGC5272', 'M3'],
+  ['NGC6121', 'M4'],   ['NGC5904', 'M5'],   ['NGC6405', 'M6'],
+  ['NGC6475', 'M7'],   ['NGC6523', 'M8'],   ['NGC6333', 'M9'],
+  ['NGC6254', 'M10'],  ['NGC6705', 'M11'],  ['NGC6218', 'M12'],
+  ['NGC6205', 'M13'],  ['NGC6402', 'M14'],  ['NGC7078', 'M15'],
+  ['NGC6611', 'M16'],  ['NGC6618', 'M17'],  ['NGC6613', 'M18'],
+  ['NGC6273', 'M19'],  ['NGC6514', 'M20'],  ['NGC6531', 'M21'],
+  ['NGC6656', 'M22'],  ['NGC6494', 'M23'],  ['IC4725',  'M25'],
+  ['NGC6694', 'M26'],  ['NGC6853', 'M27'],  ['NGC6626', 'M28'],
+  ['NGC6913', 'M29'],  ['NGC7099', 'M30'],  ['NGC224',  'M31'],
+  ['NGC221',  'M32'],  ['NGC598',  'M33'],  ['NGC1039', 'M34'],
+  ['NGC2168', 'M35'],  ['NGC1960', 'M36'],  ['NGC2099', 'M37'],
+  ['NGC1912', 'M38'],  ['NGC7092', 'M39'],  ['NGC2287', 'M41'],
+  ['NGC1976', 'M42'],  ['NGC1982', 'M43'],  ['NGC2632', 'M44'],
+  ['NGC2437', 'M46'],  ['NGC2422', 'M47'],  ['NGC2548', 'M48'],
+  ['NGC4472', 'M49'],  ['NGC2323', 'M50'],  ['NGC5194', 'M51'],
+  ['NGC7654', 'M52'],  ['NGC5024', 'M53'],  ['NGC6715', 'M54'],
+  ['NGC6809', 'M55'],  ['NGC6779', 'M56'],  ['NGC6720', 'M57'],
+  ['NGC4579', 'M58'],  ['NGC4621', 'M59'],  ['NGC4649', 'M60'],
+  ['NGC4303', 'M61'],  ['NGC6266', 'M62'],  ['NGC5055', 'M63'],
+  ['NGC4826', 'M64'],  ['NGC3623', 'M65'],  ['NGC3627', 'M66'],
+  ['NGC2682', 'M67'],  ['NGC4590', 'M68'],  ['NGC6637', 'M69'],
+  ['NGC6681', 'M70'],  ['NGC6838', 'M71'],  ['NGC6981', 'M72'],
+  ['NGC6994', 'M73'],  ['NGC628',  'M74'],  ['NGC6864', 'M75'],
+  ['NGC650',  'M76'],  ['NGC651',  'M76'],  ['NGC1068', 'M77'],
+  ['NGC2068', 'M78'],  ['NGC1904', 'M79'],  ['NGC6093', 'M80'],
+  ['NGC3031', 'M81'],  ['NGC3034', 'M82'],  ['NGC5236', 'M83'],
+  ['NGC4374', 'M84'],  ['NGC4382', 'M85'],  ['NGC4406', 'M86'],
+  ['NGC4486', 'M87'],  ['NGC4501', 'M88'],  ['NGC4552', 'M89'],
+  ['NGC4569', 'M90'],  ['NGC4548', 'M91'],  ['NGC6341', 'M92'],
+  ['NGC2447', 'M93'],  ['NGC4736', 'M94'],  ['NGC3351', 'M95'],
+  ['NGC3368', 'M96'],  ['NGC3587', 'M97'],  ['NGC4192', 'M98'],
+  ['NGC4254', 'M99'],  ['NGC4321', 'M100'], ['NGC5457', 'M101'],
+  ['NGC5866', 'M102'], ['NGC581',  'M103'], ['NGC4594', 'M104'],
+  ['NGC3379', 'M105'], ['NGC4258', 'M106'], ['NGC6171', 'M107'],
+  ['NGC3556', 'M108'], ['NGC3992', 'M109'], ['NGC205',  'M110'],
+
+  // ── Solar-system common-name aliases ─────────────────────────────────────
+  // Different telescopes name the same body differently (Dwarf uses "Lunar"/
+  // "Solar" capture modes; Seestar uses "Moon"/"Sun"). Canonicalise so both
+  // fold into one library card. Capture-mode suffixes (_photo/_video) are
+  // stripped to the catalogId by normalizeCatalogId before this lookup.
+  ['LUNAR', 'Moon'],
+  ['SOLAR', 'Sun'],
+
   // ── Sharpless → Messier (same physical nebula, M# is canonical) ──────────
   ['SH2-25',  'M8'],
   ['SH2-30',  'M20'],
@@ -100,4 +153,31 @@ export function resolveCanonicalId(id: string): string {
   // unless we normalize here.
   if (/^SH2-\d+$/.test(key)) return key;
   return id;
+}
+
+/** All known aliases that map to the given canonical ID (e.g. "NGC7331" → ["C30"]). */
+export function getAliasesForCanonical(canonicalId: string): string[] {
+  const upper = canonicalId.toUpperCase().replace(/\s+/g, '');
+  const result: string[] = [];
+  for (const [alias, canon] of ALIASES) {
+    // Canonical values are normally uppercase catalog IDs, but a few (Moon/Sun)
+    // are mixed-case common names — compare normalized so those match too.
+    if (canon.toUpperCase().replace(/\s+/g, '') === upper) result.push(alias);
+  }
+  return result;
+}
+
+/**
+ * Expand a search term to include its canonical ID and all known aliases.
+ * Used so searching "C30" finds NGC7331 and vice-versa.
+ * Returns unique terms; the original term is always first.
+ */
+export function expandSearchAliases(term: string): string[] {
+  const terms = new Set<string>([term]);
+  const canonical = resolveCanonicalId(term.trim());
+  if (canonical !== term.trim()) terms.add(canonical);
+  for (const alias of getAliasesForCanonical(canonical)) {
+    terms.add(alias);
+  }
+  return Array.from(terms);
 }

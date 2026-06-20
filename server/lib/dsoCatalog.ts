@@ -4,6 +4,7 @@
  */
 // Inlined at bundle time by tsup/esbuild — no runtime file access needed.
 import openNgcJson from '../data/openngc.json';
+import { expandSearchAliases } from './catalogAliases.js';
 
 export interface DsoEntry {
   id: string;           // e.g. "M31", "NGC7000", "IC434"
@@ -83,6 +84,10 @@ export function search(query: string, limit = 30): DsoEntry[] {
   const q = query.toLowerCase().trim();
   const catalog = loadCatalog();
 
+  // Expand the query to include the canonical ID and all aliases so e.g. "C30"
+  // finds NGC7331 and "NGC6611" finds M16.
+  const expandedTerms = expandSearchAliases(query.trim()).map(t => t.toLowerCase());
+
   const results: Array<{ entry: DsoEntry; score: number }> = [];
 
   for (const entry of catalog) {
@@ -91,6 +96,7 @@ export function search(query: string, limit = 30): DsoEntry[] {
     const nameLower = entry.name.toLowerCase();
     const ngcLower = entry.ngcName.toLowerCase().replace(/^0+/, ''); // strip leading zeros
 
+    // Score against the original query first
     if (idLower === q || nameLower === q) score = 100;
     else if (idLower.startsWith(q) || nameLower.startsWith(q)) score = 80;
     else if (ngcLower.startsWith(q.replace(/^ngc\s*/i, 'ngc'))) score = 75;
@@ -99,6 +105,15 @@ export function search(query: string, limit = 30): DsoEntry[] {
     else if (idLower.includes(q)) score = 40;
     else if (entry.commonNames.some(n => n.toLowerCase().includes(q))) score = 30;
     else if ((entry.constellation ?? '').toLowerCase().includes(q)) score = 20;
+
+    // If no match yet, try alias-expanded terms (exact/prefix only to avoid noise)
+    if (score === 0 && expandedTerms.length > 1) {
+      for (const term of expandedTerms) {
+        if (term === q) continue;
+        if (idLower === term || nameLower === term) { score = 95; break; }
+        if (idLower.startsWith(term) || nameLower.startsWith(term)) { score = 75; break; }
+      }
+    }
 
     if (score > 0) results.push({ entry, score });
   }

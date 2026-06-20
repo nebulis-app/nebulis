@@ -27,6 +27,7 @@ const db = new Database(DB_PATH, nativeBinding ? { nativeBinding } : undefined);
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
 db.pragma('foreign_keys = ON');
+db.pragma('busy_timeout = 5000');
 
 // ─── Schema creation (runs on first import) ─────────────────────────────────
 // NOTE: db.exec() here is safe — it runs static DDL with no user input.

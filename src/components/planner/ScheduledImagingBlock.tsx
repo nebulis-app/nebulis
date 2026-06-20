@@ -39,6 +39,8 @@ interface ScheduledImagingBlockProps {
   onShowDetails: () => void;
   /** Provisional Y delta during a drag (px). Parent uses this to render motion. */
   dragDeltaY?: number;
+  /** True while the block's create POST is still in-flight (optimistic temp id). */
+  isSaving?: boolean;
 }
 
 export function ScheduledImagingBlock({
@@ -59,10 +61,12 @@ export function ScheduledImagingBlock({
   onResize,
   onShowDetails,
   dragDeltaY = 0,
+  isSaving = false,
 }: ScheduledImagingBlockProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `block:${session.id}`,
     data: { kind: 'block', sessionId: session.id },
+    disabled: isSaving,
   });
 
   // Reserve a left gutter for the hour-tick labels so blocks never cover the
@@ -92,22 +96,23 @@ export function ScheduledImagingBlock({
       }}
       className={`absolute rounded-lg border shadow-sm overflow-hidden select-none transition-shadow ${
         isDragging ? 'opacity-70 shadow-xl ring-2 ring-emerald-400' : ''
-      } bg-slate-800/95 border-slate-600 text-slate-100`}
+      } ${isSaving ? 'opacity-60' : ''} bg-slate-800/95 border-slate-600 text-slate-100`}
     >
       <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${stripeColor}`} />
 
-      <ResizeHandle edge="top" pxPerMinute={pxPerMinute} onResize={(d, commit) => onResize(session.id, 'top', d, commit)} />
+      <ResizeHandle edge="top" pxPerMinute={pxPerMinute} onResize={(d, commit) => onResize(session.id, 'top', d, commit)} disabled={isSaving} />
 
       <div
-        {...listeners}
-        {...attributes}
-        className="absolute inset-0 pl-3 pr-7 py-1.5 cursor-grab active:cursor-grabbing flex flex-col justify-start gap-0.5"
+        {...(isSaving ? {} : listeners)}
+        {...(isSaving ? {} : attributes)}
+        className={`absolute inset-0 pl-3 pr-7 py-1.5 ${isSaving ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} flex flex-col justify-start gap-0.5`}
         title={[verdictReason, moonReason].filter(Boolean).join(' · ') || undefined}
       >
         <div className="flex items-center gap-1.5 min-w-0">
           <GripVertical className="w-3 h-3 opacity-50 shrink-0" />
           <span className="font-medium text-sm truncate">{session.objectName}</span>
-          {moonVerdict !== 'ok' && (
+          {isSaving && <span className="text-[10px] opacity-60 shrink-0">Saving...</span>}
+          {!isSaving && moonVerdict !== 'ok' && (
             <Moon
               className={`w-3 h-3 shrink-0 ${moonVerdict === 'warning' ? 'text-red-400' : 'text-amber-400'}`}
               aria-label="Moon interference warning"
@@ -123,40 +128,42 @@ export function ScheduledImagingBlock({
             alt {Math.round(minAlt)}° – {Math.round(maxAlt)}°
           </div>
         )}
-        {verdict !== 'all' && verdictReason && (
+        {!isSaving && verdict !== 'all' && verdictReason && (
           <div className={`text-[10px] truncate ${verdict === 'none' ? 'text-red-300' : 'text-amber-300'}`}>
             {verdictReason}
           </div>
         )}
-        {moonVerdict !== 'ok' && moonReason && (
+        {!isSaving && moonVerdict !== 'ok' && moonReason && (
           <div className={`text-[10px] truncate ${moonVerdict === 'warning' ? 'text-red-300' : 'text-amber-300'}`}>
             {moonReason}
           </div>
         )}
       </div>
 
-      <div className="absolute right-1 top-1 flex items-center gap-0.5 z-10">
-        <button
-          onClick={(e) => { e.stopPropagation(); onShowDetails(); }}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="w-5 h-5 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 transition"
-          aria-label="Show object details"
-          title="Show details"
-        >
-          <Info className="w-3 h-3" />
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="w-5 h-5 rounded hover:bg-white/10 flex items-center justify-center"
-          aria-label="Remove scheduled block"
-          title="Remove"
-        >
-          <X className="w-3 h-3" />
-        </button>
-      </div>
+      {!isSaving && (
+        <div className="absolute right-1 top-1 flex items-center gap-0.5 z-10">
+          <button
+            onClick={(e) => { e.stopPropagation(); onShowDetails(); }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="w-5 h-5 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 transition"
+            aria-label="Show object details"
+            title="Show details"
+          >
+            <Info className="w-3 h-3" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="w-5 h-5 rounded hover:bg-white/10 flex items-center justify-center"
+            aria-label="Remove scheduled block"
+            title="Remove"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
 
-      <ResizeHandle edge="bottom" pxPerMinute={pxPerMinute} onResize={(d, commit) => onResize(session.id, 'bottom', d, commit)} />
+      <ResizeHandle edge="bottom" pxPerMinute={pxPerMinute} onResize={(d, commit) => onResize(session.id, 'bottom', d, commit)} disabled={isSaving} />
     </div>
   );
 }
@@ -165,9 +172,10 @@ interface ResizeHandleProps {
   edge: 'top' | 'bottom';
   pxPerMinute: number;
   onResize: (deltaMinutes: number, commit: boolean) => void;
+  disabled?: boolean;
 }
 
-function ResizeHandle({ edge, pxPerMinute, onResize }: ResizeHandleProps) {
+function ResizeHandle({ edge, pxPerMinute, onResize, disabled }: ResizeHandleProps) {
   const [active, setActive] = useState(false);
   const startYRef = useRef<number | null>(null);
   const lastSnappedRef = useRef(0);
@@ -214,6 +222,8 @@ function ResizeHandle({ edge, pxPerMinute, onResize }: ResizeHandleProps) {
       window.removeEventListener('pointercancel', up);
     };
   }, [active, onResize]);
+
+  if (disabled) return null;
 
   return (
     <div

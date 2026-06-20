@@ -201,8 +201,16 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
     if (key in updates) filtered[key] = (updates as Record<string, unknown>)[key];
   }
 
-  // Reverse geolocation: if latitude/longitude are being set, look up city/state
-  if (('latitude' in filtered || 'longitude' in filtered) && filtered.latitude != null && filtered.longitude != null) {
+  // Reverse geolocation: if latitude/longitude are being set without an explicit
+  // locationName, look up city/state. The place-search picker supplies its own
+  // label (and timezone), so we skip the lookup then to avoid clobbering it with
+  // a less specific reverse-geocode and to save the extra network round-trip.
+  const hasExplicitName = typeof filtered.locationName === 'string' && filtered.locationName.trim() !== '';
+  if (
+    ('latitude' in filtered || 'longitude' in filtered) &&
+    filtered.latitude != null && filtered.longitude != null &&
+    !hasExplicitName
+  ) {
     const lat = filtered.latitude as number;
     const lon = filtered.longitude as number;
     try {

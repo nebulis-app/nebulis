@@ -24,7 +24,7 @@ import { Moon, Compass, MapPin, Calendar, ChevronLeft, ChevronRight, Check, Cros
 import { useTheme } from '../hooks/useTheme';
 import { getPlannerTargets } from '../lib/api/planner';
 import { getSettings, updateSettings } from '../lib/api/settings';
-import { listPlannedSessions, createPlannedSession, updatePlannedSession, deletePlannedSession } from '../lib/api/plannedSessions';
+import { listPlannedSessions, createPlannedSession, updatePlannedSession, deletePlannedSession, type PlannedSession, type PlannedSessionCreate } from '../lib/api/plannedSessions';
 import { getCatalogObjectInfo } from '../lib/api/catalog';
 import type { Settings } from '../types';
 import { getCatalogThumbnailUrl } from '../lib/catalogImage';
@@ -54,7 +54,7 @@ import {
 } from '../lib/visibilityCheck';
 import { checkMoonProximity, type MoonProximityResult } from '../lib/moonProximity';
 
-const BUFFER_MS = 60 * 60_000; // 1-hour padding around the dark window
+const TIMELINE_BUFFER_MS = 30 * 60_000; // 30-min padding beyond sunset/sunrise
 
 export function PlannerPage() {
   const { isDark, isNight, isSpace } = useTheme();
@@ -78,18 +78,27 @@ export function PlannerPage() {
 
   // ── Date / night window ────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState<Date>(() => plannerToday());
-  const today = useMemo(() => plannerToday(), []);
-  const isToday = sameLocalDay(selectedDate, today);
+  const [dateTouched, setDateTouched] = useState(false);
   const selectedDateKey = localDateKey(selectedDate);
 
   // Server is now date-aware: /planner/tonight?date=YYYY-MM-DD returns the
   // catalog filtered for that night's visibility. For today, we omit the
   // param so the server uses "now" semantics (correct altNow/azNow).
+  const settingsTimezone = settings?.timezone || undefined;
+  const settingsToday = useMemo(() => plannerToday(new Date(), settingsTimezone), [settingsTimezone]);
+  const isToday = sameLocalDay(selectedDate, settingsToday);
   const plannerQuery = useQuery({
-    queryKey: ['planner-targets', isToday ? 'today' : selectedDateKey],
+    queryKey: ['planner-targets', observerLat, observerLon, settingsTimezone, isToday ? 'today' : selectedDateKey],
     queryFn: () => getPlannerTargets(isToday ? {} : { date: selectedDateKey }),
   });
   const planner = plannerQuery.data;
+  const observerTimezone = planner?.observerTimezone || settingsTimezone;
+  const today = useMemo(() => plannerToday(new Date(), observerTimezone), [observerTimezone]);
+
+  useEffect(() => {
+    if (!observerTimezone || dateTouched) return;
+    setSelectedDate(plannerToday(new Date(), observerTimezone));
+  }, [observerTimezone, dateTouched]);
 
   // Server response is authoritative for the night window of the requested
   // date. Fall back to client-side SunCalc only if the server didn't return
@@ -103,13 +112,31 @@ export function PlannerPage() {
 
   const nightStart = nightWindow?.start ?? null;
   const nightEnd = nightWindow?.end ?? null;
-  const nightStartIso = nightStart ? nightStart.toISOString() : null;
-  const nightEndIso = nightEnd ? nightEnd.toISOString() : null;
+  const plannerTimelineStart = planner?.timelineStart ? new Date(planner.timelineStart) : null;
+  const plannerTimelineEnd = planner?.timelineEnd ? new Date(planner.timelineEnd) : null;
 
-  // Extend the timeline 1 hour beyond the dark window on each side so the
-  // user can schedule sessions that start or finish in twilight.
-  const timelineStart = nightStart ? new Date(nightStart.getTime() - BUFFER_MS) : null;
-  const timelineEnd = nightEnd ? new Date(nightEnd.getTime() + BUFFER_MS) : null;
+  // Timeline spans from sunset to sunrise so users can schedule sessions in
+  // twilight. The dark window is shown as dashed markers inside this wider
+  // range, not as hard boundaries. Fall back to nightStart ± 2h when
+  // sunset/sunrise aren't available (polar regions where the sun doesn't set).
+  // A 10-hour minimum ensures the window never feels cramped in high-latitude
+  // summers where sunset and sunrise are only ~7 hours apart.
+  const MIN_TIMELINE_MS = 10 * 60 * 60_000;
+  const sunset = planner?.sunset ? new Date(planner.sunset) : null;
+  const sunrise = planner?.sunrise ? new Date(planner.sunrise) : null;
+  const timelineStart = plannerTimelineStart
+    ? new Date(plannerTimelineStart.getTime() - TIMELINE_BUFFER_MS)
+    : sunset
+    ? new Date(sunset.getTime() - TIMELINE_BUFFER_MS)
+    : nightStart ? new Date(nightStart.getTime() - 2 * 60 * 60_000) : null;
+  const timelineEndRaw = plannerTimelineEnd
+    ? new Date(plannerTimelineEnd.getTime() + TIMELINE_BUFFER_MS)
+    : sunrise
+    ? new Date(sunrise.getTime() + TIMELINE_BUFFER_MS)
+    : nightEnd ? new Date(nightEnd.getTime() + 2 * 60 * 60_000) : null;
+  const timelineEnd = timelineStart && timelineEndRaw
+    ? new Date(Math.max(timelineEndRaw.getTime(), timelineStart.getTime() + MIN_TIMELINE_MS))
+    : timelineEndRaw;
   const timelineStartIso = timelineStart?.toISOString() ?? null;
   const timelineEndIso = timelineEnd?.toISOString() ?? null;
 
@@ -129,16 +156,77 @@ export function PlannerPage() {
   // ── Mutations ──────────────────────────────────────────────────────────
   const createMut = useMutation({
     mutationFn: createPlannedSession,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['planned-sessions'] }),
+    // Optimistically add the block so it appears on the timeline immediately,
+    // even while catalog thumbnails are still loading. Those image requests can
+    // saturate the browser's per-host connection pool, which otherwise delays
+    // both this POST and the follow-up refetch — making a dropped block look
+    // stuck on "Saving" and never appear. The real row replaces the temp one as
+    // soon as the server responds.
+    onMutate: async (vars: PlannedSessionCreate) => {
+      await queryClient.cancelQueries({ queryKey: ['planned-sessions'] });
+      const tempId = -Date.now();
+      const now = new Date().toISOString();
+      const optimistic: PlannedSession = {
+        id: tempId,
+        objectId: vars.objectId,
+        objectName: vars.objectName,
+        ra: vars.ra,
+        dec: vars.dec,
+        startTime: vars.startTime,
+        endTime: vars.endTime,
+        notes: vars.notes ?? '',
+        createdAt: now,
+        updatedAt: now,
+      };
+      const previous = queryClient.getQueriesData<PlannedSession[]>({ queryKey: ['planned-sessions'] });
+      queryClient.setQueriesData<PlannedSession[]>({ queryKey: ['planned-sessions'] }, old =>
+        old ? [...old, optimistic] : [optimistic],
+      );
+      return { previous, tempId };
+    },
+    onError: (_err, _vars, context) => {
+      context?.previous?.forEach(([key, data]) => queryClient.setQueryData(key, data));
+    },
+    onSuccess: (created, _vars, context) => {
+      // Swap the temp row for the server row (with the real id) right away, so
+      // drag/resize/delete work without waiting for the connection-starved
+      // refetch in onSettled.
+      queryClient.setQueriesData<PlannedSession[]>({ queryKey: ['planned-sessions'] }, old =>
+        old ? old.map(s => (s.id === context?.tempId ? created : s)) : old,
+      );
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['planned-sessions'] }),
   });
   const updateMut = useMutation({
     mutationFn: (vars: { id: number; patch: { startTime?: string; endTime?: string } }) =>
       updatePlannedSession(vars.id, vars.patch),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['planned-sessions'] }),
+    onMutate: async (vars) => {
+      await queryClient.cancelQueries({ queryKey: ['planned-sessions'] });
+      const previous = queryClient.getQueriesData<PlannedSession[]>({ queryKey: ['planned-sessions'] });
+      queryClient.setQueriesData<PlannedSession[]>({ queryKey: ['planned-sessions'] }, old =>
+        old ? old.map(s => s.id === vars.id ? { ...s, ...vars.patch } : s) : old,
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      context?.previous?.forEach(([key, data]) => queryClient.setQueryData(key, data));
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['planned-sessions'] }),
   });
   const deleteMut = useMutation({
     mutationFn: deletePlannedSession,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['planned-sessions'] }),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['planned-sessions'] });
+      const previous = queryClient.getQueriesData<PlannedSession[]>({ queryKey: ['planned-sessions'] });
+      queryClient.setQueriesData<PlannedSession[]>({ queryKey: ['planned-sessions'] }, old =>
+        old ? old.filter(s => s.id !== id) : old,
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      context?.previous?.forEach(([key, data]) => queryClient.setQueryData(key, data));
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['planned-sessions'] }),
   });
   const saveSkyMapMut = useMutation({
     mutationFn: (map: VisibleSkyMap) => updateSettings({ visibleSkyMap: map } as Partial<Settings>),
@@ -221,12 +309,9 @@ export function PlannerPage() {
     const data = event.active.data.current as Record<string, unknown> | undefined;
     setActiveBlockDrag(null);
     setActiveLibraryDrag(null);
-    if (!data || !nightStartIso || !nightEndIso) return;
-    const darkStart = new Date(nightStartIso);
-    const darkEnd = new Date(nightEndIso);
-    // Clamp to the extended window (1 hr beyond the dark window on each side).
-    const tStart = new Date(darkStart.getTime() - BUFFER_MS);
-    const tEnd = new Date(darkEnd.getTime() + BUFFER_MS);
+    if (!data || !timelineStartIso || !timelineEndIso) return;
+    const tStart = new Date(timelineStartIso);
+    const tEnd = new Date(timelineEndIso);
 
     if (data.kind === 'library') {
       const rect = timelineRef.current?.getBoundingClientRect();
@@ -245,7 +330,7 @@ export function PlannerPage() {
       const pointerY = cursorY - rect.top;
       // y=0 on the timeline corresponds to tStart (the extended window start).
       const rawStart = new Date(tStart.getTime() + Math.max(0, pointerY / pxPerMinuteRef.current) * 60000);
-      const startSnapped = clampTime(snapToGrid(rawStart, tStart), tStart, tEnd);
+      const startSnapped = clampTime(snapToGrid(rawStart), tStart, tEnd);
       const endRaw = new Date(startSnapped.getTime() + DEFAULT_BLOCK_MINUTES * 60000);
       const endSnapped = clampTime(endRaw, tStart, tEnd);
       if (minutesBetween(startSnapped, endSnapped) < MIN_BLOCK_MINUTES) return;
@@ -262,6 +347,7 @@ export function PlannerPage() {
 
     if (data.kind === 'block') {
       const id = Number(String(event.active.id).split(':')[1]);
+      if (id < 0) return; // optimistic block — save not yet confirmed
       const session = sessions.find(s => s.id === id);
       if (!session) return;
       const deltaMinRaw = event.delta.y / pxPerMinuteRef.current;
@@ -277,10 +363,11 @@ export function PlannerPage() {
       if (minutesBetween(newStart, newEnd) < MIN_BLOCK_MINUTES) return;
       updateMut.mutate({ id, patch: { startTime: newStart.toISOString(), endTime: newEnd.toISOString() } });
     }
-  }, [createMut, updateMut, sessions, nightStartIso, nightEndIso]);
+  }, [createMut, updateMut, sessions, timelineStartIso, timelineEndIso]);
 
   const handleResize = useCallback(
     (id: number, edge: 'top' | 'bottom', deltaMinutes: number, commit: boolean) => {
+      if (id < 0) return; // optimistic block — save not yet confirmed, no server id yet
       if (!commit) {
         setResizePreview(prev => {
           const next = new Map(prev);
@@ -294,11 +381,11 @@ export function PlannerPage() {
         next.delete(id);
         return next;
       });
-      if (deltaMinutes === 0 || !nightStartIso || !nightEndIso) return;
+      if (deltaMinutes === 0 || !timelineStartIso || !timelineEndIso) return;
       const session = sessions.find(s => s.id === id);
       if (!session) return;
-      const ns = new Date(new Date(nightStartIso).getTime() - BUFFER_MS);
-      const ne = new Date(new Date(nightEndIso).getTime() + BUFFER_MS);
+      const ns = new Date(timelineStartIso);
+      const ne = new Date(timelineEndIso);
       const start = new Date(session.startTime);
       const end = new Date(session.endTime);
       let newStart = start;
@@ -313,7 +400,7 @@ export function PlannerPage() {
         patch: edge === 'top' ? { startTime: newStart.toISOString() } : { endTime: newEnd.toISOString() },
       });
     },
-    [sessions, nightStartIso, nightEndIso, updateMut],
+    [sessions, timelineStartIso, timelineEndIso, updateMut],
   );
 
   const visibilityById = useMemo(() => {
@@ -399,7 +486,10 @@ export function PlannerPage() {
           {/* Date stepper + calendar trigger */}
           <div className={`inline-flex items-center gap-0.5 rounded-lg overflow-hidden ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
             <button
-              onClick={() => setSelectedDate(d => addDays(d, -1))}
+              onClick={() => {
+                setDateTouched(true);
+                setSelectedDate(d => addDays(d, -1));
+              }}
               className={`p-2 ${isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-700 hover:bg-slate-200'}`}
               aria-label="Previous night"
               title="Previous night"
@@ -418,7 +508,10 @@ export function PlannerPage() {
               )}
             </button>
             <button
-              onClick={() => setSelectedDate(d => addDays(d, 1))}
+              onClick={() => {
+                setDateTouched(true);
+                setSelectedDate(d => addDays(d, 1));
+              }}
               className={`p-2 ${isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-700 hover:bg-slate-200'}`}
               aria-label="Next night"
               title="Next night"
@@ -428,7 +521,10 @@ export function PlannerPage() {
           </div>
           {!isToday && (
             <button
-              onClick={() => setSelectedDate(today)}
+              onClick={() => {
+                setDateTouched(true);
+                setSelectedDate(today);
+              }}
               className="text-xs px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white"
             >
               Jump to tonight
@@ -448,13 +544,6 @@ export function PlannerPage() {
               {skyConfigured ? `${visibleCellCount} / 144` : 'not set'}
             </span>
           </button>
-          {nightStart && nightEnd && (
-            <div className={`text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-              <span className="font-medium">Dark window:</span>{' '}
-              {formatHm(nightStart)} - {formatHm(nightEnd)}{' '}
-              ({Math.round((minutesBetween(nightStart, nightEnd) / 60) * 10) / 10}h)
-            </div>
-          )}
           {observerLat != null && observerLon != null && (
             <div
               className={`inline-flex items-center gap-1 text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}
@@ -494,8 +583,8 @@ export function PlannerPage() {
             targets={planner?.targets ?? []}
             observerLat={observerLat}
             observerLon={observerLon}
-            nightStart={nightStart}
-            nightEnd={nightEnd}
+            nightStart={nightStart ?? timelineStart}
+            nightEnd={nightEnd ?? timelineEnd}
             visibleSkyMap={visibleSkyMap}
             onShowDetails={(t) => setDetailsSession({
               objectId: t.id,
@@ -505,23 +594,24 @@ export function PlannerPage() {
               majorAxisArcmin: t.majorAxisArcmin,
             })}
           />
-          {nightStart && nightEnd ? (
+          {timelineStart && timelineEnd ? (
             <div className="flex flex-col h-full min-h-0">
               <div className="flex-1 min-h-0">
                 <ScheduleTimeline
                   ref={timelineRef}
                   onScaleChange={(v) => { pxPerMinuteRef.current = v; }}
-                  nightStart={timelineStart ?? nightStart}
-                  nightEnd={timelineEnd ?? nightEnd}
-                  darkStart={nightStart}
-                  darkEnd={nightEnd}
+                  nightStart={timelineStart}
+                  nightEnd={timelineEnd}
+                  darkStart={nightStart ?? undefined}
+                  darkEnd={nightEnd ?? undefined}
                   sessions={sessions}
                   visibilityById={visibilityById}
                   moonById={moonById}
                   dragDeltaById={dragDeltaMap}
                   resizeDeltaById={resizePreview}
-                  onDelete={(id) => deleteMut.mutate(id)}
+                  onDelete={(id) => { if (id > 0) deleteMut.mutate(id); }}
                   onResize={handleResize}
+                  observerTimezone={observerTimezone}
                   onShowDetails={(s) => setDetailsSession({
                     objectId: s.objectId,
                     objectName: s.objectName,
@@ -539,12 +629,13 @@ export function PlannerPage() {
                   observerLat={observerLat}
                   observerLon={observerLon}
                   minAlt={settings?.minAlt}
+                  observerTimezone={observerTimezone}
                 />
               )}
             </div>
           ) : (
             <div className={`p-6 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              Tonight's dark window is unavailable. Confirm your location in Settings.
+              No observable night window is available for this location and date.
             </div>
           )}
         </div>
@@ -555,7 +646,7 @@ export function PlannerPage() {
           {activeLibraryDrag && (
             <div className="pointer-events-none rounded-lg border border-emerald-400 bg-slate-800/95 text-slate-100 shadow-2xl px-3 py-2 text-sm font-medium">
               {activeLibraryDrag.objectName}
-              <div className="text-[11px] opacity-80 mt-0.5">Drop on the timeline to schedule (30 min)</div>
+              <div className="text-[11px] opacity-80 mt-0.5">Drop on the timeline to schedule (1 hour)</div>
             </div>
           )}
         </DragOverlay>
@@ -574,7 +665,11 @@ export function PlannerPage() {
       {calendarOpen && (
         <PlanCalendar
           selectedDate={selectedDate}
-          onSelect={(d) => setSelectedDate(d)}
+          observerTimezone={observerTimezone}
+          onSelect={(d) => {
+            setDateTouched(true);
+            setSelectedDate(d);
+          }}
           onClose={() => setCalendarOpen(false)}
         />
       )}
@@ -588,6 +683,7 @@ export function PlannerPage() {
           majorAxisArcmin={detailsSession.majorAxisArcmin}
           observerLat={observerLat}
           observerLon={observerLon}
+          observerTimezone={observerTimezone}
           nightStart={nightStart}
           nightEnd={nightEnd}
           minAlt={settings?.minAlt}
@@ -599,11 +695,6 @@ export function PlannerPage() {
   );
 }
 
-function formatHm(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
-}
 
 function addDays(d: Date, n: number): Date {
   const next = new Date(d);
@@ -640,6 +731,7 @@ interface SessionDetailsModalProps {
   majorAxisArcmin: number | null;
   observerLat: number | null;
   observerLon: number | null;
+  observerTimezone?: string;
   nightStart: Date | null;
   nightEnd: Date | null;
   minAlt: number | undefined;
@@ -655,6 +747,7 @@ function SessionDetailsModal({
   majorAxisArcmin,
   observerLat,
   observerLon,
+  observerTimezone,
   nightStart,
   nightEnd,
   minAlt,
@@ -671,12 +764,12 @@ function SessionDetailsModal({
     if (!hasLocation) return new Date();
     const { start, end } = nightStart && nightEnd
       ? { start: nightStart, end: nightEnd }
-      : buildTonightWindow();
+      : buildTonightWindow(new Date(), observerTimezone);
     const curve = computeAltitudeCurve(ra, dec, observerLat, observerLon, start, end, 5);
     let best = curve[0];
     for (const s of curve) if (s.alt > best.alt) best = s;
     return best?.time ?? new Date();
-  }, [hasLocation, ra, dec, observerLat, observerLon, nightStart, nightEnd]);
+  }, [hasLocation, ra, dec, observerLat, observerLon, observerTimezone, nightStart, nightEnd]);
 
   // Scrubbing the altitude chart drives the sky chart's moment. Null = not
   // scrubbing, so we fall back to the best-altitude default.
@@ -756,7 +849,7 @@ function SessionDetailsModal({
           {hasLocation && (
             <p className={`-mt-2 text-[11px] text-center ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
               Sky shown at{' '}
-              {skyTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+              {skyTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(observerTimezone ? { timeZone: observerTimezone } : {}) })}
               {scrubTime ? '' : ' (highest tonight)'}. Scrub the curve below to retime.
             </p>
           )}
@@ -795,6 +888,7 @@ function SessionDetailsModal({
                 lat={observerLat}
                 lon={observerLon}
                 minAlt={minAlt}
+                timeZone={observerTimezone}
                 isDark={isDark}
                 onScrub={(p) => setScrubTime(p ? p.time : null)}
               />

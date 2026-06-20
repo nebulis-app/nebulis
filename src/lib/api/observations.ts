@@ -14,6 +14,8 @@ interface ObservationSummary {
   fileCount: number;
   stackedCount: number;
   fitsCount: number;
+  subFrameCount: number;
+  processedCount: number;
   thumbnailUrl: string;
   ra: string | null;
   dec: string | null;

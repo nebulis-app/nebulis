@@ -1,5 +1,8 @@
-// Must be the very first import: handles `--reset-password` / `--list-users` and
-// exits before paths.ts/db.ts create or open the database. No-op on normal boot.
+// Pure env-var set with no DB/fs side effects; must run before any async fs /
+// sharp call initializes libuv's threadpool, hence it leads the import list.
+import './lib/threadpool.js';
+// Must run before paths.ts/db.ts open the database: handles `--reset-password`
+// / `--list-users` and exits before the DB is created. No-op on normal boot.
 import './lib/recoveryCli.js';
 import './lib/logger.js'; // sets up file logging and crash capture for normal boot
 import { log } from './lib/logger.js';
@@ -25,6 +28,7 @@ import { authRouter } from './routes/auth.js';
 import { observationsRouter } from './routes/observations.js';
 import { satelliteRouter } from './routes/satellite.js';
 import { libraryRouter } from './routes/library.js';
+import { repairSpaceDirectories, repairAliasDirectories } from './lib/library/objects.js';
 import { plannerRouter } from './routes/planner.js';
 import { plannedSessionsRouter } from './routes/plannedSessions.js';
 import { wishlistRouter } from './routes/wishlist.js';
@@ -339,7 +343,18 @@ app.use('/api', legacy);
 const distPath = (process as NodeJS.Process & { pkg?: unknown }).pkg
   ? path.resolve(path.dirname(process.execPath), 'dist')
   : path.resolve(__dirname, '..', 'dist');
-app.use(express.static(distPath));
+app.use(express.static(distPath, {
+  setHeaders: (res, filePath) => {
+    // Vite emits content-hashed files under /assets (e.g. index-Bf3itHA6.js), so
+    // their bytes can never change under a fixed name — cache them immutably to
+    // skip revalidation round-trips on repeat loads. index.html and other
+    // unhashed files keep express.static's default ETag/Last-Modified behaviour
+    // so a new build is always picked up.
+    if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  },
+}));
 
 // SPA fallback: any non-API route serves index.html (production only; in dev, Vite handles the frontend)
 if (process.env.NODE_ENV === 'production') {
@@ -499,6 +514,8 @@ app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`  Logs dir:      ${LOGS_DIR}`);
   console.log(`  Hostname:      ${getFriendlyHostname() ?? '(none — UDP replies will omit hostname field)'}`);
 
+  repairSpaceDirectories();
+  repairAliasDirectories();
   startPackUpdateChecker(prewarmThumbnails);
   startAppUpdateChecker();
   startPlannerNightlyScheduler();

@@ -17,6 +17,7 @@ const curatedMap = new Map(catalog.map(e => [e.id.toUpperCase(), e]));
 import openNgcJson from './openngc.json';
 import { caldwellToNgcId } from '../lib/caldwellCatalog.js';
 import { mergeOverride, entryFromOverride } from '../lib/catalogOverrides.js';
+import { getAliasesFor } from '../lib/catalogAliases.js';
 import { getSharplessEntry, sharplessToCatalogEntry } from '../lib/sharplessCatalog.js';
 
 interface OpenNGCEntry {
@@ -62,14 +63,18 @@ function parseOpenNgcJson(data: unknown): OpenNGCEntry[] {
 
 const openNgcData: OpenNGCEntry[] = parseOpenNgcJson(openNgcJson);
 
-// Build lookup maps: by ID, by Messier designation
+// Build lookup maps: by ID, by Messier designation, by NGC cross-reference name
 const openNgcMap = new Map<string, OpenNGCEntry>();
 const messierToNgc = new Map<string, OpenNGCEntry>();
+const ngcNameToEntry = new Map<string, OpenNGCEntry>();
 
 for (const entry of openNgcData) {
   openNgcMap.set(entry.id.toUpperCase(), entry);
   if (entry.messier != null) {
     messierToNgc.set(`M${entry.messier}`.toUpperCase(), entry);
+  }
+  if (entry.ngcName) {
+    ngcNameToEntry.set(entry.ngcName.toUpperCase(), entry);
   }
 }
 
@@ -202,4 +207,65 @@ export function searchCatalog(query: string): CatalogEntry[] {
 
 export function getAllCatalogEntries(): CatalogEntry[] {
   return catalog;
+}
+
+/** Catalog-number pattern — strings matching these are alternate designations,
+ *  not human-readable common names, so they go in the AKA list separately. */
+const CATALOG_ID_RE = /^(NGC|IC|M|UGC|PGC|B|SH2-|LBN|LDN)\s*\d+$/i;
+
+/** Common names for objects that have no OpenNGC entry (mostly Sharpless nebulae). */
+const MANUAL_COMMON_NAMES: Record<string, string[]> = {
+  'B33':     ['Horsehead Nebula'],
+  'SH2-101': ['Tulip Nebula'],
+  'SH2-129': ['Flying Bat Nebula'],
+  'SH2-155': ['Cave Nebula'],
+  'SH2-240': ['Spaghetti Nebula', 'Simeis 147'],
+};
+
+/**
+ * Build the "Also known as" list for an object: NGC cross-references,
+ * Messier numbers, Caldwell designations, Sharpless designations, and
+ * any common names stored in OpenNGC.
+ */
+export function getAlsoKnownAs(id: string): string[] {
+  const key = id.toUpperCase().replace(/\s+/g, '');
+  const names: string[] = [];
+
+  // Look up the OpenNGC entry — either directly (M# ids are stored under "M101" etc.)
+  // or via the ngcName reverse map (NGC5457 → find M101's entry).
+  const entry = openNgcMap.get(key) ?? ngcNameToEntry.get(key);
+
+  if (entry) {
+    // Always include NGC/IC cross-reference (ngcName) and Messier number when present,
+    // regardless of which ID was used for the lookup. This ensures M51's AKA includes
+    // "NGC5194" AND "M51" itself, matching the behaviour of NGC-primary objects whose
+    // self-referential ngcName already causes them to appear in their own AKA list.
+    if (entry.ngcName && !names.includes(entry.ngcName)) {
+      names.push(entry.ngcName);
+    }
+    if (entry.messier != null) {
+      const mStr = `M${entry.messier}`;
+      if (!names.includes(mStr)) names.push(mStr);
+    }
+    // Common names from OpenNGC — skip strings that are really catalog IDs
+    for (const cn of entry.commonNames ?? []) {
+      if (cn && !CATALOG_ID_RE.test(cn) && !names.includes(cn)) names.push(cn);
+    }
+    // Catalog-ID-style alternate designations from commonNames (NGC651, etc.)
+    for (const cn of entry.commonNames ?? []) {
+      if (cn && CATALOG_ID_RE.test(cn) && !names.includes(cn)) names.push(cn);
+    }
+  }
+
+  // Manual common names for objects not in OpenNGC
+  for (const cn of MANUAL_COMMON_NAMES[key] ?? []) {
+    if (!names.includes(cn)) names.push(cn);
+  }
+
+  // Caldwell and Sharpless designations via reverse alias map
+  for (const alias of getAliasesFor(id)) {
+    if (!names.includes(alias)) names.push(alias);
+  }
+
+  return names;
 }

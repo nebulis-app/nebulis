@@ -10195,7 +10195,9 @@
     "dec": -0.013277777777777777,
     "magnitude": 9.29,
     "majorAxisArcmin": 6.11,
-    "commonNames": []
+    "commonNames": [
+      "Squid Galaxy"
+    ]
   },
   {
     "id": "M78",
@@ -10544,7 +10546,9 @@
     "dec": 54.34894444444445,
     "magnitude": 7.9,
     "majorAxisArcmin": 23.99,
-    "commonNames": []
+    "commonNames": [
+      "Pinwheel Galaxy"
+    ]
   },
   {
     "id": "M103",
@@ -10630,7 +10634,9 @@
     "dec": 55.67411111111111,
     "magnitude": 10.05,
     "majorAxisArcmin": 3.98,
-    "commonNames": []
+    "commonNames": [
+      "Surfboard Galaxy"
+    ]
   },
   {
     "id": "M109",
@@ -60158,7 +60164,9 @@
     "dec": 12.322888888888889,
     "magnitude": 11.09,
     "majorAxisArcmin": 3.65,
-    "commonNames": []
+    "commonNames": [
+      "Superman Galaxy"
+    ]
   },
   {
     "id": "NGC7484",

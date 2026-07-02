@@ -3,7 +3,7 @@ import { requireAdmin } from '../middleware/auth.js';
 import fs from 'fs';
 import path from 'path';
 import sharp from '../lib/sharp-optional.js';
-import { getCatalogEntry, searchCatalog, getAllCatalogEntries } from '../data/catalog.js';
+import { getCatalogEntry, searchCatalog, getAllCatalogEntries, getAlsoKnownAs } from '../data/catalog.js';
 import db from '../lib/db.js';
 import { parsePagination, paginate } from '../middleware/pagination.js';
 import { raToDegs, decToDegs } from '../lib/astroCalc.js';
@@ -33,8 +33,9 @@ import { getById as getDsoById } from '../lib/dsoCatalog.js';
 import { prefetchSkyImage } from '../lib/skyImage.js';
 import { enrichObjectData } from '../lib/localLibrary.js';
 import { DATA_DIR } from '../lib/paths.js';
-import { caldwellToNgcId } from '../lib/caldwellCatalog.js';
+import { caldwellToNgcId, CALDWELL_FALLBACK_COORDS } from '../lib/caldwellCatalog.js';
 import { getOverride, saveOverride, deleteOverride, getOverrideRecord } from '../lib/catalogOverrides.js';
+import { getCuratedDescription } from '../lib/curatedDescriptions.js';
 import { lookupTimeZoneForCoordinates } from '../lib/observerTimezone.js';
 
 /** Max requested thumbnail size — caps Sharp work and disk usage. */
@@ -264,9 +265,20 @@ router.get('/:id/image', async (req: Request, res: Response) => {
         if (libCoords?.dec) decDegs = decToDegs(libCoords.dec);
       }
 
+      // Last resort: built-in coords for Caldwell objects with no NGC/IC designation
+      // (e.g. C99 Coalsack) that are absent from the DSO catalog and library.
+      const caldwellFallback = (() => {
+        const m = rawId.match(/^C(\d{1,3})$/i);
+        return m ? (CALDWELL_FALLBACK_COORDS[parseInt(m[1], 10)] ?? null) : null;
+      })();
+      if ((raDegs == null || decDegs == null) && caldwellFallback) {
+        raDegs = caldwellFallback.ra * 15;
+        decDegs = caldwellFallback.dec;
+      }
+
       const fov = req.query.fov != null && req.query.fov !== ''
         ? Number(req.query.fov) || 1.0
-        : fovForEntry(dsoEntry?.majorAxisArcmin ?? null);
+        : fovForEntry(dsoEntry?.majorAxisArcmin ?? caldwellFallback?.majorAxisArcmin ?? null);
 
       const fetched = await prefetchSkyImage(id, {
         fov,
@@ -284,8 +296,16 @@ router.get('/:id/image', async (req: Request, res: Response) => {
 
   // ── No resize requested: stream the master directly ──
   if (!wantsResize) {
+    const masterStat = fs.statSync(master.path);
+    const lastModified = new Date(masterStat.mtimeMs).toUTCString();
+    const ifModSince = req.headers['if-modified-since'];
+    if (ifModSince && masterStat.mtimeMs <= new Date(ifModSince).getTime() + 1000) {
+      res.status(304).end();
+      return;
+    }
     res.setHeader('Content-Type', master.contentType);
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('Last-Modified', lastModified);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
     const s = fs.createReadStream(master.path);
     s.on('error', () => { if (!res.headersSent) res.status(500).end(); });
     s.pipe(res);
@@ -295,12 +315,22 @@ router.get('/:id/image', async (req: Request, res: Response) => {
   // ── Resized cache hit ──
   // Keyed on (id, source, w, h, fit) so the file name changes when the
   // selected master does — preventing stale cross-source thumbnails.
+  // Cache-Control is 24h (not immutable) because the best available master
+  // can change when catalog packs download better imagery — immutable would
+  // lock browsers onto the old image for an entire year.
   const resizedPath = resizedImagePath(id, width, height, fit, master.source);
   try {
     const stat = fs.statSync(resizedPath);
     if (stat.isFile() && stat.size > 0) {
+      const lastModified = new Date(stat.mtimeMs).toUTCString();
+      const ifModSince = req.headers['if-modified-since'];
+      if (ifModSince && stat.mtimeMs <= new Date(ifModSince).getTime() + 1000) {
+        res.status(304).end();
+        return;
+      }
       res.setHeader('Content-Type', 'image/jpeg');
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('Last-Modified', lastModified);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
       const s = fs.createReadStream(resizedPath);
       s.on('error', () => { if (!res.headersSent) res.status(500).end(); });
       s.pipe(res);
@@ -318,8 +348,10 @@ router.get('/:id/image', async (req: Request, res: Response) => {
   try {
     await runResize(id, width, height, master.path, resizedPath, fit);
 
+    const resizedStat = fs.statSync(resizedPath);
     res.setHeader('Content-Type', 'image/jpeg');
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('Last-Modified', new Date(resizedStat.mtimeMs).toUTCString());
+    res.setHeader('Cache-Control', 'public, max-age=86400');
     const s = fs.createReadStream(resizedPath);
     s.on('error', () => { if (!res.headersSent) res.status(500).end(); });
     s.pipe(res);
@@ -441,15 +473,17 @@ router.get('/:id/info', (_req: Request, res: Response) => {
 
   // Pre-fetched Wikipedia cache — populated by the catalog prefetch job
   const cached = getCatalogCacheEntry(id);
+  const curated = getCuratedDescription(id);
 
   // Prefer the Wikipedia extract when available — it's richer than the
-  // short one-liners saved during library import. Fall back to the library
-  // description, then the static catalog description (mostly empty).
+  // short one-liners saved during library import. Fall back to curated
+  // descriptions for popular objects, then the library/static description.
   const wikiExtract = cached?.status === 'ok' ? cached.extract : '';
-  const description = wikiExtract || obj?.description || entry?.description || '';
+  const description = curated?.extract || wikiExtract || obj?.description || entry?.description || '';
 
   const wikiUrl =
-    (cached?.status === 'ok' ? cached.wikiUrl : '')
+    curated?.wikiUrl
+    || (cached?.status === 'ok' ? cached.wikiUrl : '')
     || obj?.wikiUrl
     || null;
 
@@ -474,6 +508,7 @@ router.get('/:id/info', (_req: Request, res: Response) => {
     size: obj?.sizeArcmin || (entry?.majorAxisArcmin != null ? `${entry.majorAxisArcmin.toFixed(1)}'` : null),
     imageUrl: `/api/catalog/${encodeURIComponent(id)}/image`,
     wikiUrl,
+    alsoKnownAs: getAlsoKnownAs(id),
     override: getOverrideRecord(id) ?? null,
   };
 
@@ -840,6 +875,7 @@ router.get('/:id', (req: Request, res: Response) => {
   const cached = getCatalogCacheEntry(id);
   const wikiExtract = cached?.status === 'ok' ? cached.extract : '';
   const wikiUrl = cached?.status === 'ok' ? cached.wikiUrl : null;
+  const curated = getCuratedDescription(id);
 
   // User override wins over every auto-populated field.
   const override = getOverride(id);
@@ -848,8 +884,9 @@ router.get('/:id', (req: Request, res: Response) => {
   if (entry) {
     res.apiSuccess({
       ...entry,
-      description: override?.description ?? (wikiExtract || entry.description || ''),
-      wikiUrl: wikiUrl || undefined,
+      description: override?.description ?? (curated?.extract || wikiExtract || entry.description || ''),
+      wikiUrl: curated?.wikiUrl || wikiUrl || undefined,
+      alsoKnownAs: getAlsoKnownAs(id),
     });
     return;
   }
@@ -879,12 +916,13 @@ router.get('/:id', (req: Request, res: Response) => {
       type: libObj.objectType || 'Unknown',
       constellation: libObj.constellation || '',
       magnitude: libObj.magnitude ?? undefined,
-      description: override?.description ?? (wikiExtract || libObj.description || ''),
+      description: override?.description ?? (curated?.extract || wikiExtract || libObj.description || ''),
+      alsoKnownAs: getAlsoKnownAs(id),
       ra: libObj.ra ?? undefined,
       dec: libObj.dec ?? undefined,
       distanceLy: libObj.distanceLy ?? undefined,
       majorAxisArcmin,
-      wikiUrl: wikiUrl || undefined,
+      wikiUrl: curated?.wikiUrl || wikiUrl || undefined,
     });
     return;
   }

@@ -152,6 +152,54 @@ export function startPairing(tvName: string): {
   };
 }
 
+/**
+ * QR enrollment — the inverse of the TV flow. An already-signed-in user (on the
+ * web UI) creates a pairing that is pre-approved against their own account, then
+ * shows the deviceCode in a QR. A phone scans it and exchanges the deviceCode
+ * for a device-scoped token via the normal /pair/poll path — no userCode typing,
+ * no second device to approve on. The deviceCode is short-lived (10 min) and is
+ * only ever shown to the already-authenticated user, so embedding it in a QR is
+ * safe.
+ */
+export function startApprovedPairing(userId: string, deviceName: string): {
+  deviceCode: string;
+  expiresAt: number;
+  pollIntervalSec: number;
+} {
+  const now = Date.now();
+  stmts.sweepExpired.run(now);
+
+  const userCode = newUserCode();
+  const deviceCode = newDeviceCode();
+  const expiresAt = now + PAIRING_TTL_MS;
+  const safeName = (deviceName || 'Device').toString().trim().slice(0, 80) || 'Device';
+
+  // Insert pending, then immediately approve against the requesting user so the
+  // row is consumable by the first poll. Reuses the same approve guard so the
+  // status machine stays in one place.
+  stmts.insertPairing.run(userCode, deviceCode, safeName, 'pending', now, expiresAt);
+  stmts.approvePairing.run(userId, userCode);
+
+  return { deviceCode, expiresAt, pollIntervalSec: POLL_INTERVAL_SEC };
+}
+
+/**
+ * Read-only status of a QR enrollment, scoped to its owner. Unlike pollPairing
+ * this never consumes the row or mints a token — it's what the web UI polls to
+ * know when the phone has finished connecting, so it can't race the phone for
+ * the token. `connected` is true once the phone has exchanged the code.
+ */
+export function getApprovedPairingStatus(
+  deviceCode: string,
+  userId: string,
+): { status: 'waiting' | 'connected' | 'expired'; deviceName?: string } {
+  const row = stmts.getPairingByDeviceCode.get(deviceCode);
+  if (!row || row.userId !== userId) return { status: 'expired' };
+  if (row.status === 'consumed') return { status: 'connected', deviceName: row.tvName };
+  if (row.expiresAt < Date.now()) return { status: 'expired' };
+  return { status: 'waiting', deviceName: row.tvName };
+}
+
 export function lookupPairing(userCodeRaw: string): { tvName: string; expiresAt: number } | null {
   const userCode = normalizeUserCode(userCodeRaw);
   if (userCode.length !== USER_CODE_LEN) return null;

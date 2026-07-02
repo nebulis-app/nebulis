@@ -89,25 +89,6 @@ export function canonicalImportName(
   time: string | null,
   used: ReadonlySet<string>,
 ): string {
-  const dotIdx = originalName.lastIndexOf('.');
-  const extLower = dotIdx > 0 ? originalName.slice(dotIdx).toLowerCase() : '';
-
-  // .fit / .fits / .jpg / .jpeg: never date-stamp renamed. Telescope acquisition
-  // software embeds metadata in these names; renaming would break that. Collision
-  // handling uses a simple counter suffix (-2, -3, …) rather than a timestamp.
-  if (
-    extLower === '.fit' || extLower === '.fits' ||
-    extLower === '.jpg' || extLower === '.jpeg'
-  ) {
-    if (!used.has(originalName)) return originalName;
-    const stem = dotIdx > 0 ? originalName.slice(0, dotIdx) : originalName;
-    for (let counter = 2; counter <= 99_999; counter++) {
-      const candidate = `${stem}-${counter}${extLower}`;
-      if (!used.has(candidate)) return candidate;
-    }
-    throw new Error(`Cannot find a unique name for "${originalName}" after 99,999 attempts. The destination folder may contain a conflicting file.`);
-  }
-
   // Case 1: the original name already lands in the right session and the slot
   // is free. Leave it exactly as-is.
   if (parsesToDate(originalName, finalDate) && !used.has(originalName)) {

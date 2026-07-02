@@ -5,6 +5,7 @@
  */
 import { randomUUID } from 'crypto';
 import db from './db.js';
+import { SKY_MAP_BANDS, SKY_MAP_CELLS } from './skyMapConfig.js';
 import { type TelescopeKind, TELESCOPE_KINDS } from './types/telescopeKind.js';
 import { encrypt, decrypt } from './crypto/secretBox.js';
 import {
@@ -258,7 +259,7 @@ interface AppSettingsRow {
   galleryImageSource: string;
   slideshowRotateCCW: number;
   temperatureUnit: string;
-  visibleSkyMap: string; // JSON array of 144 booleans (36 azimuth slices × 4 elevation bands)
+  visibleSkyMap: string; // JSON array of 288 booleans (36 azimuth slices × 8 elevation bands)
   updateChannel: string; // 'stable' | 'beta'
   autoUpdateEnabled: number;
   plannerPrefetchEnabled: number;
@@ -274,11 +275,11 @@ interface AppSettingsRow {
 function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
   const rawHp = JSON.parse(row.horizonProfile || '[]') as number[];
   const horizonProfile = Array.isArray(rawHp) && rawHp.length === 36 ? rawHp : Array(36).fill(0);
-  // visibleSkyMap: 144-element boolean array, or empty (= no map set, sky
+  // visibleSkyMap: 288-element boolean array, or empty (= no map set, sky
   // treated as fully visible by the visibility check on the client).
   const rawMap: unknown = JSON.parse(row.visibleSkyMap || '[]');
   const visibleSkyMap =
-    Array.isArray(rawMap) && rawMap.length === 144 && rawMap.every(v => typeof v === 'boolean')
+    Array.isArray(rawMap) && rawMap.length === SKY_MAP_CELLS && rawMap.every(v => typeof v === 'boolean')
       ? (rawMap as boolean[])
       : [];
   return {
@@ -308,6 +309,9 @@ function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
     slideshowRotateCCW: Boolean(row.slideshowRotateCCW),
     temperatureUnit: row.temperatureUnit || 'fahrenheit',
     visibleSkyMap,
+    // Advertised so native clients can gate the finer-grid editor; clients that
+    // ignore it keep working at their built-in resolution.
+    skyMapBands: SKY_MAP_BANDS,
     updateChannel: row.updateChannel === 'beta' ? 'beta' : 'stable',
     autoUpdateEnabled: Boolean(row.autoUpdateEnabled),
     plannerPrefetchEnabled: Boolean(row.plannerPrefetchEnabled ?? 1),
@@ -349,7 +353,7 @@ function saveSettingsRow(data: Record<string, unknown>): void {
     boolToInt(data.slideshowRotateCCW, 0),
     str(data.temperatureUnit, 'celsius'),
     JSON.stringify(
-      Array.isArray(data.visibleSkyMap) && data.visibleSkyMap.length === 144
+      Array.isArray(data.visibleSkyMap) && data.visibleSkyMap.length === SKY_MAP_CELLS
         ? data.visibleSkyMap.map(v => v === true)
         : [],
     ),

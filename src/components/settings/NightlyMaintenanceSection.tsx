@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Telescope, HardDrive, Cloud, Package, Play } from 'lucide-react';
 import type { Settings as SettingsType } from '../../types';
@@ -65,14 +65,17 @@ export function NightlyMaintenanceSection({
 
   const queryClient = useQueryClient();
   const [justStarted, setJustStarted] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => () => timerRef.current.forEach(clearTimeout), []);
+
   const runNow = useMutation({
     mutationFn: runNightlyMaintenanceNow,
     onSuccess: () => {
       // The batch runs in the background. Show a brief confirmation, then
       // refetch settings so the quick tasks' last-run times update.
       setJustStarted(true);
-      setTimeout(() => setJustStarted(false), 4000);
-      setTimeout(() => queryClient.invalidateQueries({ queryKey: ['settings'] }), 5000);
+      timerRef.current.push(setTimeout(() => setJustStarted(false), 4000));
+      timerRef.current.push(setTimeout(() => queryClient.invalidateQueries({ queryKey: ['settings'] }), 5000));
     },
   });
 

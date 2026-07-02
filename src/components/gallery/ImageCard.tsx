@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Heart, Images } from 'lucide-react';
 import { getLibraryFileThumbnailUrl, type LibraryImage } from '../../lib/api/library';
 
-export interface ImageCardProps {
+interface ImageCardProps {
   image: LibraryImage;
   isDark: boolean;
   onOpen: () => void;

@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { registerUser, loginUser, verifyToken, getUserById, getUserCount, getAllUsers, deleteUser, updateUserPassword, updateUserRole } from '../lib/auth.js';
+import { registerUser, loginUser, verifyToken, getUserById, getUserCount, getAllUsers, deleteUser, updateUserPassword, updateUserRole, updateUserProfile } from '../lib/auth.js';
 import type { UserRole } from '../lib/auth.js';
 import { requireAdmin } from '../middleware/auth.js';
 
@@ -14,6 +14,7 @@ const rateBuckets = new Map<string, RateLimitBucket>();
 const RATE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const MAX_FAILURES = 10;                // per window, per IP
 const LOCKOUT_MS = 15 * 60 * 1000;     // block duration after exceeding
+const MAX_BUCKETS = 10_000;             // hard cap — evicts oldest on overflow
 
 function clientIp(req: Request): string {
   return req.ip ?? req.socket.remoteAddress ?? 'unknown';
@@ -42,6 +43,9 @@ function noteFailure(req: Request): void {
   const now = Date.now();
   const bucket = rateBuckets.get(ip);
   if (!bucket || now - bucket.firstFailureAt > RATE_WINDOW_MS) {
+    if (rateBuckets.size >= MAX_BUCKETS) {
+      rateBuckets.delete(rateBuckets.keys().next().value!);
+    }
     rateBuckets.set(ip, { failures: 1, firstFailureAt: now, blockedUntil: 0 });
     return;
   }
@@ -87,6 +91,11 @@ const CreateUserBodySchema = z.object({
 
 const PasswordBodySchema = z.object({
   password: z.string().min(1),
+});
+
+const ProfileBodySchema = z.object({
+  displayName: z.string().min(1),
+  email: z.string().email().optional().or(z.literal('')),
 });
 
 const RoleBodySchema = z.object({
@@ -251,6 +260,23 @@ router.put('/users/:id/password', requireAdmin, async (req: Request, res: Respon
   }
 });
 
+// Update a user's display name and email
+router.put('/users/:id/profile', requireAdmin, async (req: Request, res: Response) => {
+  const parsed = ProfileBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
+    return;
+  }
+  const id = String(req.params.id);
+  const { displayName, email } = parsed.data;
+  const updated = updateUserProfile(id, displayName, email ?? '');
+  if (updated) {
+    res.apiSuccess(getAllUsers());
+  } else {
+    res.apiError(404, 'NOT_FOUND', 'User not found');
+  }
+});
+
 // Change a user's role
 router.put('/users/:id/role', requireAdmin, (req: Request, res: Response) => {
   const parsed = RoleBodySchema.safeParse(req.body);
@@ -260,6 +286,14 @@ router.put('/users/:id/role', requireAdmin, (req: Request, res: Response) => {
   }
   const id = String(req.params.id);
   const { role } = parsed.data;
+  if (role !== 'admin') {
+    const allUsers = getAllUsers();
+    const target = allUsers.find(u => u.id === id);
+    if (target?.role === 'admin' && allUsers.filter(u => u.role === 'admin').length <= 1) {
+      res.apiError(400, 'LAST_ADMIN', 'Cannot remove admin role from the last admin account');
+      return;
+    }
+  }
   const updated = updateUserRole(id, role as UserRole);
   if (updated) {
     res.apiSuccess(getAllUsers());

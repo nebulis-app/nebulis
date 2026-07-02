@@ -105,7 +105,7 @@ export function ImportModal({ onClose, onReview }: {
     if (!e.target.files) return;
     const files: PickedFile[] = Array.from(e.target.files).map(f => ({
       file: f,
-      relativePath: (f as { webkitRelativePath?: string }).webkitRelativePath || f.name,
+      relativePath: f.webkitRelativePath || f.name,
     }));
     acceptFiles(files);
     // Reset input so the same folder can be re-selected if needed
@@ -127,7 +127,7 @@ export function ImportModal({ onClose, onReview }: {
       const entry = items[i].webkitGetAsEntry?.();
       if (!entry) continue;
       if (isFileEntry(entry)) {
-        const file = await new Promise<File>((res, rej) => (entry as FileSystemFileEntry).file(res, rej));
+        const file = await new Promise<File>((res, rej) => entry.file(res, rej));
         allFiles.push({ file, relativePath: file.name });
       } else if (isDirectoryEntry(entry)) {
         const sub = await readDirEntry(entry, entry.name);

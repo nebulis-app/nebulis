@@ -154,7 +154,7 @@ class SatelliteTracker {
     // The library's .d.ts narrows `position` to EciVec3<number> but the runtime
     // implementation can still return `false` on failure, so we guard before use.
     const posVel = satellite.propagate(satrec, observationDate);
-    if (!posVel.position || typeof posVel.position === 'boolean') {
+    if (posVel == null || !posVel.position || typeof posVel.position === 'boolean') {
       return { candidate: null, reason: 'propagation' };
     }
     const positionEci = posVel.position;
@@ -193,7 +193,7 @@ class SatelliteTracker {
     for (let t = 0; t <= totalDuration; t += STEP) {
       const sampleDate = new Date(startTime + t * 1000);
       const samplePosVel = satellite.propagate(satrec, sampleDate);
-      if (!samplePosVel.position || typeof samplePosVel.position === 'boolean') {
+      if (samplePosVel == null || !samplePosVel.position || typeof samplePosVel.position === 'boolean') {
         continue;
       }
       const sampleEci = samplePosVel.position;

@@ -12,8 +12,8 @@
  * disk — subsequent same-size requests are instant. Use one canonical pair so
  * the resize cache is hit on every tile render.
  */
-export const CATALOG_IMAGE_WIDTH = 384;
-export const CATALOG_IMAGE_HEIGHT = 384;
+const CATALOG_IMAGE_WIDTH = 384;
+const CATALOG_IMAGE_HEIGHT = 384;
 
 /**
  * Pick a DSS2 field of view that frames the object nicely.
@@ -23,7 +23,7 @@ export const CATALOG_IMAGE_HEIGHT = 384;
  * - Medium objects → size × 2.5 (shows context around the object)
  * - Large nebulae → 3° (capped because DSS2 resolution gets blotchy beyond)
  */
-export function fovForSize(majorAxisArcmin: number | null | undefined): number {
+function fovForSize(majorAxisArcmin: number | null | undefined): number {
   if (majorAxisArcmin == null || !Number.isFinite(majorAxisArcmin)) return 1.0;
   const raw = (majorAxisArcmin / 60) * 2.5;
   return Math.max(0.3, Math.min(3.0, raw));
@@ -44,19 +44,22 @@ export function fovForSize(majorAxisArcmin: number | null | undefined): number {
 export function getCatalogThumbnailUrl(
   catalogId: string,
   majorAxisArcmin?: number | null,
+  width: number = CATALOG_IMAGE_WIDTH,
+  height: number = CATALOG_IMAGE_HEIGHT,
 ): string {
-  const base = `/api/catalog/${encodeURIComponent(catalogId)}/image?w=${CATALOG_IMAGE_WIDTH}&h=${CATALOG_IMAGE_HEIGHT}`;
+  const base = `/api/catalog/${encodeURIComponent(catalogId)}/image?w=${width}&h=${height}`;
   if (majorAxisArcmin == null) return base;
   return `${base}&fov=${fovForSize(majorAxisArcmin)}`;
 }
 
 /**
- * Master URL for full-screen views — streams the source-quality image with
- * no resize. Use this when the user opens an object detail or expands a
- * preview to the full viewport.
+ * Direct static URL for the pre-generated DSS2 thumbnail. No routing overhead,
+ * 30-day browser cache. Use this as the primary src on catalog grids and let the
+ * API URL be the onError fallback (handles objects whose best source isn't dss2).
  */
-export function getCatalogMasterUrl(catalogId: string): string {
-  return `/api/catalog/${encodeURIComponent(catalogId)}/image`;
+export function getCatalogStaticThumbnailUrl(catalogId: string): string {
+  const normalized = catalogId.replace(/\s+/g, '').toUpperCase().replace(/[^A-Z0-9_.-]/g, '_');
+  return `/sky-cache/resized/${normalized}_dss2_${CATALOG_IMAGE_WIDTH}x${CATALOG_IMAGE_HEIGHT}.jpg`;
 }
 
 // ─── Per-source pinning ─────────────────────────────────────────────────
@@ -67,7 +70,7 @@ export function getCatalogMasterUrl(catalogId: string): string {
 // is needed — the colon makes it unambiguous against file paths under
 // LIBRARY_DIR (which never contain colons).
 
-export type CatalogSourceId = 'hubble' | 'wiki' | 'dss2';
+type CatalogSourceId = 'hubble' | 'wiki' | 'dss2';
 
 const SOURCE_SENTINEL_PREFIX = 'catalog-source:';
 

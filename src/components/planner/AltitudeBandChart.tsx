@@ -37,8 +37,9 @@ const PAD_BOTTOM = 28;     // room for hour ticks
 const LABEL_BAND_HEIGHT = 18; // strip below the plot for object names
 
 // Auto-range altitude: cover the full plotted set, but never tighter than
-// a 30° window so single-target plots don't look distorted.
-function altRange(curves: Array<{ alt: number }[]>): { lo: number; hi: number } {
+// a 30° window so single-target plots don't look distorted. Always extends
+// the lower bound to include minAlt so the threshold line is never clipped.
+function altRange(curves: Array<{ alt: number }[]>, minAlt?: number): { lo: number; hi: number } {
   let lo = 90;
   let hi = 0;
   for (const c of curves) {
@@ -57,6 +58,10 @@ function altRange(curves: Array<{ alt: number }[]>): { lo: number; hi: number } 
     const mid = (hi + lo) / 2;
     lo = Math.max(0, Math.floor((mid - 15) / 5) * 5);
     hi = Math.min(90, Math.ceil((mid + 15) / 5) * 5);
+  }
+  // Ensure the minAlt line is always visible by pulling the lower bound down.
+  if (minAlt != null && minAlt < lo) {
+    lo = Math.max(0, Math.floor((minAlt - 5) / 5) * 5);
   }
   return { lo, hi };
 }
@@ -84,7 +89,7 @@ export function AltitudeBandChart({
     });
   }, [sessions, observerLat, observerLon]);
 
-  const range = useMemo(() => altRange(curves.map(c => c.samples)), [curves]);
+  const range = useMemo(() => altRange(curves.map(c => c.samples), minAlt), [curves, minAlt]);
 
   // Measure the wrapper so the SVG's logical coordinate system matches its
   // rendered pixel height. viewBox height tracks the real height, so the chart
@@ -126,6 +131,7 @@ export function AltitudeBandChart({
   const plotHeight = plotBottom - plotTop;
 
   const totalNightMs = nightEnd.getTime() - nightStart.getTime();
+  if (totalNightMs <= 0) return null;
   const timeToX = (t: Date) => {
     const ms = t.getTime() - nightStart.getTime();
     return plotLeft + (ms / totalNightMs) * plotWidth;
@@ -248,7 +254,7 @@ export function AltitudeBandChart({
         })}
 
         {/* Min-alt horizon (from settings), if it falls in range */}
-        {minAlt != null && minAlt >= range.lo && minAlt <= range.hi && (
+        {minAlt != null && minAlt <= range.hi && (
           <line
             x1={plotLeft}
             x2={plotRight}
@@ -354,8 +360,6 @@ export function AltitudeBandChart({
     </div>
   );
 }
-
-export const ALTITUDE_BAND_CHART_HEIGHT = DEFAULT_HEIGHT;
 
 interface HoverOverlayProps {
   svgWidth: number;

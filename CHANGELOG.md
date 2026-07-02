@@ -1,11 +1,38 @@
 # Changelog
+## 1.4.0 (166) - June 17, 2026
+
+### New
+- Catalog — Review the entire Messier, Caldwell, and Herschel catalogs and track your progress through them. One-click button to create a plan for unimaged catalog items.
+- QR code device pairing — connect a new Android or iOS device by scanning a QR code for easier setup.
+- Planner: Share your plan — export tonight's schedule as an image card or copy a plain-text summary to paste anywhere.
+- Planner: Copy from previous night — reuse last night's plan as a starting point for tonight.
+- Added ability in Settings -> Appearance to toggle most top menu items on/off. 
+- Added ability to share directly form an opened image.
+
+
+### Updated
+- Planetarium: music toggle — mute or unmute background music without leaving the slideshow.
+- Planner: Plan My Night — Two-step wizard that picks objects based on tonight's visibility window, schedules them, and lets you preview the result before saving.
+- .fit files rendering now in color!
+- Sub-frame download filter — when combining and exporting subframes, you can now choose which type of subframe to export (LP Filter, IRCUT, etc).
+- Planner has a fresh new look with updated colors and a cleaner layout.
+- Added ability to pan within a zoomed in image using click/drag (before was only trackpad)
+- Cleaned up some objects on the Oservation and Library Page (Moved Compare Function).
+
+### Fixes
+- Gallery type filters (Nebula, Galaxy, Cluster, etc.) now correctly show all matching objects — "Dark Nebula" appears under Nebula, "Spiral Galaxy" under Galaxy, and so on. 
+- Re-importing an object no longer overwrites a custom folder name or brings back a previously deleted session.
+- Fixed bug on Account/User page where admin could remove theirselves from being an admin. 
+- Bug fixes, performance, and security updates
+
+
 
 ## 1.3.2 (157) - June 17, 2026
 
 ### Heads-up: your library object count may go down
-This release recognizes when the same target was captured under different catalog names and **merges them into a single object**. For example C30 and NGC 7331, SH2‑298 and NGC 2359, or "Lunar" and "Moon" used to appear as separate cards in some scenarios, now they're combined. As a result, your total object count can drop after updating.
+- This release recognizes when the same target was captured under different catalog names and **merges them into a single object**. For example C30 and NGC 7331, SH2‑298 and NGC 2359, or "Lunar" and "Moon" used to appear as separate cards in some scenarios, now they're combined. As a result, your total object count can drop after updating.
 
-**Nothing is deleted.** All observations from the merged entries are combined under the one object, and their image files are moved into the canonical object's folder automatically on first launch (you'll see "moved … to …" lines in the server log). Folder names are also normalized (e.g. "NGC 7331" → "NGC7331"). This runs once at startup; if you don't see it take effect, fully quit and relaunch the app.
+- **Nothing is deleted.** All observations from the merged entries are combined under the one object, and their image files are moved into the canonical object's folder automatically on first launch (you'll see "moved … to …" lines in the server log). Folder names are also normalized (e.g. "NGC 7331" → "NGC7331"). This runs once at startup; if you don't see it take effect, fully quit and relaunch the app.
 
 ### New
 - Cross-catalog object merging — the same object imported under different designations (Messier ↔ NGC/IC ↔ Caldwell ↔ Sharpless, plus Moon/Lunar and Sun/Solar) is now combined into one library entry instead of showing duplicate cards.

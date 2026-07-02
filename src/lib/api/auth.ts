@@ -1,7 +1,7 @@
 import { fetchJSON } from './client';
 
 // Onboarding / auth status
-export interface AuthStatus {
+interface AuthStatus {
   hasUsers: boolean;
   userCount: number;
   requiresSetup: boolean;
@@ -19,7 +19,7 @@ export function toUserRole(v: string): UserRole {
   return v === 'admin' ? 'admin' : 'viewer';
 }
 
-export interface AppUser {
+interface AppUser {
   id: string;
   username: string;
   email: string;
@@ -28,7 +28,7 @@ export interface AppUser {
   role: UserRole;
 }
 
-export interface CurrentUser {
+interface CurrentUser {
   id: string;
   username: string;
   displayName: string;
@@ -47,6 +47,8 @@ export const resetUserPassword = (id: string, password: string) =>
   fetchJSON<{ updated: boolean }>(`/auth/users/${id}/password`, { method: 'PUT', body: JSON.stringify({ password }) });
 export const updateUserRole = (id: string, role: UserRole) =>
   fetchJSON<AppUser[]>(`/auth/users/${id}/role`, { method: 'PUT', body: JSON.stringify({ role }) });
+export const updateUserProfile = (id: string, data: { displayName: string; email: string }) =>
+  fetchJSON<AppUser[]>(`/auth/users/${id}/profile`, { method: 'PUT', body: JSON.stringify(data) });
 
 // Watermark presets (per-user, stored server-side)
 export interface WatermarkPreset {

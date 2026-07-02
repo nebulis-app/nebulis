@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Sparkles, Wrench, ArrowRight, AlertCircle } from 'lucide-react';
-import { Modal } from '../ui/Modal';
-import { useTheme } from '../../hooks/useTheme';
-import { fetchJSON } from '../../lib/api/client';
+import { Modal } from './ui/Modal';
+import { useTheme } from '../hooks/useTheme';
+import { fetchJSON } from '../lib/api/client';
 
 interface ChangelogEntry {
   version: string;

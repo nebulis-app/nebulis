@@ -59,9 +59,9 @@ export const FitsThumbnail = memo(function FitsThumbnail({
 
     fetchBinary(url, controller.signal)
       .then(buffer => {
-        const { imageData, width, height } = parseFits(buffer);
+        const fits = parseFits(buffer);
         if (canvasRef.current) {
-          renderFitsThumbnail(canvasRef.current, imageData, width, height, stretch, colormap, maxDim, window.devicePixelRatio || 1);
+          renderFitsThumbnail(canvasRef.current, fits, stretch, colormap, maxDim, window.devicePixelRatio || 1);
         }
         setState('done');
       })

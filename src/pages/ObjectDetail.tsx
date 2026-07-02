@@ -72,17 +72,6 @@ export function ObjectDetail() {
         : [objectId ?? ''],
   [allObjects, objectId, baseObject]);
 
-  // Cross-catalog aliases for this object (e.g. NGC7000 → C20, Sh2-117).
-  // Prettify the Sharpless prefix and order by catalog familiarity so the
-  // "Also known as" row reads cleanly: Messier, Caldwell, NGC, IC, Sharpless.
-  const aliasList = useMemo<string[]>(() => {
-    const raw = baseObject?.aliases ?? [];
-    const pretty = raw.map(a => (/^SH2-/i.test(a) ? a.replace(/^SH2-/i, 'Sh2-') : a));
-    const rank = (s: string) =>
-      /^M\d/.test(s) ? 0 : /^C\d/.test(s) ? 1 : /^NGC/i.test(s) ? 2 : /^IC/i.test(s) ? 3 : /^Sh2-/i.test(s) ? 4 : 5;
-    return [...new Set(pretty)].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
-  }, [baseObject?.aliases]);
-
   const deleteObjectMutation = useMutation({
     mutationFn: () => deleteLibraryObject(activeObjectId),
     onSuccess: () => {
@@ -305,7 +294,7 @@ export function ObjectDetail() {
           {/* Text info */}
           <div className="flex-1 min-w-0">
             {/* Badges row - full width above main content */}
-            <div className="flex items-center gap-3 flex-wrap mb-5">
+            <div className="flex items-center gap-2 flex-wrap mb-5">
               <span className={`font-display text-sm font-semibold px-3 py-1 rounded-lg ${
                 isDark ? 'bg-accent-500/10 text-accent-400' : 'bg-accent-50 text-accent-700'
               }`}>
@@ -361,17 +350,17 @@ export function ObjectDetail() {
                   </a>
                 )}
 
-                {aliasList.length > 0 && (
+                {(catalogEntry?.alsoKnownAs?.length ?? 0) > 0 && (
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 pt-1">
                     <span className={`text-[11px] font-semibold uppercase tracking-widest ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                       Also known as
                     </span>
-                    {aliasList.map(alias => (
+                    {catalogEntry?.alsoKnownAs?.map(aka => (
                       <span
-                        key={alias}
+                        key={aka}
                         className={`text-xs font-medium px-2 py-0.5 rounded-md ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}
                       >
-                        {alias}
+                        {aka}
                       </span>
                     ))}
                   </div>
@@ -420,13 +409,13 @@ export function ObjectDetail() {
                       <p className={`text-sm font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{catalogEntry.size}</p>
                     </div>
                   )}
-                  {catalogEntry?.ra && (
+                  {catalogEntry?.ra != null && (
                     <div>
                       <p className={`text-xs ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>RA</p>
                       <p className={`text-sm font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{formatRA(catalogEntry.ra)}</p>
                     </div>
                   )}
-                  {catalogEntry?.dec && (
+                  {catalogEntry?.dec != null && (
                     <div>
                       <p className={`text-xs ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>Dec</p>
                       <p className={`text-sm font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{formatDec(catalogEntry.dec)}</p>

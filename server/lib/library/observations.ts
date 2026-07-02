@@ -16,6 +16,7 @@ import {
 } from '../telescopeFiles.js';
 import { getNote } from '../notes.js';
 import { parseFitsHeader } from '../fitsParser.js';
+import { fitsThumbnailRelName } from '../fitsThumbnail.js';
 import {
   stmts,
   getFolderName,
@@ -324,7 +325,11 @@ export function getLocalSessions(objectId: string) {
 export function getLocalFiles(objectId: string, sessionDate?: string) {
   const LIBRARY_DIR = getLibraryDir();
   const folderName = getFolderName(objectId);
-  const objDir = path.join(LIBRARY_DIR, folderName);
+  // Resolve and contain — getFolderName falls back to the raw objectId on a DB
+  // miss, so a crafted objectId with traversal tokens would escape LIBRARY_DIR
+  // without this guard. Mirrors the containment in library.ts:1164/1201.
+  const objDir = path.resolve(LIBRARY_DIR, folderName);
+  if (!objDir.startsWith(LIBRARY_DIR + path.sep)) return [];
   if (!fs.existsSync(objDir)) return [];
 
   return fs.readdirSync(objDir)
@@ -362,8 +367,8 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
         frameCount: parsed.frameCount || null,
         isThumbnail: parsed.isThumbnail,
         downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(`${folderName}/${fname}`)}`,
-        thumbUrl: fs.existsSync(path.join(objDir, '.thumbs', fname + '.jpg'))
-          ? `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(`${folderName}/.thumbs/${fname}.jpg`)}`
+        thumbUrl: fs.existsSync(path.join(objDir, '.thumbs', fitsThumbnailRelName(fname)))
+          ? `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(`${folderName}/.thumbs/${fitsThumbnailRelName(fname)}`)}`
           : undefined,
         subIndex: parsed.subIndex || null,
       };

@@ -1,6 +1,6 @@
 import { User, AlertCircle } from 'lucide-react';
 
-export interface OnboardingStep1Props {
+interface OnboardingStep1Props {
   username: string;
   password: string;
   confirmPassword: string;

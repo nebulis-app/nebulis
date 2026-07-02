@@ -1,12 +1,9 @@
 import type { CatalogEntry } from '../../types';
-import { fetchJSON, BASE } from './client';
+import { fetchJSON } from './client';
 
 // Thumbnail URL
-export const getThumbnailUrl = (objectId: string) =>
-  `${BASE}/telescope/objects/${encodeURIComponent(objectId)}/thumbnail`;
-
-export const fetchLocationName = (lat: number, lon: number) =>
-  fetchJSON<{ city: string | null }>(`/catalog/geocode/reverse?lat=${lat}&lon=${lon}`)
+export const fetchLocationName = (lat: number, lon: number, signal?: AbortSignal) =>
+  fetchJSON<{ city: string | null }>(`/catalog/geocode/reverse?lat=${lat}&lon=${lon}`, signal ? { signal } : undefined)
     .then(r => r.city)
     .catch(() => null);
 export const fetchLocationInfo = (lat: number, lon: number) =>
@@ -32,7 +29,7 @@ export const searchLocations = (q: string) =>
 export const getCatalogEntry = (id: string) => fetchJSON<CatalogEntry>(`/catalog/${encodeURIComponent(id)}`);
 
 // Catalog object info (fetched lazily from library DB / catalogCache / static catalog)
-export interface CatalogObjectInfo {
+interface CatalogObjectInfo {
   name: string;
   type: string;
   constellation: string;
@@ -45,6 +42,7 @@ export interface CatalogObjectInfo {
   size: string | null;
   imageUrl: string;
   wikiUrl: string | null;
+  alsoKnownAs: string[];
   override: CatalogOverrideRecord | null;
 }
 export const getCatalogObjectInfo = (id: string) =>
@@ -87,7 +85,7 @@ export const deleteCatalogOverride = (id: string) =>
   });
 
 // Catalog prefetch job (bulk download of imagery + Wikipedia descriptions)
-export interface CatalogCacheStats {
+interface CatalogCacheStats {
   dss2Count: number;
   dss2Bytes: number;
   wikiImageCount: number;
@@ -104,7 +102,7 @@ export interface PackStateRow {
   objectCount: number;
 }
 
-export interface CatalogPrefetchStatus {
+interface CatalogPrefetchStatus {
   running: boolean;
   phase: 'idle' | 'pack' | 'images' | 'wikipedia' | 'caldwell' | 'done' | 'cancelled' | 'error';
   processed: number;
@@ -132,11 +130,6 @@ export const startCatalogPrefetch = (force = false, packsOnly = false) => {
     { method: 'POST' },
   );
 };
-export const startCatalogPhase = (phase: 'images' | 'wikipedia' | 'caldwell') =>
-  fetchJSON<{ started: boolean; reason?: string; status: CatalogPrefetchStatus }>(
-    `/catalog/prefetch/start?phase=${phase}`,
-    { method: 'POST' },
-  );
 export const cancelCatalogPrefetch = () =>
   fetchJSON<{ cancelled: boolean; status: CatalogPrefetchStatus }>(
     '/catalog/prefetch/cancel',

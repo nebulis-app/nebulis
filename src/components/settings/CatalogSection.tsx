@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen,
@@ -328,6 +328,8 @@ function TleCatalogCard({ isDark }: { isDark: boolean }) {
   });
   const [clearingCache, setClearingCache] = useState(false);
   const [clearResult, setClearResult] = useState<'cleared' | 'error' | null>(null);
+  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (clearTimerRef.current) clearTimeout(clearTimerRef.current); }, []);
 
   async function handleClearCache() {
     setClearingCache(true);
@@ -339,7 +341,7 @@ function TleCatalogCard({ isDark }: { isDark: boolean }) {
       setClearResult('error');
     } finally {
       setClearingCache(false);
-      setTimeout(() => setClearResult(null), 4000);
+      clearTimerRef.current = setTimeout(() => setClearResult(null), 4000);
     }
   }
 

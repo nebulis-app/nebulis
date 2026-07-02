@@ -61,12 +61,12 @@ export function AddTelescopeModal({
   const [color, setColor] = useState(existing?.color ?? DEFAULT_COLOR_BY_KIND[initialKind]);
   const [autoImportEnabled, setAutoImportEnabled] = useState(existing?.autoImportEnabled ?? true);
   const [autoImportInterval, setAutoImportInterval] = useState(existing?.autoImportInterval ?? 60);
-  // Per-telescope file-type filters. Default to JPG + thumbnails on, others
+  // Per-telescope file-type filters. Default to JPG on, others
   // off — matches the previous global defaults. Edits seed from the existing
   // profile so users can flip a single toggle without re-checking everything.
   const [importJpg, setImportJpg] = useState(existing?.importJpg ?? true);
   const [importFits, setImportFits] = useState(existing?.importFits ?? false);
-  const [importThumbnails, setImportThumbnails] = useState(existing?.importThumbnails ?? true);
+  const [importThumbnails, setImportThumbnails] = useState(existing?.importThumbnails ?? false);
   const [importSubFrames, setImportSubFrames] = useState(existing?.importSubFrames ?? false);
   const [importVideos, setImportVideos] = useState(existing?.importVideos ?? false);
   // Toggle for the hidden `.nebulis.dat` device-tracking file. On by default

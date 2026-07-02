@@ -58,7 +58,7 @@ export function LocationPrompt({
           await queryClient.invalidateQueries({ queryKey: ['forecast'] });
           await queryClient.invalidateQueries({ queryKey: ['planner-tonight'] });
           for (const key of invalidateKeys) {
-            await queryClient.invalidateQueries({ queryKey: key as unknown[] });
+            await queryClient.invalidateQueries({ queryKey: key });
           }
           setStatus('success');
         } catch (e) {

@@ -1,6 +1,6 @@
 import { fetchJSON } from './client';
 
-export interface UpdateStatus {
+interface UpdateStatus {
   platform: 'win-x64' | 'mac-arm64' | 'mac-x64' | null;
   channel: 'stable' | 'beta';
   autoUpdateEnabled: boolean;

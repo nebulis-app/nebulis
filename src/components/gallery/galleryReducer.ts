@@ -3,7 +3,7 @@ import { assertNever } from '../../lib/utils';
 
 export type SlotState = { active: 0 | 1; s0: LibraryImage; s1: LibraryImage };
 
-export type SlotAction =
+type SlotAction =
   | { type: 'ADVANCE'; next: LibraryImage }
   | { type: 'RESET'; s0: LibraryImage; s1: LibraryImage }
   | { type: 'PATCH_FAV'; path: string; isFavorite: boolean };

@@ -20,7 +20,7 @@ import { LocalPathPicker } from '../settings/LocalPathPicker';
 
 export type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 
-export interface OnboardingStep2Props {
+interface OnboardingStep2Props {
   kind: TelescopeKind | '';
   /** Resolved transport for this step. True when transportMode === 'local'
    *  or the kind is Dwarf (Dwarf has no SMB path). */

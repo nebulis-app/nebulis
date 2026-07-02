@@ -11,7 +11,7 @@ const INTERVAL_OPTIONS = [
 
 export { INTERVAL_OPTIONS };
 
-export interface OnboardingStep3Props {
+interface OnboardingStep3Props {
   autoImportInterval: number;
   importJpg: boolean;
   importFits: boolean;

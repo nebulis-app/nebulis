@@ -74,6 +74,7 @@ import {
   resolveObjectImagePath,
   resolveCatalogSourceSentinel,
 } from '../lib/localLibrary.js';
+import { stageUploadDestPath } from '../lib/library/uploadPath.js';
 import { createNote, getNote } from '../lib/notes.js';
 import { hasCachedCatalogImage, fovForEntry, findCachedMaster, prefetchObjectWiki, prefetchObjectHubble } from '../lib/catalogPrefetch.js';
 import { prefetchSkyImage } from '../lib/skyImage.js';
@@ -81,7 +82,7 @@ import { getById as getDsoById } from '../lib/dsoCatalog.js';
 import { caldwellToNgcId } from '../lib/caldwellCatalog.js';
 import { resolveCanonicalId } from '../lib/catalogAliases.js';
 import { getSettingsData } from '../lib/telescopes.js';
-import { queryString } from '../lib/queryHelpers.js';
+import { queryString, contentDispositionHeader } from '../lib/queryHelpers.js';
 
 // Multer: temp-disk storage for file uploads.
 // Filename is derived from a UUID rather than originalname so two rapid uploads
@@ -188,6 +189,7 @@ const MoveObservationBodySchema = z.object({
 
 const SubframesBodySchema = z.object({
   dates: z.array(z.string()).min(1, 'dates must be a non-empty array'),
+  filters: z.array(z.string()).optional(),
 });
 
 const GalleryImageBodySchema = z.object({
@@ -512,11 +514,16 @@ router.post('/import/upload-temp', requireAdmin, (req: Request, _res: Response, 
 
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
-      // Sanitize the relative path: remove any .. segments and leading slashes
+      // Sanitize the client-supplied relative path so it can never escape
+      // tmpDir (.. segments, absolute/leading-slash paths, backslash
+      // separators, control chars). Unsafe entries are skipped, not written.
       const rawRel = relativePaths[i] || f.originalname;
-      const safeParts = rawRel.replace(/\\/g, '/').split('/').filter(p => p !== '..' && p !== '.' && p !== '');
-      const destRel = safeParts.join(path.sep);
-      const destAbs = path.join(tmpDir, destRel);
+      const destAbs = stageUploadDestPath(tmpDir, rawRel);
+      if (!destAbs) {
+        log.warn({ rawRel }, '[upload-temp] rejected unsafe upload path');
+        try { fs.unlinkSync(f.path); } catch { /* ignore */ }
+        continue;
+      }
       fs.mkdirSync(path.dirname(destAbs), { recursive: true });
       try {
         fs.renameSync(f.path, destAbs);
@@ -936,7 +943,7 @@ router.get('/file', (req: Request, res: Response) => {
   res.set('Content-Type', mimeType);
   res.set('Cache-Control', 'public, max-age=3600');
   if (!isInline) {
-    res.set('Content-Disposition', `attachment; filename="${result.name}"`);
+    res.set('Content-Disposition', contentDispositionHeader('attachment', result.name));
   }
   res.send(result.data);
 });
@@ -1075,7 +1082,7 @@ router.get('/download/objects/:objectId', async (req: Request, res: Response) =>
     const decodedId = decodeURIComponent(objectId);
     const zipName = `${decodedId}${sessionDate ? `_${sessionDate}` : ''}.zip`;
     res.set('Content-Type', 'application/zip');
-    res.set('Content-Disposition', `attachment; filename="${zipName}"`);
+    res.set('Content-Disposition', contentDispositionHeader('attachment', zipName));
 
     const archive = archiver('zip', { zlib: { level: 1 } });
     archive.on('error', (err: Error) => {
@@ -1114,6 +1121,7 @@ interface TempDownload {
   expiresAt: number;
 }
 const tempDownloads = new Map<string, TempDownload>();
+const MAX_TEMP_DOWNLOADS = 200;
 
 interface ArchiveJob {
   filesTotal: number;
@@ -1127,6 +1135,7 @@ interface ArchiveJob {
   expiresAt: number;
 }
 const archiveJobs = new Map<string, ArchiveJob>();
+const MAX_ARCHIVE_JOBS = 200;
 
 // Periodic cleanup — remove expired tokens and jobs
 setInterval(() => {
@@ -1142,6 +1151,37 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000);
 
+// Filter query — returns distinct filter names found across sub-frames for the given dates
+router.post('/download/objects/:objectId/subframe-filters', (req: Request, res: Response) => {
+  const objectId = decodeURIComponent(String(req.params.objectId));
+  const bodyParsed = z.object({ dates: z.array(z.string()).min(1) }).safeParse(req.body);
+  if (!bodyParsed.success) {
+    res.apiError(400, 'INVALID_DATES', 'dates must be a non-empty array');
+    return;
+  }
+  const dateSet = new Set(bodyParsed.data.dates.map(String));
+  const folderName = getObjectFolderName(objectId);
+  const LIBRARY_DIR = getLibraryDir();
+  const objDir = path.resolve(LIBRARY_DIR, folderName);
+  if (!objDir.startsWith(LIBRARY_DIR + path.sep)) {
+    res.apiError(400, 'INVALID_OBJECT_ID', 'Object id resolves outside the library');
+    return;
+  }
+  if (!fs.existsSync(objDir)) {
+    res.apiSuccess({ filters: [] });
+    return;
+  }
+  const filters = new Set<string>();
+  for (const f of fs.readdirSync(objDir)) {
+    if (!isRealFile(f)) continue;
+    const parsed = parseFilename(f);
+    if (parsed.type === 'sub' && parsed.date !== undefined && dateSet.has(parsed.date) && parsed.filter) {
+      filters.add(parsed.filter);
+    }
+  }
+  res.apiSuccess({ filters: [...filters].sort() });
+});
+
 // Phase 1 — start async ZIP job
 router.post('/download/objects/:objectId/subframes', (req: Request, res: Response) => {
   const objectId = decodeURIComponent(String(req.params.objectId));
@@ -1150,9 +1190,10 @@ router.post('/download/objects/:objectId/subframes', (req: Request, res: Respons
     res.apiError(400, 'INVALID_DATES', bodyParsed.error.issues[0]?.message ?? 'dates must be a non-empty array');
     return;
   }
-  const { dates } = bodyParsed.data;
+  const { dates, filters } = bodyParsed.data;
 
   const dateSet = new Set(dates.map(String));
+  const filterSet = filters && filters.length > 0 ? new Set(filters) : null;
   // Resolve the object folder strictly inside LIBRARY_DIR — `getObjectFolderName`
   // falls back to the raw objectId when the lookup misses, which means a
   // crafted objectId with traversal tokens would otherwise escape.
@@ -1172,7 +1213,9 @@ router.post('/download/objects/:objectId/subframes', (req: Request, res: Respons
   const subFrames = fs.readdirSync(objDir).filter(f => {
     if (!isRealFile(f)) return false;
     const parsed = parseFilename(f);
-    return parsed.type === 'sub' && parsed.date !== undefined && dateSet.has(parsed.date);
+    if (parsed.type !== 'sub' || parsed.date === undefined || !dateSet.has(parsed.date)) return false;
+    if (filterSet !== null && (!parsed.filter || !filterSet.has(parsed.filter))) return false;
+    return true;
   });
 
   if (subFrames.length === 0) {
@@ -1195,6 +1238,9 @@ router.post('/download/objects/:objectId/subframes', (req: Request, res: Respons
     startedAt: Date.now(),
     expiresAt: Date.now() + 30 * 60 * 1000,
   };
+  if (archiveJobs.size >= MAX_ARCHIVE_JOBS) {
+    archiveJobs.delete(archiveJobs.keys().next().value!);
+  }
   archiveJobs.set(jobId, job);
 
   // Respond immediately so client can start polling
@@ -1208,6 +1254,9 @@ router.post('/download/objects/:objectId/subframes', (req: Request, res: Respons
 
   output.on('close', () => {
     const token = randomUUID();
+    if (tempDownloads.size >= MAX_TEMP_DOWNLOADS) {
+      tempDownloads.delete(tempDownloads.keys().next().value!);
+    }
     tempDownloads.set(token, { filePath: tmpPath, filename, expiresAt: Date.now() + 10 * 60 * 1000 });
     job.status = 'done';
     job.token = token;

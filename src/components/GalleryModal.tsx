@@ -14,6 +14,7 @@ import {
   ZoomOut,
   Contrast,
   Star,
+  Share2,
 } from 'lucide-react';
 import { deleteLibraryFile } from '../lib/api/library';
 import { useTheme } from '../hooks/useTheme';
@@ -72,11 +73,41 @@ export function GalleryModal({
   const [confirmDeleteFilePath, setConfirmDeleteFilePath] = useState<string | null>(null);
   const [deletingFile, setDeletingFile] = useState(false);
   const [confirmDeleteProcessedId, setConfirmDeleteProcessedId] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
 
+  const [isPanning, setIsPanning] = useState(false);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const panStartRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const imageAreaRef = useRef<HTMLDivElement>(null);
   const fitImgRef = useRef<HTMLImageElement>(null);
   const activeThumbRef = useRef<HTMLButtonElement>(null);
   const thumbStripRef = useRef<HTMLDivElement>(null);
+
+  const handlePanStart = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (fit) return;
+    e.preventDefault();
+    panStartRef.current = { x: e.clientX, y: e.clientY, ox: panOffset.x, oy: panOffset.y };
+    setIsPanning(true);
+  };
+
+  // Attach global move/up during a pan so fast mouse movement never escapes the handler
+  useEffect(() => {
+    if (!isPanning) return;
+    const onMove = (e: MouseEvent) => {
+      if (!panStartRef.current) return;
+      setPanOffset({
+        x: panStartRef.current.ox + e.clientX - panStartRef.current.x,
+        y: panStartRef.current.oy + e.clientY - panStartRef.current.y,
+      });
+    };
+    const onUp = () => { panStartRef.current = null; setIsPanning(false); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [isPanning]);
 
   // Snapshot items + reset on open
   useEffect(() => {
@@ -132,12 +163,13 @@ export function GalleryModal({
     return () => window.removeEventListener('keydown', handleKey);
   }, [isOpen, navigate, onClose]);
 
-  // Reset fit/zoom when navigating or gallery opens/closes
+  // Reset fit/zoom/pan when navigating or gallery opens/closes
   useEffect(() => {
     setFit(true);
     setFitsZoom(null);
     setFitsStretch(0.5);
     setConfirmDeleteFilePath(null);
+    setPanOffset({ x: 0, y: 0 });
   }, [isOpen, index]);
 
   // Keep active thumbnail scrolled into view
@@ -161,6 +193,24 @@ export function GalleryModal({
   const itemSub = isFile
     ? [item.file.exposure, item.file.filter].filter(Boolean).join(' · ')
     : item.img.notes || null;
+
+  const fileName = isFile ? item.file.name : item.img.originalName;
+  const handleShare = async () => {
+    setSharing(true);
+    try {
+      const res = await fetch(src);
+      const blob = await res.blob();
+      const shareFile = new File([blob], fileName, { type: blob.type || 'image/jpeg' });
+      if (navigator.canShare?.({ files: [shareFile] })) {
+        await navigator.share({ files: [shareFile], title: itemTitle });
+        return;
+      }
+      const abs = new URL(src, window.location.href).href;
+      window.location.href = `mailto:?subject=${encodeURIComponent(itemTitle)}&body=${encodeURIComponent(abs)}`;
+    } catch { /* cancelled or unsupported */ } finally {
+      setSharing(false);
+    }
+  };
 
   return (
     <>
@@ -261,6 +311,11 @@ export function GalleryModal({
                   >
                     FITS Header
                   </button>
+                  <button onClick={handleShare} disabled={sharing} title="Share"
+                    className={`p-2 rounded-lg transition disabled:opacity-50 ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+                  >
+                    {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+                  </button>
                   <a
                     href={item.file.downloadUrl}
                     download={item.file.name}
@@ -280,15 +335,13 @@ export function GalleryModal({
                             queryClient.invalidateQueries({ queryKey: ['observation-files', objectId, date] });
                             queryClient.invalidateQueries({ queryKey: ['observation', objectId, date] });
                             setConfirmDeleteFilePath(null);
-                            setLocalItems(prev => {
-                              const next = prev.filter((_, i) => i !== index);
-                              if (next.length <= 1) {
-                                onClose();
-                              } else if (index >= next.length) {
-                                setIndex(next.length - 1);
-                              }
-                              return next;
-                            });
+                            const next = localItems.filter((_, i) => i !== index);
+                            if (next.length <= 1) {
+                              onClose();
+                            } else {
+                              if (index >= next.length) setIndex(next.length - 1);
+                              setLocalItems(next);
+                            }
                           } finally {
                             setDeletingFile(false);
                           }
@@ -364,6 +417,11 @@ export function GalleryModal({
                       <Pencil className="w-4 h-4" />
                     </button>
                   )}
+                  <button onClick={handleShare} disabled={sharing} title="Share"
+                    className={`p-2 rounded-lg transition disabled:opacity-50 ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+                  >
+                    {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+                  </button>
                   <a
                     href={item.file.downloadUrl}
                     download={item.file.name}
@@ -429,6 +487,11 @@ export function GalleryModal({
                       <Pencil className="w-4 h-4" />
                     </button>
                   )}
+                  <button onClick={handleShare} disabled={sharing} title="Share"
+                    className={`p-2 rounded-lg transition disabled:opacity-50 ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+                  >
+                    {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+                  </button>
                   <a
                     href={item.img.url}
                     download={item.img.originalName}
@@ -480,7 +543,9 @@ export function GalleryModal({
           {/* Image area */}
           <div
             ref={imageAreaRef}
-            className={`flex-1 min-h-0 p-4 ${isFits || fit ? 'relative overflow-hidden' : 'overflow-auto flex items-center justify-center'}`}
+            className={`flex-1 min-h-0 p-4 relative overflow-hidden ${!isFits && !fit ? 'select-none' : ''}`}
+            style={!isFits && !fit ? { cursor: isPanning ? 'grabbing' : 'grab' } : undefined}
+            onMouseDown={handlePanStart}
           >
             {isFits ? (
               <div className="w-full h-full flex flex-col">
@@ -505,14 +570,20 @@ export function GalleryModal({
                 />
               </div>
             ) : (
-              <div
-                className="relative"
-                style={{ width: `${zoom * 100}%`, flexShrink: 0 }}
-              >
+              <div className="absolute inset-0 flex items-center justify-center">
                 <img
                   src={src}
                   alt={itemTitle}
-                  className="rounded-xl w-full h-auto block"
+                  className="rounded-xl"
+                  draggable={false}
+                  style={{
+                    width: `${zoom * 100}%`,
+                    maxWidth: 'none',
+                    height: 'auto',
+                    transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
+                    userSelect: 'none',
+                    pointerEvents: 'none',
+                  }}
                 />
               </div>
             )}

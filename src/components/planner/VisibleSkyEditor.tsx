@@ -1,10 +1,9 @@
 /**
  * Polar editor for the observer's "visible sky" map.
  *
- * Renders 36 azimuth wedges (10° each, 0° at North) × 4 elevation bands
- * (centers 10°, 30°, 50°, 70°; bands cover 0-80° in 20° steps). Each cell
- * is independently toggleable. Above 80° is treated as zenith and always
- * visible (not editable here).
+ * Renders 36 azimuth wedges (10° each, 0° at North) × 8 elevation bands
+ * (10° tall each, covering 0-80°). Each cell is independently toggleable.
+ * Above 80° is treated as zenith and always visible (not editable here).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
@@ -12,6 +11,7 @@ import { useTheme } from '../../hooks/useTheme';
 import {
   SKY_MAP_AZ_SLICES,
   SKY_MAP_BANDS,
+  SKY_MAP_BAND_HEIGHT_DEG,
   SKY_MAP_CELLS,
   cellIndex,
   makeAllBlockedMap,
@@ -118,8 +118,8 @@ function VisibleSkyEditorBody({ initialMap, onSave, onClose }: VisibleSkyEditorP
     };
   }, []);
 
-  // Band 0 is the outermost ring (0-20° altitude), band 3 the innermost (60-80°).
-  // Equal radial spacing across the four rings.
+  // Band 0 is the outermost ring (lowest altitude), the last band the innermost
+  // (just below the zenith disc). Equal radial spacing across the rings.
   const ringWidth = (RING_OUTER - RING_INNER) / SKY_MAP_BANDS;
   const radii = Array.from({ length: SKY_MAP_BANDS + 1 }, (_, i) => RING_OUTER - i * ringWidth);
 
@@ -139,7 +139,9 @@ function VisibleSkyEditorBody({ initialMap, onSave, onClose }: VisibleSkyEditorP
     { az: 270, text: 'W' },
   ];
 
-  const elevationLabels = [10, 30, 50, 70].map((deg, band) => {
+  // One label per band, at the band's center altitude (5°, 15°, … for 10° bands).
+  const elevationLabels = Array.from({ length: SKY_MAP_BANDS }, (_, band) => {
+    const deg = Math.round(band * SKY_MAP_BAND_HEIGHT_DEG + SKY_MAP_BAND_HEIGHT_DEG / 2);
     const rMid = radii[band] - ringWidth / 2;
     const pos = polar(45, rMid); // place along NE diagonal so labels stay clear of N tick
     return { deg, x: pos.x, y: pos.y };
@@ -176,7 +178,7 @@ function VisibleSkyEditorBody({ initialMap, onSave, onClose }: VisibleSkyEditorP
           <div className="flex gap-2 flex-wrap justify-center">
             <button
               onClick={() => setMap(makeAllVisibleMap())}
-              className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white"
+              className="px-3 py-1.5 text-xs rounded-lg bg-accent-500 hover:bg-accent-600 text-white"
             >
               All visible
             </button>
@@ -278,7 +280,7 @@ function VisibleSkyEditorBody({ initialMap, onSave, onClose }: VisibleSkyEditorP
           </svg>
 
           <p className="text-xs opacity-60 max-w-md text-center">
-            Bands are centered at 10°, 30°, 50°, 70° altitude (outer ring is the horizon).
+            Bands are {SKY_MAP_BAND_HEIGHT_DEG}° tall, from the horizon (outer ring) up to 80°.
             Above 80° is treated as zenith and always visible.
           </p>
         </div>
@@ -294,7 +296,7 @@ function VisibleSkyEditorBody({ initialMap, onSave, onClose }: VisibleSkyEditorP
           </button>
           <button
             onClick={() => onSave(map)}
-            className="px-4 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white"
+            className="px-4 py-2 text-sm rounded-lg bg-accent-500 hover:bg-accent-600 text-white"
           >
             Save sky map
           </button>

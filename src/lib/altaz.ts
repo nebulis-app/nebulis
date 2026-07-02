@@ -26,7 +26,7 @@ function lstHours(date: Date, lon: number): number {
   return (gmstHours(date) + lon / 15 + 24) % 24;
 }
 
-export interface AltAz {
+interface AltAz {
   /** Altitude in degrees, -90 to +90 */
   alt: number;
   /** Azimuth in degrees, 0=N, 90=E, 180=S, 270=W */
@@ -65,7 +65,7 @@ export function altAz(ra: number, dec: number, lat: number, lon: number, date: D
   return { alt, az };
 }
 
-export interface CurveSample {
+interface CurveSample {
   time: Date;
   alt: number;
   az: number;

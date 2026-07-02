@@ -15,7 +15,7 @@
 export const TELESCOPE_KINDS = ['seestar-s50', 'seestar-s30', 'dwarf-3', 'dwarf-2', 'dwarf-mini', 'other'] as const;
 export type TelescopeKind = typeof TELESCOPE_KINDS[number];
 
-export interface TelescopePreset {
+interface TelescopePreset {
   kind: TelescopeKind;
   /** Human label shown in the dropdown */
   label: string;
@@ -108,23 +108,6 @@ export const TELESCOPE_COLOR_PALETTE: string[] = [
   '#14b8a6', // teal
   '#f97316', // orange
 ];
-
-/** 2-3 letter abbreviation used as fallback inside marker badges when there's
- *  no room to render the full name. */
-export function abbreviateTelescope(name: string, kind: TelescopeKind): string {
-  switch (kind) {
-    case 'seestar-s50': return 'S50';
-    case 'seestar-s30': return 'S30';
-    case 'dwarf-3':     return 'D3';
-    case 'dwarf-2':     return 'D2';
-    case 'dwarf-mini':  return 'DM';
-    case 'other': {
-      // First two non-space chars uppercased, falling back to "?" if blank.
-      const compact = name.replace(/\s+/g, '');
-      return compact.slice(0, 2).toUpperCase() || '??';
-    }
-  }
-}
 
 /** Reverse-lookup: given a stored profile's `model` field, infer which kind
  *  it was created from. Used by the edit modal to seed the dropdown. */

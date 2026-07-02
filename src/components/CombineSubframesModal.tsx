@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Download, RotateCw, CheckSquare, Square, Layers, PackageCheck, XCircle, AlertCircle } from 'lucide-react';
+import { X, Download, RotateCw, CheckSquare, Square, Layers, PackageCheck, XCircle, AlertCircle, Filter } from 'lucide-react';
 import {
   getLibrarySessions,
+  getSubframeFilters,
   startSubframesArchive,
   getSubframesArchiveStatus,
   type SubframesArchiveStatus,
@@ -16,8 +17,23 @@ interface Props {
   onClose: () => void;
 }
 
-type Phase = 'select' | 'preparing' | 'done';
+type Phase = 'select' | 'filter-select' | 'preparing' | 'done';
 
+const FILTER_LABELS: Record<string, string> = {
+  IRCUT: 'IR Cut',
+  LP: 'Light Pollution (LP)',
+  LPRO: 'Light Pollution (LPRO)',
+  Ha: 'Hydrogen Alpha (Ha)',
+  OIII: 'Oxygen III (OIII)',
+  SII: 'Sulfur II (SII)',
+  Astro: 'Astro',
+  'Duo-Band': 'Duo-Band',
+  DualBand: 'Dual-Band',
+};
+
+function filterLabel(f: string): string {
+  return FILTER_LABELS[f] ?? f;
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -37,6 +53,7 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
   const [zipSize, setZipSize] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [jobStatus, setSubframesArchiveStatus] = useState<SubframesArchiveStatus | null>(null);
+  const [selectedFilters, setSelectedFilters] = useState<Set<string>>(new Set());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cancelledRef = useRef(false);
 
@@ -46,6 +63,24 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
   });
 
   const sessionsWithSubs = (sessions ?? []).filter(s => s.subFrameCount > 0);
+
+  const selectedDates = Array.from(selected);
+
+  const { data: filtersData, isFetching: filtersLoading } = useQuery({
+    queryKey: ['subframe-filters', objectId, selectedDates.join(',')],
+    queryFn: () => getSubframeFilters(objectId, selectedDates),
+    enabled: selectedDates.length > 0,
+    staleTime: 30_000,
+  });
+
+  const availableFilters = filtersData?.filters ?? [];
+
+  // Keep selectedFilters in sync when available filters change
+  useEffect(() => {
+    if (availableFilters.length > 0) {
+      setSelectedFilters(new Set(availableFilters));
+    }
+  }, [availableFilters.join(',')]);
 
   // Stop polling on unmount
   useEffect(() => () => {
@@ -68,6 +103,23 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
       else next.add(date);
       return next;
     });
+  }
+
+  function toggleFilter(f: string) {
+    setSelectedFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f);
+      else next.add(f);
+      return next;
+    });
+  }
+
+  function toggleAllFilters() {
+    if (selectedFilters.size === availableFilters.length) {
+      setSelectedFilters(new Set());
+    } else {
+      setSelectedFilters(new Set(availableFilters));
+    }
   }
 
   const stopPolling = useCallback(() => {
@@ -109,16 +161,14 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
     }
   }
 
-  async function handleDownload() {
-    if (selected.size === 0) return;
-
+  async function startArchive(filters?: string[]) {
     cancelledRef.current = false;
     setPhase('preparing');
     setError(null);
     setSubframesArchiveStatus(null);
 
     try {
-      const { jobId, filesTotal } = await startSubframesArchive(objectId, Array.from(selected));
+      const { jobId, filesTotal } = await startSubframesArchive(objectId, Array.from(selected), filters);
       if (cancelledRef.current) return;
 
       setSubframesArchiveStatus({ status: 'running', filesTotal, filesDone: 0, elapsedMs: 0 });
@@ -131,7 +181,26 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
     }
   }
 
+  function handleDownload() {
+    if (selected.size === 0) return;
+
+    // If there are multiple distinct filter types, show the filter selection step
+    if (availableFilters.length > 1) {
+      setPhase('filter-select');
+      return;
+    }
+
+    // Single filter or no filters: proceed directly
+    void startArchive();
+  }
+
+  function handleFilterDownload() {
+    const filters = availableFilters.length > 1 ? Array.from(selectedFilters) : undefined;
+    void startArchive(filters);
+  }
+
   const allSelected = sessionsWithSubs.length > 0 && selected.size === sessionsWithSubs.length;
+  const allFiltersSelected = availableFilters.length > 0 && selectedFilters.size === availableFilters.length;
 
   const totalSubFrames = sessionsWithSubs
     .filter(s => selected.has(s.date))
@@ -145,13 +214,10 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
     ? (jobStatus.elapsedMs / jobStatus.filesDone) * (jobStatus.filesTotal - jobStatus.filesDone)
     : null;
 
-  // Treat the modal as dirty during selection when the user has picked
-  // sessions to combine. Closing in 'preparing' or 'done' phases is already
-  // gated by the existing onClose guard above.
   const isDirty = phase === 'select' && selected.size > 0;
   const [confirmingClose, setConfirmingClose] = useState(false);
   const requestClose = () => {
-    if (phase !== 'select') return;
+    if (phase === 'preparing') return;
     if (isDirty) setConfirmingClose(true);
     else onClose();
   };
@@ -168,12 +234,14 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
         {/* Header */}
         <div className={`flex items-center justify-between px-5 py-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
           <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-accent-500" />
+            {phase === 'filter-select'
+              ? <Filter className="w-4 h-4 text-accent-500" />
+              : <Layers className="w-4 h-4 text-accent-500" />}
             <h2 className={`font-display font-semibold text-base ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>
-              Combine Subframes &amp; Download
+              {phase === 'filter-select' ? 'Select Filter Types' : 'Combine Subframes & Download'}
             </h2>
           </div>
-          {phase === 'select' && (
+          {(phase === 'select' || phase === 'filter-select') && (
             <button
               onClick={requestClose}
               className={`p-1.5 rounded-lg transition ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
@@ -242,6 +310,51 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
                 })}
               </>
             )}
+          </div>
+        ) : phase === 'filter-select' ? (
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2 max-h-96">
+            <p className={`text-xs pb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              Multiple filter types were used across the selected sessions. Choose which to include.
+            </p>
+
+            <button
+              onClick={toggleAllFilters}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${
+                isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-50 text-slate-500'
+              }`}
+            >
+              {allFiltersSelected
+                ? <CheckSquare className="w-4 h-4 text-accent-500 shrink-0" />
+                : <Square className="w-4 h-4 shrink-0" />}
+              Select all
+            </button>
+
+            <div className={`border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`} />
+
+            {availableFilters.map(f => {
+              const isChecked = selectedFilters.has(f);
+              return (
+                <button
+                  key={f}
+                  onClick={() => toggleFilter(f)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition ${
+                    isChecked
+                      ? isDark ? 'bg-accent-500/10 text-slate-100' : 'bg-accent-300 text-accent-700'
+                      : isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  {isChecked
+                    ? <CheckSquare className="w-4 h-4 text-accent-500 shrink-0" />
+                    : <Square className={`w-4 h-4 shrink-0 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />}
+                  <span className="flex-1 text-left">{filterLabel(f)}</span>
+                  <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${
+                    isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-100 text-slate-400'
+                  }`}>
+                    {f}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         ) : phase === 'preparing' ? (
           <div className="px-5 py-8 space-y-5">
@@ -323,7 +436,7 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
           </div>
         )}
 
-        {/* Footer — select phase only */}
+        {/* Footer — session select phase */}
         {phase === 'select' && (
           <div className={`px-5 py-4 border-t flex items-center justify-between gap-3 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
             {error ? (
@@ -349,7 +462,38 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
               </button>
               <button
                 onClick={handleDownload}
-                disabled={selected.size === 0}
+                disabled={selected.size === 0 || filtersLoading}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {filtersLoading && selected.size > 0
+                  ? <RotateCw className="w-4 h-4 animate-spin" />
+                  : <Download className="w-4 h-4" />}
+                Combine &amp; Download
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Footer — filter select phase */}
+        {phase === 'filter-select' && (
+          <div className={`px-5 py-4 border-t flex items-center justify-between gap-3 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+            <p className={`text-xs flex-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              {selectedFilters.size > 0
+                ? `${selectedFilters.size} of ${availableFilters.length} filter type${availableFilters.length !== 1 ? 's' : ''} selected`
+                : 'Select at least one filter type'}
+            </p>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => setPhase('select')}
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
+                  isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'
+                }`}
+              >
+                Back
+              </button>
+              <button
+                onClick={handleFilterDownload}
+                disabled={selectedFilters.size === 0}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 transition disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Download className="w-4 h-4" />
@@ -358,6 +502,7 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
             </div>
           </div>
         )}
+
         {confirmingClose && (
           <CloseConfirm
             message="Discard your session selection?"

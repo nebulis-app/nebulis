@@ -4,13 +4,13 @@ export const TOTAL_STEPS = 4;
 
 export type StepNumber = 1 | 2 | 3 | 4;
 
-export interface StepState {
+interface StepState {
   step: StepNumber;
   pendingDir: 1 | -1 | 0; // direction to apply when transition lands
   transitioning: boolean;
 }
 
-export type StepAction =
+type StepAction =
   | { type: 'BEGIN_FORWARD' }
   | { type: 'BEGIN_BACK' }
   | { type: 'COMMIT' };
@@ -33,7 +33,7 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
     }
     case 'COMMIT': {
       if (!state.transitioning) return state;
-      const next = (state.step + state.pendingDir) as StepNumber;
+      const next = state.step + state.pendingDir;
       const clamped = (Math.max(1, Math.min(TOTAL_STEPS, next))) as StepNumber;
       return { step: clamped, pendingDir: 0, transitioning: false };
     }

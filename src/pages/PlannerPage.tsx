@@ -9,6 +9,7 @@
  * green / amber / red stripe.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
@@ -20,13 +21,12 @@ import {
   type DragMoveEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { Moon, Compass, MapPin, Calendar, ChevronLeft, ChevronRight, Check, Crosshair } from 'lucide-react';
+import { Moon, Compass, MapPin, Calendar, ChevronLeft, ChevronRight, Check, Crosshair, Sparkles, Share2, Copy } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { getPlannerTargets } from '../lib/api/planner';
 import { getSettings, updateSettings } from '../lib/api/settings';
 import { listPlannedSessions, createPlannedSession, updatePlannedSession, deletePlannedSession, type PlannedSession, type PlannedSessionCreate } from '../lib/api/plannedSessions';
 import { getCatalogObjectInfo } from '../lib/api/catalog';
-import type { Settings } from '../types';
 import { getCatalogThumbnailUrl } from '../lib/catalogImage';
 import { LocationPrompt } from '../components/LocationPrompt';
 import { AltitudeChart } from '../components/AltitudeChart';
@@ -37,7 +37,7 @@ import { ScheduleTimeline } from '../components/planner/ScheduleTimeline';
 import { VisibleSkyEditor } from '../components/planner/VisibleSkyEditor';
 import { AltitudeBandChart } from '../components/planner/AltitudeBandChart';
 import { PlanCalendar } from '../components/planner/PlanCalendar';
-import { formatPlannerDate, localDateKey, nightWindowFor, plannerToday, sameLocalDay } from '../lib/nightWindow';
+import { dateFromKey, formatPlannerDate, localDateKey, nightWindowFor, plannerToday, sameLocalDay } from '../lib/nightWindow';
 import {
   DEFAULT_BLOCK_MINUTES,
   MIN_BLOCK_MINUTES,
@@ -49,10 +49,15 @@ import {
 } from '../components/planner/scheduleGeometry';
 import {
   checkBlockVisibility,
+  SKY_MAP_CELLS,
   type BlockVisibilityResult,
   type VisibleSkyMap,
 } from '../lib/visibilityCheck';
 import { checkMoonProximity, type MoonProximityResult } from '../lib/moonProximity';
+import { AutoPlanModal } from '../components/planner/AutoPlanModal';
+import { PlanShareModal } from '../components/planner/PlanShareModal';
+import type { PlanBlock } from '../lib/autoPlan';
+import { formatObjectName } from '../lib/utils';
 
 const TIMELINE_BUFFER_MS = 30 * 60_000; // 30-min padding beyond sunset/sunrise
 
@@ -60,6 +65,12 @@ export function PlannerPage() {
   const { isDark, isNight, isSpace } = useTheme();
   const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-accent-500';
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const navState = location.state as { searchQuery?: string; focusDate?: string } | null;
+  const initialSearch = navState?.searchQuery ?? '';
+  // When arriving from "Plan Tonight" on a catalog, open on the night the plan
+  // was scheduled into rather than the planner's own default "today".
+  const initialFocusDate = navState?.focusDate;
 
   // staleTime: 0 so navigating to the planner always loads current settings
   // (sky map and location can be changed from another device/tab).
@@ -77,8 +88,12 @@ export function PlannerPage() {
   const observerLon = settings?.longitude ?? null;
 
   // ── Date / night window ────────────────────────────────────────────────
-  const [selectedDate, setSelectedDate] = useState<Date>(() => plannerToday());
-  const [dateTouched, setDateTouched] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(() =>
+    initialFocusDate ? dateFromKey(initialFocusDate) : plannerToday(),
+  );
+  // Treat an explicit focus date as a user choice so the timezone effect below
+  // doesn't snap the view back to "today" once settings load.
+  const [dateTouched, setDateTouched] = useState(!!initialFocusDate);
   const selectedDateKey = localDateKey(selectedDate);
 
   // Server is now date-aware: /planner/tonight?date=YYYY-MM-DD returns the
@@ -93,8 +108,6 @@ export function PlannerPage() {
   });
   const planner = plannerQuery.data;
   const observerTimezone = planner?.observerTimezone || settingsTimezone;
-  const today = useMemo(() => plannerToday(new Date(), observerTimezone), [observerTimezone]);
-
   useEffect(() => {
     if (!observerTimezone || dateTouched) return;
     setSelectedDate(plannerToday(new Date(), observerTimezone));
@@ -151,7 +164,7 @@ export function PlannerPage() {
   });
   const sessions = useMemo(() => sessionsQuery.data ?? [], [sessionsQuery.data]);
 
-  const visibleSkyMap: VisibleSkyMap | null = settings?.visibleSkyMap?.length === 144 ? settings.visibleSkyMap : null;
+  const visibleSkyMap: VisibleSkyMap | null = settings?.visibleSkyMap?.length === SKY_MAP_CELLS ? settings.visibleSkyMap : null;
 
   // ── Mutations ──────────────────────────────────────────────────────────
   const createMut = useMutation({
@@ -228,9 +241,14 @@ export function PlannerPage() {
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['planned-sessions'] }),
   });
+  const [skyMapSaveError, setSkyMapSaveError] = useState<string | null>(null);
   const saveSkyMapMut = useMutation({
-    mutationFn: (map: VisibleSkyMap) => updateSettings({ visibleSkyMap: map } as Partial<Settings>),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
+    mutationFn: (map: VisibleSkyMap) => updateSettings({ visibleSkyMap: map }),
+    onSuccess: () => {
+      setSkyMapSaveError(null);
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+    },
+    onError: (err: Error) => setSkyMapSaveError(err.message ?? 'Failed to save sky map'),
   });
 
   // ── Drag state ─────────────────────────────────────────────────────────
@@ -252,8 +270,12 @@ export function PlannerPage() {
    *  timeline is scrolled. Falls back to activatorEvent.clientY + delta.y. */
   const pointerYRef = useRef<number | null>(null);
   const [resizePreview, setResizePreview] = useState<Map<number, { edge: 'top' | 'bottom'; deltaMinutes: number }>>(new Map());
+  const [copyingPrevNight, setCopyingPrevNight] = useState(false);
   const [skyEditorOpen, setSkyEditorOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [autoPlanOpen, setAutoPlanOpen] = useState(false);
+  const [autoPlanStart, setAutoPlanStart] = useState<Date | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const [detailsSession, setDetailsSession] = useState<{
     objectId: string;
     objectName: string;
@@ -403,6 +425,40 @@ export function PlannerPage() {
     [sessions, timelineStartIso, timelineEndIso, updateMut],
   );
 
+  const handleCopyFromPrevNight = useCallback(async () => {
+    if (observerLat == null || observerLon == null || !timelineStart || !timelineEnd) return;
+    setCopyingPrevNight(true);
+    try {
+      const prevDate = addDays(selectedDate, -1);
+      const prevWindow = nightWindowFor(prevDate, observerLat, observerLon);
+      if (!prevWindow) return;
+      const prevSessions = await listPlannedSessions({
+        from: prevWindow.start.toISOString(),
+        to: prevWindow.end.toISOString(),
+      });
+      if (prevSessions.length === 0) return;
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      await Promise.all(
+        prevSessions.map(s => {
+          const newStart = clampTime(new Date(new Date(s.startTime).getTime() + DAY_MS), timelineStart!, timelineEnd!);
+          const newEnd = clampTime(new Date(new Date(s.endTime).getTime() + DAY_MS), timelineStart!, timelineEnd!);
+          if (minutesBetween(newStart, newEnd) < MIN_BLOCK_MINUTES) return Promise.resolve();
+          return createPlannedSession({
+            objectId: s.objectId,
+            objectName: s.objectName,
+            ra: s.ra,
+            dec: s.dec,
+            startTime: newStart.toISOString(),
+            endTime: newEnd.toISOString(),
+          });
+        }),
+      );
+      await queryClient.invalidateQueries({ queryKey: ['planned-sessions'] });
+    } finally {
+      setCopyingPrevNight(false);
+    }
+  }, [selectedDate, observerLat, observerLon, timelineStart, timelineEnd, queryClient]);
+
   const visibilityById = useMemo(() => {
     const map = new Map<number, BlockVisibilityResult>();
     if (observerLat == null || observerLon == null) return map;
@@ -450,6 +506,40 @@ export function PlannerPage() {
     return m;
   }, [activeBlockDrag]);
 
+  // Apply an auto-generated plan: optionally wipe this night's blocks first,
+  // then create each new block. We write through the raw API and invalidate
+  // once at the end rather than firing the optimistic createMut per block,
+  // which would thrash the cache and the connection pool.
+  // applyAutoPlan reads the night's existing blocks straight from the query
+  // cache rather than closing over the `sessions` value. Referencing `sessions`
+  // in this later-defined closure makes the React Compiler treat it as
+  // possibly-mutated and disables memoization on the drag/resize callbacks
+  // above; going through queryClient (opaque to the compiler) sidesteps that.
+  const applyAutoPlan = useCallback(
+    async (blocks: PlanBlock[], clearFirst: boolean) => {
+      if (clearFirst) {
+        const ids = new Set<number>();
+        for (const [, data] of queryClient.getQueriesData<PlannedSession[]>({ queryKey: ['planned-sessions'] })) {
+          for (const s of data ?? []) if (s.id > 0) ids.add(s.id);
+        }
+        await Promise.all([...ids].map(id => deletePlannedSession(id)));
+      }
+      for (const b of blocks) {
+        await createPlannedSession({
+          objectId: b.target.id,
+          objectName: b.target.name,
+          ra: b.target.ra,
+          dec: b.target.dec,
+          startTime: b.start.toISOString(),
+          endTime: b.end.toISOString(),
+        });
+      }
+      await queryClient.invalidateQueries({ queryKey: ['planned-sessions'] });
+    },
+    [queryClient],
+  );
+
+
   // ── Render ─────────────────────────────────────────────────────────────
   if (settingsQuery.isLoading || plannerQuery.isLoading) {
     return <div className={`p-6 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>Loading planner...</div>;
@@ -467,15 +557,77 @@ export function PlannerPage() {
     );
   }
 
-  const visibleCellCount = visibleSkyMap ? visibleSkyMap.filter(Boolean).length : 144;
+  const visibleCellCount = visibleSkyMap ? visibleSkyMap.filter(Boolean).length : SKY_MAP_CELLS;
   const skyConfigured = Boolean(visibleSkyMap);
+
+  // Auto-plan scheduling window. The button is offered whenever there's a real
+  // dark window to fill for the selected location and date. The actual start
+  // ("now" rounded up when we're already into tonight, else dusk) is captured
+  // in the click handler below, since reading the clock during render is impure.
+  //
+  // The window bounds are computed as millisecond numbers, taking the timeline
+  // edges from the immutable ISO strings (Date.parse) rather than the
+  // timelineStart/End Date objects. Calling a method like .getTime() on those
+  // Dates here, after the drag/resize callbacks, makes the React Compiler treat
+  // them (and the ISO strings the callbacks depend on) as possibly-mutated and
+  // disables their memoization.
+  const planWindowStartMs =
+    nightStart != null ? nightStart.getTime() : timelineStartIso != null ? Date.parse(timelineStartIso) : null;
+  const planWindowEndMs =
+    nightEnd != null ? nightEnd.getTime() : timelineEndIso != null ? Date.parse(timelineEndIso) : null;
+  const planWindowEnd = planWindowEndMs != null ? new Date(planWindowEndMs) : null;
+  const canAutoPlan =
+    observerLat != null &&
+    observerLon != null &&
+    planWindowStartMs != null &&
+    planWindowEndMs != null &&
+    planWindowStartMs < planWindowEndMs - 15 * 60_000;
+  const nightLabel = isToday ? 'Tonight' : formatPlannerDate(selectedDate);
+
+  const openAutoPlan = () => {
+    if (planWindowStartMs == null) return;
+    let startMs = planWindowStartMs;
+    if (isToday) {
+      const nowMs = Date.now();
+      if (nowMs > planWindowStartMs) {
+        const FIVE = 5 * 60_000;
+        startMs = Math.ceil(nowMs / FIVE) * FIVE;
+      }
+    }
+    setAutoPlanStart(new Date(startMs));
+    setAutoPlanOpen(true);
+  };
 
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)] -mb-8 min-h-0">
-      <h1 className={`font-display text-3xl font-bold tracking-tight flex items-center gap-3 pb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-        <Crosshair className={`w-7 h-7 ${accentText}`} />
-        Planner
-      </h1>
+      <div className="flex items-center justify-between gap-4 pb-4">
+        <h1 className={`font-display text-3xl font-bold tracking-tight flex items-center gap-3 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+          <Crosshair className={`w-7 h-7 ${accentText}`} />
+          Planner
+        </h1>
+        {observerLat != null && observerLon != null && (
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <div className={`flex items-center gap-1.5 text-sm ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+              <MapPin className={`w-4 h-4 shrink-0 ${accentText}`} />
+              <span className="font-medium">
+                {settings?.locationName || `${observerLat.toFixed(2)}, ${observerLon.toFixed(2)}`}
+              </span>
+            </div>
+            <div className={`flex items-center gap-3 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+              <SaveIndicator
+                isPending={createMut.isPending || updateMut.isPending || deleteMut.isPending}
+                isDark={isDark}
+              />
+              {planner?.moonIllumination != null && (
+                <span className="flex items-center gap-1">
+                  <Moon className="w-3.5 h-3.5" />
+                  Moon {planner.moonIllumination}% ({planner.moonPhase})
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       <header
         className={`flex items-center justify-between gap-3 px-4 py-3 border-b ${
@@ -521,70 +673,85 @@ export function PlannerPage() {
           </div>
           {!isToday && (
             <button
-              onClick={() => {
-                setDateTouched(true);
-                setSelectedDate(today);
-              }}
-              className="text-xs px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white"
+              onClick={handleCopyFromPrevNight}
+              disabled={copyingPrevNight || !timelineStart || !timelineEnd}
+              className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded transition disabled:opacity-40 ${
+                isDark
+                  ? 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+                  : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+              }`}
+              title="Copy sessions from the previous night to this night"
             >
-              Jump to tonight
+              <Copy className="w-3.5 h-3.5" />
+              {copyingPrevNight ? 'Copying…' : 'Copy from previous night'}
+            </button>
+          )}
+          {canAutoPlan && (
+            <button
+              onClick={openAutoPlan}
+              className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition border ${
+                isNight
+                  ? 'bg-red-500/15 text-red-400 hover:bg-red-500/25 border-red-500/30'
+                  : isSpace
+                    ? 'bg-violet-500/15 text-violet-400 hover:bg-violet-500/25 border-violet-500/30'
+                    : isDark
+                      ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 border-accent-500/30'
+                      : 'bg-accent-300 text-accent-700 hover:bg-accent-400 border-accent-400'
+              }`}
+              title="Auto-generate an imaging plan for this night"
+            >
+              <Sparkles className="w-4 h-4" />
+              Plan My Night
             </button>
           )}
           <button
             onClick={() => setSkyEditorOpen(true)}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${
-              skyConfigured
-                ? 'bg-emerald-600 text-white hover:bg-emerald-500'
-                : 'bg-amber-500 text-white hover:bg-amber-400'
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition border ${
+              isNight
+                ? 'bg-red-500/15 text-red-400 hover:bg-red-500/25 border-red-500/30'
+                : isSpace
+                  ? 'bg-violet-500/15 text-violet-400 hover:bg-violet-500/25 border-violet-500/30'
+                  : isDark
+                    ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 border-accent-500/30'
+                    : 'bg-accent-300 text-accent-700 hover:bg-accent-400 border-accent-400'
             }`}
           >
             <Compass className="w-4 h-4" />
             Set Visible Sky
             <span className="text-[11px] opacity-90">
-              {skyConfigured ? `${visibleCellCount} / 144` : 'not set'}
+              {skyConfigured ? `${visibleCellCount} / ${SKY_MAP_CELLS}` : 'not set'}
             </span>
           </button>
-          {observerLat != null && observerLon != null && (
-            <div
-              className={`inline-flex items-center gap-1 text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}
-              title="Observer coordinates used for all altitude and visibility calculations"
-            >
-              <MapPin className="w-3.5 h-3.5" />
-              {settings?.locationName ? (
-                <>
-                  <span className="font-medium">{settings.locationName}</span>
-                  <span className="opacity-70">
-                    ({observerLat.toFixed(3)}°, {observerLon.toFixed(3)}°)
-                  </span>
-                </>
-              ) : (
-                <span>
-                  {observerLat.toFixed(3)}°, {observerLon.toFixed(3)}°
-                </span>
-              )}
-            </div>
-          )}
         </div>
-        <div className={`flex items-center gap-3 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-          <SaveIndicator
-            isPending={createMut.isPending || updateMut.isPending || deleteMut.isPending}
-            isDark={isDark}
-          />
-          <span className="flex items-center gap-1">
-            <Moon className="w-4 h-4" />
-            Moon {planner?.moonIllumination}% ({planner?.moonPhase})
-          </span>
-        </div>
+        {skyMapSaveError && (
+          <div className="mx-4 mt-1 px-3 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-xs border border-red-500/30">
+            Could not save sky map: {skyMapSaveError}
+          </div>
+        )}
+        {sessions.length > 0 && timelineStart && timelineEnd && (
+          <button
+            onClick={() => setShareOpen(true)}
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition shrink-0 ${
+              isDark ? 'bg-slate-800 text-slate-100 hover:bg-slate-700' : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+            }`}
+            title="Share this night's plan as text or an image"
+          >
+            <Share2 className="w-4 h-4" />
+            Share
+          </button>
+        )}
       </header>
 
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd}>
         <div className="grid grid-cols-[minmax(280px,38%)_1fr] flex-1 min-h-0">
           <LibraryPanel
             targets={planner?.targets ?? []}
+            initialQuery={initialSearch}
             observerLat={observerLat}
             observerLon={observerLon}
             nightStart={nightStart ?? timelineStart}
             nightEnd={nightEnd ?? timelineEnd}
+            minAlt={settings?.minAlt ?? null}
             visibleSkyMap={visibleSkyMap}
             onShowDetails={(t) => setDetailsSession({
               objectId: t.id,
@@ -644,8 +811,8 @@ export function PlannerPage() {
             can see exactly where their drop will land on the timeline. */}
         <DragOverlay dropAnimation={null}>
           {activeLibraryDrag && (
-            <div className="pointer-events-none rounded-lg border border-emerald-400 bg-slate-800/95 text-slate-100 shadow-2xl px-3 py-2 text-sm font-medium">
-              {activeLibraryDrag.objectName}
+            <div className="pointer-events-none rounded-lg border border-amber-400 bg-slate-800/95 text-slate-100 shadow-2xl px-3 py-2 text-sm font-medium">
+              {formatObjectName(activeLibraryDrag.objectId, activeLibraryDrag.objectName)}
               <div className="text-[11px] opacity-80 mt-0.5">Drop on the timeline to schedule (1 hour)</div>
             </div>
           )}
@@ -661,6 +828,41 @@ export function PlannerPage() {
         }}
         onClose={() => setSkyEditorOpen(false)}
       />
+
+      {autoPlanOpen && autoPlanStart && planWindowEnd && observerLat != null && observerLon != null && (
+        <AutoPlanModal
+          targets={planner?.targets ?? []}
+          observerLat={observerLat}
+          observerLon={observerLon}
+          scheduleStart={autoPlanStart}
+          scheduleHardEnd={planWindowEnd}
+          moonIllumination={planner?.moonIllumination ?? 0}
+          minAlt={settings?.minAlt ?? 30}
+          visibleSkyMap={visibleSkyMap}
+          observerTimezone={observerTimezone}
+          nightLabel={nightLabel}
+          isDark={isDark}
+          onApply={applyAutoPlan}
+          onClose={() => setAutoPlanOpen(false)}
+        />
+      )}
+
+      {shareOpen && timelineStart && timelineEnd && (
+        <PlanShareModal
+          data={{
+            sessions,
+            nightStart: nightStart ?? timelineStart,
+            nightEnd: nightEnd ?? timelineEnd,
+            date: selectedDate,
+            moonIllumination: planner?.moonIllumination ?? null,
+            moonPhase: planner?.moonPhase ?? null,
+            observerLat,
+            observerLon,
+            timezone: observerTimezone,
+          }}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
 
       {calendarOpen && (
         <PlanCalendar
@@ -799,7 +1001,7 @@ function SessionDetailsModal({
       >
         <div className="flex items-center justify-between p-5 border-b border-slate-700/40">
           <div>
-            <h2 className="text-lg font-semibold">{objectName}</h2>
+            <h2 className="text-lg font-semibold">{formatObjectName(objectId, objectName)}</h2>
             <p className="text-xs opacity-70 mt-0.5">RA {ra.toFixed(2)}h · Dec {dec.toFixed(2)}°</p>
           </div>
           <button
@@ -870,7 +1072,7 @@ function SessionDetailsModal({
                 href={wikiUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`inline-block text-xs mt-2 ${isDark ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'}`}
+                className={`inline-block text-xs mt-2 ${isDark ? 'text-amber-400 hover:text-amber-300' : 'text-amber-600 hover:text-amber-700'}`}
               >
                 Read more on Wikipedia →
               </a>

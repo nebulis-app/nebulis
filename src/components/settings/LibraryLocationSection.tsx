@@ -10,13 +10,7 @@ import {
   type VolumeInfo, type DirectoryEntry, type MigrationStatus,
 } from '../../lib/api/storage';
 import { getCardClass, getInputClass } from './SettingsUI';
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
+import { formatBytes } from '../../lib/utils';
 
 // Join a server-side path with a folder name using that path's own separator
 // (so Windows D:\ and macOS /Volumes both render correctly). The server

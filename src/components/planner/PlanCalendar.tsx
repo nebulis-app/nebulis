@@ -110,9 +110,9 @@ export function PlanCalendar({ selectedDate, observerTimezone, onSelect, onClose
                   'relative aspect-square text-xs rounded transition flex items-center justify-center',
                   !inMonth ? 'opacity-30' : '',
                   isSelected
-                    ? 'bg-emerald-600 text-white font-medium'
+                    ? 'bg-accent-500 text-white font-medium'
                     : isToday
-                      ? `${isDark ? 'ring-1 ring-emerald-500 text-emerald-300' : 'ring-1 ring-emerald-500 text-emerald-700'}`
+                      ? `${isDark ? 'ring-1 ring-accent-500 text-accent-300' : 'ring-1 ring-accent-500 text-accent-700'}`
                       : isDark
                         ? 'hover:bg-slate-800 text-slate-200'
                         : 'hover:bg-slate-100 text-slate-700',
@@ -122,7 +122,7 @@ export function PlanCalendar({ selectedDate, observerTimezone, onSelect, onClose
                 {d.getDate()}
                 {hasSessions && (
                   <span
-                    className={`absolute bottom-1 w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-emerald-400'}`}
+                    className={`absolute bottom-1 w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-accent-400'}`}
                     aria-hidden
                   />
                 )}
@@ -134,11 +134,11 @@ export function PlanCalendar({ selectedDate, observerTimezone, onSelect, onClose
         <div className="mt-3 flex items-center justify-between">
           <button
             onClick={() => { onSelect(today); onClose(); }}
-            className="text-xs px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white"
+            className="text-xs px-2 py-1 rounded bg-accent-500 hover:bg-accent-400 text-white"
           >
             Tonight
           </button>
-          <div className="text-[10px] opacity-60">Green dot = planned sessions</div>
+          <div className="text-[10px] opacity-60">Dot = planned sessions</div>
         </div>
       </div>
     </div>

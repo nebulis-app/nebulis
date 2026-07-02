@@ -122,12 +122,15 @@ export function Gallery() {
   const enabledTelescopes = telescopes.filter(t => t.autoImportEnabled);
   const importsAllScopes = enabledTelescopes.length >= 2;
 
+  const importResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (importResetTimerRef.current) clearTimeout(importResetTimerRef.current); }, []);
+
   const importMutation = useMutation({
     mutationFn: () => triggerImport(importsAllScopes ? { all: true } : undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['import-status'] });
       // Reset success state after 3 seconds so the checkmark doesn't persist forever
-      setTimeout(() => importMutation.reset(), 3000);
+      importResetTimerRef.current = setTimeout(() => importMutation.reset(), 3000);
     },
   });
 

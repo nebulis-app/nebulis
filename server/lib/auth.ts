@@ -38,6 +38,7 @@ export interface User {
   displayName: string;
   createdAt: string;
   role: UserRole;
+  tokenVersion: number;
 }
 
 export interface AuthToken {
@@ -63,6 +64,9 @@ const stmts = {
   delete: db.prepare('DELETE FROM users WHERE id = ?'),
   updatePassword: db.prepare('UPDATE users SET passwordHash = ? WHERE id = ?'),
   updateRole: db.prepare("UPDATE users SET role = ? WHERE id = ?"),
+  updateProfile: db.prepare('UPDATE users SET displayName = ?, email = ? WHERE id = ?'),
+  bumpTokenVersion: db.prepare('UPDATE users SET tokenVersion = tokenVersion + 1 WHERE id = ?'),
+  getTokenVersion: db.prepare<[string], { tokenVersion: number }>('SELECT tokenVersion FROM users WHERE id = ?'),
 };
 
 export async function registerUser(
@@ -95,6 +99,7 @@ export async function registerUser(
     displayName: displayName || username,
     createdAt: new Date().toISOString(),
     role,
+    tokenVersion: 0,
   };
 
   stmts.insert.run(user.id, user.username, user.email, user.passwordHash, user.displayName, user.createdAt, user.role);
@@ -117,13 +122,13 @@ export async function loginUser(username: string, password: string): Promise<Aut
   return generateToken(user);
 }
 
-function isJwtPayload(value: unknown): value is { userId: string; username: string; role?: string; jti?: string } {
+function isJwtPayload(value: unknown): value is { userId: string; username: string; role?: string; jti?: string; tokenVersion?: number } {
   if (value === null || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   return typeof v.userId === 'string' && typeof v.username === 'string';
 }
 
-export function verifyToken(token: string): { userId: string; username: string; role: UserRole; jti?: string } {
+export function verifyToken(token: string): { userId: string; username: string; role: UserRole; jti?: string; tokenVersion?: number } {
   try {
     const payload: unknown = jwt.verify(token, JWT_SECRET);
     if (!isJwtPayload(payload)) {
@@ -135,6 +140,7 @@ export function verifyToken(token: string): { userId: string; username: string; 
       username: payload.username,
       role,
       jti: typeof payload.jti === 'string' ? payload.jti : undefined,
+      tokenVersion: typeof payload.tokenVersion === 'number' ? payload.tokenVersion : undefined,
     };
   } catch {
     throw new Error('Invalid or expired token');
@@ -177,7 +183,14 @@ export async function updateUserPassword(userId: string, newPassword: string): P
     throw new Error('Password must be at least 6 characters');
   }
   const passwordHash = await bcrypt.hash(newPassword, 12);
-  const result = stmts.updatePassword.run(passwordHash, userId);
+  // Bump tokenVersion atomically with the password change so any existing login
+  // tokens for this user are rejected by the auth middleware immediately.
+  const tx = db.transaction(() => {
+    const r = stmts.updatePassword.run(passwordHash, userId);
+    stmts.bumpTokenVersion.run(userId);
+    return r;
+  });
+  const result = tx();
   return result.changes > 0;
 }
 
@@ -186,9 +199,18 @@ export function updateUserRole(userId: string, role: UserRole): boolean {
   return result.changes > 0;
 }
 
+export function updateUserProfile(userId: string, displayName: string, email: string): boolean {
+  const result = stmts.updateProfile.run(displayName, email.toLowerCase(), userId);
+  return result.changes > 0;
+}
+
+export function getUserTokenVersion(userId: string): number | undefined {
+  return stmts.getTokenVersion.get(userId)?.tokenVersion;
+}
+
 function generateToken(user: User): AuthToken {
   const token = jwt.sign(
-    { userId: user.id, username: user.username, role: user.role },
+    { userId: user.id, username: user.username, role: user.role, tokenVersion: user.tokenVersion },
     JWT_SECRET,
     { expiresIn: TOKEN_EXPIRY }
   );

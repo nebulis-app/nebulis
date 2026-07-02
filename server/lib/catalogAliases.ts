@@ -10,7 +10,8 @@
  *
  * Coverage:
  *   - NGC/IC → Messier for all 110 Messier objects with NGC/IC designations
- *   - Caldwell C1–C109 → NGC/IC (C9=Sh2-155 and C41=Hyades have no NGC/IC)
+ *   - Caldwell C1–C109 → NGC/IC (C9→Sh2-155 since neither has an NGC/IC; C41
+ *     Hyades has no higher catalog-number designation, so it stays canonical)
  *   - Sharpless Sh2-N → M# or NGC/IC where a cross-reference exists (39 entries)
  *   - Solar-system common names (Lunar→Moon, Solar→Sun) so cross-telescope
  *     capture-mode names fold into one card
@@ -56,7 +57,7 @@ const ALIASES = new Map<string, string>([
   ['NGC2447', 'M93'],  ['NGC4736', 'M94'],  ['NGC3351', 'M95'],
   ['NGC3368', 'M96'],  ['NGC3587', 'M97'],  ['NGC4192', 'M98'],
   ['NGC4254', 'M99'],  ['NGC4321', 'M100'], ['NGC5457', 'M101'],
-  ['NGC5866', 'M102'], ['NGC581',  'M103'], ['NGC4594', 'M104'],
+  ['NGC581',  'M103'], ['NGC4594', 'M104'],
   ['NGC3379', 'M105'], ['NGC4258', 'M106'], ['NGC6171', 'M107'],
   ['NGC3556', 'M108'], ['NGC3992', 'M109'], ['NGC205',  'M110'],
 
@@ -75,6 +76,12 @@ const ALIASES = new Map<string, string>([
   ['SH2-49',  'M16'],
   ['SH2-244', 'M1'],
   ['SH2-281', 'M42'],
+
+  // ── M102 → NGC5866 (Spindle Galaxy in Draco; most commonly accepted identification) ──
+  ['M102',    'NGC5866'],
+
+  // ── IC2118 ↔ NGC1909 (Witch Head Nebula — both designations in use) ───────
+  ['NGC1909', 'IC2118'],
 
   // ── Sharpless → NGC/IC (NGC/IC is canonical) ─────────────────────────────
   ['SH2-1',   'IC1470'],
@@ -109,6 +116,9 @@ const ALIASES = new Map<string, string>([
   // ── Caldwell C# → NGC/IC ─────────────────────────────────────────────────
   ['C1',  'NGC188'],  ['C2',  'NGC40'],    ['C3',  'NGC4236'], ['C4',  'NGC7023'],
   ['C5',  'IC342'],   ['C6',  'NGC6543'],  ['C7',  'NGC2403'], ['C8',  'NGC559'],
+  // C9 (Cave Nebula) has no NGC/IC designation; it shares its position with
+  // Sh2-155, which ranks above Caldwell, so both fold into the Sharpless id.
+  ['C9',  'SH2-155'],
   ['C10', 'NGC663'],  ['C11', 'NGC7635'],  ['C12', 'NGC6946'], ['C13', 'NGC457'],
   ['C14', 'NGC869'],  ['C15', 'NGC6826'],  ['C16', 'NGC7243'], ['C17', 'NGC147'],
   ['C18', 'NGC185'],  ['C19', 'IC5146'],   ['C20', 'NGC7000'], ['C21', 'NGC4449'],
@@ -155,16 +165,28 @@ export function resolveCanonicalId(id: string): string {
   return id;
 }
 
+/** Reverse map: canonical ID (uppercase) → all aliases that resolve to it. */
+const REVERSE_ALIASES = new Map<string, string[]>();
+for (const [alias, canonical] of ALIASES) {
+  const c = canonical.toUpperCase();
+  if (!REVERSE_ALIASES.has(c)) REVERSE_ALIASES.set(c, []);
+  REVERSE_ALIASES.get(c)!.push(alias);
+}
+
+/**
+ * Return all Caldwell/Sharpless alias strings that point at this canonical ID.
+ * Returns human-readable forms: 'C13', 'Sh2-298', etc.
+ */
+export function getAliasesFor(canonicalId: string): string[] {
+  const key = canonicalId.toUpperCase().replace(/\s+/g, '');
+  return (REVERSE_ALIASES.get(key) ?? []).map(a =>
+    a.startsWith('SH2-') ? `Sh2-${a.slice(4)}` : a,
+  );
+}
+
 /** All known aliases that map to the given canonical ID (e.g. "NGC7331" → ["C30"]). */
 export function getAliasesForCanonical(canonicalId: string): string[] {
-  const upper = canonicalId.toUpperCase().replace(/\s+/g, '');
-  const result: string[] = [];
-  for (const [alias, canon] of ALIASES) {
-    // Canonical values are normally uppercase catalog IDs, but a few (Moon/Sun)
-    // are mixed-case common names — compare normalized so those match too.
-    if (canon.toUpperCase().replace(/\s+/g, '') === upper) result.push(alias);
-  }
-  return result;
+  return getAliasesFor(canonicalId);
 }
 
 /**

@@ -15,7 +15,7 @@ interface StorageObject {
 interface StorageStats { objects: StorageObject[]; telescopeOnline: boolean; telescopeKind: string | null; }
 export const getStorageStats = () => fetchJSON<StorageStats>('/storage');
 
-export interface SystemStorage {
+interface SystemStorage {
   disk: {
     total: number; used: number; free: number;
     usedPercent: number;
@@ -31,7 +31,7 @@ export interface SystemStorage {
 }
 export const getSystemStorage = () => fetchJSON<SystemStorage>('/storage/system');
 
-export interface LibraryObjectStat {
+interface LibraryObjectStat {
   objectId: string;
   name: string;
   size: number;
@@ -56,14 +56,14 @@ export interface DirectoryEntry { name: string; path: string; }
 export const browseDirectory = (path: string) =>
   fetchJSON<{ path: string; directories: DirectoryEntry[] }>(`/storage/browse?path=${encodeURIComponent(path)}`);
 
-export interface LibraryLocation {
+interface LibraryLocation {
   path: string;
   isDefault: boolean;
   available: boolean;
   libraryId: string;
 }
 
-export type MigrationPhase =
+type MigrationPhase =
   | 'idle' | 'validating' | 'copying' | 'verifying' | 'finalizing' | 'complete' | 'error';
 
 export interface MigrationStatus {
@@ -89,5 +89,3 @@ export const startLibraryMigration = (targetPath: string) =>
     body: JSON.stringify({ targetPath }),
   });
 
-export const getMigrationStatus = () =>
-  fetchJSON<{ migration: MigrationStatus }>('/storage/migrate/status');

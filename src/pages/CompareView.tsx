@@ -27,7 +27,7 @@ export function CompareView() {
   const sessionOptions = sessions?.map(s => ({
     value: s.thumbnailUrl,
     label: s.date !== 'unknown'
-      ? new Date(s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      ? new Date(s.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : s.id,
     date: s.date,
     fileCount: s.fileCount,

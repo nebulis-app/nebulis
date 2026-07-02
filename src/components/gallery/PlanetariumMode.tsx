@@ -2,14 +2,14 @@ import {
   useCallback, useEffect, useReducer, useRef, useState,
 } from 'react';
 import {
-  Heart, X, ChevronLeft, ChevronRight, Play, Pause, Maximize, Minimize,
+  Heart, X, ChevronLeft, ChevronRight, Play, Pause, Maximize, Minimize, Volume2, VolumeX,
 } from 'lucide-react';
 import type { LibraryImage } from '../../lib/api/library';
 import { fisherYates, preload, TOTAL_MS } from './galleryUtils';
 import { slotReducer, type SlotState } from './galleryReducer';
 import { KenBurnsSlide } from './KenBurnsSlide';
 
-export interface PlanetariumModeProps {
+interface PlanetariumModeProps {
   initialImages: LibraryImage[];
   favoritesOnly: boolean;
   showInfo: boolean;
@@ -31,6 +31,7 @@ export function PlanetariumMode({
   const [images] = useState(initialImages);
   const [favOnly, setFavOnly] = useState(favoritesOnly);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [musicOn, setMusicOn] = useState(true);
   const [showUI, setShowUI] = useState(true);
 
   // Pool lives in a ref so `advance` never needs to be recreated (stable callback,
@@ -110,9 +111,9 @@ export function PlanetariumMode({
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (isPlaying) audio.play().catch(() => {});
+    if (isPlaying && musicOn) audio.play().catch(() => {});
     else audio.pause();
-  }, [isPlaying]);
+  }, [isPlaying, musicOn]);
 
   // Fullscreen, enter on mount, track state so we can show a re-enter button
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -251,27 +252,40 @@ export function PlanetariumMode({
           className="flex-shrink-0 flex flex-col items-center gap-5 px-8 pb-8 pt-20"
           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.72) 0%, transparent 100%)' }}
         >
-          {/* Source pill */}
-          <div
-            className="flex items-center gap-0.5 rounded-full p-1"
-            style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)' }}
-          >
-            <button
-              onClick={() => setFavOnly(false)}
-              className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all ${
-                !favOnly ? 'bg-white text-slate-900' : 'text-white/60 hover:text-white'
-              }`}
+          {/* Source pill + music toggle */}
+          <div className="flex items-center gap-3">
+            <div
+              className="flex items-center gap-0.5 rounded-full p-1"
+              style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)' }}
             >
-              All Images
-            </button>
+              <button
+                onClick={() => setFavOnly(false)}
+                className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all ${
+                  !favOnly ? 'bg-white text-slate-900' : 'text-white/60 hover:text-white'
+                }`}
+              >
+                All Images
+              </button>
+              <button
+                onClick={() => setFavOnly(true)}
+                className={`flex items-center gap-1.5 px-5 py-1.5 rounded-full text-sm font-medium transition-all ${
+                  favOnly ? 'bg-white text-slate-900' : 'text-white/60 hover:text-white'
+                }`}
+              >
+                <Heart className={`w-3.5 h-3.5 ${favOnly ? 'fill-current text-rose-500' : ''}`} />
+                Favorites
+              </button>
+            </div>
             <button
-              onClick={() => setFavOnly(true)}
-              className={`flex items-center gap-1.5 px-5 py-1.5 rounded-full text-sm font-medium transition-all ${
-                favOnly ? 'bg-white text-slate-900' : 'text-white/60 hover:text-white'
-              }`}
+              onClick={() => setMusicOn(p => !p)}
+              title={musicOn ? 'Mute music' : 'Unmute music'}
+              className="p-2.5 rounded-full transition-all"
+              style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)' }}
             >
-              <Heart className={`w-3.5 h-3.5 ${favOnly ? 'fill-current text-rose-500' : ''}`} />
-              Favorites
+              {musicOn
+                ? <Volume2 className="w-4 h-4 text-white/70" />
+                : <VolumeX className="w-4 h-4 text-white/30" />
+              }
             </button>
           </div>
 

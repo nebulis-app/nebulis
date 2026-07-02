@@ -551,7 +551,7 @@ function SyncHistory({ isDark }: { isDark: boolean }) {
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-3">
               <div className="space-y-1">
-                {filesModal.files!.map((file, i) => (
+                {(filesModal.files ?? []).map((file, i) => (
                   <div
                     key={i}
                     className={`text-xs font-mono px-3 py-1.5 rounded-lg ${

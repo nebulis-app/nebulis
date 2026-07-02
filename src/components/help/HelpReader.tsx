@@ -19,7 +19,7 @@ import { getArticle, getTopic, type TopicMeta, type ArticleMeta } from './helpDa
 import { renderArticleBody } from './HelpArticles';
 import { toneClasses } from './HelpPrimitives';
 
-export type HelpReaderProps = {
+type HelpReaderProps = {
   articleId: string;
   onOpenArticle: (id: string) => void;
   onOpenTopic: (id: string) => void;
@@ -33,8 +33,8 @@ export function HelpReader({ articleId, onOpenArticle, onOpenTopic, onHome }: He
 
   // Scroll to top whenever the article id changes
   useEffect(() => {
-    bodyRef.current?.scrollTo?.({ top: 0, behavior: 'instant' as ScrollBehavior });
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+    bodyRef.current?.scrollTo?.({ top: 0, behavior: 'instant' });
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'instant' });
   }, [articleId]);
 
   // Theme tokens

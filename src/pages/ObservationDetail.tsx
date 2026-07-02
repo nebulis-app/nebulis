@@ -243,11 +243,11 @@ export function ObservationDetail() {
   useEffect(() => {
     const coords = observation?.coordinates;
     if (!coords) return;
-    let cancelled = false;
-    fetchLocationName(coords.lat, coords.lon).then(name => {
-      if (!cancelled) setLocationName(name);
-    });
-    return () => { cancelled = true; };
+    const controller = new AbortController();
+    fetchLocationName(coords.lat, coords.lon, controller.signal).then(name => {
+      setLocationName(name);
+    }).catch(() => {});
+    return () => controller.abort();
   }, [observation?.coordinates?.lat, observation?.coordinates?.lon]);
 
   const { data: objectInfo } = useQuery({
@@ -507,12 +507,6 @@ if (isLoading) {
                 )}
               </span>
             )}
-            {observation?.constellation && (
-              <span className="flex items-center gap-1.5">
-                <Star className="w-3.5 h-3.5" />
-                {observation.constellation}
-              </span>
-            )}
             {observation?.type && (
               <span className={`px-2 py-0.5 rounded-full text-xs ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
                 {observation.type}
@@ -594,24 +588,13 @@ if (isLoading) {
               {isAdmin && (
                 <button
                   onClick={() => setShowMoveModal(true)}
-                  className={`ml-2 p-1.5 rounded-lg transition ${isDark ? 'text-slate-600 hover:text-accent-400 hover:bg-accent-500/10' : 'text-slate-400 hover:text-accent-500 hover:bg-accent-50'}`}
+                  className={`ml-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${isDark ? 'text-slate-500 hover:text-accent-400 hover:bg-accent-500/10' : 'text-slate-400 hover:text-accent-500 hover:bg-accent-50'}`}
                   title="Move observation to different object"
                 >
                   <ArrowRightLeft className="w-4 h-4" />
+                  Move
                 </button>
               )}
-              <button
-                onClick={() => compareMode ? exitCompareMode() : setCompareMode(true)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${
-                  compareMode
-                    ? isDark ? 'bg-accent-500/10 text-accent-400 border border-accent-500/30' : 'bg-accent-300 text-accent-700 border border-accent-400'
-                    : isDark ? 'text-slate-500 hover:text-accent-400 hover:bg-accent-500/10 border border-transparent' : 'text-slate-400 hover:text-accent-500 hover:bg-accent-50 border border-transparent'
-                }`}
-                title={compareMode ? 'Exit compare mode' : 'Compare images side by side'}
-              >
-                <Columns className="w-3.5 h-3.5" />
-                {compareMode ? 'Exit Compare' : 'Compare'}
-              </button>
               {isAdmin && (
                 <button
                   onClick={() => setShowDeleteModal(true)}
@@ -664,6 +647,13 @@ if (isLoading) {
                 <Crown className="w-3 h-3" />
                 Session Image
               </div>
+              <button
+                onClick={e => { e.stopPropagation(); openImageEditor(designatedProcessedImage.url, designatedProcessedImage.title || designatedProcessedImage.originalName, 'processed'); }}
+                className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60"
+                title="Edit image"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
             </div>
             <div className={`px-3 py-1.5 border-t flex items-center justify-between gap-2 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-500 text-[11px] font-semibold flex items-center gap-1">
@@ -703,6 +693,13 @@ if (isLoading) {
                   Session Image
                 </div>
               )}
+              <button
+                onClick={e => { e.stopPropagation(); openImageEditor(heroFile.downloadUrl, heroFile.name, 'telescope'); }}
+                className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60"
+                title="Edit image"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
             </div>
             <div className={`px-3 py-1.5 border-t flex items-center justify-between gap-2 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <div className="flex items-center gap-2 min-w-0">
@@ -1081,20 +1078,34 @@ if (isLoading) {
                 </span>
               )}
             </h2>
-            <div className={`flex rounded-xl overflow-hidden border ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-              {(['all', 'image', 'fits'] as const).map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => { setViewMode(mode); setGalleryPage(0); }}
-                  className={`px-3 py-1.5 text-xs font-medium capitalize transition ${
-                    viewMode === mode
-                      ? isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-300 text-accent-700'
-                      : isDark ? 'bg-slate-900 text-slate-400 hover:bg-slate-800' : 'bg-white text-slate-500 hover:bg-slate-50'
-                  }`}
-                >
-                  {mode}
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => compareMode ? exitCompareMode() : setCompareMode(true)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${
+                  compareMode
+                    ? isDark ? 'bg-accent-500/10 text-accent-400 border border-accent-500/30' : 'bg-accent-300 text-accent-700 border border-accent-400'
+                    : isDark ? 'text-slate-500 hover:text-accent-400 hover:bg-accent-500/10 border border-transparent' : 'text-slate-400 hover:text-accent-500 hover:bg-accent-50 border border-transparent'
+                }`}
+                title={compareMode ? 'Exit compare mode' : 'Compare images side by side'}
+              >
+                <Columns className="w-3.5 h-3.5" />
+                {compareMode ? 'Exit Compare' : 'Compare'}
+              </button>
+              <div className={`flex rounded-xl overflow-hidden border ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                {(['all', 'image', 'fits'] as const).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => { setViewMode(mode); setGalleryPage(0); }}
+                    className={`px-3 py-1.5 text-xs font-medium capitalize transition ${
+                      viewMode === mode
+                        ? isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-300 text-accent-700'
+                        : isDark ? 'bg-slate-900 text-slate-400 hover:bg-slate-800' : 'bg-white text-slate-500 hover:bg-slate-50'
+                    }`}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -1224,7 +1235,7 @@ if (isLoading) {
                         </p>
                         <p className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                           {date && date !== 'unknown'
-                            ? new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                            ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                             : ''}
                         </p>
                       </div>
@@ -1617,7 +1628,7 @@ if (isLoading) {
                         <p className={`text-xs truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{img.originalName}</p>
                       )}
                       <p className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                        {new Date(img.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {new Date(img.uploadedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                       </p>
                     </div>
                   </div>
@@ -1819,7 +1830,7 @@ function formatTime(timestamp: string): string {
     const m = timestamp.match(/^\d{8}-(\d{2})(\d{2})/);
     if (m) return `${m[1]}:${m[2]}`;
     const d = new Date(timestamp);
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
   } catch {
     return timestamp;
   }

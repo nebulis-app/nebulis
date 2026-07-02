@@ -125,6 +125,20 @@ export const CALDWELL_TO_NGC: Record<number, string> = {
 };
 
 /**
+ * Coordinates for Caldwell objects that have no NGC/IC designation and therefore
+ * no entry in the DSO catalog. Used as a fallback when the image route needs
+ * RA/Dec to query DSS2 for an on-demand sky plate.
+ *
+ * ra is in hours (× 15 → degrees), dec is in degrees.
+ * majorAxisArcmin gives the approximate angular extent for FOV selection.
+ */
+export const CALDWELL_FALLBACK_COORDS: Record<number, { ra: number; dec: number; majorAxisArcmin: number }> = {
+  // C99 = Coalsack dark nebula — ~7° across, no NGC designation.
+  // RA 12h 52m, Dec -63° 18'.  DSS2 at 3° FOV (capped max) shows the dark patch well.
+  99: { ra: 12.873, dec: -63.3, majorAxisArcmin: 420 },
+};
+
+/**
  * Given an ID like "C21", return the canonical NGC/IC id ("NGC4449"), or null
  * if this isn't a recognized Caldwell designation.
  */

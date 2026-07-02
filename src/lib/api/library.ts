@@ -1,21 +1,15 @@
-import type { AstroObject, Session, SessionFile, ProcessedImage } from '../../types';
+import type { AstroObject, Session, ProcessedImage } from '../../types';
 export type { ProcessedImage };
 import { fetchJSON, authHeaders, BASE } from './client';
 
 // FITS header inspection
+type FitsValue = string | number | boolean;
 interface FitsHeaderData {
-  cards: Array<{ key: string; value: unknown; comment: string; raw: string }>;
-  values: Record<string, unknown>;
-  categorized: Record<string, Array<{ key: string; value: unknown; comment: string }>>;
+  cards: Array<{ key: string; value: FitsValue; comment: string; raw: string }>;
+  values: Record<string, FitsValue>;
+  categorized: Record<string, Array<{ key: string; value: FitsValue; comment: string }>>;
 }
 
-interface IntegrationStats {
-  objectId: string;
-  totalFrames: number;
-  totalExposureSec: number;
-  totalFormatted: string;
-  sessions: Array<{ date: string; frames: number; exposureSec: number }>;
-}
 
 export interface ImportStatus {
   running: boolean;
@@ -45,10 +39,11 @@ export interface ImportStatus {
 }
 
 export const getLibraryObjects = () => fetchJSON<AstroObject[]>('/library/objects');
-export interface LibraryObjectFilter {
+interface LibraryObjectFilter {
   id: string;
   label: string;
   matchTypes: string[];
+  matchMode?: 'exact' | 'contains';
 }
 export const getLibraryObjectFilters = () =>
   fetchJSON<LibraryObjectFilter[]>('/library/object-filters');
@@ -117,12 +112,6 @@ export const getImportHistory = (limit = 10, offset = 0) =>
 
 export const getLibrarySessions = (objectId: string) =>
   fetchJSON<Session[]>(`/library/objects/${encodeURIComponent(objectId)}/sessions`);
-export const getLibrarySessionFiles = (objectId: string, date: string) =>
-  fetchJSON<SessionFile[]>(
-    `/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/files`
-  );
-export const getLibraryIntegrationStats = (objectId: string) =>
-  fetchJSON<IntegrationStats>(`/library/objects/${encodeURIComponent(objectId)}/integration`);
 export const getLibraryFitsHeaders = (path: string) =>
   fetchJSON<FitsHeaderData>(`/library/headers?path=${encodeURIComponent(path)}`);
 export const deleteLibraryFile = (path: string) =>
@@ -149,7 +138,7 @@ export const moveObservation = (objectId: string, date: string, toObjectId: stri
     { method: 'POST', body: JSON.stringify({ toObjectId }) }
   );
 
-export interface SubFramePreviewGroup {
+interface SubFramePreviewGroup {
   folder: string;
   count: number;
   files: string[];
@@ -207,16 +196,10 @@ export const syncSessionSubFrames = (objectId: string, date: string) =>
     { method: 'POST' }
   );
 
-export const triggerFolderImport = (folderPath: string) =>
-  fetchJSON<{ started: boolean; folderPath: string }>('/library/import/folder', {
-    method: 'POST',
-    body: JSON.stringify({ folderPath }),
-  });
-
 // ─── Folder-import wizard (scan → review → commit) ───────────────────────────
 // Mirrors the server types in server/lib/library/folderScan.ts.
 
-export interface ImportCatalogMatch {
+interface ImportCatalogMatch {
   objectId: string;
   name: string;
   type: string;
@@ -224,7 +207,7 @@ export interface ImportCatalogMatch {
   magnitude: number | null;
 }
 
-export interface ImportScannedSession {
+interface ImportScannedSession {
   date: string;
   fileCount: number;
   bytes: number;
@@ -232,7 +215,7 @@ export interface ImportScannedSession {
   confidence: 'high' | 'medium' | 'low' | 'none';
 }
 
-export interface ImportScannedObject {
+interface ImportScannedObject {
   folderName: string;
   fileCount: number;
   bytes: number;
@@ -249,7 +232,7 @@ export interface ImportScanResult {
   truncated: boolean;
 }
 
-export interface ImportCommitObject {
+interface ImportCommitObject {
   folderName: string;
   skip?: boolean;
   targetObjectId: string;
@@ -453,7 +436,7 @@ export async function uploadGalleryImage(objectId: string, file: File): Promise<
   return (body.data ?? body) as { objectId: string; galleryImage: string };
 }
 
-export interface StackedImage {
+interface StackedImage {
   name: string;
   path: string;
   date: string;
@@ -547,10 +530,6 @@ export async function uploadLibraryFile(
   return (body.data ?? body) as { objectId: string; date: string; filename: string };
 }
 
-// Reports
-export const getSessionReportUrl = (objectId: string, sessionDate: string) =>
-  `${BASE}/reports/session/${encodeURIComponent(objectId)}/${encodeURIComponent(sessionDate)}`;
-
 // Download URL — streams a ZIP of locally-imported library files (no SMB)
 export const getDownloadUrl = (objectId: string, opts?: { fileType?: string; date?: string }) => {
   const params = new URLSearchParams();
@@ -560,10 +539,16 @@ export const getDownloadUrl = (objectId: string, opts?: { fileType?: string; dat
 };
 
 // ── Async subframe ZIP (3-phase: start → poll → fetch tmp) ──
-export const startSubframesArchive = (objectId: string, dates: string[]) =>
+export const getSubframeFilters = (objectId: string, dates: string[]) =>
+  fetchJSON<{ filters: string[] }>(
+    `/library/download/objects/${encodeURIComponent(objectId)}/subframe-filters`,
+    { method: 'POST', body: JSON.stringify({ dates }) },
+  );
+
+export const startSubframesArchive = (objectId: string, dates: string[], filters?: string[]) =>
   fetchJSON<{ jobId: string; filesTotal: number }>(
     `/library/download/objects/${encodeURIComponent(objectId)}/subframes`,
-    { method: 'POST', body: JSON.stringify({ dates }) },
+    { method: 'POST', body: JSON.stringify({ dates, ...(filters ? { filters } : {}) }) },
   );
 
 export interface SubframesArchiveStatus {
@@ -597,7 +582,7 @@ export interface LibraryImage {
 }
 
 /** Paginated response envelope for /library/all-images. */
-export interface LibraryImagesPage {
+interface LibraryImagesPage {
   items: LibraryImage[];
   total: number;
   /** Offset for the next page, or null when this was the last page. */
@@ -612,16 +597,6 @@ export interface LibraryImagesPage {
 export const getAllLibraryImages = async (): Promise<LibraryImage[]> => {
   const page = await fetchJSON<LibraryImagesPage>('/library/all-images');
   return page.items;
-};
-
-/** Fetch one page of library images. Used by clients that paginate (iOS). */
-export const getLibraryImagesPage = (opts: { limit?: number; offset?: number }) => {
-  const qs = new URLSearchParams(
-    Object.entries(opts)
-      .filter(([, v]) => v !== undefined)
-      .map(([k, v]) => [k, String(v)])
-  ).toString();
-  return fetchJSON<LibraryImagesPage>(`/library/all-images${qs ? `?${qs}` : ''}`);
 };
 
 export const getImageFavorites = () =>

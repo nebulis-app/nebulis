@@ -37,12 +37,15 @@ import { preferencesRouter } from './routes/preferences.js';
 import { pairRouter } from './routes/pair.js';
 import { devicesRouter } from './routes/devices.js';
 import { metaRouter } from './routes/meta.js';
+import { catalogsRouter } from './routes/catalogs.js';
 import { startPackUpdateChecker } from './lib/catalogPack/updater.js';
 import { startPlannerNightlyScheduler } from './lib/plannerNightlyPrefetch.js';
 import { startAppUpdateChecker } from './lib/appUpdate/updater.js';
 import { prewarmThumbnails } from './lib/catalogPrefetch.js';
 import { satelliteCatalog } from './lib/satelliteCatalog.js';
 import { DATA_DIR, LOGS_DIR } from './lib/paths.js';
+import { getInstanceId } from './lib/instanceId.js';
+import { getLanIP } from './lib/lanAddress.js';
 import { scheduleAutoImport, purgeJunkFiles, purgeStaleImportTmp, scheduleImportTmpCleanup } from './lib/localLibrary.js';
 import { isTelescopeOnline } from './lib/smbCache.js';
 import { pickDefaultTarget } from './lib/telescopes.js';
@@ -242,6 +245,7 @@ v1.get('/health', (_req, res) => {
     status: 'healthy',
     checks,
     version: '1.0.0',
+    instanceId: getInstanceId(),
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     telescopeOnline: isTelescopeOnline(),
@@ -297,6 +301,7 @@ v1.use('/preferences', preferencesRouter);
 v1.use('/pair', pairRouter);
 v1.use('/devices', devicesRouter);
 v1.use('/meta', metaRouter);
+v1.use('/catalogs', catalogsRouter);
 
 // Mount v1
 app.use('/api/v1', v1);
@@ -333,6 +338,7 @@ legacy.use('/reports', reportsRouter);
 legacy.use('/preferences', preferencesRouter);
 legacy.use('/pair', pairRouter);
 legacy.use('/devices', devicesRouter);
+legacy.use('/catalogs', catalogsRouter);
 legacy.use('/meta', metaRouter);
 app.use('/api', legacy);
 
@@ -354,6 +360,15 @@ app.use(express.static(distPath, {
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     }
   },
+}));
+
+// Serve pre-generated catalog thumbnail cache as static files — same access as
+// /api/catalog/:id/image (in the auth bypass list) but with no routing overhead
+// and a 30-day cache so repeat visits are instant.
+app.use('/sky-cache/resized', express.static(path.join(DATA_DIR, 'sky-cache', 'resized'), {
+  maxAge: '30d',
+  index: false,
+  dotfiles: 'deny',
 }));
 
 // SPA fallback: any non-API route serves index.html (production only; in dev, Vite handles the frontend)
@@ -386,9 +401,12 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
   const status = (err as { status?: number; statusCode?: number })?.status
     ?? (err as { status?: number; statusCode?: number })?.statusCode
     ?? 500;
-  const message = err instanceof Error ? err.message : 'Internal server error';
   log.error({ err, method: req.method, url: req.url, status }, 'unhandled_route_error');
   if (!res.headersSent) {
+    // Return a generic message for 5xx to avoid leaking internal paths, SQL
+    // fragments, or library internals. 4xx errors from upstream (e.g. archiver)
+    // may surface a curated message if the status indicates a client mistake.
+    const message = status < 500 && err instanceof Error ? err.message : 'An unexpected error occurred.';
     res.apiError(status, 'INTERNAL_ERROR', message);
   }
 });
@@ -405,24 +423,10 @@ function isPrivateIP(ip: string): boolean {
 }
 
 
-// Listens for UDP discovery pings from iOS/tvOS clients and responds with the HTTPS port.
-// The client derives the server's IP from the source address of the response — Docker's NAT
-// rewrites the source to the host's LAN IP, so this works correctly in bridge-mode containers.
-function getLanIP(): string | null {
-  // Prefer 192.168/10.x addresses — Docker bridge addresses (172.17-31.x) are last resort
-  const allPrivate: Array<{ ip: string; priority: number }> = [];
-  for (const iface of Object.values(os.networkInterfaces())) {
-    for (const addr of iface ?? []) {
-      if (addr.family !== 'IPv4' || addr.internal) continue;
-      const [a, b] = addr.address.split('.').map(Number);
-      if (a === 192 && b === 168) allPrivate.push({ ip: addr.address, priority: 0 });
-      else if (a === 10) allPrivate.push({ ip: addr.address, priority: 1 });
-      else if (a === 172 && b >= 16 && b <= 31) allPrivate.push({ ip: addr.address, priority: 2 });
-    }
-  }
-  allPrivate.sort((a, b) => a.priority - b.priority);
-  return allPrivate[0]?.ip ?? null;
-}
+// The client derives the server's IP from the source address of the UDP response —
+// Docker's NAT rewrites the source to the host's LAN IP, so discovery works correctly
+// in bridge-mode containers. getLanIP() (server/lib/lanAddress.ts) is used only for the
+// payload `url` field as a hint when source-address derivation is unavailable.
 
 // Check if Caddy (or any HTTPS listener) is up on the given port.
 // Cached for 30 s so discovery responses stay fast.
@@ -483,6 +487,7 @@ function startUDPResponder(httpPort: number, httpsPort: number): void {
         service: 'nebulis',
         port: httpPort,
         url,
+        instanceId: getInstanceId(),
         ...(httpsIsUp && ip ? { httpsPort, httpsUrl: `https://${ip}:${httpsPort}` } : {}),
         ...(friendlyHostname ? { hostname: friendlyHostname } : {}),
         version: '1.0.0',
@@ -520,7 +525,14 @@ app.listen(Number(PORT), '0.0.0.0', () => {
   startAppUpdateChecker();
   startPlannerNightlyScheduler();
 
-  // Advertise via mDNS so iOS/tvOS clients can auto-discover this server.
+  // Advertise via mDNS — deferred by one tick so isHTTPSAvailable() can check
+  // whether Caddy is actually listening before we include httpsPort in TXT records.
+  // Without this, clients (especially Android) connect to the advertised HTTPS port
+  // and fail with a connection error when Caddy is not running.
+  void (async () => {
+  const httpsIsUp = await isHTTPSAvailable(HTTPS_PORT);
+
+  // Advertise via mDNS so iOS/tvOS/Android clients can auto-discover this server.
   // Wraps in try/catch so a firewall block (common on Windows) never crashes the server.
   try {
     // SERVER_HOSTNAME overrides os.hostname() for Docker deployments where the
@@ -532,8 +544,9 @@ app.listen(Number(PORT), '0.0.0.0', () => {
     const friendlyHostname = getFriendlyHostname();
     const txtRecords = [
       `url=http://${hostname}:${PORT}`,
-      `httpsPort=${HTTPS_PORT}`,
+      ...(httpsIsUp ? [`httpsPort=${HTTPS_PORT}`] : []),
       `version=1.0.0`,
+      `instanceId=${getInstanceId()}`,
       ...(friendlyHostname ? [`hostname=${friendlyHostname}`] : []),
     ];
 
@@ -574,6 +587,7 @@ app.listen(Number(PORT), '0.0.0.0', () => {
   }
 
   startUDPResponder(Number(PORT), HTTPS_PORT);
+  })(); // end async mDNS+UDP init
 });
 
 // Remove macOS resource forks and other junk files left in the library

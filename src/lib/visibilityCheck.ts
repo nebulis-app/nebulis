@@ -1,33 +1,33 @@
 /**
  * Visibility check against the observer's "visible sky" map.
  *
- * The map is a 144-element boolean array representing 36 azimuth slices
- * (10° wide each, 0° at North, going clockwise) crossed with 4 elevation
- * bands centered at 10°, 30°, 50°, 70°:
+ * The map is a 288-element boolean array representing 36 azimuth slices
+ * (10° wide each, 0° at North, going clockwise) crossed with 8 elevation
+ * bands, each 10° tall (centers 5°, 15°, …, 75°):
  *
- *   Band 0: 0°–20°
- *   Band 1: 20°–40°
- *   Band 2: 40°–60°
- *   Band 3: 60°–80°
+ *   Band 0: 0°–10°
+ *   Band 1: 10°–20°
+ *   …
+ *   Band 7: 70°–80°
  *
  * Elevations above 80° are treated as zenith and always visible.
  * Elevations below 0° (object below horizon) are always blocked.
  *
- * Index layout: `map[azSlice * 4 + band]`. Index 0 = North horizon band,
- * 3 = North zenith band, 4 = first 10° east of North, and so on.
+ * Index layout: `map[azSlice * SKY_MAP_BANDS + band]`. Index 0 = North horizon
+ * band, the first 10° east of North starts at index SKY_MAP_BANDS, and so on.
  */
 import { altAz } from './altaz';
 
 export const SKY_MAP_AZ_SLICES = 36;
-export const SKY_MAP_BANDS = 4;
+export const SKY_MAP_BANDS = 8;
 export const SKY_MAP_CELLS = SKY_MAP_AZ_SLICES * SKY_MAP_BANDS;
-export const SKY_MAP_AZ_WIDTH_DEG = 360 / SKY_MAP_AZ_SLICES; // 10
-export const SKY_MAP_BAND_HEIGHT_DEG = 80 / SKY_MAP_BANDS;   // 20 (covers 0-80°)
+const SKY_MAP_AZ_WIDTH_DEG = 360 / SKY_MAP_AZ_SLICES; // 10
+export const SKY_MAP_BAND_HEIGHT_DEG = 80 / SKY_MAP_BANDS;   // 10 (covers 0-80°)
 
 export type VisibleSkyMap = boolean[];
 
 /** Empty map = no preference set; the visibility check treats it as fully visible. */
-export function isEmptyMap(map: VisibleSkyMap | null | undefined): boolean {
+function isEmptyMap(map: VisibleSkyMap | null | undefined): boolean {
   return !Array.isArray(map) || map.length !== SKY_MAP_CELLS;
 }
 
@@ -44,7 +44,7 @@ export function cellIndex(azSlice: number, band: number): number {
 }
 
 /** Decompose (az, alt) into (azSlice, band). Returns null for below-horizon. */
-export function locateCell(az: number, alt: number): { azSlice: number; band: number } | null {
+function locateCell(az: number, alt: number): { azSlice: number; band: number } | null {
   if (alt < 0) return null;
   const azNorm = ((az % 360) + 360) % 360;
   const azSlice = Math.min(SKY_MAP_AZ_SLICES - 1, Math.floor(azNorm / SKY_MAP_AZ_WIDTH_DEG));
@@ -54,7 +54,7 @@ export function locateCell(az: number, alt: number): { azSlice: number; band: nu
 }
 
 /** Look up whether a single (az, alt) point lies in a visible cell. */
-export function isPointVisible(map: VisibleSkyMap | null | undefined, az: number, alt: number): boolean {
+function isPointVisible(map: VisibleSkyMap | null | undefined, az: number, alt: number): boolean {
   if (isEmptyMap(map)) return true;            // no map set = treat everything as visible
   if (alt < 0) return false;                    // below horizon
   if (alt >= 80) return true;                   // zenith always visible

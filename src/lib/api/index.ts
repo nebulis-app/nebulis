@@ -1,5 +1,6 @@
 export * from './client';
 export * from './catalog';
+export * from './catalogs';
 export * from './settings';
 export * from './storage';
 export * from './telescopes';
@@ -9,6 +10,5 @@ export * from './auth';
 export * from './notes';
 export * from './planner';
 export * from './plannedSessions';
-export * from './wishlist';
 export * from './devices';
 export * from './update';

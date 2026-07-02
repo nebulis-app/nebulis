@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   startPairing,
+  startApprovedPairing,
+  getApprovedPairingStatus,
   lookupPairing,
   approvePairing,
   pollPairing,
@@ -255,6 +257,65 @@ describe('devicePairing', () => {
       if (!owner) throw new Error(`connectedDevices row for ${deviceId} disappeared`);
       const rows = listDevicesForUser(owner.userId);
       expect(rows[0].lastSeenAt).toBeGreaterThan(start);
+    });
+  });
+
+  describe('startApprovedPairing (QR enrollment)', () => {
+    it('mints a token on the first poll without a separate approve step', async () => {
+      const user = await freshUser();
+      const { deviceCode } = startApprovedPairing(user.id, 'My Phone');
+
+      const result = pollPairing(deviceCode);
+      expect(result.status).toBe('approved');
+      if (result.status !== 'approved') throw new Error('expected approved');
+      expect(result.token).toBeTruthy();
+      expect(result.user.id).toBe(user.id);
+
+      // The device is bound to the requesting user.
+      const rows = listDevicesForUser(user.id);
+      expect(rows.map(r => r.name)).toContain('My Phone');
+    });
+
+    it('is single-use: a second poll cannot mint another token', async () => {
+      const user = await freshUser();
+      const { deviceCode } = startApprovedPairing(user.id, 'Phone');
+      expect(pollPairing(deviceCode).status).toBe('approved');
+      expect(pollPairing(deviceCode).status).toBe('expired');
+    });
+
+    it('defaults a blank device name', async () => {
+      const user = await freshUser();
+      const { deviceCode } = startApprovedPairing(user.id, '   ');
+      const result = pollPairing(deviceCode);
+      if (result.status !== 'approved') throw new Error('expected approved');
+      expect(listDevicesForUser(user.id)[0].name).toBe('Device');
+    });
+  });
+
+  describe('getApprovedPairingStatus', () => {
+    it('reports waiting before the phone connects, without consuming the code', async () => {
+      const user = await freshUser();
+      const { deviceCode } = startApprovedPairing(user.id, 'Phone');
+
+      expect(getApprovedPairingStatus(deviceCode, user.id).status).toBe('waiting');
+      // Reading status must not consume the pairing — the phone can still claim it.
+      expect(pollPairing(deviceCode).status).toBe('approved');
+    });
+
+    it('reports connected once the phone has claimed the code', async () => {
+      const user = await freshUser();
+      const { deviceCode } = startApprovedPairing(user.id, 'Phone');
+      pollPairing(deviceCode);
+      const status = getApprovedPairingStatus(deviceCode, user.id);
+      expect(status.status).toBe('connected');
+      expect(status.deviceName).toBe('Phone');
+    });
+
+    it('is scoped to the owner — another user sees expired', async () => {
+      const owner = await freshUser('owner');
+      const other = await freshUser('other');
+      const { deviceCode } = startApprovedPairing(owner.id, 'Phone');
+      expect(getApprovedPairingStatus(deviceCode, other.id).status).toBe('expired');
     });
   });
 });

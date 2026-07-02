@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { ZoomIn, ZoomOut, RotateCw, Contrast, Satellite, Loader2, Clock, Zap, AlertCircle, X, Info, MapPin } from 'lucide-react';
 import { identifySatellites, type SatelliteTrailResult } from '../lib/api/observations';
 import { fetchBinary } from '../lib/api/client';
-import { parseFits, renderFitsToCanvas, type FitsHeader } from '../lib/fits';
+import { parseFits, renderFitsToCanvas, type FitsData } from '../lib/fits';
 
 interface FitsViewerProps {
   url: string;
@@ -45,6 +45,7 @@ export function FitsViewer({
 
   const [satDetecting, setSatDetecting] = useState(false);
   const [satResult, setSatResult] = useState<SatelliteTrailResult | null>(initialSatResult ?? null);
+  const [satIdentifyDone, setSatIdentifyDone] = useState(false);
   const [satError, setSatError] = useState<string | null>(null);
   const [satModalOpen, setSatModalOpen] = useState(false);
   const [satHelpOpen, setSatHelpOpen] = useState(false);
@@ -52,12 +53,7 @@ export function FitsViewer({
   const [locationGeoError, setLocationGeoError] = useState<string | null>(null);
   const initialSatResultRef = useRef(initialSatResult ?? null);
 
-  const [fitsData, setFitsData] = useState<{
-    imageData: Float64Array;
-    width: number;
-    height: number;
-    header: FitsHeader;
-  } | null>(null);
+  const [fitsData, setFitsData] = useState<FitsData | null>(null);
 
   // Internal zoom state — only used when hideControls=false
   const [fitZoom, setFitZoom] = useState<number | null>(null);
@@ -70,7 +66,9 @@ export function FitsViewer({
     : internalZoom;
 
   const handleIdentify = useCallback(async () => {
-    if (satResult) { setSatModalOpen(true); return; }
+    // Short-circuit only when we've already run a fresh identifyOnly call for this file,
+    // or when the scan found no trail (nothing to identify).
+    if (satResult && (satIdentifyDone || !satResult.trailDetected)) { setSatModalOpen(true); return; }
     setSatDetecting(true);
     setSatError(null);
     try {
@@ -79,6 +77,7 @@ export function FitsViewer({
         setShowLocationPrompt(true);
         setLocationGeoError(null);
       } else {
+        setSatIdentifyDone(true);
         setSatResult(result);
         setSatModalOpen(true);
       }
@@ -87,7 +86,7 @@ export function FitsViewer({
     } finally {
       setSatDetecting(false);
     }
-  }, [satResult, filePath]);
+  }, [satResult, satIdentifyDone, filePath]);
 
   const handleShareLocation = useCallback(async () => {
     setLocationGeoError(null);
@@ -99,6 +98,7 @@ export function FitsViewer({
       const { latitude, longitude } = position.coords;
       setShowLocationPrompt(false);
       const result = await identifySatellites(filePath!, latitude, longitude);
+      setSatIdentifyDone(true);
       setSatResult(result);
       setSatModalOpen(true);
     } catch (err) {
@@ -138,6 +138,7 @@ export function FitsViewer({
     setLoading(true);
     setError(null);
     setSatResult(initialSatResultRef.current);
+    setSatIdentifyDone(false);
     setSatError(null);
     setSatModalOpen(false);
 
@@ -158,7 +159,7 @@ export function FitsViewer({
 
   useEffect(() => {
     if (!fitsData || !canvasRef.current) return;
-    renderFitsToCanvas(canvasRef.current, fitsData.imageData, fitsData.width, fitsData.height, stretch, 'gray', window.devicePixelRatio || 1);
+    renderFitsToCanvas(canvasRef.current, fitsData, stretch, 'gray', window.devicePixelRatio || 1);
   }, [fitsData, stretch]);
 
   return (
@@ -314,7 +315,7 @@ export function FitsViewer({
               {satDetecting ? (
                 <><Loader2 className="w-3 h-3 animate-spin" /> Scanning...</>
               ) : satResult ? (
-                <><Satellite className="w-3 h-3" /> {satResult.trailDetected ? 'Identify Satellite' : 'No trail'}</>
+                <><Satellite className="w-3 h-3" /> {satResult.trailDetected ? (satIdentifyDone ? 'View Results' : 'Identify Satellite') : 'No trail'}</>
               ) : (
                 <><Satellite className="w-3 h-3" /> Identify Satellite</>
               )}

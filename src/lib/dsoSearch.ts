@@ -11,7 +11,7 @@
  * clutter the UI next to the short identifier.
  */
 
-export interface SearchableEntry {
+interface SearchableEntry {
   id: string;
   ngcName: string;
   name: string;
@@ -84,20 +84,6 @@ function isCatalogIdName(name: string): boolean {
  * identifier placeholder (e.g. `"Messier 40"` when the real Messier 40 has
  * no common name).
  */
-export function getDisplayNames(entry: { id: string; ngcName: string; name: string }): {
-  short: string;
-  common: string | null;
-} {
-  const short = (entry.id || entry.ngcName || '').trim();
-  const rawName = (entry.name || '').trim();
-
-  if (!rawName) return { short, common: null };
-  if (rawName.toLowerCase() === short.toLowerCase()) return { short, common: null };
-  if (isCatalogIdName(rawName)) return { short, common: null };
-
-  return { short, common: rawName };
-}
-
 /**
  * Format an object's display title as "M104 (Sombrero Galaxy)" — scientific
  * ID first, common name in parentheses only when it differs from the ID.

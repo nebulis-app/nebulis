@@ -171,7 +171,7 @@ export function SatelliteTrailScanModal({ isOpen, onClose, files, onFilesDeleted
 
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, fitsFiles.length) }, runSlot));
     setShowLocationPrompt(false);
-    setPhase('done');
+    if (!cancelRef.current) setPhase('done');
   }, [fitsFiles]);
 
   const handleDelete = async (path: string) => {

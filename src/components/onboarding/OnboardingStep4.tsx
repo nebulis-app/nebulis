@@ -11,7 +11,7 @@ import { TELESCOPE_PRESETS, type TelescopeKind } from '../../lib/telescopePreset
 import { INTERVAL_OPTIONS } from './OnboardingStep3';
 import type { TestStatus } from './OnboardingStep2';
 
-export interface OnboardingStep4Props {
+interface OnboardingStep4Props {
   username: string;
   kind: TelescopeKind | '';
   isLocalKind: boolean;

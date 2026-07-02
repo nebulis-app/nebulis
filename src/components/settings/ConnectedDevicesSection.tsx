@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Tv, Trash2, Pencil, Check, X, Loader2 } from 'lucide-react';
+import { Tv, Trash2, Pencil, Check, X, Loader2, QrCode } from 'lucide-react';
+import { ConnectDeviceModal } from './ConnectDeviceModal';
 import {
   getConnectedDevices,
   revokeConnectedDevice,
@@ -91,6 +92,7 @@ export function ConnectedDevicesSection({ isDark }: { isDark: boolean }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [showConnect, setShowConnect] = useState(false);
 
   function beginRename(d: ConnectedDevice) {
     setEditingId(d.id);
@@ -104,13 +106,25 @@ export function ConnectedDevicesSection({ isDark }: { isDark: boolean }) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className={`font-display text-2xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-          Devices
-        </h2>
-        <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-          Apple TVs linked to your account.
-        </p>
+      {showConnect && <ConnectDeviceModal isDark={isDark} onClose={() => setShowConnect(false)} />}
+
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className={`font-display text-2xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            Devices
+          </h2>
+          <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+            Phones and Apple TVs linked to your account.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowConnect(true)}
+          className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition-colors shadow-sm"
+        >
+          <QrCode className="w-4 h-4" />
+          Connect a device
+        </button>
       </div>
 
       <div className={cardClass}>
@@ -174,6 +188,16 @@ export function ConnectedDevicesSection({ isDark }: { isDark: boolean }) {
           <div className={`text-center py-10 rounded-xl border-2 border-dashed ${isDark ? 'border-slate-800 text-slate-500' : 'border-slate-200 text-slate-400'}`}>
             <Tv className="w-8 h-8 mx-auto mb-2 opacity-40" />
             <p className="text-sm">No devices linked yet.</p>
+            {scope === 'mine' && (
+              <button
+                type="button"
+                onClick={() => setShowConnect(true)}
+                className={`mt-3 inline-flex items-center gap-1.5 text-sm font-medium ${isDark ? 'text-accent-400 hover:text-accent-300' : 'text-accent-700 hover:text-accent-600'}`}
+              >
+                <QrCode className="w-4 h-4" />
+                Connect your phone
+              </button>
+            )}
           </div>
         )}
 

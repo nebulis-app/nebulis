@@ -7,7 +7,7 @@
  * The parent owns time math — this component reports edits via onResize / onMove
  * (called with provisional minute offsets) and onCommit when the user releases.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { GripVertical, Info, Moon, X } from 'lucide-react';
 import { formatHm, SNAP_MINUTES } from './scheduleGeometry';
@@ -17,6 +17,8 @@ import type { MoonVerdict } from '../../lib/moonProximity';
 
 interface ScheduledImagingBlockProps {
   session: PlannedSession;
+  /** Formatted display name, e.g. "M81 - Bode's Galaxy". Falls back to session.objectName. */
+  displayName?: string;
   /** Runtime timeline scale; resize handles convert drag pixels to minutes with it. */
   pxPerMinute: number;
   top: number;
@@ -36,15 +38,17 @@ interface ScheduledImagingBlockProps {
   laneCount: number;
   onDelete: (id: number) => void;
   onResize: (id: number, edge: 'top' | 'bottom', deltaMinutes: number, commit: boolean) => void;
-  onShowDetails: () => void;
+  onShowDetails: (session: PlannedSession) => void;
   /** Provisional Y delta during a drag (px). Parent uses this to render motion. */
   dragDeltaY?: number;
   /** True while the block's create POST is still in-flight (optimistic temp id). */
   isSaving?: boolean;
+  observerTimezone?: string;
 }
 
-export function ScheduledImagingBlock({
+export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
   session,
+  displayName,
   pxPerMinute,
   top,
   height,
@@ -62,6 +66,7 @@ export function ScheduledImagingBlock({
   onShowDetails,
   dragDeltaY = 0,
   isSaving = false,
+  observerTimezone,
 }: ScheduledImagingBlockProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `block:${session.id}`,
@@ -95,7 +100,7 @@ export function ScheduledImagingBlock({
         width: `calc(${widthPct}% - ${GUTTER_PX * laneFrac + 8}px)`,
       }}
       className={`absolute rounded-lg border shadow-sm overflow-hidden select-none transition-shadow ${
-        isDragging ? 'opacity-70 shadow-xl ring-2 ring-emerald-400' : ''
+        isDragging ? 'opacity-70 shadow-xl ring-2 ring-accent-400' : ''
       } ${isSaving ? 'opacity-60' : ''} bg-slate-800/95 border-slate-600 text-slate-100`}
     >
       <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${stripeColor}`} />
@@ -110,7 +115,7 @@ export function ScheduledImagingBlock({
       >
         <div className="flex items-center gap-1.5 min-w-0">
           <GripVertical className="w-3 h-3 opacity-50 shrink-0" />
-          <span className="font-medium text-sm truncate">{session.objectName}</span>
+          <span className="font-medium text-sm truncate">{displayName ?? session.objectName}</span>
           {isSaving && <span className="text-[10px] opacity-60 shrink-0">Saving...</span>}
           {!isSaving && moonVerdict !== 'ok' && (
             <Moon
@@ -120,7 +125,7 @@ export function ScheduledImagingBlock({
           )}
         </div>
         <div className="text-[11px] opacity-80">
-          {formatHm(start)} - {formatHm(end)}
+          {formatHm(start, observerTimezone)} - {formatHm(end, observerTimezone)}
           {hasOverlap && <span className="ml-2 text-amber-400">overlap</span>}
         </div>
         {minAlt != null && maxAlt != null && (
@@ -143,7 +148,7 @@ export function ScheduledImagingBlock({
       {!isSaving && (
         <div className="absolute right-1 top-1 flex items-center gap-0.5 z-10">
           <button
-            onClick={(e) => { e.stopPropagation(); onShowDetails(); }}
+            onClick={(e) => { e.stopPropagation(); onShowDetails(session); }}
             onPointerDown={(e) => e.stopPropagation()}
             className="w-5 h-5 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 transition"
             aria-label="Show object details"
@@ -166,7 +171,7 @@ export function ScheduledImagingBlock({
       <ResizeHandle edge="bottom" pxPerMinute={pxPerMinute} onResize={(d, commit) => onResize(session.id, 'bottom', d, commit)} disabled={isSaving} />
     </div>
   );
-}
+});
 
 interface ResizeHandleProps {
   edge: 'top' | 'bottom';
@@ -227,7 +232,7 @@ function ResizeHandle({ edge, pxPerMinute, onResize, disabled }: ResizeHandlePro
 
   return (
     <div
-      className={`absolute left-0 right-0 cursor-ns-resize z-20 ${edge === 'top' ? 'top-0' : 'bottom-0'} h-1.5 ${active ? 'bg-emerald-500/40' : 'hover:bg-emerald-500/30'}`}
+      className={`absolute left-0 right-0 cursor-ns-resize z-20 ${edge === 'top' ? 'top-0' : 'bottom-0'} h-1.5 ${active ? 'bg-accent-500/40' : 'hover:bg-accent-500/30'}`}
       onPointerDown={handlePointerDown}
       aria-label={`Resize ${edge}`}
     />

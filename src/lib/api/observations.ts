@@ -1,7 +1,7 @@
 import { fetchJSON } from './client';
 import type { ObservationNote } from './notes';
 
-interface ObservationSummary {
+export interface ObservationSummary {
   id: string;
   objectId: string;
   objectName: string;
@@ -95,16 +95,10 @@ export const identifySatellites = (filePath: string, overrideLat?: number, overr
     method: 'POST',
     body: JSON.stringify({ filePath, identifyOnly: true, overrideLat, overrideLon }),
   });
-export const getCachedSatelliteResults = (filePaths: string[]) =>
-  fetchJSON<Record<string, SatelliteTrailResult>>('/satellite/results', {
-    method: 'POST',
-    body: JSON.stringify({ filePaths }),
-  });
-
 export const clearSatelliteCache = () =>
   fetchJSON<{ cleared: boolean; count?: number }>('/satellite/cache', { method: 'DELETE' });
 
-export interface TleCatalogStatus {
+interface TleCatalogStatus {
   count: number;
   lastFetch: string | null;
   isStale: boolean;

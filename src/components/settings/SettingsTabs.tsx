@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-export interface SettingsTabItem {
+interface SettingsTabItem {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;

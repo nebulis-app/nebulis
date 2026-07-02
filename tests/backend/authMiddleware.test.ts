@@ -5,9 +5,10 @@ import { apiAuth } from '../../server/middleware/auth';
 vi.mock('../../server/lib/auth', () => ({
   verifyToken: vi.fn(),
   getUserCount: vi.fn(),
+  getUserTokenVersion: vi.fn(),
 }));
 
-import { verifyToken, getUserCount } from '../../server/lib/auth';
+import { verifyToken, getUserCount, getUserTokenVersion } from '../../server/lib/auth';
 
 // Mock fs so loadApiKey can be controlled
 vi.mock('fs', async () => {
@@ -23,6 +24,7 @@ import fs from 'fs';
 
 const mockedVerifyToken = verifyToken as ReturnType<typeof vi.fn>;
 const mockedGetUserCount = getUserCount as ReturnType<typeof vi.fn>;
+const mockedGetUserTokenVersion = getUserTokenVersion as ReturnType<typeof vi.fn>;
 const mockedExistsSync = fs.existsSync as ReturnType<typeof vi.fn>;
 const mockedReadFileSync = fs.readFileSync as ReturnType<typeof vi.fn>;
 
@@ -59,6 +61,9 @@ describe('apiAuth middleware', () => {
       throw new Error('invalid token');
     });
     mockedGetUserCount.mockReturnValue(0);
+    // Default: user exists with tokenVersion 0 (matches tokens that have no claim
+    // or explicit tokenVersion 0).
+    mockedGetUserTokenVersion.mockReturnValue(0);
   });
 
   it('skips auth for /auth/ routes', () => {

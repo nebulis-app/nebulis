@@ -100,27 +100,31 @@ describe('importNaming', () => {
     expect(canonicalImportName(name, '2024-01-15', '220000', new Set())).toBe(name);
   });
 
-  it('keeps an undated .fits file unchanged (no timestamp rename for telescope extensions)', () => {
-    // .fit/.fits/.jpg/.jpeg are never date-stamp renamed — telescope files already
-    // have proper names; renaming them would mangle the embedded metadata.
+  it('date-stamps an undated .fits file so it lands in the right session', () => {
+    // A name with no parseable date (NINA/SGP, raw "light_001.fits") would be
+    // invisible in session views, which key off parseFilename(name).date. So it
+    // is rewritten to the dated form the read path recognizes, stem preserved.
     const out = canonicalImportName('light_001.fits', '2024-01-16', '010000', new Set());
-    expect(out).toBe('light_001.fits');
+    expect(out).toBe('light_001_20240116-010000.fits');
+    expect(parsesToDate(out, '2024-01-16')).toBe(true);
   });
 
-  it('keeps a .jpg with the wrong date unchanged (no rename for telescope extensions)', () => {
-    // Merge/split overrides the session date but do not rewrite the filename for .jpg.
+  it('re-stamps a .jpg whose embedded date differs from the assigned session', () => {
+    // Merge/split can override the session date; the filename must be rewritten
+    // to match so it groups under the assigned night, not its old embedded one.
     const name = 'Stacked_10_M42_30.0s_IRCUT_20240115-220000.jpg';
     const out = canonicalImportName(name, '2024-01-20', '220000', new Set());
-    expect(out).toBe(name);
+    expect(out).toBe('Stacked_10_M42_30.0s_IRCUT_20240120-220000.jpg');
+    expect(parsesToDate(out, '2024-01-20')).toBe(true);
   });
 
-  it('avoids collisions for .fit files with a numeric suffix (not a timestamp)', () => {
+  it('bumps the timestamp to avoid collisions for undated .fit files', () => {
     const used = new Set<string>();
     const a = canonicalImportName('frame.fit', '2024-01-15', '120000', used);
     used.add(a);
     const b = canonicalImportName('frame.fit', '2024-01-15', '120000', used);
-    expect(a).toBe('frame.fit');
-    expect(b).toBe('frame-2.fit');
+    expect(a).toBe('frame_20240115-120000.fit');
+    expect(b).toBe('frame_20240115-120001.fit');
   });
 
   it('preserves the thumbnail marker so classification holds', () => {

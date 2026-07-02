@@ -29,6 +29,10 @@ export const FILL_FRACTION_MIN = 0.40;
 export const CONTIGUOUS_RUN_FRACTION_OF_DIAGONAL = 0.03;
 /** Gap tolerance for bridging star-masked holes inside a trail. */
 export const GAP_TOLERANCE_FRACTION_OF_DIAGONAL = 0.06;
+/** Reject detections scoring below this confidence. Floor-level detections
+ *  (≤0.1) are artifact-class in practice: moon limbs, mosaic border edges.
+ *  Real trails score 0.3+ (length and thinness both contribute). */
+export const MIN_CONFIDENCE = 0.15;
 
 export interface TrailDetectionResult {
   trailDetected: boolean;
@@ -45,7 +49,11 @@ export interface FitsImageData {
   height: number;
   pixels: Float64Array | Float32Array | Int32Array | Int16Array | Uint8Array;
   bitpix: number;
+  /** Bayer pattern (e.g. 'GRBG') when the frame is an un-debayered CFA mosaic. */
+  bayerPattern: string | null;
 }
+
+const CFA_PATTERNS = new Set(['RGGB', 'BGGR', 'GRBG', 'GBRG']);
 
 /**
  * Satellite trail detector using projection analysis.
@@ -69,7 +77,8 @@ class TrailDetector {
   // ─── FITS Parsing ──────────────────────────────────────────────────
 
   parseFitsPixels(buffer: Buffer): FitsImageData {
-    let width = 0, height = 0, bitpix = 0, bzero = 0, bscale = 1, headerEnd = 0;
+    let width = 0, height = 0, naxis3 = 1, bitpix = 0, bzero = 0, bscale = 1, headerEnd = 0;
+    let bayerRaw = '';
 
     let foundEnd = false;
     for (let block = 0; !foundEnd; block++) {
@@ -88,13 +97,20 @@ class TrailDetector {
           switch (kw) {
             case 'NAXIS1': width = parseInt(v, 10); break;
             case 'NAXIS2': height = parseInt(v, 10); break;
+            case 'NAXIS3': naxis3 = parseInt(v, 10); break;
             case 'BITPIX': bitpix = parseInt(v, 10); break;
             case 'BZERO':  bzero = parseFloat(v); break;
             case 'BSCALE': bscale = parseFloat(v); break;
+            case 'BAYERPAT': bayerRaw = v.replace(/'/g, '').trim().toUpperCase(); break;
           }
         }
       }
     }
+
+    // BAYERPAT only means "un-debayered mosaic" for 2-D data. RGB cubes
+    // (NAXIS3=3, stacked files) carry the keyword too but are already
+    // demosaiced — we read their first plane, which has no CFA periodicity.
+    const bayerPattern = naxis3 <= 1 && CFA_PATTERNS.has(bayerRaw) ? bayerRaw : null;
 
     if (!width || !height || !bitpix) throw new Error(`Invalid FITS: ${width}x${height} bitpix=${bitpix}`);
 
@@ -124,7 +140,79 @@ class TrailDetector {
       case -64: { pixels = new Float64Array(n);  for (let i = 0; i < n; i++) pixels[i] = d.readDoubleBE(i * 8) * bscale + bzero; break; }
       default: throw new Error(`Unsupported BITPIX: ${bitpix}`);
     }
-    return { width, height, pixels, bitpix };
+    return { width, height, pixels, bitpix, bayerPattern };
+  }
+
+  /**
+   * Clip isolated single-pixel spikes (hot pixels) in a raw CFA mosaic.
+   *
+   * Uncooled sensors litter 20s sub-frames with thousands of hot pixels. They
+   * survive background subtraction (they ARE small-scale signal) and are too
+   * small to star-mask, so they pile into the validation line profile and
+   * inflate fill fractions along arbitrary lines — one of the two drivers of
+   * the M16 false positives.
+   *
+   * CFA-aware: a pixel is compared to the median of its 4 same-color
+   * neighbors (2 px away in x/y). A hot pixel towers over all of them; a real
+   * trail 2+ px wide has bright same-color neighbors along the trail, so its
+   * pixels are never clipped. Replacement value is the neighbor median.
+   */
+  private despeckleCfa(pixels: FitsImageData['pixels'], w: number, h: number): Float64Array {
+    const out = new Float64Array(w * h);
+    // Robust global sigma from a sparse sample for the spike threshold.
+    const sampleStep = 7;
+    const sample: number[] = [];
+    for (let i = 0; i < pixels.length; i += sampleStep) sample.push(pixels[i]);
+    sample.sort((a, b) => a - b);
+    const med = sample[sample.length >> 1];
+    const devs = sample.map(v => Math.abs(v - med)).sort((a, b) => a - b);
+    const sigma = (devs[devs.length >> 1] || 1) * 1.4826;
+    const spikeMargin = 4 * sigma;
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        const v = pixels[i];
+        const n1 = x >= 2 ? pixels[i - 2] : v;
+        const n2 = x < w - 2 ? pixels[i + 2] : v;
+        const n3 = y >= 2 ? pixels[i - 2 * w] : v;
+        const n4 = y < h - 2 ? pixels[i + 2 * w] : v;
+        // Median of 4 = mean of the two middle values.
+        const lo1 = Math.min(n1, n2), hi1 = Math.max(n1, n2);
+        const lo2 = Math.min(n3, n4), hi2 = Math.max(n3, n4);
+        const m4 = (Math.max(lo1, lo2) + Math.min(hi1, hi2)) / 2;
+        out[i] = v - m4 > spikeMargin ? m4 : v;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Collapse each 2x2 CFA block to its mean, producing a half-resolution
+   * luminance image with no Bayer periodicity.
+   *
+   * Why this matters: box-filtering a raw mosaic at a fractional ratio (e.g.
+   * 1080→288 is 3.75x) aliases the 2-pixel CFA period into diagonal moiré
+   * stripes at exactly 45°/135° — the box's R:G:B mix drifts in phase equally
+   * in x and y. Over a bright red emission nebula (R >> G) the stripes are
+   * strong, thin, and perfectly straight: they validated as 135° "trails" with
+   * ~0.5 confidence on M16 LP sub-frames. Block-aligned 2x2 binning has zero
+   * phase drift, so the moiré never forms; trail S/N at the final 512-px
+   * working scale is unchanged (the same pixel area is averaged either way).
+   */
+  private binCfa2x2(pixels: FitsImageData['pixels'], w: number, h: number): { pixels: Float64Array; w: number; h: number } {
+    const w2 = Math.floor(w / 2);
+    const h2 = Math.floor(h / 2);
+    const out = new Float64Array(w2 * h2);
+    for (let y = 0; y < h2; y++) {
+      const r0 = (y * 2) * w;
+      const r1 = (y * 2 + 1) * w;
+      for (let x = 0; x < w2; x++) {
+        const x0 = x * 2;
+        out[y * w2 + x] = (pixels[r0 + x0] + pixels[r0 + x0 + 1] + pixels[r1 + x0] + pixels[r1 + x0 + 1]) / 4;
+      }
+    }
+    return { pixels: out, w: w2, h: h2 };
   }
 
   // ─── Image Statistics ──────────────────────────────────────────────
@@ -140,6 +228,19 @@ class TrailDetector {
     const sigma = mad * 1.4826; // MAD to σ conversion factor
 
     return { median, sigma };
+  }
+
+  /** Robust per-pixel statistics over unmasked pixels only. */
+  private statsUnmasked(data: Float64Array, mask: Uint8Array): { median: number; sigma: number } {
+    const vals: number[] = [];
+    for (let i = 0; i < data.length; i++) {
+      if (!mask[i]) vals.push(data[i]);
+    }
+    if (vals.length === 0) return { median: 0, sigma: 0 };
+    vals.sort((a, b) => a - b);
+    const median = trueMedian(vals);
+    const absDevs = vals.map(v => Math.abs(v - median)).sort((a, b) => a - b);
+    return { median, sigma: trueMedian(absDevs) * 1.4826 };
   }
 
   // ─── Background Subtraction ────────────────────────────────────────
@@ -272,9 +373,22 @@ class TrailDetector {
         if (y < h - 1) pushIfFresh(idx + w);
       }
 
-      // Tiny blobs (1–3 px) are noise spikes — not worth masking, not worth
-      // sparing as trails. Skip.
-      if (pixelCount < 4) continue;
+      // Tiny blobs (1–3 px) are noise spikes or hot-pixel clusters. They were
+      // previously left unmasked ("not worth masking"), but thousands of them
+      // survive background subtraction and pile into the validation line
+      // profile — chains of them along a chance diagonal assembled into
+      // "trails" on M16 sub-frames. Mask them (no padding). A real trail can
+      // never be a 3-px island: it is one long connected component, spared by
+      // the linearity check below; a faint continuous trail keeps its
+      // sub-threshold flux in the sum-based line profile either way.
+      if (pixelCount < 4) {
+        for (let y = minY; y <= maxY; y++) {
+          for (let x = minX; x <= maxX; x++) {
+            mask[y * w + x] = 1;
+          }
+        }
+        continue;
+      }
 
       const bbW = maxX - minX + 1;
       const bbH = maxY - minY + 1;
@@ -349,19 +463,45 @@ class TrailDetector {
       const perpY = Math.sin(theta);
 
       const bins = new Float64Array(nBins);
+      // Geometric pixel count per bin (all unmasked pixels, not just positive
+      // ones). The pixel lattice projects onto the bin axis at angle-dependent
+      // spacings (1/√2 at 45°, exactly 0.5 at 30°, ...), and floor-binning
+      // turns that into comb patterns: alternating overfull/empty bins that
+      // manufacture thin fake "peaks" at diagonal angles (every M16 false
+      // positive was at exactly 45°/135°) and starve bins at other angles.
+      // Two defenses: anti-aliased deposit (each pixel's flux splits between
+      // its two nearest bins — see depositLinear) and normalization of each
+      // bin to the mean geometric count. A real trail's flux is
+      // count-independent and survives both.
+      const counts = new Float64Array(nBins);
 
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           if (starMask[y * w + x]) continue;
-          const val = residual[y * w + x];
-          if (val <= 0) continue;
-
           const proj = (x - cx) * perpX + (y - cy) * perpY;
-          const bin = Math.floor(proj + nBins / 2);
-          if (bin >= 0 && bin < nBins) {
-            bins[bin] += val;
+          const pos = proj + nBins / 2 - 0.5;
+          const b0 = Math.floor(pos);
+          const frac = pos - b0;
+          const val = residual[y * w + x];
+          const flux = val > 0 ? val : 0;
+          if (b0 >= 0 && b0 < nBins) {
+            counts[b0] += 1 - frac;
+            bins[b0] += flux * (1 - frac);
+          }
+          if (b0 + 1 >= 0 && b0 + 1 < nBins) {
+            counts[b0 + 1] += frac;
+            bins[b0 + 1] += flux * frac;
           }
         }
+      }
+
+      let totalCount = 0, occupied = 0;
+      for (let i = 0; i < nBins; i++) {
+        if (counts[i] > 0) { totalCount += counts[i]; occupied++; }
+      }
+      const meanCount = occupied > 0 ? totalCount / occupied : 1;
+      for (let i = 0; i < nBins; i++) {
+        if (counts[i] > 0) bins[i] *= meanCount / counts[i];
       }
 
       const { median: bgMedian } = this.stats(bins);
@@ -406,18 +546,37 @@ class TrailDetector {
     // per-pixel intensity.
     const nPerp = Math.ceil(diagonal);
     const perpProfile = new Float64Array(nPerp);
+    // Anti-aliased deposit + geometric count normalization — same
+    // lattice-comb compensation as in findTrailAngles (see comment there).
+    const perpCounts = new Float64Array(nPerp);
 
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         if (starMask[y * w + x]) continue;
-        const val = residual[y * w + x];
-        if (val <= 0) continue;
         const proj = (x - cx) * perpX + (y - cy) * perpY;
-        const bin = Math.floor(proj + nPerp / 2);
-        if (bin >= 0 && bin < nPerp) {
-          perpProfile[bin] += val;
+        const pos = proj + nPerp / 2 - 0.5;
+        const b0 = Math.floor(pos);
+        const frac = pos - b0;
+        const val = residual[y * w + x];
+        const flux = val > 0 ? val : 0;
+        if (b0 >= 0 && b0 < nPerp) {
+          perpCounts[b0] += 1 - frac;
+          perpProfile[b0] += flux * (1 - frac);
+        }
+        if (b0 + 1 >= 0 && b0 + 1 < nPerp) {
+          perpCounts[b0 + 1] += frac;
+          perpProfile[b0 + 1] += flux * frac;
         }
       }
+    }
+
+    let perpTotal = 0, perpOccupied = 0;
+    for (let i = 0; i < nPerp; i++) {
+      if (perpCounts[i] > 0) { perpTotal += perpCounts[i]; perpOccupied++; }
+    }
+    const perpMeanCount = perpOccupied > 0 ? perpTotal / perpOccupied : 1;
+    for (let i = 0; i < nPerp; i++) {
+      if (perpCounts[i] > 0) perpProfile[i] *= perpMeanCount / perpCounts[i];
     }
 
     // Find the best peak in the perpendicular profile, scored by a
@@ -477,18 +636,78 @@ class TrailDetector {
     const nLine = Math.ceil(diagonal);
     const lineProfile = new Float64Array(nLine);
 
+    // Flanking strips on both sides of the trail, same width, offset far
+    // enough to clear the trail's own FWHM. A real trail is bright relative
+    // to its immediate surroundings (flanks ≈ sky); residual nebulosity
+    // texture is just as bright in the flanks. Subtracting the flank average
+    // per bin cancels texture-driven flux while leaving true trail flux
+    // intact — this is what stopped M16's nebula rim from validating as a
+    // 135° "trail". Per-flank pixel counts are tracked so the subtraction
+    // stays calibrated when a flank is partially star-masked or off-image.
+    const flankOffset = 3 * tolerance + 2;
+    const flankSum = new Float64Array(nLine);
+    const flankCount = new Float64Array(nLine);
+    const lineCount = new Float64Array(nLine);
+
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         if (starMask[y * w + x]) continue;
         const perpDist = (x - cx) * perpX + (y - cy) * perpY - trailRho;
-        if (Math.abs(perpDist) > tolerance) continue;
+        const onLine = Math.abs(perpDist) <= tolerance;
+        const onFlank = Math.abs(Math.abs(perpDist) - flankOffset) <= tolerance;
+        if (!onLine && !onFlank) continue;
 
         const val = residual[y * w + x];
         const lineProj = (x - cx) * lineX + (y - cy) * lineY;
-        const bin = Math.floor(lineProj + nLine / 2);
-        if (bin >= 0 && bin < nLine) {
-          lineProfile[bin] += val;
+        // Anti-aliased deposit (see findTrailAngles): floor-binning starves
+        // alternating bins at lattice-resonant angles (e.g. every other bin
+        // empty at 30°), inflating profile sigma until real trails fail the
+        // threshold. Splitting each pixel between its two nearest bins keeps
+        // the profile smooth at every angle.
+        const pos = lineProj + nLine / 2 - 0.5;
+        const b0 = Math.floor(pos);
+        const frac = pos - b0;
+        for (const [bin, wgt] of [[b0, 1 - frac], [b0 + 1, frac]] as const) {
+          if (bin < 0 || bin >= nLine || wgt === 0) continue;
+          if (onLine) {
+            lineProfile[bin] += val * wgt;
+            lineCount[bin] += wgt;
+          } else {
+            flankSum[bin] += val * wgt;
+            flankCount[bin] += wgt;
+          }
         }
+      }
+    }
+
+    // Subtract the flank's mean flux scaled to the line strip's pixel count.
+    // Bins with too little flank coverage (flanks star-masked or off-image)
+    // can't be verified as locally bright — zero them so they read as gaps.
+    // Without this, a line threading the unmasked fringe BETWEEN star-mask
+    // blocks (nebula cores are a patchwork of masks) keeps its full texture
+    // flux exactly where verification is impossible. Real trails crossing a
+    // masked star lose those bins too, but gap bridging already covers that.
+    for (let i = 0; i < nLine; i++) {
+      if (lineCount[i] === 0) continue;
+      if (flankCount[i] >= lineCount[i] * 0.5) {
+        lineProfile[i] -= (flankSum[i] / flankCount[i]) * lineCount[i];
+      } else {
+        lineProfile[i] = 0;
+      }
+    }
+
+    // Convert bin sums to z-scores: sum / (σ_px · √count). A bin's sum is a
+    // sum of `count` pixels, so its noise scales with √count — the raw-sum
+    // profile mixes bins of different occupancy, and its global sigma is
+    // inflated by structure (masked gaps, nebula regions), which silently
+    // raised the effective per-bin requirement to ~10 statistical sigma at
+    // shallow angles where a trail spreads across many bins. As z-scores,
+    // the 2.5σ threshold below means an honest 2.5σ everywhere.
+    const { sigma: pxSigma } = this.statsUnmasked(residual, starMask);
+    const sigmaSafe = pxSigma > 0 ? pxSigma : 1;
+    for (let i = 0; i < nLine; i++) {
+      if (lineCount[i] > 0) {
+        lineProfile[i] = lineProfile[i] / (sigmaSafe * Math.sqrt(lineCount[i]));
       }
     }
 
@@ -498,8 +717,14 @@ class TrailDetector {
     // Without gap tolerance, a trail that crosses a bright star is split
     // into two short segments each of which individually fails the minimum
     // length check, even though the combined trail is clearly real.
-    const { median: lineBg, sigma: lineSigma } = this.stats(lineProfile);
-    const lineThreshold = lineBg + 2.5 * lineSigma;
+    //
+    // The threshold is an absolute 2.5 in z units. It must NOT be derived
+    // from the profile's own median/sigma: a trail that crosses the whole
+    // frame fills every bin, so the profile median IS the trail level and a
+    // median-relative threshold rejects the trail it is trying to measure
+    // (this killed full-frame trails at shallow angles). Each bin is already
+    // zero-referenced against its local background by the flank subtraction.
+    const lineThreshold = 2.5;
 
     // maxGap: a single masked star in the downsampled image can blank up to
     // ~30 bins (star width + padding on both sides). 6% of diagonal covers
@@ -589,6 +814,13 @@ class TrailDetector {
     const thinness = Math.max(0, 1 - fwhm / 8); // thinner = better
     const confidence = Math.min(lengthRatio * 0.6 + thinness * 0.4, 1);
 
+    // Floor-level scores are artifact-class (moon limb, mosaic border edge):
+    // verified on real frames where both signals are nearly absent yet the
+    // geometric gates technically pass. Real trails score well above this.
+    if (confidence < MIN_CONFIDENCE) {
+      return { trailDetected: false };
+    }
+
     return {
       trailDetected: true,
       angleDegrees: angleDeg,
@@ -652,20 +884,35 @@ class TrailDetector {
   detect(buffer: Buffer): TrailDetectionResult {
     const img = this.parseFitsPixels(buffer);
 
+    // CFA mosaics: bin 2x2 blocks first so the generic fractional downsample
+    // below never sees Bayer periodicity (see binCfa2x2 for the moiré story).
+    let work: { pixels: FitsImageData['pixels']; w: number; h: number } =
+      { pixels: img.pixels, w: img.width, h: img.height };
+    let binFactor = 1;
+    if (img.bayerPattern && img.width >= 2 && img.height >= 2) {
+      const despeckled = this.despeckleCfa(img.pixels, img.width, img.height);
+      work = this.binCfa2x2(despeckled, img.width, img.height);
+      binFactor = 2;
+    }
+
     // Work on a downsampled copy — ~14× fewer pixels for a typical Seestar frame,
     // with no loss in detection quality (trails are still many pixels long).
-    const ds = this.downsample(img.pixels, img.width, img.height);
+    const ds = this.downsample(work.pixels, work.w, work.h);
 
     const residual = this.subtractBackground(ds.pixels, ds.w, ds.h);
     const starMask = this.createStarMask(residual, ds.w, ds.h);
     const candidates = this.findTrailAngles(residual, starMask, ds.w, ds.h);
 
+    // Detection ran at ds.scale relative to the (possibly binned) input;
+    // multiply by binFactor to express results in original pixel coordinates.
+    const totalScale = ds.scale / binFactor;
+
     for (const { angle } of candidates) {
       const result = this.validateTrail(residual, starMask, ds.w, ds.h, angle);
       if (!result.trailDetected) continue;
 
-      if (ds.scale < 1) {
-        const inv = 1 / ds.scale;
+      if (totalScale < 1) {
+        const inv = 1 / totalScale;
         return {
           ...result,
           lengthPixels: result.lengthPixels != null ? Math.round(result.lengthPixels * inv) : undefined,

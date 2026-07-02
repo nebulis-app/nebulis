@@ -1,9 +1,10 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Sun, Moon, Settings, Library, Sparkles, EyeOff, CloudMoon, Calendar, Crosshair, RefreshCw, HelpCircle, LogOut, ShieldCheck, Eye, Images } from 'lucide-react';
+import { Sun, Moon, Settings, Library, Sparkles, EyeOff, CloudMoon, Calendar, Crosshair, RefreshCw, HelpCircle, LogOut, ShieldCheck, Eye, Images, BookOpen } from 'lucide-react';
 import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useTheme, type Theme } from '../hooks/useTheme';
+import { useNavVisibility } from '../hooks/useNavVisibility';
 import { getTelescopeStatus, getAllTelescopeStatus } from '../lib/api/telescopes';
 import { getImportStatus, formatTransportSuffix } from '../lib/api/library';
 import { getCurrentUser } from '../lib/api/auth';
@@ -33,6 +34,7 @@ function avatarInitials(name: string): string {
 
 export function Layout({ children }: LayoutProps) {
   const { theme, setTheme, isDark, isNight, isSpace } = useTheme();
+  const { isVisible } = useNavVisibility();
   const location = useLocation();
   const [profileOpen, setProfileOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -148,14 +150,24 @@ export function Layout({ children }: LayoutProps) {
                 <Calendar className="w-4 h-4" />
                 <span>Observations</span>
               </NavLink>
-              <NavLink to="/forecast" active={location.pathname === '/forecast'} activeClass={activeNavClass} isDark={isDark} isNight={isNight}>
-                <CloudMoon className="w-4 h-4" />
-                <span>Forecast</span>
-              </NavLink>
-              <NavLink to="/planner" active={location.pathname === '/planner' || location.pathname === '/wishlist'} activeClass={activeNavClass} isDark={isDark} isNight={isNight}>
-                <Crosshair className="w-4 h-4" />
-                <span>Planner</span>
-              </NavLink>
+              {isVisible('forecast') && (
+                <NavLink to="/forecast" active={location.pathname === '/forecast'} activeClass={activeNavClass} isDark={isDark} isNight={isNight}>
+                  <CloudMoon className="w-4 h-4" />
+                  <span>Forecast</span>
+                </NavLink>
+              )}
+              {isVisible('planner') && (
+                <NavLink to="/planner" active={location.pathname === '/planner' || location.pathname === '/wishlist'} activeClass={activeNavClass} isDark={isDark} isNight={isNight}>
+                  <Crosshair className="w-4 h-4" />
+                  <span>Planner</span>
+                </NavLink>
+              )}
+              {isVisible('catalogs') && (
+                <NavLink to="/catalogs" active={location.pathname.startsWith('/catalogs')} activeClass={activeNavClass} isDark={isDark} isNight={isNight}>
+                  <BookOpen className="w-4 h-4" />
+                  <span>Catalogs</span>
+                </NavLink>
+              )}
               <NavLink
                 to="/settings"
                 active={location.pathname === '/settings'}
@@ -167,10 +179,12 @@ export function Layout({ children }: LayoutProps) {
                 <Settings className="w-4 h-4" />
                 <span>Settings</span>
               </NavLink>
-              <NavLink to="/help" active={location.pathname === '/help'} activeClass={activeNavClass} isDark={isDark} isNight={isNight}>
-                <HelpCircle className="w-4 h-4" />
-                <span>Help</span>
-              </NavLink>
+              {isVisible('help') && (
+                <NavLink to="/help" active={location.pathname === '/help'} activeClass={activeNavClass} isDark={isDark} isNight={isNight}>
+                  <HelpCircle className="w-4 h-4" />
+                  <span>Help</span>
+                </NavLink>
+              )}
             </div>
 
             {/* Right-aligned cluster: telescope sync indicator + profile/theme avatar.

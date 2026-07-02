@@ -78,7 +78,7 @@ export interface PlannerTarget {
   libraryObjectId: string | null;
 }
 
-export interface PlannerResponse {
+interface PlannerResponse {
   locationSet: boolean;
   targets: PlannerTarget[];
   totalVisible: number;

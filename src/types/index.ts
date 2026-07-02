@@ -15,7 +15,7 @@ export interface Settings {
   // Planner visibility
   minAlt: number;
   horizonProfile: number[]; // 36 values, one per 10° azimuth bucket (0°–350°)
-  /** 144 booleans: 36 azimuth slices x 4 elevation bands (centers 10/30/50/70).
+  /** 288 booleans: 36 azimuth slices x 8 elevation bands (10° tall, covering 0-80°).
    *  Empty means "no map set" and the planner treats the whole sky as visible. */
   visibleSkyMap: boolean[];
   // Sync / caching settings
@@ -80,6 +80,8 @@ export interface CatalogEntry {
   wikiUrl?: string | null;
   /** Formatted angular size string, e.g. "13.2' x 7.9'" (arcminutes). */
   size?: string | null;
+  /** Other designations: NGC cross-refs, Caldwell, Sharpless, common names. */
+  alsoKnownAs?: string[];
 }
 
 export interface AstroObject {

@@ -304,7 +304,7 @@ export function GalleryImageModal({
                     key={img.path}
                     src={getLibraryFileUrl(img.path)}
                     label={img.date !== 'unknown'
-                      ? new Date(img.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+                      ? new Date(img.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
                       : img.name
                     }
                     isSelected={effectiveSelection === img.path}

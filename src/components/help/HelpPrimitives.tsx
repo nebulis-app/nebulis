@@ -263,7 +263,7 @@ export function Faq({
  * Centralised so a topic's colour is consistent everywhere it appears.
  * ───────────────────────────────────────────────────────────────────────── */
 
-export type Tone = 'amber' | 'violet' | 'cyan' | 'rose' | 'emerald' | 'sky' | 'orange' | 'slate';
+type Tone = 'amber' | 'violet' | 'cyan' | 'rose' | 'emerald' | 'sky' | 'orange' | 'slate';
 
 export function toneClasses(tone: Tone, isDark: boolean) {
   // text + bg tokens for an icon "chip" + a subtle wash for the card

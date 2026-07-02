@@ -1,13 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { mockAllRoutes, mockAdminAuth, MOCK } from './fixtures/mocks';
+import { mockAllRoutes, mockAdminAuth, mockHasUsers, MOCK } from './fixtures/mocks';
 
 // ─── Login modal ──────────────────────────────────────────────────────────────
 
 test.describe('Login modal', () => {
   test.beforeEach(async ({ page }) => {
     // hasUsers=true without a stored token → showLogin=true once authStatus loads.
-    // Don't call mockAdminAuth here so no token is present.
+    // Don't call mockAdminAuth here so no token is present. mockHasUsers runs
+    // after mockAllRoutes so its auth/status route wins (Playwright LIFO order).
     await mockAllRoutes(page);
+    await mockHasUsers(page);
     await page.goto('/');
   });
 

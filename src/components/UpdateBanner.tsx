@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, X } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { getUpdateStatus, applyUpdate } from '../lib/api/update';
-import { ChangelogModal } from './help/ChangelogModal';
+import { ChangelogModal } from './ChangelogModal';
 
 /**
  * App-wide "update available" banner. Mounted once at the shell level. Renders

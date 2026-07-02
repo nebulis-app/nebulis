@@ -2,7 +2,7 @@ import type { TelescopeKind } from '../telescopePresets';
 export type { TelescopeKind };
 import { fetchJSON } from './client';
 
-export interface TelescopeStatus {
+interface TelescopeStatus {
   configured: boolean;
   hostname: string;
   online: boolean;
@@ -11,7 +11,7 @@ export interface TelescopeStatus {
 }
 export const getTelescopeStatus = () => fetchJSON<TelescopeStatus>('/telescopes/status');
 
-export interface TelescopeStatusEntry {
+interface TelescopeStatusEntry {
   id: string;
   name: string;
   color: string;
@@ -31,7 +31,7 @@ export const getAllTelescopeStatus = () =>
 // ─── Telescope profiles (multi-telescope support) ───────────────────────
 
 /** SMB = LAN share (SeeStar). Local = filesystem path (Dwarf USB mount). */
-export type ConnectionType = 'smb' | 'local';
+type ConnectionType = 'smb' | 'local';
 
 export interface TelescopeProfile {
   id: string;
@@ -80,7 +80,7 @@ export interface TelescopeProfile {
 /** One way to reach a telescope. A profile can have several (e.g. one Seestar
  *  configured over both SMB and USB) — the import pipeline picks the active
  *  one at run time. */
-export interface TelescopeTransport {
+interface TelescopeTransport {
   id: string;
   profileId: string;
   kind: ConnectionType;
@@ -105,7 +105,7 @@ export interface DetectedDrive {
   alreadyKnownProfileName: string | null;
 }
 
-export interface DwarfMount {
+interface DwarfMount {
   path: string;
   label: string;
   detectedModel?: 'dwarf-2' | 'dwarf-3';
@@ -122,7 +122,7 @@ export const listDwarfMounts = () =>
 // connect, transports is populated by the response. The per-telescope import
 // toggles also fall back to server defaults (JPG + thumbnails on, others off)
 // so callers can stay terse.
-export type TelescopeCreateInput =
+type TelescopeCreateInput =
   Omit<
     TelescopeProfile,
     | 'id' | 'createdAt' | 'archivedAt' | 'connectionType' | 'localPath'
@@ -140,7 +140,7 @@ export type TelescopeCreateInput =
     importVideos?: boolean;
     trackDeviceIdentity?: boolean;
   };
-export interface TelescopeUpdateInput extends Partial<Omit<TelescopeProfile, 'id' | 'createdAt'>> {}
+interface TelescopeUpdateInput extends Partial<Omit<TelescopeProfile, 'id' | 'createdAt'>> {}
 
 /** List all telescope profiles. Returned passwords are masked. */
 export const listTelescopes = () =>
@@ -207,7 +207,7 @@ export const testTelescopeConnection = (
 export const listDetectedDrives = () =>
   fetchJSON<{ drives: DetectedDrive[] }>('/telescopes/drives');
 
-export interface ProbeIdentityInput {
+interface ProbeIdentityInput {
   transport: {
     kind: ConnectionType;
     hostname?: string;
@@ -219,7 +219,7 @@ export interface ProbeIdentityInput {
   model?: string;
 }
 
-export interface ProbeIdentityResult {
+interface ProbeIdentityResult {
   deviceId: string;
   alreadyKnownProfileId: string | null;
   alreadyKnownProfileName: string | null;
@@ -235,11 +235,6 @@ export const probeTransportIdentity = (data: ProbeIdentityInput) =>
     body: JSON.stringify(data),
   });
 
-export const listProfileTransports = (profileId: string) =>
-  fetchJSON<TelescopeTransport[]>(
-    `/telescopes/${encodeURIComponent(profileId)}/transports`,
-  );
-
 export const addProfileTransport = (
   profileId: string,
   data: Partial<Omit<TelescopeTransport, 'id' | 'profileId' | 'lastSeenAt' | 'createdAt'>>,
@@ -247,22 +242,6 @@ export const addProfileTransport = (
   fetchJSON<TelescopeTransport>(
     `/telescopes/${encodeURIComponent(profileId)}/transports`,
     { method: 'POST', body: JSON.stringify(data) },
-  );
-
-export const updateProfileTransport = (
-  profileId: string,
-  transportId: string,
-  data: Partial<Omit<TelescopeTransport, 'id' | 'profileId' | 'lastSeenAt' | 'createdAt'>>,
-) =>
-  fetchJSON<TelescopeTransport>(
-    `/telescopes/${encodeURIComponent(profileId)}/transports/${encodeURIComponent(transportId)}`,
-    { method: 'PUT', body: JSON.stringify(data) },
-  );
-
-export const deleteProfileTransport = (profileId: string, transportId: string) =>
-  fetchJSON<{ deleted: boolean }>(
-    `/telescopes/${encodeURIComponent(profileId)}/transports/${encodeURIComponent(transportId)}`,
-    { method: 'DELETE' },
   );
 
 /** Reassign a session (objectId + date) to a different telescope. */

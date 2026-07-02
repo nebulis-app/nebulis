@@ -14,7 +14,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
  *    transform: translateY for the modal and an opacity ramp for the backdrop
  *  - `dragging`: true while the user is actively dragging
  */
-export interface UseSwipeDownToCloseOptions {
+interface UseSwipeDownToCloseOptions {
   /** Pixels of vertical travel that commits the close. Default: 120. */
   threshold?: number;
   /** Disable the gesture (e.g. when the image is zoomed and the user is panning). */

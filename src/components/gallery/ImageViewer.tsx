@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, Image, Heart,
+  X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, Image, Heart, Share2, Loader2,
 } from 'lucide-react';
 import { getLibraryFileThumbnailUrl, type LibraryImage } from '../../lib/api/library';
 import { useSwipeDownToClose } from '../../hooks/useSwipeDownToClose';
 
-export interface ImageViewerProps {
+interface ImageViewerProps {
   images: LibraryImage[];
   initialIndex: number;
   onClose: () => void;
@@ -19,10 +19,50 @@ export function ImageViewer({
   const [index, setIndex] = useState(initialIndex);
   const [zoom, setZoom] = useState(1.0);
   const [fit, setFit] = useState(true);
+  const [isPanning, setIsPanning] = useState(false);
+  const panRef = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const fitImgRef = useRef<HTMLImageElement>(null);
+  const thumbStripRef = useRef<HTMLDivElement>(null);
+  const activeThumbRef = useRef<HTMLButtonElement>(null);
+  // Refs so the wheel handler always sees current values without re-subscribing on every render
+  const fitRef = useRef(fit);
+  const zoomRef = useRef(zoom);
+  fitRef.current = fit;
+  zoomRef.current = zoom;
 
+  const handlePanStart = (e: { clientX: number; clientY: number; currentTarget: HTMLDivElement }) => {
+    if (fit) return;
+    panRef.current = { x: e.clientX, y: e.clientY, sl: e.currentTarget.scrollLeft, st: e.currentTarget.scrollTop };
+    setIsPanning(true);
+  };
+  const handlePanMove = (e: { clientX: number; clientY: number; currentTarget: HTMLDivElement }) => {
+    if (!panRef.current) return;
+    e.currentTarget.scrollLeft = panRef.current.sl - (e.clientX - panRef.current.x);
+    e.currentTarget.scrollTop = panRef.current.st - (e.clientY - panRef.current.y);
+  };
+  const handlePanEnd = () => { panRef.current = null; setIsPanning(false); };
+
+  const [sharing, setSharing] = useState(false);
   const image = images[index];
+
+  const handleShare = async () => {
+    const title = image.objectName || image.name;
+    setSharing(true);
+    try {
+      const res = await fetch(image.downloadUrl);
+      const blob = await res.blob();
+      const file = new File([blob], image.name, { type: blob.type || 'image/jpeg' });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title });
+        return;
+      }
+      const abs = new URL(image.downloadUrl, window.location.href).href;
+      window.location.href = `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(abs)}`;
+    } catch { /* cancelled or unsupported */ } finally {
+      setSharing(false);
+    }
+  };
 
   const getFitZoom = useCallback(() => {
     if (!fitImgRef.current || !areaRef.current) return 1.0;
@@ -51,14 +91,46 @@ export function ImageViewer({
 
   useEffect(() => { setFit(true); }, [index]);
 
-  const THUMB_WIN = 10;
-  const start = Math.max(0, index - THUMB_WIN);
-  const end = Math.min(images.length, index + THUMB_WIN + 1);
+  // Smooth zoom via scroll wheel or trackpad pinch.
+  // Pinch (ctrlKey) zooms in any mode. Regular scroll zooms only in fit mode
+  // (when zoomed, regular scroll pans the overflow container naturally).
+  // Uses refs so rapid events accumulate instead of each one restarting from getFitZoom().
+  useEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    const onWheel = (e: WheelEvent) => {
+      const isPinch = e.ctrlKey;
+      if (!isPinch && !fitRef.current) return; // let natural scroll pan when zoomed
+      e.preventDefault();
+      // Pinch sends small deltas; regular scroll sends large ones — different sensitivities
+      const step = -e.deltaY * (isPinch ? 0.01 : 0.001);
+      const base = fitRef.current ? getFitZoom() : zoomRef.current;
+      if (fitRef.current) {
+        fitRef.current = false;
+        setFit(false);
+      }
+      const next = +(Math.max(0.1, Math.min(4, base + step)).toFixed(2));
+      zoomRef.current = next;
+      setZoom(next);
+    };
+    area.addEventListener('wheel', onWheel, { passive: false });
+    return () => area.removeEventListener('wheel', onWheel);
+  }, [getFitZoom]); // stable — no re-subscribe on every fit/zoom change
 
-  // Swipe-down-to-close. Disabled while zoomed/panning so we don't fight the
-  // user's pan gesture inside the scroll container.
+  // Scroll active thumbnail to center of strip whenever index changes
+  useEffect(() => {
+    const thumb = activeThumbRef.current;
+    const strip = thumbStripRef.current;
+    if (!thumb || !strip) return;
+    strip.scrollTo({
+      left: thumb.offsetLeft - strip.clientWidth / 2 + thumb.offsetWidth / 2,
+      behavior: 'smooth',
+    });
+  }, [index]);
+
   const { handlers: swipeHandlers, dy, dragging } = useSwipeDownToClose(onClose, { disabled: !fit });
   const backdropOpacity = Math.max(0, 1 - dy / 400);
+
 
   return (
     <div
@@ -75,7 +147,7 @@ export function ImageViewer({
         }}
       >
 
-        {/* Header */}
+        {/* Header — title/subtitle left, zoom + actions + close right */}
         <div className={`flex-shrink-0 flex items-center justify-between p-4 border-b ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
           <div className="flex items-center gap-3 min-w-0 mr-3">
             <Image className="w-5 h-5 text-accent-500 flex-shrink-0" />
@@ -95,20 +167,7 @@ export function ImageViewer({
           </div>
 
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button onClick={() => navigate(-1)} disabled={index <= 0}
-              className={`p-2 rounded-lg transition disabled:opacity-30 ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}>
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <span className={`text-sm font-medium tabular-nums px-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              {index + 1} / {images.length}
-            </span>
-            <button onClick={() => navigate(1)} disabled={index >= images.length - 1}
-              className={`p-2 rounded-lg transition disabled:opacity-30 ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}>
-              <ChevronRight className="w-5 h-5" />
-            </button>
-
-            <div className={`w-px h-5 mx-1 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
-
+            {/* Zoom */}
             <button onClick={() => { if (!fit) setZoom(z => Math.max(0.1, +(z - 0.1).toFixed(2))); }}
               disabled={fit || zoom <= 0.1}
               className={`p-2 rounded-lg transition disabled:opacity-30 ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
@@ -133,9 +192,14 @@ export function ImageViewer({
 
             <div className={`w-px h-5 mx-1 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
 
+            {/* Actions */}
             <button onClick={() => onToggleFavorite(image)}
               className={`p-2 rounded-lg transition ${image.isFavorite ? 'text-rose-400 hover:text-rose-500' : isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}>
               <Heart className={`w-4 h-4 ${image.isFavorite ? 'fill-current' : ''}`} />
+            </button>
+            <button onClick={handleShare} disabled={sharing}
+              className={`p-2 rounded-lg transition disabled:opacity-50 ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
+              {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
             </button>
             <a href={image.downloadUrl} download={image.name}
               className={`p-2 rounded-lg transition ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
@@ -151,46 +215,88 @@ export function ImageViewer({
           </div>
         </div>
 
-        {/* Image area */}
-        <div ref={areaRef} className={`flex-1 min-h-0 p-4 ${fit ? 'relative' : 'overflow-auto flex items-center justify-center'}`}>
-          {fit ? (
-            <div className="relative w-full h-full">
-              <img ref={fitImgRef} src={image.downloadUrl} alt={image.name}
-                className="absolute inset-0 w-full h-full object-contain rounded-xl" />
-            </div>
-          ) : (
-            <div className="relative" style={{ width: `${zoom * 100}%`, flexShrink: 0 }}>
-              <img src={image.downloadUrl} alt={image.name} className="rounded-xl w-full h-auto block" />
-            </div>
+        {/* Image area + full-height sidebar nav strips (fit mode only) */}
+        <div className="relative flex-1 min-h-0">
+          {index > 0 && (
+            <button
+              onClick={() => navigate(-1)}
+              className="absolute left-0 top-0 h-full w-16 z-10 flex items-center justify-start pl-2 group hover:bg-black/5 transition-colors"
+            >
+              <div className="p-2.5 rounded-full bg-black/30 group-hover:bg-black/60 backdrop-blur-sm text-white shadow-lg transition-all opacity-50 group-hover:opacity-100">
+                <ChevronLeft className="w-6 h-6" />
+              </div>
+            </button>
+          )}
+
+          <div
+            ref={areaRef}
+            className={`w-full h-full p-4 ${fit ? 'relative' : 'overflow-auto select-none'}`}
+            style={!fit ? { cursor: isPanning ? 'grabbing' : 'grab' } : undefined}
+            onMouseDown={handlePanStart}
+            onMouseMove={handlePanMove}
+            onMouseUp={handlePanEnd}
+            onMouseLeave={handlePanEnd}
+            onDoubleClick={() => { if (!fit) { setFit(true); setZoom(1); } }}
+          >
+            {fit ? (
+              <div className="relative w-full h-full">
+                <img ref={fitImgRef} src={image.downloadUrl} alt={image.name}
+                  className="absolute inset-0 w-full h-full object-contain rounded-xl" />
+              </div>
+            ) : (
+              // Inner wrapper must have an EXPLICIT width (not just min-width) so the scroll
+              // container's scrollWidth grows when zoomed. min-width alone stays at container
+              // width in the flex layout engine and the image just visually overflows without
+              // making the scrollable area wider.
+              //
+              // Image uses min(zoom*100%, 100%) so it always equals zoom × container-width:
+              //   zoom ≤ 1 → inner=100%, image=zoom*100% of that = zoom*W  ✓
+              //   zoom > 1 → inner=zoom*100%, image=100% of that = zoom*W  ✓
+              <div style={{ width: `max(100%, ${zoom * 100}%)`, minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img
+                  src={image.downloadUrl}
+                  alt={image.name}
+                  className="rounded-xl block"
+                  style={{ width: `min(${zoom * 100}%, 100%)`, height: 'auto' }}
+                  draggable={false}
+                />
+              </div>
+            )}
+          </div>
+
+          {index < images.length - 1 && (
+            <button
+              onClick={() => navigate(1)}
+              className="absolute right-0 top-0 h-full w-16 z-10 flex items-center justify-end pr-2 group hover:bg-black/5 transition-colors"
+            >
+              <div className="p-2.5 rounded-full bg-black/30 group-hover:bg-black/60 backdrop-blur-sm text-white shadow-lg transition-all opacity-50 group-hover:opacity-100">
+                <ChevronRight className="w-6 h-6" />
+              </div>
+            </button>
           )}
         </div>
 
-        {/* Thumbnail strip */}
+        {/* Thumbnail strip with counter */}
         {images.length > 1 && (
-          <div className={`flex-shrink-0 border-t p-3 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-            <div className="flex gap-2 overflow-x-auto pb-1 items-center">
-              {start > 0 && (
-                <span className={`flex-shrink-0 text-[10px] px-1.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                  +{start}
-                </span>
-              )}
-              {images.slice(start, end).map((img, i) => {
-                const idx = start + i;
-                return (
-                  <button key={img.path} onClick={() => { setIndex(idx); setZoom(1); setFit(true); }}
-                    className={`flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 ${
-                      idx === index ? 'border-accent-500'
-                        : isDark ? 'border-slate-800 hover:border-slate-600' : 'border-slate-200 hover:border-slate-300'
-                    }`}>
-                    <img src={getLibraryFileThumbnailUrl(img.path, 56, 56)} alt="" className="w-full h-full object-cover" loading="lazy" />
-                  </button>
-                );
-              })}
-              {end < images.length && (
-                <span className={`flex-shrink-0 text-[10px] px-1.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                  +{images.length - end}
-                </span>
-              )}
+          <div className={`flex-shrink-0 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+            <div className={`text-center pt-2 pb-0.5 text-xs tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              {index + 1} / {images.length}
+            </div>
+            <div ref={thumbStripRef} className="flex gap-2 overflow-x-auto px-3 py-2 items-center">
+              {images.map((img, idx) => (
+                <button
+                  key={img.path}
+                  ref={idx === index ? activeThumbRef : undefined}
+                  onClick={() => { setIndex(idx); setZoom(1); setFit(true); }}
+                  className={`flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${
+                    idx === index
+                      ? 'border-accent-500 scale-105'
+                      : isDark ? 'border-slate-800 hover:border-slate-600' : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <img src={getLibraryFileThumbnailUrl(img.path, 56, 56)} alt="" className="w-full h-full object-cover" loading="lazy" />
+                </button>
+              ))}
             </div>
           </div>
         )}

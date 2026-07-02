@@ -7,7 +7,7 @@ import { FADE_MS, KB_MS, randomKenBurns } from './galleryUtils';
 // Ken Burns restarts via double-RAF whenever `image.path` changes so we don't
 // rely on the fragile getBoundingClientRect() forced-reflow trick.
 
-export interface KenBurnsSlideProps {
+interface KenBurnsSlideProps {
   image: LibraryImage;
   opacity: 0 | 1;
   rotateCCW?: boolean;

@@ -8,11 +8,6 @@
  */
 import SunCalc from 'suncalc';
 
-/** Local midnight for a Date — strips time, keeps calendar day. */
-export function localMidnight(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
 /**
  * Astronomer's "today" — the calendar date whose evening starts the most
  * relevant upcoming or current dark window.
@@ -73,7 +68,7 @@ export function localDateKey(d: Date): string {
 }
 
 /** Format as YYYY-MM-DD in a specific IANA timezone. */
-export function localDateKeyInTimeZone(d: Date, timeZone: string): string {
+function localDateKeyInTimeZone(d: Date, timeZone: string): string {
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone,

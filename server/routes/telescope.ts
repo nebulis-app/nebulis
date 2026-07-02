@@ -15,7 +15,7 @@ import {
 } from '../lib/telescopeFiles.js';
 import { cachedSmbListDir, BASE_PATH } from '../lib/smbCache.js';
 import { pickDefaultTarget } from '../lib/telescopes.js';
-import { queryString } from '../lib/queryHelpers.js';
+import { queryString, contentDispositionHeader } from '../lib/queryHelpers.js';
 import {
   getLocalObjects,
   getLocalSessions,
@@ -359,7 +359,7 @@ router.get('/files', async (req: Request, res: Response) => {
     } else {
       res.set('Content-Type', getMimeType(ext));
       res.set('Cache-Control', 'public, max-age=3600');
-      res.set('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
+      res.set('Content-Disposition', contentDispositionHeader('inline', path.basename(filePath)));
       res.send(data);
     }
   } catch (err: unknown) {

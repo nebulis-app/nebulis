@@ -14,12 +14,8 @@ export const resetDatabase = () =>
 export const runNightlyMaintenanceNow = () =>
   fetchJSON<{ started: boolean }>('/settings/nightly/run', { method: 'POST' });
 
-// Connection
-export const testConnection = () =>
-  fetchJSON<{ connected: boolean; objectCount?: number; error?: string }>('/telescope/test');
-
 // Debug logging
-export interface DebugLoggingStatus {
+interface DebugLoggingStatus {
   enabled: boolean;
   enabledAt: string | null;
   expiresAt: string | null;

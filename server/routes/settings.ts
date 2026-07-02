@@ -7,9 +7,10 @@ import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import { getSettingsData, updateSettingsData, getApiKey, setApiKey } from '../lib/telescopes.js';
+import { SKY_MAP_BANDS } from '../lib/skyMapConfig.js';
 import db from '../lib/db.js';
 import { DATA_DIR } from '../lib/paths.js';
-import { getLibraryDir, isDefaultLocation, getLibraryId, writeMarker } from '../lib/libraryPath.js';
+import { getLibraryDir, isDefaultLocation, getLibraryId, writeMarker, isLibraryAvailable } from '../lib/libraryPath.js';
 import { startPrefetch, cancelPrefetch } from '../lib/catalogPrefetch.js';
 import { runUpdateCheck, stopAppUpdateChecker } from '../lib/appUpdate/updater.js';
 import {
@@ -30,13 +31,9 @@ const SettingsUpdateBodySchema = z.object({
   timezone: z.string().optional(),
   minAlt: z.number().optional(),
   horizonProfile: z.array(z.number()).length(36).optional(),
-  // Empty = "no visible-sky map set" (the planner's default). Otherwise it must
-  // be exactly 144 (36 azimuth slices × 4 elevation bands). The storage layer
-  // (saveSettingsRow) already normalizes non-144 to empty, so accept both here
-  // rather than rejecting a whole settings save just because the map is unset.
-  visibleSkyMap: z.array(z.boolean())
-    .refine(a => a.length === 0 || a.length === 144, 'visibleSkyMap must be empty or have exactly 144 entries')
-    .optional(),
+  // Any boolean array is accepted. The storage layer (saveSettingsRow) already
+  // normalizes wrong-length arrays to empty ([]), so no refine needed here.
+  visibleSkyMap: z.array(z.boolean()).optional(),
   syncEnabled: z.boolean().optional(),
   syncJpg: z.boolean().optional(),
   syncFits: z.boolean().optional(),
@@ -79,7 +76,8 @@ interface Settings {
   // Planner visibility
   minAlt: number;
   horizonProfile: number[]; // 36 values, one per 10° azimuth bucket (0°–350°)
-  visibleSkyMap: boolean[]; // 144 values (36 az × 4 elevation bands); [] = not set
+  visibleSkyMap: boolean[]; // 288 values (36 az × 8 elevation bands); [] = not set
+  skyMapBands: number;      // elevation-band count the server supports (8); clients gate the finer grid on this
   syncEnabled: boolean;
   syncJpg: boolean;
   syncFits: boolean;
@@ -130,6 +128,7 @@ const defaultSettings: Settings = {
   minAlt: 20,
   horizonProfile: Array(36).fill(0),
   visibleSkyMap: [],
+  skyMapBands: SKY_MAP_BANDS,
   syncEnabled: true,
   syncJpg: true,
   syncFits: true,
@@ -185,6 +184,7 @@ router.get('/', (_req: Request, res: Response) => {
 router.put('/', requireAdmin, async (req: Request, res: Response) => {
   const parsed = SettingsUpdateBodySchema.safeParse(req.body);
   if (!parsed.success) {
+    console.error('[settings PUT] Validation failed:', JSON.stringify(parsed.error.issues));
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
     return;
   }
@@ -352,14 +352,23 @@ router.delete('/reset-database', requireAdmin, (req: Request, res: Response) => 
     db.exec(`INSERT OR IGNORE INTO libraryMeta (id, version) VALUES (1, 1)`);
 
     // 2. Remove local data directories
-    const dirsToRemove = [
-      LIBRARY_DIR,
+    // Guard the library dir: only delete it when the marker confirms this
+    // directory belongs to this install. If the path is stale (e.g. a
+    // relocated external drive that is no longer mounted), skip deletion to
+    // avoid recursively removing an unrelated path.
+    if (isLibraryAvailable()) {
+      try {
+        fs.rmSync(LIBRARY_DIR, { recursive: true });
+      } catch { /* directory may not exist */ }
+    }
+    // The dirs below are always under DATA_DIR which the server controls.
+    const serverDirsToRemove = [
       path.join(DATA_DIR, 'thumbnails'),
       path.join(DATA_DIR, 'sky-cache'),
       path.join(DATA_DIR, 'tle-archive'),
       path.join(DATA_DIR, 'cache'),
     ];
-    for (const dir of dirsToRemove) {
+    for (const dir of serverDirsToRemove) {
       try {
         fs.rmSync(dir, { recursive: true, force: true });
       } catch { /* directory may not exist */ }

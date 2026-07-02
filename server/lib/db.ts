@@ -349,6 +349,11 @@ db.exec(`
   if (!userCols.some(c => c.name === 'role')) {
     db.prepare("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'").run();
   }
+  // tokenVersion is embedded in login JWTs and bumped on password change so that
+  // old tokens are immediately rejected without waiting for their 30-day expiry.
+  if (!userCols.some(c => c.name === 'tokenVersion')) {
+    db.prepare('ALTER TABLE users ADD COLUMN tokenVersion INTEGER NOT NULL DEFAULT 0').run();
+  }
 }
 {
   // PRAGMA table_info returns rows with at least { name: string }. SQL trust
@@ -379,9 +384,9 @@ db.exec(`
     db.prepare("ALTER TABLE appSettings ADD COLUMN locationName TEXT NOT NULL DEFAULT ''").run();
   }
   if (!cols.some(c => c.name === 'visibleSkyMap')) {
-    // 144-element boolean array (36 azimuth slices × 4 elevation bands),
+    // 288-element boolean array (36 azimuth slices × 8 elevation bands),
     // serialized as JSON. Default '[]' means "no map set yet — treat whole
-    // sky as visible." The planner UI flips that into a length-144 array
+    // sky as visible." The planner UI flips that into a length-288 array
     // when the user opens the Set Visible Sky editor.
     db.prepare("ALTER TABLE appSettings ADD COLUMN visibleSkyMap TEXT NOT NULL DEFAULT '[]'").run();
   }

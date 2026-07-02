@@ -5,7 +5,7 @@ import { OnboardingStep4 } from './OnboardingStep4';
 import type { TelescopeKind } from '../../lib/telescopePresets';
 import type { StepNumber } from './stepReducer';
 
-export interface OnboardingStepsProps {
+interface OnboardingStepsProps {
   step: StepNumber;
   isDark: boolean;
   inputClass: string;

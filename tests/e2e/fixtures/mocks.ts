@@ -12,14 +12,17 @@ import type { Page, Route } from '@playwright/test';
 
 // ─── Envelope helper ─────────────────────────────────────────────────────────
 
-function ok<T>(data: T) {
+export function ok<T>(data: T) {
   return { ok: true, data };
 }
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 
 export const MOCK = {
-  authStatus: { hasUsers: true, requiresSetup: false },
+  // Open-access by default: no stored token + hasUsers:false means App.tsx
+  // never shows the login modal, so content specs render the app directly.
+  // Specs that exercise the login gate (auth.spec) opt in via mockHasUsers().
+  authStatus: { hasUsers: false, requiresSetup: false },
 
   loginResponse: {
     token: 'test-jwt-token',
@@ -330,56 +333,100 @@ export const MOCK = {
     },
   ],
 
+  // Tonight's observable targets, in the current PlannerTarget shape returned
+  // by GET /planner/tonight (see src/lib/api/planner.ts). The planner library
+  // pane renders these; the timeline/night-window fields are added by the route
+  // handler since they're computed relative to "now".
   plannerTargets: [
     {
       id: 'M42',
+      ngcName: 'NGC 1976',
       name: 'Orion Nebula',
       type: 'Emission Nebula',
+      typeCode: 'Neb',
       constellation: 'Orion',
       magnitude: 4.0,
+      majorAxisArcmin: 85,
+      ra: 5.58,
+      dec: -5.39,
+      commonNames: ['Orion Nebula'],
+      messier: 42,
+      altNow: 35,
+      azNow: 150,
       maxAlt: 55,
-      risesAt: '2024-03-15T20:00:00Z',
-      setsAt: '2024-03-16T02:00:00Z',
-      transitAt: '2024-03-15T23:00:00Z',
-      isInLibrary: true,
+      maxAltTime: null,
+      risesAt: null,
+      setsAt: null,
       isInWishlist: false,
-      raHours: 5.58,
-      decDeg: -5.39,
-      size: 85,
+      isAlreadyImaged: true,
+      libraryObjectId: 'obj-m42',
     },
     {
       id: 'M45',
+      ngcName: '',
       name: 'Pleiades',
       type: 'Open Cluster',
+      typeCode: 'OCl',
       constellation: 'Taurus',
       magnitude: 1.6,
+      majorAxisArcmin: 110,
+      ra: 3.79,
+      dec: 24.12,
+      commonNames: ['Pleiades'],
+      messier: 45,
+      altNow: 40,
+      azNow: 200,
       maxAlt: 68,
-      risesAt: '2024-03-15T19:00:00Z',
-      setsAt: '2024-03-16T01:00:00Z',
-      transitAt: '2024-03-15T22:00:00Z',
-      isInLibrary: false,
+      maxAltTime: null,
+      risesAt: null,
+      setsAt: null,
       isInWishlist: true,
-      raHours: 3.79,
-      decDeg: 24.12,
-      size: 110,
+      isAlreadyImaged: false,
+      libraryObjectId: null,
     },
     {
       id: 'M51',
+      ngcName: 'NGC 5194',
       name: 'Whirlpool Galaxy',
       type: 'Galaxy',
+      typeCode: 'Gx',
       constellation: 'Canes Venatici',
       magnitude: 8.4,
+      majorAxisArcmin: 11,
+      ra: 13.49,
+      dec: 47.19,
+      commonNames: ['Whirlpool Galaxy'],
+      messier: 51,
+      altNow: 50,
+      azNow: 90,
       maxAlt: 72,
-      risesAt: '2024-03-15T22:00:00Z',
-      setsAt: '2024-03-16T06:00:00Z',
-      transitAt: '2024-03-16T02:00:00Z',
-      isInLibrary: false,
+      maxAltTime: null,
+      risesAt: null,
+      setsAt: null,
       isInWishlist: false,
-      raHours: 13.49,
-      decDeg: 47.19,
-      size: 11,
+      isAlreadyImaged: false,
+      libraryObjectId: null,
     },
   ],
+
+  // A DSO-catalog entry that never clears the horizon from the mock observer
+  // (lat 37.77, far-southern declination). The planner omits it from
+  // /planner/tonight, so a search must surface it from the full /dso catalog as
+  // a dimmed, non-draggable "not observable" row.
+  dsoBelowHorizon: {
+    id: 'NGC104',
+    ngcName: 'NGC 104',
+    name: '47 Tucanae',
+    type: 'Globular Cluster',
+    typeCode: 'GCl',
+    constellation: 'Tucana',
+    magnitude: 4.0,
+    majorAxisArcmin: 50,
+    ra: 0.4,
+    dec: -72.08,
+    commonNames: ['47 Tucanae'],
+    messier: null,
+  },
 
   altitudeCurve: {
     objectId: 'M42',
@@ -624,17 +671,20 @@ export async function mockAllRoutes(page: Page) {
   await page.route('**/api/settings/api-key', r =>
     r.fulfill(json(ok({ ...MOCK.settings, apiKey: '', hasApiKey: false }))));
 
-  // Library objects
+  // Library objects. Registered least-specific first so the specific endpoints
+  // win (Playwright runs the most recently registered matching handler first).
+  // Otherwise the `objects/**` catch-all would intercept the sessions/files
+  // endpoints and return a single object instead.
   await page.route('**/api/library/objects', r => r.fulfill(json(ok(MOCK.objects))));
+  await page.route('**/api/library/objects/**', r => r.fulfill(json(ok(MOCK.objects[0]))));
+  await page.route('**/api/library/objects/*/favorite', r => r.fulfill(json(ok({ objectId: 'M42', isFavorite: true }))));
+  await page.route('**/api/library/objects/M31/sessions', r =>
+    r.fulfill(json(ok([MOCK.sessions[0]]))));
+  await page.route('**/api/library/objects/M42/integration', r =>
+    r.fulfill(json(ok({ totalExposure: 600, stackedFrames: 120, sessions: 3 }))));
   await page.route('**/api/library/objects/M42/sessions', r => r.fulfill(json(ok(MOCK.sessions))));
   await page.route('**/api/library/objects/M42/sessions/2024-03-15/files', r =>
     r.fulfill(json(ok(MOCK.sessionFiles))));
-  await page.route('**/api/library/objects/M42/integration', r =>
-    r.fulfill(json(ok({ totalExposure: 600, stackedFrames: 120, sessions: 3 }))));
-  await page.route('**/api/library/objects/M31/sessions', r =>
-    r.fulfill(json(ok([MOCK.sessions[0]]))));
-  await page.route('**/api/library/objects/*/favorite', r => r.fulfill(json(ok({ objectId: 'M42', isFavorite: true }))));
-  await page.route('**/api/library/objects/**', r => r.fulfill(json(ok(MOCK.objects[0]))));
 
   // Import
   await page.route('**/api/library/import/history**', r => r.fulfill(json(ok(MOCK.importHistory))));
@@ -657,26 +707,21 @@ export async function mockAllRoutes(page: Page) {
   await page.route('**/api/library/observations', r => r.fulfill(json(ok(MOCK.observations))));
   await page.route('**/api/library/observations/**', r => r.fulfill(json(ok(MOCK.observationDetail))));
 
-  // Catalog
+  // Catalog. Registered least-specific first so the specific endpoints win
+  // (Playwright runs the most recently registered matching handler first).
+  // Otherwise the `**/api/catalog/**` catch-all would intercept `/M42/info`
+  // and `/M42/image` and return the plain catalog entry.
+  await page.route('**/api/catalog', r => r.fulfill(json(ok([MOCK.catalogEntry]))));
+  await page.route('**/api/catalog/**', r => r.fulfill(json(ok(MOCK.catalogEntry))));
   await page.route('**/api/catalog/search**', r => r.fulfill(json(ok(MOCK.dsoSearchResults))));
-  await page.route('**/api/catalog/M42/info', r =>
-    r.fulfill(json(ok({ ...MOCK.catalogEntry, wikiSummary: 'The Orion Nebula (also known as Messier 42) is a diffuse nebula.' }))));
+  await page.route('**/api/catalog/M42', r => r.fulfill(json(ok(MOCK.catalogEntry))));
   await page.route('**/api/catalog/M42/image**', r =>
     r.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('') }));
-  await page.route('**/api/catalog/M42', r => r.fulfill(json(ok(MOCK.catalogEntry))));
-  await page.route('**/api/catalog/**', r => r.fulfill(json(ok(MOCK.catalogEntry))));
-  await page.route('**/api/catalog', r => r.fulfill(json(ok([MOCK.catalogEntry]))));
+  await page.route('**/api/catalog/M42/info', r =>
+    r.fulfill(json(ok({ ...MOCK.catalogEntry, wikiSummary: 'The Orion Nebula (also known as Messier 42) is a diffuse nebula.' }))));
 
-  // Notes
-  await page.route('**/api/notes/object/M42/2024-03-15', r => r.fulfill(json(ok(MOCK.note))));
-  await page.route('**/api/notes/object/**', r => r.fulfill(json(ok(MOCK.note))));
-  await page.route('**/api/notes', async r => {
-    if (r.request().method() === 'POST') {
-      r.fulfill(json(ok(MOCK.note)));
-    } else {
-      r.fulfill(json(ok([MOCK.note])));
-    }
-  });
+  // Notes. Least-specific first so specific endpoints win (Playwright runs the
+  // most recently registered matching handler first).
   await page.route('**/api/notes/**', async r => {
     if (r.request().method() === 'DELETE') {
       r.fulfill(json(ok({ deleted: true })));
@@ -686,9 +731,17 @@ export async function mockAllRoutes(page: Page) {
       r.fulfill(json(ok(MOCK.note)));
     }
   });
+  await page.route('**/api/notes', async r => {
+    if (r.request().method() === 'POST') {
+      r.fulfill(json(ok(MOCK.note)));
+    } else {
+      r.fulfill(json(ok([MOCK.note])));
+    }
+  });
+  await page.route('**/api/notes/object/**', r => r.fulfill(json(ok(MOCK.note))));
+  await page.route('**/api/notes/object/M42/2024-03-15', r => r.fulfill(json(ok(MOCK.note))));
 
-  // Wishlist
-  await page.route('**/api/wishlist/object/**', r => r.fulfill(json(ok({ deleted: true }))));
+  // Wishlist. Least-specific first so specific endpoints win.
   await page.route('**/api/wishlist/**', async r => {
     const method = r.request().method();
     if (method === 'PATCH') {
@@ -699,6 +752,7 @@ export async function mockAllRoutes(page: Page) {
       r.fulfill(json(ok(MOCK.wishlist[0])));
     }
   });
+  await page.route('**/api/wishlist/object/**', r => r.fulfill(json(ok({ deleted: true }))));
   await page.route('**/api/wishlist', async r => {
     if (r.request().method() === 'POST') {
       r.fulfill(json(ok([...MOCK.wishlist, { id: 'wl-new', objectId: 'M63', objectName: 'Sunflower Galaxy', catalogId: 'M63', type: 'Galaxy', constellation: 'Canes Venatici', magnitude: 8.6, priority: 'medium' as const, notes: '', addedAt: new Date().toISOString() }])));
@@ -707,14 +761,46 @@ export async function mockAllRoutes(page: Page) {
     }
   });
 
-  // Planner
-  await page.route('**/api/planner/tonight**', r => r.fulfill(json(ok(MOCK.plannerTargets))));
+  // Planner. The night-window and timeline fields are anchored to "now" so the
+  // dusk-to-dawn timeline always renders regardless of when the suite runs.
+  await page.route('**/api/planner/tonight**', r => {
+    const now = Date.now();
+    const iso = (hours: number) => new Date(now + hours * 3_600_000).toISOString();
+    r.fulfill(json(ok({
+      locationSet: true,
+      targets: MOCK.plannerTargets,
+      totalVisible: MOCK.plannerTargets.length,
+      nightStart: iso(-1),
+      nightEnd: iso(8),
+      sunset: iso(-2),
+      sunrise: iso(9),
+      timelineStart: iso(-2),
+      timelineEnd: iso(9),
+      moonIllumination: 42,
+      moonPhase: 'Waxing Crescent',
+      observerLat: 37.77,
+      observerLon: -122.42,
+      observerTimezone: 'America/Los_Angeles',
+    })));
+  });
   await page.route('**/api/planner/curve/**', r => r.fulfill(json(ok(MOCK.altitudeCurve))));
+  await page.route('**/api/planned-sessions**', r => {
+    if (r.request().method() === 'GET') r.fulfill(json(ok([])));
+    else r.fulfill(json(ok({ id: 1 })));
+  });
 
-  // DSO catalog
-  await page.route('**/api/dso/search**', r => r.fulfill(json(ok(MOCK.dsoSearchResults))));
-  await page.route('**/api/dso/**', r => r.fulfill(json(ok(MOCK.dsoSearchResults[0]))));
-  await page.route('**/api/dso**', r => r.fulfill(json(ok({ results: MOCK.plannerTargets, total: 3 }))));
+  // DSO catalog. The browse/search endpoint (GET /dso?q=) drives both wishlist
+  // search and the planner's below-horizon backfill, so match the query against
+  // the observable targets plus the below-horizon entry.
+  await page.route('**/api/dso**', r => {
+    const url = new URL(r.request().url());
+    const q = (url.searchParams.get('q') ?? '').toLowerCase().replace(/\s+/g, '');
+    const catalog = [...MOCK.plannerTargets, MOCK.dsoBelowHorizon];
+    const matches = (e: { id: string; ngcName: string; name: string; commonNames: string[] }) =>
+      [e.id, e.ngcName, e.name, ...e.commonNames].some(f => (f ?? '').toLowerCase().replace(/\s+/g, '').includes(q));
+    const results = q ? catalog.filter(matches) : catalog;
+    r.fulfill(json(ok({ results, total: results.length })));
+  });
 
   // Storage
   await page.route('**/api/storage/system', r => r.fulfill(json(ok(MOCK.systemStorage))));
@@ -723,12 +809,16 @@ export async function mockAllRoutes(page: Page) {
   // Forecast
   await page.route('**/api/forecast**', r => r.fulfill(json(ok(MOCK.forecast))));
 
-  // Telescopes
-  await page.route('**/api/telescopes/status/all', r => r.fulfill(json(ok(MOCK.allTelescopeStatusList))));
-  await page.route('**/api/telescopes/status', r => r.fulfill(json(ok(MOCK.telescopeStatus))));
-  await page.route('**/api/telescopes/active', r => r.fulfill(json(ok(MOCK.telescopes[0]))));
+  // Telescopes. Playwright checks routes in reverse registration order (the
+  // most recently added handler that matches wins), so register from least to
+  // most specific: the catch-all first, the exact endpoints last. Otherwise the
+  // `**/api/telescopes/**` catch-all would intercept `/status/all` and return a
+  // single telescope object, breaking `allStatus.filter` in the Layout shell.
   await page.route('**/api/telescopes/**', r => r.fulfill(json(ok(MOCK.telescopes[0]))));
   await page.route('**/api/telescopes', r => r.fulfill(json(ok(MOCK.telescopes))));
+  await page.route('**/api/telescopes/active', r => r.fulfill(json(ok(MOCK.telescopes[0]))));
+  await page.route('**/api/telescopes/status', r => r.fulfill(json(ok(MOCK.telescopeStatus))));
+  await page.route('**/api/telescopes/status/all', r => r.fulfill(json(ok(MOCK.allTelescopeStatusList))));
 
   // SMB connection test
   await page.route('**/api/telescope/test', r => r.fulfill(json(ok(MOCK.connectionTest))));
@@ -801,4 +891,16 @@ export async function mockAdminAuth(page: Page) {
 export async function mockOpenAuth(page: Page) {
   await page.route('**/api/auth/status', r =>
     r.fulfill(json(ok({ hasUsers: false, requiresSetup: false }))));
+}
+
+/**
+ * Override auth/status to return hasUsers=true. With no stored token this makes
+ * App.tsx show the login modal, so the auth-gate specs can exercise it.
+ *
+ * Call AFTER mockAllRoutes so this route registration takes precedence
+ * (Playwright runs the most recently registered matching handler first).
+ */
+export async function mockHasUsers(page: Page) {
+  await page.route('**/api/auth/status', r =>
+    r.fulfill(json(ok({ hasUsers: true, requiresSetup: false }))));
 }

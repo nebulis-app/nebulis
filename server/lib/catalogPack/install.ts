@@ -257,12 +257,17 @@ async function installTier(
           if (!skip) {
             fs.renameSync(src, dest);
             movedCount++;
+          }
 
-            try {
-              await prewarm(canonicalId, dest, source);
-            } catch (err) {
-              console.warn(`[catalogPack] prewarm failed for ${filename}:`, err instanceof Error ? err.message : err);
-            }
+          // Always prewarm — even if the master already existed. A prior DSS2
+          // prefetch may have downloaded the master before the pack was installed,
+          // causing the copy above to be skipped, which previously also skipped
+          // the resize cache generation. That left all four canonical thumbnail
+          // sizes ungenerated until a client happened to request each one.
+          try {
+            await prewarm(canonicalId, dest, source);
+          } catch (err) {
+            console.warn(`[catalogPack] prewarm failed for ${filename}:`, err instanceof Error ? err.message : err);
           }
         }
       }));

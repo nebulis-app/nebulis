@@ -6,7 +6,7 @@ import { useTheme } from '../../hooks/useTheme';
 
 /** One session's review state. `derivedDate` is the scan's grouping key (kept
  *  stable for the commit sessionMap); `finalDate` is what the user wants. */
-export interface SessionEdit {
+interface SessionEdit {
   derivedDate: string;
   finalDate: string;
   drop: boolean;

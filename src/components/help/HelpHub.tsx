@@ -22,7 +22,7 @@ import {
 } from './helpData';
 import { Faq, toneClasses } from './HelpPrimitives';
 
-export type HelpHubProps = {
+type HelpHubProps = {
   onOpenArticle: (id: string) => void;
   onOpenTopic: (id: string) => void;
 };
@@ -227,7 +227,7 @@ export function HelpHub({ onOpenArticle, onOpenTopic }: HelpHubProps) {
         <h2 className={`text-lg font-bold mb-4 ${heading}`}>Frequently asked</h2>
         <div className="flex flex-col gap-2">
           {HUB_FAQ.map((f, i) => (
-            <Faq key={i} q={f.q} defaultOpen={i === 0}>{f.a}</Faq>
+            <Faq key={f.q} q={f.q} defaultOpen={i === 0}>{f.a}</Faq>
           ))}
         </div>
       </section>

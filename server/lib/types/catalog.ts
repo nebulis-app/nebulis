@@ -14,4 +14,6 @@ export interface CatalogEntry {
   majorAxisArcmin?: number | null;
   /** Formatted angular size string, e.g. "13.2' x 7.9'" (arcminutes). */
   size?: string | null;
+  /** Other designations for this object: NGC cross-refs, Caldwell, Sharpless, common names. */
+  alsoKnownAs?: string[];
 }

@@ -152,9 +152,28 @@ export function altitudeCurve(
 export function raToDegs(ra: string | number): number {
   if (typeof ra === 'number') return ra;
   const m = ra.match(/(\d+)h\s*(\d+)m\s*([\d.]+)s/i);
-  if (!m) return parseFloat(ra) || 0;
+  // A bare decimal string (no h/m/s) is decimal HOURS in this codebase
+  // (OpenNGC + libraryObjects both store hours), so convert it like the
+  // sexagesimal branch rather than returning it as if it were already degrees.
+  if (!m) return (parseFloat(ra) || 0) * 15;
   const hours = parseFloat(m[1]) + parseFloat(m[2]) / 60 + parseFloat(m[3]) / 3600;
   return hours * 15; // 1h = 15°
+}
+
+/**
+ * Parse RA to decimal hours. Accepts decimal hours (number), a decimal-hours
+ * string (e.g. "5.8718"), or a sexagesimal string (e.g. "05h 52m 18.4s").
+ *
+ * Use this — not raToDegs — anywhere the consumer expects RA in hours (the
+ * altitude/azimuth math, the planner, planned sessions, the catalog board).
+ * raToDegs returns degrees and is only correct for callers that want degrees
+ * (e.g. the DSS2 sky-image fetch).
+ */
+export function raToHours(ra: string | number): number {
+  if (typeof ra === 'number') return ra;
+  const m = ra.match(/(\d+)h\s*(\d+)m\s*([\d.]+)s/i);
+  if (!m) return parseFloat(ra) || 0;
+  return parseFloat(m[1]) + parseFloat(m[2]) / 60 + parseFloat(m[3]) / 3600;
 }
 
 /**

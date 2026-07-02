@@ -67,7 +67,7 @@ export function SettingsPage() {
     const tab = SETTINGS_TABS.find(t => t.id === id);
     if (tab?.adminOnly && isViewer) return;
     setActiveTab(id);
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'instant' });
   }
 
   if (isLoading) {

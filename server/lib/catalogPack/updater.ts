@@ -65,11 +65,23 @@ export async function checkAndUpdatePacks(prewarm: PrewarmFn): Promise<void> {
     const index = PackIndex.parse(JSON.parse(indexBuf.toString('utf8')));
 
     const tiersToUpdate: CatalogTier[] = [];
+    const installedTierSet = new Set(installedStates.map(s => s.tier));
+
     for (const state of installedStates) {
       const remote = index.tiers.find(t => t.tier === state.tier);
       if (remote && remote.version !== state.version) {
         console.log(`[packUpdater] ${state.tier}: update available v${state.version} → v${remote.version}`);
         tiersToUpdate.push(state.tier);
+      }
+    }
+
+    // Also detect tiers present in the remote index that have never been installed.
+    // Without this, users who already have Messier installed would never receive
+    // Caldwell or any other tier added after their first install.
+    for (const remoteTier of index.tiers) {
+      if (!installedTierSet.has(remoteTier.tier)) {
+        console.log(`[packUpdater] ${remoteTier.tier}: new tier available, scheduling install`);
+        tiersToUpdate.push(remoteTier.tier);
       }
     }
 

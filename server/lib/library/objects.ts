@@ -386,7 +386,13 @@ function _mergeIntoDir(from: string, to: string): void {
     const src = path.join(from, entry.name);
     const dst = path.join(to, entry.name);
     if (entry.isFile()) {
-      if (!fs.existsSync(dst)) fs.renameSync(src, dst);
+      if (!fs.existsSync(dst)) {
+        fs.renameSync(src, dst);
+      } else {
+        // Destination already has this file — the source copy is a duplicate.
+        // Delete it so the space directory can be fully emptied and removed.
+        fs.unlinkSync(src);
+      }
     } else if (entry.isDirectory()) {
       if (!fs.existsSync(dst)) {
         fs.renameSync(src, dst); // subdir doesn't exist in target — move whole thing
@@ -514,7 +520,7 @@ export const stmts = {
     `INSERT INTO libraryObjects (objectId, folderName, fileCount, lastImport, deleted, deletedAt,
        catalogId, objectName, objectType, constellation, description, magnitude, ra, dec, distanceLy)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(objectId) DO UPDATE SET folderName = excluded.folderName, fileCount = excluded.fileCount,
+     ON CONFLICT(objectId) DO UPDATE SET folderName = COALESCE(libraryObjects.folderName, excluded.folderName), fileCount = excluded.fileCount,
      lastImport = excluded.lastImport, deleted = excluded.deleted, deletedAt = excluded.deletedAt,
      catalogId = COALESCE(catalogId, excluded.catalogId),
      objectName = COALESCE(objectName, excluded.objectName),
@@ -572,6 +578,7 @@ export const stmts = {
   isSessionTombstoned: db.prepare('SELECT 1 FROM libraryDeletedSessions WHERE objectId = ? AND date = ?'),
   addSessionTombstone: db.prepare('INSERT OR IGNORE INTO libraryDeletedSessions (objectId, date) VALUES (?, ?)'),
   getDeletedSessions: db.prepare<[string], { date: string }>('SELECT date FROM libraryDeletedSessions WHERE objectId = ?'),
+  getAllDeletedSessions: db.prepare<[], { objectId: string; date: string }>('SELECT objectId, date FROM libraryDeletedSessions'),
 
   // Library metadata
   getMeta: db.prepare<[], LibraryMetaRow>('SELECT * FROM libraryMeta WHERE id = 1'),
@@ -881,14 +888,27 @@ export function loadSettings(): Record<string, unknown> {
 export function loadIndex(): LibraryIndex {
   const meta = stmts.getMeta.get();
   if (!meta) throw new Error('[library] libraryMeta row missing');
-  // Typed prepared statement — SQL trust boundary enforced by libraryObjects schema.
-  const allObjsStmt = db.prepare<[], LibraryObjectRow>('SELECT * FROM libraryObjects');
-  const allObjs = allObjsStmt.all();
+  const allObjs = db.prepare<[], LibraryObjectRow>('SELECT * FROM libraryObjects').all();
+
+  // Batch both session queries — replaces 2N per-object lookups with 2 total queries.
+  const sessionsByObj = new Map<string, string[]>();
+  for (const row of stmts.getAllSessions.all()) {
+    if (row.date === 'unknown') continue;
+    const list = sessionsByObj.get(row.objectId) ?? [];
+    list.push(row.date);
+    sessionsByObj.set(row.objectId, list);
+  }
+  const deletedByObj = new Map<string, string[]>();
+  for (const row of stmts.getAllDeletedSessions.all()) {
+    const list = deletedByObj.get(row.objectId) ?? [];
+    list.push(row.date);
+    deletedByObj.set(row.objectId, list);
+  }
 
   const objects: Record<string, LibraryObjectMeta> = {};
   for (const obj of allObjs) {
-    const sessions = stmts.getSessions.all(obj.objectId).map(r => r.date).filter(d => d !== 'unknown');
-    const deletedSessions = stmts.getDeletedSessions.all(obj.objectId).map(r => r.date);
+    const sessions = sessionsByObj.get(obj.objectId) ?? [];
+    const deletedSessions = deletedByObj.get(obj.objectId) ?? [];
     objects[obj.objectId] = {
       folderName: obj.folderName,
       sessions,

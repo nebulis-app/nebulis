@@ -19,9 +19,10 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 });
 
 import { scanImportFolder } from '../../server/lib/library/folderScan';
-import { commitFolderImport } from '../../server/lib/library/import';
+import { commitFolderImport, runFolderImport, runImport, claimImportLock } from '../../server/lib/library/import';
 import { getLocalSessions } from '../../server/lib/library/observations';
 import { LIBRARY_DIR } from '../../server/lib/paths';
+import { createProfile } from '../../server/lib/telescopes';
 
 /** Build a minimal FITS header buffer with the given cards. */
 function fitsBuffer(cards: Record<string, string>): Buffer {
@@ -249,5 +250,182 @@ describe('scan + commit', () => {
     const [session] = getLocalSessions('NGC1647');
     expect(session.date).toBe('2026-03-18');
     expect(session.subFrameCount).toBe(1);
+  });
+
+  it('commitFolderImport: second import from differently-named alias folder merges into existing library dir', async () => {
+    // Reproduces: user imports "C63" folder (350 files, 2 nights), then imports
+    // "NGC7293" folder (20 files, 1 night). C63 and NGC7293 are both names for
+    // the Helix Nebula; resolveCanonicalId maps both to "NGC7293".
+    // Expected: all files visible under NGC7293, library dir is NOT duplicated.
+
+    // Import 1: "C63" folder with 2 FITS files across 2 dates. Plain numbered
+    // filenames (no embedded target name) so collectObjectSources uses the
+    // directory name "C63" as the source folderName, instead of splitting by
+    // an extracted target.
+    const src1 = tmpDir('helix-c63-');
+    fs.mkdirSync(path.join(src1, 'C63'));
+    fs.writeFileSync(
+      path.join(src1, 'C63', 'light_001.fits'),
+      fitsBuffer({ 'DATE-OBS': '2026-06-21T12:00:00' }),
+    );
+    fs.writeFileSync(
+      path.join(src1, 'C63', 'light_002.fits'),
+      fitsBuffer({ 'DATE-OBS': '2026-06-22T12:00:00' }),
+    );
+
+    await commitFolderImport({
+      rootPath: src1,
+      importFits: true,
+      objects: [
+        {
+          folderName: 'C63',
+          targetObjectId: 'C63',
+          targetFolderName: 'C63',
+          sessionMap: { '2026-06-21': '2026-06-21', '2026-06-22': '2026-06-22' },
+        },
+      ],
+    });
+
+    // Confirm 2 sessions after first import.
+    const sessionsAfter1 = getLocalSessions('NGC7293');
+    expect(sessionsAfter1.map(s => s.date).sort()).toEqual(['2026-06-21', '2026-06-22']);
+    const totalAfter1 = sessionsAfter1.reduce((n, s) => n + s.fileCount, 0);
+    expect(totalAfter1).toBe(2);
+
+    // Import 2: "NGC7293" folder with 1 additional file (same canonical object).
+    const src2 = tmpDir('helix-ngc7293-');
+    fs.mkdirSync(path.join(src2, 'NGC7293'));
+    fs.writeFileSync(
+      path.join(src2, 'NGC7293', 'light_003.fits'),
+      fitsBuffer({ 'DATE-OBS': '2026-06-22T20:00:00' }),
+    );
+
+    await commitFolderImport({
+      rootPath: src2,
+      importFits: true,
+      objects: [
+        {
+          folderName: 'NGC7293',
+          targetObjectId: 'NGC7293',
+          targetFolderName: 'NGC7293',
+          sessionMap: { '2026-06-22': '2026-06-22' },
+        },
+      ],
+    });
+
+    // All 3 files should be visible; no second library dir should be created.
+    const sessionsAfter2 = getLocalSessions('NGC7293');
+    const totalAfter2 = sessionsAfter2.reduce((n, s) => n + s.fileCount, 0);
+    expect(totalAfter2).toBe(3);
+    expect(sessionsAfter2.map(s => s.date).sort()).toEqual(['2026-06-21', '2026-06-22']);
+
+    // Only one library directory should exist for this object (C63, the first-import name).
+    expect(fs.existsSync(path.join(LIBRARY_DIR, 'C63'))).toBe(true);
+    expect(fs.existsSync(path.join(LIBRARY_DIR, 'NGC7293'))).toBe(false);
+  });
+
+  it('runFolderImport: second import from alias-named folder reuses existing library dir', async () => {
+    // Same scenario via the direct-path import route (POST /import/folder).
+    // runFolderImport was previously broken: it always used the canonical ID
+    // as the on-disk folder name, ignoring the existing folderName in the DB.
+
+    // Import 1: server-side folder named "C63".
+    const root1 = tmpDir('run-c63-');
+    fs.mkdirSync(path.join(root1, 'C63'));
+    fs.writeFileSync(
+      path.join(root1, 'C63', 'Stacked_10_NGC7293_30.0s_IRCUT_20260621-120000.jpg'),
+      'jpg1',
+    );
+    fs.writeFileSync(
+      path.join(root1, 'C63', 'Stacked_10_NGC7293_30.0s_IRCUT_20260622-120000.jpg'),
+      'jpg2',
+    );
+    await runFolderImport(root1);
+
+    const sessionsAfter1 = getLocalSessions('NGC7293');
+    expect(sessionsAfter1.map(s => s.date).sort()).toEqual(['2026-06-21', '2026-06-22']);
+
+    // Import 2: server-side folder named "NGC7293".
+    const root2 = tmpDir('run-ngc7293-');
+    fs.mkdirSync(path.join(root2, 'NGC7293'));
+    fs.writeFileSync(
+      path.join(root2, 'NGC7293', 'Stacked_10_NGC7293_30.0s_IRCUT_20260622-200000.jpg'),
+      'jpg3',
+    );
+    await runFolderImport(root2);
+
+    // All files must be reachable; no orphan directory.
+    const sessionsAfter2 = getLocalSessions('NGC7293');
+    const total = sessionsAfter2.reduce((n, s) => n + s.fileCount, 0);
+    expect(total).toBe(3);
+
+    // The library folder used by import 1 is preserved; no duplicate dir.
+    const libEntries = fs.readdirSync(LIBRARY_DIR);
+    const helixDirs = libEntries.filter(d => d === 'C63' || d === 'NGC7293');
+    expect(helixDirs).toHaveLength(1);
+  });
+
+  it('runImport: telescope sync from alias-named device folder reuses the existing library dir', async () => {
+    // Reproduces the user-reported bug via the actual path it happens on: the
+    // folder wizard creates a literal "C63" library dir, then a later
+    // telescope sync (runImport, e.g. scheduled auto-import or "Sync Now")
+    // discovers the same object under its device folder name "NGC7293".
+    // runImport previously always wrote to safeObjectDir(canonicalId) — i.e.
+    // "NGC7293" — ignoring the existing "C63" folderName, which orphaned the
+    // first import's files and showed two split (and one empty) observations.
+
+    // Import 1 via the folder wizard: literal "C63" library dir.
+    const src1 = tmpDir('helix-wizard-c63-');
+    fs.mkdirSync(path.join(src1, 'C63'));
+    fs.writeFileSync(
+      path.join(src1, 'C63', 'light_001.fits'),
+      fitsBuffer({ 'DATE-OBS': '2026-06-21T12:00:00' }),
+    );
+    fs.writeFileSync(
+      path.join(src1, 'C63', 'light_002.fits'),
+      fitsBuffer({ 'DATE-OBS': '2026-06-22T12:00:00' }),
+    );
+    await commitFolderImport({
+      rootPath: src1,
+      importFits: true,
+      objects: [
+        {
+          folderName: 'C63',
+          targetObjectId: 'C63',
+          targetFolderName: 'C63',
+          sessionMap: { '2026-06-21': '2026-06-21', '2026-06-22': '2026-06-22' },
+        },
+      ],
+    });
+    expect(fs.existsSync(path.join(LIBRARY_DIR, 'C63'))).toBe(true);
+
+    // Import 2 via a telescope sync: device exposes the object under folder
+    // "NGC7293" (kind 'other' -> walker basePath '', so the device folder
+    // sits directly at localPath/NGC7293).
+    const deviceRoot = tmpDir('helix-device-');
+    fs.mkdirSync(path.join(deviceRoot, 'NGC7293'));
+    fs.writeFileSync(
+      path.join(deviceRoot, 'NGC7293', 'Stacked_10_NGC7293_30.0s_IRCUT_20260622-200000.jpg'),
+      'jpg3',
+    );
+    const profile = createProfile({
+      name: 'Test SeeStar (local)',
+      kind: 'other',
+      connectionType: 'local',
+      localPath: deviceRoot,
+    });
+    expect(claimImportLock()).toBe(true);
+    await runImport(undefined, undefined, { telescopeId: profile.id });
+
+    // All 3 files should be visible across 2 sessions; no second library dir.
+    const sessionsAfter2 = getLocalSessions('NGC7293');
+    const totalAfter2 = sessionsAfter2.reduce((n, s) => n + s.fileCount, 0);
+    expect(totalAfter2).toBe(3);
+    expect(sessionsAfter2.map(s => s.date).sort()).toEqual(['2026-06-21', '2026-06-22']);
+
+    const libEntries = fs.readdirSync(LIBRARY_DIR);
+    const helixDirs = libEntries.filter(d => d === 'C63' || d === 'NGC7293');
+    expect(helixDirs).toHaveLength(1);
+    expect(helixDirs[0]).toBe('C63');
   });
 });

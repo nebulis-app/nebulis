@@ -4,17 +4,47 @@
  * Each row is a @dnd-kit draggable that hands its DSO entry to the schedule
  * timeline on drop. Rows that never pass through a visible cell in the user's
  * sky map tonight are dimmed but still draggable (user can override).
+ *
+ * Searching also reaches past tonight's observable set: objects that never
+ * clear the horizon (or the user's minimum altitude) on the selected night are
+ * filtered out of /planner/tonight server-side, so a search for, say, M37 in
+ * summer would otherwise return nothing. We backfill those from the full DSO
+ * catalog and render them as dimmed, non-draggable rows. The user can open
+ * their details but cannot schedule them.
  */
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useDraggable } from '@dnd-kit/core';
-import { Search, Star, Eye, EyeOff, Info } from 'lucide-react';
+import { Search, Star, Eye, EyeOff, Info, MoonStar } from 'lucide-react';
 import { matchesSearch } from '../../lib/dsoSearch';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { useTheme } from '../../hooks/useTheme';
-import type { PlannerTarget } from '../../lib/api/planner';
+import { formatObjectName } from '../../lib/utils';
+import { searchDsoCatalog, type PlannerTarget } from '../../lib/api/planner';
+import { computeAltitudeCurve } from '../../lib/altaz';
 import { objectEverVisible, type VisibleSkyMap } from '../../lib/visibilityCheck';
 
-export type LibraryFilter = 'all' | 'galaxies' | 'nebulae' | 'clusters' | 'wishlist';
+/** Minimal shape the details modal needs — satisfied by both observable
+ *  targets and unobservable catalog entries. */
+type DetailsTarget = Pick<PlannerTarget, 'id' | 'name' | 'ra' | 'dec' | 'majorAxisArcmin'>;
+
+/** An object that matched the search but isn't observable on the selected
+ *  night (never rises, or never clears the user's minimum altitude). Shown
+ *  dimmed and non-draggable, with a one-line reason. */
+interface UnobservableEntry {
+  id: string;
+  name: string;
+  type: string;
+  constellation: string | null;
+  magnitude: number | null;
+  majorAxisArcmin: number | null;
+  ra: number;
+  dec: number;
+  commonNames: string[];
+  reason: string;
+}
+
+type LibraryFilter = 'all' | 'galaxies' | 'nebulae' | 'clusters' | 'wishlist';
 
 /** Default-view size. With no search/filter, only this many popular targets
  *  render. Picked so the DOM stays light on first paint; anything beyond is
@@ -35,25 +65,31 @@ const FILTER_LABEL: Record<LibraryFilter, string> = {
 
 interface LibraryPanelProps {
   targets: PlannerTarget[];
+  initialQuery?: string;
   observerLat: number | null;
   observerLon: number | null;
   nightStart: Date | null;
   nightEnd: Date | null;
+  /** Observer's minimum imaging altitude (degrees). Used to explain why a
+   *  searched object isn't observable tonight. */
+  minAlt: number | null;
   visibleSkyMap: VisibleSkyMap | null | undefined;
-  onShowDetails: (target: PlannerTarget) => void;
+  onShowDetails: (target: DetailsTarget) => void;
 }
 
 export function LibraryPanel({
   targets,
+  initialQuery = '',
   observerLat,
   observerLon,
   nightStart,
   nightEnd,
+  minAlt,
   visibleSkyMap,
   onShowDetails,
 }: LibraryPanelProps) {
   const { isDark } = useTheme();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [filter, setFilter] = useState<LibraryFilter>('all');
   const [hideBlocked, setHideBlocked] = useState(false);
 
@@ -116,6 +152,53 @@ export function LibraryPanel({
   const visibleRows = useMemo(() => afterHide.slice(0, RESULT_CAP), [afterHide]);
   const hiddenCount = Math.max(0, afterHide.length - visibleRows.length);
 
+  // Backfill from the full DSO catalog while searching. Objects that never
+  // clear the horizon tonight are absent from `targets` (the server drops
+  // them), so a text search would otherwise return nothing for them.
+  const trimmedQuery = query.trim();
+  const dsoSearchQuery = useQuery({
+    queryKey: ['dso-search', trimmedQuery],
+    queryFn: () => searchDsoCatalog(trimmedQuery, 40),
+    enabled: trimmedQuery.length > 0,
+    staleTime: 5 * 60_000,
+  });
+
+  // Catalog matches that aren't in tonight's observable set, annotated with the
+  // reason they're unobservable. Hidden when "Hide blocked" is on (these are the
+  // most blocked of all) or when filtering by a category/wishlist tab.
+  const unobservable = useMemo<UnobservableEntry[]>(() => {
+    if (hideBlocked || filter !== 'all' || trimmedQuery.length === 0) return [];
+    const results = dsoSearchQuery.data?.results;
+    if (!results) return [];
+    const targetIds = new Set(targets.map(t => t.id));
+    const out: UnobservableEntry[] = [];
+    for (const d of results) {
+      if (targetIds.has(d.id)) continue; // observable — already shown above
+      let reason = 'Not observable on this night';
+      if (observerLat != null && observerLon != null && nightStart && nightEnd) {
+        const curve = computeAltitudeCurve(d.ra, d.dec, observerLat, observerLon, nightStart, nightEnd, 15);
+        let maxAlt = -Infinity;
+        for (const s of curve) if (s.alt > maxAlt) maxAlt = s.alt;
+        if (maxAlt < 0) reason = 'Below the horizon all night';
+        else if (minAlt != null && maxAlt < minAlt) reason = `Peaks at only ${Math.round(maxAlt)}°, below your ${Math.round(minAlt)}° minimum`;
+        else reason = `Peaks at only ${Math.round(maxAlt)}° tonight`;
+      }
+      out.push({
+        id: d.id,
+        name: d.name,
+        type: d.type,
+        constellation: d.constellation,
+        magnitude: d.magnitude,
+        majorAxisArcmin: d.majorAxisArcmin,
+        ra: d.ra,
+        dec: d.dec,
+        commonNames: d.commonNames,
+        reason,
+      });
+    }
+    return out;
+  }, [dsoSearchQuery.data, targets, hideBlocked, filter, trimmedQuery, observerLat, observerLon, nightStart, nightEnd, minAlt]);
+
   return (
     <div className={`flex flex-col h-full min-h-0 border-r ${isDark ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-white'}`}>
       <div className="p-3 space-y-2 border-b border-slate-700/30">
@@ -128,8 +211,8 @@ export function LibraryPanel({
             onChange={(e) => setQuery(e.target.value)}
             className={`w-full pl-9 pr-3 py-2 rounded-lg text-sm outline-none ${
               isDark
-                ? 'bg-slate-800 text-slate-100 placeholder:text-slate-500 border border-slate-700 focus:border-emerald-500'
-                : 'bg-slate-100 text-slate-900 placeholder:text-slate-500 border border-slate-200 focus:border-emerald-500'
+                ? 'bg-slate-800 text-slate-100 placeholder:text-slate-500 border border-slate-700 focus:border-accent-500'
+                : 'bg-slate-100 text-slate-900 placeholder:text-slate-500 border border-slate-200 focus:border-accent-500'
             }`}
           />
         </div>
@@ -140,7 +223,7 @@ export function LibraryPanel({
               onClick={() => setFilter(f)}
               className={`px-2.5 py-1 text-xs rounded-full transition ${
                 filter === f
-                  ? 'bg-emerald-600 text-white'
+                  ? 'bg-accent-500 text-white'
                   : isDark
                     ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -172,7 +255,7 @@ export function LibraryPanel({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {visibleRows.length === 0 && (
+        {visibleRows.length === 0 && unobservable.length === 0 && (
           <div className={`p-6 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             No targets match your filters.
           </div>
@@ -182,13 +265,30 @@ export function LibraryPanel({
             key={target.id}
             target={target}
             blockedBySky={visibilityById.get(target.id) === false}
-            onShowDetails={() => onShowDetails(target)}
+            onShowDetails={onShowDetails}
+            isDark={isDark}
           />
         ))}
         {hiddenCount > 0 && (
           <div className={`px-3 py-3 text-center text-xs ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
             {hiddenCount} more match{hiddenCount === 1 ? '' : 'es'}. Refine your search to narrow down.
           </div>
+        )}
+        {unobservable.length > 0 && (
+          <>
+            <div className={`flex items-center gap-2 px-3 pt-4 pb-2 text-[11px] font-medium uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+              <MoonStar className="w-3.5 h-3.5" />
+              Not observable on this night
+            </div>
+            {unobservable.map(entry => (
+              <UnobservableRow
+                key={entry.id}
+                entry={entry}
+                onShowDetails={onShowDetails}
+                isDark={isDark}
+              />
+            ))}
+          </>
         )}
       </div>
     </div>
@@ -198,11 +298,11 @@ export function LibraryPanel({
 interface LibraryRowProps {
   target: PlannerTarget;
   blockedBySky: boolean;
-  onShowDetails: () => void;
+  onShowDetails: (target: DetailsTarget) => void;
+  isDark: boolean;
 }
 
-function LibraryRow({ target, blockedBySky, onShowDetails }: LibraryRowProps) {
-  const { isDark } = useTheme();
+const LibraryRow = memo(function LibraryRow({ target, blockedBySky, onShowDetails, isDark }: LibraryRowProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `library:${target.id}`,
     data: {
@@ -235,7 +335,7 @@ function LibraryRow({ target, blockedBySky, onShowDetails }: LibraryRowProps) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className={`font-medium text-sm truncate ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
-            {target.name}
+            {formatObjectName(target.id, target.name)}
           </span>
           {target.isInWishlist && <Star className="w-3 h-3 text-amber-400 shrink-0" fill="currentColor" />}
         </div>
@@ -250,7 +350,7 @@ function LibraryRow({ target, blockedBySky, onShowDetails }: LibraryRowProps) {
       </div>
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); onShowDetails(); }}
+        onClick={(e) => { e.stopPropagation(); onShowDetails(target); }}
         onPointerDown={(e) => e.stopPropagation()}
         className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition ${
           isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -262,4 +362,60 @@ function LibraryRow({ target, blockedBySky, onShowDetails }: LibraryRowProps) {
       </button>
     </div>
   );
+});
+
+interface UnobservableRowProps {
+  entry: UnobservableEntry;
+  onShowDetails: (target: DetailsTarget) => void;
+  isDark: boolean;
 }
+
+/**
+ * A search hit that can't be imaged on the selected night. Visually dimmed and
+ * deliberately NOT a draggable (no useDraggable), so it can never be dropped on
+ * the timeline. The details button still works so users can read about it.
+ */
+const UnobservableRow = memo(function UnobservableRow({ entry, onShowDetails, isDark }: UnobservableRowProps) {
+  const thumbnailUrl = getCatalogThumbnailUrl(entry.id, entry.majorAxisArcmin);
+
+  return (
+    <div
+      className={`flex items-center gap-3 px-3 py-2 border-b cursor-not-allowed ${
+        isDark ? 'border-slate-800' : 'border-slate-200'
+      }`}
+      title="Not observable on this night — cannot be added to your plan"
+    >
+      <img
+        src={thumbnailUrl}
+        alt=""
+        className="w-12 h-12 rounded object-cover bg-slate-800 shrink-0 opacity-40 grayscale"
+        loading="lazy"
+        draggable={false}
+      />
+      <div className="min-w-0 flex-1 opacity-50">
+        <div className="flex items-center gap-1.5">
+          <span className={`font-medium text-sm truncate ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
+            {formatObjectName(entry.id, entry.name)}
+          </span>
+        </div>
+        <div className={`text-xs truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+          {entry.type}
+          {entry.constellation ? ` · ${entry.constellation}` : ''}
+          {entry.magnitude != null ? ` · mag ${entry.magnitude.toFixed(1)}` : ''}
+        </div>
+        <div className="text-[10px] text-slate-500 mt-0.5">{entry.reason}</div>
+      </div>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onShowDetails(entry); }}
+        className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition ${
+          isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+        }`}
+        aria-label={`Show details for ${entry.name}`}
+        title="Show details"
+      >
+        <Info className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+});

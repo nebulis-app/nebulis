@@ -1,6 +1,6 @@
 // Gallery timing constants and pure helpers, extracted from ImageGalleryPage.
 
-export const DISPLAY_MS = 9000;          // fully visible time per slide
+const DISPLAY_MS = 9000;          // fully visible time per slide
 export const FADE_MS = 2500;             // crossfade duration
 export const TOTAL_MS = DISPLAY_MS + FADE_MS;
 export const KB_MS = TOTAL_MS * 2;       // Ken Burns runs for two full slide cycles

@@ -9,12 +9,15 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { useTheme } from '../../hooks/useTheme';
+import { formatObjectName } from '../../lib/utils';
 import { ScheduledImagingBlock } from './ScheduledImagingBlock';
 import {
   computePxPerMinute,
   formatHm,
   hourTicks,
   minutesBetween,
+  rangesOverlap,
+  SNAP_MINUTES,
 } from './scheduleGeometry';
 import type { PlannedSession } from '../../lib/api/plannedSessions';
 import type { BlockVisibilityResult } from '../../lib/visibilityCheck';
@@ -44,6 +47,15 @@ interface ScheduleTimelineProps {
   observerTimezone?: string;
 }
 
+// Floor a Date to the nearest SNAP_MINUTES boundary for overlap comparisons.
+// This absorbs any sub-minute precision that can creep in when a session's end
+// time gets clamped to the timeline boundary (which may not be snap-aligned).
+// Two sessions displaying the same HH:MM should never appear as overlapping.
+const SNAP_MS = SNAP_MINUTES * 60_000;
+function floorSnap(d: Date): number {
+  return Math.floor(d.getTime() / SNAP_MS) * SNAP_MS;
+}
+
 /**
  * Lane assignment: pack overlapping sessions into the fewest parallel
  * columns. Greedy first-fit by start time.
@@ -52,14 +64,16 @@ function assignLanes(sessions: PlannedSession[]): { laneIndex: Map<number, numbe
   const sorted = sessions.slice().sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
   const laneIndex = new Map<number, number>();
   // Cluster sessions that transitively overlap, then assign lanes within the cluster.
+  // Times are floored to the nearest snap boundary so a session whose stored end
+  // time is 02:00:30 (from timeline-boundary clamping) is treated as 02:00 and
+  // does not cause a session starting at exactly 02:00 to join the cluster.
   const clusters: PlannedSession[][] = [];
   for (const s of sorted) {
-    const sStart = new Date(s.startTime);
+    const sStartSnap = floorSnap(new Date(s.startTime));
     const cluster = clusters[clusters.length - 1];
     if (cluster) {
-      const clusterMaxEnd = Math.max(...cluster.map(c => new Date(c.endTime).getTime()));
-      const overlaps = sStart.getTime() < clusterMaxEnd;
-      if (overlaps) {
+      const clusterMaxEnd = Math.max(...cluster.map(c => floorSnap(new Date(c.endTime))));
+      if (sStartSnap < clusterMaxEnd) {
         cluster.push(s);
         continue;
       }
@@ -68,25 +82,25 @@ function assignLanes(sessions: PlannedSession[]): { laneIndex: Map<number, numbe
   }
   const laneCount = new Map<number, number>();
   for (const cluster of clusters) {
-    const lanes: Date[] = []; // end-time of last session in each lane
+    const laneEnds: number[] = []; // snap-floored end-time of last session in each lane
     for (const s of cluster) {
-      const sStart = new Date(s.startTime);
-      const sEnd = new Date(s.endTime);
+      const sStartSnap = floorSnap(new Date(s.startTime));
+      const sEndSnap = floorSnap(new Date(s.endTime));
       let placed = false;
-      for (let i = 0; i < lanes.length; i++) {
-        if (lanes[i].getTime() <= sStart.getTime()) {
+      for (let i = 0; i < laneEnds.length; i++) {
+        if (laneEnds[i] <= sStartSnap) {
           laneIndex.set(s.id, i);
-          lanes[i] = sEnd;
+          laneEnds[i] = sEndSnap;
           placed = true;
           break;
         }
       }
       if (!placed) {
-        laneIndex.set(s.id, lanes.length);
-        lanes.push(sEnd);
+        laneIndex.set(s.id, laneEnds.length);
+        laneEnds.push(sEndSnap);
       }
     }
-    for (const s of cluster) laneCount.set(s.id, lanes.length);
+    for (const s of cluster) laneCount.set(s.id, laneEnds.length);
   }
   return { laneIndex, laneCount };
 }
@@ -132,15 +146,28 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
   const ticks = useMemo(() => hourTicks(nightStart, nightEnd, observerTimezone), [nightStart, nightEnd, observerTimezone]);
   const { laneIndex, laneCount } = useMemo(() => assignLanes(sessions), [sessions]);
 
-  // Detect overlap per session for the warning badge (only flagged when
-  // sharing a cluster of 2+).
+  // Detect overlap per session for the warning badge. Uses direct pairwise
+  // rangesOverlap (strict <) so sessions sharing an exact endpoint are never
+  // flagged — they display the same HH:MM and should butt up against each other.
   const overlapById = useMemo(() => {
     const map = new Map<number, boolean>();
-    for (const s of sessions) {
-      map.set(s.id, (laneCount.get(s.id) ?? 1) > 1);
+    for (let i = 0; i < sessions.length; i++) {
+      const a = sessions[i];
+      const aStart = new Date(floorSnap(new Date(a.startTime)));
+      const aEnd = new Date(floorSnap(new Date(a.endTime)));
+      let hasOverlap = false;
+      for (let j = 0; j < sessions.length; j++) {
+        if (i === j) continue;
+        const b = sessions[j];
+        if (rangesOverlap(aStart, aEnd, new Date(floorSnap(new Date(b.startTime))), new Date(floorSnap(new Date(b.endTime))))) {
+          hasOverlap = true;
+          break;
+        }
+      }
+      map.set(a.id, hasOverlap);
     }
     return map;
-  }, [sessions, laneCount]);
+  }, [sessions]);
 
   // Combine the dnd-kit drop ref with the parent's measure-rect ref.
   const combineRefs = (el: HTMLDivElement | null) => {
@@ -164,7 +191,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
         <div
           ref={combineRefs}
-          className={`relative ${isOver ? 'bg-emerald-500/5' : ''}`}
+          className={`relative ${isOver ? 'bg-accent-500/5' : ''}`}
           style={{ height: `${totalHeight}px` }}
           data-testid="schedule-drop-zone"
         >
@@ -241,6 +268,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
               <ScheduledImagingBlock
                 key={s.id}
                 session={s}
+                displayName={formatObjectName(s.objectId, s.objectName)}
                 pxPerMinute={pxPerMinute}
                 top={top}
                 height={height}
@@ -255,9 +283,10 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
                 laneCount={laneCount.get(s.id) ?? 1}
                 onDelete={onDelete}
                 onResize={onResize}
-                onShowDetails={() => onShowDetails(s)}
+                onShowDetails={onShowDetails}
                 dragDeltaY={dragDeltaById.get(s.id)}
                 isSaving={s.id < 0}
+                observerTimezone={observerTimezone}
               />
             );
           })}

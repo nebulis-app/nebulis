@@ -4,7 +4,7 @@ import { RefreshCw, Download, CheckCircle2, AlertTriangle } from 'lucide-react';
 import type { Settings as SettingsType } from '../../types';
 import { getUpdateStatus, checkForUpdate, applyUpdate } from '../../lib/api/update';
 import { Sec, Row, Seg, ToggleRow, getCardClass } from './SettingsUI';
-import { ChangelogModal } from '../help/ChangelogModal';
+import { ChangelogModal } from '../ChangelogModal';
 
 /**
  * Software Updates settings card. Self-contained: it owns the /meta/update

@@ -201,58 +201,49 @@ export function ForecastPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-        <div>
+      <div>
+        <div className="flex items-center justify-between gap-4">
           <h1 className={`font-display text-3xl font-bold tracking-tight flex items-center gap-3 ${isDark ? 'text-white' : 'text-slate-900'}`}>
             <CloudSun className={`w-7 h-7 ${accentText}`} />
             Sky Forecast
           </h1>
-          <p className={`mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-            Astronomy weather conditions for tonight and upcoming nights
-          </p>
-        </div>
-        {locationSet && (
-          <div className={`flex items-center gap-4 text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            <div className="flex items-center gap-2">
-              <MapPin className="w-3.5 h-3.5" />
-              <div>
-                {appSettings?.locationName && (
-                  <div className={`font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                    {appSettings.locationName}
-                  </div>
-                )}
-                <div className={`text-xs ${appSettings?.locationName ? '' : 'font-medium'}`}>
-                  {lat!.toFixed(2)}, {lon!.toFixed(2)}
-                </div>
-              </div>
+          {locationSet && (
+            <div className="flex items-center gap-2 shrink-0">
+              <MapPin className={`w-4 h-4 shrink-0 ${accentText}`} />
+              <span className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                {appSettings?.locationName || (lat != null && lon != null ? `${lat.toFixed(2)}, ${lon.toFixed(2)}` : '')}
+              </span>
+              <button
+                onClick={async () => {
+                  setRefreshing(true);
+                  try {
+                    await updateSettings({ latitude: lat!, longitude: lon! });
+                    await queryClient.invalidateQueries({ queryKey: ['settings'] });
+                    await queryClient.fetchQuery({
+                      queryKey: ['forecast', lat, lon],
+                      queryFn: () => getForecast(lat!, lon!, true),
+                      staleTime: 0,
+                    });
+                  } catch { /* ignore */ }
+                  setRefreshing(false);
+                }}
+                disabled={refreshing}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  isDark
+                    ? 'hover:bg-slate-800 text-slate-400 disabled:opacity-40'
+                    : 'hover:bg-slate-100 text-slate-500 disabled:opacity-40'
+                }`}
+                title="Refresh forecast"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
             </div>
-            <button
-              onClick={async () => {
-                setRefreshing(true);
-                try {
-                  await updateSettings({ latitude: lat!, longitude: lon! });
-                  await queryClient.invalidateQueries({ queryKey: ['settings'] });
-                  await queryClient.fetchQuery({
-                    queryKey: ['forecast', lat, lon],
-                    queryFn: () => getForecast(lat!, lon!, true),
-                    staleTime: 0,
-                  });
-                } catch { /* ignore */ }
-                setRefreshing(false);
-              }}
-              disabled={refreshing}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                isDark
-                  ? 'hover:bg-slate-800 text-slate-400 disabled:opacity-40'
-                  : 'hover:bg-slate-100 text-slate-500 disabled:opacity-40'
-              }`}
-              title="Refresh forecast"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-          </div>
-        )}
+          )}
+        </div>
+        <p className={`mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+          Astronomy weather conditions for tonight and upcoming nights
+        </p>
       </div>
 
       {/* Location not set — same empty state as Planner; persists to settings */}

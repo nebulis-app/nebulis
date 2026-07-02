@@ -32,6 +32,17 @@ const PlannerTonightQuerySchema = z.object({
    *  tonight. The night window is the dusk-to-dawn span beginning that
    *  evening. */
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** Observer coordinates supplied by the client (e.g. phone GPS when
+   *  traveling with the scope). When present, these override the server's
+   *  saved location for this request only — nothing is persisted. Older
+   *  clients that omit these params continue to use the server settings. */
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lon: z.coerce.number().min(-180).max(180).optional(),
+});
+
+const PlannerCurveQuerySchema = z.object({
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lon: z.coerce.number().min(-180).max(180).optional(),
 });
 
 const DsoBrowseQuerySchema = z.object({
@@ -105,8 +116,11 @@ router.get('/tonight', async (req: Request, res: Response) => {
   }
 
   const settings = loadSettings();
-  const lat = typeof settings.latitude === 'number' ? settings.latitude : null;
-  const lon = typeof settings.longitude === 'number' ? settings.longitude : null;
+  // Client-provided coordinates override saved settings for this request only
+  // (e.g. phone GPS when traveling with the scope). Older clients that omit
+  // lat/lon continue to use the server's saved location unchanged.
+  const lat = queryParsed.data.lat ?? (typeof settings.latitude === 'number' ? settings.latitude : null);
+  const lon = queryParsed.data.lon ?? (typeof settings.longitude === 'number' ? settings.longitude : null);
 
   if (lat === null || lon === null) {
     res.apiSuccess({
@@ -126,6 +140,9 @@ router.get('/tonight', async (req: Request, res: Response) => {
   }
 
   const now = new Date();
+  // When the client supplies coordinates, derive timezone from those coords so
+  // displayed times match the scope's actual location. Fall back to the saved
+  // settings timezone if the lookup fails or no client coords were provided.
   const observerTimezone = await observerTimezoneForCoordinates(
     lat,
     lon,
@@ -269,6 +286,13 @@ router.get('/tonight', async (req: Request, res: Response) => {
 
   // Cache: 2 min for "tonight" (altNow drifts), 10 min for specific dates.
   const ttl = dateParam ? 10 * 60 * 1000 : 2 * 60 * 1000;
+  // Sweep expired entries before inserting to prevent unbounded growth.
+  if (plannerCache.size > 50) {
+    const now = Date.now();
+    for (const [k, v] of plannerCache) {
+      if (v.expiresAt < now) plannerCache.delete(k);
+    }
+  }
   plannerCache.set(cacheKey, { payload, expiresAt: Date.now() + ttl });
 
   res.apiSuccess(payload);
@@ -276,9 +300,14 @@ router.get('/tonight', async (req: Request, res: Response) => {
 
 // GET /api/v1/planner/curve/:objectId
 router.get('/curve/:objectId', async (req: Request, res: Response) => {
+  const queryParsed = PlannerCurveQuerySchema.safeParse(req.query);
+  if (!queryParsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', queryParsed.error.issues[0]?.message ?? 'Invalid query parameters');
+    return;
+  }
   const settings = loadSettings();
-  const lat = typeof settings.latitude === 'number' ? settings.latitude : null;
-  const lon = typeof settings.longitude === 'number' ? settings.longitude : null;
+  const lat = queryParsed.data.lat ?? (typeof settings.latitude === 'number' ? settings.latitude : null);
+  const lon = queryParsed.data.lon ?? (typeof settings.longitude === 'number' ? settings.longitude : null);
 
   if (lat === null || lon === null) {
     res.apiError(400, 'NO_LOCATION', 'Observer location not set in settings');

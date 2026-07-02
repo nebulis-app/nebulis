@@ -2,6 +2,7 @@ import { Suspense, lazy, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ThemeProvider } from './hooks/useTheme';
+import { NavVisibilityProvider } from './hooks/useNavVisibility';
 import { Layout } from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OnboardingModal } from './components/OnboardingModal';
@@ -25,6 +26,8 @@ const BackupStatus = lazy(() => import('./pages/BackupStatus').then(m => ({ defa
 const ImageGalleryPage = lazy(() => import('./pages/ImageGalleryPage').then(m => ({ default: m.ImageGalleryPage })));
 const HelpPage = lazy(() => import('./pages/HelpPage').then(m => ({ default: m.HelpPage })));
 const LinkDevicePage = lazy(() => import('./pages/LinkDevicePage'));
+const CatalogsHub = lazy(() => import('./pages/CatalogsHub').then(m => ({ default: m.CatalogsHub })));
+const CatalogBoard = lazy(() => import('./pages/CatalogBoard').then(m => ({ default: m.CatalogBoard })));
 import { LoginModal } from './components/LoginModal';
 import { SyncSubframesProvider } from './contexts/SyncSubframesContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -98,6 +101,8 @@ function AppInner() {
         <Route path="/storage" element={<StorageDashboard />} />
         <Route path="/forecast" element={<ForecastPage />} />
         <Route path="/planner" element={<PlannerPage />} />
+        <Route path="/catalogs" element={<CatalogsHub />} />
+        <Route path="/catalogs/:catalog" element={<CatalogBoard />} />
         <Route path="/wishlist" element={<Navigate to="/planner?tab=wishlist" replace />} />
         <Route path="/backup" element={<BackupStatus />} />
         <Route path="/settings" element={<SettingsPage />} />
@@ -115,9 +120,11 @@ export default function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <AuthProvider>
-          <AppInner />
-        </AuthProvider>
+        <NavVisibilityProvider>
+          <AuthProvider>
+            <AppInner />
+          </AuthProvider>
+        </NavVisibilityProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

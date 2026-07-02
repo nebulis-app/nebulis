@@ -206,11 +206,12 @@ export function parseFilename(filename: string): ParsedFilename {
     /^(?:failed_)?(.+?)_(\d+\.?\d*s\d*)_([A-Za-z0-9-]+)_(\d{4})(\d{2})(\d{2})-(\d{6})\d*_\d+C\.(fits?|jpe?g|png)$/i,
   );
   if (dwarfRawTeleMatch) {
-    const [, target, , , y, mo, d, hms] = dwarfRawTeleMatch;
+    const [, target, , mode, y, mo, d, hms] = dwarfRawTeleMatch;
     const ts = `${y}${mo}${d}-${hms}`;
     return {
       type: 'sub',
       target,
+      filter: mode || undefined,
       timestamp: ts,
       date: `${y}-${mo}-${d}`,
       extension: ext,
@@ -259,14 +260,21 @@ export function parseFilename(filename: string): ParsedFilename {
   // extension, so a hand-renamed `..._foo.fits` would parse as the same logical
   // file as the original and clobber it during re-import. Tightened to the
   // known suffix list — currently just `stacked-\d+`.
+  // Two suffix alternatives:
+  //   1. _<mode>_sub  — Dwarf II USB sub-frames renamed by dwarfLocalName; mode
+  //      is preserved so the filter can be recovered (e.g. _Duo-Band_sub).
+  //   2. _stacked-N | _sub | _thn  — bare suffix, no mode.
+  // Splitting into two alternatives (rather than making mode optional before a
+  // shared suffix group) prevents arbitrary user-renames like _userrename from
+  // being swallowed as mode tokens (audit 1.32 guard preserved).
   const dwarfMatch = filename.match(
-    /^(?:(\d{3,4})[-_])?DWARF3?_(.+?)_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})(?:-\d+)?(?:_(stacked-\d+|sub|thn))?\.(?:fits?|jpe?g|png|tiff?)$/i,
+    /^(?:(\d{3,4})[-_])?DWARF3?_(.+?)_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})(?:-\d+)?(?:_([A-Za-z][A-Za-z0-9-]*)_(sub)|_(stacked-\d+|sub|thn))?\.(?:fits?|jpe?g|png|tiff?)$/i,
   );
   if (dwarfMatch) {
-    const [, idx, target, y, mo, d, hh, mm, ss, suffix] = dwarfMatch;
+    const [, idx, target, y, mo, d, hh, mm, ss, mode, subWithMode, suffix] = dwarfMatch;
     // Numeric prefix (Dwarf 3) or explicit `_sub` suffix (Dwarf II USB, written
     // by dwarfLocalName) both indicate an individual raw exposure.
-    const isSub = !!idx || suffix === 'sub';
+    const isSub = !!idx || !!subWithMode || suffix?.toLowerCase() === 'sub';
     // Dwarf has no separate `_thn` variant — the single .jpg per session is
     // the rendered preview, equivalent to SeeStar's main stacked JPG. Classify
     // it as 'stacked' so it shows up alongside the .fits in session views.
@@ -274,6 +282,7 @@ export function parseFilename(filename: string): ParsedFilename {
       type: isSub ? 'sub' : 'stacked',
       subIndex: idx ? parseInt(idx) : undefined,
       target: target.replace(/_/g, ' '),
+      filter: mode || undefined,
       timestamp: `${y}${mo}${d}-${hh}${mm}${ss}`,
       date: `${y}-${mo}-${d}`,
       extension: ext,

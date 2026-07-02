@@ -644,7 +644,3 @@ export function renderArticleBody(id: string): ReactNode {
   const render = ARTICLES[id];
   return render ? render() : null;
 }
-
-export function hasArticleBody(id: string): boolean {
-  return id in ARTICLES;
-}

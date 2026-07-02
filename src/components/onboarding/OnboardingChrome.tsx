@@ -3,7 +3,7 @@ import { Sparkles, RotateCw, ChevronRight, ChevronLeft, CheckCircle2 } from 'luc
 import { TOTAL_STEPS, type StepNumber } from './stepReducer';
 import { Modal } from '../ui/Modal';
 
-export interface OnboardingChromeProps {
+interface OnboardingChromeProps {
   step: StepNumber;
   transitioning: boolean;
   isDark: boolean;

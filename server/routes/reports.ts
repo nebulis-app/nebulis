@@ -18,6 +18,15 @@ const router = Router();
 // In-memory cache for integration stats
 const integrationCache = new Map<string, { result: unknown; cachedAt: number }>();
 const INTEGRATION_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_INTEGRATION_CACHE = 500;
+
+// Periodic GC — sweep expired entries on the same cadence as the TTL
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, cached] of integrationCache) {
+    if (now - cached.cachedAt >= INTEGRATION_CACHE_TTL_MS) integrationCache.delete(key);
+  }
+}, INTEGRATION_CACHE_TTL_MS).unref?.();
 
 interface SessionStats {
   totalFrames: number;
@@ -34,7 +43,10 @@ interface SessionStats {
  */
 function computeSessionStats(objectId: string, sessionDate: string): SessionStats | null {
   const LIBRARY_DIR = getLibraryDir();
-  const objDir = path.join(LIBRARY_DIR, getObjectFolderName(objectId));
+  // Contain the path — getObjectFolderName falls back to the raw objectId on a
+  // DB miss, so a crafted value can escape LIBRARY_DIR without this guard.
+  const objDir = path.resolve(LIBRARY_DIR, getObjectFolderName(objectId));
+  if (!objDir.startsWith(LIBRARY_DIR + path.sep)) return null;
   if (!fs.existsSync(objDir)) return null;
 
   const dateCompact = sessionDate.replace(/-/g, '');
@@ -207,9 +219,16 @@ router.get('/integration/:objectId', (req: Request, res: Response) => {
     return;
   }
 
-  const objDir = path.join(LIBRARY_DIR, getObjectFolderName(objectId));
+  const objDir = path.resolve(LIBRARY_DIR, getObjectFolderName(objectId));
+  if (!objDir.startsWith(LIBRARY_DIR + path.sep)) {
+    res.apiError(400, 'INVALID_OBJECT_ID', 'Object id resolves outside the library');
+    return;
+  }
   if (!fs.existsSync(objDir)) {
     const empty = { objectId, totalFrames: 0, totalExposureSec: 0, totalFormatted: '0s', sessions: [] };
+    if (integrationCache.size >= MAX_INTEGRATION_CACHE) {
+      integrationCache.delete(integrationCache.keys().next().value!);
+    }
     integrationCache.set(objectId, { result: empty, cachedAt: Date.now() });
     res.apiSuccess(empty);
     return;
@@ -260,6 +279,9 @@ router.get('/integration/:objectId', (req: Request, res: Response) => {
     sessions,
   };
 
+  if (integrationCache.size >= MAX_INTEGRATION_CACHE) {
+    integrationCache.delete(integrationCache.keys().next().value!);
+  }
   integrationCache.set(objectId, { result, cachedAt: Date.now() });
   res.apiSuccess(result);
 });

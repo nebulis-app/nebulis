@@ -9,7 +9,7 @@ import archiver from 'archiver';
 import { getLibraryDir } from '../lib/libraryPath.js';
 import { getFileCategory, isRealFile, parseFilename } from '../lib/telescopeFiles.js';
 import { getObjectFolderName } from '../lib/localLibrary.js';
-import { queryString } from '../lib/queryHelpers.js';
+import { queryString, contentDispositionHeader } from '../lib/queryHelpers.js';
 
 const router = Router();
 
@@ -21,7 +21,14 @@ router.get('/objects/:objectId', (req: Request, res: Response) => {
     const fileType = queryString(req.query.fileType); // image, fits, all
     const sessionDate = queryString(req.query.date);
 
-    const objDir = path.join(LIBRARY_DIR, getObjectFolderName(objectId));
+    // Resolve and contain — getObjectFolderName falls back to the raw objectId
+    // on a DB miss, so a crafted objectId with traversal tokens would escape
+    // LIBRARY_DIR. Mirror the guard used in library.ts:1164/1201.
+    const objDir = path.resolve(LIBRARY_DIR, getObjectFolderName(objectId));
+    if (!objDir.startsWith(LIBRARY_DIR + path.sep)) {
+      res.apiError(400, 'INVALID_OBJECT_ID', 'Object id resolves outside the library');
+      return;
+    }
     if (!fs.existsSync(objDir)) {
       res.apiError(404, 'NOT_FOUND', 'Object not found in local library. Run an import first.');
       return;
@@ -51,7 +58,7 @@ router.get('/objects/:objectId', (req: Request, res: Response) => {
     // Stream ZIP
     const zipName = `${objectId}${sessionDate ? `_${sessionDate}` : ''}.zip`;
     res.set('Content-Type', 'application/zip');
-    res.set('Content-Disposition', `attachment; filename="${zipName}"`);
+    res.set('Content-Disposition', contentDispositionHeader('attachment', zipName));
 
     const archive = archiver('zip', { zlib: { level: 1 } });
     archive.on('error', (err: Error) => {

@@ -26,7 +26,7 @@ export interface PlannedSessionCreate {
   notes?: string;
 }
 
-export interface PlannedSessionPatch {
+interface PlannedSessionPatch {
   startTime?: string;
   endTime?: string;
   notes?: string;

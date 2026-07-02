@@ -102,7 +102,7 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes 
   return (
     <Link
       to={`/object/${encodeURIComponent(object.id)}`}
-      className={`card-hover block rounded-2xl overflow-hidden border transition-all ${
+      className={`group card-hover block rounded-2xl overflow-hidden border transition-all ${
         isDark
           ? 'bg-slate-900 border-slate-800 hover:border-slate-700'
           : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm hover:shadow-md'
@@ -169,10 +169,12 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes 
           </div>
         )}
 
-        {/* Favorite heart button */}
+        {/* Favorite heart button — hidden until hover, always visible when favorited */}
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); favMutation.mutate(!favorited); }}
-          className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-black/30 backdrop-blur-sm hover:bg-black/50 transition-all"
+          className={`absolute top-2 right-2 z-10 p-1.5 rounded-full bg-black/30 backdrop-blur-sm hover:bg-black/50 transition-all ${
+            favorited ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
           aria-label={favorited ? 'Remove from favorites' : 'Add to favorites'}
         >
           <Heart

@@ -308,19 +308,20 @@ function dwarfLocalName(basename: string, sessionFolder: string): string | null 
   // Dwarf 3 subframes already carry an ISO-format date (_YYYY-MM-DD_HH-MM-SS).
   if (/_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}/.test(basename)) return basename;
   // Dwarf II / Mini USB subframes embed the timestamp as YYYYMMDDs-HHMMSSmmm
-  // (no ISO separators). Reformat to <prefix><target>_<YYYY-MM-DD>_<HH-MM-SS>-<ms>.<ext>
-  // so parseFilename can extract the date for session filtering.
+  // (no ISO separators). Reformat to <prefix><target>_<YYYY-MM-DD>_<HH-MM-SS>-<ms>[_<mode>]_sub.<ext>
+  // so parseFilename can extract the date and filter for session/filter queries.
+  // Use [A-Za-z0-9-]+ for the mode token (not \w+) so Duo-Band is captured correctly.
   const dwarfIISubMatch = basename.match(
-    /^.+?_\d+\.?\d*s\d+_\w+_(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(\d{1,3})_\d+C\.(fits?)$/i,
+    /^.+?_\d+\.?\d*s\d+_([A-Za-z0-9-]+)_(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(\d{1,3})_\d+C\.(fits?)$/i,
   );
   if (dwarfIISubMatch) {
     const subTarget = extractTargetFromSessionFolder(sessionFolder);
     if (!subTarget) return null;
-    const [, y, mo, d, hh, mm, ss, ms, ext] = dwarfIISubMatch;
+    const [, mode, y, mo, d, hh, mm, ss, ms, ext] = dwarfIISubMatch;
     const targetSlug = subTarget.replace(/[\s/\\<>:"|?*\x00-\x1f]/g, '_');
-    // _sub suffix tells parseFilename this is a raw individual exposure, not a
-    // stacked result — needed for the subframes section and integration stats.
-    return `${prefix}${targetSlug}_${y}-${mo}-${d}_${hh}-${mm}-${ss}-${ms}_sub.${ext}`;
+    // Include mode token so parseFilename can recover the filter type later.
+    // _sub suffix tells parseFilename this is a raw individual exposure.
+    return `${prefix}${targetSlug}_${y}-${mo}-${d}_${hh}-${mm}-${ss}-${ms}_${mode}_sub.${ext}`;
   }
   const target = extractTargetFromSessionFolder(sessionFolder);
   const timestamp = extractTimestampFromSessionFolder(sessionFolder);
@@ -740,7 +741,14 @@ export async function runImport(
         continue;
       }
 
-      const objLocalDir = safeObjectDir(objIdNormalized);
+      // Reuse the object's stored folder name if it already exists in the
+      // library. Otherwise this always lands on the canonical id, which
+      // diverges from a folder a prior import (e.g. via the folder wizard)
+      // created under the literal source name — orphaning those files even
+      // though both designations resolve to the same object (e.g. importing
+      // "C63" from the telescope when files already live under "NGC7293").
+      const existingSmbFolderName = index.objects[objIdNormalized]?.folderName;
+      const objLocalDir = safeObjectDir(existingSmbFolderName || objIdNormalized);
       if (!objLocalDir) {
         console.warn(`[import] Skipping object with unsafe name: ${objectName}`);
         importStatus.objectsDone++;
@@ -853,7 +861,7 @@ export async function runImport(
       } catch { /* ignore */ }
 
       index.objects[objIdNormalized] = {
-        folderName: objIdNormalized,
+        folderName: existingSmbFolderName || objIdNormalized,
         sessions: Array.from(sessionSet).sort(),
         fileCount,
         lastImport: new Date().toISOString(),
@@ -937,9 +945,19 @@ export async function runImport(
       importStatus.objectsDone++;
     }
 
-    index.lastImport = new Date().toISOString();
-    saveIndex(index, profile.id);
-    importStatus.lastRun = index.lastImport;
+    // Each object was already saved to DB inside the per-object transaction
+    // above. Only the meta timestamp remains. Calling saveIndex(index, ...) here
+    // would re-assert the snapshot loaded at import start for every library
+    // object, including ones not touched by this run — resurrecting sessions
+    // deleted while the import was running and overwriting folderNames changed
+    // by concurrent moves.
+    const lastImportTs = new Date().toISOString();
+    try {
+      stmts.updateMetaLastImport.run(lastImportTs);
+    } catch (err) {
+      console.warn('[import] updateMetaLastImport failed:', err instanceof Error ? err.message : err);
+    }
+    importStatus.lastRun = lastImportTs;
 
     // Pre-warm the gallery thumbnail cache for every object that received new
     // files so the library grid loads instantly on first view.
@@ -1456,7 +1474,11 @@ export async function runFolderImport(folderPath: string): Promise<void> {
         continue;
       }
 
-      const objLocalDir = safeObjectDir(objIdNormalized);
+      // If the object already exists in the library, reuse its stored folder name
+      // so previously imported files aren't orphaned by a rename (e.g. importing
+      // from a "C63" folder when files already live under "NGC7293", or vice-versa).
+      const existingRunFolderName = index.objects[objIdNormalized]?.folderName;
+      const objLocalDir = safeObjectDir(existingRunFolderName || objIdNormalized);
       if (!objLocalDir) {
         console.warn(`[import] Skipping object with unsafe name: ${objectName}`);
         importStatus.objectsDone++;
@@ -1529,7 +1551,7 @@ export async function runFolderImport(folderPath: string): Promise<void> {
       } catch { /* ignore */ }
 
       index.objects[objIdNormalized] = {
-        folderName: objIdNormalized,
+        folderName: existingRunFolderName || objIdNormalized,
         sessions: Array.from(sessionSet).sort(),
         fileCount,
         lastImport: new Date().toISOString(),
@@ -1698,7 +1720,15 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
       // Resolve (and remember) the destination folder for this object id.
       let objLocalDir = dirByObjectId.get(targetObjectId) ?? null;
       if (!objLocalDir) {
-        const requestedFolder = (objPlan.targetFolderName || source.folderName).trim();
+        // If the object already exists in the library, reuse its stored folder
+        // name so previously imported files aren't orphaned by a rename (e.g.
+        // importing a folder called "Andromeda" into an object already stored as
+        // "M 31" would move the library pointer to "Andromeda" and leave every
+        // prior session's files invisible on the old path).
+        const existingFolderName = index.objects[targetObjectId]?.folderName;
+        const requestedFolder = existingFolderName
+          ? existingFolderName
+          : (objPlan.targetFolderName || source.folderName).trim();
         objLocalDir = safeObjectDir(requestedFolder);
         if (!objLocalDir) {
           console.warn(`[folder-import] Skipping "${source.folderName}": unsafe folder name`);
@@ -1800,6 +1830,14 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
       importStatus.objectsDone++;
     }
 
+    // Only persist the objects this run actually processed. The full index was
+    // loaded at import start and its snapshot of untouched objects may be stale:
+    // resaving them could resurrect sessions the user deleted while the import
+    // was running, or overwrite folderNames changed by concurrent moves.
+    const touchedIds = new Set(dirByObjectId.keys());
+    for (const id of Object.keys(index.objects)) {
+      if (!touchedIds.has(id)) delete index.objects[id];
+    }
     index.lastImport = new Date().toISOString();
     saveIndex(index, null);
     importStatus.lastRun = index.lastImport;

@@ -1,9 +1,17 @@
 import { useTheme, type Theme } from '../../hooks/useTheme';
+import { useNavVisibility, NAV_ITEMS } from '../../hooks/useNavVisibility';
 import type { Settings as SettingsType } from '../../types';
 import { Sec, Row, Seg, RadioCard, ToggleRow, getCardClass } from './SettingsUI';
 import { SoftwareUpdateCard } from './SoftwareUpdateCard';
 import { NightlyMaintenanceSection } from './NightlyMaintenanceSection';
-import { Telescope, Globe } from 'lucide-react';
+import { Telescope, Globe, CloudMoon, Crosshair, BookOpen, HelpCircle } from 'lucide-react';
+
+const NAV_ITEM_ICONS: Record<string, React.ReactNode> = {
+  forecast: <CloudMoon className="w-4 h-4" />,
+  planner:  <Crosshair className="w-4 h-4" />,
+  catalogs: <BookOpen className="w-4 h-4" />,
+  help:     <HelpCircle className="w-4 h-4" />,
+};
 
 const THEME_OPTIONS: { id: Theme; label: string; description: string }[] = [
   { id: 'light', label: 'Light', description: 'Clean and bright' },
@@ -105,6 +113,7 @@ export function GeneralSection({
   setForm: React.Dispatch<React.SetStateAction<Partial<SettingsType>>>;
 }) {
   const { theme, setTheme } = useTheme();
+  const { isVisible, toggle } = useNavVisibility();
   const tempUnit = form.temperatureUnit ?? 'celsius';
   const imageSource = form.galleryImageSource ?? 'sky-survey';
 
@@ -127,6 +136,28 @@ export function GeneralSection({
               description={opt.description}
               preview={<ThemePreview id={opt.id} />}
               isDark={isDark}
+            />
+          ))}
+        </div>
+
+        {/* Navigation bar items */}
+        <div className={`${getCardClass(isDark)} space-y-0.5`}>
+          <div className="mb-2">
+            <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+              Navigation Bar
+            </h3>
+            <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              Choose which items appear in the top menu bar.
+            </p>
+          </div>
+          {NAV_ITEMS.map(item => (
+            <ToggleRow
+              key={item.id}
+              label={item.label}
+              checked={isVisible(item.id)}
+              onChange={() => toggle(item.id)}
+              isDark={isDark}
+              icon={NAV_ITEM_ICONS[item.id]}
             />
           ))}
         </div>

@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyToken, getUserCount } from '../lib/auth.js';
+import { verifyToken, getUserCount, getUserTokenVersion } from '../lib/auth.js';
 import { getApiKey } from '../lib/telescopes.js';
 import { isDeviceActive, touchDevice } from '../lib/devicePairing.js';
 
@@ -96,6 +96,18 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
           return;
         }
         touchDevice(payload.jti);
+      } else {
+        // Login token: verify tokenVersion hasn't been bumped since issue.
+        // Bumped on password change; version 0 is the default for existing accounts.
+        const dbVersion = getUserTokenVersion(payload.userId);
+        if (dbVersion === undefined) {
+          res.apiError(401, 'USER_NOT_FOUND', 'Account no longer exists. Please log in again.');
+          return;
+        }
+        if ((payload.tokenVersion ?? 0) !== dbVersion) {
+          res.apiError(401, 'SESSION_INVALIDATED', 'Session invalidated. Please log in again.');
+          return;
+        }
       }
       // Attach user info to request for downstream use
       req.userId = payload.userId;
@@ -132,6 +144,16 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
           return;
         }
         touchDevice(payload.jti);
+      } else {
+        const dbVersion = getUserTokenVersion(payload.userId);
+        if (dbVersion === undefined) {
+          res.apiError(401, 'USER_NOT_FOUND', 'Account no longer exists. Please log in again.');
+          return;
+        }
+        if ((payload.tokenVersion ?? 0) !== dbVersion) {
+          res.apiError(401, 'SESSION_INVALIDATED', 'Session invalidated. Please log in again.');
+          return;
+        }
       }
       req.userId = payload.userId;
       req.username = payload.username;

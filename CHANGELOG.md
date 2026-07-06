@@ -1,5 +1,5 @@
 # Changelog
-## 1.4.0 (171) - June 17, 2026
+## 1.4.0 (172) - June 17, 2026
 
 ### New
 - Catalog — Review the entire Messier, Caldwell, and Herschel catalogs and track your progress through them. One-click button to create a plan for unimaged catalog items.

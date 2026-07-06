@@ -45,6 +45,7 @@ import {
   isRealFile,
 } from '../telescopeFiles.js';
 import { resolveCanonicalId } from '../catalogAliases.js';
+import { getByName as getCatalogEntryByName } from '../dsoCatalog.js';
 import { exifDateFromBuffer, exifDateFromFile } from '../exifDate.js';
 import {
   stmts,
@@ -1708,9 +1709,15 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
       const objPlan = planByFolder.get(source.folderName)!;
       importStatus.currentObject = source.folderName;
 
-      const targetObjectId = resolveCanonicalId(normalizeObjectId(
-        (objPlan.targetObjectId || source.folderName).trim(),
-      ));
+      const rawTargetInput = (objPlan.targetObjectId || source.folderName).trim();
+      const normalizedTarget = normalizeObjectId(rawTargetInput);
+      let targetObjectId = resolveCanonicalId(normalizedTarget);
+      // When the ID didn't resolve via alias, also try a catalog name lookup so
+      // free-text like "California Nebula" or "CALIFORNIA NEBULA" → "NGC1499".
+      if (targetObjectId === normalizedTarget) {
+        const byName = getCatalogEntryByName(rawTargetInput);
+        if (byName) targetObjectId = resolveCanonicalId(byName.id);
+      }
       if (!targetObjectId) {
         console.warn(`[folder-import] Skipping "${source.folderName}": empty target id`);
         importStatus.objectsDone++;
@@ -2012,14 +2019,25 @@ export function createManualObservation(
   imageExt: string | null,  // 'jpg', 'png', etc. (without dot)
 ): { objectId: string; date: string } {
   const LIBRARY_DIR = getLibraryDir();
-  const safeName = normalizeObjectId(objectName.trim().replace(/[/\\<>:"|?*]/g, ''));
+  const trimmedName = objectName.trim();
+  const safeName = normalizeObjectId(trimmedName.replace(/[/\\<>:"|?*]/g, ''));
   if (!safeName) throw new Error('The object name is empty or contains only characters that cannot be used in a folder. Use letters, digits, spaces, or dashes.');
+
+  // Resolve to canonical catalog ID when the user typed a common name instead
+  // of selecting from the dropdown (e.g. "CALIFORNIA NEBULA" → "NGC1499").
+  const byName = getCatalogEntryByName(trimmedName);
+  const objectId = byName
+    ? resolveCanonicalId(byName.id)
+    : resolveCanonicalId(safeName);
+  // Use the resolved ID as the on-disk folder name so the observation lands in
+  // the right place when a catalog match was found.
+  const folderName = objectId;
 
   const dateMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!dateMatch) throw new Error('The date is not in the expected YYYY-MM-DD format. Pick a date from the date picker and try again.');
 
   ensureLibraryDir();
-  const objDir = path.join(LIBRARY_DIR, safeName);
+  const objDir = path.join(LIBRARY_DIR, folderName);
   if (!fs.existsSync(objDir)) {
     fs.mkdirSync(objDir, { recursive: true });
   }
@@ -2032,13 +2050,13 @@ export function createManualObservation(
       String(now.getMinutes()).padStart(2, '0')}${
       String(now.getSeconds()).padStart(2, '0')}`;
     const ext = imageExt.replace(/^\./, '').toLowerCase();
-    const filename = `${safeName}_${ts}.${ext}`;
+    const filename = `${objectId}_${ts}.${ext}`;
     fs.writeFileSync(path.join(objDir, filename), imageBuffer);
   }
 
   // Update library DB: ensure object + date are tracked
   const sessionSet = new Set<string>();
-  const sessions = stmts.getSessions.all(safeName).map(r => r.date).filter(d => d !== 'unknown');
+  const sessions = stmts.getSessions.all(objectId).map(r => r.date).filter(d => d !== 'unknown');
   for (const d of sessions) sessionSet.add(d);
   sessionSet.add(date);
 
@@ -2055,14 +2073,14 @@ export function createManualObservation(
   }
 
   const now = new Date().toISOString();
-  const cat = resolveCatalogMeta(safeName);
-  stmts.upsertObject.run(safeName, safeName, fileCount, now, 0, null,
+  const cat = resolveCatalogMeta(objectId);
+  stmts.upsertObject.run(objectId, folderName, fileCount, now, 0, null,
     cat.catalogId, cat.objectName, cat.objectType, cat.constellation,
     cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy);
-  stmts.clearSessions.run(safeName);
+  stmts.clearSessions.run(objectId);
   for (const d of sessionSet) {
-    stmts.addSession.run(safeName, d);
+    stmts.addSession.run(objectId, d);
   }
 
-  return { objectId: safeName, date };
+  return { objectId, date };
 }

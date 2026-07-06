@@ -79,6 +79,19 @@ export function getById(id: string): DsoEntry | undefined {
   );
 }
 
+/**
+ * Find a catalog entry by its common name (case-insensitive, space-insensitive).
+ * Returns the first entry whose `name` or any `commonNames` value matches.
+ * Useful for resolving free-text input like "California Nebula" → NGC1499.
+ */
+export function getByName(name: string): DsoEntry | undefined {
+  const normalized = name.toLowerCase().replace(/\s+/g, '');
+  return loadCatalog().find(e =>
+    e.name.toLowerCase().replace(/\s+/g, '') === normalized ||
+    e.commonNames.some(n => n.toLowerCase().replace(/\s+/g, '') === normalized),
+  );
+}
+
 export function search(query: string, limit = 30): DsoEntry[] {
   if (!query.trim()) return [];
   const q = query.toLowerCase().trim();

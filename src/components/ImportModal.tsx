@@ -41,7 +41,16 @@ async function readDirEntry(entry: FileSystemDirectoryEntry, prefix: string): Pr
  *  Exception: if stripping would leave all paths flat (no remaining `/`), the
  *  prefix is the object folder itself — not a container. Keep it so the server
  *  sees the folder as a named subdirectory and can run a catalog match on it.
- *  Example: dropping `IC 1805_mosaic/` directly should NOT lose the folder name. */
+ *  Example: dropping `IC 1805_mosaic/` directly should NOT lose the folder name.
+ *
+ *  Second exception: if all top-level folders after stripping look like session
+ *  dates (YYYY-MM-DD…), the prefix was also the object folder. Preserving it
+ *  lets the server match "NGC1499" against the catalog rather than treating the
+ *  date-stamped session folder as the object name. */
+function isDateLikeFolderName(name: string): boolean {
+  return /^(?:20|19)\d{2}-\d{2}-\d{2}/.test(name);
+}
+
 function stripTopFolder(files: PickedFile[]): PickedFile[] {
   if (files.length === 0) return files;
   const firstSlash = files[0].relativePath.indexOf('/');
@@ -52,6 +61,10 @@ function stripTopFolder(files: PickedFile[]): PickedFile[] {
   // If all stripped paths are flat (no subdirectory), the prefix was the object
   // folder — preserve it so the scan can match it against the catalog.
   if (stripped.every(f => !f.relativePath.includes('/'))) return files;
+  // If every top-level folder looks like a session date, the prefix was the
+  // object folder (e.g. NGC1499/2025-03-01_2126/lights/…) — don't strip it.
+  const topFolders = new Set(stripped.map(f => f.relativePath.split('/')[0]));
+  if ([...topFolders].every(n => isDateLikeFolderName(n))) return files;
   return stripped;
 }
 

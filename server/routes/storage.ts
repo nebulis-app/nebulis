@@ -6,9 +6,11 @@ import { cachedSmbListDir as smbListDir, BASE_PATH, isTelescopeOnline } from '..
 import { isObjectFolder, isSubFolder, getObjectFromSubFolder, normalizeCatalogId, getFileCategory } from '../lib/telescopeFiles.js';
 import { getCatalogEntry } from '../data/catalog.js';
 import { DATA_DIR } from '../lib/paths.js';
-import { getLibraryDir, getLibraryLocationInfo } from '../lib/libraryPath.js';
+import { getLibraryDir, getLibraryLocationInfo, isLibraryAvailable, isNetworkLocation, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
+import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
 import { listVolumes, listDirectories } from '../lib/volumes.js';
 import { startMigration, getMigrationStatus } from '../lib/libraryMigration.js';
+import { testNetworkLibraryConnection, NETWORK_MOUNT_DIR, type NetworkLibraryConfig } from '../lib/libraryNetwork.js';
 import { requireAdmin } from '../middleware/auth.js';
 import db from '../lib/db.js';
 import { pickDefaultTarget } from '../lib/telescopes.js';
@@ -221,9 +223,15 @@ function formatBytes(bytes: number): string {
  * count undercounts what the disk is actually using, so total/used/free would
  * not reconcile. total - free matches what Finder/Explorer report.
  */
-function getDiskStats(targetPath: string): { total: number; used: number; free: number } | null {
+// Async + timeout-bounded (fs.promises.statfs, not fs.statfsSync): targetPath
+// may be a relocated library on a network share, and this is called on every
+// GET /storage/system — i.e. every time Settings -> Storage is opened. A sync
+// statfs against a stale SMB mount blocks the whole event loop for as long as
+// the OS's SMB client takes to give up; see the isLibraryAvailable() incident
+// writeup in libraryPath.ts.
+async function getDiskStats(targetPath: string): Promise<{ total: number; used: number; free: number } | null> {
   try {
-    const s = fs.statfsSync(targetPath);
+    const s = await withTimeout(fs.promises.statfs(targetPath), LIBRARY_IO_TIMEOUT_MS);
     const blockSize = Number(s.bsize);
     const total = Number(s.blocks) * blockSize;
     // bavail = blocks free to an unprivileged process (what's actually usable),
@@ -237,12 +245,53 @@ function getDiskStats(targetPath: string): { total: number; used: number; free: 
   }
 }
 
-/** Recursively count files and total byte size under a directory. */
+/**
+ * Whether two paths live on different physical volumes, compared by device id
+ * (st_dev). A relocated library that happens to sit on the same drive as
+ * DATA_DIR would report identical disk figures, so the caller uses this to skip
+ * a redundant second card. When either path can't be stat'd, assume different
+ * so a relocated drive is shown rather than hidden. Async + timeout-bounded for
+ * the same reason as getDiskStats() above — `b` is often a network-mounted
+ * library path.
+ */
+async function onDifferentVolume(a: string, b: string): Promise<boolean> {
+  try {
+    const [statA, statB] = await Promise.all([
+      withTimeout(fs.promises.stat(a), LIBRARY_IO_TIMEOUT_MS),
+      withTimeout(fs.promises.stat(b), LIBRARY_IO_TIMEOUT_MS),
+    ]);
+    return statA.dev !== statB.dev;
+  } catch {
+    return true;
+  }
+}
+
+/** Disk stats shaped for the API response, or null when unavailable. */
+async function diskResponse(targetPath: string) {
+  const disk = await getDiskStats(targetPath);
+  if (!disk) return null;
+  return {
+    total:          disk.total,
+    used:           disk.used,
+    free:           disk.free,
+    usedPercent:    disk.total > 0 ? Math.round(disk.used / disk.total * 100) : 0,
+    totalFormatted: formatBytes(disk.total),
+    usedFormatted:  formatBytes(disk.used),
+    freeFormatted:  formatBytes(disk.free),
+  };
+}
+
+/** Recursively count files and total byte size under a directory. Sync — only
+ *  used for DATA_DIR (a local disk). The mounted network library lives at
+ *  NETWORK_MOUNT_DIR under DATA_DIR; it is skipped so a sync walk never
+ *  recurses into a network share (which would block the event loop) and so it
+ *  isn't double-counted into the local-data figures. */
 function dirStats(dir: string): { size: number; files: number } {
   let size = 0, files = 0;
   try {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, e.name);
+      if (full === NETWORK_MOUNT_DIR) continue;
       if (e.isDirectory()) {
         const sub = dirStats(full);
         size += sub.size; files += sub.files;
@@ -252,6 +301,29 @@ function dirStats(dir: string): { size: number; files: number } {
       }
     }
   } catch { /* unreadable */ }
+  return { size, files };
+}
+
+/** Async, timeout-bounded twin of dirStats() for the library tree, which may
+ *  live on a network share where a sync walk would block the whole event loop. */
+async function dirStatsAsync(dir: string): Promise<{ size: number; files: number }> {
+  let size = 0, files = 0;
+  let entries: fs.Dirent[];
+  try {
+    entries = await withTimeout(fs.promises.readdir(dir, { withFileTypes: true }), LIBRARY_IO_TIMEOUT_MS);
+  } catch {
+    return { size, files };
+  }
+  for (const e of entries) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      const sub = await dirStatsAsync(full);
+      size += sub.size; files += sub.files;
+    } else if (e.isFile()) {
+      try { size += (await withTimeout(fs.promises.stat(full), LIBRARY_IO_TIMEOUT_MS)).size; } catch { /* skip */ }
+      files++;
+    }
+  }
   return { size, files };
 }
 
@@ -268,6 +340,7 @@ function dataDirBreakdown(dir: string): DataDirEntry[] {
   try {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, e.name);
+      if (full === NETWORK_MOUNT_DIR) continue;
       if (e.isDirectory()) {
         const s = dirStats(full);
         entries.push({ name: e.name, size: s.size, files: s.files, sizeFormatted: formatBytes(s.size) });
@@ -284,21 +357,22 @@ function dataDirBreakdown(dir: string): DataDirEntry[] {
 }
 
 // GET /api/v1/storage/system
-router.get('/system', (_req: Request, res: Response) => {
-  const disk      = getDiskStats(DATA_DIR);
+router.get('/system', async (_req: Request, res: Response) => {
   const dataDir   = dirStats(DATA_DIR);
   const breakdown = dataDirBreakdown(DATA_DIR);
 
+  // When the library has been relocated to a separate drive, report that
+  // drive's usage too. The DATA_DIR disk only covers the boot volume, so a
+  // moved library's consumption would otherwise never show. Skipped when the
+  // library is at its default location or on the same volume as DATA_DIR, where
+  // it would just duplicate the local-server figures.
+  const library = await getLibraryLocationInfo();
+  const showLibraryDisk =
+    !library.isDefault && library.available && await onDifferentVolume(DATA_DIR, library.path);
+  const libraryDisk = showLibraryDisk ? await diskResponse(library.path) : null;
+
   res.apiSuccess({
-    disk: disk ? {
-      total:          disk.total,
-      used:           disk.used,
-      free:           disk.free,
-      usedPercent:    disk.total > 0 ? Math.round(disk.used / disk.total * 100) : 0,
-      totalFormatted: formatBytes(disk.total),
-      usedFormatted:  formatBytes(disk.used),
-      freeFormatted:  formatBytes(disk.free),
-    } : null,
+    disk: await diskResponse(DATA_DIR),
     dataDir: {
       path:          DATA_DIR,
       size:          dataDir.size,
@@ -306,6 +380,7 @@ router.get('/system', (_req: Request, res: Response) => {
       sizeFormatted: formatBytes(dataDir.size),
       breakdown,
     },
+    libraryDisk: libraryDisk ? { path: library.path, ...libraryDisk } : null,
   });
 });
 
@@ -328,8 +403,13 @@ interface LibraryStatsCache {
 const libraryCache: LibraryStatsCache = { objects: [], computedAt: 0, computing: false };
 const LIBRARY_CACHE_TTL = 5 * 60 * 1000;
 
-function computeLibraryStats(): void {
+async function computeLibraryStats(): Promise<void> {
   if (libraryCache.computing) return;
+  // Skip while migrating or when the library (possibly a network share) isn't
+  // reachable: a walk of a stale mount is pointless and the sync variant would
+  // freeze the whole event loop. Keep the last-known cache rather than wiping
+  // it to empty on a transient disconnect.
+  if (isLibraryMigrating() || !(await isLibraryAvailable())) return;
   libraryCache.computing = true;
 
   const LIBRARY_DIR = getLibraryDir();
@@ -345,11 +425,13 @@ function computeLibraryStats(): void {
     const results: LibraryObjectStat[] = [];
 
     let entries: fs.Dirent[] = [];
-    try { entries = fs.readdirSync(LIBRARY_DIR, { withFileTypes: true }); } catch { /* library dir missing */ }
+    try {
+      entries = await withTimeout(fs.promises.readdir(LIBRARY_DIR, { withFileTypes: true }), LIBRARY_IO_TIMEOUT_MS);
+    } catch { /* library dir missing or unresponsive */ }
 
     for (const e of entries) {
       if (!e.isDirectory()) continue;
-      const stats = dirStats(path.join(LIBRARY_DIR, e.name));
+      const stats = await dirStatsAsync(path.join(LIBRARY_DIR, e.name));
       const meta = nameMap.get(e.name);
       results.push({
         objectId: meta?.objectId ?? e.name,
@@ -369,8 +451,8 @@ function computeLibraryStats(): void {
 }
 
 // Kick off initial computation non-blocking
-setTimeout(() => { try { computeLibraryStats(); } catch { /* best-effort */ } }, 8_000);
-setInterval(() => { try { computeLibraryStats(); } catch { /* best-effort */ } }, LIBRARY_CACHE_TTL);
+setTimeout(() => { void computeLibraryStats().catch(() => { /* best-effort */ }); }, 8_000);
+setInterval(() => { void computeLibraryStats().catch(() => { /* best-effort */ }); }, LIBRARY_CACHE_TTL);
 
 // GET /api/v1/storage/library
 router.get('/library', (_req: Request, res: Response) => {
@@ -378,9 +460,9 @@ router.get('/library', (_req: Request, res: Response) => {
   const isStale = age > LIBRARY_CACHE_TTL || libraryCache.computedAt === 0;
 
   if (libraryCache.computedAt === 0 && !libraryCache.computing) {
-    computeLibraryStats();
+    void computeLibraryStats().catch(() => { /* best-effort */ });
   } else if (isStale && !libraryCache.computing) {
-    computeLibraryStats();
+    void computeLibraryStats().catch(() => { /* best-effort */ });
   }
 
   res.apiSuccess(
@@ -415,13 +497,67 @@ router.get('/browse', requireAdmin, async (req: Request, res: Response) => {
 });
 
 // GET /api/v1/storage/library-location — where the library lives + migration state
-router.get('/library-location', (_req: Request, res: Response) => {
-  res.apiSuccess({ location: getLibraryLocationInfo(), migration: getMigrationStatus() });
+router.get('/library-location', async (_req: Request, res: Response) => {
+  res.apiSuccess({ location: await getLibraryLocationInfo(), migration: getMigrationStatus() });
 });
 
-// POST /api/v1/storage/migrate { targetPath } — start moving the library
+interface NetworkBody {
+  host?: unknown; share?: unknown; domain?: unknown;
+  username?: unknown; password?: unknown; subpath?: unknown;
+}
+
+function parseNetworkConfig(body: NetworkBody): NetworkLibraryConfig {
+  return {
+    host: typeof body.host === 'string' ? body.host.trim() : '',
+    share: typeof body.share === 'string' ? body.share.trim() : '',
+    domain: typeof body.domain === 'string' ? body.domain.trim() : '',
+    username: typeof body.username === 'string' ? body.username.trim() : '',
+    password: typeof body.password === 'string' ? body.password : '',
+    subpath: typeof body.subpath === 'string' ? body.subpath.trim() : '',
+  };
+}
+
+// POST /api/v1/storage/library-location/network/test — try connecting to a
+// share with not-yet-saved credentials. Never persists anything.
+router.post('/library-location/network/test', requireAdmin, async (req: Request, res: Response) => {
+  const cfg = parseNetworkConfig((req.body ?? {}) as NetworkBody);
+  const result = await testNetworkLibraryConnection(cfg);
+  res.apiSuccess(result);
+});
+
+// POST /api/v1/storage/migrate { targetPath } OR { network: {...} } — start moving the library
 router.post('/migrate', requireAdmin, (req: Request, res: Response) => {
-  const body = req.body as { targetPath?: unknown };
+  const body = req.body as { targetPath?: unknown; network?: NetworkBody };
+
+  if (body.network) {
+    if (process.platform !== 'win32' && process.platform !== 'darwin') {
+      res.apiError(400, 'UNSUPPORTED_PLATFORM', 'Network share library locations are not supported on this platform.');
+      return;
+    }
+    const networkConfig = parseNetworkConfig(body.network);
+    if (!networkConfig.host || !networkConfig.share) {
+      res.apiError(400, 'INVALID_NETWORK_CONFIG', 'Enter a server address and share name.');
+      return;
+    }
+    // macOS mounts every share at one fixed point, so it can't hold a source and
+    // a target share at once. Refuse network→network there with a clear message
+    // rather than letting it silently copy zero files. (run() guards this too.)
+    if (process.platform === 'darwin' && isNetworkLocation()) {
+      res.apiError(
+        400,
+        'NETWORK_TO_NETWORK_UNSUPPORTED',
+        'Moving directly from one network share to another is not supported on macOS. Move the library to a local folder first, then to the new share.',
+      );
+      return;
+    }
+    try {
+      res.apiSuccess({ migration: startMigration('', networkConfig) });
+    } catch (err: unknown) {
+      res.apiError(409, 'MIGRATION_FAILED', err instanceof Error ? err.message : 'Could not start migration');
+    }
+    return;
+  }
+
   const targetPath = typeof body.targetPath === 'string' ? body.targetPath.trim() : '';
   if (!targetPath) {
     res.apiError(400, 'INVALID_PATH', 'Choose a folder to move the library to.');

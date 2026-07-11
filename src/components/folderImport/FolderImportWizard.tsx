@@ -38,7 +38,13 @@ function buildEdits(result: ImportScanResult): ObjectEdit[] {
   }));
 }
 
-function buildPlan(rootPath: string, edits: ObjectEdit[], includeSubframes: boolean, includeFits: boolean): ImportCommitPlan {
+function buildPlan(
+  rootPath: string,
+  edits: ObjectEdit[],
+  includeSubframes: boolean,
+  includeFits: boolean,
+  telescopeId: string | null,
+): ImportCommitPlan {
   const objects = edits
     .filter(e => !e.skip)
     .map(e => {
@@ -52,19 +58,21 @@ function buildPlan(rootPath: string, edits: ObjectEdit[], includeSubframes: bool
         sessionMap,
       };
     });
-  return { rootPath, objects, importSubFrames: includeSubframes, importFits: includeFits };
+  return { rootPath, objects, importSubFrames: includeSubframes, importFits: includeFits, telescopeId };
 }
 
 export function FolderImportWizard({
   rootPath,
   includeSubframes = false,
   includeFits = true,
+  telescopeId = null,
   onClose,
   onDone,
 }: {
   rootPath: string;
   includeSubframes?: boolean;
   includeFits?: boolean;
+  telescopeId?: string | null;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -152,7 +160,7 @@ export function FolderImportWizard({
 
   const handleCommit = () => {
     if (totals.objects === 0 || totals.files === 0) return;
-    commitMutation.mutate(buildPlan(rootPath, edits, includeSubframes, includeFits));
+    commitMutation.mutate(buildPlan(rootPath, edits, includeSubframes, includeFits, telescopeId));
   };
 
   return (

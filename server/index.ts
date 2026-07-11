@@ -53,7 +53,6 @@ import { runMigration } from './lib/migrate.js';
 import db from './lib/db.js';
 import fs from 'fs';
 import dgram from 'dgram';
-import net from 'net';
 import { spawn } from 'child_process';
 import Bonjour from 'bonjour-service';
 
@@ -65,7 +64,8 @@ runMigration();
 const app = express();
 const PORT = process.env.PORT || 3002;
 
-// Trust only the immediately upstream proxy (Caddy / Docker gateway).
+// Trust only the immediately upstream proxy (e.g. a Docker gateway or a
+// reverse proxy the operator puts in front of Nebulis).
 // Without this, req.ip always reflects the socket address, which is correct
 // for direct connections but misses the real client IP behind a local proxy.
 // Limiting to 1 hop prevents spoofing via attacker-supplied X-Forwarded-For.
@@ -102,12 +102,22 @@ app.use(correlationMiddleware);
 // Request timing logger
 app.use((req, res, next) => {
   const start = Date.now();
+  // Captured now, not read inside the finish handler below: Express mutates
+  // req.url/req.path as it descends into app.use('/api/v1', v1) (stripping the
+  // mount prefix so the sub-router matches relative paths), and only restores it
+  // when next() unwinds back up through that layer. A terminal route handler
+  // (e.g. res.json(...)) never calls next(), so req.path stays permanently
+  // stripped to something like "/health" for the rest of the request — by the
+  // time 'finish' fires, .startsWith('/api') is always false. That silently
+  // dropped every fast request from this log, leaving only the >500ms fallback
+  // to catch anything at all.
+  const requestPath = req.path;
   res.on('finish', () => {
     const ms = Date.now() - start;
-    if (ms > 500 || req.path.startsWith('/api')) {
+    if (ms > 500 || requestPath.startsWith('/api')) {
       log.info(
-        { method: req.method, path: req.path, status: res.statusCode, ms },
-        `${req.method} ${req.path} ${res.statusCode} (${ms}ms)`,
+        { method: req.method, path: requestPath, status: res.statusCode, ms },
+        `${req.method} ${requestPath} ${res.statusCode} (${ms}ms)`,
       );
     }
   });
@@ -234,9 +244,16 @@ v1.get('/health', (_req, res) => {
 
   const allHealthy = Object.values(checks).every(Boolean);
   if (!allHealthy) {
+    // Body includes `ok` explicitly so apiEnvelope's wrappedJson passes it
+    // through unmodified (its wrapping branch only fires when `ok` is absent).
+    // Without this, the 503 status made the wrapper treat the whole body as
+    // an error, discarding `checks` and stringifying `error: null` into the
+    // literal message "null" — the one time this endpoint is actually useful
+    // for diagnosis, it said nothing.
     res.status(503).json({
+      ok: false,
       data: { status: 'degraded', checks, uptime: process.uptime(), timestamp: new Date().toISOString() },
-      error: null,
+      error: { code: 'SERVICE_UNAVAILABLE', message: 'One or more health checks failed.' },
     });
     return;
   }
@@ -428,25 +445,6 @@ function isPrivateIP(ip: string): boolean {
 // in bridge-mode containers. getLanIP() (server/lib/lanAddress.ts) is used only for the
 // payload `url` field as a hint when source-address derivation is unavailable.
 
-// Check if Caddy (or any HTTPS listener) is up on the given port.
-// Cached for 30 s so discovery responses stay fast.
-let _httpsAvail: boolean | null = null;
-let _httpsAvailTs = 0;
-
-async function isHTTPSAvailable(port: number): Promise<boolean> {
-  const now = Date.now();
-  if (_httpsAvail !== null && now - _httpsAvailTs < 30_000) return _httpsAvail;
-  _httpsAvail = await new Promise<boolean>(resolve => {
-    const s = new net.Socket();
-    const t = setTimeout(() => { s.destroy(); resolve(false); }, 300);
-    s.on('connect', () => { clearTimeout(t); s.destroy(); resolve(true); });
-    s.on('error', () => { clearTimeout(t); resolve(false); });
-    s.connect(port, '127.0.0.1');
-  });
-  _httpsAvailTs = now;
-  return _httpsAvail;
-}
-
 /**
  * Returns a friendly hostname suitable for display in clients (e.g. "Brent-MacBook"),
  * or null when the OS hostname looks like a Docker container ID (12 lowercase hex
@@ -465,13 +463,12 @@ function getFriendlyHostname(): string | null {
   return raw.replace(/\.local$/i, '');
 }
 
-// Responds to UDP discovery pings. Only includes httpsUrl/httpsPort when Caddy
-// is actually reachable. The iOS client uses HTTPS only when those fields are present.
-function startUDPResponder(httpPort: number, httpsPort: number): void {
+// Responds to UDP discovery pings with the server's HTTP URL and identity.
+function startUDPResponder(httpPort: number): void {
   const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
   socket.on('error', (err) => console.warn(`  UDP discovery: error — ${err.message}`));
 
-  socket.on('message', async (msg, rinfo) => {
+  socket.on('message', (msg, rinfo) => {
     try {
       let parsed: unknown;
       try { parsed = JSON.parse(msg.toString()); } catch { return; }
@@ -480,7 +477,6 @@ function startUDPResponder(httpPort: number, httpsPort: number): void {
       if (req.service !== 'nebulis') return;
 
       const ip = process.env.ADVERTISED_HOST || getLanIP();
-      const httpsIsUp = await isHTTPSAvailable(httpsPort);
       const url = ip ? `http://${ip}:${httpPort}` : null;
       const friendlyHostname = getFriendlyHostname();
       const response = Buffer.from(JSON.stringify({
@@ -488,7 +484,6 @@ function startUDPResponder(httpPort: number, httpsPort: number): void {
         port: httpPort,
         url,
         instanceId: getInstanceId(),
-        ...(httpsIsUp && ip ? { httpsPort, httpsUrl: `https://${ip}:${httpsPort}` } : {}),
         ...(friendlyHostname ? { hostname: friendlyHostname } : {}),
         version: '1.0.0',
       }));
@@ -508,9 +503,8 @@ function startUDPResponder(httpPort: number, httpsPort: number): void {
 }
 
 // --- Start ---
-const HTTPS_PORT = Number(process.env.HTTPS_PORT || 8443);
 
-app.listen(Number(PORT), '0.0.0.0', () => {
+function onListening(): void {
   console.log(`Nebulis v${APP_VERSION} running on port ${PORT}`);
   console.log(`  UI:            http://localhost:${PORT}`);
   console.log(`  API (v1):      http://localhost:${PORT}/api/v1`);
@@ -525,13 +519,9 @@ app.listen(Number(PORT), '0.0.0.0', () => {
   startAppUpdateChecker();
   startPlannerNightlyScheduler();
 
-  // Advertise via mDNS — deferred by one tick so isHTTPSAvailable() can check
-  // whether Caddy is actually listening before we include httpsPort in TXT records.
-  // Without this, clients (especially Android) connect to the advertised HTTPS port
-  // and fail with a connection error when Caddy is not running.
+  // Advertise via mDNS. Deferred by one tick (via the async IIFE) so it never
+  // blocks the listen callback above.
   void (async () => {
-  const httpsIsUp = await isHTTPSAvailable(HTTPS_PORT);
-
   // Advertise via mDNS so iOS/tvOS/Android clients can auto-discover this server.
   // Wraps in try/catch so a firewall block (common on Windows) never crashes the server.
   try {
@@ -544,7 +534,6 @@ app.listen(Number(PORT), '0.0.0.0', () => {
     const friendlyHostname = getFriendlyHostname();
     const txtRecords = [
       `url=http://${hostname}:${PORT}`,
-      ...(httpsIsUp ? [`httpsPort=${HTTPS_PORT}`] : []),
       `version=1.0.0`,
       `instanceId=${getInstanceId()}`,
       ...(friendlyHostname ? [`hostname=${friendlyHostname}`] : []),
@@ -586,12 +575,29 @@ app.listen(Number(PORT), '0.0.0.0', () => {
     console.warn(`  mDNS:          unavailable — ${msg}`);
   }
 
-  startUDPResponder(Number(PORT), HTTPS_PORT);
+  startUDPResponder(Number(PORT));
   })(); // end async mDNS+UDP init
+}
+
+// Bind '::' for dual-stack IPv4+IPv6 (a bare 'localhost' resolves to ::1 first
+// on many systems, and some clients don't fall back to 127.0.0.1). Docker's
+// default bridge network has no IPv6 stack, so binding to '::' there throws
+// EAFNOSUPPORT/EADDRNOTAVAIL — fall back to the IPv4-only '0.0.0.0' bind that
+// worked before this change rather than crashing the server on startup.
+const server = app.listen(Number(PORT), '::', onListening);
+server.once('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EAFNOSUPPORT' || err.code === 'EADDRNOTAVAIL' || err.code === 'ENOTSUP') {
+    console.warn(`  IPv6 dual-stack bind failed (${err.code}) — falling back to IPv4-only 0.0.0.0`);
+    app.listen(Number(PORT), '0.0.0.0', onListening);
+  } else {
+    throw err;
+  }
 });
 
-// Remove macOS resource forks and other junk files left in the library
-purgeJunkFiles();
+// Remove macOS resource forks and other junk files left in the library.
+// Fire-and-forget: purgeJunkFiles() is async (fs.promises, timeout-bounded)
+// so a disconnected/stale network library can't stall server boot.
+void purgeJunkFiles().catch(err => console.error('[library] purgeJunkFiles failed:', err));
 
 // Delete abandoned folder-import wizard temp dirs older than 24 hours
 purgeStaleImportTmp();

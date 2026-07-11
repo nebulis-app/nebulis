@@ -45,7 +45,12 @@ export interface Settings {
   galleryImageSource: 'sky-survey' | 'telescope';
   /** Rotate all images 90° CCW in slideshow / planetarium mode */
   slideshowRotateCCW: boolean;
+  /** Which catalog nomenclature to prefer for new object folder names when an
+   *  object has both an NGC/IC and a Caldwell designation (e.g. "C5" vs
+   *  "IC342"). 'default' keeps NGC/IC priority; 'caldwell' prefers Caldwell. */
+  preferredCatalog: 'default' | 'caldwell';
   temperatureUnit: 'celsius' | 'fahrenheit';
+  windSpeedUnit: 'mph' | 'kmh';
   /** Desktop auto-update channel. 'beta' opts into pre-release builds. */
   updateChannel: 'stable' | 'beta';
   /** Whether the app checks for and pre-downloads updates automatically. Off by default. */

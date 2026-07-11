@@ -79,6 +79,11 @@ db.exec(`
     prefetchCatalogAssets INTEGER NOT NULL DEFAULT 1,
     planetariumShowInfo INTEGER NOT NULL DEFAULT 1,
     galleryImageSource TEXT NOT NULL DEFAULT 'sky-survey',
+    -- Which catalog nomenclature to prefer for new object folder names when
+    -- an object has both an NGC/IC and a Caldwell designation (e.g. "C5" vs
+    -- "IC342"). 'default' keeps the existing NGC/IC-wins priority; 'caldwell'
+    -- uses the Caldwell number instead. See server/lib/catalogAliases.ts.
+    preferredCatalog   TEXT    NOT NULL DEFAULT 'default',
     visibleSkyMap       TEXT    NOT NULL DEFAULT '[]',
     -- Absolute path to the relocated library directory. Empty = use the
     -- built-in default ({DATA_DIR}/library). See server/lib/libraryPath.ts.
@@ -427,6 +432,37 @@ db.exec(`
   }
   if (!cols.some(c => c.name === 'nightlyForecastLastRun')) {
     db.prepare('ALTER TABLE appSettings ADD COLUMN nightlyForecastLastRun INTEGER').run();
+  }
+  if (!cols.some(c => c.name === 'windSpeedUnit')) {
+    db.prepare("ALTER TABLE appSettings ADD COLUMN windSpeedUnit TEXT NOT NULL DEFAULT 'mph'").run();
+  }
+  // Network share (UNC/SMB) as a library location, alongside the existing
+  // local-path relocation (libraryPath/libraryId above). See
+  // server/lib/libraryNetwork.ts and server/lib/libraryPath.ts.
+  if (!cols.some(c => c.name === 'libraryLocationType')) {
+    db.prepare("ALTER TABLE appSettings ADD COLUMN libraryLocationType TEXT NOT NULL DEFAULT 'local'").run();
+  }
+  if (!cols.some(c => c.name === 'libraryNetworkHost')) {
+    db.prepare("ALTER TABLE appSettings ADD COLUMN libraryNetworkHost TEXT NOT NULL DEFAULT ''").run();
+  }
+  if (!cols.some(c => c.name === 'libraryNetworkShare')) {
+    db.prepare("ALTER TABLE appSettings ADD COLUMN libraryNetworkShare TEXT NOT NULL DEFAULT ''").run();
+  }
+  if (!cols.some(c => c.name === 'libraryNetworkDomain')) {
+    db.prepare("ALTER TABLE appSettings ADD COLUMN libraryNetworkDomain TEXT NOT NULL DEFAULT ''").run();
+  }
+  if (!cols.some(c => c.name === 'libraryNetworkUsername')) {
+    db.prepare("ALTER TABLE appSettings ADD COLUMN libraryNetworkUsername TEXT NOT NULL DEFAULT ''").run();
+  }
+  if (!cols.some(c => c.name === 'libraryNetworkPasswordSealed')) {
+    // encrypted via secretBox, same convention as telescopeTransports.password
+    db.prepare("ALTER TABLE appSettings ADD COLUMN libraryNetworkPasswordSealed TEXT NOT NULL DEFAULT ''").run();
+  }
+  if (!cols.some(c => c.name === 'libraryNetworkSubpath')) {
+    db.prepare("ALTER TABLE appSettings ADD COLUMN libraryNetworkSubpath TEXT NOT NULL DEFAULT ''").run();
+  }
+  if (!cols.some(c => c.name === 'preferredCatalog')) {
+    db.prepare("ALTER TABLE appSettings ADD COLUMN preferredCatalog TEXT NOT NULL DEFAULT 'default'").run();
   }
 }
 

@@ -44,7 +44,7 @@ import {
   normalizeObjectId,
   isRealFile,
 } from '../telescopeFiles.js';
-import { resolveCanonicalId } from '../catalogAliases.js';
+import { resolveCanonicalId, applyCatalogPreference } from '../catalogAliases.js';
 import { getByName as getCatalogEntryByName } from '../dsoCatalog.js';
 import { exifDateFromBuffer, exifDateFromFile } from '../exifDate.js';
 import {
@@ -273,7 +273,9 @@ function friendlyImportError(err: unknown, profile: TelescopeProfile | null): st
 /** Local-disk filename to use for a Dwarf file pulled from a session folder.
  *
  *  Subframes and Dwarf II final stacks already encode `<target>_YYYY-MM-DD_...`
- *  in their basename — leave those alone. The Dwarf 3 rolling stacks
+ *  in their basename, and Dwarf 3 RAW TELE / Dwarf II USB subframes already
+ *  parse via parseFilename's dwarfRawTeleMatch branch — leave those alone. The
+ *  Dwarf 3 rolling stacks
  *  (`stacked-NNNN.fits`) carry no session marker, which means:
  *    (a) two sessions for the same target would each write a file called
  *        `stacked-0001.fits` into the same library object folder and clobber
@@ -308,10 +310,20 @@ function dwarfLocalName(basename: string, sessionFolder: string): string | null 
 
   // Dwarf 3 subframes already carry an ISO-format date (_YYYY-MM-DD_HH-MM-SS).
   if (/_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}/.test(basename)) return basename;
+  // Dwarf 3 RAW TELE / Dwarf II USB subframes
+  // (<object>_<exp>s<gain>_<mode>_<YYYYMMDD>-<HHMMSS>[mmm]_<temp>C.<ext>) already
+  // round-trip through parseFilename's dwarfRawTeleMatch branch, so leave them
+  // as-is: reformatting would discard exposure, gain, and temperature, which are
+  // real metadata the original name encodes and a reformat can't recover
+  // ("IC 1396_60s60_Duo-Band_20260705-232743713_31C.fits" reported as more useful
+  // than the renamed form).
+  const parsed = parseFilename(basename);
+  if (parsed.type === 'sub' && parsed.date) return basename;
   // Dwarf II / Mini USB subframes embed the timestamp as YYYYMMDDs-HHMMSSmmm
   // (no ISO separators). Reformat to <prefix><target>_<YYYY-MM-DD>_<HH-MM-SS>-<ms>[_<mode>]_sub.<ext>
   // so parseFilename can extract the date and filter for session/filter queries.
   // Use [A-Za-z0-9-]+ for the mode token (not \w+) so Duo-Band is captured correctly.
+  // (Kept as a fallback for any subframe shape the check above doesn't recognize.)
   const dwarfIISubMatch = basename.match(
     /^.+?_\d+\.?\d*s\d+_([A-Za-z0-9-]+)_(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(\d{1,3})_\d+C\.(fits?)$/i,
   );
@@ -519,6 +531,7 @@ export async function runImport(
     ? { ...rawSettings, ...profileSettings, importFits: true }
     : { ...rawSettings, ...profileSettings };
   debugLog('import:settings', `JPG: ${settings.importJpg !== false}, FITS: ${settings.importFits !== false}, Thumbnails: ${settings.importThumbnails !== false}, Sub-frames: ${settings.importSubFrames === true}, Videos: ${settings.importVideos === true}`);
+  const preferCaldwell = rawSettings.preferredCatalog === 'caldwell';
   const index = loadIndex();
 
   // Per-file shape after vendor-specific discovery. `localName` is what we
@@ -714,11 +727,18 @@ export async function runImport(
         ];
       }
 
+      // Computed before the tombstone filter below: the index (and its
+      // deletedSessions) is keyed by canonical id, not the raw telescope
+      // folder name, so an aliased folder ("NGC 7089", "C63", "Lunar") must
+      // resolve to the same id used to look up deletedSessions or a deleted
+      // session silently re-imports on the next run.
+      const objIdNormalized = resolveCanonicalId(normalizeObjectId(objectName));
+
       let filteredType = 0; let filteredTombstone = 0; let filteredDate = 0;
       allFiles = allFiles.filter(f => {
         if (!shouldImportFile(f.localName, settings)) { filteredType++; return false; }
         // Never re-import tombstoned sessions (strict policy)
-        if (f.date && index.objects[normalizeObjectId(objectName)]?.deletedSessions?.includes(f.date)) { filteredTombstone++; return false; }
+        if (f.date && index.objects[objIdNormalized]?.deletedSessions?.includes(f.date)) { filteredTombstone++; return false; }
         if (targetDate) { if (f.date !== targetDate) { filteredDate++; return false; } }
         return true;
       });
@@ -733,7 +753,6 @@ export async function runImport(
       // folder with no importable .fit/.jpg/sub files and no prior import
       // record — otherwise the gallery fills with placeholder entries that
       // have zero sessions.
-      const objIdNormalized = resolveCanonicalId(normalizeObjectId(objectName));
       const hasPriorImport = !!index.objects[objIdNormalized];
       debugLog('import:object', `${objectName}: ${allFiles.length} file(s) to process${hasPriorImport ? ' (prior import exists)' : ' (new object)'}`);
       if (allFiles.length === 0 && !hasPriorImport) {
@@ -749,7 +768,8 @@ export async function runImport(
       // though both designations resolve to the same object (e.g. importing
       // "C63" from the telescope when files already live under "NGC7293").
       const existingSmbFolderName = index.objects[objIdNormalized]?.folderName;
-      const objLocalDir = safeObjectDir(existingSmbFolderName || objIdNormalized);
+      const newObjectFolderName = applyCatalogPreference(objIdNormalized, preferCaldwell);
+      const objLocalDir = safeObjectDir(existingSmbFolderName || newObjectFolderName);
       if (!objLocalDir) {
         console.warn(`[import] Skipping object with unsafe name: ${objectName}`);
         importStatus.objectsDone++;
@@ -812,7 +832,7 @@ export async function runImport(
           importNewFiles.push({ name: `${objectName}/${file.localName}`, size: data.length });
           importBytesNew += data.length;
 
-          if (/\.fits?$/i.test(localPath)) {
+          if (/\.f(?:it|its|ts)$/i.test(localPath)) {
             await generateFitsThumbnail(localPath).catch(err =>
               console.warn(`[thumb] ${file.localName}:`, err instanceof Error ? err.message : err),
             );
@@ -862,7 +882,7 @@ export async function runImport(
       } catch { /* ignore */ }
 
       index.objects[objIdNormalized] = {
-        folderName: existingSmbFolderName || objIdNormalized,
+        folderName: existingSmbFolderName || newObjectFolderName,
         sessions: Array.from(sessionSet).sort(),
         fileCount,
         lastImport: new Date().toISOString(),
@@ -1148,7 +1168,7 @@ export async function syncSessionSubFrames(
       } as DwarfDiscoveredObject);
       debugLog('subframe-sync:discover', `Dwarf: ${subFiles.length} sub-file(s) found across candidate folders`);
       const mapped: Array<SubFrameCandidate | null> = subFiles
-        .filter(e => /\.fits?$/i.test(e.name))
+        .filter(e => /\.f(?:it|its|ts)$/i.test(e.name))
         .map(e => {
           const slash = e.name.indexOf('/');
           const sessionFolder = slash >= 0 ? e.name.slice(0, slash) : '';
@@ -1187,7 +1207,7 @@ export async function syncSessionSubFrames(
       candidates = rawSubFiles
         .filter(e => {
           if (e.type !== 'file') return false;
-          if (!/\.fits?$/i.test(e.name)) return false;
+          if (!/\.f(?:it|its|ts)$/i.test(e.name)) return false;
           return parseFilename(e.name).date === targetDate;
         })
         .map(e => ({ remotePath: `${smbSubPath}/${e.name}`, localName: e.name, size: e.size }));
@@ -1240,7 +1260,7 @@ export async function syncSessionSubFrames(
     // Generate JPEG thumbnails for newly downloaded FITS subframes so the UI
     // can show small previews without downloading the full file each time.
     for (const localPath of downloadedPaths) {
-      if (!/\.fits?$/i.test(localPath)) continue;
+      if (!/\.f(?:it|its|ts)$/i.test(localPath)) continue;
       await generateFitsThumbnail(localPath).catch(err =>
         console.warn(`[thumb] ${path.basename(localPath)}:`, err instanceof Error ? err.message : err),
       );
@@ -1424,6 +1444,7 @@ export async function runFolderImport(folderPath: string): Promise<void> {
   try {
     ensureLibraryDir();
     const settings = loadSettings();
+    const preferCaldwell = settings.preferredCatalog === 'caldwell';
     const index = loadIndex();
     debugLog('folder-import', `Scanning folder: ${folderPath}`);
     const entries = fs.readdirSync(folderPath, { withFileTypes: true });
@@ -1448,9 +1469,11 @@ export async function runFolderImport(folderPath: string): Promise<void> {
       debugLog('folder-import', `"${objectName}": ${files.length} file(s) in main folder`);
 
       let subFiles: Array<{ name: string; fromSub: boolean }> = [];
+      let subDirName: string | null = null;
       if (settings.importSubFrames) {
         const subDir = subDirs.find(s => getObjectFromSubFolder(s.name) === objectName);
         if (subDir) {
+          subDirName = subDir.name;
           const subSrcDir = path.join(folderPath, subDir.name);
           try {
             subFiles = fs.readdirSync(subSrcDir)
@@ -1479,7 +1502,8 @@ export async function runFolderImport(folderPath: string): Promise<void> {
       // so previously imported files aren't orphaned by a rename (e.g. importing
       // from a "C63" folder when files already live under "NGC7293", or vice-versa).
       const existingRunFolderName = index.objects[objIdNormalized]?.folderName;
-      const objLocalDir = safeObjectDir(existingRunFolderName || objIdNormalized);
+      const newObjectFolderName = applyCatalogPreference(objIdNormalized, preferCaldwell);
+      const objLocalDir = safeObjectDir(existingRunFolderName || newObjectFolderName);
       if (!objLocalDir) {
         console.warn(`[import] Skipping object with unsafe name: ${objectName}`);
         importStatus.objectsDone++;
@@ -1494,6 +1518,8 @@ export async function runFolderImport(folderPath: string): Promise<void> {
 
       const sessionSet = new Set<string>();
       let fileCount = 0;
+      let copyErrors = 0;
+      let firstCopyError: string | null = null;
 
       for (const file of allFiles) {
         const destPath = path.join(objLocalDir, file.name);
@@ -1512,8 +1538,8 @@ export async function runFolderImport(folderPath: string): Promise<void> {
         }
 
         try {
-          const srcPath = file.fromSub
-            ? path.join(folderPath, `${objectName}_sub`, file.name)
+          const srcPath = file.fromSub && subDirName
+            ? path.join(folderPath, subDirName, file.name)
             : path.join(srcDir, file.name);
           debugLog('folder-import', `Copying: ${objectName}/${file.name}`);
           // Async copy so a large file doesn't block the event loop mid-import.
@@ -1532,9 +1558,20 @@ export async function runFolderImport(folderPath: string): Promise<void> {
             if (d) sessionSet.add(d);
           }
         } catch (err) {
-          debugLog('folder-import', `Copy failed: ${objectName}/${file.name} — ${err instanceof Error ? err.message : String(err)}`);
+          copyErrors++;
+          const reason = err instanceof Error ? err.message : String(err);
+          if (!firstCopyError) firstCopyError = reason;
+          debugLog('folder-import', `Copy failed: ${objectName}/${file.name} — ${reason}`);
           importStatus.filesDone++;
         }
+      }
+
+      if (copyErrors > 0) {
+        // Surface the failure instead of finishing "successfully" with files
+        // silently missing (this previously masked the _subs source-path bug).
+        const detail = firstCopyError ? ` (${firstCopyError})` : '';
+        const msg = `${copyErrors} file(s) failed to copy for ${objectName}${detail}.`;
+        importStatus.error = importStatus.error ? `${importStatus.error}; ${msg}` : msg;
       }
 
       try {
@@ -1552,7 +1589,7 @@ export async function runFolderImport(folderPath: string): Promise<void> {
       } catch { /* ignore */ }
 
       index.objects[objIdNormalized] = {
-        folderName: existingRunFolderName || objIdNormalized,
+        folderName: existingRunFolderName || newObjectFolderName,
         sessions: Array.from(sessionSet).sort(),
         fileCount,
         lastImport: new Date().toISOString(),
@@ -1651,11 +1688,12 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
   }
 
   const prevLastRun = importStatus.lastRun;
+  const commitProfile = plan.telescopeId ? getProfileById(plan.telescopeId) : null;
   importStatus = {
     running: true,
     currentObject: null,
-    telescopeId: null,
-    telescopeName: null,
+    telescopeId: commitProfile?.id ?? null,
+    telescopeName: commitProfile?.name ?? null,
     transportKind: null,
     objectsTotal: 0,
     objectsDone: 0,
@@ -1846,7 +1884,7 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
       if (!touchedIds.has(id)) delete index.objects[id];
     }
     index.lastImport = new Date().toISOString();
-    saveIndex(index, null);
+    saveIndex(index, commitProfile?.id ?? null);
     importStatus.lastRun = index.lastImport;
 
     // Best-effort enrichment + weather for everything we touched. Done after
@@ -1900,10 +1938,14 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
 
     // Auto-cleanup temp dirs created by /import/upload-temp once the commit
     // completes (success or error). Check that the path is under DATA_DIR/import-tmp
-    // before deleting so we never rm an arbitrary path sent by a client.
-    const importTmpBase = path.join(DATA_DIR, 'import-tmp') + path.sep;
-    if (rootPath.startsWith(importTmpBase)) {
-      try { fs.rmSync(rootPath, { recursive: true, force: true }); } catch { /* ignore */ }
+    // before deleting so we never rm an arbitrary path sent by a client. Resolve
+    // both sides first: rootPath is client-supplied (plan.rootPath), and a
+    // literal-prefix startsWith check on an unresolved path can be defeated by
+    // a "..\/..\/" segment that still textually starts with the base.
+    const importTmpBase = path.join(DATA_DIR, 'import-tmp');
+    const resolvedRoot = path.resolve(rootPath);
+    if (resolvedRoot === importTmpBase || resolvedRoot.startsWith(importTmpBase + path.sep)) {
+      try { fs.rmSync(resolvedRoot, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   }
 }
@@ -2017,6 +2059,7 @@ export function createManualObservation(
   date: string,        // YYYY-MM-DD
   imageBuffer: Buffer | null,
   imageExt: string | null,  // 'jpg', 'png', etc. (without dot)
+  telescopeId: string | null = null,
 ): { objectId: string; date: string } {
   const LIBRARY_DIR = getLibraryDir();
   const trimmedName = objectName.trim();
@@ -2030,8 +2073,12 @@ export function createManualObservation(
     ? resolveCanonicalId(byName.id)
     : resolveCanonicalId(safeName);
   // Use the resolved ID as the on-disk folder name so the observation lands in
-  // the right place when a catalog match was found.
-  const folderName = objectId;
+  // the right place when a catalog match was found. Reuse an already-existing
+  // object's stored folder name (don't rename it out from under it); only a
+  // brand-new object gets the catalog-preference treatment.
+  const existingRow = stmts.getObject.get(objectId);
+  const preferCaldwell = loadSettings().preferredCatalog === 'caldwell';
+  const folderName = existingRow?.folderName || applyCatalogPreference(objectId, preferCaldwell);
 
   const dateMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!dateMatch) throw new Error('The date is not in the expected YYYY-MM-DD format. Pick a date from the date picker and try again.');
@@ -2054,10 +2101,14 @@ export function createManualObservation(
     fs.writeFileSync(path.join(objDir, filename), imageBuffer);
   }
 
-  // Update library DB: ensure object + date are tracked
+  // Update library DB: ensure object + date are tracked. Capture each
+  // existing session's telescopeId first: clearSessions below wipes every
+  // row for this object, so re-adding without restoring these would silently
+  // un-tag every prior session, not just the new one.
+  const existingSessions = stmts.getSessions.all(objectId).filter(r => r.date !== 'unknown');
+  const telescopeIdByDate = new Map(existingSessions.map(r => [r.date, r.telescopeId]));
   const sessionSet = new Set<string>();
-  const sessions = stmts.getSessions.all(objectId).map(r => r.date).filter(d => d !== 'unknown');
-  for (const d of sessions) sessionSet.add(d);
+  for (const r of existingSessions) sessionSet.add(r.date);
   sessionSet.add(date);
 
   let fileCount = 0;
@@ -2079,7 +2130,9 @@ export function createManualObservation(
     cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy);
   stmts.clearSessions.run(objectId);
   for (const d of sessionSet) {
-    stmts.addSession.run(objectId, d);
+    const stampId = (d === date ? telescopeId : null) ?? telescopeIdByDate.get(d) ?? null;
+    if (stampId) stmts.addSessionStamped.run(objectId, d, stampId);
+    else stmts.addSession.run(objectId, d);
   }
 
   return { objectId, date };

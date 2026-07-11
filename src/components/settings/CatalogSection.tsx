@@ -75,8 +75,8 @@ function OfflineCatalogCard({
   });
 
   const startAllMutation = useMutation({
-    mutationFn: ({ force, packsOnly }: { force: boolean; packsOnly: boolean }) =>
-      startCatalogPrefetch(force, packsOnly),
+    mutationFn: ({ force, packsOnly, scope }: { force: boolean; packsOnly: boolean; scope?: 'curated' | 'full' }) =>
+      startCatalogPrefetch(force, packsOnly, scope ?? 'curated'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['catalog-prefetch-status'] }),
   });
   const cancelMutation = useMutation({
@@ -89,6 +89,7 @@ function OfflineCatalogCard({
   });
 
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
+  const [showFullConfirm, setShowFullConfirm] = useState(false);
   const isBusy = status?.running ?? false;
   const isStarting = startAllMutation.isPending;
 
@@ -137,18 +138,33 @@ function OfflineCatalogCard({
                 Cancel download
               </button>
             ) : (
-              <button
-                onClick={() => startAllMutation.mutate({ force: false, packsOnly: true })}
-                disabled={isStarting}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50 ${
-                  isDark
-                    ? 'bg-accent-500/10 text-accent-400 hover:bg-accent-500/20 border border-accent-500/30'
-                    : 'bg-accent-300 text-accent-700 hover:bg-accent-400 border border-accent-400'
-                }`}
-              >
-                {isStarting ? <RotateCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                Download
-              </button>
+              <>
+                <button
+                  onClick={() => startAllMutation.mutate({ force: false, packsOnly: true })}
+                  disabled={isStarting}
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50 ${
+                    isDark
+                      ? 'bg-accent-500/10 text-accent-400 hover:bg-accent-500/20 border border-accent-500/30'
+                      : 'bg-accent-300 text-accent-700 hover:bg-accent-400 border border-accent-400'
+                  }`}
+                >
+                  {isStarting ? <RotateCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                  Download
+                </button>
+                <button
+                  onClick={() => setShowFullConfirm(true)}
+                  disabled={isStarting}
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium border transition disabled:opacity-50 ${
+                    isDark
+                      ? 'border-slate-700 text-slate-300 hover:bg-slate-800'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  title="Download every catalog pack plus sky images and descriptions for the entire catalog, for fully offline use"
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  Download everything
+                </button>
+              </>
             )}
             <button
               onClick={() => setShowWipeConfirm(true)}
@@ -168,6 +184,42 @@ function OfflineCatalogCard({
               </span>
             )}
           </div>
+
+          {/* ── Full download confirm dialog ── */}
+          {showFullConfirm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/60" onClick={() => setShowFullConfirm(false)} />
+              <div className={`relative w-full max-w-sm rounded-2xl shadow-2xl p-6 ${isDark ? 'bg-slate-900 border border-slate-700/60' : 'bg-white border border-slate-200'}`}>
+                <h3 className={`text-base font-semibold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Download everything?
+                </h3>
+                <p className={`text-sm mb-5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  This installs every catalog pack, including the extended set, then downloads sky images and
+                  descriptions for the entire catalog and your library. Expect 1 to 2 GB of disk and a download
+                  that runs for a while in the background. You can cancel any time, and it resumes where it left off.
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => setShowFullConfirm(false)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
+                      isDark ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      startAllMutation.mutate({ force: false, packsOnly: false, scope: 'full' });
+                      setShowFullConfirm(false);
+                    }}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition"
+                  >
+                    Download everything
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── Wipe confirm dialog ── */}
           {showWipeConfirm && (
@@ -212,7 +264,17 @@ function PackStatesRow({ isDark, packStates, activePhase, processed, total }: {
   processed: number;
   total: number;
 }) {
-  const isInstalling = activePhase === 'pack';
+  // Any active job phase shows the progress bar, not just pack installs —
+  // the full download runs through images / wikipedia / caldwell phases after
+  // the packs and would otherwise look stuck for its entire remaining runtime.
+  const PHASE_LABELS: Record<string, { badge: string; unit: string }> = {
+    pack: { badge: 'Downloading packs', unit: 'packs' },
+    images: { badge: 'Downloading sky images', unit: 'objects' },
+    wikipedia: { badge: 'Downloading descriptions', unit: 'objects' },
+    caldwell: { badge: 'Downloading Caldwell imagery', unit: 'objects' },
+  };
+  const phaseInfo = activePhase ? PHASE_LABELS[activePhase] ?? null : null;
+  const isInstalling = phaseInfo !== null;
   const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
   const TIER_LABELS: Record<string, string> = { messier: 'Messier', caldwell: 'Caldwell', popular: 'Popular DSOs', extended: 'Extended', sharpless: 'Sharpless' };
 
@@ -240,7 +302,7 @@ function PackStatesRow({ isDark, packStates, activePhase, processed, total }: {
                 isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-100 text-accent-600'
               }`}>
                 <RotateCw className="w-2.5 h-2.5 animate-spin" />
-                Downloading
+                {phaseInfo?.badge ?? 'Downloading'}
               </span>
             ) : packStates.length > 0 ? (
               <span className={`text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -266,7 +328,7 @@ function PackStatesRow({ isDark, packStates, activePhase, processed, total }: {
               </div>
               {total > 0 && (
                 <span className={`text-[10px] tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                  {processed} / {total} packs
+                  {processed} / {total} {phaseInfo?.unit ?? 'packs'}
                 </span>
               )}
             </div>

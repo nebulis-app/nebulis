@@ -6,7 +6,11 @@ services:
     container_name: nebulis
     restart: unless-stopped
     ports:
-      # Change 8080 to any free port on your host.
+      # Change the host side (left of the colon) to any free port on your host,
+      # but keep the container side (right of the colon) at 8080 — UDP discovery
+      # and mDNS advertise the container's PORT, so remapping only the host side
+      # makes clients discover the server and then connect to the wrong port.
+      # If you need a different container port too, change PORT below to match.
       - "8080:8080"
       - "47890:47890/udp"
     volumes:

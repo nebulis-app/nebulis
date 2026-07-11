@@ -15,12 +15,13 @@ interface StorageObject {
 interface StorageStats { objects: StorageObject[]; telescopeOnline: boolean; telescopeKind: string | null; }
 export const getStorageStats = () => fetchJSON<StorageStats>('/storage');
 
+interface DiskUsage {
+  total: number; used: number; free: number;
+  usedPercent: number;
+  totalFormatted: string; usedFormatted: string; freeFormatted: string;
+}
 interface SystemStorage {
-  disk: {
-    total: number; used: number; free: number;
-    usedPercent: number;
-    totalFormatted: string; usedFormatted: string; freeFormatted: string;
-  } | null;
+  disk: DiskUsage | null;
   dataDir: {
     path: string;
     size: number;
@@ -28,6 +29,10 @@ interface SystemStorage {
     sizeFormatted: string;
     breakdown: Array<{ name: string; size: number; files: number; sizeFormatted: string }>;
   };
+  // Present only when the library has been relocated to a different physical
+  // drive than the app data directory. Null otherwise (default location or same
+  // volume, where it would duplicate the local-server figures).
+  libraryDisk: (DiskUsage & { path: string }) | null;
 }
 export const getSystemStorage = () => fetchJSON<SystemStorage>('/storage/system');
 
@@ -56,11 +61,26 @@ export interface DirectoryEntry { name: string; path: string; }
 export const browseDirectory = (path: string) =>
   fetchJSON<{ path: string; directories: DirectoryEntry[] }>(`/storage/browse?path=${encodeURIComponent(path)}`);
 
-interface LibraryLocation {
+export interface NetworkLibraryConfig {
+  host: string;
+  share: string;
+  domain: string;
+  username: string;
+  password: string;
+  subpath: string;
+}
+
+export interface LibraryLocation {
   path: string;
   isDefault: boolean;
   available: boolean;
   libraryId: string;
+  locationType: 'local' | 'network';
+  /** Non-secret fields only — kept around in local mode too, to prefill the
+   *  "Network Share" form with the last-used values. Never a password. */
+  network: Omit<NetworkLibraryConfig, 'password'>;
+  /** false on Linux/Docker — hide the "Network Share" option there. */
+  networkLibrarySupported: boolean;
 }
 
 type MigrationPhase =
@@ -87,5 +107,17 @@ export const startLibraryMigration = (targetPath: string) =>
   fetchJSON<{ migration: MigrationStatus }>('/storage/migrate', {
     method: 'POST',
     body: JSON.stringify({ targetPath }),
+  });
+
+export const startNetworkLibraryMigration = (network: NetworkLibraryConfig) =>
+  fetchJSON<{ migration: MigrationStatus }>('/storage/migrate', {
+    method: 'POST',
+    body: JSON.stringify({ network }),
+  });
+
+export const testNetworkLibraryConnection = (network: NetworkLibraryConfig) =>
+  fetchJSON<{ ok: boolean; reason?: string }>('/storage/library-location/network/test', {
+    method: 'POST',
+    body: JSON.stringify(network),
   });
 

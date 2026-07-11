@@ -30,8 +30,10 @@ export function parsesToDate(name: string, date: string): boolean {
 
 // Strip path separators, FS-reserved punctuation, and control characters so a
 // rebuilt name can never escape the object folder. Control range is deliberate.
+// Exported for reuse anywhere else a user-supplied filename is written to disk
+// (e.g. processed-image uploads).
 // eslint-disable-next-line no-control-regex
-const ILLEGAL_FS_CHARS = /[/\\<>:"|?*\x00-\x1f]/g;
+export const ILLEGAL_FS_CHARS = /[/\\<>:"|?*\x00-\x1f]/g;
 const TRAILING_STAMP = /_\d{8}-\d{6}[A-Z]?$/;
 
 interface NamePieces {

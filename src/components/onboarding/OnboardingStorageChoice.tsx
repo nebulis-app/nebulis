@@ -57,6 +57,7 @@ export function OnboardingStorageChoice({ isDark, subText }: { isDark: boolean; 
       {modalOpen && (
         <ChangeLocationModal
           isDark={isDark}
+          location={location}
           onClose={() => setModalOpen(false)}
           onStarted={() => {
             setModalOpen(false);

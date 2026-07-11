@@ -1,5 +1,23 @@
 # Changelog
-## 1.4.0 (172) - June 17, 2026
+## 1.4.1 (180) - July 11th, 2026
+### New
+- Added functionality to move Library to a Network Share via UNC path. (Settings -> Storage)
+- Added Option to use Catalog Naming Scheme for on-disk folder structure, for example creating folder for C5 when running an import instead of IC342. This setting is NOT retroactive (Settings -> General -> Prefer Caldwell Naming).
+- Import Files and New Observation windows now let you choose which telescope the files were captured with, so those sessions show up correctly in the calendar right away.
+
+### Updated
+- Added km/h option under Settings for Wind Speed (Settings -> General)
+- Removed "Include FITS files" from library import option, stacked/processed FITS files are always imported. User has option to select import subframes from Import window.
+- No longer rename Dwarf subframes if they are properly formatted. Those that do not contain a date field will be renamed to prevent conflicts.
+- Enhanced Debugging (Settings -> Danger -> Debug Logging)
+
+### Fixes
+- Resolved bug where post upgrade "Install and relaunch" would only relaunch menu bar app and not back-end Node.js app, which caused pairing and connectivity issues.
+- Async filesystem bug that locked Node process for 1+ minutes if mounted drive or Seestar was unavailable.
+- Library mover process would fail at verifying migration due to Apple hidden ._DS file(s)
+- New Observation was wiping the telescope tag off an object's other sessions every time you logged a new one.
+
+## 1.4.0 (177) - July 3rd, 2026
 
 ### New
 - Catalog — Review the entire Messier, Caldwell, and Herschel catalogs and track your progress through them. One-click button to create a plan for unimaged catalog items.

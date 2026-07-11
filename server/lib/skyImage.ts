@@ -158,6 +158,16 @@ const NEGATIVE_CACHE_FILE = path.join(SKY_CACHE_DIR, '_negative_cache.json');
 
 const negativeImageCache = new Map<string, number>();
 
+// Network failures get a separate, short, in-memory-only negative cache.
+// They must not go into the 24h persistent cache (the object's image exists
+// upstream; only this machine's connectivity failed), but they must be cached
+// for a little while: with no entry at all, an offline install re-attempts the
+// live CDS fetch on every request for every uncached object, and those hung
+// requests occupy the browser's per-origin connection pool and starve real
+// API calls.
+const TRANSIENT_NEGATIVE_TTL_MS = 10 * 60 * 1000;
+const transientNegativeCache = new Map<string, number>();
+
 try {
   const raw: unknown = JSON.parse(fs.readFileSync(NEGATIVE_CACHE_FILE, 'utf-8'));
   if (raw !== null && typeof raw === 'object') {
@@ -172,6 +182,19 @@ function saveNegativeCache() {
   const obj: Record<string, number> = {};
   for (const [k, v] of negativeImageCache) obj[k] = v;
   fs.writeFile(NEGATIVE_CACHE_FILE, JSON.stringify(obj), () => {});
+}
+
+/**
+ * Forget every negative-cache entry, in memory and on disk. Called by the
+ * catalog "Wipe & reset" so a re-download retries objects that previously
+ * 404'd or failed instead of silently skipping them for up to 24h.
+ * The Sesame coordinate cache is intentionally left alone — resolved RA/Dec
+ * values stay correct across a wipe.
+ */
+export function clearNegativeImageCache(): void {
+  negativeImageCache.clear();
+  transientNegativeCache.clear();
+  try { fs.unlinkSync(NEGATIVE_CACHE_FILE); } catch { /* not present */ }
 }
 
 // ─── prefetchSkyImage ────────────────────────────────────────────────
@@ -191,6 +214,11 @@ export async function prefetchSkyImage(
     dec?: number;
     /** Force a fresh fetch even if cached or negative-cached. */
     force?: boolean;
+    /** Deadline for the CDS DSS2 fetch. Defaults to 60s, which suits the
+     *  background prefetch job. Interactive request handlers should pass
+     *  something much shorter so a dead network doesn't pin the client's
+     *  connection for a minute per thumbnail. */
+    timeoutMs?: number;
   } = {},
 ): Promise<string | null> {
   const fov = opts.fov || 1.0;
@@ -199,6 +227,7 @@ export async function prefetchSkyImage(
 
   if (opts.force) {
     negativeImageCache.delete(normalizedId);
+    transientNegativeCache.delete(normalizedId);
     try { fs.unlinkSync(cachePath); } catch { /* not present */ }
   } else {
     try {
@@ -208,6 +237,10 @@ export async function prefetchSkyImage(
 
     const negCacheTs = negativeImageCache.get(normalizedId);
     if (negCacheTs && Date.now() - negCacheTs < NEGATIVE_CACHE_TTL_MS) {
+      return null;
+    }
+    const transientTs = transientNegativeCache.get(normalizedId);
+    if (transientTs && Date.now() - transientTs < TRANSIENT_NEGATIVE_TTL_MS) {
       return null;
     }
   }
@@ -230,6 +263,12 @@ export async function prefetchSkyImage(
   let ra: number | undefined = opts.ra;
   let dec: number | undefined = opts.dec;
 
+  // Whether a missing-coords outcome is authoritative. Sesame caches a
+  // definitive "no such object" as null but caches nothing on a network
+  // error, so sesameCache.has() distinguishes "the resolver said no" from
+  // "we couldn't reach the resolver".
+  let coordsDefinitive = true;
+
   if (ra == null || dec == null) {
     const entry = getCatalogEntry(id);
     if (entry?.ra != null && entry?.dec != null) {
@@ -240,6 +279,8 @@ export async function prefetchSkyImage(
       if (resolved) {
         ra = resolved.ra;
         dec = resolved.dec;
+      } else {
+        coordsDefinitive = sesameCache.has(id.toUpperCase().replace(/\s+/g, ''));
       }
     }
   }
@@ -251,8 +292,16 @@ export async function prefetchSkyImage(
       fs.writeFileSync(cachePath, nasaImage);
       return cachePath;
     }
-    negativeImageCache.set(normalizedId, Date.now());
-    saveNegativeCache();
+    // Only a definitive "no coordinates anywhere" earns the 24h persistent
+    // negative entry. When the resolver itself was unreachable (offline),
+    // use the short transient cache so the object retries soon after the
+    // connection returns instead of being blocked for a day.
+    if (coordsDefinitive) {
+      negativeImageCache.set(normalizedId, Date.now());
+      saveNegativeCache();
+    } else {
+      transientNegativeCache.set(normalizedId, Date.now());
+    }
     return null;
   }
 
@@ -265,12 +314,17 @@ export async function prefetchSkyImage(
     + `&format=jpg`;
 
   try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(60000) });
+    const resp = await fetch(url, { signal: AbortSignal.timeout(opts.timeoutMs ?? 60000) });
     if (!resp.ok) {
       console.warn(`[skyImage] CDS HiPS fetch failed for ${id}: HTTP ${resp.status} (ra=${ra}, dec=${dec}, fov=${fov})`);
       if (resp.status >= 400 && resp.status < 500) {
         negativeImageCache.set(normalizedId, Date.now());
         saveNegativeCache();
+      } else {
+        // 5xx: CDS itself is having trouble. Same treatment as a network
+        // failure — short transient entry so we stop hammering it but retry
+        // within minutes rather than hours.
+        transientNegativeCache.set(normalizedId, Date.now());
       }
       return null;
     }
@@ -280,6 +334,10 @@ export async function prefetchSkyImage(
     return cachePath;
   } catch (err) {
     console.warn(`[skyImage] CDS HiPS fetch error for ${id}:`, err instanceof Error ? err.message : err);
+    // Network-level failure (timeout, DNS, unreachable). The image likely
+    // exists upstream, so remember the failure only briefly — long enough to
+    // stop an offline session from re-hanging on every thumbnail request.
+    transientNegativeCache.set(normalizedId, Date.now());
     return null;
   }
 }

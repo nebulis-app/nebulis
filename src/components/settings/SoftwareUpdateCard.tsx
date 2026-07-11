@@ -122,7 +122,7 @@ export function SoftwareUpdateCard({
             <Download className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isDark ? 'text-accent-400' : 'text-accent-600'}`} />
             <div className="flex-1 min-w-0">
               <div className={`text-sm font-medium ${strong}`}>
-                Version {status.latestVersion} is available
+                Version {status.latestVersion}{status.latestBuild ? ` (build ${status.latestBuild})` : ''} is available
                 {status.mandatory && ' (required)'}
               </div>
               <div className={`text-xs mt-0.5 ${muted}`}>
@@ -160,7 +160,9 @@ export function SoftwareUpdateCard({
           <div className={`flex items-center gap-2 text-xs ${muted}`}>
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
             You're on the latest {channel} version
-            {status.latestVersion ? ` (${status.latestVersion}).` : '.'}
+            {status.latestVersion
+              ? ` (${status.latestVersion}${status.latestBuild ? `, build ${status.latestBuild}` : ''}).`
+              : '.'}
           </div>
         )}
 

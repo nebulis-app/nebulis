@@ -6,7 +6,8 @@ import { Router, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import archiver from 'archiver';
-import { getLibraryDir } from '../lib/libraryPath.js';
+import { getLibraryDir, isLibraryAvailable, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
+import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
 import { getFileCategory, isRealFile, parseFilename } from '../lib/telescopeFiles.js';
 import { getObjectFolderName } from '../lib/localLibrary.js';
 import { queryString, contentDispositionHeader } from '../lib/queryHelpers.js';
@@ -14,8 +15,20 @@ import { queryString, contentDispositionHeader } from '../lib/queryHelpers.js';
 const router = Router();
 
 // Download an object's files as ZIP (from local library)
-router.get('/objects/:objectId', (req: Request, res: Response) => {
+router.get('/objects/:objectId', async (req: Request, res: Response) => {
   try {
+    // The library may live on a network share; a stale mount would hang the fs
+    // calls below and freeze the whole event loop. This route is on the
+    // auth-bypass list, so an unauthenticated request must not be able to. Gate
+    // on availability first (timeout-bounded), then use bounded async fs.
+    if (isLibraryMigrating()) {
+      res.apiError(503, 'LIBRARY_MIGRATING', 'The library is being moved to a new location. Try again once the move finishes.');
+      return;
+    }
+    if (!(await isLibraryAvailable())) {
+      res.apiError(503, 'LIBRARY_UNAVAILABLE', 'Your library drive is not connected. Reconnect it and try again.');
+      return;
+    }
     const LIBRARY_DIR = getLibraryDir();
     const objectId = String(req.params.objectId);
     const fileType = queryString(req.query.fileType); // image, fits, all
@@ -29,12 +42,14 @@ router.get('/objects/:objectId', (req: Request, res: Response) => {
       res.apiError(400, 'INVALID_OBJECT_ID', 'Object id resolves outside the library');
       return;
     }
-    if (!fs.existsSync(objDir)) {
+    try {
+      await withTimeout(fs.promises.access(objDir), LIBRARY_IO_TIMEOUT_MS);
+    } catch {
       res.apiError(404, 'NOT_FOUND', 'Object not found in local library. Run an import first.');
       return;
     }
 
-    let files = fs.readdirSync(objDir)
+    let files = (await withTimeout(fs.promises.readdir(objDir), LIBRARY_IO_TIMEOUT_MS))
       .filter(f => isRealFile(f) && !f.toLowerCase().includes('_thn.'));
 
     // Filter by type

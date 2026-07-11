@@ -280,10 +280,15 @@ router.get('/:id/image', async (req: Request, res: Response) => {
         ? Number(req.query.fov) || 1.0
         : fovForEntry(dsoEntry?.majorAxisArcmin ?? caldwellFallback?.majorAxisArcmin ?? null);
 
+      // Interactive request: use a short fetch deadline. The default 60s suits
+      // the background prefetch job, but here the browser is holding one of its
+      // ~6 per-origin connections open for the answer — on a dead/offline
+      // network a long hang per uncached thumbnail starves real API calls.
       const fetched = await prefetchSkyImage(id, {
         fov,
         ra: raDegs,
         dec: decDegs,
+        timeoutMs: 15_000,
       });
       if (fetched) master = { source: 'dss2', path: fetched, contentType: 'image/jpeg' };
     } catch { /* external service unavailable */ }

@@ -16,7 +16,7 @@ import multer from 'multer';
 import { log } from '../lib/logger.js';
 import { debugLog } from '../lib/debugLogger.js';
 import { THUMBNAILS_DIR, DATA_DIR } from '../lib/paths.js';
-import { getLibraryDir, isLibraryAvailable } from '../lib/libraryPath.js';
+import { getLibraryDir, isLibraryAvailable, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
 import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
 import sharp from '../lib/sharp-optional.js';
 import { normalizeCatalogId, parseFilename, isRealFile } from '../lib/telescopeFiles.js';
@@ -131,18 +131,45 @@ const router = Router();
 // its drive is disconnected. Reads (GET/HEAD) always pass so the UI can still
 // browse cached data and show a reconnect prompt. Every library-mutating route
 // here uses a non-GET method, so guarding on method is sufficient.
-router.use((req: Request, res: Response, next) => {
+router.use(async (req: Request, res: Response, next) => {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
   if (isLibraryMigrating()) {
     res.apiError(503, 'LIBRARY_MIGRATING', 'The library is being moved to a new location. Try again once the move finishes.');
     return;
   }
-  if (!isLibraryAvailable()) {
+  if (!(await isLibraryAvailable())) {
     res.apiError(503, 'LIBRARY_UNAVAILABLE', 'Your library drive is not connected. Reconnect it and try again.');
     return;
   }
   next();
 });
+
+/**
+ * Fails fast with 503 if the library is unreachable right now, for GET routes
+ * that read actual file bytes/listings off disk (thumbnails, downloads,
+ * processed images, sub-frame listings) rather than just cached DB metadata.
+ * The write-guard above intentionally exempts GET/HEAD so the UI can still
+ * browse cached data while disconnected — but a route that goes on to call
+ * fs.*Sync against a stale network-mounted library has no such exemption:
+ * the sync call blocks the whole Node event loop until the OS's SMB client
+ * gives up, which can hang the entire server, not just this one request (see
+ * the isLibraryAvailable()/purgeJunkFiles() incident writeup in
+ * libraryPath.ts and housekeeping.ts). isLibraryAvailable() itself is
+ * timeout-bounded, so this check resolves in well under LIBRARY_IO_TIMEOUT_MS
+ * even against a wedged share. Call at the top of a handler, before any fs
+ * work, and `return` if it resolves false.
+ */
+async function requireLibraryReachable(res: Response): Promise<boolean> {
+  if (isLibraryMigrating()) {
+    res.apiError(503, 'LIBRARY_MIGRATING', 'The library is being moved to a new location. Try again once the move finishes.');
+    return false;
+  }
+  if (!(await isLibraryAvailable())) {
+    res.apiError(503, 'LIBRARY_UNAVAILABLE', 'Your library drive is not connected. Reconnect it and try again.');
+    return false;
+  }
+  return true;
+}
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 
@@ -181,6 +208,7 @@ const FolderCommitBodySchema = z.object({
   objects: z.array(FolderCommitObjectSchema).min(1, 'No objects to import'),
   importSubFrames: z.boolean().optional(),
   importFits: z.boolean().optional(),
+  telescopeId: z.string().nullable().optional(),
 });
 
 const MoveObservationBodySchema = z.object({
@@ -718,6 +746,7 @@ router.get('/objects/:objectId', (req: Request, res: Response) => {
 
 router.get('/objects/:objectId/thumbnail', async (req: Request, res: Response) => {
   try {
+    if (!(await requireLibraryReachable(res))) return;
     const objectId = decodeURIComponent(String(req.params.objectId));
     const w = Math.min(Math.max(parseInt(queryString(req.query.w) || '400', 10) || 400, 32), 1200);
     const h = Math.min(Math.max(parseInt(queryString(req.query.h) || '400', 10) || 400, 32), 1200);
@@ -735,7 +764,7 @@ router.get('/objects/:objectId/thumbnail', async (req: Request, res: Response) =
     // (e.g. re-uploading a custom gallery_<id>.jpg, or a refreshed catalog
     // master) busts the disk-cached thumbnail. Without mtime, srcPath alone
     // would map to the same .jpg forever even after the source bytes change.
-    const mtimeMs = fs.statSync(srcPath).mtimeMs;
+    const mtimeMs = (await withTimeout(fs.promises.stat(srcPath), LIBRARY_IO_TIMEOUT_MS)).mtimeMs;
     const cacheKey = Buffer.from(`${srcPath}:${w}x${h}:${mtimeMs}`).toString('base64url');
     const cachePath = path.join(THUMBNAILS_DIR, `${cacheKey}.jpg`);
 
@@ -892,10 +921,11 @@ router.post('/objects/:objectId/sessions/:date/move', requireAdmin, (req: Reques
 
 // ─── Files ────────────────────────────────────────────────────────────────────
 
-router.get('/objects/:objectId/sessions/:date/files', (req: Request, res: Response) => {
+router.get('/objects/:objectId/sessions/:date/files', async (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const date = String(req.params.date);
   try {
+    if (!(await requireLibraryReachable(res))) return;
     const files = getLocalFiles(decodeURIComponent(objectId), decodeURIComponent(date));
     res.apiSuccess(files);
   } catch (err) {
@@ -904,9 +934,10 @@ router.get('/objects/:objectId/sessions/:date/files', (req: Request, res: Respon
   }
 });
 
-router.get('/objects/:objectId/files', (req: Request, res: Response) => {
+router.get('/objects/:objectId/files', async (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   try {
+    if (!(await requireLibraryReachable(res))) return;
     const files = getLocalFiles(decodeURIComponent(objectId));
     res.apiSuccess(files);
   } catch (err) {
@@ -917,14 +948,15 @@ router.get('/objects/:objectId/files', (req: Request, res: Response) => {
 
 // ─── File download/view ───────────────────────────────────────────────────────
 
-router.get('/file', (req: Request, res: Response) => {
+router.get('/file', async (req: Request, res: Response) => {
   const filePath = queryString(req.query.path);
   if (!filePath) {
     res.status(400).send('Missing path');
     return;
   }
+  if (!(await requireLibraryReachable(res))) return;
 
-  const result = getLocalFile(filePath);
+  const result = await getLocalFile(filePath);
   if (!result) {
     res.status(404).send('Not found');
     return;
@@ -978,7 +1010,10 @@ router.get('/file/thumbnail', async (req: Request, res: Response) => {
     return;
   }
 
-  if (!fs.existsSync(absPath)) {
+  if (!(await requireLibraryReachable(res))) return;
+  try {
+    await withTimeout(fs.promises.access(absPath), LIBRARY_IO_TIMEOUT_MS);
+  } catch {
     res.status(404).send('Not found');
     return;
   }
@@ -1007,9 +1042,10 @@ router.get('/file/thumbnail', async (req: Request, res: Response) => {
 
 // ─── Integration stats (local sub-frames only) ───────────────────────────────
 
-router.get('/objects/:objectId/integration', (req: Request, res: Response) => {
+router.get('/objects/:objectId/integration', async (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   try {
+    if (!(await requireLibraryReachable(res))) return;
     const stats = getLocalIntegrationStats(decodeURIComponent(objectId));
     res.apiSuccess(stats);
   } catch (err) {
@@ -1020,12 +1056,13 @@ router.get('/objects/:objectId/integration', (req: Request, res: Response) => {
 
 // ─── FITS header (local file) ─────────────────────────────────────────────────
 
-router.get('/headers', (req: Request, res: Response) => {
+router.get('/headers', async (req: Request, res: Response) => {
   const filePath = queryString(req.query.path);
   if (!filePath) {
     res.apiError(400, 'MISSING_PATH', 'Query parameter "path" is required');
     return;
   }
+  if (!(await requireLibraryReachable(res))) return;
 
   const header = getLocalFitsHeader(decodeURIComponent(filePath));
   if (!header) {
@@ -1064,6 +1101,7 @@ router.get('/download/objects/:objectId', async (req: Request, res: Response) =>
   const sessionDate = queryString(req.query.date);
 
   try {
+    if (!(await requireLibraryReachable(res))) return;
     let files = getLocalFiles(decodeURIComponent(objectId), sessionDate);
 
     // Exclude thumbnails
@@ -1355,7 +1393,7 @@ const manualUpload = multer({
 });
 
 router.post('/manual-observations', requireAdmin, manualUpload.single('image'), (req: Request, res: Response) => {
-  const { objectName, date, notes } = req.body || {};
+  const { objectName, date, notes, telescopeId } = req.body || {};
 
   if (!objectName || typeof objectName !== 'string' || !objectName.trim()) {
     res.apiError(400, 'MISSING_OBJECT', 'objectName is required');
@@ -1385,7 +1423,8 @@ router.post('/manual-observations', requireAdmin, manualUpload.single('image'), 
     objectName.trim(), date,
   );
   try {
-    const result = createManualObservation(objectName.trim(), date, imageBuffer, imageExt);
+    const telescopeIdValue = typeof telescopeId === 'string' && telescopeId.trim() ? telescopeId.trim() : null;
+    const result = createManualObservation(objectName.trim(), date, imageBuffer, imageExt, telescopeIdValue);
     invalidateAllImagesCache();
 
     // Persist notes if provided
@@ -1418,7 +1457,8 @@ router.post('/manual-observations', requireAdmin, manualUpload.single('image'), 
  * the case where a telescope observation image was set as the fallback
  * before the Caldwell/catalog prefetch ran.
  */
-router.get('/objects/:objectId/gallery-image', (req: Request, res: Response) => {
+router.get('/objects/:objectId/gallery-image', async (req: Request, res: Response) => {
+  if (!(await requireLibraryReachable(res))) return;
   const objectId = decodeURIComponent(String(req.params.objectId));
   const catalogId = normalizeCatalogId(objectId);
   const row = getGalleryImageRow(objectId);
@@ -1675,8 +1715,9 @@ router.delete('/objects/:objectId/sessions/:date/processed-images/:id', requireA
 });
 
 /** Serve a processed image file by id. */
-router.get('/processed-images/:id', (req: Request, res: Response) => {
+router.get('/processed-images/:id', async (req: Request, res: Response) => {
   const id = String(req.params.id);
+  if (!(await requireLibraryReachable(res))) return;
   const file = getProcessedImageFile(id);
   if (!file) {
     res.status(404).send('Not found');
@@ -1698,9 +1739,10 @@ router.get('/objects/:objectId/processed-images', (req: Request, res: Response) 
 });
 
 /** List all stacked/image JPGs across all sessions for this object. */
-router.get('/objects/:objectId/stacked-images', (req: Request, res: Response) => {
+router.get('/objects/:objectId/stacked-images', async (req: Request, res: Response) => {
   const objectId = decodeURIComponent(String(req.params.objectId));
   try {
+    if (!(await requireLibraryReachable(res))) return;
     const images = getStackedImages(objectId);
     res.apiSuccess(images);
   } catch (err) {
@@ -1770,8 +1812,9 @@ router.delete('/images/favorite', (req: Request, res: Response) => {
   }
 });
 
-router.get('/all-images', (req: Request, res: Response) => {
+router.get('/all-images', async (req: Request, res: Response) => {
   try {
+    if (!(await requireLibraryReachable(res))) return;
     // Parse pagination params. Invalid values (non-numeric, out of range) fall
     // through to the helper which clamps rather than 4xx — see contract above.
     const parsed = AllImagesQuerySchema.safeParse(req.query);

@@ -168,12 +168,14 @@ export async function createManualObservation(params: {
   date: string;
   notes?: string;
   image?: File | null;
+  telescopeId?: string;
 }): Promise<{ objectId: string; date: string }> {
   const formData = new FormData();
   formData.append('objectName', params.objectName);
   formData.append('date', params.date);
   if (params.notes) formData.append('notes', params.notes);
   if (params.image) formData.append('image', params.image, params.image.name);
+  if (params.telescopeId) formData.append('telescopeId', params.telescopeId);
 
   const res = await fetch(`${BASE}/library/manual-observations`, { method: 'POST', headers: authHeaders(), body: formData });
   if (!res.ok) {
@@ -248,6 +250,9 @@ export interface ImportCommitPlan {
   importSubFrames?: boolean;
   /** Override the importFits app setting for this run. */
   importFits?: boolean;
+  /** Telescope to tag every session created by this import with, or null to
+   *  leave sessions untagged. */
+  telescopeId?: string | null;
 }
 
 /** Phase 1: scan a server-readable folder and return the import plan. */

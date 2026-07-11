@@ -17,6 +17,7 @@
  * band, the first 10° east of North starts at index SKY_MAP_BANDS, and so on.
  */
 import { altAz } from './altaz';
+import { formatHm } from './timeFormat';
 
 export const SKY_MAP_AZ_SLICES = 36;
 export const SKY_MAP_BANDS = 8;
@@ -93,6 +94,9 @@ export function checkBlockVisibility(
   end: Date,
   map: VisibleSkyMap | null | undefined,
   stepMinutes = 5,
+  /** Observer's IANA timezone, used to render the reason string's time-of-day
+   *  in the observer's local time rather than the viewing device's. */
+  timeZone?: string,
 ): BlockVisibilityResult {
   const stepMs = Math.max(1, stepMinutes) * 60 * 1000;
   let visible = 0;
@@ -135,7 +139,7 @@ export function checkBlockVisibility(
   if (firstBlockedAt) {
     const compass = compassFromAzimuth(firstBlockedAz);
     const altLabel = firstBlockedAlt < 0 ? 'below horizon' : `${Math.round(firstBlockedAlt)}°`;
-    reason = `Outside your viewable sky to the ${compass} (${altLabel}) from ${formatHm(firstBlockedAt)}`;
+    reason = `Outside your viewable sky to the ${compass} (${altLabel}) from ${formatHm(firstBlockedAt, timeZone)}`;
   }
   return { verdict, fractionVisible, firstBlockedAt, reason, minAlt, maxAlt };
 }
@@ -165,10 +169,4 @@ function compassFromAzimuth(az: number): string {
   const labels = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
   const i = Math.round(az360 / 22.5) % 16;
   return labels[i];
-}
-
-function formatHm(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
 }

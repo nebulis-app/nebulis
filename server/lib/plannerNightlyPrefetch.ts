@@ -118,7 +118,7 @@ async function runNightlyTasks(): Promise<void> {
 
   if (settings.nightlyHousekeepingEnabled) {
     try {
-      purgeJunkFiles();
+      await purgeJunkFiles();
       purgeStaleImportTmp();
       updateSettingsData({ nightlyHousekeepingLastRun: Date.now() });
       console.log('[nightly] Library housekeeping complete');

@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   HardDrive, FolderOpen, ChevronRight, ArrowUp, Check,
-  AlertTriangle, Loader2, RefreshCw, Plug,
+  AlertTriangle, Loader2, RefreshCw, Plug, Server, ShieldCheck,
 } from 'lucide-react';
 import {
   getLibraryLocation, listVolumes, browseDirectory,
-  startLibraryMigration,
-  type VolumeInfo, type DirectoryEntry, type MigrationStatus,
+  startLibraryMigration, startNetworkLibraryMigration, testNetworkLibraryConnection,
+  type VolumeInfo, type DirectoryEntry, type MigrationStatus, type LibraryLocation, type NetworkLibraryConfig,
 } from '../../lib/api/storage';
 import { getCardClass, getInputClass } from './SettingsUI';
 import { formatBytes } from '../../lib/utils';
@@ -79,13 +79,18 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
             <div className={`text-sm font-mono mt-1 break-all ${body}`}>
               {location?.path ?? 'Loading...'}
             </div>
+            {location?.locationType === 'network' && location.network.host && (
+              <div className={`text-xs font-mono mt-0.5 truncate ${sub}`}>
+                {location.network.host}/{location.network.share}
+              </div>
+            )}
             <div className="flex items-center gap-2 mt-2">
               <span className={`text-xs px-2 py-0.5 rounded-full ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-                {location?.isDefault ? 'Default location' : 'Custom drive'}
+                {location?.isDefault ? 'Default location' : location?.locationType === 'network' ? 'Network share' : 'Custom drive'}
               </span>
               {location && !location.available && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-500 inline-flex items-center gap-1">
-                  <Plug className="w-3 h-3" /> Drive not connected
+                  <Plug className="w-3 h-3" /> {location.locationType === 'network' ? 'Share not connected' : 'Drive not connected'}
                 </span>
               )}
             </div>
@@ -108,8 +113,9 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
           <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
             <Plug className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
             <p className={`text-xs leading-relaxed ${body}`}>
-              Your library drive is not connected, so imports are paused and stored images cannot be opened.
-              Reconnect the drive to continue. Nothing was lost.
+              {location.locationType === 'network'
+                ? 'Your library share is not reachable, so imports are paused and stored images cannot be opened. Check the server is online and try again. Nothing was lost.'
+                : 'Your library drive is not connected, so imports are paused and stored images cannot be opened. Reconnect the drive to continue. Nothing was lost.'}
             </p>
           </div>
         )}
@@ -153,6 +159,7 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
       {modalOpen && (
         <ChangeLocationModal
           isDark={isDark}
+          location={location}
           onClose={() => setModalOpen(false)}
           onStarted={() => {
             setModalOpen(false);
@@ -200,12 +207,14 @@ function MigrationProgress({ migration, isDark }: { migration: MigrationStatus; 
 }
 
 export function ChangeLocationModal({
-  isDark, onClose, onStarted,
+  isDark, location, onClose, onStarted,
 }: {
   isDark: boolean;
+  location: LibraryLocation | undefined;
   onClose: () => void;
   onStarted: () => void;
 }) {
+  const [tab, setTab] = useState<'drive' | 'network'>('drive');
   const [volume, setVolume] = useState<VolumeInfo | null>(null);
   const [browsePath, setBrowsePath] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState('Nebulis');
@@ -215,12 +224,13 @@ export function ChangeLocationModal({
   const { data: volumesData, isLoading: volumesLoading, refetch: refetchVolumes } = useQuery({
     queryKey: ['storage-volumes'],
     queryFn: listVolumes,
+    enabled: tab === 'drive',
   });
 
   const { data: browseData } = useQuery({
     queryKey: ['storage-browse', browsePath],
     queryFn: () => browseDirectory(browsePath as string),
-    enabled: !!browsePath,
+    enabled: tab === 'drive' && !!browsePath,
   });
 
   const heading = isDark ? 'text-white' : 'text-slate-800';
@@ -259,6 +269,7 @@ export function ChangeLocationModal({
 
   const atVolumeRoot = volume ? browsePath === volume.path : true;
   const canGoUp = !!volume && !atVolumeRoot;
+  const showTabs = !!location?.networkLibrarySupported;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
@@ -267,12 +278,51 @@ export function ChangeLocationModal({
         onClick={e => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-slate-500/10">
-          <h3 className={`font-display text-lg font-semibold ${heading}`}>Move library to a new drive</h3>
+          <h3 className={`font-display text-lg font-semibold ${heading}`}>Move library to a new location</h3>
           <p className={`text-xs mt-0.5 ${sub}`}>
-            Pick a connected drive and an empty folder. Your files are copied, never deleted.
+            Pick a connected drive or a network share. Your files are copied, never deleted.
           </p>
+          {showTabs && (
+            <div className={`flex gap-1 mt-3 p-1 rounded-lg w-fit ${isDark ? 'bg-slate-800/60' : 'bg-slate-100'}`}>
+              <button
+                type="button"
+                onClick={() => { setTab('drive'); setError(''); }}
+                className={`text-xs font-medium px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 ${
+                  tab === 'drive'
+                    ? isDark ? 'bg-slate-700 text-white' : 'bg-white text-slate-800 shadow-sm'
+                    : sub
+                }`}
+              >
+                <HardDrive className="w-3.5 h-3.5" /> Drive
+              </button>
+              <button
+                type="button"
+                onClick={() => { setTab('network'); setError(''); }}
+                className={`text-xs font-medium px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 ${
+                  tab === 'network'
+                    ? isDark ? 'bg-slate-700 text-white' : 'bg-white text-slate-800 shadow-sm'
+                    : sub
+                }`}
+              >
+                <Server className="w-3.5 h-3.5" /> Network share
+              </button>
+            </div>
+          )}
         </div>
 
+        {tab === 'network' && showTabs ? (
+          <NetworkShareForm
+            isDark={isDark}
+            location={location}
+            starting={starting}
+            setStarting={setStarting}
+            error={error}
+            setError={setError}
+            onClose={onClose}
+            onStarted={onStarted}
+          />
+        ) : (
+        <>
         <div className="px-5 py-4 overflow-y-auto space-y-4">
           {/* Volumes */}
           <div>
@@ -409,7 +459,215 @@ export function ChangeLocationModal({
             </button>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
+  );
+}
+
+const DEFAULT_NETWORK_CONFIG: NetworkLibraryConfig = {
+  host: '', share: '', domain: '', username: '', password: '', subpath: 'Nebulis',
+};
+
+function NetworkShareForm({
+  isDark, location, starting, setStarting, error, setError, onClose, onStarted,
+}: {
+  isDark: boolean;
+  location: LibraryLocation | undefined;
+  starting: boolean;
+  setStarting: (v: boolean) => void;
+  error: string;
+  setError: (v: string) => void;
+  onClose: () => void;
+  onStarted: () => void;
+}) {
+  const [cfg, setCfg] = useState<NetworkLibraryConfig>(() => ({
+    ...DEFAULT_NETWORK_CONFIG,
+    ...(location?.network ?? {}),
+    password: '',
+  }));
+  const [showDomain, setShowDomain] = useState(!!location?.network.domain);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; reason?: string } | null>(null);
+
+  const body = isDark ? 'text-slate-300' : 'text-slate-600';
+  const sub = isDark ? 'text-slate-500' : 'text-slate-400';
+
+  function update(field: keyof NetworkLibraryConfig, value: string) {
+    setCfg(c => ({ ...c, [field]: value }));
+    setTestResult(null);
+    setError('');
+  }
+
+  const canSubmit = cfg.host.trim().length > 0 && cfg.share.trim().length > 0;
+
+  async function handleTest() {
+    if (!canSubmit) return;
+    setTesting(true);
+    setTestResult(null);
+    setError('');
+    try {
+      const result = await testNetworkLibraryConnection(cfg);
+      setTestResult(result);
+    } catch (err) {
+      setTestResult({ ok: false, reason: err instanceof Error ? err.message : 'Could not test the connection' });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function handleStart() {
+    if (!canSubmit) return;
+    setStarting(true);
+    setError('');
+    try {
+      await startNetworkLibraryMigration(cfg);
+      onStarted();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start the move');
+      setStarting(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="px-5 py-4 overflow-y-auto space-y-3.5">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={`block text-xs font-medium uppercase tracking-wide mb-1.5 ${sub}`}>Server address</label>
+            <input
+              value={cfg.host}
+              onChange={e => update('host', e.target.value)}
+              placeholder="nas.local or 192.168.1.20"
+              className={`${getInputClass(isDark)} w-full`}
+            />
+          </div>
+          <div>
+            <label className={`block text-xs font-medium uppercase tracking-wide mb-1.5 ${sub}`}>Share name</label>
+            <input
+              value={cfg.share}
+              onChange={e => update('share', e.target.value)}
+              placeholder="Photos"
+              className={`${getInputClass(isDark)} w-full`}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className={`block text-xs font-medium uppercase tracking-wide mb-1.5 ${sub}`}>Folder on the share</label>
+          <input
+            value={cfg.subpath}
+            onChange={e => update('subpath', e.target.value)}
+            placeholder="Nebulis"
+            className={`${getInputClass(isDark)} w-full`}
+          />
+          <p className={`text-xs mt-1 ${sub}`}>Created automatically if it does not exist.</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={`block text-xs font-medium uppercase tracking-wide mb-1.5 ${sub}`}>Username</label>
+            <input
+              value={cfg.username}
+              onChange={e => update('username', e.target.value)}
+              placeholder="Leave blank for guest access"
+              className={`${getInputClass(isDark)} w-full`}
+            />
+          </div>
+          <div>
+            <label className={`block text-xs font-medium uppercase tracking-wide mb-1.5 ${sub}`}>Password</label>
+            <input
+              type="password"
+              value={cfg.password}
+              onChange={e => update('password', e.target.value)}
+              className={`${getInputClass(isDark)} w-full`}
+            />
+          </div>
+        </div>
+
+        {showDomain ? (
+          <div>
+            <label className={`block text-xs font-medium uppercase tracking-wide mb-1.5 ${sub}`}>Domain (optional)</label>
+            <input
+              value={cfg.domain}
+              onChange={e => update('domain', e.target.value)}
+              placeholder="WORKGROUP"
+              className={`${getInputClass(isDark)} w-full`}
+            />
+          </div>
+        ) : (
+          <button type="button" onClick={() => setShowDomain(true)} className={`text-xs font-medium ${sub} hover:opacity-80`}>
+            + Add a domain
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={handleTest}
+          disabled={!canSubmit || testing}
+          className={`text-sm font-medium px-3.5 py-2 rounded-lg inline-flex items-center gap-1.5 ${
+            !canSubmit || testing
+              ? 'opacity-50 cursor-not-allowed bg-slate-500/10 text-slate-400'
+              : isDark ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+          }`}
+        >
+          {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+          Test connection
+        </button>
+
+        {testResult && (
+          <div className={`flex items-start gap-2.5 p-3 rounded-xl border ${
+            testResult.ok
+              ? 'bg-emerald-500/10 border-emerald-500/20'
+              : 'bg-red-500/10 border-red-500/20'
+          }`}>
+            {testResult.ok
+              ? <Check className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+              : <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />}
+            <p className={`text-xs leading-relaxed ${body}`}>
+              {testResult.ok ? 'Connected successfully.' : testResult.reason}
+            </p>
+          </div>
+        )}
+
+        {error && (
+          <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+            <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+            <p className={`text-xs ${body}`}>{error}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="px-5 py-4 border-t border-slate-500/10 flex items-center justify-between gap-3">
+        <span className={`text-xs truncate ${sub}`}>
+          {canSubmit
+            ? <>Move to <span className="font-mono">\\{cfg.host}\{cfg.share}\{cfg.subpath}</span></>
+            : 'Enter a server address and share name'}
+        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className={`text-sm font-medium px-3.5 py-2 rounded-lg ${isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!canSubmit || starting}
+            onClick={handleStart}
+            className={`text-sm font-medium px-3.5 py-2 rounded-lg inline-flex items-center gap-1.5 ${
+              !canSubmit || starting
+                ? 'opacity-50 cursor-not-allowed bg-slate-500/10 text-slate-400'
+                : 'bg-accent-500 text-white hover:bg-accent-600'
+            }`}
+          >
+            {starting && <Loader2 className="w-4 h-4 animate-spin" />}
+            Move library here
+          </button>
+        </div>
+      </div>
+    </>
   );
 }

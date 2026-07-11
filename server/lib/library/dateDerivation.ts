@@ -19,6 +19,17 @@
  * SeeStar/Dwarf files (it slices YYYYMMDD straight out of the filename), so an
  * imported library groups the same way the rest of the app does. When a night
  * crosses midnight and gets split, the review step lets the user merge it.
+ *
+ * Filename beats FITS DATE-OBS (see deriveFileDate below) rather than the
+ * other way around: DATE-OBS is always UTC (see the note in
+ * satelliteTracker.ts), while SeeStar/Dwarf filenames encode the *local*
+ * capture time — and the live SMB/USB import path (runImport in import.ts)
+ * derives its session date from the filename/session-folder only; it never
+ * reads DATE-OBS at all. Trusting FITS first here meant a file with a
+ * filename-derived local date could get re-dated (and renamed, per
+ * importNaming.ts) to a different UTC calendar date by the folder wizard,
+ * which then collides with the same physical capture arriving later via a
+ * direct telescope sync — two different on-disk names for one file.
  */
 import fs from 'fs';
 import { parseFitsHeader } from '../fitsParser.js';
@@ -26,8 +37,9 @@ import { parseFilename } from '../telescopeFiles.js';
 import { exifDateFromFile } from '../exifDate.js';
 
 /** Where a file's session date came from, in priority order. Drives the
- *  confidence badge in the review UI: 'fits' is authoritative, 'mtime' is a
- *  last-resort guess, 'none' means the file lands in the unsorted tray. */
+ *  confidence badge in the review UI: 'fits' and 'filename' are both
+ *  high-confidence (see confidenceForSource), 'mtime' is a last-resort guess,
+ *  'none' means the file lands in the unsorted tray. */
 export type DateSource = 'fits' | 'filename' | 'folder' | 'mtime' | 'none';
 
 export interface DerivedDate {
@@ -161,7 +173,13 @@ export interface DeriveOptions {
 
 /**
  * Derive a session date for one file, walking the priority chain:
- *   FITS DATE-OBS  →  filename timestamp  →  date in folder path  →  mtime.
+ *   filename timestamp  →  FITS DATE-OBS  →  date in folder path  →  mtime.
+ *
+ * Filename comes first (see the module doc comment for why): it already
+ * carries the local capture date on any SeeStar/Dwarf file, matching the live
+ * import path. FITS DATE-OBS — UTC, per the FITS standard — is only consulted
+ * when the filename itself carries no date, e.g. an unmodified NINA/SGP
+ * export or a raw "light_001.fits".
  *
  * `relPath` is the path of the file relative to its object folder (used for
  * the folder-name heuristic). `stat` is passed in so callers that already
@@ -176,15 +194,15 @@ export function deriveFileDate(
   const fileName = relPath.replace(/\\/g, '/').split('/').pop() ?? relPath;
   const ext = fileName.slice(fileName.lastIndexOf('.')).toLowerCase();
 
-  if (FITS_EXTENSIONS.has(ext)) {
-    const fromFits = deriveFromFits(absPath);
-    if (fromFits) return fromFits;
-  }
-
   const parsed = parseFilename(fileName);
   if (parsed.date) {
     const time = parsed.timestamp ? parsed.timestamp.slice(9, 15) : null;
     return { date: parsed.date, source: 'filename', time };
+  }
+
+  if (FITS_EXTENSIONS.has(ext)) {
+    const fromFits = deriveFromFits(absPath);
+    if (fromFits) return fromFits;
   }
 
   const fromPath = deriveFromPath(relPath);

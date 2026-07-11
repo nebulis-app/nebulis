@@ -7,7 +7,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { getLibraryDir } from '../libraryPath.js';
+import { getLibraryDir, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../libraryPath.js';
 import db from '../db.js';
 import { getSettingsData } from '../telescopes.js';
 import {
@@ -1188,7 +1188,7 @@ export function getLocalThumbnail(objectId: string): Buffer | null {
   return null;
 }
 
-export function getLocalFile(relativePath: string): { data: Buffer; name: string } | null {
+export async function getLocalFile(relativePath: string): Promise<{ data: Buffer; name: string } | null> {
   const LIBRARY_DIR = getLibraryDir();
   // Resolve to an absolute path and confirm it stays inside the library root.
   // path.normalize + ".." check is insufficient — absolute paths like /etc/passwd
@@ -1200,10 +1200,13 @@ export function getLocalFile(relativePath: string): { data: Buffer; name: string
   const filename = path.basename(fullPath);
   if (!isRealFile(filename)) return null;
 
-  if (!fs.existsSync(fullPath)) return null;
-
+  // Async + timeout-bounded (rather than fs.existsSync/readFileSync) since this
+  // serves the /file route directly: a stale network-mounted library would
+  // otherwise block the whole event loop for as long as the OS's SMB client
+  // takes to give up, on every raw file view/download.
   try {
-    return { data: fs.readFileSync(fullPath), name: filename };
+    const data = await withTimeout(fs.promises.readFile(fullPath), LIBRARY_IO_TIMEOUT_MS);
+    return { data, name: filename };
   } catch {
     return null;
   }

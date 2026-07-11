@@ -23,6 +23,7 @@
  */
 import SunCalc from 'suncalc';
 import { altAz } from './altaz';
+import { formatHm } from './timeFormat';
 
 export type MoonVerdict = 'ok' | 'caution' | 'warning';
 
@@ -95,6 +96,9 @@ export function checkMoonProximity(
   end: Date,
   illumPercent: number,
   stepMinutes = 5,
+  /** Observer's IANA timezone, used to render the reason string's time-of-day
+   *  in the observer's local time rather than the viewing device's. */
+  timeZone?: string,
 ): MoonProximityResult {
   const threshold = moonThresholdForIllumination(illumPercent);
   const stepMs = Math.max(1, stepMinutes) * 60_000;
@@ -130,13 +134,7 @@ export function checkMoonProximity(
   const reason =
     verdict === 'ok'
       ? ''
-      : `Moon ${Math.round(minSep)}° away at ${formatHm(worstAt!)} (recommended ≥ ${Math.round(threshold)}° at ${Math.round(illumPercent)}% illumination)`;
+      : `Moon ${Math.round(minSep)}° away at ${formatHm(worstAt!, timeZone)} (recommended ≥ ${Math.round(threshold)}° at ${Math.round(illumPercent)}% illumination)`;
 
   return { verdict, minSeparation: minSep, threshold, worstAt, moonAltAtWorst, reason };
-}
-
-function formatHm(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
 }

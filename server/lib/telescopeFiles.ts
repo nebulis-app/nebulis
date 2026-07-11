@@ -229,7 +229,7 @@ export function parseFilename(filename: string): ParsedFilename {
     // Any unrecognized .fit/.fits file is a raw sub-frame — stacked FITS always
     // start with "Stacked_" and are caught above, so anything reaching here is a
     // raw individual exposure from older firmware or non-standard naming.
-    const isFits = ext === '.fit' || ext === '.fits';
+    const isFits = ext === '.fit' || ext === '.fits' || ext === '.fts';
     return {
       type: ext === '.avi' ? 'video' : isThumbnail ? 'thumbnail' : isFits ? 'sub' : 'other',
       target,
@@ -373,13 +373,13 @@ export function normalizeObjectId(folderName: string): string {
 export function getFileCategory(name: string): 'image' | 'fits' | 'video' | 'thumbnail' | 'other' {
   const lower = name.toLowerCase();
   if (lower.includes('_thn.')) return 'thumbnail';
-  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png')) return 'image';
-  if (lower.endsWith('.fit') || lower.endsWith('.fits')) return 'fits';
-  if (lower.endsWith('.avi') || lower.endsWith('.mp4')) return 'video';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png') || lower.endsWith('.tif') || lower.endsWith('.tiff')) return 'image';
+  if (lower.endsWith('.fit') || lower.endsWith('.fits') || lower.endsWith('.fts')) return 'fits';
+  if (lower.endsWith('.avi') || lower.endsWith('.mp4') || lower.endsWith('.mov')) return 'video';
   return 'other';
 }
 
-const REAL_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.tif', '.tiff', '.fit', '.fits', '.avi', '.mp4']);
+const REAL_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.tif', '.tiff', '.fit', '.fits', '.fts', '.avi', '.mp4', '.mov']);
 
 /**
  * Returns true only for real image/data files.

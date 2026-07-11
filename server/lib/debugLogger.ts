@@ -14,7 +14,8 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { LOGS_DIR } from './paths.js';
-import { log } from './logger.js';
+import { log, setDebugTeeTarget, writeDebugLine } from './logger.js';
+import { requestContext } from './requestContext.js';
 
 const DEBUG_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -41,6 +42,7 @@ let state: DebugLogState = {
 };
 
 let expiryTimer: NodeJS.Timeout | null = null;
+let previousLogLevel: string | null = null;
 
 export function enableDebugLogging(ctx?: DebugContext): DebugLogState {
   if (expiryTimer) {
@@ -116,6 +118,14 @@ export function enableDebugLogging(ctx?: DebugContext): DebugLogState {
     logPath,
   };
 
+  // Tee every pino line (including debug-level) into the capture file, and
+  // drop the logger's own level to 'debug' so those lines actually get
+  // produced. stdout/server.log stay at their configured level since the
+  // tee stream is the only one registered at 'trace' — see logger.ts.
+  previousLogLevel = log.level;
+  log.level = 'debug';
+  setDebugTeeTarget(logPath);
+
   log.info(
     {
       logPath,
@@ -152,7 +162,12 @@ export function disableDebugLogging(): DebugLogState {
       );
     } catch { /* best-effort */ }
   }
-  console.log('[debug-logging] Disabled');
+  setDebugTeeTarget(null);
+  if (previousLogLevel) {
+    log.level = previousLogLevel;
+    previousLogLevel = null;
+  }
+  log.info('[debug-logging] disabled');
   state = { ...state, enabled: false, expiresAt: null };
   return { ...state };
 }
@@ -170,14 +185,19 @@ export function getDebugLogStatus(): DebugLogState & { minutesRemaining: number;
 export function debugLog(category: string, message: string): void {
   if (!state.enabled || !state.logPath) return;
   const ts = new Date().toISOString().replace('T', ' ').slice(0, 23) + ' UTC';
-  const line = `${ts}  [${category}]  ${message}`;
-  try {
-    fs.appendFileSync(state.logPath, line + '\n', 'utf8');
-  } catch { /* best-effort */ }
+  const requestId = requestContext.getStore()?.requestId;
+  const reqPart = requestId ? ` [req:${requestId.slice(0, 8)}]` : '';
+  const line = `${ts}  [${category}]${reqPart}  ${message}`;
+  writeDebugLine(line + '\n');
   console.log(`[debug:${category}] ${message}`);
 }
 
 /** Returns the log file path if it exists, otherwise null. */
 export function getDebugLogPath(): string | null {
   return state.logPath && fs.existsSync(state.logPath) ? state.logPath : null;
+}
+
+/** Cheap boolean check for hot paths that want to skip building a debugLog() message when capture is off. */
+export function isDebugLoggingEnabled(): boolean {
+  return state.enabled;
 }

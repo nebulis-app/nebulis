@@ -136,13 +136,6 @@ for (const { host, label } of targets) {
             r.hostname ?? '(omitted — Docker or unnamed host)'),
     ].every(Boolean);
 
-    if (r.httpsUrl || r.httpsPort) {
-      check('httpsUrl starts with https://', r.httpsUrl?.startsWith('https://'), r.httpsUrl);
-      check('httpsPort is a number',         typeof r.httpsPort === 'number',     String(r.httpsPort));
-    } else {
-      console.log('  -  httpsUrl/httpsPort absent (Caddy not running — expected in dev)');
-    }
-
     if (!pass) allPassed = false;
     allReplies.push({ from, response: r });
     console.log('');
@@ -155,7 +148,7 @@ if (allReplies.length > 0) {
   for (const { from, response: r } of allReplies) {
     const ip = from.split(':')[0];
     const hostname = r.hostname ?? '(unnamed)';
-    const url = r.httpsUrl ?? r.url ?? '(no url)';
+    const url = r.url ?? '(no url)';
     const version = r.version ?? '(unknown)';
     console.log(`  ${ip}  ${hostname}  ${url}  v${version}`);
   }

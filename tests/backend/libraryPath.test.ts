@@ -35,8 +35,8 @@ afterAll(() => {
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
 });
 
-beforeEach(() => {
-  setLibraryPath(''); // reset to default between tests
+beforeEach(async () => {
+  await setLibraryPath(''); // reset to default between tests
 });
 
 describe('libraryPath resolution', () => {
@@ -46,15 +46,15 @@ describe('libraryPath resolution', () => {
     expect(getDefaultLibraryDir()).toBe(path.join(TEST_DATA_DIR, 'library'));
   });
 
-  it('returns the configured path once set', () => {
+  it('returns the configured path once set', async () => {
     const relocated = path.join(TEST_DATA_DIR, 'relocated');
-    setLibraryPath(relocated);
+    await setLibraryPath(relocated);
     expect(isDefaultLocation()).toBe(false);
     expect(getLibraryDir()).toBe(relocated);
   });
 
-  it('treats an empty configured path as default', () => {
-    setLibraryPath('   ');
+  it('treats an empty configured path as default', async () => {
+    await setLibraryPath('   ');
     expect(isDefaultLocation()).toBe(true);
     expect(getLibraryDir()).toBe(getDefaultLibraryDir());
   });
@@ -83,46 +83,46 @@ describe('marker file', () => {
 });
 
 describe('isLibraryAvailable', () => {
-  it('is always available at the default location', () => {
-    setLibraryPath('');
-    expect(isLibraryAvailable()).toBe(true);
+  it('is always available at the default location', async () => {
+    await setLibraryPath('');
+    expect(await isLibraryAvailable()).toBe(true);
   });
 
-  it('is unavailable when the relocated dir does not exist', () => {
-    setLibraryPath(path.join(TEST_DATA_DIR, 'does-not-exist'));
-    expect(isLibraryAvailable()).toBe(false);
+  it('is unavailable when the relocated dir does not exist', async () => {
+    await setLibraryPath(path.join(TEST_DATA_DIR, 'does-not-exist'));
+    expect(await isLibraryAvailable()).toBe(false);
   });
 
-  it('is unavailable when the relocated dir has no marker', () => {
+  it('is unavailable when the relocated dir has no marker', async () => {
     const dir = fs.mkdtempSync(path.join(TEST_DATA_DIR, 'unmarked-'));
-    setLibraryPath(dir);
-    expect(isLibraryAvailable()).toBe(false);
+    await setLibraryPath(dir);
+    expect(await isLibraryAvailable()).toBe(false);
   });
 
-  it('is unavailable when the marker is for a different library', () => {
+  it('is unavailable when the marker is for a different library', async () => {
     const dir = fs.mkdtempSync(path.join(TEST_DATA_DIR, 'foreign-'));
     writeMarker(dir, 'some-other-library-id');
-    setLibraryPath(dir);
-    expect(isLibraryAvailable()).toBe(false);
+    await setLibraryPath(dir);
+    expect(await isLibraryAvailable()).toBe(false);
   });
 
-  it('is available when the relocated dir has our matching marker', () => {
+  it('is available when the relocated dir has our matching marker', async () => {
     const dir = fs.mkdtempSync(path.join(TEST_DATA_DIR, 'ours-'));
     writeMarker(dir, getLibraryId());
-    setLibraryPath(dir);
-    expect(isLibraryAvailable()).toBe(true);
+    await setLibraryPath(dir);
+    expect(await isLibraryAvailable()).toBe(true);
   });
 });
 
 describe('ensureLibraryDir', () => {
-  it('creates the default directory on demand', () => {
-    setLibraryPath('');
-    const dir = ensureLibraryDir();
+  it('creates the default directory on demand', async () => {
+    await setLibraryPath('');
+    const dir = await ensureLibraryDir();
     expect(fs.existsSync(dir)).toBe(true);
   });
 
-  it('throws LibraryUnavailableError when the relocated drive is missing', () => {
-    setLibraryPath(path.join(TEST_DATA_DIR, 'missing-drive', 'lib'));
-    expect(() => ensureLibraryDir()).toThrow(LibraryUnavailableError);
+  it('throws LibraryUnavailableError when the relocated drive is missing', async () => {
+    await setLibraryPath(path.join(TEST_DATA_DIR, 'missing-drive', 'lib'));
+    await expect(ensureLibraryDir()).rejects.toThrow(LibraryUnavailableError);
   });
 });

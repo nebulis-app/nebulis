@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { X, FolderOpen, RotateCw, CheckCircle2 } from 'lucide-react';
 import { uploadFolderTemp } from '../lib/api/library';
+import { listTelescopes } from '../lib/api/telescopes';
 import { useTheme } from '../hooks/useTheme';
 import { Modal } from './ui/Modal';
 import { CloseConfirm } from './ui/CloseConfirm';
@@ -77,7 +79,7 @@ type Phase = 'idle' | 'staging' | 'uploading' | 'done';
 
 export function ImportModal({ onClose, onReview }: {
   onClose: () => void;
-  onReview: (folderPath: string, includeSubframes: boolean, includeFits: boolean) => void;
+  onReview: (folderPath: string, includeSubframes: boolean, includeFits: boolean, telescopeId: string | null) => void;
 }) {
   const { isDark } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -88,7 +90,17 @@ export function ImportModal({ onClose, onReview }: {
   const [error, setError] = useState<string | null>(null);
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [includeSubframes, setIncludeSubframes] = useState(false);
-  const [includeFits, setIncludeFits] = useState(true);
+  // FITS files (stacked and raw) are always imported; only subframes are optional.
+  const includeFits = true;
+
+  const [telescopeId, setTelescopeId] = useState('');
+
+  const { data: telescopes } = useQuery({
+    queryKey: ['telescopes'],
+    queryFn: listTelescopes,
+    staleTime: 30_000,
+  });
+  const activeTelescopes = (telescopes ?? []).filter(t => !t.archivedAt);
 
   const isDirty = phase === 'staging' || phase === 'uploading';
 
@@ -99,10 +111,12 @@ export function ImportModal({ onClose, onReview }: {
 
   function acceptFiles(files: PickedFile[]) {
     const stripped = stripTopFolder(files);
-    // Drop failed frames client-side so they never reach the upload.
+    // Drop failed frames client-side so they never reach the upload. Dwarf
+    // marks rejected frames with a "failed_" prefix; anchored so a user's own
+    // file containing "failed" elsewhere in the name isn't silently dropped.
     const filtered = stripped.filter(({ relativePath }) => {
       const basename = relativePath.split('/').pop() ?? '';
-      if (basename.toLowerCase().includes('failed')) return false;
+      if (/^failed_/i.test(basename)) return false;
       const dot = basename.lastIndexOf('.');
       const ext = dot >= 0 ? basename.slice(dot).toLowerCase() : '';
       return ACCEPTED_EXTS.has(ext);
@@ -164,7 +178,7 @@ export function ImportModal({ onClose, onReview }: {
         (sent, total) => setUploadProgress(total > 0 ? Math.round((sent / total) * 100) : 0),
       );
       setPhase('done');
-      onReview(result.tmpPath, includeSubframes, includeFits);
+      onReview(result.tmpPath, includeSubframes, includeFits, telescopeId || null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
       setPhase('staging');
@@ -266,17 +280,7 @@ export function ImportModal({ onClose, onReview }: {
 
         {/* Import toggles — shown before upload */}
         {(phase === 'staging' || phase === 'idle') && (
-          <div className="space-y-2">
-            <label className={`flex items-center gap-2.5 cursor-pointer select-none text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-              <input
-                type="checkbox"
-                checked={includeFits}
-                onChange={e => setIncludeFits(e.target.checked)}
-                className="w-4 h-4 rounded accent-accent-500"
-              />
-              Include FITS files
-              <span className={`text-xs ${mutedText}`}>(stacked and raw)</span>
-            </label>
+          <div className="space-y-4">
             <label className={`flex items-center gap-2.5 cursor-pointer select-none text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
               <input
                 type="checkbox"
@@ -288,6 +292,26 @@ export function ImportModal({ onClose, onReview }: {
               <span className={`text-xs ${mutedText}`}>(individual raw exposures)</span>
             </label>
 
+            <div className="space-y-1.5">
+              <label className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                Captured with
+              </label>
+              <select
+                value={telescopeId}
+                onChange={e => setTelescopeId(e.target.value)}
+                className={`w-full px-3 py-2 rounded-lg border text-sm outline-none transition ${
+                  isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-800'
+                }`}
+              >
+                <option value="">Not sure / mixed sources</option>
+                {activeTelescopes.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <p className={`text-xs ${mutedText}`}>
+                Tags every session from this import with the telescope so it shows up correctly in the calendar.
+              </p>
+            </div>
           </div>
         )}
 

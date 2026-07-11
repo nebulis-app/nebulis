@@ -71,8 +71,19 @@ describe('dateDerivation', () => {
     expect(deriveFromMtime(d)).toEqual({ date: '2024-03-04', source: 'mtime', time: '210509' });
   });
 
-  it('walks the priority chain: FITS DATE-OBS beats the filename date', () => {
+  it('walks the priority chain: filename date beats FITS DATE-OBS', () => {
+    // DATE-OBS is UTC while the filename encodes local capture time (see the
+    // module doc comment), so a capture that rolls the FITS timestamp into
+    // the next UTC day must still group by its filename's local date — the
+    // same date the live SMB/USB import path would have used.
     const file = path.join(tmpDir('chain-'), 'Stacked_10_M42_30.0s_IRCUT_20240115-235000.fits');
+    fs.writeFileSync(file, fitsBuffer({ 'DATE-OBS': '2024-01-16T00:10:00' }));
+    const derived = deriveFileDate(file, path.basename(file), fs.statSync(file));
+    expect(derived).toMatchObject({ date: '2024-01-15', source: 'filename' });
+  });
+
+  it('falls back to FITS DATE-OBS for a FITS file whose name has no date', () => {
+    const file = path.join(tmpDir('chain-'), 'light_001.fits');
     fs.writeFileSync(file, fitsBuffer({ 'DATE-OBS': '2024-01-16T00:10:00' }));
     const derived = deriveFileDate(file, path.basename(file), fs.statSync(file));
     expect(derived).toMatchObject({ date: '2024-01-16', source: 'fits' });

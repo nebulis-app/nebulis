@@ -7,7 +7,10 @@ import { formatBytes } from '../lib/utils';
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '--';
-  const d = new Date(dateStr);
+  // dateStr is a bare YYYY-MM-DD (see server/routes/storage.ts). Anchor at
+  // noon rather than parsing as UTC midnight, which renders as the previous
+  // calendar day for any user west of UTC.
+  const d = new Date(dateStr + 'T12:00:00');
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
@@ -381,6 +384,86 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
           </div>
         )}
       </div>
+
+      {/* ── Library Drive ─────────────────────────────────────────────
+          Shown only when the library has been moved to a separate drive.
+          The Local Server card above covers the boot volume; this reports the
+          external drive the library now lives on. */}
+      {systemStorage?.libraryDisk && (
+        <div className={cardClass + ' p-6 space-y-5'}>
+          <div className="flex items-center gap-3">
+            <div className={`p-2.5 rounded-xl ${isDark ? 'bg-blue-500/10' : 'bg-blue-50'}`}>
+              <HardDrive className="w-5 h-5 text-blue-500" />
+            </div>
+            <div className="flex-1">
+              <h2 className={`font-display text-lg font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>Library Drive</h2>
+              <p className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>External drive holding your relocated library</p>
+            </div>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+              isDark ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700'
+            }`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              Connected
+            </span>
+          </div>
+
+          {/* Disk usage bar */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>
+                <span className="font-semibold">{systemStorage.libraryDisk.usedFormatted}</span> used of{' '}
+                <span className="font-semibold">{systemStorage.libraryDisk.totalFormatted}</span>
+              </span>
+              <span className={`font-mono font-semibold ${
+                systemStorage.libraryDisk.usedPercent >= 90 ? 'text-red-500'
+                : systemStorage.libraryDisk.usedPercent >= 75 ? 'text-yellow-500'
+                : 'text-emerald-500'
+              }`}>
+                {systemStorage.libraryDisk.usedPercent}%
+              </span>
+            </div>
+            <div className={`h-3 rounded-full overflow-hidden ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${
+                  systemStorage.libraryDisk.usedPercent >= 90 ? 'bg-red-500'
+                  : systemStorage.libraryDisk.usedPercent >= 75 ? 'bg-yellow-500'
+                  : 'bg-emerald-500'
+                }`}
+                style={{ width: `${systemStorage.libraryDisk.usedPercent}%` }}
+              />
+            </div>
+            <div className={`flex justify-between text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              <span>{systemStorage.libraryDisk.freeFormatted} free</span>
+              <span>{systemStorage.libraryDisk.totalFormatted} total</span>
+            </div>
+          </div>
+
+          {/* Stat tiles */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className={tileClass}>
+              <p className={tileLabel}>Disk Total</p>
+              <p className={tileValue}>{systemStorage.libraryDisk.totalFormatted}</p>
+            </div>
+            <div className={tileClass}>
+              <p className={tileLabel}>Disk Free</p>
+              <p className={tileValue}>{systemStorage.libraryDisk.freeFormatted}</p>
+            </div>
+            <div className={tileClass}>
+              <p className={tileLabel}>Library Size</p>
+              <p className={tileValue}>{libraryStorage ? formatBytes(libSorted.reduce((s, o) => s + o.size, 0)) : '-'}</p>
+            </div>
+          </div>
+
+          {/* Library path */}
+          <div className={`flex items-center gap-3 p-3 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}>
+            <FolderOpen className="w-4 h-4 text-blue-400 shrink-0" />
+            <div className="min-w-0">
+              <p className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Library location</p>
+              <p className={`text-sm font-mono truncate ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{systemStorage.libraryDisk.path}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── SeeStar Storage ────────────────────────────────────────── */}
       {isSeestar && (

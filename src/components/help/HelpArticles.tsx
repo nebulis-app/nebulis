@@ -29,7 +29,6 @@ const installNebulis: Render = () => (
         ['OS',          'Linux (amd64 / arm64)', 'Windows 10+ 64-bit',     'macOS 12+'],
         ['Bundles Node', 'Yes (in container)',   'Yes (in installer)',     'Yes (in binary)'],
         ['Service mode', 'Container restart',     'Windows service',        'LaunchDaemon'],
-        ['Built-in HTTPS','Yes (Caddy)',          'Optional in wizard',     'Optional via Homebrew'],
         ['Best for',     'NAS, Linux servers',    'A spare Windows PC',     'A Mac mini server'],
       ]}
     />
@@ -52,7 +51,7 @@ const firstAccount: Render = () => (
     </Prose>
 
     <Steps steps={[
-      { title: 'Open Nebulis in your browser', body: 'Use the URL the installer printed at the end: typically http://localhost:8080 or https://your-server:8443.' },
+      { title: 'Open Nebulis in your browser', body: 'Use the URL the installer printed at the end: typically http://localhost:8080.' },
       { title: 'Fill in the onboarding panel', body: 'Email, username, display name, and password. The password is hashed locally; it never leaves the server.' },
       { title: 'You\'re signed in', body: 'The library now requires authentication. Subsequent visitors see a Sign In screen instead of onboarding.' },
       { title: 'Coming back later', body: 'Sessions persist for 30 days on the same browser. After that, sign in again with your username and password.' },
@@ -456,9 +455,8 @@ const compareInstallersArt: Render = () => (
         ['OS',           'Linux (amd64 / arm64)', 'Windows 10+ 64-bit',     'macOS 12 Monterey+'],
         ['Architecture', 'x86-64 or ARM64',        'x86-64 only',           'Apple Silicon or Intel'],
         ['Service mode', 'Container restart',      'Windows service',       'LaunchDaemon'],
-        ['HTTPS (Caddy)','Built-in',               'Optional at install',   'Optional via Homebrew'],
         ['Admin needed', 'Docker access',          'Yes',                   'Yes'],
-        ['Default port', '8443',                   '8080 / 8443',           '8080 / 8443'],
+        ['Default port', '8080',                   '8080',                 '8080'],
       ]}
     />
   </>
@@ -466,7 +464,7 @@ const compareInstallersArt: Render = () => (
 
 const installDockerArt: Render = () => (
   <>
-    <Prose>The Docker image runs on any Linux host, including NAS devices like Synology DSM 7+, QNAP, and Unraid. Caddy is bundled, so iOS devices on your LAN can connect over HTTPS without extra setup.</Prose>
+    <Prose>The Docker image runs on any Linux host, including NAS devices like Synology DSM 7+, QNAP, and Unraid.</Prose>
     <KvTable
       title="System requirements"
       rows={[
@@ -475,14 +473,14 @@ const installDockerArt: Render = () => (
         ['RAM',           '256 MB minimum, 512 MB recommended'],
         ['Disk (image)',  '~600 MB'],
         ['Disk (data)',   'Grows with library. Plan for several GB per season.'],
-        ['Ports',         'TCP 8443 (HTTPS), UDP 47890 (discovery)'],
+        ['Ports',         'TCP 8080 (web UI), UDP 47890 (discovery)'],
       ]}
     />
     <Steps steps={[
       { title: 'Download docker-compose.yml from the releases page' },
       { title: 'Set ADVERTISED_HOST', body: <>Use your server's LAN IP (required for iOS discovery). Containers can't detect the host's external IP themselves.</> },
       { title: 'Start the container', body: <Code>docker compose up -d</Code> },
-      { title: 'Open the URL', body: 'https://your-server-ip:8443. Accept the self-signed certificate warning once.' },
+      { title: 'Open the URL', body: 'http://your-server-ip:8080.' },
     ]} />
   </>
 );
@@ -503,8 +501,7 @@ const installWindowsArt: Render = () => (
     <Steps steps={[
       { title: 'Download nebulis-setup.exe' },
       { title: 'Right-click → Run as administrator' },
-      { title: 'Pick HTTP and HTTPS ports', body: 'Defaults are 8080 / 8443. Only change them if those ports are taken.' },
-      { title: 'Tick "Enable HTTPS with Caddy"', body: 'Recommended for iOS LAN access.' },
+      { title: 'Pick the HTTP port', body: 'Default is 8080. Only change it if that port is taken.' },
       { title: 'Finish. Nebulis opens automatically.' },
     ]} />
     <KvTable

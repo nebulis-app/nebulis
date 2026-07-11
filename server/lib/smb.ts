@@ -20,6 +20,7 @@ import * as posix from './smb.posix.js';
 import * as local from './smb.local.js';
 import { loadSettings } from './smb.shared.js';
 import { ensureSmbReachable } from './smbReachability.js';
+import { debugLog, isDebugLoggingEnabled } from './debugLogger.js';
 import type { TelescopeProfile } from './telescopes.js';
 import type { SmbEntry } from './smb.shared.js';
 
@@ -45,29 +46,71 @@ function isLocal(profile: AnyProfile): boolean {
 // (the backend then surfaces its own "no hostname configured" error).
 async function preflight(profile: AnyProfile): Promise<void> {
   const { hostname } = loadSettings(profile as AnySmbProfile | undefined);
-  if (hostname) await ensureSmbReachable(hostname);
+  if (!hostname) return;
+  try {
+    await ensureSmbReachable(hostname);
+  } catch (err) {
+    if (isDebugLoggingEnabled()) {
+      debugLog('smb', `Preflight failed: ${hostname} not reachable on port 445 — ${err instanceof Error ? err.message : err}`);
+    }
+    throw err;
+  }
+}
+
+// Never include credentials — only host/share identity, which op ran, timing,
+// and outcome (entry/byte count or the error message).
+function connectionLabel(profile: AnyProfile): string {
+  if (isLocal(profile)) return `local:${profile?.localPath ?? '?'}`;
+  const { hostname, shareName } = loadSettings(profile as AnySmbProfile | undefined);
+  return `smb://${hostname ?? '?'}/${shareName ?? '?'}`;
+}
+
+async function withDebugLog<T>(op: string, path: string, profile: AnyProfile, fn: () => Promise<T>, describe?: (result: T) => string): Promise<T> {
+  // Skip building labels/timings entirely when capture is off — this wraps
+  // every telescope I/O call, some of which (directory walks) are hot paths.
+  if (!isDebugLoggingEnabled()) return fn();
+  const start = Date.now();
+  const conn = connectionLabel(profile);
+  try {
+    const result = await fn();
+    const ms = Date.now() - start;
+    debugLog('smb', `${op} ${conn} "${path}" ok in ${ms}ms${describe ? ` — ${describe(result)}` : ''}`);
+    return result;
+  } catch (err) {
+    const ms = Date.now() - start;
+    debugLog('smb', `${op} ${conn} "${path}" FAILED in ${ms}ms — ${err instanceof Error ? err.message : err}`);
+    throw err;
+  }
 }
 
 export async function smbListDir(path: string, profile?: AnyProfile): Promise<SmbEntry[]> {
-  if (isLocal(profile)) return local.localListDir(path, profile as AnyLocalProfile);
-  await preflight(profile);
-  return smbImpl.smbListDir(path, profile as AnySmbProfile | undefined);
+  return withDebugLog('listDir', path, profile, async () => {
+    if (isLocal(profile)) return local.localListDir(path, profile as AnyLocalProfile);
+    await preflight(profile);
+    return smbImpl.smbListDir(path, profile as AnySmbProfile | undefined);
+  }, entries => `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`);
 }
 
 export async function smbGetFile(path: string, maxBytes?: number, profile?: AnyProfile): Promise<Buffer> {
-  if (isLocal(profile)) return local.localGetFile(path, maxBytes, profile as AnyLocalProfile);
-  await preflight(profile);
-  return smbImpl.smbGetFile(path, maxBytes, profile as AnySmbProfile | undefined);
+  return withDebugLog('getFile', path, profile, async () => {
+    if (isLocal(profile)) return local.localGetFile(path, maxBytes, profile as AnyLocalProfile);
+    await preflight(profile);
+    return smbImpl.smbGetFile(path, maxBytes, profile as AnySmbProfile | undefined);
+  }, buf => `${buf.length} bytes`);
 }
 
 export async function smbPutFile(path: string, data: Buffer, profile?: AnyProfile): Promise<void> {
-  if (isLocal(profile)) return local.localPutFile(path, data, profile as AnyLocalProfile);
-  await preflight(profile);
-  return smbImpl.smbPutFile(path, data, profile as AnySmbProfile | undefined);
+  return withDebugLog('putFile', path, profile, async () => {
+    if (isLocal(profile)) return local.localPutFile(path, data, profile as AnyLocalProfile);
+    await preflight(profile);
+    return smbImpl.smbPutFile(path, data, profile as AnySmbProfile | undefined);
+  }, () => `${data.length} bytes`);
 }
 
 export async function smbDelete(path: string, profile?: AnyProfile): Promise<void> {
-  if (isLocal(profile)) return local.localDelete(path, profile as AnyLocalProfile);
-  await preflight(profile);
-  return smbImpl.smbDelete(path, profile as AnySmbProfile | undefined);
+  return withDebugLog('delete', path, profile, async () => {
+    if (isLocal(profile)) return local.localDelete(path, profile as AnyLocalProfile);
+    await preflight(profile);
+    return smbImpl.smbDelete(path, profile as AnySmbProfile | undefined);
+  });
 }

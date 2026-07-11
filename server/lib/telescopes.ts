@@ -165,7 +165,9 @@ const appSettingsStmts = {
     planetariumShowInfo = ?,
     galleryImageSource = ?,
     slideshowRotateCCW = ?,
+    preferredCatalog = ?,
     temperatureUnit = ?,
+    windSpeedUnit = ?,
     visibleSkyMap = ?,
     updateChannel = ?,
     autoUpdateEnabled = ?,
@@ -258,7 +260,9 @@ interface AppSettingsRow {
   planetariumShowInfo: number;
   galleryImageSource: string;
   slideshowRotateCCW: number;
+  preferredCatalog: string; // 'default' | 'caldwell'
   temperatureUnit: string;
+  windSpeedUnit: string;
   visibleSkyMap: string; // JSON array of 288 booleans (36 azimuth slices × 8 elevation bands)
   updateChannel: string; // 'stable' | 'beta'
   autoUpdateEnabled: number;
@@ -307,7 +311,9 @@ function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
     planetariumShowInfo: Boolean(row.planetariumShowInfo),
     galleryImageSource: row.galleryImageSource || 'sky-survey',
     slideshowRotateCCW: Boolean(row.slideshowRotateCCW),
+    preferredCatalog: row.preferredCatalog === 'caldwell' ? 'caldwell' : 'default',
     temperatureUnit: row.temperatureUnit || 'fahrenheit',
+    windSpeedUnit: row.windSpeedUnit || 'mph',
     visibleSkyMap,
     // Advertised so native clients can gate the finer-grid editor; clients that
     // ignore it keep working at their built-in resolution.
@@ -351,7 +357,9 @@ function saveSettingsRow(data: Record<string, unknown>): void {
     boolToInt(data.planetariumShowInfo, 1),
     str(data.galleryImageSource, 'sky-survey'),
     boolToInt(data.slideshowRotateCCW, 0),
+    data.preferredCatalog === 'caldwell' ? 'caldwell' : 'default',
     str(data.temperatureUnit, 'celsius'),
+    str(data.windSpeedUnit, 'mph'),
     JSON.stringify(
       Array.isArray(data.visibleSkyMap) && data.visibleSkyMap.length === SKY_MAP_CELLS
         ? data.visibleSkyMap.map(v => v === true)

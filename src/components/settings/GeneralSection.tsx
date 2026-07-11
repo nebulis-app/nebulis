@@ -115,6 +115,7 @@ export function GeneralSection({
   const { theme, setTheme } = useTheme();
   const { isVisible, toggle } = useNavVisibility();
   const tempUnit = form.temperatureUnit ?? 'celsius';
+  const windUnit = form.windSpeedUnit ?? 'mph';
   const imageSource = form.galleryImageSource ?? 'sky-survey';
 
   return (
@@ -180,6 +181,17 @@ export function GeneralSection({
             isDark={isDark}
           />
         </Row>
+        <Row label="Wind Speed" description="Used for wind readings on the forecast page." isDark={isDark}>
+          <Seg
+            value={windUnit}
+            options={[
+              { id: 'mph', label: 'mph' },
+              { id: 'kmh', label: 'km/h' },
+            ]}
+            onChange={(id) => setForm(f => ({ ...f, windSpeedUnit: id }))}
+            isDark={isDark}
+          />
+        </Row>
       </Sec>
 
       {/* Library display settings */}
@@ -218,6 +230,25 @@ export function GeneralSection({
               description="Show your own telescope captures: a personal view of every object you've imaged"
             />
           </div>
+        </div>
+
+        {/* Catalog naming */}
+        <div className={`${getCardClass(isDark)} space-y-3`}>
+          <div>
+            <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+              Catalog Naming
+            </h3>
+            <p className={`text-xs mt-0.5 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              Which catalog to use for new object folder names when an object has both an NGC/IC and a Caldwell designation
+            </p>
+          </div>
+          <ToggleRow
+            label="Prefer Caldwell numbers"
+            description={'New objects with a Caldwell designation are named "C5" instead of "IC342". Existing folders are not renamed.'}
+            checked={(form.preferredCatalog ?? 'default') === 'caldwell'}
+            onChange={v => setForm(f => ({ ...f, preferredCatalog: v ? 'caldwell' : 'default' }))}
+            isDark={isDark}
+          />
         </div>
 
         {/* Planetarium Mode */}

@@ -295,23 +295,23 @@ export const TOPICS: TopicMeta[] = [
       {
         id: 'install-docker',
         title: 'Install on Docker',
-        summary: 'Compose file, ports, ADVERTISED_HOST, and the bundled Caddy HTTPS.',
+        summary: 'Compose file, ports, and ADVERTISED_HOST.',
         readingMinutes: 4,
-        keywords: ['docker', 'compose', 'caddy', 'https', 'nas', 'synology'],
+        keywords: ['docker', 'compose', 'nas', 'synology'],
       },
       {
         id: 'install-windows',
         title: 'Install on Windows',
-        summary: 'Run the wizard, pick ports, enable HTTPS, and find your data.',
+        summary: 'Run the wizard, pick a port, and find your data.',
         readingMinutes: 3,
-        keywords: ['windows', 'installer', 'service', 'msi', 'caddy'],
+        keywords: ['windows', 'installer', 'service', 'msi'],
       },
       {
         id: 'install-macos',
         title: 'Install on macOS',
-        summary: '.pkg install, LaunchDaemon, Gatekeeper notes, optional Caddy via Homebrew.',
+        summary: '.pkg install, LaunchDaemon, and Gatekeeper notes.',
         readingMinutes: 3,
-        keywords: ['macos', 'pkg', 'launchdaemon', 'gatekeeper', 'homebrew'],
+        keywords: ['macos', 'pkg', 'launchdaemon', 'gatekeeper'],
       },
     ],
   },
@@ -384,7 +384,7 @@ export const HUB_FAQ = [
   },
   {
     q: 'Can I run Nebulis on a NAS?',
-    a: 'Yes. The Docker image runs on Synology DSM 7+, QNAP, Unraid, or any Linux host with Docker Engine 20.10+. Bundled Caddy gives you HTTPS for free.',
+    a: 'Yes. The Docker image runs on Synology DSM 7+, QNAP, Unraid, or any Linux host with Docker Engine 20.10+.',
   },
   {
     q: 'How do I share access with someone else?',

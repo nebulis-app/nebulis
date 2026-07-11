@@ -77,9 +77,47 @@ function buildStdoutStream(): DestinationStream {
   }
 }
 
-const streams: Array<{ stream: DestinationStream }> = [
+// --- debug-capture tee ------------------------------------------------------
+// While an admin has the Danger Zone debug capture window open, every pino
+// line (at whatever level, including 'debug') is also appended to that
+// capture file — not just the plain-text debugLog() narration lines. This
+// stream is registered with an explicit 'trace' level so pino's per-stream
+// filtering forwards debug-level records to it even though stdout/server.log
+// stay at their configured level and never see the extra noise.
+// Capped so a long-running capture on a huge import can't grow unbounded.
+const MAX_DEBUG_TEE_BYTES = 50 * 1024 * 1024;
+let debugTeeFile: string | null = null;
+let debugTeeTruncated = false;
+
+export function setDebugTeeTarget(filePath: string | null): void {
+  debugTeeFile = filePath;
+  debugTeeTruncated = false;
+}
+
+/** Also used by debugLogger.ts's debugLog() so both writers share one size cap. */
+export function writeDebugLine(line: string): void {
+  if (!debugTeeFile) return;
+  try {
+    const { size } = fs.statSync(debugTeeFile);
+    if (size > MAX_DEBUG_TEE_BYTES) {
+      if (!debugTeeTruncated) {
+        debugTeeTruncated = true;
+        fs.appendFileSync(debugTeeFile, '\n=== Debug log truncated: exceeded 50 MB cap ===\n', 'utf8');
+      }
+      return;
+    }
+  } catch { /* file not created yet — fall through and attempt the write */ }
+  try { fs.appendFileSync(debugTeeFile, line, 'utf8'); } catch { /* best-effort */ }
+}
+
+const debugTeeStream: DestinationStream = {
+  write(chunk: string) { writeDebugLine(chunk); },
+};
+
+const streams: Array<{ stream: DestinationStream; level?: string }> = [
   { stream: buildStdoutStream() },
   { stream: fileStream },
+  { stream: debugTeeStream, level: 'trace' },
 ];
 
 export const log = pino(

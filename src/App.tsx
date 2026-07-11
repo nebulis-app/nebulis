@@ -29,6 +29,7 @@ const LinkDevicePage = lazy(() => import('./pages/LinkDevicePage'));
 const CatalogsHub = lazy(() => import('./pages/CatalogsHub').then(m => ({ default: m.CatalogsHub })));
 const CatalogBoard = lazy(() => import('./pages/CatalogBoard').then(m => ({ default: m.CatalogBoard })));
 import { LoginModal } from './components/LoginModal';
+import { ConnectionErrorScreen } from './components/ConnectionErrorScreen';
 import { SyncSubframesProvider } from './contexts/SyncSubframesContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { getAuthStatus } from './lib/api/auth';
@@ -49,7 +50,7 @@ function AppInner() {
   const { refresh: refreshAuth, hasToken } = useAuth();
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
-  const { data: authStatus } = useQuery({
+  const { data: authStatus, isError: authStatusFailed, refetch: retryAuthStatus } = useQuery({
     queryKey: ['auth-status'],
     queryFn: getAuthStatus,
     staleTime: 5 * 60 * 1000,
@@ -74,9 +75,22 @@ function AppInner() {
     !hasToken &&
     authStatus?.hasUsers === true;
 
+  // No token and the status check itself failed (server unreachable/starting
+  // up): authStatus stays undefined forever, so showOnboarding/showLogin above
+  // never become true and the full app would otherwise render behind a server
+  // that isn't answering, with no way to sign in.
+  const showConnectionError =
+    !hasToken &&
+    authStatusFailed &&
+    authStatus === undefined;
+
   function handleLogin() {
     refreshAuth();
     queryClient.invalidateQueries();
+  }
+
+  if (showConnectionError) {
+    return <ConnectionErrorScreen onRetry={() => retryAuthStatus()} />;
   }
 
   if (showOnboarding) {

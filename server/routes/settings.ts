@@ -12,6 +12,7 @@ import db from '../lib/db.js';
 import { DATA_DIR } from '../lib/paths.js';
 import { getLibraryDir, isDefaultLocation, getLibraryId, writeMarker, isLibraryAvailable } from '../lib/libraryPath.js';
 import { startPrefetch, cancelPrefetch } from '../lib/catalogPrefetch.js';
+import { clearPackState } from '../lib/catalogPack/state.js';
 import { runUpdateCheck, stopAppUpdateChecker } from '../lib/appUpdate/updater.js';
 import {
   enableDebugLogging,
@@ -52,7 +53,9 @@ const SettingsUpdateBodySchema = z.object({
   planetariumShowInfo: z.boolean().optional(),
   galleryImageSource: z.enum(['sky-survey', 'telescope']).optional(),
   slideshowRotateCCW: z.boolean().optional(),
+  preferredCatalog: z.enum(['default', 'caldwell']).optional(),
   temperatureUnit: z.enum(['celsius', 'fahrenheit']).optional(),
+  windSpeedUnit: z.enum(['mph', 'kmh']).optional(),
   updateChannel: z.enum(['stable', 'beta']).optional(),
   autoUpdateEnabled: z.boolean().optional(),
   plannerPrefetchEnabled: z.boolean().optional(),
@@ -103,7 +106,12 @@ interface Settings {
   planetariumShowInfo: boolean;
   galleryImageSource: 'sky-survey' | 'telescope';
   slideshowRotateCCW: boolean;
+  // Which catalog nomenclature to prefer for new object folder names when an
+  // object has both an NGC/IC and a Caldwell designation. See
+  // server/lib/catalogAliases.ts for the resolution priority this overrides.
+  preferredCatalog: 'default' | 'caldwell';
   temperatureUnit: 'celsius' | 'fahrenheit';
+  windSpeedUnit: 'mph' | 'kmh';
   // Desktop auto-update channel.
   updateChannel: 'stable' | 'beta';
   // Whether the updater checks + pre-downloads automatically. Off by default.
@@ -147,7 +155,9 @@ const defaultSettings: Settings = {
   planetariumShowInfo: true,
   galleryImageSource: 'sky-survey',
   slideshowRotateCCW: false,
+  preferredCatalog: 'default',
   temperatureUnit: 'fahrenheit',
+  windSpeedUnit: 'mph',
   updateChannel: 'stable',
   autoUpdateEnabled: false,
   plannerPrefetchEnabled: true,
@@ -160,7 +170,7 @@ const defaultSettings: Settings = {
   nightlyForecastLastRun: null,
 };
 
-const appFields = ['apiKey', 'latitude', 'longitude', 'locationName', 'timezone', 'minAlt', 'horizonProfile', 'visibleSkyMap', 'syncEnabled', 'syncJpg', 'syncFits', 'syncThumbnails', 'syncSubFrames', 'syncVideos', 'autoImportInterval', 'importJpg', 'importFits', 'importThumbnails', 'importSubFrames', 'importVideos', 'onboardingCompleted', 'prefetchCatalogAssets', 'prefetchUseCatalogPacks', 'planetariumShowInfo', 'galleryImageSource', 'slideshowRotateCCW', 'temperatureUnit', 'updateChannel', 'autoUpdateEnabled', 'plannerPrefetchEnabled', 'plannerPrefetchTime', 'nightlyCatalogPackCheckEnabled', 'nightlyHousekeepingEnabled', 'nightlyForecastPrefetchEnabled'] as const;
+const appFields = ['apiKey', 'latitude', 'longitude', 'locationName', 'timezone', 'minAlt', 'horizonProfile', 'visibleSkyMap', 'syncEnabled', 'syncJpg', 'syncFits', 'syncThumbnails', 'syncSubFrames', 'syncVideos', 'autoImportInterval', 'importJpg', 'importFits', 'importThumbnails', 'importSubFrames', 'importVideos', 'onboardingCompleted', 'prefetchCatalogAssets', 'prefetchUseCatalogPacks', 'planetariumShowInfo', 'galleryImageSource', 'slideshowRotateCCW', 'preferredCatalog', 'temperatureUnit', 'windSpeedUnit', 'updateChannel', 'autoUpdateEnabled', 'plannerPrefetchEnabled', 'plannerPrefetchTime', 'nightlyCatalogPackCheckEnabled', 'nightlyHousekeepingEnabled', 'nightlyForecastPrefetchEnabled'] as const;
 
 function loadSettings(): Settings {
   const appData = getSettingsData();
@@ -326,7 +336,7 @@ router.delete('/api-key', requireAdmin, (_req: Request, res: Response) => {
 });
 
 // Reset database — purge all data except settings
-router.delete('/reset-database', requireAdmin, (req: Request, res: Response) => {
+router.delete('/reset-database', requireAdmin, async (req: Request, res: Response) => {
   const LIBRARY_DIR = getLibraryDir();
   const parsed = ResetDatabaseBodySchema.safeParse(req.body ?? {});
   if (!parsed.success) {
@@ -356,7 +366,7 @@ router.delete('/reset-database', requireAdmin, (req: Request, res: Response) => 
     // directory belongs to this install. If the path is stale (e.g. a
     // relocated external drive that is no longer mounted), skip deletion to
     // avoid recursively removing an unrelated path.
-    if (isLibraryAvailable()) {
+    if (await isLibraryAvailable()) {
       try {
         fs.rmSync(LIBRARY_DIR, { recursive: true });
       } catch { /* directory may not exist */ }
@@ -373,6 +383,13 @@ router.delete('/reset-database', requireAdmin, (req: Request, res: Response) => 
         fs.rmSync(dir, { recursive: true, force: true });
       } catch { /* directory may not exist */ }
     }
+
+    // sky-cache was just wiped above, so any catalog pack installs recorded
+    // in the DB no longer match what's on disk. Without this, the installer
+    // sees a matching version in catalogPackState and skips re-downloading
+    // forever, leaving the catalog board to limp along on the slow one-by-one
+    // CDS live-fetch fallback instead of the real bundled packs.
+    clearPackState();
 
     // 3. Remove the TLE catalog cache file
     try {

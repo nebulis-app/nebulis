@@ -23,6 +23,7 @@ import {
   smbGetFile as rawSmbGetFile,
   BASE_PATH,
 } from './smb.js';
+import { debugLog } from './debugLogger.js';
 import type { TelescopeProfile } from './telescopes.js';
 
 type ProfileArg = Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'> | null | undefined;
@@ -112,8 +113,10 @@ export async function cachedSmbListDir(
     telescopeOnline = false;
     const cached = readDirCache(smbPath);
     if (cached) {
+      debugLog('smb-cache', `listDir "${smbPath}" live call failed, served ${cached.length} entr${cached.length === 1 ? 'y' : 'ies'} from stale cache — ${err instanceof Error ? err.message : err}`);
       return cached;
     }
+    debugLog('smb-cache', `listDir "${smbPath}" live call failed and no cache available — ${err instanceof Error ? err.message : err}`);
     throw err;
   }
 }
@@ -138,8 +141,10 @@ export async function cachedSmbGetFile(
       if (maxBytes && data.length > maxBytes) {
         data = data.subarray(0, maxBytes);
       }
+      debugLog('smb-cache', `getFile "${smbPath}" live call failed, served ${data.length} bytes from stale cache — ${err instanceof Error ? err.message : err}`);
       return data;
     }
+    debugLog('smb-cache', `getFile "${smbPath}" live call failed and no cache available — ${err instanceof Error ? err.message : err}`);
     throw err;
   }
 }

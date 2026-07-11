@@ -117,6 +117,9 @@ export interface CommitPlan {
   importSubFrames?: boolean;
   /** Per-import override for the importFits app setting. */
   importFits?: boolean;
+  /** Telescope to stamp every session created by this import with, or null/
+   *  absent to leave sessions untagged. */
+  telescopeId?: string | null;
 }
 
 /** Key used for the unsorted (no-derivable-date) bucket in a sessionMap. */

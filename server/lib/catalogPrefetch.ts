@@ -25,10 +25,10 @@ import sharp from './sharp-optional.js';
 import db from './db.js';
 import { getCatalog, getById as getDsoById } from './dsoCatalog.js';
 import { DATA_DIR } from './paths.js';
-import { prefetchSkyImage } from './skyImage.js';
+import { prefetchSkyImage, clearNegativeImageCache } from './skyImage.js';
 import { fetchWikipediaSummary } from './wikipedia.js';
 import { fetchCaldwellEntry } from './caldwellScraper.js';
-import { ngcToCaldwell } from './caldwellCatalog.js';
+import { ngcToCaldwell, caldwellToNgcId } from './caldwellCatalog.js';
 import { resolveCanonicalId } from './catalogAliases.js';
 import { POPULAR_DSO_IDS } from './popularDsoCatalog.js';
 import { getSharplessEntry } from './sharplessCatalog.js';
@@ -324,13 +324,22 @@ export function wipeCatalogCache(): void {
   clearCacheStmt.run();
   clearPackState();
 
+  // Forget every negative-cache entry (24h persistent + in-memory transient)
+  // so a re-download retries objects that previously 404'd or failed instead
+  // of silently skipping them.
+  clearNegativeImageCache();
+
   // Wipe every image file in sky-cache (leave the Sesame JSON cache alone
   // so we don't lose RA/Dec resolutions). Includes the resized/ subdirectory
-  // where the catalog route stores Sharp-generated thumbnails.
+  // where the catalog route stores Sharp-generated thumbnails, and the
+  // per-tier credits-<tier>.json files the pack installer writes alongside
+  // the images (left behind previously since they don't end in .jpg/.webp).
   const skyDir = path.join(DATA_DIR, 'sky-cache');
   try {
     for (const name of fs.readdirSync(skyDir)) {
-      if (!name.endsWith('.jpg') && !name.endsWith('.webp')) continue;
+      const isImage = name.endsWith('.jpg') || name.endsWith('.webp');
+      const isCredits = name.startsWith('credits-') && name.endsWith('.json');
+      if (!isImage && !isCredits) continue;
       try { fs.unlinkSync(path.join(skyDir, name)); } catch { /* best-effort */ }
     }
   } catch { /* dir may not exist */ }
@@ -1036,6 +1045,28 @@ async function runJob(
       if (signal.aborted) return;
 
       try {
+        // Skip without any network when the object is already fully covered —
+        // Hubble image on disk plus a good description row, which is exactly
+        // what the caldwell pack installs (the pack ships Wikipedia text, so
+        // the check accepts any 'ok' row rather than requiring source
+        // 'nasa_caldwell'). Most C-numbers resolve to their NGC/IC id locally;
+        // only ones with no NGC designation need the NASA detail page to
+        // learn their catalogId.
+        const localId = caldwellToNgcId(`C${num}`);
+        if (localId) {
+          let localImageOk = false;
+          try {
+            const stat = fs.statSync(hubbleImagePath(localId));
+            if (stat.size > 0) localImageOk = true;
+          } catch { /* not cached */ }
+          if (localImageOk && getCatalogCacheEntry(localId)?.status === 'ok') {
+            caldwellProcessed++;
+            if (caldwellProcessed % 10 === 0)
+              persistProgress('caldwell', caldwellProcessed, CALDWELL_TOTAL, caldwellErrors);
+            return;
+          }
+        }
+
         const entry = await fetchCaldwellEntry(num, signal);
         if (!entry) {
           caldwellProcessed++;

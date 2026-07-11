@@ -190,6 +190,22 @@ export function getAliasesForCanonical(canonicalId: string): string[] {
 }
 
 /**
+ * Apply the user's catalog-nomenclature preference to a canonical ID, for
+ * naming purposes only (folder names, not the on-disk/DB canonical key).
+ *
+ * When `preferCaldwell` is set and the canonical ID has a Caldwell alias
+ * (e.g. "IC342" ← "C5"), returns the Caldwell form instead. Otherwise returns
+ * the canonical ID unchanged. Callers must keep using the canonical ID (from
+ * `resolveCanonicalId`) as the dedup/storage key; only the folder name should
+ * use this preference.
+ */
+export function applyCatalogPreference(canonicalId: string, preferCaldwell: boolean): string {
+  if (!preferCaldwell) return canonicalId;
+  const caldwellAlias = getAliasesFor(canonicalId).find(a => /^C\d+$/.test(a));
+  return caldwellAlias ?? canonicalId;
+}
+
+/**
  * Expand a search term to include its canonical ID and all known aliases.
  * Used so searching "C30" finds NGC7331 and vice-versa.
  * Returns unique terms; the original term is always first.

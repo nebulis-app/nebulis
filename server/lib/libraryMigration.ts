@@ -23,11 +23,21 @@ import {
   getDefaultLibraryDir,
   getLibraryId,
   setLibraryPath,
+  setNetworkLibraryConfig,
   writeMarker,
   readMarker,
+  isDefaultLocation,
+  isNetworkLocation,
+  isLibraryAvailable,
   MARKER_FILENAME,
 } from './libraryPath.js';
 import { setLibraryMigrating } from './libraryMaintenance.js';
+import {
+  type NetworkLibraryConfig,
+  resolveNetworkLibraryPath,
+  ensureNetworkLibraryConnected,
+  isNetworkLibraryMounted,
+} from './libraryNetwork.js';
 
 export type MigrationPhase =
   | 'idle'
@@ -92,8 +102,25 @@ interface TreeStats {
   files: number;
 }
 
-/** Recursively total the bytes and file count under a directory, skipping the
- *  marker file (it is regenerated at the destination, not copied). */
+/**
+ * Entries excluded from both the copy and the verification.
+ *
+ *  - The marker file is regenerated at the destination, not copied.
+ *  - macOS writes AppleDouble `._name` sidecars (and `.DS_Store`) onto volumes
+ *    that don't support native extended attributes (exFAT/FAT/SMB external
+ *    drives). The kernel creates them transparently as we copy, one per file and
+ *    per directory, ~4 KB each. They are not part of the library; counting them
+ *    made the destination look larger than the source and failed verification.
+ *
+ * Skipping them on both sides keeps the source and destination counts
+ * reconcilable regardless of the destination filesystem.
+ */
+function isIgnoredName(name: string): boolean {
+  return name === MARKER_FILENAME || name === '.DS_Store' || name.startsWith('._');
+}
+
+/** Recursively total the bytes and file count under a directory, skipping
+ *  ignored entries (marker + OS sidecars). */
 async function measureTree(dir: string): Promise<TreeStats> {
   let bytes = 0;
   let files = 0;
@@ -104,7 +131,7 @@ async function measureTree(dir: string): Promise<TreeStats> {
     return { bytes, files };
   }
   for (const entry of entries) {
-    if (entry.name === MARKER_FILENAME) continue;
+    if (isIgnoredName(entry.name)) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       const sub = await measureTree(full);
@@ -122,8 +149,9 @@ async function measureTree(dir: string): Promise<TreeStats> {
   return { bytes, files };
 }
 
-/** Copy a directory tree, updating progress counters as it goes. The marker
- *  file is skipped; a fresh one is written at finalize. */
+/** Copy a directory tree, updating progress counters as it goes. Ignored
+ *  entries (marker + OS sidecars) are skipped; a fresh marker is written at
+ *  finalize. */
 async function copyTree(src: string, dest: string): Promise<void> {
   await fsp.mkdir(dest, { recursive: true });
   // Source may not exist yet (e.g. relocating during onboarding before any
@@ -135,7 +163,7 @@ async function copyTree(src: string, dest: string): Promise<void> {
     return;
   }
   for (const entry of entries) {
-    if (entry.name === MARKER_FILENAME) continue;
+    if (isIgnoredName(entry.name)) continue;
     const from = path.join(src, entry.name);
     const to = path.join(dest, entry.name);
     if (entry.isDirectory()) {
@@ -189,7 +217,7 @@ async function validate(source: string, target: string): Promise<void> {
       throw new MigrationError('That folder already holds a different Nebulis library. Pick an empty folder.');
     }
     if (!marker) {
-      const existing = (await fsp.readdir(resolvedTarget)).filter(n => n !== MARKER_FILENAME);
+      const existing = (await fsp.readdir(resolvedTarget)).filter(n => !isIgnoredName(n));
       if (existing.length > 0) {
         throw new MigrationError('That folder is not empty. Pick an empty folder or a new one.');
       }
@@ -206,9 +234,45 @@ async function validate(source: string, target: string): Promise<void> {
   }
 }
 
-async function run(source: string, target: string): Promise<void> {
+async function run(source: string, target: string, networkConfig?: NetworkLibraryConfig): Promise<void> {
   try {
     status.phase = 'validating';
+
+    // macOS has a single fixed mount point, so connecting a target share would
+    // unmount the source share and make the source resolve as empty — a silent
+    // zero-file "success" that orphans every database row. Block network→network
+    // there; the user can move to a local folder first, then to the new share.
+    if (networkConfig && process.platform === 'darwin' && isNetworkLocation()) {
+      throw new MigrationError(
+        'Moving directly from one network share to another is not supported on macOS. Move the library to a local folder first, then to the new share.',
+      );
+    }
+
+    // Refuse to migrate away from a relocated source that isn't connected right
+    // now: copyTree treats a missing/empty source as empty, which would silently
+    // create an empty library at the target and orphan every database row. The
+    // default location always exists, so only relocated sources need the guard.
+    if (!isDefaultLocation() && !(await isLibraryAvailable())) {
+      throw new MigrationError('The current library location is not connected. Reconnect it before moving the library.');
+    }
+
+    if (networkConfig) {
+      // Connect (or fail fast) before validate() touches the filesystem, so
+      // validate/copyTree/measureTree all operate on an already-live path
+      // exactly as they do for a local/USB target — no changes needed there.
+      // A connect that doesn't actually bring the share up must abort here:
+      // otherwise, with an empty subpath, the target resolves to the bare
+      // (unmounted) mount point and we would copy the whole library onto the
+      // local boot disk and then flip the config to point at it.
+      const reachable = await ensureNetworkLibraryConnected(networkConfig);
+      if (!reachable || !(await isNetworkLibraryMounted())) {
+        throw new MigrationError(
+          'Could not connect to the network share. Check that it is online and the address, share name, and credentials are correct, then try again.',
+        );
+      }
+      target = resolveNetworkLibraryPath(networkConfig);
+      status.toPath = target;
+    }
     await validate(source, target);
 
     const measured = await measureTree(source);
@@ -232,10 +296,14 @@ async function run(source: string, target: string): Promise<void> {
 
     status.phase = 'finalizing';
     writeMarker(target, getLibraryId());
-    // An empty configured path means "default location"; store '' when the
-    // target IS the default so resolution stays clean.
-    const isDefaultTarget = path.resolve(target) === path.resolve(getDefaultLibraryDir());
-    setLibraryPath(isDefaultTarget ? '' : target);
+    if (networkConfig) {
+      setNetworkLibraryConfig(networkConfig);
+    } else {
+      // An empty configured path means "default location"; store '' when the
+      // target IS the default so resolution stays clean.
+      const isDefaultTarget = path.resolve(target) === path.resolve(getDefaultLibraryDir());
+      await setLibraryPath(isDefaultTarget ? '' : target);
+    }
 
     status.previousPath = source;
     status.completedAt = Date.now();
@@ -253,19 +321,23 @@ async function run(source: string, target: string): Promise<void> {
 }
 
 /**
- * Begin a migration to `target`. Returns immediately; poll getMigrationStatus()
- * for progress. Single-flight: throws if a migration is already running.
+ * Begin a migration to `target` (or, when `networkConfig` is given, to that
+ * network share — `target` is then ignored and the real destination is
+ * resolved once the share connects, inside run()). Returns immediately; poll
+ * getMigrationStatus() for progress. Single-flight: throws if a migration is
+ * already running.
  */
-export function startMigration(target: string): MigrationStatus {
+export function startMigration(target: string, networkConfig?: NetworkLibraryConfig): MigrationStatus {
   if (isActivePhase(status.phase)) {
     throw new MigrationError('A migration is already in progress.');
   }
   const source = getLibraryDir();
 
-  // Reset status for the new run.
+  // Reset status for the new run. The network target isn't known yet (it
+  // depends on connecting first) — run() fills in status.toPath once resolved.
   status.phase = 'validating';
   status.fromPath = source;
-  status.toPath = path.resolve(target);
+  status.toPath = networkConfig ? null : path.resolve(target);
   status.bytesTotal = 0;
   status.bytesCopied = 0;
   status.filesTotal = 0;
@@ -276,6 +348,6 @@ export function startMigration(target: string): MigrationStatus {
   status.previousPath = null;
 
   // Fire and forget; progress is observed via getMigrationStatus().
-  void run(source, status.toPath);
+  void run(source, networkConfig ? '' : path.resolve(target), networkConfig);
   return getMigrationStatus();
 }

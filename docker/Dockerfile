@@ -47,6 +47,14 @@ VOLUME ["/app/data"]
 # Environment
 ENV NODE_ENV=production
 ENV PORT=8080
+# Without this, server/lib/paths.ts still resolves DATA_DIR to /app/data (matching
+# the VOLUME below) via its Docker-detection fallback, but LOGS_DIR falls through to
+# the separate, non-volumed /app/logs — so server.log (including every HTTP request
+# log) is silently wiped on container recreation (image update, --force-recreate)
+# while the SQLite DB and settings survive. Setting DATA_DIR explicitly routes
+# LOGS_DIR to /app/data/logs, inside the volume, matching macOS/Windows where logs
+# live in the same durable location as the rest of the app data.
+ENV DATA_DIR=/app/data
 # @marsaud/smb2 uses ntlm@0.1.3 which computes LM hashes with DES-ECB.
 # OpenSSL 3 (Node 17+) disables DES by default. Re-enable the legacy provider.
 ENV NODE_OPTIONS=--openssl-legacy-provider

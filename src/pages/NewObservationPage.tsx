@@ -1,9 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { ArrowLeft, Search, CalendarDays, ImagePlus, StickyNote, Loader2, X, Upload, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Search, CalendarDays, ImagePlus, StickyNote, Loader2, X, Upload, CheckCircle2, Telescope as TelescopeIcon } from 'lucide-react';
 import { searchDsoCatalog, type DsoEntry } from '../lib/api/planner';
 import { createManualObservation } from '../lib/api/library';
+import { listTelescopes } from '../lib/api/telescopes';
 import { useTheme } from '../hooks/useTheme';
 
 export function NewObservationPage() {
@@ -27,6 +28,14 @@ export function NewObservationPage() {
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [telescopeId, setTelescopeId] = useState('');
+
+  const { data: telescopes } = useQuery({
+    queryKey: ['telescopes'],
+    queryFn: listTelescopes,
+    staleTime: 30_000,
+  });
+  const activeTelescopes = (telescopes ?? []).filter(t => !t.archivedAt);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -100,7 +109,7 @@ export function NewObservationPage() {
   }, []);
 
   const submitMutation = useMutation({
-    mutationFn: (params: { objectName: string; date: string; notes?: string; image: File | null }) =>
+    mutationFn: (params: { objectName: string; date: string; notes?: string; image: File | null; telescopeId?: string }) =>
       createManualObservation(params),
     onSuccess: (result) => {
       navigate(`/observations/${encodeURIComponent(result.objectId)}/${encodeURIComponent(result.date)}`);
@@ -111,7 +120,13 @@ export function NewObservationPage() {
     const objName = effectiveObjectName.trim();
     if (!objName) { submitMutation.reset(); return; }
     if (!date) { submitMutation.reset(); return; }
-    submitMutation.mutate({ objectName: objName, date, notes: notes.trim() || undefined, image });
+    submitMutation.mutate({
+      objectName: objName,
+      date,
+      notes: notes.trim() || undefined,
+      image,
+      telescopeId: telescopeId || undefined,
+    });
   };
 
   const cardBg = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
@@ -270,6 +285,27 @@ export function NewObservationPage() {
             onChange={handleFileChange}
           />
         </div>
+
+        {/* Telescope */}
+        {activeTelescopes.length > 0 && (
+          <div className="space-y-2">
+            <label className={`flex items-center gap-2 text-sm font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              <TelescopeIcon className="w-4 h-4 text-teal-500" />
+              Telescope
+              <span className={`ml-1 font-normal text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>(optional)</span>
+            </label>
+            <select
+              value={telescopeId}
+              onChange={e => setTelescopeId(e.target.value)}
+              className={inputBase}
+            >
+              <option value="">Not sure / no telescope used</option>
+              {activeTelescopes.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Notes */}
         <div className="space-y-2">

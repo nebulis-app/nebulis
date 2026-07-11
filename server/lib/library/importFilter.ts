@@ -26,8 +26,11 @@ export function shouldImportFile(filename: string, settings: Record<string, unkn
   }
 
   // Dwarf marks frames it rejected during stacking with a "failed_" prefix.
-  // Never import these regardless of any other setting.
-  if (filename.toLowerCase().includes('failed')) {
+  // Never import these regardless of any other setting. Anchored to the
+  // prefix (not a bare .includes('failed')) so a user's own file containing
+  // "failed" anywhere in the name — e.g. "M31_failed_stack_retry.fits" — isn't
+  // silently dropped.
+  if (/^failed_/i.test(filename)) {
     debugLog('import:filter', `Rejected: "${filename}" (Dwarf failed frame marker)`);
     return false;
   }
@@ -44,7 +47,7 @@ export function shouldImportFile(filename: string, settings: Record<string, unkn
     // preview (e.g. Light_*.jpg) into the _sub folder, which parseFilename also
     // classifies as 'sub'. Never import those — JPGs must not ride in under the
     // sub-frame setting.
-    if (!(ext.endsWith('.fit') || ext.endsWith('.fits'))) {
+    if (!(ext.endsWith('.fit') || ext.endsWith('.fits') || ext.endsWith('.fts'))) {
       debugLog('import:filter', `Rejected: "${filename}" (sub-frame folder image — sub-frames are FITS only)`);
       return false;
     }
@@ -64,7 +67,7 @@ export function shouldImportFile(filename: string, settings: Record<string, unkn
     }
     return true;
   }
-  if (ext.endsWith('.fit') || ext.endsWith('.fits')) {
+  if (ext.endsWith('.fit') || ext.endsWith('.fits') || ext.endsWith('.fts')) {
     if (settings.importFits === false) {
       debugLog('import:filter', `Rejected: "${filename}" (FITS — importFits disabled)`);
       return false;
@@ -78,6 +81,15 @@ export function shouldImportFile(filename: string, settings: Record<string, unkn
     }
     return true;
   }
-  debugLog('import:filter', `Accepted: "${filename}" (unknown type, allowing)`);
-  return true;
+  // PNG / TIFF: rendered raster images from stacking apps and processed
+  // exports. Always imported (isRealFile already limited us to known
+  // extensions); they are not governed by importJpg, which is JPEG-specific.
+  if (ext.endsWith('.png') || ext.endsWith('.tif') || ext.endsWith('.tiff')) {
+    return true;
+  }
+  // Anything else with a recognized extension but no explicit rule above.
+  // isRealFile already rejected unknown extensions, so this is a safety net:
+  // reject rather than silently ingesting a type we have no handling for.
+  debugLog('import:filter', `Rejected: "${filename}" (no import rule for this type)`);
+  return false;
 }

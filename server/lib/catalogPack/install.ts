@@ -104,6 +104,26 @@ export async function installCatalogPacks(
   return results;
 }
 
+/**
+ * Whether sky-cache/ still has at least one pack-shaped image file on disk.
+ *
+ * catalogPackState can say a tier is installed while the directory is
+ * actually empty — e.g. the "Delete all data" reset wipes sky-cache/ but
+ * (independently of that bug, now fixed) anything else that clears the
+ * directory without going through `clearPackState()` would leave a stale
+ * DB row forever. Without this check, `installTier` would trust the row and
+ * skip re-downloading indefinitely, silently falling back to the slow
+ * one-by-one live CDS fetch for every object instead of the bundled pack.
+ */
+function skyCacheHasImages(): boolean {
+  const skyCache = path.join(DATA_DIR, 'sky-cache');
+  try {
+    return fs.readdirSync(skyCache).some(name => name.endsWith('.jpg') || name.endsWith('.webp'));
+  } catch {
+    return false;
+  }
+}
+
 async function installTier(
   tier: CatalogTier,
   index: PackIndex,
@@ -115,11 +135,15 @@ async function installTier(
     return { tier, version: '', objectCount: 0, skipped: true, reason: 'not_in_index' };
   }
 
-  // Skip if already installed at this version
+  // Skip if already installed at this version — but only if the images it
+  // recorded are actually still on disk. See skyCacheHasImages() above.
   const existing = getPackState(tier);
-  if (existing?.version === entry.version) {
+  if (existing?.version === entry.version && skyCacheHasImages()) {
     console.log(`[catalogPack] ${tier} v${entry.version} already installed — skipping`);
     return { tier, version: entry.version, objectCount: existing.objectCount, skipped: true, reason: 'already_installed' };
+  }
+  if (existing?.version === entry.version) {
+    console.warn(`[catalogPack] ${tier} v${entry.version} recorded as installed but sky-cache/ is empty — reinstalling`);
   }
 
   console.log(`[catalogPack] installing ${tier} v${entry.version} (${entry.totalObjects} objects)`);

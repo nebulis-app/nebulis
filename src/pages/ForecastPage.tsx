@@ -14,6 +14,11 @@ function formatTemp(celsius: number, unit: 'celsius' | 'fahrenheit'): string {
   return `${Math.round(celsius)}°C`;
 }
 
+function formatWind(kmh: number, unit: 'mph' | 'kmh'): string {
+  if (unit === 'mph') return `${Math.round(kmh * 0.621371)} mph`;
+  return `${Math.round(kmh)} km/h`;
+}
+
 // ─── Visibility Score Engine ─────────────────────────────────────────
 
 interface VisibilityResult {
@@ -156,6 +161,7 @@ export function ForecastPage() {
 
   const { data: appSettings } = useQuery({ queryKey: ['settings'], queryFn: getSettings, staleTime: Infinity });
   const tempUnit = appSettings?.temperatureUnit ?? 'fahrenheit';
+  const windUnit = appSettings?.windSpeedUnit ?? 'mph';
   const lat = appSettings?.latitude ?? null;
   const lon = appSettings?.longitude ?? null;
   const locationSet = lat !== null && lon !== null;
@@ -281,7 +287,7 @@ export function ForecastPage() {
           {/* Night ratings overview */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {forecast.nightRatings.map((night, i) => (
-              <NightCard key={night.date} night={night} isTonight={i === 0} isDark={isDark} />
+              <NightCard key={night.date} night={night} isTonight={i === 0} isDark={isDark} windUnit={windUnit} />
             ))}
           </div>
 
@@ -358,6 +364,7 @@ export function ForecastPage() {
                     isDark={isDark}
                     onClose={() => setSelectedHour(null)}
                     tempUnit={tempUnit}
+                    windUnit={windUnit}
                     timeZone={tz}
                     darkWindow={darkWindow}
                   />
@@ -453,12 +460,13 @@ function HourColumn({ hour, moonIllumination, isSelected, onSelect, isDark, temp
 
 // ─── Expanded Hour Detail Panel ──────────────────────────────────────
 
-function HourDetail({ hour, moonIllumination, isDark, onClose, tempUnit, timeZone, darkWindow }: {
+function HourDetail({ hour, moonIllumination, isDark, onClose, tempUnit, windUnit, timeZone, darkWindow }: {
   hour: ForecastHour;
   moonIllumination: number;
   isDark: boolean;
   onClose: () => void;
   tempUnit: 'celsius' | 'fahrenheit';
+  windUnit: 'mph' | 'kmh';
   timeZone?: string;
   darkWindow?: { start: number; end: number } | null;
 }) {
@@ -503,7 +511,7 @@ function HourDetail({ hour, moonIllumination, isDark, onClose, tempUnit, timeZon
 
       {/* Extra details */}
       <div className={`flex flex-wrap gap-x-6 gap-y-1 mt-4 text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-        <span><Wind className="w-3 h-3 inline mr-1" />{Math.round(hour.wind * 0.621371)} mph</span>
+        <span><Wind className="w-3 h-3 inline mr-1" />{formatWind(hour.wind, windUnit)}</span>
         <span><Droplets className="w-3 h-3 inline mr-1" />Dew pt {formatTemp(hour.dewPoint, tempUnit)}</span>
         <span>Temp {formatTemp(hour.temperature, tempUnit)}</span>
         {hour.jetStream != null && (
@@ -553,7 +561,7 @@ function BreakdownBar({ label, value, detail, isDark }: {
 
 // ─── Supporting Components ───────────────────────────────────────────
 
-function NightCard({ night, isTonight, isDark }: { night: NightRating; isTonight: boolean; isDark: boolean }) {
+function NightCard({ night, isTonight, isDark, windUnit }: { night: NightRating; isTonight: boolean; isDark: boolean; windUnit: 'mph' | 'kmh' }) {
   const scoreColor = night.score >= 80 ? 'text-emerald-500' : night.score >= 60 ? 'text-blue-500' : night.score >= 40 ? 'text-amber-500' : night.score >= 20 ? 'text-orange-500' : 'text-red-500';
   const bgRing = 'ring-amber-500/30';
 
@@ -586,7 +594,7 @@ function NightCard({ night, isTonight, isDark }: { night: NightRating; isTonight
         </div>
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-1"><Wind className="w-3 h-3" /> Wind</span>
-          <span>{Math.round(night.avgWind * 0.621371)} mph</span>
+          <span>{formatWind(night.avgWind, windUnit)}</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-1"><CloudRain className="w-3 h-3" /> Precip</span>

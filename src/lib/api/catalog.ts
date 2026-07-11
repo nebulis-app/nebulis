@@ -120,10 +120,15 @@ interface CatalogPrefetchStatus {
 }
 export const getCatalogPrefetchStatus = () =>
   fetchJSON<CatalogPrefetchStatus>('/catalog/prefetch/status');
-export const startCatalogPrefetch = (force = false, packsOnly = false) => {
+export const startCatalogPrefetch = (
+  force = false,
+  packsOnly = false,
+  scope: 'curated' | 'full' = 'curated',
+) => {
   const params = new URLSearchParams();
   if (force) params.set('force', '1');
   if (packsOnly) params.set('packsOnly', '1');
+  if (scope === 'full') params.set('scope', 'full');
   const qs = params.size ? `?${params}` : '';
   return fetchJSON<{ started: boolean; reason?: string; status: CatalogPrefetchStatus }>(
     `/catalog/prefetch/start${qs}`,

@@ -40,7 +40,7 @@ export function LocationPrompt({
       setStatus('error');
       setErrorMsg(
         `Geolocation needs a secure connection. You opened this page at "${window.location.host}" over HTTP. ` +
-        `Use http://localhost, or enable HTTPS (the installer ships with Caddy on port 8443), or enter coordinates manually in Settings.`,
+        `Use http://localhost, or enter coordinates manually in Settings.`,
       );
       return;
     }

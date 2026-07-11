@@ -47,8 +47,9 @@ export function SettingsPage() {
 
   const saveMutation = useMutation({
     mutationFn: updateSettings,
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
       setSavedForm({ ...variables });
+      queryClient.setQueryData(['settings'], data);
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       queryClient.invalidateQueries({ queryKey: ['objects'] });
       setJustSaved(true);

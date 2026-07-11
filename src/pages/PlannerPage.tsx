@@ -37,7 +37,7 @@ import { ScheduleTimeline } from '../components/planner/ScheduleTimeline';
 import { VisibleSkyEditor } from '../components/planner/VisibleSkyEditor';
 import { AltitudeBandChart } from '../components/planner/AltitudeBandChart';
 import { PlanCalendar } from '../components/planner/PlanCalendar';
-import { dateFromKey, formatPlannerDate, localDateKey, nightWindowFor, plannerToday, sameLocalDay } from '../lib/nightWindow';
+import { dateFromKey, formatPlannerDate, localDateKey, nightWindowFor, plannerToday, sameLocalDay, timelineWindowFor } from '../lib/nightWindow';
 import {
   DEFAULT_BLOCK_MINUTES,
   MIN_BLOCK_MINUTES,
@@ -430,7 +430,12 @@ export function PlannerPage() {
     setCopyingPrevNight(true);
     try {
       const prevDate = addDays(selectedDate, -1);
-      const prevWindow = nightWindowFor(prevDate, observerLat, observerLon);
+      // Use the sunset-buffered timeline window (not the narrower astronomical
+      // dark window) so twilight blocks from the previous night — a lunar or
+      // planetary session scheduled right after sunset, say — are included in
+      // what gets copied forward, matching what the timeline actually let the
+      // user schedule that night.
+      const prevWindow = timelineWindowFor(prevDate, observerLat, observerLon, TIMELINE_BUFFER_MS);
       if (!prevWindow) return;
       const prevSessions = await listPlannedSessions({
         from: prevWindow.start.toISOString(),
@@ -473,11 +478,13 @@ export function PlannerPage() {
           new Date(s.startTime),
           new Date(s.endTime),
           visibleSkyMap,
+          5,
+          observerTimezone,
         ),
       );
     }
     return map;
-  }, [sessions, observerLat, observerLon, visibleSkyMap]);
+  }, [sessions, observerLat, observerLon, visibleSkyMap, observerTimezone]);
 
   const moonById = useMemo(() => {
     const map = new Map<number, MoonProximityResult>();
@@ -494,11 +501,13 @@ export function PlannerPage() {
           new Date(s.startTime),
           new Date(s.endTime),
           illum,
+          5,
+          observerTimezone,
         ),
       );
     }
     return map;
-  }, [sessions, observerLat, observerLon, planner?.moonIllumination]);
+  }, [sessions, observerLat, observerLon, planner?.moonIllumination, observerTimezone]);
 
   const dragDeltaMap = useMemo(() => {
     const m = new Map<number, number>();
@@ -518,11 +527,16 @@ export function PlannerPage() {
   const applyAutoPlan = useCallback(
     async (blocks: PlanBlock[], clearFirst: boolean) => {
       if (clearFirst) {
-        const ids = new Set<number>();
-        for (const [, data] of queryClient.getQueriesData<PlannedSession[]>({ queryKey: ['planned-sessions'] })) {
-          for (const s of data ?? []) if (s.id > 0) ids.add(s.id);
-        }
-        await Promise.all([...ids].map(id => deletePlannedSession(id)));
+        // Scoped to this night's own query key only. The cache can hold
+        // other nights' ['planned-sessions', from, to] entries (e.g. the
+        // user arrowed through a few dates before opening this modal) — a
+        // key-agnostic scan across all ['planned-sessions'] queries would
+        // delete blocks belonging to those other nights too.
+        const current = queryClient.getQueryData<PlannedSession[]>(
+          ['planned-sessions', timelineStartIso, timelineEndIso],
+        ) ?? [];
+        const ids = current.filter(s => s.id > 0).map(s => s.id);
+        await Promise.all(ids.map(id => deletePlannedSession(id)));
       }
       for (const b of blocks) {
         await createPlannedSession({
@@ -536,7 +550,7 @@ export function PlannerPage() {
       }
       await queryClient.invalidateQueries({ queryKey: ['planned-sessions'] });
     },
-    [queryClient],
+    [queryClient, timelineStartIso, timelineEndIso],
   );
 
 

@@ -7,11 +7,32 @@
 import fs from 'fs';
 import path from 'path';
 import { getLibraryDir } from '../libraryPath.js';
+import { ILLEGAL_FS_CHARS } from './importNaming.js';
 import {
   stmts,
   getFolderName,
   LIBRARY_API_BASE,
 } from './objects.js';
+
+/**
+ * Pick an on-disk name for an uploaded processed image that keeps the user's
+ * original filename intact (so it matches whatever the telescope/stacking app
+ * called it) instead of the opaque `<id>.<ext>` this used to write. Only
+ * deviates from the original when it collides with a file already in `dir` or
+ * contains characters the filesystem can't hold.
+ */
+function uniqueProcessedFilename(dir: string, originalName: string): string {
+  const dot = originalName.lastIndexOf('.');
+  const rawStem = dot > 0 ? originalName.slice(0, dot) : originalName;
+  const ext = dot > 0 ? originalName.slice(dot).toLowerCase() : '';
+  const stem = rawStem.replace(ILLEGAL_FS_CHARS, '_').trim() || 'file';
+
+  let candidate = `${stem}${ext}`;
+  for (let counter = 2; fs.existsSync(path.join(dir, candidate)); counter++) {
+    candidate = `${stem} (${counter})${ext}`;
+  }
+  return candidate;
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -79,12 +100,11 @@ export function addProcessedImage(
 ): ProcessedImageRecord {
   const LIBRARY_DIR = getLibraryDir();
   const id = `proc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const ext = originalName.split('.').pop()?.toLowerCase() || 'jpg';
-  const filename = `${id}.${ext}`;
 
   const processedDir = path.join(LIBRARY_DIR, getFolderName(objectId), 'processed');
   if (!fs.existsSync(processedDir)) fs.mkdirSync(processedDir, { recursive: true });
 
+  const filename = uniqueProcessedFilename(processedDir, originalName);
   const destPath = path.join(processedDir, filename);
   const size = fs.statSync(sourcePath).size;
   try {

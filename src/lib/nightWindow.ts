@@ -59,6 +59,38 @@ export function nightWindowFor(date: Date, lat: number, lon: number): { start: D
   return null;
 }
 
+/**
+ * Sunset-to-sunrise planning window (plus a buffer) for the night that begins
+ * on `date`'s evening — the same wider window the planner's droppable
+ * timeline uses (see resolvePlannerTimelineWindow in server/routes/planner.ts),
+ * as opposed to nightWindowFor's narrower astronomical-darkness window. Use
+ * this whenever you need "everything the user could have scheduled that
+ * night", including twilight blocks, e.g. when copying a night's plan.
+ * Falls back to dusk/dawn if sunset/sunrise don't occur (high-latitude
+ * summer); returns null if neither pair occurs.
+ */
+export function timelineWindowFor(
+  date: Date,
+  lat: number,
+  lon: number,
+  bufferMs = 30 * 60_000,
+): { start: Date; end: Date } | null {
+  const eveningAnchor = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
+  const next = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 12, 0, 0);
+
+  const evening = SunCalc.getTimes(eveningAnchor, lat, lon);
+  const morning = SunCalc.getTimes(next, lat, lon);
+
+  const rawStart = evening.sunset ?? evening.dusk;
+  const rawEnd = morning.sunrise ?? morning.dawn;
+
+  const validStart = rawStart instanceof Date && !isNaN(rawStart.getTime());
+  const validEnd = rawEnd instanceof Date && !isNaN(rawEnd.getTime());
+  if (!validStart || !validEnd) return null;
+
+  return { start: new Date(rawStart.getTime() - bufferMs), end: new Date(rawEnd.getTime() + bufferMs) };
+}
+
 /** Format as YYYY-MM-DD using local date parts (no UTC drift). */
 export function localDateKey(d: Date): string {
   const yyyy = d.getFullYear();

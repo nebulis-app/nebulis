@@ -44,8 +44,8 @@ function seedLibrary(): { file: string; content: string } {
   return { file, content };
 }
 
-beforeEach(() => {
-  setLibraryPath('');
+beforeEach(async () => {
+  await setLibraryPath('');
   fs.rmSync(getDefaultLibraryDir(), { recursive: true, force: true });
 });
 
@@ -66,7 +66,7 @@ describe('library migration', () => {
     expect(readMarker(target)?.libraryId).toBe(getLibraryId());
     // Path flipped and reachable
     expect(getLibraryDir()).toBe(target);
-    expect(isLibraryAvailable()).toBe(true);
+    expect(await isLibraryAvailable()).toBe(true);
   });
 
   it('never deletes or modifies the source', async () => {

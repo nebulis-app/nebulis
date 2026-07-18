@@ -43,7 +43,7 @@ docker compose -f docker/docker-compose.yml exec nebulis npx tsx server/index.ts
 It prints each account's username and role, for example:
 ```
   Accounts:
-    - brent  (admin)  "Brent"
+    - jsmith  (admin)  "Jamie Smith"
 ```
 
 ## Reset the password
@@ -67,7 +67,7 @@ docker compose -f docker/docker-compose.yml exec nebulis npx tsx server/index.ts
 
 The tool prints a new randomly generated password:
 ```
-  Password reset for "brent" (admin).
+  Password reset for "jsmith" (admin).
 
     New password:  6lPRf6CQdCFW
 

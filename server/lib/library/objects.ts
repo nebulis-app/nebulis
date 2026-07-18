@@ -10,10 +10,12 @@ import path from 'path';
 import { getLibraryDir, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../libraryPath.js';
 import db from '../db.js';
 import { getSettingsData } from '../telescopes.js';
+import type { TransportKind } from '../telescopeTransports.js';
 import {
   parseFilename,
   normalizeCatalogId,
   isRealFile,
+  sessionNightFor,
 } from '../telescopeFiles.js';
 import { resolveCanonicalId, expandSearchAliases, getAliasesForCanonical } from '../catalogAliases.js';
 import { getCatalogEntry } from '../../data/catalog.js';
@@ -115,7 +117,7 @@ export interface ImportHistoryRow {
   files: string | null;
   telescopeId: string | null;
   telescopeName: string | null;
-  transportKind: 'smb' | 'local' | null;
+  transportKind: TransportKind | null;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -923,50 +925,6 @@ export function loadIndex(): LibraryIndex {
   return { version: meta.version, objects, lastImport: meta.lastImport };
 }
 
-/**
- * Persist the full index back to SQLite. Used after imports that mutate the
- * in-memory index. `telescopeId` stamps every (objectId, date) row with the
- * importing telescope; pass `null` for non-SMB imports (folder/upload).
- */
-export function saveIndex(index: LibraryIndex, telescopeId: string | null = null): void {
-  const save = db.transaction(() => {
-    for (const [objectId, meta] of Object.entries(index.objects)) {
-      const cat = resolveCatalogMeta(objectId);
-      stmts.upsertObject.run(
-        objectId, meta.folderName, meta.fileCount, meta.lastImport,
-        meta.deleted ? 1 : 0, meta.deletedAt || null,
-        cat.catalogId, cat.objectName, cat.objectType, cat.constellation,
-        cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy
-      );
-      // Add sessions for this profile. The COALESCE in addSessionStamped
-      // preserves attribution for any (objectId, date) row that's already
-      // owned by another profile — first-to-import-wins. We do NOT clear
-      // existing rows: clearing followed by re-insert would defeat the
-      // COALESCE and silently steal attribution from other profiles, and
-      // would also drop session rows whose dates have aged off the SMB
-      // share but whose local files still exist on disk.
-      for (const date of meta.sessions) {
-        if (telescopeId) {
-          stmts.addSessionStamped.run(objectId, date, telescopeId);
-        } else {
-          stmts.addSession.run(objectId, date);
-        }
-      }
-      if (telescopeId) {
-        stmts.setObjectPrimaryTelescopeIfNull.run(telescopeId, objectId);
-      }
-      // Sync deleted session tombstones
-      if (meta.deletedSessions) {
-        for (const date of meta.deletedSessions) {
-          stmts.addSessionTombstone.run(objectId, date);
-        }
-      }
-    }
-    stmts.updateMetaLastImport.run(index.lastImport);
-  });
-  save();
-}
-
 // ─── Object queries ─────────────────────────────────────────────────────────
 
 /**
@@ -1270,7 +1228,7 @@ export function getLocalIntegrationStats(objectId: string) {
 
   for (const fname of fitsFiles) {
     const parsed = parseFilename(fname);
-    const dateKey = parsed.date || 'unknown';
+    const dateKey = sessionNightFor(parsed) || 'unknown';
     const fullPath = path.join(objDir, fname);
     try {
       const fd = fs.openSync(fullPath, 'r');
@@ -1347,8 +1305,8 @@ export function deleteLocalFile(relativePath: string): void {
     const remaining = fs.readdirSync(objDir);
     const sessionSet = new Set<string>();
     for (const fname of remaining) {
-      const parsed = parseFilename(fname);
-      if (parsed.date) sessionSet.add(parsed.date);
+      const night = sessionNightFor(parseFilename(fname));
+      if (night) sessionSet.add(night);
     }
     stmts.updateObjectFileCount.run(remaining.length, objectId);
     // Rebuild sessions list

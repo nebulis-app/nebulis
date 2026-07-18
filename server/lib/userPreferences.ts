@@ -4,7 +4,25 @@
  * Encapsulates all direct DB access for the userPreferences table so route
  * handlers do not reach for db.prepare() themselves.
  */
+import { z } from 'zod';
 import db from './db.js';
+
+// Mirrors src/lib/api/auth.ts's WatermarkPreset — kept in sync manually across
+// the client/server boundary, same as every other API-contract type in this app.
+export const WatermarkPresetSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  text: z.string(),
+  fontSize: z.number(),
+  fontFamily: z.string(),
+  color: z.string(),
+  bold: z.boolean(),
+  italic: z.boolean(),
+  opacity: z.number(),
+  align: z.enum(['left', 'center', 'right']),
+  angle: z.number(),
+});
+export type WatermarkPreset = z.infer<typeof WatermarkPresetSchema>;
 
 interface WatermarkPresetRow {
   watermarkPresets: string;
@@ -24,20 +42,23 @@ const upsertWatermarkPresetsStmt = db.prepare<[string, string]>(`
 
 /**
  * Return the saved watermark presets for the given user.
- * Returns an empty array when no presets have been saved yet.
+ * Returns an empty array when no presets have been saved yet. Entries that no
+ * longer match WatermarkPresetSchema (hand-edited DB row, older app version)
+ * are dropped rather than served raw to the client.
  */
-export function getWatermarkPresets(userId: string): unknown[] {
+export function getWatermarkPresets(userId: string): WatermarkPreset[] {
   const row = getWatermarkPresetsStmt.get(userId);
   if (!row) return [];
   const parsed: unknown = JSON.parse(row.watermarkPresets);
-  return Array.isArray(parsed) ? parsed : [];
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((p): p is WatermarkPreset => WatermarkPresetSchema.safeParse(p).success);
 }
 
 /**
  * Persist the full watermark presets array for the given user, replacing
  * any previously saved value.
  */
-export function setWatermarkPresets(userId: string, presets: unknown[]): void {
+export function setWatermarkPresets(userId: string, presets: WatermarkPreset[]): void {
   upsertWatermarkPresetsStmt.run(userId, JSON.stringify(presets));
 }
 

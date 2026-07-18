@@ -27,6 +27,11 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
   const [confirmingClose, setConfirmingClose] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const completedRef = useRef(false);
+  // Set only once our own sync is confirmed running (from the first status
+  // poll after 'syncing' starts). Null while 'starting' or 'waiting' — in
+  // 'waiting' the active run belongs to someone else (e.g. the auto-import
+  // scheduler raced in first), and closing the modal must not cancel it.
+  const ownRunIdRef = useRef<string | null>(null);
   // Refs capture prop values at mount so the one-shot effect needs no deps.
   const objectIdRef = useRef(objectId);
   const sessionIdRef = useRef(sessionId);
@@ -89,6 +94,7 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
           consecutiveErrors = 0;
           if (cancelled) return;
           setStatus(s);
+          if (!ownRunIdRef.current && s.runId) ownRunIdRef.current = s.runId;
           if (!s.running) {
             stopPolling();
             completedRef.current = true;
@@ -118,11 +124,15 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
     return () => {
       cancelled = true;
       stopPolling();
-      // Cancel any in-flight server sync so the lock is released promptly.
-      // This also handles React StrictMode's double-invoke (dev only), where
-      // the first effect claims the lock and the second would otherwise block.
-      if (!completedRef.current) {
-        cancelImport().catch(() => {});
+      // Cancel our own in-flight server sync so the lock is released
+      // promptly. This also handles React StrictMode's double-invoke (dev
+      // only), where the first effect claims the lock and the second would
+      // otherwise block. Scoped to ownRunIdRef: while 'starting' or
+      // 'waiting' we don't yet know (or don't own) the active run, and
+      // cancelling without a runId would kill whatever import happens to be
+      // running — e.g. an unrelated auto-import that raced in first.
+      if (!completedRef.current && ownRunIdRef.current) {
+        cancelImport(ownRunIdRef.current).catch(() => {});
       }
     };
   }, []);
@@ -132,8 +142,8 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
 
   function handleClose() {
     stopPolling();
-    if (!isFinished) {
-      cancelImport().catch(() => {});
+    if (!isFinished && ownRunIdRef.current) {
+      cancelImport(ownRunIdRef.current).catch(() => {});
     }
     onClose();
   }

@@ -5,6 +5,8 @@ import {
   createProfile,
   updateProfile,
   deleteProfile,
+  getSettingsData,
+  updateSettingsData,
   type TelescopeProfile,
 } from '../../server/lib/telescopes';
 import db from '../../server/lib/db';
@@ -86,5 +88,48 @@ describe('telescopes', () => {
     // length and contents are knowable. `>= 1` would pass for duplicates.
     expect(settings.telescopes).toHaveLength(1);
     expect(settings.telescopes[0].id).toBe('test-1');
+  });
+});
+
+// ─── Settings round-trip: temperatureUnit / groupObservingNights ─────────────
+// Regression coverage for the C-1 bug: rowToSettings (read) and
+// saveSettingsRow (write) each had their own default for an unset value, and
+// the two disagreed. These tests flip the real appSettings row (shared
+// across backend test files against one DB — see telescopeFiles.test.ts's
+// toggle tests), so every test restores it afterward.
+describe('settings round-trip (temperatureUnit / groupObservingNights)', () => {
+  afterEach(() => {
+    updateSettingsData({ temperatureUnit: 'fahrenheit', groupObservingNights: true });
+  });
+
+  it('round-trips an explicit temperatureUnit change', () => {
+    updateSettingsData({ temperatureUnit: 'celsius' });
+    expect(getSettingsData().temperatureUnit).toBe('celsius');
+    updateSettingsData({ temperatureUnit: 'fahrenheit' });
+    expect(getSettingsData().temperatureUnit).toBe('fahrenheit');
+  });
+
+  it('round-trips an explicit groupObservingNights change', () => {
+    updateSettingsData({ groupObservingNights: false });
+    expect(getSettingsData().groupObservingNights).toBe(false);
+    updateSettingsData({ groupObservingNights: true });
+    expect(getSettingsData().groupObservingNights).toBe(true);
+  });
+
+  it('regression (C-1): an explicit null falls back to the same default on write and read', () => {
+    // A client PUT body with an explicit `null` (rather than omitting the
+    // key entirely) exercises saveSettingsRow's write-side default directly.
+    // Before the fix this persisted 'celsius' while the read-side default
+    // for an unset value was 'fahrenheit' — same "no value", two different
+    // answers depending on which function last touched the row.
+    updateSettingsData({ temperatureUnit: null });
+    expect(getSettingsData().temperatureUnit).toBe('fahrenheit');
+  });
+
+  it('a partial update does not disturb an unrelated field', () => {
+    updateSettingsData({ groupObservingNights: false });
+    updateSettingsData({ temperatureUnit: 'celsius' });
+    expect(getSettingsData().groupObservingNights).toBe(false);
+    expect(getSettingsData().temperatureUnit).toBe('celsius');
   });
 });

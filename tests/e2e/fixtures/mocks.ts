@@ -686,6 +686,19 @@ export async function mockAllRoutes(page: Page) {
   await page.route('**/api/library/objects/M42/sessions/2024-03-15/files', r =>
     r.fulfill(json(ok(MOCK.sessionFiles))));
 
+  // Curated object-type filter groups (drives the top-row filter chips). Mirrors
+  // server/lib/library/objectFilters.ts. The path is distinct from `objects` so
+  // it does not collide with the objects routes above.
+  await page.route('**/api/library/object-filters', r => r.fulfill(json(ok([
+    { id: 'all', label: 'All', matchTypes: [] },
+    { id: 'solar-system', label: 'Solar System', matchTypes: ['Star', 'Planet', 'Natural Satellite', 'Dwarf Planet', 'Asteroid', 'Comet'], matchMode: 'exact' },
+    { id: 'galaxy', label: 'Galaxy', matchTypes: ['Galaxy'] },
+    { id: 'nebula', label: 'Nebula', matchTypes: ['Nebula'] },
+    { id: 'cluster', label: 'Cluster', matchTypes: ['Cluster'] },
+    { id: 'supernova-remnant', label: 'Supernova Remnant', matchTypes: ['Supernova Remnant'] },
+    { id: 'planetary-nebula', label: 'Planetary Nebula', matchTypes: ['Planetary Nebula'] },
+  ]))));
+
   // Import
   await page.route('**/api/library/import/history**', r => r.fulfill(json(ok(MOCK.importHistory))));
   await page.route('**/api/library/import/status', r => r.fulfill(json(ok(MOCK.importStatus))));

@@ -33,7 +33,10 @@ describe('stageUploadDestPath — upload staging traversal guard', () => {
     expect(dest).not.toBeNull();
     expect(isContained(dest!)).toBe(true);
     expect(dest!).toContain(`${path.sep}tmp${path.sep}owned.fit`);
-    expect(dest!.startsWith(`${path.sep}tmp${path.sep}`)).toBe(false);
+    // Containment (line above) is the real guarantee. A literal `startsWith('/tmp/')`
+    // check is meaningless here on Linux, where `os.tmpdir()` (and thus `tmpDir`
+    // itself) already lives under /tmp — asserting containment already proves no
+    // escape happened without relying on where the OS puts its temp dir.
   });
 
   it('neutralizes backslash path separators', () => {

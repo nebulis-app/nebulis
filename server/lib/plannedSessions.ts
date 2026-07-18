@@ -58,11 +58,26 @@ export function getAll(): PlannedSession[] {
 
 /** All sessions whose time range overlaps [from, to). */
 export function getInRange(from: string, to: string): PlannedSession[] {
-  return stmts.getRange.all(to, from);
+  return stmts.getRange.all(canonicalizeIso(to), canonicalizeIso(from));
 }
 
 export function getById(id: number): PlannedSession | undefined {
   return stmts.getById.get(id);
+}
+
+/**
+ * Normalize any valid ISO-8601 instant to the canonical millisecond-precision
+ * UTC form (e.g. "2026-06-12T03:00:00.000Z"). Clients differ on precision:
+ * web and iOS always send fractional seconds, but Android's ISO_INSTANT drops
+ * them when milliseconds are zero (which is nearly always, since times snap to
+ * the 10-minute grid). The range query compares startTime/endTime as strings in
+ * SQL, and "…00Z" sorts AFTER "…00.500Z" lexicographically even though it is
+ * temporally earlier. Canonicalizing on every write makes stored values
+ * byte-comparable regardless of which client wrote them, so range/order queries
+ * stay correct. Any future edit heals a legacy row for free.
+ */
+function canonicalizeIso(iso: string): string {
+  return new Date(iso).toISOString();
 }
 
 export function create(input: PlannedSessionInput): PlannedSession {
@@ -71,8 +86,8 @@ export function create(input: PlannedSessionInput): PlannedSession {
     input.objectName,
     input.ra,
     input.dec,
-    input.startTime,
-    input.endTime,
+    canonicalizeIso(input.startTime),
+    canonicalizeIso(input.endTime),
     input.notes ?? '',
   );
   const row = stmts.getById.get(Number(result.lastInsertRowid));
@@ -87,8 +102,8 @@ export function update(
   const existing = stmts.getById.get(id);
   if (!existing) return null;
   stmts.update.run(
-    patch.startTime ?? null,
-    patch.endTime ?? null,
+    patch.startTime != null ? canonicalizeIso(patch.startTime) : null,
+    patch.endTime != null ? canonicalizeIso(patch.endTime) : null,
     patch.notes ?? null,
     id,
   );

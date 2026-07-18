@@ -9,6 +9,9 @@ import { z } from 'zod';
 
 export const CATALOG_TIERS = ['messier', 'caldwell', 'popular', 'extended', 'sharpless'] as const;
 export type CatalogTier = (typeof CATALOG_TIERS)[number];
+export function isCatalogTier(value: string): value is CatalogTier {
+  return (CATALOG_TIERS as readonly string[]).includes(value);
+}
 
 // ─── index.json ─────────────────────────────────────────────────────────────
 
@@ -71,7 +74,7 @@ export type DescriptionEntry = z.infer<typeof DescriptionEntry>;
 // ─── credits.json (embedded in each pack) ───────────────────────────────────
 
 const CreditEntry = z.object({
-  source:     z.enum(['hubble', 'dss2']),
+  source:     z.enum(['hubble', 'dss2', 'nasa']),
   credit:     z.string(),
   licenseUrl: z.string(),
 });

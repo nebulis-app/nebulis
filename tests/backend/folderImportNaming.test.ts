@@ -108,37 +108,60 @@ describe('importNaming', () => {
   it('keeps a name that already parses to the assigned date', () => {
     const name = 'Stacked_10_M42_30.0s_IRCUT_20240115-220000.jpg';
     expect(parsesToDate(name, '2024-01-15')).toBe(true);
-    expect(canonicalImportName(name, '2024-01-15', '220000', new Set())).toBe(name);
+    expect(canonicalImportName(name, '2024-01-15', '2024-01-15', '220000', new Set())).toBe(name);
   });
 
   it('date-stamps an undated .fits file so it lands in the right session', () => {
     // A name with no parseable date (NINA/SGP, raw "light_001.fits") would be
-    // invisible in session views, which key off parseFilename(name).date. So it
-    // is rewritten to the dated form the read path recognizes, stem preserved.
-    const out = canonicalImportName('light_001.fits', '2024-01-16', '010000', new Set());
-    expect(out).toBe('light_001_20240116-010000.fits');
-    expect(parsesToDate(out, '2024-01-16')).toBe(true);
+    // invisible in session views, which key off sessionNightFor(parseFilename(name)).
+    // So it is rewritten to the dated form the read path recognizes, stem preserved.
+    const out = canonicalImportName('light_001.fits', '2024-01-15', '2024-01-15', '220000', new Set());
+    expect(out).toBe('light_001_20240115-220000.fits');
+    expect(parsesToDate(out, '2024-01-15')).toBe(true);
+  });
+
+  it('embeds the true capture date + time for a midnight-straddling default assignment', () => {
+    // The file's true capture date/time is 2024-01-16 01:00 — before the 7am
+    // rollover, so its natural observing night is 2024-01-15. When finalDate is
+    // exactly that natural night (no override), the TRUE date+time is embedded,
+    // not the rolled-back finalDate: reading it back re-derives finalDate via
+    // the same rollover, avoiding a double-roll.
+    const out = canonicalImportName('light_002.fits', '2024-01-15', '2024-01-16', '010000', new Set());
+    expect(out).toBe('light_002_20240116-010000.fits');
+    expect(parsesToDate(out, '2024-01-15')).toBe(true);
+  });
+
+  it('clamps the time when overriding a midnight-straddling file to a different date', () => {
+    // Same true capture (2024-01-16 01:00, natural night 2024-01-15), but the
+    // user explicitly merged it into 2024-02-01 instead. Embedding finalDate
+    // next to the unclamped 01:00 would roll back to 2024-01-31 on next read,
+    // so the time must be clamped into the rollover-safe zone.
+    const out = canonicalImportName('light_003.fits', '2024-02-01', '2024-01-16', '010000', new Set());
+    expect(out).toBe('light_003_20240201-070000.fits');
+    expect(parsesToDate(out, '2024-02-01')).toBe(true);
   });
 
   it('re-stamps a .jpg whose embedded date differs from the assigned session', () => {
     // Merge/split can override the session date; the filename must be rewritten
     // to match so it groups under the assigned night, not its old embedded one.
+    // True capture is 2024-01-15 22:00 (well clear of the rollover hour), so no
+    // clamping is needed even though this is an override.
     const name = 'Stacked_10_M42_30.0s_IRCUT_20240115-220000.jpg';
-    const out = canonicalImportName(name, '2024-01-20', '220000', new Set());
+    const out = canonicalImportName(name, '2024-01-20', '2024-01-15', '220000', new Set());
     expect(out).toBe('Stacked_10_M42_30.0s_IRCUT_20240120-220000.jpg');
     expect(parsesToDate(out, '2024-01-20')).toBe(true);
   });
 
   it('bumps the timestamp to avoid collisions for undated .fit files', () => {
     const used = new Set<string>();
-    const a = canonicalImportName('frame.fit', '2024-01-15', '120000', used);
+    const a = canonicalImportName('frame.fit', '2024-01-15', '2024-01-15', '120000', used);
     used.add(a);
-    const b = canonicalImportName('frame.fit', '2024-01-15', '120000', used);
+    const b = canonicalImportName('frame.fit', '2024-01-15', '2024-01-15', '120000', used);
     expect(a).toBe('frame_20240115-120000.fit');
     expect(b).toBe('frame_20240115-120001.fit');
   });
 
   it('preserves the thumbnail marker so classification holds', () => {
-    expect(canonicalImportName('preview_thn.jpg', '2024-01-15', null, new Set())).toContain('_thn.jpg');
+    expect(canonicalImportName('preview_thn.jpg', '2024-01-15', null, null, new Set())).toContain('_thn.jpg');
   });
 });

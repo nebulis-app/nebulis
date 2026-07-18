@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   parseFilename,
   getSessionKey,
@@ -8,7 +8,11 @@ import {
   normalizeCatalogId,
   getFileCategory,
   isRealFile,
+  observingNightDate,
+  sessionNightFor,
+  clampToNightSafeTime,
 } from '../../server/lib/telescopeFiles';
+import { updateSettingsData } from '../../server/lib/telescopes';
 
 // ─── parseFilename ──────────────────────────────────────────────
 
@@ -223,6 +227,85 @@ describe('getSessionKey', () => {
   it('returns "unknown" when no date is available', () => {
     const parsed = parseFilename('readme.txt');
     expect(getSessionKey(parsed)).toBe('unknown');
+  });
+});
+
+// ─── observingNightDate / sessionNightFor ───────────────────────
+
+describe('observingNightDate', () => {
+  it('rolls a pre-rollover-hour capture back to the previous calendar date', () => {
+    expect(observingNightDate('2024-01-16', '003000')).toBe('2024-01-15');
+    expect(observingNightDate('2024-01-16', '065959')).toBe('2024-01-15');
+  });
+
+  it('leaves a post-rollover-hour capture on its own calendar date', () => {
+    expect(observingNightDate('2024-01-16', '070000')).toBe('2024-01-16');
+    expect(observingNightDate('2024-01-16', '223000')).toBe('2024-01-16');
+  });
+
+  it('handles month and year rollover', () => {
+    expect(observingNightDate('2024-03-01', '010000')).toBe('2024-02-29'); // leap year
+    expect(observingNightDate('2024-01-01', '010000')).toBe('2023-12-31');
+  });
+
+  it('returns the date unchanged when no time is available', () => {
+    expect(observingNightDate('2024-01-16', null)).toBe('2024-01-16');
+    expect(observingNightDate('2024-01-16', undefined)).toBe('2024-01-16');
+  });
+});
+
+describe('sessionNightFor', () => {
+  it('merges an 11pm-1am session under the evening it started', () => {
+    const evening = parseFilename('Stacked_10_M42_30.0s_IRCUT_20240115-230000.jpg');
+    const pastMidnight = parseFilename('sub_00001_M42_10.0s_IRCUT_20240116-003000.fit');
+    expect(sessionNightFor(evening)).toBe('2024-01-15');
+    expect(sessionNightFor(pastMidnight)).toBe('2024-01-15');
+  });
+
+  it('returns null when no date could be parsed at all', () => {
+    expect(sessionNightFor(parseFilename('readme.txt'))).toBeNull();
+  });
+});
+
+describe('clampToNightSafeTime', () => {
+  it('bumps an early-morning time up to the rollover hour', () => {
+    expect(clampToNightSafeTime('003045')).toBe('073045');
+  });
+
+  it('leaves a time at or after the rollover hour unchanged', () => {
+    expect(clampToNightSafeTime('070000')).toBe('070000');
+    expect(clampToNightSafeTime('220000')).toBe('220000');
+  });
+});
+
+// ─── Settings > General > "Group sessions by observing night" toggle ────
+// This is the single gate that observingNightDate/clampToNightSafeTime (and
+// therefore sessionNightFor, and every caller across the app) consult. These
+// tests flip the real appSettings row, so every test restores it afterward —
+// vitest runs backend test files sequentially against one shared DB, and a
+// leaked `false` here would silently break every other suite's assumption
+// that grouping defaults on.
+describe('observing-night grouping toggle', () => {
+  afterEach(() => {
+    updateSettingsData({ groupObservingNights: true });
+  });
+
+  it('disables the rollover when turned off', () => {
+    updateSettingsData({ groupObservingNights: false });
+    expect(observingNightDate('2024-01-16', '003000')).toBe('2024-01-16');
+    const pastMidnight = parseFilename('sub_00001_M42_10.0s_IRCUT_20240116-003000.fit');
+    expect(sessionNightFor(pastMidnight)).toBe('2024-01-16');
+  });
+
+  it('makes clampToNightSafeTime a no-op when turned off', () => {
+    updateSettingsData({ groupObservingNights: false });
+    expect(clampToNightSafeTime('003045')).toBe('003045');
+  });
+
+  it('re-enabling restores the rollover', () => {
+    updateSettingsData({ groupObservingNights: false });
+    updateSettingsData({ groupObservingNights: true });
+    expect(observingNightDate('2024-01-16', '003000')).toBe('2024-01-15');
   });
 });
 

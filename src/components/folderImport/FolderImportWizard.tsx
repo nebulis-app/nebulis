@@ -8,6 +8,7 @@ import {
   commitFolderImport,
   getImportStatus,
   type ImportScanResult,
+  type ImportScanSkip,
   type ImportCommitPlan,
 } from '../../lib/api/library';
 import { useTheme } from '../../hooks/useTheme';
@@ -15,6 +16,33 @@ import { Modal } from '../ui/Modal';
 import { ObjectReviewCard, type ObjectEdit } from './ObjectReviewCard';
 
 type Phase = 'scanning' | 'review' | 'committing' | 'done';
+
+/** Accounts for files the scan found but will not import. Without it, the only
+ *  signal is a file count lower than the folder the user picked, which reads as
+ *  the import being broken rather than as a setting doing its job. */
+function SkippedNotice({ skipped, isDark }: { skipped: ImportScanSkip[]; isDark: boolean }) {
+  if (skipped.length === 0) return null;
+  const total = skipped.reduce((n, s) => n + s.count, 0);
+  return (
+    <div className={`p-3 rounded-xl text-sm text-left ${isDark ? 'bg-slate-800/60 text-slate-300' : 'bg-slate-50 text-slate-600'}`}>
+      <div className="flex items-start gap-2">
+        <AlertCircle className={`w-4 h-4 shrink-0 mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-400'}`} />
+        <div className="space-y-1">
+          <span>
+            {total.toLocaleString()} file{total !== 1 ? 's' : ''} will not be imported:
+          </span>
+          <ul className="space-y-0.5">
+            {skipped.map(s => (
+              <li key={s.reason} className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+                {s.count.toLocaleString()} {s.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function buildEdits(result: ImportScanResult): ObjectEdit[] {
   return result.objects.map(o => ({
@@ -81,6 +109,7 @@ export function FolderImportWizard({
   const [phase, setPhase] = useState<Phase>('scanning');
   const [edits, setEdits] = useState<ObjectEdit[]>([]);
   const [truncated, setTruncated] = useState(false);
+  const [skipped, setSkipped] = useState<ImportScanSkip[]>([]);
 
   const card = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
   const subText = isDark ? 'text-slate-400' : 'text-slate-500';
@@ -93,6 +122,7 @@ export function FolderImportWizard({
     onSuccess: (result) => {
       setEdits(buildEdits(result));
       setTruncated(result.truncated);
+      setSkipped(result.skipped ?? []);
       setPhase('review');
     },
   });
@@ -133,6 +163,8 @@ export function FolderImportWizard({
       if (!status.error) onDone();
     }
   }, [phase, statusQuery.data, queryClient, onDone]);
+
+  const skippedTotal = useMemo(() => skipped.reduce((n, s) => n + s.count, 0), [skipped]);
 
   // ── Derived totals for the footer ──────────────────────────────────────────
   const selected = useMemo(() => edits.filter(e => !e.skip), [edits]);
@@ -217,8 +249,11 @@ export function FolderImportWizard({
               <div className="flex flex-col items-center gap-2 py-12 text-center">
                 <FolderInput className={`w-8 h-8 ${mutedText}`} />
                 <p className={`text-sm ${subText}`}>
-                  No importable files were found in this folder. Check that it contains image or FITS files.
+                  {skippedTotal > 0
+                    ? `Nothing here can be imported with your current settings. All ${skippedTotal.toLocaleString()} file${skippedTotal !== 1 ? 's' : ''} were skipped.`
+                    : 'No importable files were found in this folder. Check that it contains image or FITS files.'}
                 </p>
+                <SkippedNotice skipped={skipped} isDark={isDark} />
               </div>
             ) : (
               <>
@@ -232,6 +267,7 @@ export function FolderImportWizard({
                     This folder has a very large number of files, so the scan stopped early. Import what's shown, then scan again to pick up the rest.
                   </div>
                 )}
+                <SkippedNotice skipped={skipped} isDark={isDark} />
                 {edits.map((edit, i) => (
                   <ObjectReviewCard key={edit.folderName} edit={edit} onChange={next => updateEdit(i, next)} />
                 ))}

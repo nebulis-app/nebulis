@@ -1,7 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { registerUser, loginUser, verifyToken, getUserById, getUserCount, getAllUsers, deleteUser, updateUserPassword, updateUserRole, updateUserProfile } from '../lib/auth.js';
-import type { UserRole } from '../lib/auth.js';
+import { registerUser, loginUser, verifyToken, getUserById, getUserCount, getAllUsers, deleteUser, updateUserPassword, updateUserRole, updateUserProfile, USER_ROLES } from '../lib/auth.js';
 import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
@@ -86,7 +85,7 @@ const CreateUserBodySchema = z.object({
   password: z.string().min(1),
   displayName: z.string().optional(),
   email: z.string().optional(),
-  role: z.enum(['admin', 'viewer']).optional(),
+  role: z.enum(USER_ROLES).optional(),
 });
 
 const PasswordBodySchema = z.object({
@@ -99,7 +98,7 @@ const ProfileBodySchema = z.object({
 });
 
 const RoleBodySchema = z.object({
-  role: z.enum(['admin', 'viewer']),
+  role: z.enum(USER_ROLES),
 });
 
 // Register the first user (setup only — closed once any account exists).
@@ -207,8 +206,7 @@ router.post('/users', requireAdmin, async (req: Request, res: Response) => {
   }
   try {
     const { username, password, displayName, email, role } = parsed.data;
-    const userRole: UserRole = role === 'admin' ? 'admin' : 'viewer';
-    await registerUser(username, password, displayName, email, userRole);
+    await registerUser(username, password, displayName, email, role ?? 'viewer');
     // Return user list instead of token
     res.apiSuccess(getAllUsers());
   } catch (err: unknown) {
@@ -294,7 +292,7 @@ router.put('/users/:id/role', requireAdmin, (req: Request, res: Response) => {
       return;
     }
   }
-  const updated = updateUserRole(id, role as UserRole);
+  const updated = updateUserRole(id, role);
   if (updated) {
     res.apiSuccess(getAllUsers());
   } else {

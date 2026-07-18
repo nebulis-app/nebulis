@@ -17,7 +17,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { smbGetFile, smbPutFile } from './smb.js';
-import type { TelescopeTransport } from './telescopeTransports.js';
+import type { TelescopeTransport, TransportKind } from './telescopeTransports.js';
 
 export interface DeviceIdentity {
   deviceId: string;
@@ -62,7 +62,7 @@ function getAppVersion(): string {
 
 /** Adapt a TelescopeTransport to the partial-profile shape that smb.ts accepts. */
 function transportToProfile(t: TelescopeTransport): {
-  connectionType: 'smb' | 'local';
+  connectionType: TransportKind;
   hostname: string;
   shareName: string;
   username: string;

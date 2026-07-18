@@ -28,7 +28,8 @@ const JWT_SECRET = loadJwtSecret();
 
 const TOKEN_EXPIRY = '30d';
 
-export type UserRole = 'admin' | 'viewer';
+export const USER_ROLES = ['admin', 'viewer'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
 
 export interface User {
   id: string;

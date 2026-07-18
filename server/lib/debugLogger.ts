@@ -13,11 +13,54 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { execFileSync } from 'child_process';
 import { LOGS_DIR } from './paths.js';
 import { log, setDebugTeeTarget, writeDebugLine } from './logger.js';
 import { requestContext } from './requestContext.js';
 
 const DEBUG_TIMEOUT_MS = 15 * 60 * 1000;
+
+/** Best-effort swap usage. Unlike os.freemem() (which reports only truly-free
+ *  pages and sits near zero as normal behavior on macOS), swap usage is a real
+ *  memory-pressure signal. Platform-specific, wrapped so it can never throw. */
+function getSwapSummary(): string {
+  try {
+    if (process.platform === 'darwin') {
+      const out = execFileSync('sysctl', ['-n', 'vm.swapusage'], { timeout: 1500, encoding: 'utf8' });
+      const toMb = (v: string, u: string) => Math.round(parseFloat(v) * (u.toUpperCase() === 'G' ? 1024 : 1));
+      const used = out.match(/used\s*=\s*([\d.]+)([MG])/i);
+      const total = out.match(/total\s*=\s*([\d.]+)([MG])/i);
+      if (used && total) return `${toMb(used[1], used[2])} MB used / ${toMb(total[1], total[2])} MB total`;
+    } else if (process.platform === 'linux') {
+      const info = fs.readFileSync('/proc/meminfo', 'utf8');
+      const t = info.match(/SwapTotal:\s*(\d+)\s*kB/);
+      const f = info.match(/SwapFree:\s*(\d+)\s*kB/);
+      if (t && f) {
+        const totalKb = parseInt(t[1], 10);
+        const freeKb = parseInt(f[1], 10);
+        return `${Math.round((totalKb - freeKb) / 1024)} MB used / ${Math.round(totalKb / 1024)} MB total`;
+      }
+    }
+  } catch { /* best-effort */ }
+  return '(unavailable)';
+}
+
+function formatUptime(sec: number): string {
+  const s = Math.floor(sec);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s % 60}s`;
+  return `${s}s`;
+}
+
+/** True if both paths resolve to the same filesystem/device, null if either
+ *  can't be stat'd. Cross-volume staging forces copy-then-delete instead of
+ *  rename for every uploaded file, which is much slower for large imports. */
+function sameVolume(a: string | undefined, b: string | undefined): boolean | null {
+  if (!a || !b) return null;
+  try { return fs.statSync(a).dev === fs.statSync(b).dev; } catch { return null; }
+}
 
 interface DebugLogState {
   enabled: boolean;
@@ -26,11 +69,39 @@ interface DebugLogState {
   logPath: string | null;
 }
 
+/** Credential-free snapshot of one telescope profile for the debug header.
+ *  The caller (the enable route) builds this from the stored profile and
+ *  intentionally omits the SMB username and password. */
+export interface TelescopeDebugInfo {
+  name: string;
+  model: string;
+  kind: string;
+  connectionType: string;
+  /** SMB host (IP or name). Omitted for local-drive profiles. */
+  hostname?: string;
+  /** SMB share name. Omitted for local-drive profiles. */
+  shareName?: string;
+  /** Local mount path. Omitted for SMB profiles. */
+  localPath?: string;
+  autoImportEnabled: boolean;
+  autoImportInterval: number;
+  archived: boolean;
+  importJpg: boolean;
+  importFits: boolean;
+  importThumbnails: boolean;
+  importSubFrames: boolean;
+  importVideos: boolean;
+}
+
 export interface DebugContext {
   appVersion?: string;
   libraryDir?: string;
   dataDir?: string;
+  /** 'local' or 'network'. A network (SMB) library means every import write
+   *  goes over the wire and can stall if the share is slow/unreachable. */
+  libraryLocationType?: string;
   settings?: Record<string, unknown>;
+  telescopes?: TelescopeDebugInfo[];
   dbStats?: { objects: number; sessions: number; files: number };
 }
 
@@ -73,6 +144,11 @@ export function enableDebugLogging(ctx?: DebugContext): DebugLogState {
     }
   }
 
+  const cpuCount = os.cpus().length;
+  const load = os.loadavg().map(n => n.toFixed(2)).join(' ');
+  const mem = process.memoryUsage();
+  const mb = (bytes: number) => Math.round(bytes / 1024 / 1024);
+
   const lines: string[] = [
     '=== Nebulis Import Debug Log ===',
     `Started:  ${now.toISOString()}`,
@@ -80,10 +156,15 @@ export function enableDebugLogging(ctx?: DebugContext): DebugLogState {
     '',
     '--- System ---',
     ...(ctx?.appVersion ? [`App:      Nebulis ${ctx.appVersion}`] : []),
-    `Node.js:  ${process.version}`,
-    `OS:       ${os.platform()} ${os.release()} (${os.arch()})`,
+    `Node.js:  ${process.version}  ·  server uptime ${formatUptime(process.uptime())}`,
+    `OS:       ${os.platform()} ${os.release()} (${os.arch()})  ·  ${cpuCount} CPUs  ·  load ${load}`,
     `Hostname: ${os.hostname()}`,
-    `RAM:      ${freeMb} MB free / ${totalMb} MB total`,
+    // os.freemem() sits near zero on macOS by design (cache/inactive/compressed
+    // pages are counted used), so it is not a pressure signal. Report total, and
+    // use swap + the server's own RSS as the real memory indicators.
+    `RAM:      ${totalMb} MB total  (free-page count is not a pressure signal on macOS; watch Swap)`,
+    `Swap:     ${getSwapSummary()}`,
+    `Server process: RSS ${mb(mem.rss)} MB · heap ${mb(mem.heapUsed)}/${mb(mem.heapTotal)} MB · external ${mb(mem.external)} MB (arrayBuffers ${mb(mem.arrayBuffers)} MB)`,
   ];
 
   const libDisk = diskLine('Library disk', ctx?.libraryDir);
@@ -91,11 +172,47 @@ export function enableDebugLogging(ctx?: DebugContext): DebugLogState {
   if (libDisk) lines.push(libDisk);
   if (dataDisk) lines.push(dataDisk);
 
+  // Where multer first streams uploads before they are moved into the import
+  // staging dir under the data dir. If they are on different volumes, every
+  // uploaded file is copied+deleted instead of renamed (EXDEV) — slower at scale.
+  const tmpDir = os.tmpdir();
+  lines.push(`Upload staging: ${tmpDir}`);
+  const sv = sameVolume(tmpDir, ctx?.dataDir);
+  if (sv === false) {
+    lines.push('  (different volume from data dir: uploaded files are copied, not renamed. Slower for large imports.)');
+  } else if (sv === true) {
+    lines.push('  (same volume as data dir: fast rename staging)');
+  }
+
+  if (ctx?.libraryLocationType) {
+    const isNet = ctx.libraryLocationType === 'network';
+    lines.push(`Library location: ${ctx.libraryLocationType}${isNet ? '  (SMB share: import writes go over the network and can stall if it is slow or unreachable)' : ''}`);
+  }
+
   if (ctx?.settings) {
     const s = ctx.settings;
-    lines.push('', '--- Import settings ---');
+    lines.push('', '--- Import settings (global / auto-import) ---');
     lines.push(`JPG: ${s.importJpg}, FITS: ${s.importFits}, Subs: ${s.importSubFrames}, Videos: ${s.importVideos}, Thumbnails: ${s.importThumbnails}`);
     lines.push(`Sync: ${s.syncEnabled}, Auto-import interval: ${s.autoImportInterval} min`);
+  }
+
+  if (ctx?.telescopes) {
+    lines.push('', `--- Telescopes (${ctx.telescopes.length}) ---`);
+    if (ctx.telescopes.length === 0) {
+      lines.push('(none configured)');
+    }
+    ctx.telescopes.forEach((t, i) => {
+      const location = t.connectionType === 'local'
+        ? (t.localPath || '(no path)')
+        : `//${t.hostname || '?'}/${t.shareName || '?'}`;
+      const auto = t.autoImportEnabled
+        ? `auto-import: on (${t.autoImportInterval} min)`
+        : 'auto-import: off';
+      const archived = t.archived ? '  [archived]' : '';
+      lines.push(`${i + 1}. "${t.name}"  [${t.kind} · ${t.connectionType}]${archived}`);
+      lines.push(`     ${location}   ${auto}`);
+      lines.push(`     import → JPG:${t.importJpg} FITS:${t.importFits} Thumbs:${t.importThumbnails} Subs:${t.importSubFrames} Video:${t.importVideos}`);
+    });
   }
 
   if (ctx?.dbStats) {

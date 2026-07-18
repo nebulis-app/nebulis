@@ -17,8 +17,9 @@ import SunCalc from 'suncalc';
  * noon) is the rollover because a planner is forward-looking — after dawn,
  * "tonight" means the coming evening. 07:00 (not 06:00) so midwinter
  * sessions that image until a late dawn aren't yanked to the next night
- * mid-capture. Keep in sync with NightDate.swift in the iOS client and the
- * default-date anchor in server/routes/planner.ts.
+ * mid-capture. Keep in sync with NightDate.swift in the iOS client,
+ * PlannerTime.kt in the Android client, and the default-date anchor in
+ * server/routes/planner.ts.
  */
 export function plannerToday(now: Date = new Date(), timeZone?: string): Date {
   const todayKey = timeZone ? localDateKeyInTimeZone(now, timeZone) : localDateKey(now);

@@ -16,8 +16,9 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { SmbEntry } from './smb.shared.js';
 import type { TelescopeProfile } from './telescopes.js';
+import { isErrnoException } from './errors.js';
 
-type ProfileArg = Pick<TelescopeProfile, 'localPath'> | null | undefined;
+type ProfileArg = Partial<Pick<TelescopeProfile, 'localPath'>> | null | undefined;
 
 /** Resolve a share-relative path against profile.localPath. Refuses traversal. */
 function resolveLocal(profile: ProfileArg, relPath: string): string {
@@ -43,7 +44,7 @@ export async function localListDir(relPath: string, profile?: ProfileArg): Promi
   try {
     dirents = await fs.readdir(absPath, { withFileTypes: true });
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
+    const code = isErrnoException(err) ? err.code : undefined;
     if (code === 'ENOENT' || code === 'ENOTDIR') {
       // Match SMB semantics: missing/invalid path returns empty rather than throwing.
       return [];
@@ -98,6 +99,17 @@ export async function localGetFile(relPath: string, maxBytes?: number, profile?:
   return await fs.readFile(absPath);
 }
 
+/** Copy a file directly from the mounted source to a local destination path
+ *  without staging its full contents in memory. Local (USB) transport is
+ *  already a filesystem, not a network protocol, so there is no reason to
+ *  route it through the read-into-Buffer path localGetFile uses for
+ *  maxBytes-capped preview reads — that doubles RAM usage for large FITS/
+ *  video files for no benefit here. */
+export async function localCopyFileTo(relPath: string, destPath: string, profile?: ProfileArg): Promise<void> {
+  const absPath = resolveLocal(profile, relPath);
+  await fs.copyFile(absPath, destPath);
+}
+
 export async function localPutFile(relPath: string, data: Buffer, profile?: ProfileArg): Promise<void> {
   const absPath = resolveLocal(profile, relPath);
   await fs.writeFile(absPath, data);
@@ -108,7 +120,7 @@ export async function localDelete(relPath: string, profile?: ProfileArg): Promis
   try {
     await fs.unlink(absPath);
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
+    const code = isErrnoException(err) ? err.code : undefined;
     // ENOENT means already gone — idempotent, matches SMB delete semantics.
     if (code === 'ENOENT') return;
     throw err;

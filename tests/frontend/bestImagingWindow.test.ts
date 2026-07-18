@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { computeBestImagingWindow } from '../../src/lib/bestImagingWindow';
 
 // M42 (Orion Nebula): RA 5.59h, Dec -5.39°

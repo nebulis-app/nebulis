@@ -1,15 +1,16 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import path from 'path';
 import fs from 'fs';
 
 // Redirect DATA_DIR / LIBRARY_DIR to a temp dir before any server module loads
 // (paths.ts captures them at import time). Mirrors folderImport.test.ts.
-vi.hoisted(() => {
+const TEST_DATA_DIR = vi.hoisted(() => {
   const _fs = require('fs') as typeof import('fs');
   const _path = require('path') as typeof import('path');
   const _os = require('os') as typeof import('os');
   const dir = _fs.mkdtempSync(_path.join(_os.tmpdir(), 'nebulis-purge-test-'));
   process.env.DATA_DIR = dir;
+  return dir;
 });
 
 import { purgeSubFrameImages } from '../../server/lib/library/observations';
@@ -20,6 +21,10 @@ const objDir = () => path.join(LIBRARY_DIR, OBJ);
 const write = (name: string) => fs.writeFileSync(path.join(objDir(), name), 'x');
 
 describe('purgeSubFrameImages', () => {
+  afterAll(() => {
+    fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
+  });
+
   beforeEach(() => {
     fs.rmSync(LIBRARY_DIR, { recursive: true, force: true });
     fs.mkdirSync(objDir(), { recursive: true });

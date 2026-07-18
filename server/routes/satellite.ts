@@ -10,7 +10,7 @@ import { getLibraryDir } from '../lib/libraryPath.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { getSessionTelescopeId } from '../lib/localLibrary.js';
 import { getProfileById, getSettingsData, type TelescopeKind } from '../lib/telescopes.js';
-import { parseFilename, normalizeObjectId } from '../lib/telescopeFiles.js';
+import { parseFilename, normalizeObjectId, sessionNightFor } from '../lib/telescopeFiles.js';
 
 /**
  * Per-telescope-kind defaults for FITS keywords that may be missing.
@@ -42,7 +42,7 @@ function defaultsForFilePath(filePath: string): { focalLenMm: number; pixelSizeU
     const parts = filePath.split(/[\\/]/).filter(Boolean);
     if (parts.length < 2) return fallback;
     const objectId = normalizeObjectId(parts[0]);
-    const sessionDate = parseFilename(parts[parts.length - 1]).date;
+    const sessionDate = sessionNightFor(parseFilename(parts[parts.length - 1]));
     if (!sessionDate) return fallback;
     const telescopeId = getSessionTelescopeId(objectId, sessionDate);
     if (!telescopeId) return fallback;

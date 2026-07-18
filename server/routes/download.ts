@@ -8,7 +8,7 @@ import path from 'path';
 import archiver from 'archiver';
 import { getLibraryDir, isLibraryAvailable, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
 import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
-import { getFileCategory, isRealFile, parseFilename } from '../lib/telescopeFiles.js';
+import { getFileCategory, isRealFile, parseFilename, sessionNightFor } from '../lib/telescopeFiles.js';
 import { getObjectFolderName } from '../lib/localLibrary.js';
 import { queryString, contentDispositionHeader } from '../lib/queryHelpers.js';
 
@@ -61,7 +61,7 @@ router.get('/objects/:objectId', async (req: Request, res: Response) => {
     if (sessionDate) {
       files = files.filter(f => {
         const parsed = parseFilename(f);
-        return parsed.date === sessionDate;
+        return sessionNightFor(parsed) === sessionDate;
       });
     }
 

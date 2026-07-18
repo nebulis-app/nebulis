@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { getLibraryDir } from '../libraryPath.js';
 import { ILLEGAL_FS_CHARS } from './importNaming.js';
+import { isErrnoException } from '../errors.js';
 import {
   stmts,
   getFolderName,
@@ -110,7 +111,7 @@ export function addProcessedImage(
   try {
     fs.renameSync(sourcePath, destPath);
   } catch (renameErr) {
-    if ((renameErr as NodeJS.ErrnoException).code === 'EXDEV') {
+    if (isErrnoException(renameErr) && renameErr.code === 'EXDEV') {
       fs.copyFileSync(sourcePath, destPath);
       fs.unlinkSync(sourcePath);
     } else {

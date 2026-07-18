@@ -268,7 +268,8 @@ describe('devicePairing', () => {
       const result = pollPairing(deviceCode);
       expect(result.status).toBe('approved');
       if (result.status !== 'approved') throw new Error('expected approved');
-      expect(result.token).toBeTruthy();
+      // JWTs are three base64url-encoded segments separated by dots.
+      expect(result.token).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
       expect(result.user.id).toBe(user.id);
 
       // The device is bound to the requesting user.

@@ -9,6 +9,7 @@ import { DATA_DIR } from '../lib/paths.js';
 import { getLibraryDir, getLibraryLocationInfo, isLibraryAvailable, isNetworkLocation, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
 import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
 import { listVolumes, listDirectories } from '../lib/volumes.js';
+import { locateFolderOnDisk, validateLocateInput, type LocateSample } from '../lib/folderLocate.js';
 import { startMigration, getMigrationStatus } from '../lib/libraryMigration.js';
 import { testNetworkLibraryConnection, NETWORK_MOUNT_DIR, type NetworkLibraryConfig } from '../lib/libraryNetwork.js';
 import { requireAdmin } from '../middleware/auth.js';
@@ -494,6 +495,32 @@ router.get('/browse', requireAdmin, async (req: Request, res: Response) => {
   } catch (err: unknown) {
     res.apiError(400, 'BROWSE_FAILED', err instanceof Error ? err.message : 'Cannot read that folder');
   }
+});
+
+// POST /api/v1/storage/locate-folder — given the name and a file sample of a
+// folder dropped into the import modal, check whether that exact folder exists
+// on this machine's disk so the import can read it in place instead of
+// uploading. Best-effort: a miss returns { path: null }, never an error.
+router.post('/locate-folder', requireAdmin, async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as { anchorName?: unknown; samples?: unknown };
+  const anchorName = typeof body.anchorName === 'string' ? body.anchorName : '';
+  const rawSamples = Array.isArray(body.samples) ? body.samples : [];
+  const samples: LocateSample[] = rawSamples
+    .filter((s): s is { relativePath: string; size: number } =>
+      typeof s === 'object' && s !== null
+      && typeof (s as { relativePath?: unknown }).relativePath === 'string'
+      && typeof (s as { size?: unknown }).size === 'number')
+    .map(s => ({ relativePath: s.relativePath, size: s.size }));
+
+  if (!validateLocateInput(anchorName, samples)) {
+    res.apiError(400, 'INVALID_LOCATE_INPUT', 'Provide a folder name and a non-empty file sample.');
+    return;
+  }
+  const located = await locateFolderOnDisk(anchorName, samples);
+  if (located) {
+    log.info({ anchorName, located, sampleCount: samples.length }, 'Import folder located on server disk');
+  }
+  res.apiSuccess({ path: located });
 });
 
 // GET /api/v1/storage/library-location — where the library lives + migration state

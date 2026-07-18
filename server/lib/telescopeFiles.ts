@@ -37,6 +37,7 @@
  *   The "failed_" prefix marks frames the telescope rejected during stacking;
  *   shouldImportFile() filters them before they reach parseFilename in most paths.
  */
+import { getSettingsData } from './telescopes.js';
 
 export interface ParsedFilename {
   type: 'stacked' | 'sub' | 'thumbnail' | 'video' | 'other';
@@ -321,6 +322,102 @@ export function parseFilename(filename: string): ParsedFilename {
  */
 export function getSessionKey(parsed: ParsedFilename): string {
   return parsed.date || 'unknown';
+}
+
+/**
+ * Hour (local, 0-23) before which a capture still belongs to the previous
+ * night's observing session. Matches the planner's rollover (see
+ * `plannerToday` in src/lib/nightWindow.ts) so a session's calendar date and
+ * the planner's "tonight" agree, and low enough that a midwinter session
+ * running until a late dawn isn't yanked to the next night mid-capture. Keep
+ * in sync with nightWindow.ts, NightDate.swift, and server/routes/planner.ts.
+ */
+export const OBSERVING_NIGHT_ROLLOVER_HOUR = 7;
+
+/**
+ * Whether the observing-night rollover is turned on (Settings > General >
+ * "Group sessions by observing night"). This is the single gate every
+ * caller — direct or via sessionNightFor/clampToNightSafeTime — inherits
+ * automatically, so no call site needs to know about the setting itself.
+ * Defaults true (fails open) if the settings row can't be read for any
+ * reason, matching the DB column's own default.
+ */
+function groupingEnabled(): boolean {
+  try {
+    return getSettingsData().groupObservingNights !== false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Roll a capture's calendar date back one day when its time-of-day falls
+ * before the observing-night rollover hour, so a session that runs past
+ * local midnight (e.g. 11pm-1am) groups under one date instead of splitting
+ * across two. `hms` is an HHMMSS string; when it's absent (date-only
+ * sources — a folder-name hint, a FITS DATE-OBS with no time card) there's no
+ * time to test, so `date` is returned unchanged. Returns `date` unchanged
+ * outright when the user has turned grouping off in Settings.
+ */
+export function observingNightDate(date: string, hms: string | null | undefined): string {
+  if (!groupingEnabled()) return date;
+  return rolloverDateUnconditional(date, hms);
+}
+
+/**
+ * The rollover math itself, with no Settings check — always rolls back
+ * regardless of whether grouping is currently turned on. Exists only so the
+ * stale-session reconciliation (see reconcileStaleSessionDates in
+ * observations.ts) can recognize a row written under the *other* convention
+ * from whichever one is active now (e.g. a night-rolled row left behind after
+ * the user turns grouping off, or a raw-date row left behind from before the
+ * rollover existed at all) and merge it forward. Every other caller should
+ * use observingNightDate, which respects the toggle.
+ */
+export function rolloverDateUnconditional(date: string, hms: string | null | undefined): string {
+  if (!hms || hms.length < 2) return date;
+  const hour = parseInt(hms.slice(0, 2), 10);
+  if (!Number.isFinite(hour) || hour >= OBSERVING_NIGHT_ROLLOVER_HOUR) return date;
+  const m = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return date;
+  // UTC-anchored arithmetic so day rollover (and month/year rollover) is
+  // handled by Date itself rather than hand-rolled calendar math; the date
+  // is a plain calendar string, not an instant, so UTC vs local doesn't matter.
+  const prev = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) - 1));
+  return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, '0')}-${String(prev.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Session-grouping date for a parsed filename: the observing night the
+ * capture belongs to, rather than its raw calendar date. Use this (not
+ * `parsed.date`) everywhere session membership is decided, so a session that
+ * crosses local midnight doesn't split into two. Returns null when no date
+ * could be parsed at all.
+ */
+export function sessionNightFor(parsed: ParsedFilename): string | null {
+  if (!parsed.date) return null;
+  const hms = parsed.timestamp ? parsed.timestamp.slice(-6) : null;
+  return observingNightDate(parsed.date, hms);
+}
+
+/**
+ * Clamp an HHMMSS time-of-day into the rollover-safe zone (>= the rollover
+ * hour) so it can never trigger `observingNightDate` when paired with an
+ * explicitly-chosen calendar date. Needed anywhere a date is assigned
+ * out-of-band from the real capture time (a folder-import merge override, a
+ * manually-entered observation, a processed-image save) — embedding that
+ * date next to an unmodified early-morning time would roll it back a second
+ * time the next time the file is read. Only the hour is touched; minutes and
+ * seconds are preserved for ordering/uniqueness. No-op when grouping is off
+ * in Settings, since nothing rolls over in that mode anyway.
+ */
+export function clampToNightSafeTime(hms: string): string {
+  if (!groupingEnabled()) return hms;
+  const hour = parseInt(hms.slice(0, 2), 10);
+  if (Number.isFinite(hour) && hour < OBSERVING_NIGHT_ROLLOVER_HOUR) {
+    return `${String(OBSERVING_NIGHT_ROLLOVER_HOUR).padStart(2, '0')}${hms.slice(2)}`;
+  }
+  return hms;
 }
 
 /**

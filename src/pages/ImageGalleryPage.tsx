@@ -10,6 +10,10 @@ import { useTheme } from '../hooks/useTheme';
 import { PlanetariumMode } from '../components/gallery/PlanetariumMode';
 import { ImageViewer } from '../components/gallery/ImageViewer';
 import { ImageCard } from '../components/gallery/ImageCard';
+import { useClickOutside } from '../hooks/useClickOutside';
+import { useFilterChipPrefs } from '../hooks/useFilterChipPrefs';
+import { FilterCustomizeMenu } from '../components/filters/FilterCustomizeMenu';
+import { buildTypeFilters, matchesFilter, defaultEnabledIds, filterLabel, ALL_FILTER_ID, FAVORITES_FILTER_ID } from '../lib/objectTypeFilters';
 
 type SortKey = 'name-asc' | 'name-desc' | 'date-desc' | 'date-asc';
 
@@ -35,11 +39,13 @@ export function ImageGalleryPage() {
   const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-accent-500';
   const queryClient = useQueryClient();
 
-  const [typeFilter, setTypeFilter] = useState('All');
+  const [activeFilterId, setActiveFilterId] = useState<string>(ALL_FILTER_ID);
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>(readStoredSort);
   const [sortOpen, setSortOpen] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [planetariumImages, setPlanetariumImages] = useState<LibraryImage[] | null>(null);
 
@@ -57,6 +63,50 @@ export function ImageGalleryPage() {
   const { data: objectFilters = [] } = useQuery({
     queryKey: ['library-object-filters'],
     queryFn: getLibraryObjectFilters,
+  });
+
+  // Granular filters for every distinct object type across the images, with
+  // counts. Excludes any type whose label already matches a curated group
+  // (e.g. exact "Galaxy" vs the "Galaxy" group) to avoid two identically
+  // labeled chips.
+  const typeFilters = useMemo(
+    () => buildTypeFilters((serverImages ?? []).map(i => i.objectType), objectFilters),
+    [serverImages, objectFilters],
+  );
+  const defaultIds = useMemo(() => defaultEnabledIds(objectFilters), [objectFilters]);
+  const { enabledIds, toggle: toggleChip, clearAll: clearAllChips } = useFilterChipPrefs(defaultIds);
+
+  // Clearing unpins every chip AND resets the active selection (Favorites
+  // isn't gated by enabledIds, so it needs an explicit reset too).
+  function handleClearAllFilters() {
+    clearAllChips();
+    setActiveFilterId(ALL_FILTER_ID);
+  }
+
+  const chips = useMemo(() => {
+    const groupChips = objectFilters
+      .filter(f => f.id !== ALL_FILTER_ID && enabledIds.has(f.id))
+      .map(f => ({ id: f.id, label: f.label }));
+    const typeChips = typeFilters
+      .filter(t => enabledIds.has(t.id))
+      .map(t => ({ id: t.id, label: t.label }));
+    return [...groupChips, ...typeChips];
+  }, [objectFilters, typeFilters, enabledIds]);
+
+  // If the active chip was removed via the customize menu (or no longer
+  // corresponds to a visible chip, e.g. a type suppressed by the group-label
+  // collision check above) fall back to All during render (deriving avoids a
+  // corrective setState-in-effect).
+  const effectiveFilterId =
+    activeFilterId === ALL_FILTER_ID ||
+    activeFilterId === FAVORITES_FILTER_ID ||
+    chips.some(c => c.id === activeFilterId)
+      ? activeFilterId
+      : ALL_FILTER_ID;
+
+  useClickOutside(filterMenuRef, () => setFilterMenuOpen(false), {
+    enabled: filterMenuOpen,
+    closeOnEscape: true,
   });
 
   const favMutation = useMutation({
@@ -88,19 +138,9 @@ export function ImageGalleryPage() {
   const filtered = useMemo(() => {
     if (!images) return [];
     const q = normalizeSearch(search);
-    const selectedFilter = objectFilters.find(f => f.label === typeFilter);
     const list = images.filter(img => {
-      if (typeFilter === 'Favorites' && !img.isFavorite) return false;
-      if (typeFilter !== 'All' && typeFilter !== 'Favorites' && selectedFilter) {
-        if (!img.objectType) return false;
-        const type = img.objectType.trim().toLowerCase();
-        const matches = selectedFilter.matchMode === 'exact'
-          ? selectedFilter.matchTypes.some(t => t.trim().toLowerCase() === type)
-          : selectedFilter.matchTypes.some(t => {
-              const nt = t.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              return new RegExp(`(^|\\b)${nt}(\\b|$)`).test(type);
-            });
-        if (!matches) return false;
+      if (!matchesFilter(effectiveFilterId, { objectType: img.objectType, isFavorite: img.isFavorite }, objectFilters)) {
+        return false;
       }
       if (q) {
         // Match the catalog designation (objectId, e.g. "M33", "NGC598") as
@@ -126,7 +166,7 @@ export function ImageGalleryPage() {
           return 0;
       }
     });
-  }, [images, typeFilter, objectFilters, search, sortKey]);
+  }, [images, effectiveFilterId, objectFilters, search, sortKey]);
 
   function handleToggleFavorite(img: LibraryImage) {
     favMutation.mutate({ imagePath: img.path, isFavorite: !img.isFavorite });
@@ -253,11 +293,38 @@ export function ImageGalleryPage() {
       </div>
 
       <div className={`flex items-center gap-2 flex-wrap ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-        <Filter className="w-4 h-4 shrink-0" />
+        {/* Filter icon opens the customize menu (pick which chips show). */}
+        <div ref={filterMenuRef} className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setFilterMenuOpen(o => !o)}
+            aria-label="Customize filters"
+            aria-haspopup="menu"
+            aria-expanded={filterMenuOpen}
+            title="Customize filters"
+            className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${
+              filterMenuOpen
+                ? isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-100 border-slate-300 text-slate-700'
+                : isDark ? 'border-transparent hover:bg-slate-800' : 'border-transparent hover:bg-slate-100'
+            }`}
+          >
+            <Filter className="w-4 h-4" />
+          </button>
+          {filterMenuOpen && (
+            <FilterCustomizeMenu
+              groups={objectFilters}
+              typeFilters={typeFilters}
+              enabledIds={enabledIds}
+              onToggle={toggleChip}
+              onClearAll={handleClearAllFilters}
+              isDark={isDark}
+            />
+          )}
+        </div>
         <button
-          onClick={() => setTypeFilter(typeFilter === 'Favorites' ? 'All' : 'Favorites')}
+          onClick={() => setActiveFilterId(effectiveFilterId === FAVORITES_FILTER_ID ? ALL_FILTER_ID : FAVORITES_FILTER_ID)}
           className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-            typeFilter === 'Favorites'
+            effectiveFilterId === FAVORITES_FILTER_ID
               ? isDark
                 ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
                 : 'bg-amber-100 text-amber-700 border border-amber-300'
@@ -266,22 +333,34 @@ export function ImageGalleryPage() {
                 : 'hover:bg-slate-100 border border-transparent'
           }`}
         >
-          <Star className={`w-3.5 h-3.5 ${typeFilter === 'Favorites' ? 'fill-current' : ''}`} />
+          <Star className={`w-3.5 h-3.5 ${effectiveFilterId === FAVORITES_FILTER_ID ? 'fill-current' : ''}`} />
           Favorites
         </button>
-        {objectFilters.map(filter => (
+        <button
+          onClick={() => setActiveFilterId(ALL_FILTER_ID)}
+          className={`px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+            effectiveFilterId === ALL_FILTER_ID
+              ? isDark ? 'bg-accent-500/15 text-accent-400 border border-accent-500/30'
+                       : 'bg-accent-300 text-accent-700 border border-accent-400'
+              : isDark ? 'hover:bg-slate-800 border border-transparent'
+                       : 'hover:bg-slate-100 border border-transparent'
+          }`}
+        >
+          All
+        </button>
+        {chips.map(chip => (
           <button
-            key={filter.id}
-            onClick={() => setTypeFilter(filter.label)}
+            key={chip.id}
+            onClick={() => setActiveFilterId(chip.id)}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-              typeFilter === filter.label
+              effectiveFilterId === chip.id
                 ? isDark ? 'bg-accent-500/15 text-accent-400 border border-accent-500/30'
                          : 'bg-accent-300 text-accent-700 border border-accent-400'
                 : isDark ? 'hover:bg-slate-800 border border-transparent'
                          : 'hover:bg-slate-100 border border-transparent'
             }`}
           >
-            {filter.label}
+            {chip.label}
           </button>
         ))}
       </div>
@@ -289,7 +368,11 @@ export function ImageGalleryPage() {
       {!isLoading && !error && images && (
         <p className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
           {filtered.length} image{filtered.length !== 1 ? 's' : ''}
-          {typeFilter === 'Favorites' ? ' favorited' : typeFilter !== 'All' ? ` · ${typeFilter}` : ' in library'}
+          {effectiveFilterId === FAVORITES_FILTER_ID
+            ? ' favorited'
+            : effectiveFilterId !== ALL_FILTER_ID
+              ? ` · ${filterLabel(effectiveFilterId, objectFilters, typeFilters)}`
+              : ' in library'}
         </p>
       )}
 
@@ -320,16 +403,16 @@ export function ImageGalleryPage() {
       ) : (
         <div className={`text-center py-20 space-y-6 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
           <div className={`inline-flex p-6 rounded-full ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
-            {typeFilter === 'Favorites' ? <Star className="w-12 h-12 opacity-40" /> : <Images className="w-12 h-12 opacity-40" />}
+            {effectiveFilterId === FAVORITES_FILTER_ID ? <Star className="w-12 h-12 opacity-40" /> : <Images className="w-12 h-12 opacity-40" />}
           </div>
           <div className="space-y-2">
             <p className={`text-xl font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-              {typeFilter === 'Favorites' ? 'No favorited images yet'
-                : search || typeFilter !== 'All' ? 'No images match your filters'
+              {effectiveFilterId === FAVORITES_FILTER_ID ? 'No favorited images yet'
+                : search || effectiveFilterId !== ALL_FILTER_ID ? 'No images match your filters'
                 : 'No images in library'}
             </p>
             <p className="text-sm max-w-sm mx-auto">
-              {typeFilter === 'Favorites' ? 'Star an image to add it to your favorites.'
+              {effectiveFilterId === FAVORITES_FILTER_ID ? 'Star an image to add it to your favorites.'
                 : 'Import images from your SeeStar telescope to see them here.'}
             </p>
           </div>

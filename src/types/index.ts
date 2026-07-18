@@ -1,12 +1,6 @@
 export interface Settings {
-  hostname: string;
-  shareName: string;
-  username: string;
-  password: string;
-  model: string;
   apiKey: string;
   hasApiKey: boolean;
-  hasPassword: boolean;
   // Observer location (for planner / alt-az calculations)
   latitude: number | null;
   longitude: number | null;
@@ -18,6 +12,9 @@ export interface Settings {
   /** 288 booleans: 36 azimuth slices x 8 elevation bands (10° tall, covering 0-80°).
    *  Empty means "no map set" and the planner treats the whole sky as visible. */
   visibleSkyMap: boolean[];
+  /** Elevation-band count the server supports (currently 8); clients gate the
+   *  finer visibleSkyMap grid on this. Absent on older servers. */
+  skyMapBands?: number;
   // Sync / caching settings
   syncEnabled: boolean;
   syncJpg: boolean;
@@ -36,7 +33,6 @@ export interface Settings {
   onboardingCompleted: boolean;
   // Offline catalog imagery + Wikipedia descriptions
   prefetchCatalogAssets: boolean;
-  prefetchUseCatalogPacks: boolean;
   // Gallery
   planetariumShowInfo: boolean;
   /** Which image to show by default on library cards when no custom image is set.
@@ -49,6 +45,10 @@ export interface Settings {
    *  object has both an NGC/IC and a Caldwell designation (e.g. "C5" vs
    *  "IC342"). 'default' keeps NGC/IC priority; 'caldwell' prefers Caldwell. */
   preferredCatalog: 'default' | 'caldwell';
+  /** Whether a session that runs past local midnight (e.g. 11pm-1am) groups
+   *  as one observing night (true, default) or splits into two calendar-date
+   *  sessions the old way (false). */
+  groupObservingNights: boolean;
   temperatureUnit: 'celsius' | 'fahrenheit';
   windSpeedUnit: 'mph' | 'kmh';
   /** Desktop auto-update channel. 'beta' opts into pre-release builds. */

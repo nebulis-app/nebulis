@@ -31,7 +31,9 @@ import {
   updateTransport,
   deleteTransport,
   selectActiveTransport,
+  TRANSPORT_KINDS,
   type TelescopeTransport,
+  type TransportKind,
 } from '../lib/telescopeTransports.js';
 import { readIdentity, writeIdentityIfMissing } from '../lib/deviceIdentity.js';
 
@@ -50,7 +52,7 @@ const TelescopeProfileBodySchema = z.object({
   color: z.string().optional(),
   autoImportEnabled: z.boolean().optional(),
   autoImportInterval: z.number().int().min(0).optional(),
-  connectionType: z.enum(['smb', 'local']).optional(),
+  connectionType: z.enum(TRANSPORT_KINDS).optional(),
   localPath: z.string().optional(),
   importJpg: z.boolean().optional(),
   importFits: z.boolean().optional(),
@@ -72,7 +74,7 @@ const ReassignBodySchema = z.object({
   toTelescopeId: z.string().min(1),
 });
 
-const TransportKindSchema = z.enum(['smb', 'local']);
+const TransportKindSchema = z.enum(TRANSPORT_KINDS);
 
 const TransportBodySchema = z.object({
   kind: TransportKindSchema,
@@ -494,7 +496,7 @@ router.get('/status/all', async (_req: Request, res: Response) => {
     // returns null, fall back to the legacy mirror columns so older clients
     // and untransported profiles still report sensibly.
     const active = selectActiveTransport(p.id);
-    const transportKind: 'smb' | 'local' = active?.kind ?? p.connectionType;
+    const transportKind: TransportKind = active?.kind ?? p.connectionType;
     const hostname = active?.hostname?.trim() ?? p.hostname?.trim() ?? '';
     const localPath = active?.localPath?.trim() ?? p.localPath?.trim() ?? '';
     const configured = transportKind === 'local' ? !!localPath : !!hostname;

@@ -14,12 +14,13 @@ import { randomUUID } from 'crypto';
 import archiver from 'archiver';
 import multer from 'multer';
 import { log } from '../lib/logger.js';
-import { debugLog } from '../lib/debugLogger.js';
+import { debugLog, isDebugLoggingEnabled } from '../lib/debugLogger.js';
+import { isErrnoException } from '../lib/errors.js';
 import { THUMBNAILS_DIR, DATA_DIR } from '../lib/paths.js';
 import { getLibraryDir, isLibraryAvailable, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
 import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
 import sharp from '../lib/sharp-optional.js';
-import { normalizeCatalogId, parseFilename, isRealFile } from '../lib/telescopeFiles.js';
+import { normalizeCatalogId, parseFilename, isRealFile, sessionNightFor, clampToNightSafeTime } from '../lib/telescopeFiles.js';
 import {
   runImport,
   runAllTelescopesImport,
@@ -40,13 +41,13 @@ import {
   deleteLocalObject,
   deleteLocalSession,
   moveObservation,
-  runFolderImport,
   commitFolderImport,
   getFavorites,
   syncSessionSubFrames,
   deleteSessionSubFrames,
   purgeSubFrameImages,
   getSessionTelescopeId,
+  getObjectPrimaryTelescopeId,
   setFavorite,
   getImageFavorites,
   setImageFavorite,
@@ -183,10 +184,6 @@ const SessionTelescopeBodySchema = z.object({
   telescopeId: z.string().min(1, 'telescopeId is required'),
 });
 
-const FolderImportBodySchema = z.object({
-  folderPath: z.string().min(1, 'folderPath is required'),
-});
-
 // Folder-import wizard: scan a folder (dry run) then commit an edited plan.
 const FolderScanBodySchema = z.object({
   rootPath: z.string().min(1, 'rootPath is required'),
@@ -254,7 +251,26 @@ router.post('/import', requireAdmin, (req: Request, res: Response) => {
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
     return;
   }
-  const { objectId, telescopeId, all } = parsed.data;
+  const { objectId, all } = parsed.data;
+  let { telescopeId } = parsed.data;
+
+  // objectId without an explicit telescopeId used to always fail with "no
+  // telescope was selected" — fall back to the object's primaryTelescopeId
+  // instead, same lookup pattern as getSessionTelescopeId for per-session
+  // sync routes. Only objects with no attributed telescope at all (never
+  // imported, or imported through a telescope-less path) get rejected.
+  if (objectId && !telescopeId) {
+    telescopeId = getObjectPrimaryTelescopeId(objectId) ?? undefined;
+    if (!telescopeId) {
+      res.apiError(
+        422,
+        'NO_TELESCOPE',
+        `"${objectId}" has no telescope to sync from yet. Select a telescope in Settings, Hardware, or sync a session for this object first.`,
+      );
+      return;
+    }
+  }
+
   const importAll = req.query.all === '1' || all === true || !telescopeId;
 
   log.info(
@@ -293,8 +309,15 @@ router.get('/import/status', (_req: Request, res: Response) => {
   res.apiSuccess(getImportStatus());
 });
 
-router.post('/import/cancel', requireAdmin, (_req: Request, res: Response) => {
-  cancelImport();
+const CancelImportBodySchema = z.object({
+  runId: z.string().optional(),
+});
+
+router.post('/import/cancel', requireAdmin, (req: Request, res: Response) => {
+  // Body is optional — omitting runId keeps the generic "cancel whatever is
+  // running" behavior for the main cancel button.
+  const bodyParsed = CancelImportBodySchema.safeParse(req.body ?? {});
+  cancelImport(bodyParsed.success ? bodyParsed.data.runId : undefined);
   res.apiSuccess({ cancelled: true });
 });
 
@@ -325,23 +348,20 @@ router.post('/objects/:objectId/sessions/:date/sync', requireAdmin, (req: Reques
     return;
   }
 
-  const decodedObjectId = decodeURIComponent(objectId);
-  const decodedDate = decodeURIComponent(date);
-
   // Re-syncing this session must hit the telescope that captured it, not
   // whichever scope is currently "active" — otherwise an old S30 session
   // would silently re-pull from the S50 (or fail because the hostname differs).
-  const telescopeId = getSessionTelescopeId(decodedObjectId, decodedDate) ?? undefined;
+  const telescopeId = getSessionTelescopeId(objectId, date) ?? undefined;
   log.info(
-    { objectId: decodedObjectId, date: decodedDate, telescopeId: telescopeId ?? null },
+    { objectId, date, telescopeId: telescopeId ?? null },
     '[session-sync] Syncing FITS for %s session %s on telescope %s',
-    decodedObjectId, decodedDate, telescopeId ?? 'unknown',
+    objectId, date, telescopeId ?? 'unknown',
   );
-  runImport(decodedObjectId, decodedDate, telescopeId ? { telescopeId } : undefined).catch(err => {
+  runImport(objectId, date, telescopeId ? { telescopeId } : undefined).catch(err => {
     console.error('Session sync error:', err.message);
   });
 
-  res.apiSuccess({ started: true, objectId: decodedObjectId, date: decodedDate, telescopeId: telescopeId ?? null });
+  res.apiSuccess({ started: true, objectId, date, telescopeId: telescopeId ?? null });
 });
 
 /**
@@ -363,21 +383,18 @@ router.post('/objects/:objectId/sessions/:date/sync-subframes', requireAdmin, (r
     return;
   }
 
-  const decodedObjectId = decodeURIComponent(objectId);
-  const decodedDate = decodeURIComponent(date);
-
   // Same reasoning as the FITS sync route above — pin to the originating scope.
-  const telescopeId = getSessionTelescopeId(decodedObjectId, decodedDate) ?? undefined;
+  const telescopeId = getSessionTelescopeId(objectId, date) ?? undefined;
   log.info(
-    { objectId: decodedObjectId, date: decodedDate, telescopeId: telescopeId ?? null },
+    { objectId, date, telescopeId: telescopeId ?? null },
     '[subframe-sync] Syncing sub-frames for %s session %s on telescope %s',
-    decodedObjectId, decodedDate, telescopeId ?? 'unknown',
+    objectId, date, telescopeId ?? 'unknown',
   );
-  syncSessionSubFrames(decodedObjectId, decodedDate, telescopeId ? { telescopeId } : undefined).catch(err => {
+  syncSessionSubFrames(objectId, date, telescopeId ? { telescopeId } : undefined).catch(err => {
     console.error('Sub-frame sync error:', err.message);
   });
 
-  res.apiSuccess({ started: true, objectId: decodedObjectId, date: decodedDate, telescopeId: telescopeId ?? null });
+  res.apiSuccess({ started: true, objectId, date, telescopeId: telescopeId ?? null });
 });
 
 /**
@@ -386,8 +403,8 @@ router.post('/objects/:objectId/sessions/:date/sync-subframes', requireAdmin, (r
  * surrogate session id to pass.
  */
 router.put('/objects/:objectId/sessions/:date/telescope', requireAdmin, (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
-  const date = decodeURIComponent(String(req.params.date));
+  const objectId = String(req.params.objectId);
+  const date = String(req.params.date);
   const bodyParsed = SessionTelescopeBodySchema.safeParse(req.body);
   if (!bodyParsed.success) {
     res.apiError(400, 'BAD_REQUEST', bodyParsed.error.issues[0]?.message ?? 'telescopeId is required');
@@ -402,38 +419,35 @@ router.put('/objects/:objectId/sessions/:date/telescope', requireAdmin, (req: Re
   res.apiSuccess({ updated: true, telescopeId });
 });
 
-/** Import from a server-accessible folder path (e.g. Docker volume mount). */
-router.post('/import/folder', requireAdmin, (req: Request, res: Response) => {
-  const bodyParsed = FolderImportBodySchema.safeParse(req.body);
-  if (!bodyParsed.success) {
-    res.apiError(400, 'MISSING_PATH', bodyParsed.error.issues[0]?.message ?? 'folderPath is required');
-    return;
-  }
-  const { folderPath } = bodyParsed.data;
-  if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
-    res.apiError(400, 'INVALID_PATH', `Folder not found or not a directory: ${folderPath}`);
-    return;
-  }
-  log.info({ folderPath }, '[folder-import] Import triggered from folder %s', folderPath);
-  // Reserve the import slot atomically. runFolderImport rechecks via
-  // claimImportLock internally; we replicate the check here to return the
-  // proper 409 to the caller instead of a silent no-op.
-  if (!claimImportLock()) {
-    res.apiError(409, 'IMPORT_RUNNING', 'An import is already in progress');
-    return;
-  }
-  // Release the lock we just claimed — runFolderImport will reclaim it.
-  // This avoids holding the lock across the async dispatch boundary.
-  // (No-op when the impl reclaims immediately, but keeps invariants clear.)
-  runFolderImport(folderPath).catch(err => console.error('Folder import error:', err.message));
-  res.apiSuccess({ started: true, folderPath });
-});
-
 /**
  * Folder-import wizard, phase 1: scan a folder and return the import plan
  * (objects, catalog matches, derived sessions, unsorted files). Read-only —
  * copies nothing and does not claim the import lock.
  */
+/**
+ * Client-side breadcrumb sink for the manual (browser) folder-upload flow.
+ * The debug log is otherwise server-only, so a browser-side stall (the exact
+ * failure mode where an upload spins forever) leaves no trace. The Import modal
+ * posts short one-line events here — files selected, per-batch progress, final
+ * error — which land in the same debug log next to the server's own lines.
+ * A no-op unless debug logging is active, so it costs nothing in normal use.
+ */
+const ClientDebugEventSchema = z.object({ message: z.string().min(1).max(500) });
+router.post('/import/debug-event', requireAdmin, (req: Request, res: Response) => {
+  if (!isDebugLoggingEnabled()) {
+    res.apiSuccess({ logged: false });
+    return;
+  }
+  const parsed = ClientDebugEventSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(400, 'INVALID_EVENT', 'message is required (max 500 chars)');
+    return;
+  }
+  const oneLine = parsed.data.message.replace(/[\r\n]+/g, ' ').slice(0, 500);
+  debugLog('import:client', oneLine);
+  res.apiSuccess({ logged: true });
+});
+
 router.post('/import/scan', requireAdmin, (req: Request, res: Response) => {
   const parsed = FolderScanBodySchema.safeParse(req.body);
   if (!parsed.success) {
@@ -452,7 +466,18 @@ router.post('/import/scan', requireAdmin, (req: Request, res: Response) => {
     const scanSettings = Object.keys(overrides).length > 0
       ? { ...getSettingsData(), ...overrides }
       : getSettingsData();
-    res.apiSuccess(scanImportFolder(rootPath, scanSettings));
+    debugLog('import:folder-scan',
+      `Manual folder scan: ${rootPath}  |  effective settings → ` +
+      `JPG:${scanSettings.importJpg !== false} FITS:${scanSettings.importFits !== false} ` +
+      `Thumbs:${scanSettings.importThumbnails !== false} Subs:${scanSettings.importSubFrames === true} ` +
+      `Video:${scanSettings.importVideos === true}`);
+    const scanResult = scanImportFolder(rootPath, scanSettings);
+    debugLog('import:folder-scan',
+      `Scan matched ${scanResult.totals.files} importable file(s) across ` +
+      `${scanResult.totals.objects} object(s), ${scanResult.totals.sessions} session(s)` +
+      `${scanResult.truncated ? ' (truncated: hit per-object file cap)' : ''}. ` +
+      `Files classified as sub-frames are excluded unless "include sub-frames" is on.`);
+    res.apiSuccess(scanResult);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Folder scan failed';
     res.apiError(500, 'SCAN_FAILED', message);
@@ -495,12 +520,35 @@ const IMPORT_TMP_BASE = path.join(DATA_DIR, 'import-tmp');
  * sending, so the temp dir IS the scan root (no extra nesting).
  */
 router.post('/import/upload-temp', requireAdmin, (req: Request, _res: Response, next) => {
-  const contentMb = req.headers['content-length']
-    ? (parseInt(req.headers['content-length'], 10) / (1024 * 1024)).toFixed(1)
+  const contentLengthHeader = req.headers['content-length'];
+  const contentMb = contentLengthHeader
+    ? (parseInt(contentLengthHeader, 10) / (1024 * 1024)).toFixed(1)
     : 'unknown';
-  (req as Request & { __uploadStart: number }).__uploadStart = Date.now();
-  log.info({ method: req.method, url: req.url, contentMb }, '[upload-temp] upload started');
-  debugLog('upload', `upload started — Content-Length: ${contentMb} MB`);
+  req.__uploadStart = Date.now();
+  req.__bytesReceived = 0;
+  // Passive byte counter: does not put the stream in a competing flow — Node
+  // dispatches each 'data' chunk to every registered listener, so this runs
+  // alongside (not instead of) busboy's own consumption below. Its only job
+  // is to tell us, if busboy later throws "Unexpected end of form", whether
+  // the client actually sent fewer bytes than it declared (real truncation)
+  // or sent everything it declared but busboy still couldn't find the
+  // closing boundary (a Content-Type/boundary mismatch instead).
+  req.on('data', (chunk: Buffer) => { req.__bytesReceived = (req.__bytesReceived ?? 0) + chunk.length; });
+  req.on('aborted', () => {
+    log.warn({ contentLengthHeader, bytesReceived: req.__bytesReceived }, '[upload-temp] request aborted mid-stream');
+  });
+  log.info({
+    method: req.method,
+    url: req.url,
+    contentMb,
+    contentLengthHeader,
+    contentType: req.headers['content-type'],
+    // Temporary diagnostic (see X-Diag-File-Sizes in uploadFolderTemp): the
+    // sizes the client believed each File had right at xhr.send() time. Sent
+    // as a header so it survives even when the body itself arrives empty.
+    clientDiagFileSizes: req.headers['x-diag-file-sizes'],
+  }, '[upload-temp] upload started');
+  debugLog('upload', `upload started — Content-Length: ${contentMb} MB (${contentLengthHeader ?? 'unknown'} bytes)`);
   next();
 }, upload.array('files', 100_000), (req: Request, res: Response) => {
   const files = Array.isArray(req.files) ? req.files : undefined;
@@ -558,7 +606,7 @@ router.post('/import/upload-temp', requireAdmin, (req: Request, _res: Response, 
       } catch (renameErr) {
         // DATA_DIR may be on a different filesystem than os.tmpdir() (external drive).
         // Fall back to copy + delete so we never leave multer temps behind.
-        if ((renameErr as NodeJS.ErrnoException).code === 'EXDEV') {
+        if (isErrnoException(renameErr) && renameErr.code === 'EXDEV') {
           fs.copyFileSync(f.path, destAbs);
           fs.unlinkSync(f.path);
         } else {
@@ -567,7 +615,7 @@ router.post('/import/upload-temp', requireAdmin, (req: Request, _res: Response, 
       }
     }
 
-    const ms = Date.now() - ((req as Request & { __uploadStart?: number }).__uploadStart ?? Date.now());
+    const ms = Date.now() - (req.__uploadStart ?? Date.now());
     const totalMb = files.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024);
     log.info({ fileCount: files.length, totalMb: totalMb.toFixed(1), ms }, '[upload-temp] upload complete');
     debugLog('upload', `upload complete — ${files.length} file(s), ${totalMb.toFixed(1)} MB, ${ms} ms`);
@@ -609,7 +657,7 @@ router.get('/observations/:objectId/:date', (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const date = String(req.params.date);
   try {
-    const detail = getLocalObservationDetail(decodeURIComponent(objectId), decodeURIComponent(date));
+    const detail = getLocalObservationDetail(objectId, date);
     res.apiSuccess(detail);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to get observation detail';
@@ -723,7 +771,7 @@ router.get('/objects', (req: Request, res: Response) => {
  */
 router.get('/objects/:objectId', (req: Request, res: Response) => {
   try {
-    const requestedId = decodeURIComponent(String(req.params.objectId));
+    const requestedId = String(req.params.objectId);
     const all = getLocalObjects(req.userId ?? '');
     const grouped = groupByVariants(all);
     const match = grouped.find(o =>
@@ -747,7 +795,7 @@ router.get('/objects/:objectId', (req: Request, res: Response) => {
 router.get('/objects/:objectId/thumbnail', async (req: Request, res: Response) => {
   try {
     if (!(await requireLibraryReachable(res))) return;
-    const objectId = decodeURIComponent(String(req.params.objectId));
+    const objectId = String(req.params.objectId);
     const w = Math.min(Math.max(parseInt(queryString(req.query.w) || '400', 10) || 400, 32), 1200);
     const h = Math.min(Math.max(parseInt(queryString(req.query.h) || '400', 10) || 400, 32), 1200);
     const preferRaw = queryString(req.query.prefer);
@@ -797,7 +845,7 @@ router.get('/objects/:objectId/thumbnail', async (req: Request, res: Response) =
 // ─── Sessions ────────────────────────────────────────────────────────────────
 
 router.get('/objects/:objectId/sessions', (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
+  const objectId = String(req.params.objectId);
   // `?includeVariants=true` merges sessions across the base object AND all
   // its variants (e.g. M31, M31_Mosaic, M31_Ha) — matching what the web UI
   // shows on /object/:id. Default behavior (no flag) is unchanged: only the
@@ -847,9 +895,9 @@ router.get('/objects/:objectId/sessions', (req: Request, res: Response) => {
 router.delete('/objects/:objectId', requireAdmin, (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   try {
-    deleteLocalObject(decodeURIComponent(objectId));
+    deleteLocalObject(objectId);
     invalidateAllImagesCache();
-    res.apiSuccess({ deleted: true, objectId: decodeURIComponent(objectId) });
+    res.apiSuccess({ deleted: true, objectId });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Delete failed';
     res.apiError(500, 'DELETE_FAILED', message);
@@ -860,9 +908,9 @@ router.delete('/objects/:objectId/sessions/:date', requireAdmin, (req: Request, 
   const objectId = String(req.params.objectId);
   const date = String(req.params.date);
   try {
-    deleteLocalSession(decodeURIComponent(objectId), decodeURIComponent(date));
+    deleteLocalSession(objectId, date);
     invalidateAllImagesCache();
-    res.apiSuccess({ deleted: true, objectId: decodeURIComponent(objectId), date: decodeURIComponent(date) });
+    res.apiSuccess({ deleted: true, objectId, date });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Delete failed';
     res.apiError(500, 'DELETE_FAILED', message);
@@ -870,8 +918,8 @@ router.delete('/objects/:objectId/sessions/:date', requireAdmin, (req: Request, 
 });
 
 router.delete('/objects/:objectId/sessions/:date/subframes', requireAdmin, (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
-  const date = decodeURIComponent(String(req.params.date));
+  const objectId = String(req.params.objectId);
+  const date = String(req.params.date);
   try {
     const result = deleteSessionSubFrames(objectId, date);
     res.apiSuccess({ ...result, objectId, date });
@@ -901,8 +949,8 @@ router.post('/maintenance/purge-subframe-previews', requireAdmin, (req: Request,
 // ─── Move observation ────────────────────────────────────────────────────────
 
 router.post('/objects/:objectId/sessions/:date/move', requireAdmin, (req: Request, res: Response) => {
-  const fromObjectId = decodeURIComponent(String(req.params.objectId));
-  const date = decodeURIComponent(String(req.params.date));
+  const fromObjectId = String(req.params.objectId);
+  const date = String(req.params.date);
   const bodyParsed = MoveObservationBodySchema.safeParse(req.body);
   if (!bodyParsed.success) {
     res.apiError(400, 'MISSING_TARGET', bodyParsed.error.issues[0]?.message ?? 'toObjectId is required');
@@ -926,7 +974,7 @@ router.get('/objects/:objectId/sessions/:date/files', async (req: Request, res: 
   const date = String(req.params.date);
   try {
     if (!(await requireLibraryReachable(res))) return;
-    const files = getLocalFiles(decodeURIComponent(objectId), decodeURIComponent(date));
+    const files = getLocalFiles(objectId, date);
     res.apiSuccess(files);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to list files';
@@ -938,7 +986,7 @@ router.get('/objects/:objectId/files', async (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   try {
     if (!(await requireLibraryReachable(res))) return;
-    const files = getLocalFiles(decodeURIComponent(objectId));
+    const files = getLocalFiles(objectId);
     res.apiSuccess(files);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to list files';
@@ -1046,7 +1094,7 @@ router.get('/objects/:objectId/integration', async (req: Request, res: Response)
   const objectId = String(req.params.objectId);
   try {
     if (!(await requireLibraryReachable(res))) return;
-    const stats = getLocalIntegrationStats(decodeURIComponent(objectId));
+    const stats = getLocalIntegrationStats(objectId);
     res.apiSuccess(stats);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to compute integration stats';
@@ -1064,7 +1112,7 @@ router.get('/headers', async (req: Request, res: Response) => {
   }
   if (!(await requireLibraryReachable(res))) return;
 
-  const header = getLocalFitsHeader(decodeURIComponent(filePath));
+  const header = getLocalFitsHeader(filePath);
   if (!header) {
     res.apiError(404, 'NOT_FOUND', 'File not found in local library');
     return;
@@ -1102,7 +1150,7 @@ router.get('/download/objects/:objectId', async (req: Request, res: Response) =>
 
   try {
     if (!(await requireLibraryReachable(res))) return;
-    let files = getLocalFiles(decodeURIComponent(objectId), sessionDate);
+    let files = getLocalFiles(objectId, sessionDate);
 
     // Exclude thumbnails
     files = files.filter(f => !f.isThumbnail);
@@ -1117,8 +1165,7 @@ router.get('/download/objects/:objectId', async (req: Request, res: Response) =>
       return;
     }
 
-    const decodedId = decodeURIComponent(objectId);
-    const zipName = `${decodedId}${sessionDate ? `_${sessionDate}` : ''}.zip`;
+    const zipName = `${objectId}${sessionDate ? `_${sessionDate}` : ''}.zip`;
     res.set('Content-Type', 'application/zip');
     res.set('Content-Disposition', contentDispositionHeader('attachment', zipName));
 
@@ -1191,7 +1238,7 @@ setInterval(() => {
 
 // Filter query — returns distinct filter names found across sub-frames for the given dates
 router.post('/download/objects/:objectId/subframe-filters', (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
+  const objectId = String(req.params.objectId);
   const bodyParsed = z.object({ dates: z.array(z.string()).min(1) }).safeParse(req.body);
   if (!bodyParsed.success) {
     res.apiError(400, 'INVALID_DATES', 'dates must be a non-empty array');
@@ -1213,7 +1260,8 @@ router.post('/download/objects/:objectId/subframe-filters', (req: Request, res: 
   for (const f of fs.readdirSync(objDir)) {
     if (!isRealFile(f)) continue;
     const parsed = parseFilename(f);
-    if (parsed.type === 'sub' && parsed.date !== undefined && dateSet.has(parsed.date) && parsed.filter) {
+    const night = sessionNightFor(parsed);
+    if (parsed.type === 'sub' && night !== null && dateSet.has(night) && parsed.filter) {
       filters.add(parsed.filter);
     }
   }
@@ -1222,7 +1270,7 @@ router.post('/download/objects/:objectId/subframe-filters', (req: Request, res: 
 
 // Phase 1 — start async ZIP job
 router.post('/download/objects/:objectId/subframes', (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
+  const objectId = String(req.params.objectId);
   const bodyParsed = SubframesBodySchema.safeParse(req.body);
   if (!bodyParsed.success) {
     res.apiError(400, 'INVALID_DATES', bodyParsed.error.issues[0]?.message ?? 'dates must be a non-empty array');
@@ -1251,7 +1299,8 @@ router.post('/download/objects/:objectId/subframes', (req: Request, res: Respons
   const subFrames = fs.readdirSync(objDir).filter(f => {
     if (!isRealFile(f)) return false;
     const parsed = parseFilename(f);
-    if (parsed.type !== 'sub' || parsed.date === undefined || !dateSet.has(parsed.date)) return false;
+    const night = sessionNightFor(parsed);
+    if (parsed.type !== 'sub' || night === null || !dateSet.has(night)) return false;
     if (filterSet !== null && (!parsed.filter || !filterSet.has(parsed.filter))) return false;
     return true;
   });
@@ -1369,7 +1418,7 @@ router.delete('/file', requireAdmin, (req: Request, res: Response) => {
     return;
   }
   try {
-    deleteLocalFile(decodeURIComponent(filePath));
+    deleteLocalFile(filePath);
     invalidateAllImagesCache();
     res.apiSuccess({ deleted: true });
   } catch (err) {
@@ -1459,7 +1508,7 @@ router.post('/manual-observations', requireAdmin, manualUpload.single('image'), 
  */
 router.get('/objects/:objectId/gallery-image', async (req: Request, res: Response) => {
   if (!(await requireLibraryReachable(res))) return;
-  const objectId = decodeURIComponent(String(req.params.objectId));
+  const objectId = String(req.params.objectId);
   const catalogId = normalizeCatalogId(objectId);
   const row = getGalleryImageRow(objectId);
   let galleryImage = row.galleryImage;
@@ -1513,7 +1562,7 @@ router.get('/objects/:objectId/gallery-image', async (req: Request, res: Respons
 /** Set the gallery image for an object (from an existing library file path).
  *  Pass imagePath=null to reset to the default sky survey image. */
 router.put('/objects/:objectId/gallery-image', requireAdmin, (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
+  const objectId = String(req.params.objectId);
   const bodyParsed = GalleryImageBodySchema.safeParse(req.body ?? {});
   if (!bodyParsed.success) {
     res.apiError(400, 'INVALID_PATH', bodyParsed.error.issues[0]?.message ?? 'imagePath must be a string or null');
@@ -1544,7 +1593,7 @@ router.put('/objects/:objectId/gallery-image', requireAdmin, (req: Request, res:
 
 /** Upload a custom gallery image for an object. */
 router.post('/objects/:objectId/gallery-image/upload', requireAdmin, manualUpload.single('image'), (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
+  const objectId = String(req.params.objectId);
   const imageFile = req.file;
 
   if (!imageFile) {
@@ -1565,7 +1614,7 @@ router.post('/objects/:objectId/gallery-image/upload', requireAdmin, manualUploa
     try {
       fs.renameSync(imageFile.path, destPath);
     } catch (renameErr) {
-      if ((renameErr as NodeJS.ErrnoException).code === 'EXDEV') {
+      if (isErrnoException(renameErr) && renameErr.code === 'EXDEV') {
         fs.copyFileSync(imageFile.path, destPath);
         fs.unlinkSync(imageFile.path);
       } else {
@@ -1585,15 +1634,15 @@ router.post('/objects/:objectId/gallery-image/upload', requireAdmin, manualUploa
 // ─── Session image (designated raw telescope JPG per session) ─────────────────
 
 router.get('/objects/:objectId/sessions/:date/session-image', (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
-  const date = decodeURIComponent(String(req.params.date));
+  const objectId = String(req.params.objectId);
+  const date = String(req.params.date);
   const sessionImage = getSessionImage(objectId, date);
   res.apiSuccess({ objectId, date, sessionImage });
 });
 
 router.put('/objects/:objectId/sessions/:date/session-image', requireAdmin, (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
-  const date = decodeURIComponent(String(req.params.date));
+  const objectId = String(req.params.objectId);
+  const date = String(req.params.date);
   const bodyParsed = SessionImageBodySchema.safeParse(req.body ?? {});
   if (!bodyParsed.success) {
     res.apiError(400, 'INVALID_PATH', bodyParsed.error.issues[0]?.message ?? 'imagePath must be a non-empty string or null');
@@ -1623,14 +1672,14 @@ const processedUpload = multer({
 });
 
 router.get('/objects/:objectId/sessions/:date/processed-images', (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
-  const date = decodeURIComponent(String(req.params.date));
+  const objectId = String(req.params.objectId);
+  const date = String(req.params.date);
   res.apiSuccess(getProcessedImages(objectId, date));
 });
 
 router.post('/objects/:objectId/sessions/:date/processed-images', requireAdmin, processedUpload.single('image'), (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
-  const date = decodeURIComponent(String(req.params.date));
+  const objectId = String(req.params.objectId);
+  const date = String(req.params.date);
   const file = req.file;
   if (!file) {
     res.apiError(400, 'NO_IMAGE', 'No image file provided');
@@ -1660,8 +1709,8 @@ router.post('/objects/:objectId/sessions/:date/processed-images', requireAdmin, 
 // Writes the canvas export alongside the original telescope files so it
 // appears in the Telescope Images section instead of Processed Images.
 router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, processedUpload.single('image'), (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
-  const date = decodeURIComponent(String(req.params.date));
+  const objectId = String(req.params.objectId);
+  const date = String(req.params.date);
   const file = req.file;
   if (!file) {
     res.apiError(400, 'NO_IMAGE', 'No image file provided');
@@ -1678,16 +1727,22 @@ router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, pro
     // edited variant and lands in the simpleMatch suffix slot (`[A-Z]?`). Adding
     // free-form text like ` (edited)` here breaks the regex, so the file would
     // be saved on disk but invisible to getLocalFiles().
+    //
+    // `date` is the session the user is editing, not this file's own capture
+    // time — the embedded time-of-day is clamped into the rollover-safe zone
+    // (see clampToNightSafeTime) so an edit made at, say, 2am doesn't get
+    // rolled back a day by sessionNightFor the next time it's read.
     const now = new Date();
     const datePart = date.replace(/-/g, ''); // YYYYMMDD from session date
-    const timePart = now.toTimeString().slice(0, 8).replace(/:/g, ''); // HHMMSS
+    const rawTimePart = now.toTimeString().slice(0, 8).replace(/:/g, ''); // HHMMSS
+    const timePart = clampToNightSafeTime(rawTimePart);
     const ext = file.originalname.split('.').pop()?.toLowerCase() || 'jpg';
     const filename = `${objectId}_${datePart}-${timePart}E.${ext}`;
     const destPath = path.join(objDir, filename);
     try {
       fs.renameSync(file.path, destPath);
     } catch (renameErr) {
-      if ((renameErr as NodeJS.ErrnoException).code === 'EXDEV') {
+      if (isErrnoException(renameErr) && renameErr.code === 'EXDEV') {
         fs.copyFileSync(file.path, destPath);
         fs.unlinkSync(file.path);
       } else {
@@ -1730,7 +1785,7 @@ router.get('/processed-images/:id', async (req: Request, res: Response) => {
 
 /** List all processed images across all sessions for this object. */
 router.get('/objects/:objectId/processed-images', (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
+  const objectId = String(req.params.objectId);
   try {
     res.apiSuccess(getAllProcessedImagesForObject(objectId));
   } catch (err) {
@@ -1740,7 +1795,7 @@ router.get('/objects/:objectId/processed-images', (req: Request, res: Response) 
 
 /** List all stacked/image JPGs across all sessions for this object. */
 router.get('/objects/:objectId/stacked-images', async (req: Request, res: Response) => {
-  const objectId = decodeURIComponent(String(req.params.objectId));
+  const objectId = String(req.params.objectId);
   try {
     if (!(await requireLibraryReachable(res))) return;
     const images = getStackedImages(objectId);
@@ -1759,7 +1814,7 @@ router.get('/favorites', (req: Request, res: Response) => {
 router.post('/objects/:objectId/favorite', (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   try {
-    setFavorite(decodeURIComponent(objectId), req.userId ?? '', true);
+    setFavorite(objectId, req.userId ?? '', true);
     res.apiSuccess({ objectId, isFavorite: true });
   } catch (err) {
     res.apiError(500, 'FAVORITE_FAILED', err instanceof Error ? err.message : 'Failed');
@@ -1769,7 +1824,7 @@ router.post('/objects/:objectId/favorite', (req: Request, res: Response) => {
 router.delete('/objects/:objectId/favorite', (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   try {
-    setFavorite(decodeURIComponent(objectId), req.userId ?? '', false);
+    setFavorite(objectId, req.userId ?? '', false);
     res.apiSuccess({ objectId, isFavorite: false });
   } catch (err) {
     res.apiError(500, 'UNFAVORITE_FAILED', err instanceof Error ? err.message : 'Failed');

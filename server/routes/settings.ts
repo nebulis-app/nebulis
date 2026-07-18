@@ -6,11 +6,12 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
-import { getSettingsData, updateSettingsData, getApiKey, setApiKey } from '../lib/telescopes.js';
+import { getSettingsData, updateSettingsData, getApiKey, setApiKey, getAllProfiles } from '../lib/telescopes.js';
 import { SKY_MAP_BANDS } from '../lib/skyMapConfig.js';
+import { UPDATE_CHANNELS } from '../lib/appUpdate/manifest.js';
 import db from '../lib/db.js';
 import { DATA_DIR } from '../lib/paths.js';
-import { getLibraryDir, isDefaultLocation, getLibraryId, writeMarker, isLibraryAvailable } from '../lib/libraryPath.js';
+import { getLibraryDir, isDefaultLocation, getLibraryId, writeMarker, isLibraryAvailable, isNetworkLocation } from '../lib/libraryPath.js';
 import { startPrefetch, cancelPrefetch } from '../lib/catalogPrefetch.js';
 import { clearPackState } from '../lib/catalogPack/state.js';
 import { runUpdateCheck, stopAppUpdateChecker } from '../lib/appUpdate/updater.js';
@@ -19,10 +20,22 @@ import {
   disableDebugLogging,
   getDebugLogStatus,
   getDebugLogPath,
+  type DebugContext,
 } from '../lib/debugLogger.js';
 import { getCurrentVersion } from '../lib/appUpdate/platform.js';
 
 const router = Router();
+
+// Single source of truth for every enum-valued setting. The Zod schemas below
+// and the Settings type are both derived from these — add a value here once
+// and it propagates to validation (write path) and the inferred type (read
+// path) together, instead of drifting across hand-copied unions.
+const GALLERY_IMAGE_SOURCES = ['sky-survey', 'telescope'] as const;
+const PREFERRED_CATALOGS = ['default', 'caldwell'] as const;
+const TEMPERATURE_UNITS = ['celsius', 'fahrenheit'] as const;
+const WIND_SPEED_UNITS = ['mph', 'kmh'] as const;
+// UPDATE_CHANNELS itself is imported from appUpdate/manifest.ts, which is the
+// real source (it also signs the manifests published under each channel).
 
 const SettingsUpdateBodySchema = z.object({
   apiKey: z.string().optional(),
@@ -49,14 +62,14 @@ const SettingsUpdateBodySchema = z.object({
   importVideos: z.boolean().optional(),
   onboardingCompleted: z.boolean().optional(),
   prefetchCatalogAssets: z.boolean().optional(),
-  prefetchUseCatalogPacks: z.boolean().optional(),
   planetariumShowInfo: z.boolean().optional(),
-  galleryImageSource: z.enum(['sky-survey', 'telescope']).optional(),
+  galleryImageSource: z.enum(GALLERY_IMAGE_SOURCES).optional(),
   slideshowRotateCCW: z.boolean().optional(),
-  preferredCatalog: z.enum(['default', 'caldwell']).optional(),
-  temperatureUnit: z.enum(['celsius', 'fahrenheit']).optional(),
-  windSpeedUnit: z.enum(['mph', 'kmh']).optional(),
-  updateChannel: z.enum(['stable', 'beta']).optional(),
+  preferredCatalog: z.enum(PREFERRED_CATALOGS).optional(),
+  groupObservingNights: z.boolean().optional(),
+  temperatureUnit: z.enum(TEMPERATURE_UNITS).optional(),
+  windSpeedUnit: z.enum(WIND_SPEED_UNITS).optional(),
+  updateChannel: z.enum(UPDATE_CHANNELS).optional(),
   autoUpdateEnabled: z.boolean().optional(),
   plannerPrefetchEnabled: z.boolean().optional(),
   plannerPrefetchTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
@@ -69,63 +82,74 @@ const ResetDatabaseBodySchema = z.object({
   confirmation: z.literal('delete'),
 });
 
-interface Settings {
-  apiKey: string;
+// The full Settings shape, as returned by GET/PUT. Derived (not hand-copied)
+// so the enum fields can never drift from the arrays above: adding a value to
+// e.g. TEMPERATURE_UNITS updates the type here and the write-side validation
+// in one place. `loadSettings()` parses through this schema, so a value that
+// slips past DB-layer coercion (rowToSettings) is caught here instead of
+// silently mistyped through the rest of the route.
+const SettingsSchema = z.object({
+  apiKey: z.string(),
   // Observer location
-  latitude: number | null;
-  longitude: number | null;
-  locationName: string;
-  timezone: string;
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
+  locationName: z.string(),
+  timezone: z.string(),
   // Planner visibility
-  minAlt: number;
-  horizonProfile: number[]; // 36 values, one per 10° azimuth bucket (0°–350°)
-  visibleSkyMap: boolean[]; // 288 values (36 az × 8 elevation bands); [] = not set
-  skyMapBands: number;      // elevation-band count the server supports (8); clients gate the finer grid on this
-  syncEnabled: boolean;
-  syncJpg: boolean;
-  syncFits: boolean;
-  syncThumbnails: boolean;
-  syncSubFrames: boolean;
-  syncVideos: boolean;
+  minAlt: z.number(),
+  horizonProfile: z.array(z.number()).length(36), // one per 10° azimuth bucket (0°–350°)
+  visibleSkyMap: z.array(z.boolean()), // 288 values (36 az × 8 elevation bands); [] = not set
+  skyMapBands: z.number(), // elevation-band count the server supports (8); clients gate the finer grid on this
+  syncEnabled: z.boolean(),
+  syncJpg: z.boolean(),
+  syncFits: z.boolean(),
+  syncThumbnails: z.boolean(),
+  syncSubFrames: z.boolean(),
+  syncVideos: z.boolean(),
   // Local library import
-  autoImportInterval: number;  // minutes
-  importJpg: boolean;
-  importFits: boolean;
-  importThumbnails: boolean;
-  importSubFrames: boolean;
-  importVideos: boolean;
+  autoImportInterval: z.number(), // minutes
+  importJpg: z.boolean(),
+  importFits: z.boolean(),
+  importThumbnails: z.boolean(),
+  importSubFrames: z.boolean(),
+  importVideos: z.boolean(),
   // Onboarding
-  onboardingCompleted: boolean;
+  onboardingCompleted: z.boolean(),
   // Offline catalog imagery + Wikipedia descriptions — toggles the bulk
   // prefetch job on the backend so everything renders instantly from cache.
-  prefetchCatalogAssets: boolean;
-  // When true (default), download phase uses Nebulis catalog packs only.
-  // When false, scrape DSS2 / Wikipedia / NASA directly.
-  prefetchUseCatalogPacks: boolean;
+  prefetchCatalogAssets: z.boolean(),
   // Gallery
-  planetariumShowInfo: boolean;
-  galleryImageSource: 'sky-survey' | 'telescope';
-  slideshowRotateCCW: boolean;
+  planetariumShowInfo: z.boolean(),
+  galleryImageSource: z.enum(GALLERY_IMAGE_SOURCES),
+  slideshowRotateCCW: z.boolean(),
   // Which catalog nomenclature to prefer for new object folder names when an
   // object has both an NGC/IC and a Caldwell designation. See
   // server/lib/catalogAliases.ts for the resolution priority this overrides.
-  preferredCatalog: 'default' | 'caldwell';
-  temperatureUnit: 'celsius' | 'fahrenheit';
-  windSpeedUnit: 'mph' | 'kmh';
+  preferredCatalog: z.enum(PREFERRED_CATALOGS),
+  // Whether a session crossing local midnight groups as one observing night
+  // or splits into two calendar-date sessions the old way. See
+  // server/lib/telescopeFiles.ts (observingNightDate/sessionNightFor/
+  // clampToNightSafeTime) — every session-grouping call site in the app
+  // inherits this through those three functions.
+  groupObservingNights: z.boolean(),
+  temperatureUnit: z.enum(TEMPERATURE_UNITS),
+  windSpeedUnit: z.enum(WIND_SPEED_UNITS),
   // Desktop auto-update channel.
-  updateChannel: 'stable' | 'beta';
+  updateChannel: z.enum(UPDATE_CHANNELS),
   // Whether the updater checks + pre-downloads automatically. Off by default.
-  autoUpdateEnabled: boolean;
+  autoUpdateEnabled: z.boolean(),
   // Nightly maintenance
-  plannerPrefetchEnabled: boolean;
-  plannerPrefetchTime: string; // HH:MM in observer's local timezone
-  plannerPrefetchLastRun: number | null; // Unix ms, read-only
-  nightlyCatalogPackCheckEnabled: boolean;
-  nightlyHousekeepingEnabled: boolean;
-  nightlyForecastPrefetchEnabled: boolean;
-  nightlyHousekeepingLastRun: number | null; // Unix ms, read-only
-  nightlyForecastLastRun: number | null; // Unix ms, read-only
-}
+  plannerPrefetchEnabled: z.boolean(),
+  plannerPrefetchTime: z.string(), // HH:MM in observer's local timezone
+  plannerPrefetchLastRun: z.number().nullable(), // Unix ms, read-only
+  nightlyCatalogPackCheckEnabled: z.boolean(),
+  nightlyHousekeepingEnabled: z.boolean(),
+  nightlyForecastPrefetchEnabled: z.boolean(),
+  nightlyHousekeepingLastRun: z.number().nullable(), // Unix ms, read-only
+  nightlyForecastLastRun: z.number().nullable(), // Unix ms, read-only
+});
+
+type Settings = z.infer<typeof SettingsSchema>;
 
 const defaultSettings: Settings = {
   apiKey: '',
@@ -151,11 +175,11 @@ const defaultSettings: Settings = {
   importVideos: false,
   onboardingCompleted: false,
   prefetchCatalogAssets: true,
-  prefetchUseCatalogPacks: true,
   planetariumShowInfo: true,
   galleryImageSource: 'sky-survey',
   slideshowRotateCCW: false,
   preferredCatalog: 'default',
+  groupObservingNights: true,
   temperatureUnit: 'fahrenheit',
   windSpeedUnit: 'mph',
   updateChannel: 'stable',
@@ -170,12 +194,12 @@ const defaultSettings: Settings = {
   nightlyForecastLastRun: null,
 };
 
-const appFields = ['apiKey', 'latitude', 'longitude', 'locationName', 'timezone', 'minAlt', 'horizonProfile', 'visibleSkyMap', 'syncEnabled', 'syncJpg', 'syncFits', 'syncThumbnails', 'syncSubFrames', 'syncVideos', 'autoImportInterval', 'importJpg', 'importFits', 'importThumbnails', 'importSubFrames', 'importVideos', 'onboardingCompleted', 'prefetchCatalogAssets', 'prefetchUseCatalogPacks', 'planetariumShowInfo', 'galleryImageSource', 'slideshowRotateCCW', 'preferredCatalog', 'temperatureUnit', 'windSpeedUnit', 'updateChannel', 'autoUpdateEnabled', 'plannerPrefetchEnabled', 'plannerPrefetchTime', 'nightlyCatalogPackCheckEnabled', 'nightlyHousekeepingEnabled', 'nightlyForecastPrefetchEnabled'] as const;
+const appFields = ['apiKey', 'latitude', 'longitude', 'locationName', 'timezone', 'minAlt', 'horizonProfile', 'visibleSkyMap', 'syncEnabled', 'syncJpg', 'syncFits', 'syncThumbnails', 'syncSubFrames', 'syncVideos', 'autoImportInterval', 'importJpg', 'importFits', 'importThumbnails', 'importSubFrames', 'importVideos', 'onboardingCompleted', 'prefetchCatalogAssets', 'planetariumShowInfo', 'galleryImageSource', 'slideshowRotateCCW', 'preferredCatalog', 'groupObservingNights', 'temperatureUnit', 'windSpeedUnit', 'updateChannel', 'autoUpdateEnabled', 'plannerPrefetchEnabled', 'plannerPrefetchTime', 'nightlyCatalogPackCheckEnabled', 'nightlyHousekeepingEnabled', 'nightlyForecastPrefetchEnabled'] as const;
 
 function loadSettings(): Settings {
   const appData = getSettingsData();
   const merged = { ...defaultSettings, ...appData };
-  return merged as Settings;
+  return SettingsSchema.parse(merged);
 }
 
 router.get('/', (_req: Request, res: Response) => {
@@ -184,9 +208,6 @@ router.get('/', (_req: Request, res: Response) => {
     ...settings,
     apiKey: settings.apiKey ? `${settings.apiKey.slice(0, 8)}...` : '',
     hasApiKey: !!settings.apiKey,
-    plannerPrefetchLastRun: (settings.plannerPrefetchLastRun as number | null) ?? null,
-    nightlyHousekeepingLastRun: (settings.nightlyHousekeepingLastRun as number | null) ?? null,
-    nightlyForecastLastRun: (settings.nightlyForecastLastRun as number | null) ?? null,
   });
 });
 
@@ -202,7 +223,7 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
   const updates = parsed.data;
 
   // Don't overwrite apiKey with masked value
-  const masked = current.apiKey ? `${(current.apiKey as string).slice(0, 8)}...` : null;
+  const masked = current.apiKey ? `${current.apiKey.slice(0, 8)}...` : null;
   if (updates.apiKey && updates.apiKey === masked) delete updates.apiKey;
 
   // Only allow known fields
@@ -266,8 +287,7 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
   }
 
   if (prefetchFlippedOn || onboardingJustFinishedWithPrefetch) {
-    const after = loadSettings();
-    startPrefetch({ packsOnly: after.prefetchUseCatalogPacks });
+    startPrefetch({ packsOnly: true });
   } else if (prefetchFlippedOff) {
     cancelPrefetch();
   }
@@ -299,9 +319,6 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
     ...settings,
     apiKey: settings.apiKey ? `${settings.apiKey.slice(0, 8)}...` : '',
     hasApiKey: !!settings.apiKey,
-    plannerPrefetchLastRun: (settings.plannerPrefetchLastRun as number | null) ?? null,
-    nightlyHousekeepingLastRun: (settings.nightlyHousekeepingLastRun as number | null) ?? null,
-    nightlyForecastLastRun: (settings.nightlyForecastLastRun as number | null) ?? null,
   });
 });
 
@@ -447,6 +464,30 @@ router.post('/debug-logging/enable', requireAdmin, (_req: Request, res: Response
     };
   } catch { /* best-effort */ }
 
+  // Configured telescopes, credential-free. SMB username and password are
+  // deliberately omitted; host/share/localPath are kept because they are needed
+  // to reason about connection problems and are not secrets.
+  let telescopes: DebugContext['telescopes'];
+  try {
+    telescopes = getAllProfiles().map(p => ({
+      name: p.name,
+      model: p.model,
+      kind: p.kind,
+      connectionType: p.connectionType,
+      ...(p.connectionType === 'local'
+        ? { localPath: p.localPath }
+        : { hostname: p.hostname, shareName: p.shareName }),
+      autoImportEnabled: p.autoImportEnabled,
+      autoImportInterval: p.autoImportInterval,
+      archived: p.archivedAt !== null,
+      importJpg: p.importJpg,
+      importFits: p.importFits,
+      importThumbnails: p.importThumbnails,
+      importSubFrames: p.importSubFrames,
+      importVideos: p.importVideos,
+    }));
+  } catch { /* best-effort */ }
+
   let dbStats: { objects: number; sessions: number; files: number } | undefined;
   try {
     const n = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
@@ -461,7 +502,9 @@ router.post('/debug-logging/enable', requireAdmin, (_req: Request, res: Response
     appVersion,
     libraryDir: getLibraryDir(),
     dataDir: DATA_DIR,
+    libraryLocationType: isNetworkLocation() ? 'network' : 'local',
     settings,
+    telescopes,
     dbStats,
   }));
 });

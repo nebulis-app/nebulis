@@ -40,6 +40,7 @@ import { metaRouter } from './routes/meta.js';
 import { catalogsRouter } from './routes/catalogs.js';
 import { startPackUpdateChecker } from './lib/catalogPack/updater.js';
 import { startPlannerNightlyScheduler } from './lib/plannerNightlyPrefetch.js';
+import { startForecastRefresh } from './lib/forecastCache.js';
 import { startAppUpdateChecker } from './lib/appUpdate/updater.js';
 import { prewarmThumbnails } from './lib/catalogPrefetch.js';
 import { satelliteCatalog } from './lib/satelliteCatalog.js';
@@ -94,6 +95,22 @@ function readAppVersion(): string {
 const APP_VERSION = readAppVersion();
 
 // --- Global middleware ---
+
+// TEMPORARY DIAGNOSTIC — remove once the upload-temp investigation lands.
+// Runs before auth so it observes the request exactly as it arrives off the
+// socket, even when a later middleware rejects it (a 401 never reaches the
+// route's own logging).
+app.use((req, _res, next) => {
+  if (req.url.includes('upload-temp')) {
+    log.info({
+      url: req.url,
+      contentLength: req.headers['content-length'],
+      contentType: req.headers['content-type'],
+      transferEncoding: req.headers['transfer-encoding'],
+    }, '[diag] upload-temp arrived at express');
+  }
+  next();
+});
 
 // Correlation ID: must run before timing so the request log line carries
 // requestId and before downstream handlers that may emit their own logs.
@@ -418,7 +435,22 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
   const status = (err as { status?: number; statusCode?: number })?.status
     ?? (err as { status?: number; statusCode?: number })?.statusCode
     ?? 500;
-  log.error({ err, method: req.method, url: req.url, status }, 'unhandled_route_error');
+  log.error({
+    err,
+    method: req.method,
+    url: req.url,
+    status,
+    // Upload-route diagnostics (undefined for every other route — harmless).
+    // bytesReceived vs contentLength distinguishes real truncation (client
+    // sent fewer bytes than declared) from a boundary/Content-Type mismatch
+    // (all declared bytes arrived, busboy still never found the terminator).
+    contentLength: req.headers['content-length'],
+    contentType: req.headers['content-type'],
+    bytesReceived: req.__bytesReceived,
+    elapsedMs: req.__uploadStart ? Date.now() - req.__uploadStart : undefined,
+    requestComplete: req.complete,
+    socketDestroyed: req.socket?.destroyed,
+  }, 'unhandled_route_error');
   if (!res.headersSent) {
     // Return a generic message for 5xx to avoid leaking internal paths, SQL
     // fragments, or library internals. 4xx errors from upstream (e.g. archiver)
@@ -518,6 +550,7 @@ function onListening(): void {
   startPackUpdateChecker(prewarmThumbnails);
   startAppUpdateChecker();
   startPlannerNightlyScheduler();
+  startForecastRefresh();
 
   // Advertise via mDNS. Deferred by one tick (via the async IIFE) so it never
   // blocks the listen callback above.
@@ -584,11 +617,29 @@ function onListening(): void {
 // default bridge network has no IPv6 stack, so binding to '::' there throws
 // EAFNOSUPPORT/EADDRNOTAVAIL — fall back to the IPv4-only '0.0.0.0' bind that
 // worked before this change rather than crashing the server on startup.
+// Node's default keepAliveTimeout (5s) is shorter than most reverse proxies
+// (including Vite's dev proxy in front of this server at :3002) will hold a
+// pooled connection idle for. When the proxy reuses a connection Node has
+// already started tearing down, the new request's body lands on a dying
+// socket — Express/busboy see the stream end mid-parse and throw "Unexpected
+// end of form". This bit a large multi-batch folder-upload (14 sequential
+// ~400 MB batches on the same keep-alive connection) in dev: the first 13
+// batches succeeded back-to-back, then the 14th arrived truncated. Raising
+// keepAliveTimeout above any proxy's own idle timeout keeps Node from ever
+// closing first. headersTimeout must exceed keepAliveTimeout (Node
+// requirement) or the server logs a startup warning and silently uses
+// headersTimeout unmodified.
+function configureServerTimeouts(srv: import('http').Server): void {
+  srv.keepAliveTimeout = 65_000;
+  srv.headersTimeout = 66_000;
+}
+
 const server = app.listen(Number(PORT), '::', onListening);
+configureServerTimeouts(server);
 server.once('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EAFNOSUPPORT' || err.code === 'EADDRNOTAVAIL' || err.code === 'ENOTSUP') {
     console.warn(`  IPv6 dual-stack bind failed (${err.code}) — falling back to IPv4-only 0.0.0.0`);
-    app.listen(Number(PORT), '0.0.0.0', onListening);
+    configureServerTimeouts(app.listen(Number(PORT), '0.0.0.0', onListening));
   } else {
     throw err;
   }

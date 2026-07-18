@@ -3,36 +3,16 @@ import { useQuery, useQueryClient, useMutation, useMutationState } from '@tansta
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   ArrowLeft,
-  Calendar,
-  Clock,
   MapPin,
-  Star,
   Layers,
   FileImage,
   Info,
   ExternalLink,
-  ChevronLeft,
-  ChevronRight,
   X,
   Loader2,
-  Download,
-  Trash2,
-  ArrowRightLeft,
-  Cloud,
-  Thermometer,
-  Droplets,
-  Wind,
-  Sparkles,
-  Upload,
-  ImagePlus,
   Crown,
   Pencil,
   Columns,
-  Heart,
-  NotebookPen,
-  CheckCircle2,
-  Satellite,
-  Telescope,
 } from 'lucide-react';
 import { getObservationDetail, getObjectInfo } from '../lib/api/observations';
 import {
@@ -48,7 +28,7 @@ import {
   getSubframesArchiveTmpUrl,
 } from '../lib/api/library';
 import { getSettings } from '../lib/api/settings';
-import { getTelescopeStatus, listTelescopes, reassignSessionTelescope } from '../lib/api/telescopes';
+import { getTelescopeStatus, listTelescopes } from '../lib/api/telescopes';
 import { fetchLocationName } from '../lib/api/catalog';
 import { getNote } from '../lib/api/notes';
 import { formatObjectTitle } from '../lib/dsoSearch';
@@ -56,8 +36,8 @@ import { MoveObservationModal } from '../components/MoveObservationModal';
 import { UploadProcessedModal } from '../components/UploadProcessedModal';
 import { DeleteSessionModal } from '../components/DeleteSessionModal';
 import { GalleryModal, type GalleryItem } from '../components/GalleryModal';
-import { FitsThumbnail } from '../components/FitsThumbnail';
 import { FitsHeaderModal } from '../components/FitsHeaderModal';
+import { FitsPreview } from '../components/FitsPreview';
 import { SessionNotesModal } from '../components/SessionNotesModal';
 import { ObservationMap } from '../components/ObservationMap';
 import { ImageEditorModal } from '../components/ImageEditorModal';
@@ -65,6 +45,12 @@ import { ImageCompareModal, type CompareFile } from '../components/ImageCompareM
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useSyncSubframes } from '../contexts/SyncSubframesContext';
 import { SatelliteTrailScanModal } from '../components/SatelliteTrailScanModal';
+import { ObservationHeader } from '../components/observationDetail/ObservationHeader';
+import { WeatherPanel } from '../components/observationDetail/WeatherPanel';
+import { ObservationStatsTiles } from '../components/observationDetail/ObservationStatsTiles';
+import { SessionFileGrid } from '../components/observationDetail/SessionFileGrid';
+import { SubframesPanel } from '../components/observationDetail/SubframesPanel';
+import { ProcessedImagesGrid } from '../components/observationDetail/ProcessedImagesGrid';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/AuthContext';
 import type { SessionFile, ProcessedImage } from '../types';
@@ -92,6 +78,10 @@ function formatDec(dec: string): string {
   return `${sign}${d.toString().padStart(2, '0')}° ${m.toString().padStart(2, '0')}′ ${s.toFixed(1)}″`;
 }
 
+// Compare-mode selection slot — shared by the telescope-file grid and the
+// processed-images grid, since either can supply either side of a compare.
+export type CompareItem = { key: string; file: CompareFile };
+
 export function ObservationDetail() {
   const { objectId = '', date = '' } = useParams<{ objectId: string; date: string }>();
   const { isDark, isNight, isSpace } = useTheme();
@@ -108,7 +98,6 @@ export function ObservationDetail() {
   useEffect(() => { setGalleryPage(0); }, [viewMode]);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
-  const GALLERY_PAGE_SIZE = 12; // 3 rows × 4 columns (md breakpoint)
 
   // Session image state
   const [settingSessionImage, setSettingSessionImage] = useState(false);
@@ -126,7 +115,6 @@ export function ObservationDetail() {
   const [editorSrc, setEditorSrc] = useState<{ url: string; name: string; sourceKind: 'telescope' | 'processed' } | null>(null);
 
   // Compare state — key is file.path (telescope) or img.id (processed)
-  type CompareItem = { key: string; file: CompareFile };
   const [compareMode, setCompareMode] = useState(false);
   const [compareItems, setCompareItems] = useState<[CompareItem | null, CompareItem | null]>([null, null]);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
@@ -143,25 +131,6 @@ export function ObservationDetail() {
     queryFn: () => getNote(objectId, date),
     enabled: !!objectId && !!date,
   });
-
-  // Subframes grid — how many tiles fit in the available width × height (measured)
-  const subFramesRowRef = useRef<HTMLDivElement>(null);
-  const [subFramesVisible, setSubFramesVisible] = useState(20);
-  useEffect(() => {
-    const el = subFramesRowRef.current;
-    if (!el) return;
-    const TILE = 64 + 6; // w-16 + gap-1.5
-    const PADDING = 24;  // p-3 each side
-    const measure = () => {
-      const cols = Math.max(1, Math.floor((el.offsetWidth - PADDING + 6) / TILE));
-      const rows = Math.max(1, Math.floor((el.offsetHeight - PADDING + 6) / TILE));
-      setSubFramesVisible(cols * rows);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   const openImageEditor = (url: string, name: string, sourceKind: 'telescope' | 'processed') => {
     setGalleryOpen(false);
@@ -203,42 +172,6 @@ export function ObservationDetail() {
   const telescopeForObs = observation?.telescopeId
     ? telescopes.find(t => t.id === observation.telescopeId) ?? null
     : null;
-  const [showReassign, setShowReassign] = useState(false);
-  const reassignWrapRef = useRef<HTMLSpanElement>(null);
-  // Close on outside click / Escape so the popover doesn't linger after the
-  // user moves on. Listener is only attached while open.
-  useEffect(() => {
-    if (!showReassign) return;
-    function handleClick(e: MouseEvent) {
-      if (
-        reassignWrapRef.current &&
-        e.target instanceof Node &&
-        !reassignWrapRef.current.contains(e.target)
-      ) {
-        setShowReassign(false);
-      }
-    }
-    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') setShowReassign(false); }
-    document.addEventListener('mousedown', handleClick);
-    document.addEventListener('keydown', handleKey);
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      document.removeEventListener('keydown', handleKey);
-    };
-  }, [showReassign]);
-  const reassignMutation = useMutation({
-    mutationFn: (newTelescopeId: string) => {
-      if (!objectId || !date) throw new Error('No session loaded');
-      return reassignSessionTelescope(objectId, date, newTelescopeId);
-    },
-    onSuccess: () => {
-      setShowReassign(false);
-      queryClient.invalidateQueries({ queryKey: ['observation', objectId, date] });
-      queryClient.invalidateQueries({ queryKey: ['observations'] });
-      queryClient.invalidateQueries({ queryKey: ['telescopes'] });
-      queryClient.invalidateQueries({ queryKey: ['library-sessions', objectId] });
-    },
-  });
 
   useEffect(() => {
     const coords = observation?.coordinates;
@@ -306,7 +239,6 @@ export function ObservationDetail() {
 
   const files = observation?.files || [];
   const subFrames = files.filter(f => f.fileType === 'sub');
-  const hasSubFrames = subFrames.length > 0;
   const filteredFiles = files.filter(f => {
     if (f.fileType === 'sub') return false;
     if (viewMode === 'fits') return f.type === 'fits';
@@ -314,17 +246,20 @@ export function ObservationDetail() {
     return f.type === 'fits' || f.type === 'image';
   });
 
-const stackedImage = files.find(f => f.fileType === 'stacked' && f.type === 'image');
+  const stackedImage = files.find(f => f.fileType === 'stacked' && f.type === 'image');
+  // Stacked FITS fallback: some sessions have a stacked .fit but no rendered .jpg.
+  const stackedFits = files.find(f => f.fileType === 'stacked' && f.type === 'fits');
 
-  // Designated session image (falls back to stacked, then first image)
+  // Designated session image (falls back to stacked image, then any image, then stacked FITS)
   const designatedSessionFile = observation?.sessionImage
     ? files.find(f => f.path === observation.sessionImage) ?? null
     : null;
   const designatedProcessedImage = observation?.sessionImage
     ? processedImages.find(img => img.path === observation.sessionImage) ?? null
     : null;
-  const heroFile = designatedSessionFile ?? stackedImage ?? files.find(f => f.type === 'image' && !f.isThumbnail) ?? null;
+  const heroFile = designatedSessionFile ?? stackedImage ?? files.find(f => f.type === 'image' && !f.isThumbnail) ?? stackedFits ?? null;
   const heroIsUserDesignated = (!!designatedSessionFile && designatedSessionFile !== stackedImage) || !!designatedProcessedImage;
+  const heroIsFits = heroFile?.type === 'fits';
 
   const formattedDate = date && date !== 'unknown'
     ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
@@ -467,147 +402,19 @@ if (isLoading) {
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumbs */}
-      <div className="flex items-center gap-2 text-sm">
-        <Link to="/observations" className={`transition ${isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}`}>
-          Observations
-        </Link>
-        <span className={isDark ? 'text-slate-700' : 'text-slate-300'}>/</span>
-        <Link to={`/object/${encodeURIComponent(objectId)}`} className={`transition ${isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}`}>
-          {displayName}
-        </Link>
-        <span className={isDark ? 'text-slate-700' : 'text-slate-300'}>/</span>
-        <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>{formattedDate}</span>
-      </div>
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div>
-          <Link
-            to={`/object/${encodeURIComponent(objectId)}`}
-            className={`inline-flex items-center gap-2 text-sm font-medium mb-2 transition ${isDark ? 'text-slate-400 hover:text-accent-400' : 'text-slate-500 hover:text-accent-600'}`}
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to {displayName}
-          </Link>
-          <h1 className={`font-display text-3xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            {displayName}
-          </h1>
-          <div className={`flex flex-wrap items-center gap-4 text-sm mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            <span className="flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5" />
-              {formattedDate}
-            </span>
-            {observation?.startTime && (
-              <span className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5" />
-                {formatTime(observation.startTime)}
-                {observation.endTime && observation.endTime !== observation.startTime && (
-                  <> - {formatTime(observation.endTime)}</>
-                )}
-              </span>
-            )}
-            {observation?.type && (
-              <span className={`px-2 py-0.5 rounded-full text-xs ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-                {observation.type}
-              </span>
-            )}
-            {/* Telescope chip — only when multiple telescopes are configured.
-                Click to filter the calendar; admins can reassign via popover. */}
-            {showTelescopeUI && telescopeForObs && (
-              <span ref={reassignWrapRef} className="relative inline-flex items-center">
-                <Link
-                  to={`/observations?telescopeId=${encodeURIComponent(telescopeForObs.id)}`}
-                  className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition ${
-                    isDark ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-100 hover:bg-slate-200'
-                  }`}
-                  title={`Captured on ${telescopeForObs.name}. Click to filter.`}
-                >
-                  <span
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ backgroundColor: telescopeForObs.color }}
-                    aria-hidden="true"
-                  />
-                  <span className={isDark ? 'text-slate-300' : 'text-slate-600'}>
-                    {telescopeForObs.name}
-                  </span>
-                </Link>
-                {isAdmin && (
-                  <button
-                    onClick={() => setShowReassign(s => !s)}
-                    className={`ml-1 p-1 rounded transition ${
-                      isDark ? 'text-slate-500 hover:text-accent-400 hover:bg-slate-800' : 'text-slate-400 hover:text-accent-600 hover:bg-slate-100'
-                    }`}
-                    title="Reassign to a different telescope"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                )}
-                {showReassign && (
-                  <div className={`absolute left-0 top-full mt-1 z-30 w-56 rounded-xl border shadow-lg p-2 ${
-                    isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
-                  }`}>
-                    <div className={`px-2 py-1 text-[11px] font-semibold uppercase tracking-wider ${
-                      isDark ? 'text-slate-500' : 'text-slate-400'
-                    }`}>
-                      Reassign to
-                    </div>
-                    {telescopes.map(t => (
-                      <button
-                        key={t.id}
-                        onClick={() => reassignMutation.mutate(t.id)}
-                        disabled={reassignMutation.isPending || t.id === telescopeForObs.id}
-                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-left transition disabled:opacity-50 ${
-                          isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700'
-                        }`}
-                      >
-                        <span
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: t.color }}
-                        />
-                        <span className="flex-1 truncate">{t.name}</span>
-                        {t.id === telescopeForObs.id && <CheckCircle2 className="w-3 h-3 text-teal-500" />}
-                      </button>
-                    ))}
-                    {reassignMutation.isError && (
-                      <div className={`mt-1 px-2 py-1 text-[11px] rounded ${
-                        isDark ? 'text-red-400' : 'text-red-600'
-                      }`}>
-                        Reassignment failed
-                      </div>
-                    )}
-                  </div>
-                )}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className={`flex items-center gap-3 text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-          {observation && (
-            <>
-              {isAdmin && (
-                <button
-                  onClick={() => setShowMoveModal(true)}
-                  className={`ml-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${isDark ? 'text-slate-500 hover:text-accent-400 hover:bg-accent-500/10' : 'text-slate-400 hover:text-accent-500 hover:bg-accent-50'}`}
-                  title="Move observation to different object"
-                >
-                  <ArrowRightLeft className="w-4 h-4" />
-                  Move
-                </button>
-              )}
-              {isAdmin && (
-                <button
-                  onClick={() => setShowDeleteModal(true)}
-                  className={`p-1.5 rounded-lg transition ${isDark ? 'text-slate-600 hover:text-red-400 hover:bg-red-500/10' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
-                  title="Delete observation"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+      <ObservationHeader
+        objectId={objectId}
+        date={date}
+        displayName={displayName}
+        formattedDate={formattedDate}
+        observation={observation}
+        isAdmin={isAdmin}
+        showTelescopeUI={showTelescopeUI}
+        telescopeForObs={telescopeForObs}
+        telescopes={telescopes}
+        onMove={() => setShowMoveModal(true)}
+        onDelete={() => setShowDeleteModal(true)}
+      />
 
       {/* Compare mode page-level banner */}
       {compareMode && (
@@ -677,15 +484,27 @@ if (isLoading) {
             <div
               className="cursor-pointer relative group"
               onClick={() => {
+                if (heroIsFits) {
+                  // Stacked FITS may not be in the (image-only) default filteredFiles list,
+                  // so open the gallery with just this file.
+                  const idx = filteredFiles.findIndex(f => f.path === heroFile.path);
+                  if (idx >= 0) openGallery(idx);
+                  else openGallery(0, [heroFile]);
+                  return;
+                }
                 const idx = filteredFiles.findIndex(f => f.path === heroFile.path);
                 if (idx >= 0) openGallery(idx);
               }}
             >
-              <img
-                src={heroFile.downloadUrl}
-                alt={displayName}
-                className="w-full object-contain"
-              />
+              {heroIsFits ? (
+                <FitsPreview url={heroFile.downloadUrl} isDark={isDark} />
+              ) : (
+                <img
+                  src={heroFile.downloadUrl}
+                  alt={displayName}
+                  className="w-full object-contain"
+                />
+              )}
               {/* Crown badge for user-designated session image */}
               {heroIsUserDesignated && (
                 <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-amber-500/90 text-white text-[11px] font-semibold flex items-center gap-1 shadow">
@@ -693,13 +512,16 @@ if (isLoading) {
                   Session Image
                 </div>
               )}
-              <button
-                onClick={e => { e.stopPropagation(); openImageEditor(heroFile.downloadUrl, heroFile.name, 'telescope'); }}
-                className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60"
-                title="Edit image"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
+              {/* The image editor works on rasterized images only, not raw FITS. */}
+              {!heroIsFits && (
+                <button
+                  onClick={e => { e.stopPropagation(); openImageEditor(heroFile.downloadUrl, heroFile.name, 'telescope'); }}
+                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60"
+                  title="Edit image"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             <div className={`px-3 py-1.5 border-t flex items-center justify-between gap-2 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <div className="flex items-center gap-2 min-w-0">
@@ -711,7 +533,7 @@ if (isLoading) {
                 ) : (
                   <span className="px-2 py-0.5 rounded-md bg-accent-500/90 text-white text-[11px] font-semibold flex items-center gap-1">
                     <Layers className="w-3 h-3" />
-                    Stacked{heroFile.frameCount ? ` · ${heroFile.frameCount} frames` : ''}
+                    Stacked{heroIsFits ? ' FITS' : ''}{heroFile.frameCount ? ` · ${heroFile.frameCount} frames` : ''}
                   </span>
                 )}
                 {heroFile.exposure && (
@@ -856,58 +678,7 @@ if (isLoading) {
 
           {/* Weather conditions */}
           {observation?.weather && (
-            <div className={`rounded-xl border p-4 ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
-              <h3 className={`font-display font-semibold text-sm flex items-center gap-2 mb-3 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                <Cloud className={`w-3.5 h-3.5 ${accentText}`} />
-                Weather Conditions
-              </h3>
-              <div className={`grid grid-cols-2 gap-x-4 gap-y-2 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {observation.weather.cloudCover != null && (
-                  <div className="flex items-center justify-between">
-                    <span className={`flex items-center gap-1.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                      <Cloud className="w-3 h-3" /> Clouds
-                    </span>
-                    <span className="font-medium">{Math.round(observation.weather.cloudCover)}%</span>
-                  </div>
-                )}
-                {observation.weather.temperature != null && (
-                  <div className="flex items-center justify-between">
-                    <span className={`flex items-center gap-1.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                      <Thermometer className="w-3 h-3" /> Temp
-                    </span>
-                    <span className="font-medium">{tempUnit === 'fahrenheit' ? `${Math.round(observation.weather.temperature! * 9 / 5 + 32)}°F` : `${Math.round(observation.weather.temperature!)}°C`}</span>
-                  </div>
-                )}
-                {observation.weather.humidity != null && (
-                  <div className="flex items-center justify-between">
-                    <span className={`flex items-center gap-1.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                      <Droplets className="w-3 h-3" /> Humidity
-                    </span>
-                    <span className="font-medium">{Math.round(observation.weather.humidity)}%</span>
-                  </div>
-                )}
-                {observation.weather.windSpeed != null && (
-                  <div className="flex items-center justify-between">
-                    <span className={`flex items-center gap-1.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                      <Wind className="w-3 h-3" /> Wind
-                    </span>
-                    <span className="font-medium">{Math.round(observation.weather.windSpeed * 0.621371)} mph</span>
-                  </div>
-                )}
-                {observation.weather.dewPoint != null && (
-                  <div className="flex items-center justify-between">
-                    <span className={`${isDark ? 'text-slate-600' : 'text-slate-400'}`}>Dew Point</span>
-                    <span className="font-medium">{tempUnit === 'fahrenheit' ? `${Math.round(observation.weather.dewPoint! * 9 / 5 + 32)}°F` : `${Math.round(observation.weather.dewPoint!)}°C`}</span>
-                  </div>
-                )}
-                {observation.weather.precipProb != null && observation.weather.precipProb > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className={`${isDark ? 'text-slate-600' : 'text-slate-400'}`}>Precip</span>
-                    <span className="font-medium">{Math.round(observation.weather.precipProb)}%</span>
-                  </div>
-                )}
-              </div>
-            </div>
+            <WeatherPanel weather={observation.weather} tempUnit={tempUnit} />
           )}
 
           {/* Observation Location Map */}
@@ -937,90 +708,13 @@ if (isLoading) {
           )}
 
           {/* Session Metrics and Notes */}
-          {(() => {
-            const stackedFile = files.find(f => f.fileType === 'stacked');
-            const subCount = files.filter(f => f.fileType === 'sub').length;
-            const canOpenNotes = !!objectId && !!date;
-
-            const frameCount = stackedFile?.frameCount ?? null;
-            const exposure = stackedFile?.exposure ?? null;
-            const filter = stackedFile?.filter ?? null;
-            const expSeconds = exposure ? parseFloat(exposure.replace('s', '')) : null;
-            const totalSeconds = (frameCount && expSeconds) ? frameCount * expSeconds : null;
-
-            const formatIntegration = (secs: number) => {
-              if (secs < 60) return `${Math.round(secs)}s`;
-              const m = Math.floor(secs / 60);
-              const s = Math.round(secs % 60);
-              if (m < 60) return s > 0 ? `${m}m ${s}s` : `${m}m`;
-              const h = Math.floor(m / 60);
-              const rem = m % 60;
-              return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
-            };
-
-            const filterDisplay = (f: string) => {
-              if (f.toUpperCase() === 'LP') return 'LP Filter';
-              if (f.toUpperCase() === 'IRCUT') return 'IR Cut';
-              return f;
-            };
-
-            const tiles: { value: string; label: string }[] = [];
-            if (frameCount != null) tiles.push({ value: frameCount.toLocaleString(), label: 'Frames Stacked' });
-            if (totalSeconds != null) tiles.push({ value: formatIntegration(totalSeconds), label: 'Total Integration' });
-            if (exposure) tiles.push({ value: exposure, label: 'Exp. per Frame' });
-            if (filter) tiles.push({ value: filterDisplay(filter), label: 'Filter' });
-            if (subCount > 0) tiles.push({ value: subCount.toLocaleString(), label: 'Sub-frames' });
-
-            if (tiles.length === 0 && !canOpenNotes) return null;
-
-            return (
-              <div className={`rounded-xl border p-4 ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
-                <h3 className={`font-display font-semibold text-sm flex items-center gap-2 mb-3 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  <Layers className={`w-3.5 h-3.5 ${accentText}`} />
-                  Session Metrics and Notes
-                </h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {tiles.map(({ value, label }) => (
-                    <div
-                      key={label}
-                      className={`rounded-lg px-3 py-2.5 ${isDark ? 'bg-slate-800/60' : 'bg-slate-50'}`}
-                    >
-                      <div className={`text-base font-semibold leading-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                        {value}
-                      </div>
-                      <div className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                        {label}
-                      </div>
-                    </div>
-                  ))}
-                  {canOpenNotes && (isAdmin || !!existingNote) && (
-                    <button
-                      onClick={() => setNotesModalOpen(true)}
-                      title={isAdmin ? (existingNote ? 'Edit session notes' : 'Add session notes') : 'View session notes'}
-                      className={`group rounded-lg px-3 py-2.5 text-left transition border ${
-                        isDark
-                          ? 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30'
-                          : 'bg-amber-50 hover:bg-amber-100 border-amber-200'
-                      }`}
-                    >
-                      <div className={`text-base font-semibold leading-tight flex items-center gap-1.5 ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
-                        <NotebookPen className="w-4 h-4" />
-                        Session Notes
-                        {existingNote && (
-                          <CheckCircle2 className={`w-3.5 h-3.5 ${isDark ? 'text-amber-400' : 'text-amber-600'}`} />
-                        )}
-                      </div>
-                      <div className={`text-[10px] mt-0.5 ${isDark ? 'text-amber-500/70' : 'text-amber-700/70'}`}>
-                        {isAdmin
-                          ? (existingNote ? 'Saved. Click to edit.' : 'Click to add')
-                          : 'Click to view'}
-                      </div>
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
+          <ObservationStatsTiles
+            files={files}
+            hasNote={!!existingNote}
+            canOpenNotes={!!objectId && !!date}
+            isAdmin={isAdmin}
+            onOpenNotes={() => setNotesModalOpen(true)}
+          />
 
           {/* Sky Conditions */}
           {observation?.note && (
@@ -1066,589 +760,59 @@ if (isLoading) {
       <div className="space-y-6">
         {/* Telescope Images + Subframes side by side */}
         <div className="grid grid-cols-2 gap-6">
-        {/* Telescope Images */}
-        <div className={`rounded-2xl border ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
-          <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-            <h2 className={`font-display font-semibold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-              <Telescope className="w-4 h-4 flex-shrink-0 text-teal-500" />
-              Images
-              {filteredFiles.length > 0 && (
-                <span className={`text-xs px-2 py-0.5 rounded-full ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-                  {filteredFiles.length}
-                </span>
-              )}
-            </h2>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => compareMode ? exitCompareMode() : setCompareMode(true)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${
-                  compareMode
-                    ? isDark ? 'bg-accent-500/10 text-accent-400 border border-accent-500/30' : 'bg-accent-300 text-accent-700 border border-accent-400'
-                    : isDark ? 'text-slate-500 hover:text-accent-400 hover:bg-accent-500/10 border border-transparent' : 'text-slate-400 hover:text-accent-500 hover:bg-accent-50 border border-transparent'
-                }`}
-                title={compareMode ? 'Exit compare mode' : 'Compare images side by side'}
-              >
-                <Columns className="w-3.5 h-3.5" />
-                {compareMode ? 'Exit Compare' : 'Compare'}
-              </button>
-              <div className={`flex rounded-xl overflow-hidden border ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-                {(['all', 'image', 'fits'] as const).map(mode => (
-                  <button
-                    key={mode}
-                    onClick={() => { setViewMode(mode); setGalleryPage(0); }}
-                    className={`px-3 py-1.5 text-xs font-medium capitalize transition ${
-                      viewMode === mode
-                        ? isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-300 text-accent-700'
-                        : isDark ? 'bg-slate-900 text-slate-400 hover:bg-slate-800' : 'bg-white text-slate-500 hover:bg-slate-50'
-                    }`}
-                  >
-                    {mode}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+        <SessionFileGrid
+          files={filteredFiles}
+          viewMode={viewMode}
+          onViewModeChange={mode => { setViewMode(mode); setGalleryPage(0); }}
+          galleryPage={galleryPage}
+          setGalleryPage={setGalleryPage}
+          compareMode={compareMode}
+          onToggleCompareMode={() => compareMode ? exitCompareMode() : setCompareMode(true)}
+          compareItems={compareItems}
+          toggleCompareItem={toggleCompareItem}
+          sessionImagePath={observation?.sessionImage}
+          stackedImagePath={(stackedImage ?? stackedFits)?.path}
+          handleSetSessionImage={handleSetSessionImage}
+          settingSessionImage={settingSessionImage}
+          imageFavoriteSet={imageFavoriteSet}
+          onToggleFavorite={(imagePath, isFavorite) => imageFavoriteMutation.mutate({ imagePath, isFavorite })}
+          date={date}
+          openGallery={openGallery}
+          isAdmin={isAdmin}
+        />
 
-          {filteredFiles.length > 0 ? (
-            <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 p-4">
-                {filteredFiles.slice(galleryPage * GALLERY_PAGE_SIZE, (galleryPage + 1) * GALLERY_PAGE_SIZE).map((file, localIdx) => {
-                  const globalIdx = galleryPage * GALLERY_PAGE_SIZE + localIdx;
-                  const isSessionImage = observation?.sessionImage
-                    ? file.path === observation.sessionImage
-                    : file === stackedImage && !observation?.sessionImage;
-                  const isImageFile = file.type === 'image' && !file.isThumbnail;
-                  const compareSlot = compareItems[0]?.key === file.path ? 1 : compareItems[1]?.key === file.path ? 2 : null;
-                  const isFitsInCompareMode = compareMode && file.type === 'fits';
-                  return (
-                    <div
-                      key={file.path}
-                      className={`group rounded-xl overflow-hidden border cursor-pointer ${
-                        compareSlot === 1
-                          ? 'border-accent-500 ring-2 ring-accent-500/40'
-                          : compareSlot === 2
-                            ? 'border-violet-500 ring-2 ring-violet-500/40'
-                            : isFitsInCompareMode
-                              ? `opacity-40 cursor-not-allowed ${isDark ? 'border-slate-800 bg-slate-800' : 'border-slate-200 bg-slate-100'}`
-                              : isDark ? 'border-slate-800 bg-slate-800' : 'border-slate-200 bg-slate-100'
-                      }`}
-                    >
-                      {/* Image area */}
-                      <div className="relative aspect-square">
-                        <button
-                          onClick={() => (compareMode && !isFitsInCompareMode) ? toggleCompareItem(file.path, { name: file.name, downloadUrl: file.downloadUrl, exposure: file.exposure, frameCount: file.frameCount, filter: file.filter }) : openGallery(globalIdx)}
-                          className="w-full h-full block cursor-pointer"
-                        >
-                          {file.type === 'fits' ? (
-                            <FitsThumbnail url={file.downloadUrl} stretch={1.0} isDark={isDark} />
-                          ) : (
-                            <img
-                              src={file.downloadUrl}
-                              alt={file.name}
-                              className="w-full h-full object-cover"
-                              onError={e => { if (e.target instanceof HTMLImageElement) e.target.style.display = 'none'; }}
-                            />
-                          )}
-                        </button>
-
-                        {/* Session image crown badge */}
-                        {isSessionImage && isImageFile && (
-                          <div className="absolute top-1 left-1 p-1 rounded-md bg-amber-400/90 text-white pointer-events-none">
-                            <Crown className="w-3 h-3" />
-                          </div>
-                        )}
-
-                        {/* Set as session image button (visible on hover) */}
-                        {isImageFile && !isSessionImage && isAdmin && (
-                          <button
-                            onClick={e => { e.stopPropagation(); handleSetSessionImage(file.path); }}
-                            disabled={settingSessionImage}
-                            className="absolute top-1 left-1 p-1 rounded-md bg-black/60 text-white/70 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80 hover:text-amber-400"
-                            title="Set as session image"
-                          >
-                            <Crown className="w-3 h-3" />
-                          </button>
-                        )}
-
-                        {/* Download button (images only, top-right on hover) */}
-                        {file.type === 'image' && (
-                          <a
-                            href={file.downloadUrl}
-                            download={file.name}
-                            onClick={e => e.stopPropagation()}
-                            className="absolute top-1 right-1 p-1.5 rounded-lg bg-white/20 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/30"
-                            title="Download"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </a>
-                        )}
-
-                        {/* Favorite button (images only, bottom-left) */}
-                        {file.type === 'image' && !file.isThumbnail && (
-                          <button
-                            onClick={e => {
-                              e.stopPropagation();
-                              const isFav = imageFavoriteSet.has(file.path);
-                              imageFavoriteMutation.mutate({ imagePath: file.path, isFavorite: !isFav });
-                            }}
-                            title={imageFavoriteSet.has(file.path) ? 'Remove from favorites' : 'Add to favorites'}
-                            className={`absolute bottom-1 left-1 p-1.5 rounded-lg transition-all ${
-                              imageFavoriteSet.has(file.path)
-                                ? 'opacity-100 bg-rose-500/90 text-white hover:bg-rose-600'
-                                : 'bg-black/50 text-white/70 opacity-0 group-hover:opacity-100 hover:bg-black/70 hover:text-rose-400'
-                            }`}
-                          >
-                            <Heart className={`w-3.5 h-3.5 ${imageFavoriteSet.has(file.path) ? 'fill-current' : ''}`} />
-                          </button>
-                        )}
-
-                        {/* File type badge (bottom-right, always visible) */}
-                        {(() => {
-                          const ext = file.name.split('.').pop()?.toUpperCase();
-                          let label: string | null = null;
-                          if (file.type === 'fits') label = 'FIT';
-                          else if (ext === 'JPG' || ext === 'JPEG') label = 'JPG';
-                          else if (ext === 'PNG') label = 'PNG';
-                          else if (ext === 'TIFF' || ext === 'TIF') label = 'TIFF';
-                          if (!label) return null;
-                          return (
-                            <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide bg-black/60 text-white/80 pointer-events-none">
-                              {label}
-                            </div>
-                          );
-                        })()}
-
-                        {/* Compare selection badge */}
-                        {compareSlot && (
-                          <div className={`absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg pointer-events-none ${
-                            compareSlot === 1 ? 'bg-accent-500' : 'bg-violet-500'
-                          }`}>
-                            {compareSlot}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Footer — name + date, never darkened by hover */}
-                      <div className={`px-2 py-1.5 ${isDark ? 'bg-slate-900/80' : 'bg-white/90'}`}>
-                        <p className={`text-xs font-medium truncate ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          {file.name}
-                        </p>
-                        <p className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                          {date && date !== 'unknown'
-                            ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                            : ''}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Pagination */}
-              {filteredFiles.length > GALLERY_PAGE_SIZE && (
-                <div className={`flex items-center justify-between px-4 pb-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                  <span className="text-xs">
-                    Showing {galleryPage * GALLERY_PAGE_SIZE + 1}–{Math.min((galleryPage + 1) * GALLERY_PAGE_SIZE, filteredFiles.length)} of {filteredFiles.length}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setGalleryPage(p => Math.max(0, p - 1))}
-                      disabled={galleryPage === 0}
-                      className={`min-w-[44px] min-h-[44px] p-1.5 rounded-lg transition disabled:opacity-30 ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    {Array.from({ length: Math.ceil(filteredFiles.length / GALLERY_PAGE_SIZE) }, (_, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setGalleryPage(i)}
-                        className={`min-w-[44px] min-h-[44px] rounded-lg text-xs font-medium transition ${
-                          galleryPage === i
-                            ? isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-300 text-accent-700'
-                            : isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100'
-                        }`}
-                      >
-                        {i + 1}
-                      </button>
-                    )).slice(
-                      Math.max(0, galleryPage - 2),
-                      Math.min(Math.ceil(filteredFiles.length / GALLERY_PAGE_SIZE), galleryPage + 3)
-                    )}
-                    <button
-                      onClick={() => setGalleryPage(p => Math.min(Math.ceil(filteredFiles.length / GALLERY_PAGE_SIZE) - 1, p + 1))}
-                      disabled={galleryPage >= Math.ceil(filteredFiles.length / GALLERY_PAGE_SIZE) - 1}
-                      className={`min-w-[44px] min-h-[44px] p-1.5 rounded-lg transition disabled:opacity-30 ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className={`p-8 text-center ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-              No files found
-            </div>
-          )}
-        </div>
-
-        {/* ─── Telescope Subframes ───────────────────────────────────────────── */}
-        <div className={`rounded-2xl border min-w-0 flex flex-col ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
-          <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-            <h2 className={`font-display font-semibold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-              <Telescope className="w-4 h-4 flex-shrink-0 text-teal-500" />
-              Subframes
-              {hasSubFrames && (
-                <span className={`text-xs px-2 py-0.5 rounded-full ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-                  {subFrames.length}
-                </span>
-              )}
-            </h2>
-            <div className="flex items-center gap-2">
-              {isAdmin && hasSubFrames && subFrames.some(f => f.type === 'fits') && (
-                <button
-                  onClick={() => setSatelliteScanOpen(true)}
-                  title="Scan all FITS subframes for satellite trails"
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                    isDark
-                      ? 'border-amber-500/30 text-amber-400 hover:bg-amber-500/10'
-                      : 'border-amber-300 text-amber-600 hover:bg-amber-50'
-                  }`}
-                >
-                  <Satellite className="w-3.5 h-3.5" />
-                  Scan Trails
-                </button>
-              )}
-              {isAdmin && (
-                <span
-                  title={!telescopeOnline ? 'Telescope is offline - connect to download subs' : 'Download all raw subframes for this session from the telescope to your library'}
-                  className={!telescopeOnline ? 'cursor-not-allowed' : undefined}
-                >
-                  <button
-                    onClick={() => objectId && date && openSync(objectId, date)}
-                    disabled={!telescopeOnline}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                      !telescopeOnline
-                        ? isDark
-                          ? 'border-slate-800 text-slate-600 cursor-not-allowed'
-                          : 'border-slate-200 text-slate-300 cursor-not-allowed'
-                        : isDark
-                          ? 'border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                          : 'border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Sync Subs
-                  </button>
-                </span>
-              )}
-              {hasSubFrames && (
-                <button
-                  onClick={handleDownloadToComputer}
-                  disabled={archiveState !== 'idle'}
-                  title={
-                    archiveState === 'error'
-                      ? 'Failed. Try again.'
-                      : 'Zip the locally-stored subframes for this session and download to your computer'
-                  }
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition disabled:cursor-wait ${
-                    archiveState === 'error'
-                      ? isDark
-                        ? 'border-red-500/30 text-red-400'
-                        : 'border-red-300 text-red-600'
-                      : isDark
-                        ? 'border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                        : 'border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  {archiveState === 'idle'
-                    ? 'Download to Computer'
-                    : archiveState === 'error'
-                      ? 'Download failed'
-                      : `Zipping ${archiveState.done}/${archiveState.total}…`}
-                </button>
-              )}
-              {isAdmin && hasSubFrames && (
-                <button
-                  onClick={() => setConfirmDeleteSubframes(true)}
-                  title="Delete all subframes for this session"
-                  className={`p-1.5 rounded-lg transition ${isDark ? 'text-slate-600 hover:text-red-400 hover:bg-red-500/10' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {subFrames.length > 0 ? (
-            <div ref={subFramesRowRef} className="flex flex-wrap gap-1.5 p-3 flex-1 min-h-0 content-start">
-              {(() => {
-                // Always reserve the last slot for the "···" viewer button
-                const capacity = subFramesVisible - 1;
-                const shown = Math.min(capacity, subFrames.length);
-                const overflow = subFrames.length - shown;
-                return (
-                  <>
-                    {subFrames.slice(0, shown).map((file, idx) => (
-                      <button
-                        key={file.path}
-                        onClick={() => openGallery(idx, subFrames)}
-                        title={file.name}
-                        className={`flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 ${
-                          isDark ? 'border-slate-700 hover:border-slate-500 bg-slate-800' : 'border-slate-200 hover:border-slate-400 bg-slate-100'
-                        }`}
-                      >
-                        {file.type === 'fits' ? (
-                          <FitsThumbnail url={file.downloadUrl} thumbUrl={file.thumbUrl} stretch={1.0} isDark={isDark} />
-                        ) : (
-                          <img
-                            src={file.downloadUrl}
-                            alt={file.name}
-                            className="w-full h-full object-cover"
-                            onError={e => { if (e.target instanceof HTMLImageElement) e.target.style.display = 'none'; }}
-                          />
-                        )}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => openGallery(overflow > 0 ? shown : 0, subFrames)}
-                      title={overflow > 0 ? `${overflow} more subframes. Open viewer.` : 'Open subframe viewer'}
-                      className={`flex-shrink-0 w-16 h-16 rounded-lg border-2 flex flex-col items-center justify-center gap-0.5 ${
-                        isDark ? 'border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-slate-200' : 'border-slate-200 hover:border-slate-400 bg-slate-100 text-slate-500 hover:text-slate-700'
-                      }`}
-                    >
-                      <span className="text-lg leading-none tracking-widest">···</span>
-                      {overflow > 0 && <span className="text-[10px] font-medium">+{overflow}</span>}
-                    </button>
-                  </>
-                );
-              })()}
-            </div>
-          ) : (
-            <div className={`p-8 text-center ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-              No subframes downloaded yet - connect your telescope and use Download Subs to sync them.
-            </div>
-          )}
-        </div>
+        <SubframesPanel
+          subFrames={subFrames}
+          isAdmin={isAdmin}
+          telescopeOnline={telescopeOnline}
+          archiveState={archiveState}
+          onDownloadToComputer={handleDownloadToComputer}
+          onOpenSync={() => objectId && date && openSync(objectId, date)}
+          onScanTrails={() => setSatelliteScanOpen(true)}
+          onDeleteAllSubframes={() => setConfirmDeleteSubframes(true)}
+          onOpenGallery={openGallery}
+        />
         </div>{/* end side-by-side grid */}
 
-        {/* ─── Processed Images ──────────────────────────────────────────────── */}
-        <div className={`rounded-2xl border ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
-          {/* Header */}
-          <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-            <div className="flex items-center gap-2">
-              <h2 className={`font-display font-semibold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                <Sparkles className={`w-5 h-5 ${accentText}`} />
-                Processed Images
-              </h2>
-              {processedImages.length > 0 && (
-                <span className={`text-xs px-2 py-0.5 rounded-full ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-                  {processedImages.length}
-                </span>
-              )}
-            </div>
-            {isAdmin && (
-              <button
-                onClick={() => { setPendingUploadFile(null); setShowUploadModal(true); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                  isDark
-                    ? 'bg-accent-500/10 text-accent-400 hover:bg-accent-500/20 border border-accent-500/20'
-                    : 'bg-accent-300 text-accent-700 hover:bg-accent-400 border border-accent-400'
-                }`}
-              >
-                <Upload className="w-3.5 h-3.5" />
-                Upload
-              </button>
-            )}
-          </div>
-
-          {processedImages.length === 0 ? (
-            /* Empty state */
-            <div
-              className={`m-4 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-3 py-10 transition ${isAdmin ? 'cursor-pointer' : ''} ${
-                isDragging && isAdmin
-                  ? isDark ? 'border-accent-500/60 bg-accent-500/10' : 'border-accent-400 bg-accent-50'
-                  : isDark ? 'border-slate-700 hover:border-slate-600' : 'border-slate-200 hover:border-slate-300'
-              }`}
-              onClick={() => { if (!isAdmin) return; setPendingUploadFile(null); setShowUploadModal(true); }}
-              onDragOver={e => { if (!isAdmin) return; e.preventDefault(); setIsDragging(true); }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={e => {
-                e.preventDefault();
-                setIsDragging(false);
-                if (!isAdmin) return;
-                const file = e.dataTransfer.files[0];
-                if (file) { setPendingUploadFile(file); setShowUploadModal(true); }
-              }}
-            >
-              <div className={`p-3 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-                <ImagePlus className={`w-6 h-6 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
-              </div>
-              <div className="text-center">
-                <p className={`text-sm font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                  {isAdmin ? 'Upload your processed images' : 'No processed images yet'}
-                </p>
-                {isAdmin && (
-                  <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                    JPG, PNG, TIFF · up to 300 MB · drag & drop or click
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : (
-            /* Processed images grid */
-            <div className="p-4 space-y-4">
-              {/* Drop zone hint when grid has content */}
-              <div
-                className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3`}
-                onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={e => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                  const file = e.dataTransfer.files[0];
-                  if (file) { setPendingUploadFile(file); setShowUploadModal(true); }
-                }}
-              >
-                {processedImages.map((img, idx) => {
-                  const procCompareSlot = compareItems[0]?.key === img.id ? 1 : compareItems[1]?.key === img.id ? 2 : null;
-                  const isProcSessionImage = img.path === observation?.sessionImage;
-                  return (
-                  <div
-                    key={img.id}
-                    className={`group rounded-xl overflow-hidden border cursor-pointer ${
-                      procCompareSlot === 1
-                        ? 'border-accent-500 ring-2 ring-accent-500/40'
-                        : procCompareSlot === 2
-                          ? 'border-violet-500 ring-2 ring-violet-500/40'
-                          : isDark ? 'border-slate-800 bg-slate-800' : 'border-slate-200 bg-slate-100'
-                    }`}
-                    onClick={() => compareMode
-                      ? toggleCompareItem(img.id, { name: img.title || img.originalName, downloadUrl: img.url })
-                      : openProcessedGallery(idx)
-                    }
-                  >
-                    {/* Image area */}
-                    <div className="relative aspect-square">
-                      <img
-                        src={img.url}
-                        alt={img.title || img.originalName}
-                        className="w-full h-full object-cover"
-                      />
-
-                      {/* Session image crown — top-left, z-10 above overlay */}
-                      {!procCompareSlot && (isProcSessionImage ? (
-                        <div className="absolute top-1 left-1 z-10 p-1 rounded-md bg-amber-400/90 text-white pointer-events-none">
-                          <Crown className="w-3 h-3" />
-                        </div>
-                      ) : isAdmin && (
-                        <button
-                          onClick={e => { e.stopPropagation(); handleSetSessionImage(img.path); }}
-                          disabled={settingSessionImage}
-                          className="absolute top-1 left-1 z-10 p-1 rounded-md bg-black/60 text-white/70 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80 hover:text-amber-400"
-                          title="Set as session image"
-                        >
-                          <Crown className="w-3 h-3" />
-                        </button>
-                      ))}
-
-                      {/* Hover action overlay — only covers image, not footer */}
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-start justify-end gap-1 p-2">
-                        {/* Download */}
-                        <a
-                          href={img.url}
-                          download={img.originalName}
-                          onClick={e => e.stopPropagation()}
-                          className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30 transition"
-                          title="Download"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                        </a>
-
-                        {/* Set as gallery image */}
-                        <button
-                          onClick={e => { e.stopPropagation(); handleSetProcessedAsGallery(img); }}
-                          disabled={!!settingGalleryId}
-                          className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30 transition disabled:opacity-50"
-                          title="Set as gallery image"
-                        >
-                          {settingGalleryId === img.id
-                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            : <Star className="w-3.5 h-3.5" />
-                          }
-                        </button>
-
-                        {/* Delete — admin only */}
-                        {isAdmin && (
-                          <button
-                            onClick={e => { e.stopPropagation(); setConfirmDeleteProcessedId(img.id); }}
-                            disabled={!!deletingProcessedId}
-                            className="p-1.5 rounded-lg bg-red-500/80 text-white hover:bg-red-500 transition disabled:opacity-50"
-                            title="Delete"
-                          >
-                            {deletingProcessedId === img.id
-                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              : <Trash2 className="w-3.5 h-3.5" />
-                            }
-                          </button>
-                        )}
-                      </div>
-
-                      {/* File type badge (bottom-right, always visible) */}
-                      {(() => {
-                        const ext = img.originalName.split('.').pop()?.toUpperCase();
-                        let label: string | null = null;
-                        if (ext === 'JPG' || ext === 'JPEG') label = 'JPG';
-                        else if (ext === 'PNG') label = 'PNG';
-                        else if (ext === 'TIFF' || ext === 'TIF') label = 'TIFF';
-                        if (!label) return null;
-                        return (
-                          <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide bg-black/60 text-white/80 pointer-events-none">
-                            {label}
-                          </div>
-                        );
-                      })()}
-
-                      {/* Compare selection badge */}
-                      {procCompareSlot && (
-                        <div className={`absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg pointer-events-none ${
-                          procCompareSlot === 1 ? 'bg-accent-500' : 'bg-violet-500'
-                        }`}>
-                          {procCompareSlot}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Footer — never darkened by hover */}
-                    <div className={`px-2 py-1.5 ${isDark ? 'bg-slate-900/80' : 'bg-white/90'}`}>
-                      {img.title ? (
-                        <p className={`text-xs font-medium truncate ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{img.title}</p>
-                      ) : (
-                        <p className={`text-xs truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{img.originalName}</p>
-                      )}
-                      <p className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                        {new Date(img.uploadedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </p>
-                    </div>
-                  </div>
-                  );
-                })}
-
-                {/* Add more card */}
-                <button
-                  onClick={() => { setPendingUploadFile(null); setShowUploadModal(true); }}
-                  className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition ${
-                    isDark ? 'border-slate-700 hover:border-accent-500/50 hover:bg-accent-500/5 text-slate-600 hover:text-accent-400' : 'border-slate-200 hover:border-accent-400 hover:bg-accent-50 text-slate-400 hover:text-accent-500'
-                  }`}
-                >
-                  <Upload className="w-5 h-5" />
-                  <span className="text-[11px] font-medium">Add more</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <ProcessedImagesGrid
+          processedImages={processedImages}
+          compareMode={compareMode}
+          compareItems={compareItems}
+          toggleCompareItem={toggleCompareItem}
+          openProcessedGallery={openProcessedGallery}
+          sessionImagePath={observation?.sessionImage}
+          isAdmin={isAdmin}
+          handleSetSessionImage={handleSetSessionImage}
+          settingSessionImage={settingSessionImage}
+          handleSetProcessedAsGallery={handleSetProcessedAsGallery}
+          settingGalleryId={settingGalleryId}
+          deletingProcessedId={deletingProcessedId}
+          onRequestDelete={setConfirmDeleteProcessedId}
+          isDragging={isDragging}
+          setIsDragging={setIsDragging}
+          onUploadClick={() => { setPendingUploadFile(null); setShowUploadModal(true); }}
+          onDropFile={file => { setPendingUploadFile(file); setShowUploadModal(true); }}
+        />
       </div>
 
       <UploadProcessedModal
@@ -1822,16 +986,4 @@ function formatDistanceLy(ly: number): string {
     return `${mly % 1 === 0 ? mly.toFixed(0) : mly.toFixed(2)} million ly`;
   }
   return `${ly.toLocaleString('en-US')} ly`;
-}
-
-function formatTime(timestamp: string): string {
-  try {
-    // YYYYMMDD-HHMMSS format (e.g. 20260330-201431)
-    const m = timestamp.match(/^\d{8}-(\d{2})(\d{2})/);
-    if (m) return `${m[1]}:${m[2]}`;
-    const d = new Date(timestamp);
-    return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  } catch {
-    return timestamp;
-  }
 }

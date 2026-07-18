@@ -9,7 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getLibraryDir } from '../libraryPath.js';
-import { parseFilename, normalizeCatalogId } from '../telescopeFiles.js';
+import { parseFilename, normalizeCatalogId, sessionNightFor } from '../telescopeFiles.js';
 import {
   stmts,
   getFolderName,
@@ -92,7 +92,7 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
       results.push({
         name: file,
         path: filePath,
-        date: parsed.date || 'unknown',
+        date: sessionNightFor(parsed) || 'unknown',
         objectId: obj.objectId,
         objectName: obj.objectName || obj.objectId,
         objectType: obj.objectType,
@@ -180,7 +180,7 @@ export function getStackedImages(objectId: string): Array<{ name: string; path: 
     results.push({
       name: file,
       path: filePath,
-      date: parsed.date || 'unknown',
+      date: sessionNightFor(parsed) || 'unknown',
       downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(filePath)}`,
     });
   }

@@ -9,10 +9,13 @@ import fs from 'fs';
 import path from 'path';
 import { getLibraryDir } from '../libraryPath.js';
 import db from '../db.js';
+import { isErrnoException } from '../errors.js';
 import {
   parseFilename,
   getFileCategory,
   isRealFile,
+  sessionNightFor,
+  rolloverDateUnconditional,
 } from '../telescopeFiles.js';
 import { getNote } from '../notes.js';
 import { parseFitsHeader } from '../fitsParser.js';
@@ -160,9 +163,106 @@ export async function backfillSessionWeather(objectId: string): Promise<void> {
 
 // ─── Session/file queries ───────────────────────────────────────────────────
 
+/**
+ * Migrate stale per-session rows left behind by the observing-night rollover
+ * fix or by toggling the Settings grouping switch. A session running past
+ * local midnight can accumulate TWO `librarySessions` rows for what's really
+ * one physical session — one keyed by the raw calendar date (written before
+ * the fix existed, or while grouping was off) and one keyed by the rolled
+ * night bucket (written while grouping was on) — because imports only ever
+ * add session rows, never prune ones that stop matching. Whichever row isn't
+ * the CURRENT bucket for its files becomes a phantom zero-file session that
+ * would otherwise linger forever (in either direction: turning grouping off
+ * doesn't delete the rolled row, and turning it on doesn't delete the raw one).
+ *
+ * For each row whose date isn't a bucket any current file maps to, this
+ * checks whether it corresponds to some file's date under *either* the raw
+ * (grouping off) or rolled (grouping on) convention — not just whichever one
+ * is active right now — so a row from the other direction can still be
+ * recognized and merged forward onto the file's current bucket. Ambiguous
+ * cases (matching files disagree on their current bucket) are left untouched
+ * rather than guessed at, and a row that doesn't correlate to any file under
+ * either convention is assumed to be a genuine manual/note-only entry.
+ *
+ * Runs inline as part of `getLocalSessions` and `getLocalObservations` —
+ * cheap (reuses the file list the caller already reads) and correctly
+ * deferred until the library is actually available, unlike a startup-time
+ * scan.
+ */
+function reconcileStaleSessionDates(objectId: string, files: string[]): void {
+  const sessionRows = stmts.getSessions.all(objectId);
+  if (sessionRows.length === 0) return;
+
+  // The bucket every file currently belongs to, per the live toggle state.
+  // A row already in this set is definitely still correct — skip it without
+  // even trying to correlate it against files.
+  const currentBuckets = new Set(
+    files.map(f => sessionNightFor(parseFilename(f))).filter((d): d is string => d !== null),
+  );
+
+  for (const row of sessionRows) {
+    if (row.date === 'unknown') continue;
+    if (currentBuckets.has(row.date)) continue; // still a live bucket
+
+    const matching = files.filter(f => {
+      const parsed = parseFilename(f);
+      if (!parsed.date) return false;
+      if (parsed.date === row.date) return true; // raw-date convention
+      const hms = parsed.timestamp ? parsed.timestamp.slice(-6) : null;
+      return rolloverDateUnconditional(parsed.date, hms) === row.date; // rolled convention
+    });
+    if (matching.length === 0) continue; // note-only entry, or already migrated
+
+    const nights = new Set(
+      matching
+        .map(f => sessionNightFor(parseFilename(f)))
+        .filter((d): d is string => d !== null),
+    );
+    if (nights.size !== 1) continue; // ambiguous — leave it for the user to sort out
+    const [newDate] = nights;
+    if (newDate === row.date) continue; // already correct (shouldn't happen given the check above)
+
+    db.transaction(() => {
+      stmts.addSessionStamped.run(objectId, newDate, row.telescopeId);
+      const dest = stmts.getSession.get(objectId, newDate);
+      if (dest && dest.temperature == null && row.temperature != null) {
+        stmts.setSessionWeather.run(
+          row.temperature, row.cloudCover, row.humidity, row.windSpeed,
+          row.dewPoint, row.visibility, row.precipProb, objectId, newDate,
+        );
+      }
+      if (dest && !dest.sessionImage && row.sessionImage) {
+        db.prepare('UPDATE librarySessions SET sessionImage = ? WHERE objectId = ? AND date = ?')
+          .run(row.sessionImage, objectId, newDate);
+      }
+      stmts.removeSession.run(objectId, row.date);
+
+      db.prepare(
+        `UPDATE notes SET date = ? WHERE objectId = ? AND date = ?
+         AND NOT EXISTS (SELECT 1 FROM notes WHERE objectId = ? AND date = ?)`,
+      ).run(newDate, objectId, row.date, objectId, newDate);
+
+      db.prepare('UPDATE sessionProcessedImages SET date = ? WHERE objectId = ? AND date = ?')
+        .run(newDate, objectId, row.date);
+
+      if (stmts.isSessionTombstoned.get(objectId, row.date)) {
+        stmts.addSessionTombstone.run(objectId, newDate);
+        db.prepare('DELETE FROM libraryDeletedSessions WHERE objectId = ? AND date = ?')
+          .run(objectId, row.date);
+      }
+    })();
+    console.log(`[library] Reconciled stale session date for ${objectId}: ${row.date} -> ${newDate}`);
+  }
+}
+
 export function getLocalSessions(objectId: string) {
   const LIBRARY_DIR = getLibraryDir();
   const objDir = path.join(LIBRARY_DIR, getFolderName(objectId));
+
+  if (fs.existsSync(objDir)) {
+    const filesForReconcile = fs.readdirSync(objDir).filter(f => isRealFile(f) && !f.startsWith('sky_') && !f.startsWith('gallery_'));
+    try { reconcileStaleSessionDates(objectId, filesForReconcile); } catch { /* best-effort */ }
+  }
 
   const sessionMap = new Map<string, {
     fileCount: number;
@@ -260,8 +360,8 @@ export function getLocalSessions(objectId: string) {
 
   for (const fname of files) {
     const parsed = parseFilename(fname);
-    if (!parsed.date) continue; // skip files we can't assign a session date to
-    const sessionKey = parsed.date;
+    const sessionKey = sessionNightFor(parsed);
+    if (!sessionKey) continue; // skip files we can't assign a session date to
     if (deletedSessions.has(sessionKey)) continue;
     if (!sessionMap.has(sessionKey)) {
       sessionMap.set(sessionKey, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null });
@@ -336,8 +436,7 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
     .filter(f => isRealFile(f) && !f.startsWith('sky_') && !f.startsWith('gallery_'))
     .filter(fname => {
       if (!sessionDate) return true;
-      const parsed = parseFilename(fname);
-      return parsed.date === sessionDate;
+      return sessionNightFor(parseFilename(fname)) === sessionDate;
     })
     .map(fname => {
       const parsed = parseFilename(fname);
@@ -437,6 +536,7 @@ export function getLocalObservations() {
     if (!fs.existsSync(objDir)) continue;
 
     const files = fs.readdirSync(objDir);
+    try { reconcileStaleSessionDates(objectId, files); } catch { /* best-effort */ }
     const sessionRows = stmts.getSessions.all(objectId);
     const sessions = sessionRows.map(r => r.date);
     // User-crowned per-session preview wins over the object-level thumbnail.
@@ -471,8 +571,8 @@ export function getLocalObservations() {
     for (const fname of files) {
       const parsed = parseFilename(fname);
       if (parsed.isThumbnail) continue;
-      if (!parsed.date) continue; // skip files we can't assign a session date to
-      const date = parsed.date;
+      const date = sessionNightFor(parsed);
+      if (!date) continue; // skip files we can't assign a session date to
       if (!sessionMap.has(date)) {
         sessionMap.set(date, { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null });
       }
@@ -679,7 +779,7 @@ export function deleteLocalSession(objectId: string, date: string): void {
   if (fs.existsSync(objDir)) {
     for (const fname of fs.readdirSync(objDir).filter(isRealFile)) {
       const parsed = parseFilename(fname);
-      if (parsed.date === date) {
+      if (sessionNightFor(parsed) === date) {
         try { fs.unlinkSync(path.join(objDir, fname)); } catch { /* ignore */ }
       }
     }
@@ -703,7 +803,7 @@ export function deleteSessionSubFrames(objectId: string, date: string): { delete
   if (fs.existsSync(objDir)) {
     for (const fname of fs.readdirSync(objDir).filter(isRealFile)) {
       const parsed = parseFilename(fname);
-      if (parsed.date === date && parsed.type === 'sub') {
+      if (parsed.type === 'sub' && sessionNightFor(parsed) === date) {
         try { fs.unlinkSync(path.join(objDir, fname)); deleted++; } catch { /* ignore */ }
       }
     }
@@ -834,7 +934,7 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
   // Find files to move
   const fromDirExists = fs.existsSync(fromDir);
   const allFiles = fromDirExists ? fs.readdirSync(fromDir).filter(isRealFile) : [];
-  const filesToMove = allFiles.filter(fname => parseFilename(fname).date === date);
+  const filesToMove = allFiles.filter(fname => sessionNightFor(parseFilename(fname)) === date);
 
   // Ensure target directory exists
   if (!fs.existsSync(toDir)) {
@@ -856,7 +956,7 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
       try {
         fs.renameSync(src, dest);
       } catch (renameErr) {
-        if ((renameErr as NodeJS.ErrnoException).code === 'EXDEV') {
+        if (isErrnoException(renameErr) && renameErr.code === 'EXDEV') {
           fs.copyFileSync(src, dest);
           fs.unlinkSync(src);
         } else {
@@ -886,7 +986,7 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
         try {
           fs.renameSync(src, dest);
         } catch (renameErr) {
-          if ((renameErr as NodeJS.ErrnoException).code === 'EXDEV') {
+          if (isErrnoException(renameErr) && renameErr.code === 'EXDEV') {
             fs.copyFileSync(src, dest);
             fs.unlinkSync(src);
           } else {
@@ -931,8 +1031,8 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
     // tombstoned date so it cannot be re-added here).
     const fromSessionSet = new Set<string>();
     for (const fname of fromRemaining) {
-      const parsed = parseFilename(fname);
-      if (parsed.date && parsed.date !== date) fromSessionSet.add(parsed.date);
+      const night = sessionNightFor(parseFilename(fname));
+      if (night && night !== date) fromSessionSet.add(night);
     }
     stmts.clearSessions.run(fromObjectId);
     for (const d of fromSessionSet) {
@@ -942,8 +1042,8 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
     // Rebuild sessions for target from actual files on disk
     const toSessionSet = new Set<string>();
     for (const fname of toFiles) {
-      const parsed = parseFilename(fname);
-      if (parsed.date) toSessionSet.add(parsed.date);
+      const night = sessionNightFor(parseFilename(fname));
+      if (night) toSessionSet.add(night);
     }
     // Snapshot any manual (DB-only) sessions on the target before clearing
     const existingTargetSessions = stmts.getSessions.all(toObjectId) as { date: string }[];
@@ -984,6 +1084,13 @@ export function getSessionTelescopeId(objectId: string, date: string): string | 
   if (row?.telescopeId) return row.telescopeId;
   const obj = stmts.getObject.get(objectId);
   return obj?.primaryTelescopeId ?? null;
+}
+
+/** Look up an object's primaryTelescopeId directly, for callers that don't
+ *  have a specific session date to check first (e.g. a per-object import
+ *  triggered without an explicit telescope). */
+export function getObjectPrimaryTelescopeId(objectId: string): string | null {
+  return stmts.getObject.get(objectId)?.primaryTelescopeId ?? null;
 }
 
 /** Reassign a session (objectId+date) to a different telescope. Returns

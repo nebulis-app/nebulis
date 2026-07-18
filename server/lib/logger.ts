@@ -25,6 +25,7 @@ import pino from 'pino';
 import type { DestinationStream } from 'pino';
 import { LOGS_DIR } from './paths.js';
 import { requestContext } from './requestContext.js';
+import { isErrnoException } from './errors.js';
 
 const require = createRequire(import.meta.url);
 
@@ -183,14 +184,12 @@ console.debug = (...args: unknown[]) => {
 // --- crash capture --------------------------------------------------------
 
 process.on('uncaughtException', (err: Error) => {
-  const sysErr = err as NodeJS.ErrnoException;
-
   // bonjour-service sends mDNS multicast packets asynchronously. On networks
   // that don't support multicast (or when the interface isn't up at boot time)
   // the kernel throws ENETUNREACH on 224.0.0.x:5353. This is non-fatal — the
   // server works fine without mDNS advertisement.
-  const addr = (sysErr as NodeJS.ErrnoException & { address?: string }).address ?? '';
-  if (sysErr.code === 'ENETUNREACH' && addr.startsWith('224.0.0.')) {
+  const addr = isErrnoException(err) && 'address' in err && typeof err.address === 'string' ? err.address : '';
+  if (isErrnoException(err) && err.code === 'ENETUNREACH' && addr.startsWith('224.0.0.')) {
     log.warn('mDNS: network unreachable, advertisement disabled');
     return;
   }

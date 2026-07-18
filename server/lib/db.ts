@@ -84,6 +84,13 @@ db.exec(`
     -- "IC342"). 'default' keeps the existing NGC/IC-wins priority; 'caldwell'
     -- uses the Caldwell number instead. See server/lib/catalogAliases.ts.
     preferredCatalog   TEXT    NOT NULL DEFAULT 'default',
+    -- Whether a session that runs past local midnight (e.g. 11pm-1am) groups
+    -- as one observing night (true, default) or splits into two calendar-date
+    -- sessions the old way (false). See server/lib/telescopeFiles.ts —
+    -- observingNightDate/sessionNightFor/clampToNightSafeTime are the only
+    -- functions gated on this; every caller (import, wizard, calendar,
+    -- downloads, reports) inherits the toggle through them automatically.
+    groupObservingNights INTEGER NOT NULL DEFAULT 1,
     visibleSkyMap       TEXT    NOT NULL DEFAULT '[]',
     -- Absolute path to the relocated library directory. Empty = use the
     -- built-in default ({DATA_DIR}/library). See server/lib/libraryPath.ts.
@@ -463,6 +470,12 @@ db.exec(`
   }
   if (!cols.some(c => c.name === 'preferredCatalog')) {
     db.prepare("ALTER TABLE appSettings ADD COLUMN preferredCatalog TEXT NOT NULL DEFAULT 'default'").run();
+  }
+  if (!cols.some(c => c.name === 'groupObservingNights')) {
+    // Default 1 (on) — existing installs get the merged-session fix
+    // automatically; the Settings toggle lets them opt back into the old
+    // split-by-calendar-date behavior.
+    db.prepare('ALTER TABLE appSettings ADD COLUMN groupObservingNights INTEGER NOT NULL DEFAULT 1').run();
   }
 }
 

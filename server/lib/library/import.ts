@@ -7,8 +7,8 @@
  * the shared `stmts` from `./objects`.
  */
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { getLibraryDir } from '../libraryPath.js';
 import { DATA_DIR, THUMBNAILS_DIR } from '../paths.js';
 import { generateFitsThumbnail } from '../fitsThumbnail.js';
@@ -20,8 +20,8 @@ import {
   setProfileDeviceId,
   type TelescopeProfile,
 } from '../telescopes.js';
-import { smbListDir, smbGetFile } from '../smb.js';
-import { selectActiveTransport, markTransportSeen } from '../telescopeTransports.js';
+import { smbListDir, smbGetFile, smbCopyFileTo } from '../smb.js';
+import { selectActiveTransport, markTransportSeen, type TransportKind } from '../telescopeTransports.js';
 import { writeIdentityIfMissing } from '../deviceIdentity.js';
 import {
   getWalkerConfig,
@@ -34,7 +34,6 @@ import {
   extractTargetFromSessionFolder,
   extractTimestampFromSessionFolder,
   type WalkerConfig,
-  type DwarfDiscoveredObject,
 } from '../walkers/index.js';
 import {
   parseFilename,
@@ -43,16 +42,18 @@ import {
   getObjectFromSubFolder,
   normalizeObjectId,
   isRealFile,
+  sessionNightFor,
+  observingNightDate,
+  clampToNightSafeTime,
 } from '../telescopeFiles.js';
 import { resolveCanonicalId, applyCatalogPreference } from '../catalogAliases.js';
 import { getByName as getCatalogEntryByName } from '../dsoCatalog.js';
-import { exifDateFromBuffer, exifDateFromFile } from '../exifDate.js';
+import { exifDateFromFile } from '../exifDate.js';
 import {
   stmts,
   ensureLibraryDir,
   getFolderName,
   loadIndex,
-  saveIndex,
   loadSettings,
   resolveCatalogMeta,
   enrichObjectData,
@@ -60,6 +61,7 @@ import {
 import { resolveObjectImagePath, invalidateAllImagesCache } from './gallery.js';
 import { backfillSessionWeather } from './observations.js';
 import { shouldImportFile } from './importFilter.js';
+import { isContainerFolder, groupByTarget } from './objectDiscovery.js';
 import {
   collectObjectSources,
   walkObjectFiles,
@@ -75,6 +77,12 @@ import { log } from '../logger.js';
 
 export interface ImportStatus {
   running: boolean;
+  /** Unique id minted when this run started. Lets a caller cancel exactly
+   *  the run it started (see cancelImport) instead of whatever import
+   *  happens to be active — e.g. the sub-frame sync modal closing must not
+   *  kill an unrelated auto-import that raced in and claimed the lock. Null
+   *  when no import has ever run in this process. */
+  runId: string | null;
   currentObject: string | null;
   /** Telescope driving the current import run. Null for folder imports and
    *  drag-and-drop uploads, since those have no telescope context. */
@@ -87,7 +95,7 @@ export interface ImportStatus {
    *  hint in the import progress UI so users with both transports
    *  configured can see which one the auto-import is actually pulling
    *  from. Null for non-telescope imports. */
-  transportKind: 'smb' | 'local' | null;
+  transportKind: TransportKind | null;
   objectsTotal: number;
   objectsDone: number;
   filesTotal: number;
@@ -127,13 +135,14 @@ export interface ImportHistoryEntry {
    *  doesn't rewrite history. */
   telescopeName: string | null;
   /** 'smb' | 'local' | null — which transport ran the import. */
-  transportKind: 'smb' | 'local' | null;
+  transportKind: TransportKind | null;
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
 let importStatus: ImportStatus = {
   running: false,
+  runId: null,
   currentObject: null,
   telescopeId: null,
   telescopeName: null,
@@ -165,8 +174,60 @@ let currentImportWalker: WalkerConfig = { basePath: 'MyWorks' };
 let importNewFiles: Array<{ name: string; size: number }> = [];
 let importBytesNew = 0;
 
-export function cancelImport(): void {
+/**
+ * Request cancellation of the active import. When `runId` is given, only
+ * cancels if it matches the currently active run — protects against a caller
+ * that only knows about a run it itself started (e.g. the sub-frame sync
+ * modal) killing an unrelated import that raced in and claimed the lock
+ * after the caller's own run finished. Omit `runId` to keep the generic
+ * "cancel whatever is running" behavior (the main cancel button).
+ */
+export function cancelImport(runId?: string): void {
+  if (runId && runId !== importStatus.runId) return;
   importCancelRequested = true;
+}
+
+/**
+ * Bounded concurrent worker pool over a dynamically-fed queue. Items arrive
+ * via push() as they become available (e.g. a file finishing download) and
+ * are drained by `concurrency` workers running `process`; call close() once
+ * no more items will be pushed, then await drain() to wait for every
+ * in-flight and queued item to finish. Used to let CPU-bound work (FITS
+ * thumbnailing) overlap network-bound work (downloads) instead of the two
+ * competing for the same await chain.
+ */
+export function createWorkerQueue<T>(concurrency: number, process: (item: T) => Promise<void>): {
+  push: (item: T) => void;
+  close: () => void;
+  drain: () => Promise<void>;
+} {
+  const queue: T[] = [];
+  let closed = false;
+  const waiters: Array<() => void> = [];
+
+  function wake(): void {
+    while (waiters.length > 0 && (queue.length > 0 || closed)) {
+      waiters.shift()?.();
+    }
+  }
+
+  const workers = Array.from({ length: concurrency }, async () => {
+    for (;;) {
+      const item = queue.shift();
+      if (item !== undefined) {
+        await process(item);
+        continue;
+      }
+      if (closed) return;
+      await new Promise<void>(resolve => { waiters.push(resolve); });
+    }
+  });
+
+  return {
+    push(item: T) { queue.push(item); wake(); },
+    close() { closed = true; wake(); },
+    drain: () => Promise.all(workers).then(() => undefined),
+  };
 }
 
 /**
@@ -186,6 +247,11 @@ async function pregenerateObjectThumbnails(objectIds: Iterable<string>): Promise
 
   const queue = ids.slice();
   const CONCURRENCY = 4;
+  // Local counter, not a read-modify-write off importStatus.warmingThumbnails:
+  // that field can be reset to null by a subsequent runImport() call (module-
+  // level importStatus, guarded only by the import lock) while these workers
+  // are still mid-await, which would null-deref on the next increment.
+  let done = 0;
 
   await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
     while (queue.length > 0) {
@@ -208,10 +274,8 @@ async function pregenerateObjectThumbnails(objectIds: Iterable<string>): Promise
       } catch {
         // best-effort — never block import completion
       }
-      importStatus.warmingThumbnails = {
-        done: importStatus.warmingThumbnails!.done + 1,
-        total: ids.length,
-      };
+      done++;
+      importStatus.warmingThumbnails = { done, total: ids.length };
     }
   }));
 
@@ -302,6 +366,23 @@ function safeObjectDir(objectName: string): string | null {
   return resolved;
 }
 
+/** True when a filename from a remote (SMB) directory listing is safe to use
+ *  as a `path.join(objLocalDir, name)` local filename. A hostile or buggy
+ *  SMB server returning an entry like "../../etc/passwd" as a plain file
+ *  name would otherwise let a download escape the object folder — path.join
+ *  normalizes ".." segments through, it doesn't sandbox them. SeeStar file
+ *  listings are always flat (no separators expected in a real file name);
+ *  Dwarf listings intentionally encode "<sessionFolder>/<basename>" and are
+ *  parsed separately, so this guard is not used there. */
+function isSafeRemoteFileName(name: string): boolean {
+  if (name.length === 0 || name.includes('/') || name.includes('\\')) return false;
+  // No separator needed to escape objLocalDir via path.join when the whole
+  // name is a traversal token itself (a malicious server reporting a "file"
+  // literally named ".." would resolve to the parent directory).
+  if (name === '.' || name === '..') return false;
+  return true;
+}
+
 function dwarfLocalName(basename: string, sessionFolder: string): string | null {
   // Dwarf 3 session folders start with DWARF3_RAW_; everything else (Dwarf II,
   // Dwarf Mini) starts with DWARF_RAW_. Use the matching prefix in renamed
@@ -384,7 +465,28 @@ function dwarfLocalName(basename: string, sessionFolder: string): string | null 
   return `${prefix}${targetSlug}_${timestamp}_${safeStem}${extMatch[0]}`;
 }
 
+/** Observing-night date for a Dwarf session folder, using the folder's own
+ *  start time (extractTimestampFromSessionFolder) so a session whose folder
+ *  was created just after local midnight still groups with the prior
+ *  evening. Returns null when the folder name doesn't parse. */
+function dwarfFolderNightDate(sessionFolder: string): string | null {
+  const date = extractDateFromSessionFolder(sessionFolder);
+  if (!date) return null;
+  const ts = extractTimestampFromSessionFolder(sessionFolder);
+  const hmsMatch = ts?.match(/(\d{2})-(\d{2})-(\d{2})(?:-\d+)?$/);
+  const hms = hmsMatch ? `${hmsMatch[1]}${hmsMatch[2]}${hmsMatch[3]}` : null;
+  return observingNightDate(date, hms);
+}
+
 // ─── SMB import ─────────────────────────────────────────────────────────────
+
+// TODO(perf backlog, not this pass): the import loops below still call
+// fs.existsSync/statSync/readdirSync synchronously against what may be a
+// network-mounted library. That's the right long-term move — purgeJunkFiles
+// and isLibraryAvailable already made the same conversion (async + a
+// withTimeout wrapper) for the same reason — but it touches every loop in
+// this file and deserves its own pass rather than a partial one bundled into
+// the download-pipelining work above it.
 
 /**
  * Import all objects (or a specific one) from SMB to local library.
@@ -398,6 +500,15 @@ export async function runImport(
   targetDate?: string,
   options?: RunImportOptions,
 ): Promise<void> {
+  // Outer try/finally: callers claim the lock via claimImportLock() before
+  // invoking, expecting it to always be released. Everything below this
+  // point used to run unguarded until the inner try (line ~534) — a throw
+  // from selectActiveTransport, writeIdentityIfMissing, or markTransportSeen
+  // would propagate to the route's .catch(console.error) with nobody
+  // releasing, permanently 409-ing every future import. releaseImportLock()
+  // is idempotent, so this is a pure safety net over the existing release
+  // paths below, not a replacement for them.
+  try {
   // Resolve aliases so "C30" and "NGC7331" always land on the same objectId.
   if (targetObjectId) targetObjectId = resolveCanonicalId(targetObjectId);
   const baseProfile = options?.telescopeId ? getProfileById(options.telescopeId) : null;
@@ -468,6 +579,7 @@ export async function runImport(
   importCancelRequested = false;
   importStatus = {
     running: true,
+    runId: randomUUID(),
     currentObject: null,
     telescopeId: profile.id,
     telescopeName: profile.name,
@@ -563,7 +675,7 @@ export async function runImport(
     let toImport: ObjectToImport[];
     if (isDwarf) {
       debugLog('import:discover', `Dwarf: scanning ${transportAddress} for objects`);
-      const discovered = await discoverDwarfObjects(profile) as DwarfDiscoveredObject[];
+      const discovered = await discoverDwarfObjects(profile);
       debugLog('import:discover', `Dwarf: found ${discovered.length} object(s) total`);
       if (discovered.length > 0) debugLog('import:discover', `Objects: ${discovered.map(o => o.folderName).join(', ')}`);
       toImport = discovered
@@ -582,44 +694,44 @@ export async function runImport(
       debugLog('import:discover', `SeeStar: found ${objectFolders.length} object folder(s), ${subFolders.length} sub folder(s)`);
       if (objectFolders.length > 0) debugLog('import:discover', `Objects: ${objectFolders.map(e => e.name).join(', ')}`);
 
-      // Folders that are purely containers (e.g. SeeStar dumps all planetary
-      // images into Planetary_Photo regardless of which planet was imaged).
-      // Peek inside and expand into one entry per target name.
-      const CONTAINER_FOLDER_NAMES = new Set(['planetary_photo', 'planetary_photos']);
+      // Container folders (e.g. SeeStar dumps all planetary images into
+      // Planetary_Photo regardless of which planet was imaged) are the only
+      // ones worth peeking inside: expand those into one entry per target name.
+      //
+      // Unlike the folder-import wizard, this path deliberately does not apply
+      // planObjectFolder's split/rename rules to ordinary folders. The device
+      // already names each folder for its target, so re-deriving names from
+      // filenames could rename objects already in the library, and peeking
+      // inside every folder would cost an SMB round trip each. See
+      // objectDiscovery.ts, which owns both policies.
       const expandedEntries: ObjectToImport[] = [];
       const normalFolders: typeof objectFolders = [];
 
       for (const entry of objectFolders) {
-        if (CONTAINER_FOLDER_NAMES.has(entry.name.toLowerCase())) {
-          try {
-            const innerPath = walkerBase ? `${walkerBase}/${entry.name}` : entry.name;
-            const innerEntries = await smbListDir(innerPath, profile);
-            debugLog('import:discover', `SeeStar: container folder "${entry.name}" expanded — ${innerEntries.filter(e => e.type === 'file').length} file(s)`);
-            const targetMap = new Map<string, string[]>();
-            for (const f of innerEntries.filter(e => e.type === 'file')) {
-              const parsed = parseFilename(f.name);
-              if (parsed.target && parsed.target !== f.name) {
-                const t = parsed.target.replace(/_thn$/i, '');
-                const arr = targetMap.get(t) ?? [];
-                arr.push(f.name);
-                targetMap.set(t, arr);
-              }
-            }
-            for (const [target, fileNames] of targetMap) {
-              debugLog('import:discover', `SeeStar: container "${entry.name}" → target "${target}" (${fileNames.length} file(s))`);
-              expandedEntries.push({
-                objectName: target,
-                subFolderName: null,
-                dwarfSessionFolders: [],
-                remoteFolderName: entry.name,
-                fileNameFilter: new Set(fileNames),
-              });
-            }
-          } catch {
-            // Cannot peek inside — fall back to importing as a regular folder.
-            normalFolders.push(entry);
+        if (!isContainerFolder(entry.name)) {
+          normalFolders.push(entry);
+          continue;
+        }
+        try {
+          const innerPath = walkerBase ? `${walkerBase}/${entry.name}` : entry.name;
+          const innerEntries = await smbListDir(innerPath, profile);
+          const innerFiles = innerEntries.filter(e => e.type === 'file');
+          debugLog('import:discover', `SeeStar: container folder "${entry.name}" expanded — ${innerFiles.length} file(s)`);
+          const { byTarget } = groupByTarget(innerFiles.map(e => e.name));
+          for (const [target, fileNames] of byTarget) {
+            debugLog('import:discover', `SeeStar: container "${entry.name}" → target "${target}" (${fileNames.length} file(s))`);
+            expandedEntries.push({
+              objectName: target,
+              // Containers hold planetary captures, which never produce
+              // sub-frames, so there is no `<container>_sub` to attach.
+              subFolderName: null,
+              dwarfSessionFolders: [],
+              remoteFolderName: entry.name,
+              fileNameFilter: new Set(fileNames),
+            });
           }
-        } else {
+        } catch {
+          // Cannot peek inside — fall back to importing as a regular folder.
           normalFolders.push(entry);
         }
       }
@@ -644,6 +756,12 @@ export async function runImport(
     importStatus.objectsTotal = toImport.length;
     debugLog('import:queue', `${toImport.length} object(s) queued for import`);
 
+    // Enrichment (Wikipedia/SIMBAD) and weather backfill are both external
+    // network calls; running them per-object inside the download loop stalled
+    // progress on their latency between every object's files. Collected here
+    // and run in a post-pass after the loop, same as commitFolderImport.
+    const touchedObjectIds = new Set<string>();
+
     for (const obj of toImport) {
       if (importCancelRequested) { importStatus.error = 'Import cancelled. Files already downloaded were kept; the rest will be picked up on the next run.'; break; }
       const { objectName } = obj;
@@ -653,11 +771,27 @@ export async function runImport(
       // Vendor-specific file enumeration → unified ImportFile[].
       let allFiles: ImportFile[] = [];
       if (isDwarf) {
-        const { files, subFiles } = await listDwarfObjectFiles(profile, {
-          folderName: objectName,
-          subFolderName: null,
-          _dwarfSessionFolders: obj.dwarfSessionFolders,
-        } as DwarfDiscoveredObject);
+        // One unreadable Dwarf session folder (corrupt directory entry, a
+        // transient USB read error) must not abort every remaining object —
+        // the SeeStar branch below already isolates per-folder listing
+        // failures the same way.
+        let files: Array<{ name: string; size?: number }>;
+        let subFiles: Array<{ name: string; size?: number }>;
+        try {
+          ({ files, subFiles } = await listDwarfObjectFiles(profile, {
+            folderName: objectName,
+            subFolderName: null,
+            _dwarfSessionFolders: obj.dwarfSessionFolders,
+          }));
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          debugLog('import:error', `Failed to list Dwarf session files for "${objectName}" — ${reason}`);
+          console.error(`[import] Failed to list Dwarf session files for "${objectName}":`, reason);
+          const msg = `Could not read session files for "${objectName}" (${reason}).`;
+          importStatus.error = importStatus.error ? `${importStatus.error}; ${msg}` : msg;
+          importStatus.objectsDone++;
+          continue;
+        }
         const toImportFile = (e: { name: string; size?: number }, fromSub: boolean): ImportFile | null => {
           // listDwarfObjectFiles tags entries as `<sessionFolder>/<basename>`.
           const slash = e.name.indexOf('/');
@@ -673,7 +807,7 @@ export async function runImport(
             remotePath: buildDwarfFilePath(e.name),
             size: e.size,
             fromSub,
-            date: extractDateFromSessionFolder(sessionFolder),
+            date: dwarfFolderNightDate(sessionFolder),
           };
         };
         const isImportFile = (f: ImportFile | null): f is ImportFile => f !== null;
@@ -692,6 +826,7 @@ export async function runImport(
           const entries = await smbListDir(smbObjectPath, profile);
           files = entries
             .filter(e => e.type === 'file')
+            .filter(e => isSafeRemoteFileName(e.name))
             .filter(e => !obj.fileNameFilter || obj.fileNameFilter.has(e.name));
           debugLog('import:discover', `SeeStar: ${files.length} file(s) in ${smbObjectPath}`);
         } catch {
@@ -705,7 +840,7 @@ export async function runImport(
             const smbSubPath = walkerBase ? `${walkerBase}/${obj.subFolderName}` : obj.subFolderName;
             debugLog('import:discover', `SeeStar: listing sub-frames from ${smbSubPath}`);
             const subEntries = await smbListDir(smbSubPath, profile);
-            subFiles = subEntries.filter(e => e.type === 'file');
+            subFiles = subEntries.filter(e => e.type === 'file' && isSafeRemoteFileName(e.name));
             debugLog('import:discover', `SeeStar: ${subFiles.length} sub-file(s) in ${smbSubPath}`);
           } catch { /* ignore */ }
         }
@@ -719,7 +854,7 @@ export async function runImport(
           ),
           size: e.size,
           fromSub,
-          date: parseFilename(e.name).date ?? null,
+          date: sessionNightFor(parseFilename(e.name)),
         });
         allFiles = [
           ...files.map(f => toImportFile(f, false)),
@@ -789,9 +924,19 @@ export async function runImport(
       let fileCount = 0;
       let downloadErrors = 0;
       let firstDownloadError: string | null = null;
+      let downloadsCancelled = false;
 
-      for (const file of allFiles) {
-        if (importCancelRequested) { importStatus.error = 'Import cancelled. Files already downloaded were kept; the rest will be picked up on the next run.'; break; }
+      // FITS thumbnailing runs on its own bounded worker pool: previously it
+      // was awaited inline right after each file's write, so the CPU-bound
+      // sharp/libvips work stalled the next file's download instead of
+      // overlapping it.
+      const thumbnailQueue = createWorkerQueue<string>(4, async localPath => {
+        await generateFitsThumbnail(localPath).catch(err =>
+          console.warn(`[thumb] ${path.basename(localPath)}:`, err instanceof Error ? err.message : err),
+        );
+      });
+
+      const downloadOne = async (file: ImportFile): Promise<void> => {
         const localPath = path.join(objLocalDir, file.localName);
 
         // Skip if already exists
@@ -808,40 +953,52 @@ export async function runImport(
             const d = exifDateFromFile(localPath);
             if (d) sessionSet.add(d);
           }
-          continue;
+          return;
         }
 
         const tmpPath = `${localPath}.tmp`;
         try {
           debugLog('import:file', `Downloading: ${objectName}/${file.localName}${file.size != null ? ` (${(file.size / 1024).toFixed(0)} KB)` : ''}`);
-          const data = await smbGetFile(file.remotePath, undefined, profile);
-          if (file.size != null && data.length !== file.size) {
-            throw new Error(`Size mismatch: expected ${file.size}, got ${data.length} bytes`);
+          let bytes: number;
+          // Local (USB) transport is already a filesystem — stream the copy
+          // directly instead of reading the whole file into memory first,
+          // which doubles the RAM cost for large FITS/video files.
+          const isLocalTransport = profile.connectionType === 'local';
+          if (isLocalTransport) {
+            await smbCopyFileTo(file.remotePath, tmpPath, profile);
+            bytes = (await fs.promises.stat(tmpPath)).size;
+          } else {
+            const data = await smbGetFile(file.remotePath, undefined, profile);
+            bytes = data.length;
+            // Async write: a synchronous writeFileSync of a multi-MB FITS
+            // blocks the event loop for the whole write, stalling every
+            // concurrent request (e.g. a page refresh) until it finishes.
+            // Yielding here keeps the server responsive during background
+            // auto-imports.
+            await fs.promises.writeFile(tmpPath, data);
           }
-          // Async write + rename: a synchronous writeFileSync of a multi-MB FITS
-          // blocks the event loop for the whole write, stalling every concurrent
-          // request (e.g. a page refresh) until it finishes. Yielding here keeps
-          // the server responsive during background auto-imports.
-          await fs.promises.writeFile(tmpPath, data);
+          if (file.size != null && bytes !== file.size) {
+            throw new Error(`Size mismatch: expected ${file.size}, got ${bytes} bytes`);
+          }
           await fs.promises.rename(tmpPath, localPath);
-          debugLog('import:file', `Saved: ${objectName}/${file.localName} (${(data.length / 1024).toFixed(0)} KB)`);
+          debugLog('import:file', `Saved: ${objectName}/${file.localName} (${(bytes / 1024).toFixed(0)} KB)`);
           fileCount++;
           importStatus.filesDone++;
           importStatus.currentObjectFilesDone++;
-          importStatus.bytesDone += data.length;
-          importNewFiles.push({ name: `${objectName}/${file.localName}`, size: data.length });
-          importBytesNew += data.length;
+          importStatus.bytesDone += bytes;
+          importNewFiles.push({ name: `${objectName}/${file.localName}`, size: bytes });
+          importBytesNew += bytes;
 
           if (/\.f(?:it|its|ts)$/i.test(localPath)) {
-            await generateFitsThumbnail(localPath).catch(err =>
-              console.warn(`[thumb] ${file.localName}:`, err instanceof Error ? err.message : err),
-            );
+            thumbnailQueue.push(localPath);
           }
 
           if (file.date) {
             sessionSet.add(file.date);
           } else if (/\.jpe?g$/i.test(file.localName)) {
-            const d = exifDateFromBuffer(data);
+            // Streamed copies never held the bytes in memory — read the EXIF
+            // date back off disk instead of a Buffer we don't have.
+            const d = exifDateFromFile(localPath);
             if (d) sessionSet.add(d);
           }
         } catch (err) {
@@ -855,6 +1012,26 @@ export async function runImport(
           importStatus.currentObjectFilesDone++;
           importStatus.bytesDone += file.size || 0;
         }
+      };
+
+      // Fetch with concurrency 2 within each object. Constant, not
+      // configurable: SeeStar's SMB server is weak and chokes on more
+      // parallel requests than that.
+      const DOWNLOAD_CONCURRENCY = 2;
+      const downloadQueue = allFiles.slice();
+      await Promise.all(Array.from({ length: DOWNLOAD_CONCURRENCY }, async () => {
+        while (downloadQueue.length > 0) {
+          if (importCancelRequested) { downloadsCancelled = true; break; }
+          const file = downloadQueue.shift();
+          if (!file) break;
+          await downloadOne(file);
+        }
+      }));
+      thumbnailQueue.close();
+      await thumbnailQueue.drain();
+
+      if (downloadsCancelled) {
+        importStatus.error = 'Import cancelled. Files already downloaded were kept; the rest will be picked up on the next run.';
       }
 
       if (downloadErrors > 0) {
@@ -870,9 +1047,9 @@ export async function runImport(
       try {
         const existingLocal = fs.readdirSync(objLocalDir);
         for (const fname of existingLocal) {
-          const parsed = parseFilename(fname);
-          if (parsed.date) {
-            sessionSet.add(parsed.date);
+          const night = sessionNightFor(parseFilename(fname));
+          if (night) {
+            sessionSet.add(night);
           } else if (/\.jpe?g$/i.test(fname)) {
             const d = exifDateFromFile(path.join(objLocalDir, fname));
             if (d) sessionSet.add(d);
@@ -892,26 +1069,7 @@ export async function runImport(
       // to the shared catalog cache (`/api/catalog/:id/image`), which is
       // populated by the "Offline Catalog Data" download in Settings.
 
-      // Enrich with Wikipedia description + SIMBAD size data.
-      // enrichObjectData internally checks whether the object is already fully
-      // enriched and returns immediately if so — no network calls wasted.
-      try {
-        debugLog('import:object', `${objectName}: enriching catalog data`);
-        await enrichObjectData(objIdNormalized);
-        debugLog('import:object', `${objectName}: enrichment complete`);
-      } catch {
-        debugLog('import:object', `${objectName}: enrichment failed (non-fatal)`);
-      }
-
-      // Fetch historical weather for sessions missing weather data
-      try {
-        debugLog('import:object', `${objectName}: backfilling weather`);
-        await backfillSessionWeather(objIdNormalized);
-        debugLog('import:object', `${objectName}: weather backfill complete`);
-      } catch (err) {
-        console.warn(`[import] Weather backfill failed for "${objectName}":`, err instanceof Error ? err.message : err);
-        debugLog('import:object', `${objectName}: weather backfill failed — ${err instanceof Error ? err.message : err}`);
-      }
+      touchedObjectIds.add(objIdNormalized);
 
       // Save this object to SQLite immediately so files aren't orphaned if the
       // server crashes before the end-of-loop saveIndex() call.
@@ -980,6 +1138,28 @@ export async function runImport(
     }
     importStatus.lastRun = lastImportTs;
 
+    // Enrich with Wikipedia description + SIMBAD size data, and backfill
+    // historical weather for sessions missing it. Both are best-effort
+    // network calls; enrichObjectData internally checks whether the object
+    // is already fully enriched and returns immediately if so.
+    for (const objectId of touchedObjectIds) {
+      try {
+        debugLog('import:object', `${objectId}: enriching catalog data`);
+        await enrichObjectData(objectId);
+        debugLog('import:object', `${objectId}: enrichment complete`);
+      } catch {
+        debugLog('import:object', `${objectId}: enrichment failed (non-fatal)`);
+      }
+      try {
+        debugLog('import:object', `${objectId}: backfilling weather`);
+        await backfillSessionWeather(objectId);
+        debugLog('import:object', `${objectId}: weather backfill complete`);
+      } catch (err) {
+        console.warn(`[import] Weather backfill failed for "${objectId}":`, err instanceof Error ? err.message : err);
+        debugLog('import:object', `${objectId}: weather backfill failed — ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
     // Pre-warm the gallery thumbnail cache for every object that received new
     // files so the library grid loads instantly on first view.
     if (importNewFiles.length > 0) {
@@ -1024,6 +1204,9 @@ export async function runImport(
       console.warn('[import] setImportRunning failed:', err instanceof Error ? err.message : err);
     }
   }
+  } finally {
+    releaseImportLock();
+  }
 }
 
 /**
@@ -1036,7 +1219,16 @@ export async function syncSessionSubFrames(
   targetDate: string,
   options?: RunImportOptions,
 ): Promise<void> {
-  const LIBRARY_DIR = getLibraryDir();
+  // Outer try/finally: same reasoning as runImport's — resolveCanonicalId,
+  // getProfileById, and selectActiveTransport below all ran unguarded before
+  // the inner try, so a throw there leaked the lock permanently.
+  // releaseImportLock() is idempotent, so this layers over the existing
+  // release paths below rather than replacing them.
+  try {
+  // Resolve aliases so "C63" and "NGC7293" always land on the same objectId,
+  // matching runImport (import.ts:421). Also strip spaces so the id matches
+  // the DB primary key convention (normalizeObjectId) before any lookup below.
+  targetObjectId = resolveCanonicalId(normalizeObjectId(targetObjectId));
   // Look up the telescope first so we can stamp its name onto importStatus
   // even on the early-return error paths below.
   const baseProfile = options?.telescopeId ? getProfileById(options.telescopeId) : null;
@@ -1060,6 +1252,7 @@ export async function syncSessionSubFrames(
   importCancelRequested = false;
   importStatus = {
     running: true,
+    runId: randomUUID(),
     currentObject: targetObjectId,
     telescopeId: profile?.id ?? null,
     telescopeName: profile?.name ?? null,
@@ -1128,7 +1321,7 @@ export async function syncSessionSubFrames(
       // session folder. Match session folders by target name and by the
       // session date encoded in the folder name.
       debugLog('subframe-sync:discover', `Dwarf: scanning for sub-frames of "${targetObjectId}" on ${targetDate}`);
-      const discovered = await discoverDwarfObjects(profile) as DwarfDiscoveredObject[];
+      const discovered = await discoverDwarfObjects(profile);
       const obj = discovered.find(o => normalizeObjectId(o.folderName) === targetObjectId);
       if (!obj) {
         debugLog('subframe-sync:discover', `Dwarf: no session folder found for "${targetObjectId}"`);
@@ -1165,7 +1358,7 @@ export async function syncSessionSubFrames(
         folderName: obj.folderName,
         subFolderName: null,
         _dwarfSessionFolders: folderCandidates,
-      } as DwarfDiscoveredObject);
+      });
       debugLog('subframe-sync:discover', `Dwarf: ${subFiles.length} sub-file(s) found across candidate folders`);
       const mapped: Array<SubFrameCandidate | null> = subFiles
         .filter(e => /\.f(?:it|its|ts)$/i.test(e.name))
@@ -1174,12 +1367,13 @@ export async function syncSessionSubFrames(
           const sessionFolder = slash >= 0 ? e.name.slice(0, slash) : '';
           const basename = slash >= 0 ? e.name.slice(slash + 1) : e.name;
           // After dwarfLocalName, the file parses cleanly. Filter by the file's
-          // own embedded date, not the folder's, so cross-midnight captures are
-          // assigned to the night they were actually exposed.
+          // own embedded date rolled to its observing night, not the folder's
+          // raw date, so cross-midnight captures are assigned to the night
+          // they were actually exposed.
           const localName = dwarfLocalName(basename, sessionFolder);
           if (localName === null) return null;
-          const parsedDate = parseFilename(localName).date;
-          if (parsedDate !== targetDate) return null;
+          const night = sessionNightFor(parseFilename(localName));
+          if (night !== targetDate) return null;
           return {
             remotePath: buildDwarfFilePath(e.name),
             localName,
@@ -1202,19 +1396,23 @@ export async function syncSessionSubFrames(
       const smbSubPath = walkerBase ? `${walkerBase}/${subFolder.name}` : subFolder.name;
       debugLog('subframe-sync:discover', `SeeStar: listing sub-frames from ${smbSubPath}`);
       const subEntries = await smbListDir(smbSubPath, profile);
-      const rawSubFiles = subEntries.filter(e => e.type === 'file');
+      const rawSubFiles = subEntries.filter(e => e.type === 'file' && isSafeRemoteFileName(e.name));
       debugLog('subframe-sync:discover', `SeeStar: ${rawSubFiles.length} file(s) in ${subFolder.name}`);
       candidates = rawSubFiles
         .filter(e => {
           if (e.type !== 'file') return false;
           if (!/\.f(?:it|its|ts)$/i.test(e.name)) return false;
-          return parseFilename(e.name).date === targetDate;
+          return sessionNightFor(parseFilename(e.name)) === targetDate;
         })
         .map(e => ({ remotePath: `${smbSubPath}/${e.name}`, localName: e.name, size: e.size }));
       debugLog('subframe-sync:discover', `SeeStar: ${candidates.length} sub-frame candidate(s) matching date ${targetDate}`);
     }
 
-    const objLocalDir = path.join(LIBRARY_DIR, getFolderName(targetObjectId));
+    const objLocalDir = safeObjectDir(getFolderName(targetObjectId));
+    if (!objLocalDir) {
+      importStatus.error = `Cannot sync sub-frames for "${targetObjectId}": the object's folder name is unsafe.`;
+      return;
+    }
     if (!fs.existsSync(objLocalDir)) {
       fs.mkdirSync(objLocalDir, { recursive: true });
     }
@@ -1286,9 +1484,40 @@ export async function syncSessionSubFrames(
       };
     } catch { /* ignore */ }
 
-    index.lastImport = new Date().toISOString();
-    saveIndex(index, profile.id);
-    importStatus.lastRun = index.lastImport;
+    // Per-object write only — mirrors runImport (import.ts:940-960). Calling
+    // saveIndex(index, ...) here would persist the FULL snapshot loaded at run
+    // start for every object in the library, not just this one: it stamps
+    // every untagged session library-wide with this telescope, claims
+    // primaryTelescopeId for every unclaimed object, and re-asserts stale
+    // folderNames/deleted flags/sessions for objects this run never touched.
+    const objMeta = index.objects[targetObjectId];
+    if (objMeta) {
+      try {
+        db.transaction(() => {
+          const cat = resolveCatalogMeta(targetObjectId);
+          stmts.upsertObject.run(
+            targetObjectId, objMeta.folderName, objMeta.fileCount, objMeta.lastImport,
+            objMeta.deleted ? 1 : 0, objMeta.deletedAt || null,
+            cat.catalogId, cat.objectName, cat.objectType, cat.constellation,
+            cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy
+          );
+          stmts.setObjectPrimaryTelescopeIfNull.run(profile.id, targetObjectId);
+          for (const date of objMeta.sessions) {
+            stmts.addSessionStamped.run(targetObjectId, date, profile.id);
+          }
+          if (objMeta.deletedSessions) {
+            for (const date of objMeta.deletedSessions) {
+              stmts.addSessionTombstone.run(targetObjectId, date);
+            }
+          }
+        })();
+      } catch (saveErr) {
+        console.error(`[subframe-sync] Failed to save index for ${targetObjectId}:`, saveErr instanceof Error ? saveErr.message : saveErr);
+      }
+    }
+    const lastImportTs = new Date().toISOString();
+    try { stmts.updateMetaLastImport.run(lastImportTs); } catch { /* best-effort */ }
+    importStatus.lastRun = lastImportTs;
   } catch (err) {
     importStatus.error = friendlyImportError(err, profile);
   } finally {
@@ -1299,6 +1528,9 @@ export async function syncSessionSubFrames(
     importStatus.objectsDone = 1;
     currentImportProfile = null;
     try { stmts.setImportRunning.run(0, null); } catch { /* best-effort */ }
+  }
+  } finally {
+    releaseImportLock();
   }
 }
 
@@ -1316,23 +1548,44 @@ export async function runAllTelescopesImport(): Promise<void> {
   // details. Skipping the auto-import toggle here is deliberate — that
   // toggle controls the *scheduler*; a user clicking "Import Now" or
   // POSTing /library/import is explicitly asking for a sync now.
-  const profiles = getManualImportProfiles();
+  //
+  // getManualImportProfiles() is wrapped on its own: at this point the
+  // caller has already claimed the lock for us, so a throw here (e.g. a DB
+  // error) used to leak it permanently — nothing downstream would ever
+  // release it. Once the loop below starts, ownership of the lock transfers
+  // to each runImport() call (or to whichever process wins a between-
+  // telescopes re-claim), so a blanket release after this point would
+  // force-release a lock this function no longer owns.
+  let profiles;
+  try {
+    profiles = getManualImportProfiles();
+  } catch (err) {
+    console.error('[import] getManualImportProfiles failed:', err instanceof Error ? err.message : err);
+    importStatus.error = 'Failed to load telescope profiles. Check the server logs and try again.';
+    releaseImportLock();
+    return;
+  }
   if (profiles.length === 0) {
     importStatus.error = 'No telescopes are configured yet. Add one in Settings, Hardware.';
     // Caller (route handler / scheduler) already claimed the lock — release
     // it here so subsequent imports aren't permanently blocked. Without this
     // the lock leaks and every future import returns 409 IMPORT_RUNNING.
-    importStatus.running = false;
     importStatus.telescopeId = null;
     importStatus.telescopeName = null;
-    try { stmts.setImportRunning.run(0, null); } catch { /* best-effort */ }
+    releaseImportLock();
     return;
   }
   // Caller has already claimed the lock for the first profile. Each runImport
   // releases it in its finally, so re-claim before starting the next telescope.
   for (let i = 0; i < profiles.length; i++) {
     const profile = profiles[i];
-    if (i > 0 && !claimImportLock()) return;
+    if (i > 0 && !claimImportLock()) {
+      const skipped = profiles.slice(i).map(p => p.name).join(', ');
+      appendImportStatusError(
+        `Import lock was claimed by another run before ${skipped} could be synced. They'll be picked up on the next scheduled or manual import.`,
+      );
+      return;
+    }
     try {
       await runImport(undefined, undefined, { telescopeId: profile.id });
     } catch (err) {
@@ -1394,270 +1647,66 @@ export function releaseImportLock(): void {
   try { stmts.setImportRunning.run(0, null); } catch { /* best-effort */ }
 }
 
-// ─── Folder-based import (local backup path) ─────────────────────────────────
+/**
+ * Force-release the import lock when it has been held far longer than any
+ * real import should take. Insurance against a lock-leak path this module
+ * doesn't already guard against (a genuinely hung SMB call, an unhandled
+ * rejection outside every try/finally here) — see the watchdog in
+ * housekeeping.ts's auto-import tick. Sets a loud, visible error so whoever
+ * looks at the import status understands why their in-progress run vanished.
+ */
+export function forceReleaseStaleLock(reason: string): void {
+  console.error(`[import] ${reason}`);
+  importStatus.error = reason;
+  releaseImportLock();
+}
 
 /**
- * Import from a local folder path (e.g. a mounted backup drive or Docker volume).
- * Expects the same Seestar folder structure: ObjectName/ and ObjectName_sub/.
+ * When the lock was claimed, per the DB row claimImportLock() writes
+ * atomically alongside importRunning. Used by the stale-lock watchdog
+ * instead of importStatus.startedAt: the in-memory field isn't set until a
+ * run function does its full status reset partway through (after profile/
+ * transport validation), so a hang before that point would leave it holding
+ * a stale value from whatever run completed previously.
  */
-export async function runFolderImport(folderPath: string): Promise<void> {
-  // Callers must claim the lock via claimImportLock() before invoking. The
-  // route handler does this; we re-check `importStatus.running` so direct
-  // callers don't accidentally double-import.
-  if (!importStatus.running) {
-    if (!claimImportLock()) return;
-  }
-
-  if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
-    // Release the lock before propagating so subsequent imports aren't blocked.
-    importStatus.running = false;
-    try { stmts.setImportRunning.run(0, null); } catch { /* best-effort */ }
-    throw new Error(`The path "${folderPath}" is not a folder the server can read. Check the spelling, and if you are running in Docker, confirm the path is mounted as a volume.`);
-  }
-
-  const prevLastRun = importStatus.lastRun;
-  importStatus = {
-    running: true,
-    currentObject: null,
-    telescopeId: null,
-    telescopeName: null,
-    transportKind: null,
-    objectsTotal: 0,
-    objectsDone: 0,
-    filesTotal: 0,
-    filesDone: 0,
-    currentObjectFilesTotal: 0,
-    currentObjectFilesDone: 0,
-    bytesTotal: 0,
-    bytesDone: 0,
-    skippedFiles: 0,
-    lastRun: prevLastRun,
-    error: null,
-    startedAt: new Date().toISOString(),
-    warmingThumbnails: null,
-  };
-  importNewFiles = [];
-  importBytesNew = 0;
-
-  log.info({ folderPath }, '[folder-import] Starting folder import');
-
+export function getImportLockStartedAt(): string | null {
   try {
-    ensureLibraryDir();
-    const settings = loadSettings();
-    const preferCaldwell = settings.preferredCatalog === 'caldwell';
-    const index = loadIndex();
-    debugLog('folder-import', `Scanning folder: ${folderPath}`);
-    const entries = fs.readdirSync(folderPath, { withFileTypes: true });
-    const allDirs = entries.filter(e => e.isDirectory());
-    debugLog('folder-import', `Found ${allDirs.length} dir(s) under ${folderPath}`);
-    const objectDirs = allDirs.filter(e => isObjectFolder(e.name));
-    const subDirs = allDirs.filter(e => isSubFolder(e.name));
-    debugLog('folder-import', `${objectDirs.length} object folder(s): ${objectDirs.map(d => d.name).join(', ') || '(none)'}`);
-    if (subDirs.length > 0) debugLog('folder-import', `${subDirs.length} sub-folder(s): ${subDirs.map(d => d.name).join(', ')}`);
-
-    importStatus.objectsTotal = objectDirs.length;
-
-    for (const objEntry of objectDirs) {
-      const objectName = objEntry.name;
-      importStatus.currentObject = objectName;
-      debugLog('folder-import', `Processing object: "${objectName}"`);
-
-      const srcDir = path.join(folderPath, objectName);
-      const files = fs.readdirSync(srcDir)
-        .filter(f => fs.statSync(path.join(srcDir, f)).isFile())
-        .map(f => ({ name: f, fromSub: false }));
-      debugLog('folder-import', `"${objectName}": ${files.length} file(s) in main folder`);
-
-      let subFiles: Array<{ name: string; fromSub: boolean }> = [];
-      let subDirName: string | null = null;
-      if (settings.importSubFrames) {
-        const subDir = subDirs.find(s => getObjectFromSubFolder(s.name) === objectName);
-        if (subDir) {
-          subDirName = subDir.name;
-          const subSrcDir = path.join(folderPath, subDir.name);
-          try {
-            subFiles = fs.readdirSync(subSrcDir)
-              .filter(f => fs.statSync(path.join(subSrcDir, f)).isFile())
-              .map(f => ({ name: f, fromSub: true }));
-            debugLog('folder-import', `"${objectName}": ${subFiles.length} sub-file(s)`);
-          } catch { /* ignore */ }
-        }
-      }
-
-      const allFiles = [...files, ...subFiles].filter(f => shouldImportFile(f.name, settings));
-
-      // Skip empty folders. SeeStar can leave an empty object directory after
-      // a failed/aborted session — don't create a placeholder library object
-      // for one with nothing in it and no prior import record.
-      const objIdNormalized = resolveCanonicalId(normalizeObjectId(objectName));
-      const hasPriorImport = !!index.objects[objIdNormalized];
-      debugLog('folder-import', `"${objectName}": ${allFiles.length} file(s) after filtering${hasPriorImport ? ' (prior import exists)' : ' (new object)'}`);
-      if (allFiles.length === 0 && !hasPriorImport) {
-        console.log(`[import] Skipping empty folder: ${objectName}`);
-        importStatus.objectsDone++;
-        continue;
-      }
-
-      // If the object already exists in the library, reuse its stored folder name
-      // so previously imported files aren't orphaned by a rename (e.g. importing
-      // from a "C63" folder when files already live under "NGC7293", or vice-versa).
-      const existingRunFolderName = index.objects[objIdNormalized]?.folderName;
-      const newObjectFolderName = applyCatalogPreference(objIdNormalized, preferCaldwell);
-      const objLocalDir = safeObjectDir(existingRunFolderName || newObjectFolderName);
-      if (!objLocalDir) {
-        console.warn(`[import] Skipping object with unsafe name: ${objectName}`);
-        importStatus.objectsDone++;
-        continue;
-      }
-      if (!fs.existsSync(objLocalDir)) {
-        fs.mkdirSync(objLocalDir, { recursive: true });
-        debugLog('folder-import', `Created library directory: ${objLocalDir}`);
-      }
-
-      importStatus.filesTotal += allFiles.length;
-
-      const sessionSet = new Set<string>();
-      let fileCount = 0;
-      let copyErrors = 0;
-      let firstCopyError: string | null = null;
-
-      for (const file of allFiles) {
-        const destPath = path.join(objLocalDir, file.name);
-        if (fs.existsSync(destPath)) {
-          importStatus.filesDone++;
-          fileCount++;
-          const parsed = parseFilename(file.name);
-          if (parsed.date) {
-            sessionSet.add(parsed.date);
-          } else if (/\.jpe?g$/i.test(file.name)) {
-            const d = exifDateFromFile(destPath);
-            if (d) sessionSet.add(d);
-          }
-          debugLog('folder-import', `Skip (exists): ${objectName}/${file.name}`);
-          continue;
-        }
-
-        try {
-          const srcPath = file.fromSub && subDirName
-            ? path.join(folderPath, subDirName, file.name)
-            : path.join(srcDir, file.name);
-          debugLog('folder-import', `Copying: ${objectName}/${file.name}`);
-          // Async copy so a large file doesn't block the event loop mid-import.
-          await fs.promises.copyFile(srcPath, destPath);
-          const fileSize = fs.statSync(destPath).size;
-          fileCount++;
-          importStatus.filesDone++;
-          debugLog('folder-import', `Saved: ${objectName}/${file.name} (${(fileSize / 1024).toFixed(0)} KB)`);
-          importNewFiles.push({ name: `${objectName}/${file.name}`, size: fileSize });
-          importBytesNew += fileSize;
-          const parsed = parseFilename(file.name);
-          if (parsed.date) {
-            sessionSet.add(parsed.date);
-          } else if (/\.jpe?g$/i.test(file.name)) {
-            const d = exifDateFromFile(destPath);
-            if (d) sessionSet.add(d);
-          }
-        } catch (err) {
-          copyErrors++;
-          const reason = err instanceof Error ? err.message : String(err);
-          if (!firstCopyError) firstCopyError = reason;
-          debugLog('folder-import', `Copy failed: ${objectName}/${file.name} — ${reason}`);
-          importStatus.filesDone++;
-        }
-      }
-
-      if (copyErrors > 0) {
-        // Surface the failure instead of finishing "successfully" with files
-        // silently missing (this previously masked the _subs source-path bug).
-        const detail = firstCopyError ? ` (${firstCopyError})` : '';
-        const msg = `${copyErrors} file(s) failed to copy for ${objectName}${detail}.`;
-        importStatus.error = importStatus.error ? `${importStatus.error}; ${msg}` : msg;
-      }
-
-      try {
-        const existing = fs.readdirSync(objLocalDir);
-        for (const fname of existing) {
-          const parsed = parseFilename(fname);
-          if (parsed.date) {
-            sessionSet.add(parsed.date);
-          } else if (/\.jpe?g$/i.test(fname)) {
-            const d = exifDateFromFile(path.join(objLocalDir, fname));
-            if (d) sessionSet.add(d);
-          }
-        }
-        fileCount = existing.length;
-      } catch { /* ignore */ }
-
-      index.objects[objIdNormalized] = {
-        folderName: existingRunFolderName || newObjectFolderName,
-        sessions: Array.from(sessionSet).sort(),
-        fileCount,
-        lastImport: new Date().toISOString(),
-      };
-
-      // Gallery image intentionally left null — the library card falls back
-      // to the shared catalog cache (`/api/catalog/:id/image`), which is
-      // populated by the "Offline Catalog Data" download in Settings.
-
-      // Fetch historical weather for sessions missing weather data
-      try {
-        await backfillSessionWeather(objIdNormalized);
-      } catch (err) {
-        console.warn(`[import] Weather backfill failed for "${objectName}":`, err instanceof Error ? err.message : err);
-      }
-
-      importStatus.objectsDone++;
-    }
-
-    index.lastImport = new Date().toISOString();
-    saveIndex(index, null);
-    importStatus.lastRun = index.lastImport;
-  } catch (err) {
-    const raw = err instanceof Error ? err.message : 'Folder import failed.';
-    const lower = raw.toLowerCase();
-    if (lower.includes('eacces') || lower.includes('eperm') || lower.includes('permission denied')) {
-      importStatus.error = `The server cannot read "${folderPath}". Check the folder's permissions, and if you are running in Docker, confirm the volume is mounted with read access.`;
-    } else if (lower.includes('enoent') || lower.includes('no such file')) {
-      importStatus.error = `The folder "${folderPath}" disappeared during the import. Reconnect the drive or share, then try again.`;
-    } else {
-      importStatus.error = raw;
-    }
-  } finally {
-    try {
-      stmts.insertHistory.run(
-        importStatus.startedAt,
-        new Date().toISOString(),
-        importStatus.objectsTotal,
-        importStatus.filesTotal,
-        importNewFiles.length,
-        importStatus.bytesTotal,
-        importBytesNew,
-        importStatus.error || null,
-        importNewFiles.length > 0 ? JSON.stringify(importNewFiles.map(f => f.name)) : null,
-        importStatus.telescopeId,
-        importStatus.telescopeName,
-        importStatus.transportKind,
-      );
-    } catch { /* best-effort */ }
-    if (importNewFiles.length > 0) invalidateAllImagesCache();
-    importStatus.running = false;
-    importStatus.currentObject = null;
+    return stmts.getImportMeta.get()?.importStartedAt ?? null;
+  } catch {
+    return null;
   }
+}
+
+/**
+ * Append a message to importStatus.error without clearing existing progress
+ * state. Used when a multi-telescope sweep (runAllTelescopesImport,
+ * housekeeping's runDueTelescopesImport) has to give up on the remaining
+ * telescopes because a between-telescopes lock re-claim lost a race —
+ * earlier telescopes in the same sweep may have already completed
+ * successfully, so a full overwrite of importStatus would erase their result.
+ */
+export function appendImportStatusError(message: string): void {
+  console.warn(`[import] ${message}`);
+  importStatus.error = importStatus.error ? `${importStatus.error}; ${message}` : message;
 }
 
 // ─── Folder-import wizard: commit (phase 2) ──────────────────────────────────
 
-/** Default final date for a derived session: keep its own date, except the
- *  unsorted bucket which is dropped unless the user assigned it a date. */
+/** Default final date for a derived session: the file's own observing night
+ *  (see `observingNightDate` — this must match how `summarizeSessions` bucketed
+ *  it during scan, so the sessionMap keys line up), except the unsorted bucket
+ *  which is dropped unless the user assigned it a date. */
 function resolveTargetDate(
   sessionMap: Record<string, string | null>,
   derivedDate: string | null,
+  derivedTime: string | null,
 ): string | null {
-  const key = derivedDate ?? UNSORTED_KEY;
+  const night = derivedDate ? observingNightDate(derivedDate, derivedTime) : null;
+  const key = night ?? UNSORTED_KEY;
   if (Object.prototype.hasOwnProperty.call(sessionMap, key)) {
     return sessionMap[key];
   }
-  return derivedDate; // null for unsorted → dropped by default
+  return night; // null for unsorted → dropped by default
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -1680,6 +1729,16 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
     if (!claimImportLock()) return;
   }
 
+  // Outer try/finally: by this point we (the caller, or the claim above)
+  // hold the lock unconditionally for the rest of this call. Everything
+  // below — including ensureLibraryDir/loadSettings/loadIndex, which ran
+  // unguarded before the inner try — used to leak the lock on a throw, and
+  // the inner finally below only ever reset importStatus.running in memory,
+  // never persisting the release via setImportRunning, so a restart right
+  // after a normal commit would wrongly report an interrupted import.
+  // releaseImportLock() is idempotent, so this layers over (and fixes) the
+  // existing release paths rather than conflicting with them.
+  try {
   const rootPath = plan.rootPath;
   if (!fs.existsSync(rootPath) || !fs.statSync(rootPath).isDirectory()) {
     importStatus.running = false;
@@ -1691,6 +1750,7 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
   const commitProfile = plan.telescopeId ? getProfileById(plan.telescopeId) : null;
   importStatus = {
     running: true,
+    runId: randomUUID(),
     currentObject: null,
     telescopeId: commitProfile?.id ?? null,
     telescopeName: commitProfile?.name ?? null,
@@ -1726,9 +1786,16 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
     { rootPath, objects: plan.objects.length, importFits: settings.importFits, importSubFrames: settings.importSubFrames },
     '[folder-import] starting',
   );
+  debugLog('import:folder-commit',
+    `Manual folder import: ${rootPath}  |  ${plan.objects.filter(o => !o.skip).length} object(s) to import` +
+    `${plan.telescopeId ? ` | assigned telescope: ${plan.telescopeId}` : ''}`);
+  debugLog('import:folder-commit',
+    `Effective settings → JPG:${settings.importJpg !== false} FITS:${settings.importFits !== false} ` +
+    `Thumbs:${settings.importThumbnails !== false} Subs:${settings.importSubFrames === true} ` +
+    `Video:${settings.importVideos === true}`);
 
   try {
-    const sources = collectObjectSources(rootPath, settings);
+    const sources = collectObjectSources(rootPath);
     const planByFolder = new Map<string, CommitObjectPlan>();
     for (const p of plan.objects) planByFolder.set(p.folderName, p);
 
@@ -1742,6 +1809,12 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
     // in the same on-disk folder. First mapping wins the folder name.
     const dirByObjectId = new Map<string, string>();
     const folderNameByObjectId = new Map<string, string>();
+    // Session dates this run actually copied a new file for, per object. Used
+    // below to scope telescope attribution to sessions this import created —
+    // reconciling from disk pulls in every date already on disk for the
+    // object, including sessions from earlier imports before any telescope
+    // was known, and those must stay untagged.
+    const importedDatesByObjectId = new Map<string, Set<string>>();
 
     for (const source of active) {
       const objPlan = planByFolder.get(source.folderName)!;
@@ -1799,7 +1872,7 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
       try { for (const f of fs.readdirSync(objLocalDir)) used.add(f); } catch { /* new dir */ }
 
       for (const file of files) {
-        const target = resolveTargetDate(objPlan.sessionMap, file.derived.date);
+        const target = resolveTargetDate(objPlan.sessionMap, file.derived.date, file.derived.time);
         if (!target || !ISO_DATE.test(target)) {
           log.info({ file: file.name, derivedDate: file.derived.date ?? null, reason: 'date-dropped' }, '[folder-import] skip');
           importStatus.skippedFiles++;
@@ -1809,7 +1882,7 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
 
         // Idempotency: the deterministic "natural" name (no dedup) tells us
         // whether this file was already imported on a previous run.
-        const naturalName = canonicalImportName(file.name, target, file.derived.time, EMPTY_NAMES);
+        const naturalName = canonicalImportName(file.name, target, file.derived.date, file.derived.time, EMPTY_NAMES);
         if (fs.existsSync(path.join(objLocalDir, naturalName))) {
           log.info({ file: naturalName, objectId: targetObjectId }, '[folder-import] exists');
           importStatus.skippedFiles++;
@@ -1818,7 +1891,7 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
           continue;
         }
 
-        const destName = canonicalImportName(file.name, target, file.derived.time, used);
+        const destName = canonicalImportName(file.name, target, file.derived.date, file.derived.time, used);
         used.add(destName);
         const destPath = path.join(objLocalDir, destName);
         try {
@@ -1830,6 +1903,9 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
           importStatus.filesDone++;
           insertImportLogSafe(rootPath, file.relPath, targetObjectId, target, 'imported', null);
           log.info({ file: destName, objectId: targetObjectId, date: target, bytes: size }, '[folder-import] imported');
+          const importedDates = importedDatesByObjectId.get(targetObjectId) ?? new Set<string>();
+          importedDates.add(target);
+          importedDatesByObjectId.set(targetObjectId, importedDates);
         } catch (err) {
           importStatus.filesDone++;
           const message = err instanceof Error ? err.message : 'copy failed';
@@ -1839,14 +1915,14 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
       }
 
       // Reconcile sessions + file count from disk so merges and the read-path
-      // grouping (parseFilename per file) are reflected exactly.
+      // grouping (parseFilename + sessionNightFor per file) are reflected exactly.
       const sessionSet = new Set<string>();
       let fileCount = 0;
       try {
         const existing = fs.readdirSync(objLocalDir);
         for (const fname of existing) {
-          const parsed = parseFilename(fname);
-          if (parsed.date) sessionSet.add(parsed.date);
+          const night = sessionNightFor(parseFilename(fname));
+          if (night) sessionSet.add(night);
         }
         fileCount = existing.length;
       } catch { /* ignore */ }
@@ -1884,7 +1960,43 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
       if (!touchedIds.has(id)) delete index.objects[id];
     }
     index.lastImport = new Date().toISOString();
-    saveIndex(index, commitProfile?.id ?? null);
+    // Per-object writes, not saveIndex(index, ...): the session set reconciled
+    // from disk above includes every date already on disk for the object, not
+    // just what this run copied. Only stamp dates in importedDatesByObjectId
+    // (files this run actually copied) with the selected telescope; every
+    // other date — including pre-existing untagged sessions from earlier
+    // imports — gets a plain, unattributed addSession so users can still tag
+    // observations under an object independently of import.
+    for (const [objectId, meta] of Object.entries(index.objects)) {
+      const stampedDates = importedDatesByObjectId.get(objectId) ?? null;
+      try {
+        db.transaction(() => {
+          const cat = resolveCatalogMeta(objectId);
+          stmts.upsertObject.run(
+            objectId, meta.folderName, meta.fileCount, meta.lastImport,
+            meta.deleted ? 1 : 0, meta.deletedAt || null,
+            cat.catalogId, cat.objectName, cat.objectType, cat.constellation,
+            cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy
+          );
+          if (commitProfile) stmts.setObjectPrimaryTelescopeIfNull.run(commitProfile.id, objectId);
+          for (const date of meta.sessions) {
+            if (commitProfile && stampedDates?.has(date)) {
+              stmts.addSessionStamped.run(objectId, date, commitProfile.id);
+            } else {
+              stmts.addSession.run(objectId, date);
+            }
+          }
+          if (meta.deletedSessions) {
+            for (const date of meta.deletedSessions) {
+              stmts.addSessionTombstone.run(objectId, date);
+            }
+          }
+        })();
+      } catch (saveErr) {
+        console.error(`[folder-import] Failed to save index for ${objectId}:`, saveErr instanceof Error ? saveErr.message : saveErr);
+      }
+    }
+    stmts.updateMetaLastImport.run(index.lastImport);
     importStatus.lastRun = index.lastImport;
 
     // Best-effort enrichment + weather for everything we touched. Done after
@@ -1948,6 +2060,9 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
       try { fs.rmSync(resolvedRoot, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   }
+  } finally {
+    releaseImportLock();
+  }
 }
 
 /** Shared empty set for canonicalImportName's no-dedup "natural name" lookup.
@@ -1976,80 +2091,6 @@ function insertImportLogSafe(
       null, // deviceId — folder imports have no paired device
     );
   } catch { /* best-effort */ }
-}
-
-// ─── Drag-and-drop / browser upload import ───────────────────────────────────
-
-export interface UploadedFile {
-  tempPath: string;
-  originalName: string;
-  relativePath?: string;
-}
-
-export interface ImportUploadResult {
-  imported: number;
-  skipped: number;
-  errors: string[];
-}
-
-/**
- * Move multer-staged uploads into the library.
- *
- * Security invariants enforced here:
- *  - tempPath must live inside os.tmpdir() (multer's staging area).
- *  - originalName must not contain path separators or NUL bytes.
- *  - Destination is always safeObjectDir(objectFolder) — never escapes LIBRARY_DIR.
- */
-export function importUploadedFiles(files: UploadedFile[]): ImportUploadResult {
-  const tmpBase = os.tmpdir();
-  const result: ImportUploadResult = { imported: 0, skipped: 0, errors: [] };
-
-  for (const file of files) {
-    const resolvedTemp = path.resolve(file.tempPath);
-    if (!resolvedTemp.startsWith(tmpBase + path.sep)) {
-      result.errors.push(
-        'The upload was not placed in the expected temporary upload location. Check the server configuration.',
-      );
-      continue;
-    }
-
-    if (/[/\\\x00]/.test(file.originalName)) {
-      result.skipped++;
-      try { fs.unlinkSync(file.tempPath); } catch { /* ignore */ }
-      continue;
-    }
-
-    const objectFolder = file.relativePath
-      ? file.relativePath.split('/').filter(Boolean)[0]
-      : null;
-    if (!objectFolder) {
-      result.skipped++;
-      try { fs.unlinkSync(file.tempPath); } catch { /* ignore */ }
-      continue;
-    }
-
-    const objLocalDir = safeObjectDir(objectFolder);
-    if (!objLocalDir) {
-      result.skipped++;
-      try { fs.unlinkSync(file.tempPath); } catch { /* ignore */ }
-      continue;
-    }
-
-    if (!fs.existsSync(objLocalDir)) {
-      fs.mkdirSync(objLocalDir, { recursive: true });
-    }
-
-    const destPath = path.join(objLocalDir, file.originalName);
-    try {
-      fs.copyFileSync(file.tempPath, destPath);
-      try { fs.unlinkSync(file.tempPath); } catch { /* ignore */ }
-      result.imported++;
-    } catch (err) {
-      result.errors.push(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  return result;
 }
 
 // ─── Manual observation creation ─────────────────────────────────────────────
@@ -2089,13 +2130,17 @@ export function createManualObservation(
     fs.mkdirSync(objDir, { recursive: true });
   }
 
-  // Save image with timestamp-based filename so parseFilename detects the date
+  // Save image with timestamp-based filename so parseFilename detects the date.
+  // The user picked `date` explicitly (it's not derived from a real capture
+  // time), so the embedded time-of-day must be clamped into the rollover-safe
+  // zone — otherwise entering this at, say, 2am would embed an early hour next
+  // to the chosen date and sessionNightFor would roll it back a day on read.
   if (imageBuffer && imageExt) {
     const now = new Date();
-    const ts = `${dateMatch[1]}${dateMatch[2]}${dateMatch[3]}-${
-      String(now.getHours()).padStart(2, '0')}${
+    const rawHms = `${String(now.getHours()).padStart(2, '0')}${
       String(now.getMinutes()).padStart(2, '0')}${
       String(now.getSeconds()).padStart(2, '0')}`;
+    const ts = `${dateMatch[1]}${dateMatch[2]}${dateMatch[3]}-${clampToNightSafeTime(rawHms)}`;
     const ext = imageExt.replace(/^\./, '').toLowerCase();
     const filename = `${objectId}_${ts}.${ext}`;
     fs.writeFileSync(path.join(objDir, filename), imageBuffer);
@@ -2114,8 +2159,8 @@ export function createManualObservation(
   let fileCount = 0;
   try {
     const allLocal = fs.readdirSync(objDir).filter(f => {
-      const parsed = parseFilename(f);
-      if (parsed.date) sessionSet.add(parsed.date);
+      const night = sessionNightFor(parseFilename(f));
+      if (night) sessionSet.add(night);
       return isRealFile(f);
     });
     fileCount = allLocal.length;

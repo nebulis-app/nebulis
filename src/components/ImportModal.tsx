@@ -1,11 +1,14 @@
 import { useCallback, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, FolderOpen, RotateCw, CheckCircle2 } from 'lucide-react';
-import { uploadFolderTemp } from '../lib/api/library';
+import { X, FolderOpen, RotateCw, CheckCircle2, Upload, HardDrive } from 'lucide-react';
+import { uploadFolderTemp, reportImportDebug } from '../lib/api/library';
+import { locateFolderOnServer } from '../lib/api/storage';
 import { listTelescopes } from '../lib/api/telescopes';
+import { getDebugLoggingStatus } from '../lib/api/settings';
 import { useTheme } from '../hooks/useTheme';
 import { Modal } from './ui/Modal';
 import { CloseConfirm } from './ui/CloseConfirm';
+import { ServerFolderPicker } from './folderImport/ServerFolderPicker';
 
 interface PickedFile {
   file: File;
@@ -76,6 +79,9 @@ const ACCEPTED_EXTS = new Set([
 ]);
 
 type Phase = 'idle' | 'staging' | 'uploading' | 'done';
+/** 'upload' streams files through the browser; 'local' points the server at a
+ *  folder already on the same machine (no upload). */
+type Source = 'upload' | 'local';
 
 export function ImportModal({ onClose, onReview }: {
   onClose: () => void;
@@ -84,6 +90,8 @@ export function ImportModal({ onClose, onReview }: {
   const { isDark } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [source, setSource] = useState<Source>('upload');
+  const [serverPath, setServerPath] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [picked, setPicked] = useState<PickedFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -94,6 +102,16 @@ export function ImportModal({ onClose, onReview }: {
   const includeFits = true;
 
   const [telescopeId, setTelescopeId] = useState('');
+  // Set while an upload is in flight so the discard path can actually stop
+  // it. Without this, dismissing the modal mid-upload left the batch loop
+  // running in the background, and its eventual resolution could still fire
+  // onReview into a caller that had already moved on.
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  // When the dropped folder is found on the server's own disk (matched by
+  // name + file-size fingerprint), this holds the scan-root path so the
+  // import can read it in place instead of uploading the same bytes.
+  const [locatedPath, setLocatedPath] = useState<string | null>(null);
+  const locateAbortRef = useRef<AbortController | null>(null);
 
   const { data: telescopes } = useQuery({
     queryKey: ['telescopes'],
@@ -124,6 +142,41 @@ export function ImportModal({ onClose, onReview }: {
     setPicked(filtered);
     setError(null);
     setPhase('staging');
+    probeServerForFolder(files, filtered);
+  }
+
+  /** Silently ask the server whether the dropped folder already exists on its
+   *  own disk. The browser never sees absolute paths, so this matches by the
+   *  top-level folder name plus a sample of file names and exact sizes. On a
+   *  hit the CTA switches to an in-place import; on any miss or failure the
+   *  normal upload flow is untouched. */
+  function probeServerForFolder(preStrip: PickedFile[], filtered: PickedFile[]) {
+    locateAbortRef.current?.abort();
+    setLocatedPath(null);
+    if (filtered.length === 0 || preStrip.length === 0) return;
+
+    // The anchor is the dropped folder's name: the common first path segment
+    // of everything picked. A multi-root drop has no single anchor; skip.
+    const firstSlash = preStrip[0].relativePath.indexOf('/');
+    if (firstSlash <= 0) return;
+    const anchor = preStrip[0].relativePath.slice(0, firstSlash);
+    if (!preStrip.every(f => f.relativePath.startsWith(`${anchor}/`))) return;
+
+    // Sample up to 40 files spread across the selection. Sizes must match
+    // exactly server-side, so this is a strong fingerprint without hashing.
+    const step = Math.max(1, Math.floor(filtered.length / 40));
+    const samples = filtered
+      .filter((_, i) => i % step === 0)
+      .slice(0, 40)
+      .map(f => ({ relativePath: f.relativePath, size: f.file.size }));
+
+    const controller = new AbortController();
+    locateAbortRef.current = controller;
+    locateFolderOnServer(anchor, samples, controller.signal)
+      .then(result => {
+        if (!controller.signal.aborted) setLocatedPath(result.path);
+      })
+      .catch(() => { /* best-effort; upload flow is unaffected */ });
   }
 
   // ── Input (webkitdirectory) ──────────────────────────────────────────────
@@ -168,20 +221,48 @@ export function ImportModal({ onClose, onReview }: {
 
   async function handleUpload() {
     if (picked.length === 0) return;
+    locateAbortRef.current?.abort();
     setPhase('uploading');
     setUploadProgress(0);
     setError(null);
+
+    // Only stream client-side breadcrumbs when the user has debug logging on,
+    // so normal imports add zero extra requests. Best-effort: if the status
+    // check fails, we just upload without breadcrumbs.
+    let debug = false;
+    try { debug = (await getDebugLoggingStatus()).enabled; } catch { /* ignore */ }
+    if (debug) {
+      reportImportDebug(
+        `[browser] import dialog: ${picked.length} files staged for upload ` +
+        `(include sub-frames: ${includeSubframes}, include FITS: ${includeFits}, ` +
+        `telescope: ${telescopeId || 'none'})`,
+      );
+    }
+
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+
     try {
       const result = await uploadFolderTemp(
         picked.map(p => p.file),
         picked.map(p => p.relativePath),
         (sent, total) => setUploadProgress(total > 0 ? Math.round((sent / total) * 100) : 0),
+        debug,
+        controller.signal,
       );
       setPhase('done');
       onReview(result.tmpPath, includeSubframes, includeFits, telescopeId || null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      // A cancelled upload already unmounted (or is about to) via the discard
+      // path — don't flash an error or bounce the phase back to 'staging' on
+      // the way out.
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      const message = err instanceof Error ? err.message : 'Upload failed';
+      if (debug) reportImportDebug(`[browser] import dialog: upload aborted with error: ${message}`);
+      setError(message);
       setPhase('staging');
+    } finally {
+      uploadAbortRef.current = null;
     }
   }
 
@@ -218,7 +299,27 @@ export function ImportModal({ onClose, onReview }: {
 
       <div className="p-6 space-y-5">
 
-        {/* Drop zone — always visible */}
+        {source === 'local' && (
+          <>
+            <ServerFolderPicker isDark={isDark} onChange={setServerPath} />
+            <p className={`text-xs ${mutedText}`}>
+              Nothing is uploaded: the server reads the folder in place, so large libraries import in seconds.
+            </p>
+            <button
+              type="button"
+              onClick={() => { setSource('upload'); setServerPath(null); }}
+              className={`flex items-center gap-1.5 text-xs transition ${
+                isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Back to file upload
+            </button>
+          </>
+        )}
+
+        {/* Drop zone — upload mode only */}
+        {source === 'upload' && (
         <div
           onDragOver={e => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
@@ -277,6 +378,24 @@ export function ImportModal({ onClose, onReview }: {
             onChange={handleInputChange}
           />
         </div>
+        )}
+
+        {/* Secondary path: import in place from the server's own disk, for the
+            case auto-detection can't cover: the files live on the server but
+            the user is browsing from another device, so there is nothing to
+            drag. Hidden once a drop has been auto-located. */}
+        {source === 'upload' && (phase === 'idle' || phase === 'staging') && !locatedPath && (
+          <button
+            type="button"
+            onClick={() => setSource('local')}
+            className={`flex items-center gap-1.5 text-xs transition ${
+              isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <HardDrive className="w-3.5 h-3.5" />
+            Files already on the computer running Nebulis? Import in place, no upload.
+          </button>
+        )}
 
         {/* Import toggles — shown before upload */}
         {(phase === 'staging' || phase === 'idle') && (
@@ -324,7 +443,12 @@ export function ImportModal({ onClose, onReview }: {
                 {objectNames.length > 0 && ` across ${objectNames.length} folder${objectNames.length !== 1 ? 's' : ''}`}
               </p>
               <button
-                onClick={() => { setPicked([]); setPhase('idle'); }}
+                onClick={() => {
+                  locateAbortRef.current?.abort();
+                  setLocatedPath(null);
+                  setPicked([]);
+                  setPhase('idle');
+                }}
                 className={`text-xs ${mutedText} hover:text-red-500 transition`}
               >
                 Clear
@@ -354,8 +478,32 @@ export function ImportModal({ onClose, onReview }: {
           <p className="text-sm text-red-500">{error}</p>
         )}
 
-        {/* CTA */}
-        {phase === 'staging' && (
+        {/* CTA — upload mode. When the dropped folder was found on the server's
+            own disk, the primary action becomes an in-place import (no upload)
+            with the upload kept as a quiet fallback. */}
+        {source === 'upload' && phase === 'staging' && locatedPath && (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => onReview(locatedPath, includeSubframes, includeFits, telescopeId || null)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 transition"
+            >
+              <HardDrive className="w-4 h-4" />
+              Review &amp; import in place (no upload)
+            </button>
+            <p className={`text-xs ${mutedText}`}>
+              This folder is already on the computer running Nebulis at {locatedPath}, so the server can read it directly.
+            </p>
+            <button
+              type="button"
+              onClick={handleUpload}
+              className={`text-xs transition ${isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Upload the {picked.length} file{picked.length !== 1 ? 's' : ''} instead
+            </button>
+          </div>
+        )}
+        {source === 'upload' && phase === 'staging' && !locatedPath && (
           <button
             onClick={handleUpload}
             disabled={picked.length === 0}
@@ -366,7 +514,20 @@ export function ImportModal({ onClose, onReview }: {
           </button>
         )}
 
-        {phase === 'idle' && (
+        {/* CTA — local folder mode (no upload) */}
+        {source === 'local' && (
+          <button
+            type="button"
+            onClick={() => serverPath && onReview(serverPath, includeSubframes, includeFits, telescopeId || null)}
+            disabled={!serverPath}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 transition disabled:opacity-50"
+          >
+            <FolderOpen className="w-4 h-4" />
+            Review &amp; import this folder
+          </button>
+        )}
+
+        {phase === 'idle' && source === 'upload' && (
           <p className={`text-xs text-center ${mutedText}`}>
             Nebulis will detect objects, session dates, and catalog matches before importing anything.
           </p>
@@ -377,7 +538,12 @@ export function ImportModal({ onClose, onReview }: {
         <CloseConfirm
           message="Discard selected files?"
           onCancel={() => setConfirmingClose(false)}
-          onDiscard={() => { setConfirmingClose(false); onClose(); }}
+          onDiscard={() => {
+            setConfirmingClose(false);
+            uploadAbortRef.current?.abort();
+            locateAbortRef.current?.abort();
+            onClose();
+          }}
         />
       )}
     </Modal>

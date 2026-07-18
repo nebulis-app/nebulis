@@ -68,7 +68,7 @@ export function validatePathNoTraversal(filePath: string): void {
   }
 }
 
-export function loadSettings(profile: Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'> | null | undefined): SmbProfile {
+export function loadSettings(profile: Partial<Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'>> | null | undefined): SmbProfile {
   return {
     hostname: profile?.hostname || '',
     shareName: profile?.shareName || 'EMMC Images',

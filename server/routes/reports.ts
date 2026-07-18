@@ -9,7 +9,7 @@ import { parseFitsHeader } from '../lib/fitsParser.js';
 import { getLibraryDir } from '../lib/libraryPath.js';
 import { getCatalogEntry } from '../data/catalog.js';
 import { getById as getDsoById } from '../lib/dsoCatalog.js';
-import { normalizeCatalogId, parseFilename } from '../lib/telescopeFiles.js';
+import { normalizeCatalogId, parseFilename, sessionNightFor } from '../lib/telescopeFiles.js';
 import { getObjectFolderName } from '../lib/localLibrary.js';
 import SunCalc from 'suncalc';
 
@@ -49,9 +49,8 @@ function computeSessionStats(objectId: string, sessionDate: string): SessionStat
   if (!objDir.startsWith(LIBRARY_DIR + path.sep)) return null;
   if (!fs.existsSync(objDir)) return null;
 
-  const dateCompact = sessionDate.replace(/-/g, '');
   const fitsFiles = fs.readdirSync(objDir).filter(
-    f => /\.(fit|fits)$/i.test(f) && f.includes(dateCompact)
+    f => /\.(fit|fits)$/i.test(f) && sessionNightFor(parseFilename(f)) === sessionDate
   );
 
   if (fitsFiles.length === 0) return null;

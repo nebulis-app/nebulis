@@ -104,7 +104,8 @@ for (const col of ['imagesCompletedAt', 'wikiCompletedAt', 'caldwellCompletedAt'
   try { db.prepare(`ALTER TABLE catalogPrefetchStatus ADD COLUMN ${col} INTEGER`).run(); } catch { /* already exists */ }
 }
 
-export type PrefetchPhase = 'idle' | 'pack' | 'images' | 'wikipedia' | 'caldwell' | 'done' | 'cancelled' | 'error';
+export const PREFETCH_PHASES = ['idle', 'pack', 'images', 'wikipedia', 'caldwell', 'done', 'cancelled', 'error'] as const;
+export type PrefetchPhase = (typeof PREFETCH_PHASES)[number];
 
 export interface PrefetchStatus {
   running: boolean;
@@ -148,7 +149,6 @@ const setStatusStmt = db.prepare(
    WHERE id = 1`,
 );
 
-const PREFETCH_PHASES = ['idle', 'pack', 'images', 'wikipedia', 'caldwell', 'done', 'cancelled', 'error'] as const;
 function isPrefetchPhase(v: string): v is PrefetchPhase {
   return (PREFETCH_PHASES as readonly string[]).includes(v);
 }

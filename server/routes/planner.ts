@@ -118,9 +118,15 @@ router.get('/tonight', async (req: Request, res: Response) => {
   const settings = loadSettings();
   // Client-provided coordinates override saved settings for this request only
   // (e.g. phone GPS when traveling with the scope). Older clients that omit
-  // lat/lon continue to use the server's saved location unchanged.
-  const lat = queryParsed.data.lat ?? (typeof settings.latitude === 'number' ? settings.latitude : null);
-  const lon = queryParsed.data.lon ?? (typeof settings.longitude === 'number' ? settings.longitude : null);
+  // lat/lon continue to use the server's saved location unchanged. Both must be
+  // present to override: a half-supplied pair would otherwise mix client
+  // latitude with the saved-settings longitude (or vice versa) and place the
+  // observer somewhere that is neither location.
+  const clientCoords = queryParsed.data.lat != null && queryParsed.data.lon != null
+    ? { lat: queryParsed.data.lat, lon: queryParsed.data.lon }
+    : null;
+  const lat = clientCoords?.lat ?? (typeof settings.latitude === 'number' ? settings.latitude : null);
+  const lon = clientCoords?.lon ?? (typeof settings.longitude === 'number' ? settings.longitude : null);
 
   if (lat === null || lon === null) {
     res.apiSuccess({
@@ -306,8 +312,12 @@ router.get('/curve/:objectId', async (req: Request, res: Response) => {
     return;
   }
   const settings = loadSettings();
-  const lat = queryParsed.data.lat ?? (typeof settings.latitude === 'number' ? settings.latitude : null);
-  const lon = queryParsed.data.lon ?? (typeof settings.longitude === 'number' ? settings.longitude : null);
+  // Both client coords must be present to override saved settings (see /tonight).
+  const clientCoords = queryParsed.data.lat != null && queryParsed.data.lon != null
+    ? { lat: queryParsed.data.lat, lon: queryParsed.data.lon }
+    : null;
+  const lat = clientCoords?.lat ?? (typeof settings.latitude === 'number' ? settings.latitude : null);
+  const lon = clientCoords?.lon ?? (typeof settings.longitude === 'number' ? settings.longitude : null);
 
   if (lat === null || lon === null) {
     res.apiError(400, 'NO_LOCATION', 'Observer location not set in settings');
@@ -401,8 +411,8 @@ function parseLocalNoon(yyyymmdd: string, timeZone?: string): Date {
  * tonight is still the night that began yesterday evening (a 02:00 caller is
  * mid-session, and anchoring at `now` would skip ahead to the NEXT evening's
  * window). From 07:00, anchor at `now` so the upcoming evening is tonight.
- * Keep the 07:00 rollover in sync with plannerToday() in src/lib/nightWindow.ts
- * and NightDate.swift in the iOS client.
+ * Keep the 07:00 rollover in sync with plannerToday() in src/lib/nightWindow.ts,
+ * NightDate.swift in the iOS client, and PlannerTime.kt in the Android client.
  */
 function defaultNightAnchor(now: Date, timeZone?: string): Date {
   const parts = localParts(now, timeZone);

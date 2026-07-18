@@ -16,7 +16,7 @@ import {
 } from './smb.shared.js';
 import type { TelescopeProfile } from './telescopes.js';
 
-type ProfileArg = Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'> | null | undefined;
+type ProfileArg = Partial<Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'>> | null | undefined;
 
 const execFileAsync = promisify(execFile);
 

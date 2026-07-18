@@ -14,11 +14,20 @@
  * else is string/stat work, so scanning a few thousand files is cheap enough
  * for a synchronous request.
  *
- * Convention note: we use the *calendar date* of the capture timestamp, with
- * no observing-night rollover. That matches how parseFilename already groups
- * SeeStar/Dwarf files (it slices YYYYMMDD straight out of the filename), so an
- * imported library groups the same way the rest of the app does. When a night
- * crosses midnight and gets split, the review step lets the user merge it.
+ * Convention note: this module derives the *calendar date* of the capture
+ * timestamp — it does not itself apply any observing-night rollover. Callers
+ * that group derived dates into sessions (`summarizeSessions` in
+ * folderScan.ts, `resolveTargetDate`/`canonicalImportName` in import.ts /
+ * importNaming.ts) run the {date, time} pair through `observingNightDate` (see
+ * telescopeFiles.ts) before using it as a session key, so a session that
+ * crosses local midnight groups under one date instead of splitting into two
+ * — the same rollover the live SMB/USB import path applies via
+ * `sessionNightFor`. Keeping the rollover out of this module means the `date`
+ * field returned here always answers "what calendar date was this file
+ * actually captured on", independent of how it gets bucketed into a session.
+ * The review step still lets the user override the computed bucket (an
+ * arbitrary merge/split), which is why the date lives in a separate field
+ * rather than being baked in here.
  *
  * Filename beats FITS DATE-OBS (see deriveFileDate below) rather than the
  * other way around: DATE-OBS is always UTC (see the note in

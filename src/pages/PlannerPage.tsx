@@ -37,7 +37,7 @@ import { ScheduleTimeline } from '../components/planner/ScheduleTimeline';
 import { VisibleSkyEditor } from '../components/planner/VisibleSkyEditor';
 import { AltitudeBandChart } from '../components/planner/AltitudeBandChart';
 import { PlanCalendar } from '../components/planner/PlanCalendar';
-import { dateFromKey, formatPlannerDate, localDateKey, nightWindowFor, plannerToday, sameLocalDay, timelineWindowFor } from '../lib/nightWindow';
+import { dateFromKey, formatPlannerDate, localDateKey, nightWindowFor, plannerToday, sameLocalDay } from '../lib/nightWindow';
 import {
   DEFAULT_BLOCK_MINUTES,
   MIN_BLOCK_MINUTES,
@@ -153,10 +153,14 @@ export function PlannerPage() {
   const timelineStartIso = timelineStart?.toISOString() ?? null;
   const timelineEndIso = timelineEnd?.toISOString() ?? null;
 
-  // Load sessions across the full extended window.
+  // Load sessions across the full extended window. Poll on an interval so a plan
+  // edited on another device (phone in the field, a second browser tab) shows up
+  // here without a manual reload. Unlike the library queries, listing sessions is
+  // a cheap indexed SQLite read, not a filesystem walk, so a 30s refetch is fine.
   const sessionsQuery = useQuery({
     queryKey: ['planned-sessions', timelineStartIso, timelineEndIso],
     enabled: timelineStartIso != null && timelineEndIso != null,
+    refetchInterval: 30_000,
     queryFn: () =>
       timelineStartIso && timelineEndIso
         ? listPlannedSessions({ from: timelineStartIso, to: timelineEndIso })
@@ -299,10 +303,10 @@ export function PlannerPage() {
   const onDragStart = useCallback((event: DragStartEvent) => {
     const data = event.active.data.current as Record<string, unknown> | undefined;
     // Seed pointer tracking with the activator position so the very first
-    // pointermove isn't needed before we have a reading.
-    const activator = event.activatorEvent as PointerEvent | MouseEvent | undefined;
-    if (activator && typeof activator.clientY === 'number') {
-      pointerYRef.current = activator.clientY;
+    // pointermove isn't needed before we have a reading. PointerEvent extends
+    // MouseEvent, so this one check covers both.
+    if (event.activatorEvent instanceof MouseEvent) {
+      pointerYRef.current = event.activatorEvent.clientY;
     }
     if (data?.kind === 'block') {
       const id = Number(String(event.active.id).split(':')[1]);
@@ -340,8 +344,8 @@ export function PlannerPage() {
       if (!rect) return;
       // Prefer the live-tracked pointer Y; fall back to activatorEvent + delta
       // if for some reason no pointermove fired (e.g. keyboard activation).
-      const activator = event.activatorEvent as PointerEvent | MouseEvent | undefined;
-      const fallbackY = (activator?.clientY ?? 0) + event.delta.y;
+      const activatorY = event.activatorEvent instanceof MouseEvent ? event.activatorEvent.clientY : 0;
+      const fallbackY = activatorY + event.delta.y;
       const cursorY = pointerYRef.current ?? fallbackY;
       // Inside-rect check is more reliable than dnd-kit's collision detection
       // here because the library row's draggable rect doesn't have to overlap
@@ -429,20 +433,18 @@ export function PlannerPage() {
     if (observerLat == null || observerLon == null || !timelineStart || !timelineEnd) return;
     setCopyingPrevNight(true);
     try {
-      const prevDate = addDays(selectedDate, -1);
-      // Use the sunset-buffered timeline window (not the narrower astronomical
-      // dark window) so twilight blocks from the previous night — a lunar or
-      // planetary session scheduled right after sunset, say — are included in
-      // what gets copied forward, matching what the timeline actually let the
-      // user schedule that night.
-      const prevWindow = timelineWindowFor(prevDate, observerLat, observerLon, TIMELINE_BUFFER_MS);
-      if (!prevWindow) return;
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      // Derive the previous night's fetch window by shifting THIS night's
+      // server-computed timeline window back 24h, rather than recomputing it
+      // with client-side SunCalc. The server window is anchored in the scope's
+      // timezone; a browser several zones away from the scope would otherwise
+      // pick the wrong night. Shifting by the same DAY_MS the copied blocks use
+      // keeps the fetch window and the block shift symmetric.
       const prevSessions = await listPlannedSessions({
-        from: prevWindow.start.toISOString(),
-        to: prevWindow.end.toISOString(),
+        from: new Date(timelineStart.getTime() - DAY_MS).toISOString(),
+        to: new Date(timelineEnd.getTime() - DAY_MS).toISOString(),
       });
       if (prevSessions.length === 0) return;
-      const DAY_MS = 24 * 60 * 60 * 1000;
       await Promise.all(
         prevSessions.map(s => {
           const newStart = clampTime(new Date(new Date(s.startTime).getTime() + DAY_MS), timelineStart!, timelineEnd!);
@@ -462,7 +464,7 @@ export function PlannerPage() {
     } finally {
       setCopyingPrevNight(false);
     }
-  }, [selectedDate, observerLat, observerLon, timelineStart, timelineEnd, queryClient]);
+  }, [observerLat, observerLon, timelineStart, timelineEnd, queryClient]);
 
   const visibilityById = useMemo(() => {
     const map = new Map<number, BlockVisibilityResult>();

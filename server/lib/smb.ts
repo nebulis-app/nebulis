@@ -32,8 +32,6 @@ const smbImpl =
   posix;
 
 type AnyProfile = Partial<Pick<TelescopeProfile, 'connectionType' | 'localPath' | 'hostname' | 'shareName' | 'username' | 'password'>> | null | undefined;
-type AnySmbProfile = Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'>;
-type AnyLocalProfile = Pick<TelescopeProfile, 'localPath'>;
 
 function isLocal(profile: AnyProfile): boolean {
   return profile?.connectionType === 'local';
@@ -45,7 +43,7 @@ function isLocal(profile: AnyProfile): boolean {
 // connections, which are plain filesystem reads, and when no hostname is set
 // (the backend then surfaces its own "no hostname configured" error).
 async function preflight(profile: AnyProfile): Promise<void> {
-  const { hostname } = loadSettings(profile as AnySmbProfile | undefined);
+  const { hostname } = loadSettings(profile);
   if (!hostname) return;
   try {
     await ensureSmbReachable(hostname);
@@ -61,7 +59,7 @@ async function preflight(profile: AnyProfile): Promise<void> {
 // and outcome (entry/byte count or the error message).
 function connectionLabel(profile: AnyProfile): string {
   if (isLocal(profile)) return `local:${profile?.localPath ?? '?'}`;
-  const { hostname, shareName } = loadSettings(profile as AnySmbProfile | undefined);
+  const { hostname, shareName } = loadSettings(profile);
   return `smb://${hostname ?? '?'}/${shareName ?? '?'}`;
 }
 
@@ -85,32 +83,43 @@ async function withDebugLog<T>(op: string, path: string, profile: AnyProfile, fn
 
 export async function smbListDir(path: string, profile?: AnyProfile): Promise<SmbEntry[]> {
   return withDebugLog('listDir', path, profile, async () => {
-    if (isLocal(profile)) return local.localListDir(path, profile as AnyLocalProfile);
+    if (isLocal(profile)) return local.localListDir(path, profile);
     await preflight(profile);
-    return smbImpl.smbListDir(path, profile as AnySmbProfile | undefined);
+    return smbImpl.smbListDir(path, profile);
   }, entries => `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`);
 }
 
 export async function smbGetFile(path: string, maxBytes?: number, profile?: AnyProfile): Promise<Buffer> {
   return withDebugLog('getFile', path, profile, async () => {
-    if (isLocal(profile)) return local.localGetFile(path, maxBytes, profile as AnyLocalProfile);
+    if (isLocal(profile)) return local.localGetFile(path, maxBytes, profile);
     await preflight(profile);
-    return smbImpl.smbGetFile(path, maxBytes, profile as AnySmbProfile | undefined);
+    return smbImpl.smbGetFile(path, maxBytes, profile);
   }, buf => `${buf.length} bytes`);
+}
+
+/** Local (USB) transport only: copy a file straight from the mounted source
+ *  to `destPath` without staging it in memory. Callers must check
+ *  connectionType === 'local' themselves — network transports have no local
+ *  source path to copy from and must use smbGetFile instead. */
+export async function smbCopyFileTo(path: string, destPath: string, profile?: AnyProfile): Promise<void> {
+  if (!isLocal(profile)) {
+    throw new Error('smbCopyFileTo is only supported for local (USB) transports.');
+  }
+  return withDebugLog('copyFileTo', path, profile, () => local.localCopyFileTo(path, destPath, profile));
 }
 
 export async function smbPutFile(path: string, data: Buffer, profile?: AnyProfile): Promise<void> {
   return withDebugLog('putFile', path, profile, async () => {
-    if (isLocal(profile)) return local.localPutFile(path, data, profile as AnyLocalProfile);
+    if (isLocal(profile)) return local.localPutFile(path, data, profile);
     await preflight(profile);
-    return smbImpl.smbPutFile(path, data, profile as AnySmbProfile | undefined);
+    return smbImpl.smbPutFile(path, data, profile);
   }, () => `${data.length} bytes`);
 }
 
 export async function smbDelete(path: string, profile?: AnyProfile): Promise<void> {
   return withDebugLog('delete', path, profile, async () => {
-    if (isLocal(profile)) return local.localDelete(path, profile as AnyLocalProfile);
+    if (isLocal(profile)) return local.localDelete(path, profile);
     await preflight(profile);
-    return smbImpl.smbDelete(path, profile as AnySmbProfile | undefined);
+    return smbImpl.smbDelete(path, profile);
   });
 }

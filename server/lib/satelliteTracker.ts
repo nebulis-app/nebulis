@@ -23,6 +23,37 @@ export interface SatelliteCandidate {
   track: Array<{ ra: number; dec: number; time: string }>;
 }
 
+// Every reason evaluateSatellite() can reject (or near-miss-flag) a record.
+// A stringly-typed `reason?: string` can't be exhaustiveness-checked, which is
+// how 'propagation' silently fell through the switch in filterVisibleSatellites
+// without incrementing its counter. Keep this union and the switch in sync.
+type EvalReason = 'horizon' | 'distance' | 'period' | 'fov' | 'angle' | 'shadow' | 'slow' | 'propagation';
+
+// candidate === null always carries a reason; a 'fov' near-miss carries both a
+// candidate and its reason; a real match carries only a candidate.
+type EvaluationResult =
+  | { candidate: null; reason: EvalReason }
+  | { candidate: SatelliteCandidate; reason: 'fov' }
+  | { candidate: SatelliteCandidate; reason?: undefined };
+
+/**
+ * Normalizes a FITS DATE-OBS-style timestamp to a UTC Date.
+ *
+ * DATE-OBS is always UTC, but firmware writes it inconsistently: some with a
+ * trailing 'Z', some without, some with a numeric offset like '+02:00', and
+ * some with a space separator instead of 'T'.
+ *
+ * IMPORTANT: new Date("2026-06-03T02:18:04") WITHOUT a timezone suffix is
+ * parsed as LOCAL time by V8/Node.js, not UTC. A server running in CDT
+ * (UTC-5) would shift the search window 5 hours forward, finding nothing.
+ * Always append 'Z' unless an explicit timezone offset is already present.
+ */
+export function normalizeObservationTimestamp(raw: string): Date {
+  const isoish = raw.includes('T') ? raw : raw.replace(' ', 'T');
+  const hasTz = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(isoish);
+  return new Date(hasTz ? isoish : isoish + 'Z');
+}
+
 class SatelliteTracker {
   /**
    * Main entry point: identify which satellite likely caused a trail
@@ -57,18 +88,7 @@ class SatelliteTracker {
   filterVisibleSatellites(records: TLERecord[], params: ObservationParams): { candidates: SatelliteCandidate[]; nearMisses: SatelliteCandidate[] } {
     const candidates: SatelliteCandidate[] = [];
     const nearMisses: SatelliteCandidate[] = [];
-    // DATE-OBS in FITS is always UTC. Some firmware writes the value with a
-    // trailing 'Z', some without, some with a numeric offset like '+02:00',
-    // and some with a space separator instead of 'T'.
-    //
-    // IMPORTANT: new Date("2026-06-03T02:18:04") WITHOUT a timezone suffix is
-    // parsed as LOCAL time by V8/Node.js, not UTC. A server running in CDT
-    // (UTC-5) would shift the search window 5 hours forward, finding nothing.
-    // Always append 'Z' unless an explicit timezone offset is already present.
-    const raw = params.timestamp;
-    const isoish = raw.includes('T') ? raw : raw.replace(' ', 'T');
-    const hasTz = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(isoish);
-    const observationDate = new Date(hasTz ? isoish : isoish + 'Z');
+    const observationDate = normalizeObservationTimestamp(params.timestamp);
     if (isNaN(observationDate.getTime())) {
       // Give up; downstream code will see no results rather than NaN-time math
       return { candidates: [], nearMisses: [] };
@@ -117,6 +137,11 @@ class SatelliteTracker {
             case 'angle': angleFiltered++; break;
             case 'shadow': inShadow++; break;
             case 'slow': tooSlow++; break;
+            case 'propagation': propagationErrors++; break;
+            default: {
+              const _exhaustive: never = result;
+              throw new Error(`Unhandled satellite evaluation reason: ${JSON.stringify(_exhaustive)}`);
+            }
           }
         }
       } catch {
@@ -136,7 +161,7 @@ class SatelliteTracker {
     preFilterRadius: number,
     timeBufferSec: number,
     totalDuration: number,
-  ): { candidate: SatelliteCandidate | null; reason?: string } {
+  ): EvaluationResult {
     // (a) Parse TLE
     const satrec = satellite.twoline2satrec(record.line1, record.line2);
 

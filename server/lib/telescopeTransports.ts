@@ -10,7 +10,15 @@ import { statSync } from 'fs';
 import db from './db.js';
 import { encrypt, decrypt } from './crypto/secretBox.js';
 
-export type TransportKind = 'smb' | 'local';
+// Single source of truth for the SMB/local transport union — every consumer
+// (routes' z.enum validation, the OpenAPI schema, deviceIdentity, telescopes.ts's
+// TelescopeProfile.connectionType) derives from this instead of hand-copying
+// the literal union, so a third transport kind only needs to be added here.
+export const TRANSPORT_KINDS = ['smb', 'local'] as const;
+export type TransportKind = (typeof TRANSPORT_KINDS)[number];
+export function isTransportKind(value: string): value is TransportKind {
+  return (TRANSPORT_KINDS as readonly string[]).includes(value);
+}
 
 export interface TelescopeTransport {
   id: string;
@@ -72,7 +80,7 @@ const stmts = {
 };
 
 function asKind(value: string | undefined | null): TransportKind {
-  return value === 'local' ? 'local' : 'smb';
+  return value != null && isTransportKind(value) ? value : 'smb';
 }
 
 function defaultPriority(kind: TransportKind): number {

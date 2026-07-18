@@ -13,6 +13,9 @@ interface FitsHeaderData {
 
 export interface ImportStatus {
   running: boolean;
+  /** Unique id for the active run. Pass to cancelImport(runId) to cancel
+   *  exactly this run instead of whatever import happens to be active. */
+  runId: string | null;
   currentObject: string | null;
   /** Telescope driving the current import. Null for folder imports and
    *  drag-and-drop uploads — those have no telescope context. */
@@ -39,7 +42,7 @@ export interface ImportStatus {
 }
 
 export const getLibraryObjects = () => fetchJSON<AstroObject[]>('/library/objects');
-interface LibraryObjectFilter {
+export interface LibraryObjectFilter {
   id: string;
   label: string;
   matchTypes: string[];
@@ -87,7 +90,14 @@ export function formatTransportSuffix(
   if (label) parts.push(`via ${label}`);
   return parts.length > 0 ? ` ${parts.join(' ')}` : '';
 }
-export const cancelImport = () => fetchJSON<{ cancelled: boolean }>('/library/import/cancel', { method: 'POST' });
+/** Cancel the active import. Pass `runId` (from a prior getImportStatus()
+ *  call) to cancel only if that specific run is still active — a caller
+ *  that doesn't own the currently-running import must not kill it. Omit to
+ *  cancel whatever is running (the main library import cancel button). */
+export const cancelImport = (runId?: string) => fetchJSON<{ cancelled: boolean }>('/library/import/cancel', {
+  method: 'POST',
+  body: JSON.stringify(runId ? { runId } : {}),
+});
 
 export interface ImportHistoryEntry {
   id: number;
@@ -227,10 +237,20 @@ interface ImportScannedObject {
   catalogMatch: ImportCatalogMatch | null;
 }
 
+/** One reason files under the scan root will not be imported, and how many.
+ *  `label` is server-authored and reads as "<count> <label>". */
+export interface ImportScanSkip {
+  reason: string;
+  label: string;
+  count: number;
+}
+
 export interface ImportScanResult {
   rootPath: string;
   objects: ImportScannedObject[];
   totals: { objects: number; files: number; sessions: number; unsorted: number; bytes: number };
+  /** Files found but not importable, grouped by why, largest group first. */
+  skipped: ImportScanSkip[];
   truncated: boolean;
 }
 
@@ -318,17 +338,45 @@ function parseProcessedImage(value: unknown): ProcessedImage {
   };
 }
 
+/** Fire-and-forget breadcrumb into the server's debug log (no-op there unless
+ *  debug logging is active). Used to record the browser side of a folder upload
+ *  so a client-side stall is visible in the same log the user sends us. Never
+ *  throws and never blocks the upload. `keepalive` lets a final breadcrumb flush
+ *  even if the tab is navigating away. */
+export function reportImportDebug(message: string): void {
+  try {
+    void fetch(`${BASE}/library/import/debug-event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ message }),
+      keepalive: true,
+    }).catch(() => { /* best-effort */ });
+  } catch { /* best-effort */ }
+}
+
 /** Upload a folder's files to a server temp dir, returning the temp path for
  *  use with /import/scan and /import/commit. relativePaths should have the
  *  top-level folder name already stripped (client responsibility).
  *
  *  Large directories are split into 500 MB batches to avoid socket timeouts on
  *  single massive requests. Each batch after the first reuses the same server
- *  temp dir via the returned tmpId. */
+ *  temp dir via the returned tmpId.
+ *
+ *  When `debug` is true, per-batch breadcrumbs are posted to the server debug
+ *  log so a browser-side stall (the upload spinning forever) is diagnosable.
+ *
+ *  `signal`, if given, is checked before starting each batch and wired to
+ *  abort the in-flight XHR — cancellation is cooperative between batches plus
+ *  immediate mid-batch, not preemptive. Without this, a caller that dismisses
+ *  the upload UI mid-upload has no way to actually stop the batch loop: it
+ *  keeps POSTing into the void, and its eventual resolution can still fire
+ *  `onProgress`/resolve into a caller that thinks it moved on. */
 export async function uploadFolderTemp(
   files: File[],
   relativePaths: string[],
   onProgress?: (sent: number, total: number) => void,
+  debug = false,
+  signal?: AbortSignal,
 ): Promise<{ tmpPath: string; fileCount: number }> {
   // Split into batches: max 500 MB or 100 files per request.
   const BATCH_BYTES = 500 * 1024 * 1024;
@@ -355,9 +403,29 @@ export async function uploadFolderTemp(
   let tmpId: string | null = null;
   let totalFileCount = 0;
 
-  for (const batch of batches) {
+  if (debug) {
+    const mb = (b: number) => (b / 1024 / 1024).toFixed(1);
+    reportImportDebug(
+      `[browser] upload starting: ${files.length} files, ${mb(totalBytes)} MB, ` +
+      `${batches.length} batches. UA: ${navigator.userAgent}`,
+    );
+  }
+
+  for (let bi = 0; bi < batches.length; bi++) {
+    if (signal?.aborted) {
+      throw new DOMException('Upload cancelled', 'AbortError');
+    }
+
+    const batch = batches[bi];
     const batchBytes = batch.files.reduce((sum, f) => sum + f.size, 0);
     let batchSent = 0;
+    const batchStartedAt = Date.now();
+    if (debug) {
+      reportImportDebug(
+        `[browser] batch ${bi + 1}/${batches.length} starting: ` +
+        `${batch.files.length} files, ${(batchBytes / 1024 / 1024).toFixed(1)} MB`,
+      );
+    }
 
     const result = await new Promise<{ tmpPath: string; tmpId: string; fileCount: number }>((resolve, reject) => {
       const formData = new FormData();
@@ -402,14 +470,43 @@ export async function uploadFolderTemp(
         }
       };
       xhr.onerror = () => reject(new Error('Network error'));
+      xhr.onabort = () => reject(new DOMException('Upload cancelled', 'AbortError'));
+      signal?.addEventListener('abort', () => xhr.abort(), { once: true });
+      // Temporary diagnostic for a live investigation into uploads landing
+      // server-side as Content-Length: 0. Sent as a header (not gated behind
+      // the debug-logging toggle, and delivered even if the body itself ends
+      // up empty/truncated) so we can tell whether the picked File objects
+      // still report their real size right at send() time, or have already
+      // gone stale between picking and uploading.
+      xhr.setRequestHeader('X-Diag-File-Sizes', batch.files.map(f => f.size).join(','));
       xhr.send(formData);
+    }).catch((err: unknown) => {
+      // A true stall fires neither onload nor onerror, so no breadcrumb lands
+      // here and the last "batch N starting" line marks where it hung. This
+      // path covers explicit failures (network error, non-2xx, bad response)
+      // as well as a deliberate cancellation (AbortError) — skip the "FAILED"
+      // breadcrumb for the latter, it isn't a failure.
+      if (debug && !(err instanceof DOMException && err.name === 'AbortError')) {
+        reportImportDebug(
+          `[browser] batch ${bi + 1}/${batches.length} FAILED after ` +
+          `${Date.now() - batchStartedAt}ms: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      throw err;
     });
 
     tmpPath = result.tmpPath;
     tmpId = result.tmpId;
     totalFileCount += result.fileCount;
+    if (debug) {
+      reportImportDebug(
+        `[browser] batch ${bi + 1}/${batches.length} complete in ` +
+        `${Date.now() - batchStartedAt}ms (server accepted ${result.fileCount} files)`,
+      );
+    }
   }
 
+  if (debug) reportImportDebug(`[browser] upload finished: ${totalFileCount} files accepted across ${batches.length} batches`);
   return { tmpPath, fileCount: totalFileCount };
 }
 

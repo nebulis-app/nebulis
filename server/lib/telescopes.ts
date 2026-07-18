@@ -13,12 +13,11 @@ import {
   getTransportsForProfile,
   selectActiveTransport,
   updateTransport,
+  isTransportKind,
+  type TransportKind,
 } from './telescopeTransports.js';
 
-export type { TelescopeKind };
-
-/** Transport: SMB over LAN (SeeStar) or local filesystem (Dwarf USB mount). */
-export type ConnectionType = 'smb' | 'local';
+export type { TelescopeKind, TransportKind };
 
 export interface TelescopeProfile {
   id: string;
@@ -36,7 +35,7 @@ export interface TelescopeProfile {
   archivedAt: number | null;
   /** SMB = LAN share (SeeStar). Local = direct filesystem path (Dwarf USB).
    *  Defaults to 'smb' so existing rows keep working without migration. */
-  connectionType: ConnectionType;
+  connectionType: TransportKind;
   /** Absolute filesystem path to the device's storage root when
    *  connectionType === 'local'. Empty string for SMB profiles. */
   localPath: string;
@@ -166,6 +165,7 @@ const appSettingsStmts = {
     galleryImageSource = ?,
     slideshowRotateCCW = ?,
     preferredCatalog = ?,
+    groupObservingNights = ?,
     temperatureUnit = ?,
     windSpeedUnit = ?,
     visibleSkyMap = ?,
@@ -185,7 +185,7 @@ const appSettingsStmts = {
 };
 
 function rowToProfile(row: TelescopeProfileRow): TelescopeProfile {
-  const ct: ConnectionType = row.connectionType === 'local' ? 'local' : 'smb';
+  const ct: TransportKind = isTransportKind(row.connectionType) ? row.connectionType : 'smb';
   // decrypt() throws on bad ciphertext (e.g. DB restored from a backup with a
   // different DATA_KEY). A single bad row used to take down the whole telescope
   // list with a 500; downgrade to an empty password so the user can fix it
@@ -261,6 +261,7 @@ interface AppSettingsRow {
   galleryImageSource: string;
   slideshowRotateCCW: number;
   preferredCatalog: string; // 'default' | 'caldwell'
+  groupObservingNights: number;
   temperatureUnit: string;
   windSpeedUnit: string;
   visibleSkyMap: string; // JSON array of 288 booleans (36 azimuth slices × 8 elevation bands)
@@ -276,15 +277,21 @@ interface AppSettingsRow {
   nightlyForecastLastRun: number | null;
 }
 
+const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isBoolean = (v: unknown): v is boolean => typeof v === 'boolean';
+
 function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
-  const rawHp = JSON.parse(row.horizonProfile || '[]') as number[];
-  const horizonProfile = Array.isArray(rawHp) && rawHp.length === 36 ? rawHp : Array(36).fill(0);
+  const rawHp: unknown = JSON.parse(row.horizonProfile || '[]');
+  const horizonProfile =
+    Array.isArray(rawHp) && rawHp.length === 36 && rawHp.every(isFiniteNumber)
+      ? rawHp
+      : Array(36).fill(0);
   // visibleSkyMap: 288-element boolean array, or empty (= no map set, sky
   // treated as fully visible by the visibility check on the client).
   const rawMap: unknown = JSON.parse(row.visibleSkyMap || '[]');
   const visibleSkyMap =
-    Array.isArray(rawMap) && rawMap.length === SKY_MAP_CELLS && rawMap.every(v => typeof v === 'boolean')
-      ? (rawMap as boolean[])
+    Array.isArray(rawMap) && rawMap.length === SKY_MAP_CELLS && rawMap.every(isBoolean)
+      ? rawMap
       : [];
   return {
     apiKey: row.apiKey,
@@ -312,6 +319,8 @@ function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
     galleryImageSource: row.galleryImageSource || 'sky-survey',
     slideshowRotateCCW: Boolean(row.slideshowRotateCCW),
     preferredCatalog: row.preferredCatalog === 'caldwell' ? 'caldwell' : 'default',
+    // See server/lib/telescopeFiles.ts for what this gates.
+    groupObservingNights: Boolean(row.groupObservingNights ?? 1),
     temperatureUnit: row.temperatureUnit || 'fahrenheit',
     windSpeedUnit: row.windSpeedUnit || 'mph',
     visibleSkyMap,
@@ -358,7 +367,8 @@ function saveSettingsRow(data: Record<string, unknown>): void {
     str(data.galleryImageSource, 'sky-survey'),
     boolToInt(data.slideshowRotateCCW, 0),
     data.preferredCatalog === 'caldwell' ? 'caldwell' : 'default',
-    str(data.temperatureUnit, 'celsius'),
+    boolToInt(data.groupObservingNights, 1),
+    str(data.temperatureUnit, 'fahrenheit'),
     str(data.windSpeedUnit, 'mph'),
     JSON.stringify(
       Array.isArray(data.visibleSkyMap) && data.visibleSkyMap.length === SKY_MAP_CELLS
@@ -443,7 +453,7 @@ export function createProfile(data: Partial<TelescopeProfile>): TelescopeProfile
   const kind = data.kind ? asKind(data.kind) : kindFromModel(model);
   // Default Dwarf kinds to local-fs connection (Dwarf devices expose USB mass
   // storage, not SMB); everything else stays on SMB.
-  const defaultConnectionType: ConnectionType =
+  const defaultConnectionType: TransportKind =
     kind === 'dwarf-2' || kind === 'dwarf-3' || kind === 'dwarf-mini' ? 'local' : 'smb';
   const profile: TelescopeProfile = {
     id: randomUUID(),

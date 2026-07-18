@@ -1,4 +1,4 @@
-# Seestar Hub — User Guide
+# Seestar Hub: User Guide
 
 ---
 
@@ -31,7 +31,7 @@
 
 ### System Requirements
 
-- A modern web browser (Chrome, Firefox, Safari, or Edge — current versions recommended)
+- A modern web browser (Chrome, Firefox, Safari, or Edge; current versions recommended)
 - A ZWO Seestar S30 or S50 telescope connected to your local network
 - Seestar Hub running on a computer or server on the same local network as your telescope
 - Network file sharing (SMB) enabled on the Seestar device (enabled by default)
@@ -72,7 +72,7 @@ When no user account exists yet, Seestar Hub runs in open mode and lets you get 
 
 **What it does:** Displays all of your imaged deep-sky objects as a visual card grid. Each card shows the object's best image, name, type, constellation, and how many sessions you have for it.
 
-**When to use it:** As your home screen — to get a quick overview of your entire library and navigate to any object.
+**When to use it:** As your home screen, to get a quick overview of your entire library and navigate to any object.
 
 **Step-by-step:**
 
@@ -86,7 +86,7 @@ When no user account exists yet, Seestar Hub runs in open mode and lets you get 
 
 ### Object Detail
 
-**What it does:** Shows everything about a single imaged object — all sessions, files, catalog information, quality scores, and your personal notes.
+**What it does:** Shows everything about a single imaged object: all sessions, files, catalog information, quality scores, and your personal notes.
 
 **When to use it:** After selecting an object from the gallery, when reviewing a specific target in depth.
 
@@ -115,7 +115,7 @@ When no user account exists yet, Seestar Hub runs in open mode and lets you get 
 3. Click any image to open the **FITS viewer**, where you can adjust stretch and contrast to inspect the raw data.
 4. The **Quality** panel shows per-file scores (Excellent, Good, Fair, Poor, Bad) based on HFR, FWHM, and star count.
 5. The **Weather** panel shows cloud cover, seeing, and transparency logged for that night.
-6. Click **Add Notes** to write a session log — record the Bortle class, seeing, transparency, moon phase, equipment used, and freeform comments.
+6. Click **Add Notes** to write a session log: record the Bortle class, seeing, transparency, moon phase, equipment used, and freeform comments.
 7. Use the **Upload Processed Image** button to attach your own processed version (from PixInsight, Photoshop, etc.) to this session.
 8. Use the **Download** button to download the session's files as a ZIP archive.
 9. Use the **Delete** icon on individual files to remove unwanted sub-frames.
@@ -211,7 +211,7 @@ When no user account exists yet, Seestar Hub runs in open mode and lets you get 
 
 1. Open an object's detail page.
 2. Click the **Quality** tab.
-3. Review the **grade distribution chart** — the proportion of Excellent, Good, Fair, Poor, and Bad sub-frames.
+3. Review the **grade distribution chart**: the proportion of Excellent, Good, Fair, Poor, and Bad sub-frames.
 4. Each session is listed with its average HFR, FWHM, star count, and overall grade.
 5. Click a session to drill down to per-file quality scores in Observation Detail.
 
@@ -223,7 +223,7 @@ When no user account exists yet, Seestar Hub runs in open mode and lets you get 
 | Good      | 80–89       | Above-average quality, keep            |
 | Fair      | 70–79       | Acceptable, use if needed              |
 | Poor      | 50–69       | Noticeably degraded, consider removing |
-| Bad       | 0–49        | Reject — likely cloud, wind, or trail  |
+| Bad       | 0–49        | Reject: likely cloud, wind, or trail  |
 
 ---
 
@@ -281,7 +281,7 @@ When no user account exists yet, Seestar Hub runs in open mode and lets you get 
 - **Latitude and Longitude:** Your observing site coordinates (required for the Planner and Forecast).
 - **Timezone:** Your local timezone.
 - **Minimum Altitude:** Objects below this elevation (in degrees) are excluded from planner results. Increase this if you have obstructions on your horizon.
-- **Custom Horizon Profile:** Optional — define elevation limits per compass direction to account for trees, buildings, or terrain.
+- **Custom Horizon Profile:** Optional. Define elevation limits per compass direction to account for trees, buildings, or terrain.
 
 **Catalog & Display**
 - **Catalog Source:** Use the built-in catalog (Messier, NGC, IC, and Sharpless objects) or point to a custom catalog URL.
@@ -466,9 +466,9 @@ The main navigation appears as a sidebar or top bar (depending on your screen si
 
 Seestar Hub supports three display themes, selectable in Settings:
 
-- **Light** — standard bright interface
-- **Dark** — dark background for general nighttime use
-- **Night** — deep red-tinted interface to preserve dark adaptation at the telescope
+- **Light**: standard bright interface
+- **Dark**: dark background for general nighttime use
+- **Night**: deep red-tinted interface to preserve dark adaptation at the telescope
 
 ---
 
@@ -476,7 +476,7 @@ Seestar Hub supports three display themes, selectable in Settings:
 
 - **Set your observer location first.** The Planner and Forecast are both location-dependent. Without accurate coordinates and timezone, altitude calculations and forecasts will be incorrect.
 
-- **Use the Planner before every session.** The ranking algorithm accounts for moon phase, visibility window, and transit time — not just whether an object is up. Objects near their peak altitude produce sharper images.
+- **Use the Planner before every session.** The ranking algorithm accounts for moon phase, visibility window, and transit time, not just whether an object is up. Objects near their peak altitude produce sharper images.
 
 - **Check the Forecast for seeing, not just clouds.** A perfectly clear sky with poor seeing (1–2 out of 5) will produce bloated, unsharp stars. Prioritize nights with seeing 3 or better.
 
@@ -510,7 +510,7 @@ Seestar Hub supports three display themes, selectable in Settings:
 2. Try pinging the hostname from your computer (open a terminal and type `ping seestar.local`).
 3. If the hostname does not resolve, try the IP address instead. Check your router's device list to find the Seestar's current IP.
 4. Go to **Settings → Telescope Connection** and update the address, then try importing again.
-5. Check the **Backup** page — the Telescope Status indicator will show whether the device is reachable.
+5. Check the **Backup** page. The Telescope Status indicator will show whether the device is reachable.
 
 ---
 
@@ -537,7 +537,7 @@ Seestar Hub supports three display themes, selectable in Settings:
 **Steps to resolve:**
 1. Go to **Settings → Observer Location** and confirm latitude, longitude, and timezone are filled in.
 2. Verify the server has an active internet connection.
-3. Reload the Forecast page. If the issue persists, the external forecast services (7Timer, Open-Meteo) may be temporarily unavailable — try again in a few minutes.
+3. Reload the Forecast page. If the issue persists, the external forecast services (7Timer, Open-Meteo) may be temporarily unavailable. Try again in a few minutes.
 
 ---
 
@@ -562,7 +562,7 @@ FITS raw image data often has a very narrow range of values that renders dark by
 **Steps to resolve:**
 1. In the FITS Viewer, use the **Stretch** slider to apply a histogram stretch (try Log or Auto-stretch).
 2. Adjust the **Contrast** slider to bring out detail.
-3. This is normal behavior — raw FITS data requires stretching to display usefully.
+3. This is normal behavior: raw FITS data requires stretching to display usefully.
 
 ---
 
@@ -627,18 +627,18 @@ A: Yes. Navigate to **Observations → New Observation** to create a session man
 | Term             | Definition                                                                                          |
 |------------------|-----------------------------------------------------------------------------------------------------|
 | **Bortle Scale** | A numeric scale (1–9) measuring the darkness of the night sky. Lower is darker.                     |
-| **DSS2**         | Digitized Sky Survey 2 — a catalog of sky survey images used as reference images in Seestar Hub.    |
-| **FITS**         | Flexible Image Transport System — the standard file format for scientific astronomical image data.  |
-| **FWHM**         | Full Width at Half Maximum — a measure of star sharpness. Lower values indicate sharper stars.      |
-| **HFR**          | Half-Flux Radius — a measure of star size in image data. Lower values indicate tighter, sharper stars. |
+| **DSS2**         | Digitized Sky Survey 2: a catalog of sky survey images used as reference images in Seestar Hub.    |
+| **FITS**         | Flexible Image Transport System: the standard file format for scientific astronomical image data.  |
+| **FWHM**         | Full Width at Half Maximum: a measure of star sharpness. Lower values indicate sharper stars.      |
+| **HFR**          | Half-Flux Radius: a measure of star size in image data. Lower values indicate tighter, sharper stars. |
 | **Integration time** | The total accumulated exposure time from all sub-frames combined in a session.                  |
 | **Magnitude**    | A measure of an astronomical object's brightness. Lower numbers are brighter.                       |
-| **mDNS**         | Multicast DNS — a protocol that allows devices to be found by name (e.g., `seestar.local`) on a local network without manual IP entry. |
+| **mDNS**         | Multicast DNS: a protocol that allows devices to be found by name (e.g., `seestar.local`) on a local network without manual IP entry. |
 | **Moon illumination** | The percentage of the moon's visible face that is lit. High illumination increases sky glow and reduces contrast. |
-| **NGC**          | New General Catalogue — a major catalog of deep-sky objects (galaxies, nebulae, clusters).          |
-| **RA / Dec**     | Right Ascension and Declination — the celestial coordinate system used to locate objects in the sky. |
+| **NGC**          | New General Catalogue: a major catalog of deep-sky objects (galaxies, nebulae, clusters).          |
+| **RA / Dec**     | Right Ascension and Declination: the celestial coordinate system used to locate objects in the sky. |
 | **Seeing**       | A measure of atmospheric steadiness. Poor seeing causes stars to twinkle and appear blurry.         |
-| **SMB**          | Server Message Block — a network file-sharing protocol used by Seestar to expose its storage.       |
+| **SMB**          | Server Message Block: a network file-sharing protocol used by Seestar to expose its storage.       |
 | **Sub-frame**    | A single, unprocessed exposure captured by the telescope. Multiple sub-frames are later combined (stacked). |
 | **Transparency** | A measure of atmospheric clarity (absence of haze, dust, and humidity). High transparency improves contrast. |
 | **Transit**      | The moment when an object crosses the meridian and reaches its highest point in the sky.            |

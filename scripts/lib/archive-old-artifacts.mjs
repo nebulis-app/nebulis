@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 /**
  * Move artifacts in `dir` that don't belong to `currentVersion` into
@@ -24,4 +25,18 @@ export function archiveOldArtifacts(dir, ext, currentVersion) {
     fs.renameSync(src, dst);
     console.log(`   archived stale artifact: ${entry}`);
   }
+}
+
+// CLI: node scripts/lib/archive-old-artifacts.mjs <dir> <ext> <version>
+// build-dmg.sh / build-dmg-legacy.sh shell out to this file directly rather
+// than importing it, so it needs its own entry point — without this guard,
+// running the file just defines archiveOldArtifacts() and exits, silently
+// archiving nothing (this regressed for months; see git history).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const [dir, ext, version] = process.argv.slice(2);
+  if (!dir || !ext || !version) {
+    console.error('Usage: archive-old-artifacts.mjs <dir> <ext> <version>');
+    process.exit(1);
+  }
+  archiveOldArtifacts(dir, ext, version);
 }

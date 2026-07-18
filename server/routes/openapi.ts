@@ -1,4 +1,8 @@
 import { Router, Request, Response } from 'express';
+import { TELESCOPE_KINDS } from '../lib/types/telescopeKind.js';
+import { TRANSPORT_KINDS } from '../lib/telescopeTransports.js';
+import { UPDATE_CHANNELS } from '../lib/appUpdate/manifest.js';
+import { SKY_MAP_AZ_SLICES, SKY_MAP_BANDS, SKY_MAP_CELLS } from '../lib/skyMapConfig.js';
 
 const router = Router();
 
@@ -273,9 +277,28 @@ const spec = {
           shareName: strEx('EMMC Images'),
           username:  strEx('guest'),
           password:  { type: 'string', description: 'Masked in responses' },
-          kind:      { type: 'string', enum: ['seestar-s50', 'seestar-s30', 'dwarf-3', 'dwarf-2', 'dwarf-mini', 'other'] },
+          createdAt: isoDate,
+          kind:      { type: 'string', enum: [...TELESCOPE_KINDS] },
           color:     strEx('#3b82f6'),
           autoImportEnabled: { type: 'boolean', description: 'Whether the auto-import scheduler polls this telescope' },
+          autoImportInterval: { type: 'integer', description: 'Minutes between auto-imports for this telescope' },
+          archivedAt: nullable({ type: 'integer', description: 'Unix ms when the profile was archived, or null if active' }),
+          connectionType: {
+            type: 'string',
+            enum: [...TRANSPORT_KINDS],
+            description: '"smb" = LAN share (SeeStar); "local" = direct filesystem path (Dwarf USB mount)',
+          },
+          localPath: { type: 'string', description: 'Absolute filesystem path when connectionType is "local". Empty for SMB profiles.' },
+          deviceId: nullable({ type: 'string', description: 'Physical device UUID read from the device once connected; null until then' }),
+          importJpg:        { type: 'boolean', description: 'Per-telescope file-type import filter' },
+          importFits:       { type: 'boolean', description: 'Per-telescope file-type import filter' },
+          importThumbnails: { type: 'boolean', description: 'Per-telescope file-type import filter' },
+          importSubFrames:  { type: 'boolean', description: 'Per-telescope file-type import filter' },
+          importVideos:     { type: 'boolean', description: 'Per-telescope file-type import filter' },
+          trackDeviceIdentity: {
+            type: 'boolean',
+            description: 'When true, the import pipeline reads/writes a device-identity marker so the same physical telescope reached over SMB and USB resolves to one logical device',
+          },
         },
       },
 
@@ -290,27 +313,35 @@ const spec = {
         },
       },
 
-      // Settings
+      // Settings — global app settings. Per-telescope connection fields
+      // (hostname, shareName, username, password, model) live on
+      // TelescopeProfile, not here; see /telescopes.
       Settings: {
         type: 'object',
         properties: {
-          hostname:        strEx('192.168.1.100'),
-          shareName:       strEx('EMMC Images'),
-          username:        strEx('guest'),
-          password:        { type: 'string', description: 'Masked in responses — send unchanged mask to keep current value' },
-          model:           strEx('SeeStar S50'),
+          apiKey:          { type: 'string', description: 'Masked (first 8 chars + "..."). Send the unchanged mask on PUT to keep the current value.' },
           hasApiKey:       { type: 'boolean' },
-          hasPassword:     { type: 'boolean' },
           latitude:        nullable({ type: 'number', example: 40.7128, description: 'Observer latitude, decimal degrees north' }),
           longitude:       nullable({ type: 'number', example: -74.006, description: 'Observer longitude, decimal degrees east' }),
+          locationName:    strEx('New York, NY'),
           timezone:        strEx('America/New_York'),
           minAlt:          { type: 'integer', default: 20, description: 'Minimum altitude in degrees for planner visibility filter (0–45)' },
           horizonProfile:  {
             type: 'array',
             items: { type: 'integer', minimum: 0, maximum: 85 },
-            minItems: 36,
-            maxItems: 36,
+            minItems: SKY_MAP_AZ_SLICES,
+            maxItems: SKY_MAP_AZ_SLICES,
             description: '36 blocked-altitude values (degrees), one per 10° azimuth bucket starting at 0° (North) clockwise',
+          },
+          visibleSkyMap: {
+            type: 'array',
+            items: { type: 'boolean' },
+            description: `${SKY_MAP_CELLS} values (${SKY_MAP_AZ_SLICES} azimuth slices x ${SKY_MAP_BANDS} elevation bands), or [] if not set (whole sky treated as visible)`,
+          },
+          skyMapBands: {
+            type: 'integer',
+            example: SKY_MAP_BANDS,
+            description: 'Elevation-band count the server supports for visibleSkyMap. Native clients gate the finer-grid sky map editor on this — a client built for fewer bands should keep using its own resolution rather than assume this value.',
           },
           syncEnabled:     { type: 'boolean' },
           syncJpg:         { type: 'boolean' },
@@ -319,6 +350,30 @@ const spec = {
           syncSubFrames:   { type: 'boolean' },
           syncVideos:      { type: 'boolean' },
           autoImportInterval: { type: 'integer', description: 'Minutes between auto-imports' },
+          importJpg:        { type: 'boolean', description: 'Legacy global default; superseded by TelescopeProfile.importJpg for newer installs' },
+          importFits:       { type: 'boolean', description: 'Legacy global default; superseded by TelescopeProfile.importFits for newer installs' },
+          importThumbnails: { type: 'boolean', description: 'Legacy global default; superseded by TelescopeProfile.importThumbnails for newer installs' },
+          importSubFrames:  { type: 'boolean', description: 'Legacy global default; superseded by TelescopeProfile.importSubFrames for newer installs' },
+          importVideos:     { type: 'boolean', description: 'Legacy global default; superseded by TelescopeProfile.importVideos for newer installs' },
+          onboardingCompleted: { type: 'boolean' },
+          prefetchCatalogAssets: { type: 'boolean', description: 'Toggles the bulk background prefetch job that warms catalog imagery/descriptions in the cache' },
+          planetariumShowInfo: { type: 'boolean' },
+          galleryImageSource: { type: 'string', enum: ['sky-survey', 'telescope'], description: 'Default image shown on library cards when no custom image is set' },
+          slideshowRotateCCW: { type: 'boolean', description: 'Rotate all images 90° CCW in slideshow / planetarium mode' },
+          preferredCatalog: { type: 'string', enum: ['default', 'caldwell'], description: 'Preferred nomenclature for new object folder names when an object has both an NGC/IC and a Caldwell designation' },
+          groupObservingNights: { type: 'boolean', description: 'Whether a session crossing local midnight groups as one observing night or splits at the calendar date' },
+          temperatureUnit: { type: 'string', enum: ['celsius', 'fahrenheit'] },
+          windSpeedUnit:   { type: 'string', enum: ['mph', 'kmh'] },
+          updateChannel:   { type: 'string', enum: [...UPDATE_CHANNELS], description: 'Desktop auto-update channel' },
+          autoUpdateEnabled: { type: 'boolean', description: 'Whether the updater checks and pre-downloads automatically' },
+          plannerPrefetchEnabled: { type: 'boolean', description: 'Nightly maintenance: pre-warm planner thumbnails for tonight’s visible objects' },
+          plannerPrefetchTime: { type: 'string', example: '03:00', description: 'HH:MM in the observer’s local timezone' },
+          plannerPrefetchLastRun: nullable({ type: 'integer', description: 'Unix ms of the last run, read-only' }),
+          nightlyCatalogPackCheckEnabled: { type: 'boolean', description: 'Nightly maintenance: check for and apply catalog pack updates' },
+          nightlyHousekeepingEnabled: { type: 'boolean', description: 'Nightly maintenance: purge junk files and stale import temp data' },
+          nightlyForecastPrefetchEnabled: { type: 'boolean', description: 'Nightly maintenance: pre-warm the weather/seeing forecast cache' },
+          nightlyHousekeepingLastRun: nullable({ type: 'integer', description: 'Unix ms of the last run, read-only' }),
+          nightlyForecastLastRun: nullable({ type: 'integer', description: 'Unix ms of the last run, read-only' }),
         },
       },
     },

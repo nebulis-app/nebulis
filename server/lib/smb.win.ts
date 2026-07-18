@@ -23,7 +23,7 @@ import type { TelescopeProfile } from './telescopes.js';
 const execFileAsync = promisify(execFile);
 
 type Settings = SmbProfile;
-type ProfileArg = Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'> | null | undefined;
+type ProfileArg = Partial<Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'>> | null | undefined;
 
 function uncRoot(settings: Settings): string {
   return `\\\\${settings.hostname}\\${settings.shareName}`;

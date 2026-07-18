@@ -51,7 +51,7 @@ router.post('/', requireAdmin, (req: Request, res: Response) => {
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
     return;
   }
-  // Reject zero-length or inverted ranges. The UI snaps in 15-minute chunks
+  // Reject zero-length or inverted ranges. The UI snaps to a 10-minute grid
   // so this only catches programmatic / accidental zero-duration drops.
   if (new Date(parsed.data.endTime).getTime() <= new Date(parsed.data.startTime).getTime()) {
     res.apiError(422, 'VALIDATION_ERROR', 'endTime must be after startTime');

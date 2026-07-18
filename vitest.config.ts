@@ -33,11 +33,25 @@ export default defineConfig({
         '**/*.d.ts',
         '**/node_modules/**',
       ],
+      // Floors are set just under actual coverage (re-check with `--coverage`
+      // and ratchet up as coverage climbs) so a real regression trips CI
+      // instead of hiding under a multi-point cushion. `server/lib/**` gets
+      // its own, higher floor: without it, routes/'s near-0% (architectural,
+      // see CLAUDE.md — routes are thin, tested via the lib/ functions they
+      // delegate to) blends into the global average and could mask a
+      // regression in lib/'s actual business logic while the blended number
+      // still clears the global floor.
       thresholds: {
-        statements: 20,
-        branches: 18,
-        functions: 22,
-        lines: 20,
+        statements: 29,
+        branches: 24,
+        functions: 33,
+        lines: 29,
+        'server/lib/**': {
+          statements: 39,
+          branches: 34,
+          functions: 43,
+          lines: 40,
+        },
       },
       reporter: ['text', 'json', 'html'],
     },

@@ -19,6 +19,23 @@ export function authHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+interface ApiEnvelope<T> { ok: boolean; data: T; meta?: unknown }
+
+function isEnvelope(v: unknown): v is ApiEnvelope<unknown> {
+  return typeof v === 'object' && v !== null && 'ok' in v && 'data' in v;
+}
+
+function errorMessage(v: unknown, fallback: string): string {
+  if (typeof v !== 'object' || v === null || !('error' in v)) return fallback;
+  const error = (v as { error: unknown }).error;
+  if (typeof error === 'string') return error;
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message: unknown }).message;
+    if (typeof message === 'string') return message;
+  }
+  return fallback;
+}
+
 export async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -29,17 +46,12 @@ export async function fetchJSON<T>(url: string, options?: RequestInit): Promise<
       clearAuthToken();
       window.dispatchEvent(new CustomEvent('nebulis:auth-cleared'));
     }
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    // Handle envelope error format
-    const message = body?.error?.message || body?.error || res.statusText;
-    throw new Error(message);
+    const body: unknown = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorMessage(body, res.statusText));
   }
-  const body = await res.json();
+  const body: unknown = await res.json();
   // Unwrap API envelope if present: { ok, data, meta }
-  if (body && typeof body === 'object' && 'ok' in body && 'data' in body) {
-    return body.data as T;
-  }
-  return body as T;
+  return (isEnvelope(body) ? body.data : body) as T;
 }
 
 export async function fetchBinary(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {

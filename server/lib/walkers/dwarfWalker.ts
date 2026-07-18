@@ -120,7 +120,7 @@ export function getDwarfWalkerConfig(): WalkerConfig {
 }
 
 /** List every distinct target across all session folders under Astronomy/. */
-export async function discoverDwarfObjects(profile: TelescopeProfile): Promise<DiscoveredObject[]> {
+export async function discoverDwarfObjects(profile: TelescopeProfile): Promise<DwarfDiscoveredObject[]> {
   debugLog('walker:dwarf', `Listing ${DWARF_BASE_PATH} for session folders`);
   const entries = await smbListDir(DWARF_BASE_PATH, profile);
   const allDirs = entries.filter(e => e.type === 'dir');
@@ -142,13 +142,13 @@ export async function discoverDwarfObjects(profile: TelescopeProfile): Promise<D
   }
   if (skipped.length > 0) debugLog('walker:dwarf', `${skipped.length} folder(s) skipped (could not extract target): ${skipped.join(', ')}`);
 
-  const result = Array.from(byTarget.entries()).map(([target, folders]) => ({
+  const result: DwarfDiscoveredObject[] = Array.from(byTarget.entries()).map(([target, folders]) => ({
     folderName: target,
     subFolderName: null,
     // Stash the real folder list in a non-standard field; the import pipeline
-    // can read it back via the cast in listDwarfObjectFiles below.
+    // reads it back via listDwarfObjectFiles below.
     _dwarfSessionFolders: folders,
-  } as DwarfDiscoveredObject));
+  }));
   debugLog('walker:dwarf', `${result.length} distinct target(s) discovered: ${result.map(o => o.folderName).join(', ') || '(none)'}`);
   return result;
 }

@@ -5,6 +5,7 @@
     "moduleResolution": "bundler",
     "esModuleInterop": true,
     "strict": true,
+    "noFallthroughCasesInSwitch": true,
     "outDir": "./dist",
     "rootDir": ".",
     "skipLibCheck": true,

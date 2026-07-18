@@ -251,6 +251,25 @@ export function GeneralSection({
           />
         </div>
 
+        {/* Session Grouping */}
+        <div className={`${getCardClass(isDark)} space-y-3`}>
+          <div>
+            <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+              Session Grouping
+            </h3>
+            <p className={`text-xs mt-0.5 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              How a session that runs past local midnight shows up on the calendar
+            </p>
+          </div>
+          <ToggleRow
+            label="Group sessions by observing night"
+            description="An 11pm-1am session counts as one night instead of splitting across two calendar dates. Turn off to go back to splitting by calendar date."
+            checked={form.groupObservingNights ?? true}
+            onChange={v => setForm(f => ({ ...f, groupObservingNights: v }))}
+            isDark={isDark}
+          />
+        </div>
+
         {/* Planetarium Mode */}
         <div className={`${getCardClass(isDark)} space-y-3`}>
           <div>

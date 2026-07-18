@@ -17,7 +17,7 @@ import { getSettingsData, updateSettingsData } from './telescopes.js';
 import { findCachedMaster, prewarmThumbnails } from './catalogPrefetch.js';
 import { prefetchSkyImage } from './skyImage.js';
 import { purgeJunkFiles, purgeStaleImportTmp } from './library/housekeeping.js';
-import { refreshForecastCache } from '../routes/forecast.js';
+import { refreshForecastCache } from './forecastCache.js';
 import { checkAndUpdatePacks } from './catalogPack/updater.js';
 import { addDaysToDateKey, localDateKey, localParts, zonedDateTimeToUtc } from './timezone.js';
 

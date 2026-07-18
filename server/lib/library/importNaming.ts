@@ -3,29 +3,46 @@
  *
  * The library has no per-file session table: getLocalSessions / getLocalFiles
  * decide which session a file belongs to by running parseFilename(name).date
- * at read time. A file whose name yields no date (or the wrong date) is either
- * dropped from every session view or grouped under the wrong night.
+ * through `sessionNightFor` (the observing-night rollover, see
+ * telescopeFiles.ts) at read time. A file whose name yields no date (or the
+ * wrong date) is either dropped from every session view or grouped under the
+ * wrong night.
  *
  * So when the import assigns a file to a session date, the on-disk name must
- * parse back to that exact date. Two cases:
+ * parse + night-roll back to that exact date. Two cases:
  *
- *   1. The original name already parses to the assigned date  →  keep it.
- *      This is the common case for SeeStar/Dwarf libraries and anything the
- *      user organized with dated filenames. No rename, no surprise.
+ *   1. The original name already parses (post-rollover) to the assigned date
+ *      → keep it. This is the common case for SeeStar/Dwarf libraries and
+ *      anything the user organized with dated filenames. No rename, no
+ *      surprise.
  *
  *   2. It doesn't (a raw "light_001.fits", a folder-dated file, an mtime
- *      guess, or a merge/split override)  →  rewrite to the simple dated form
+ *      guess, or a merge/split override) → rewrite to the simple dated form
  *      parseFilename recognizes: `<stem>_<YYYYMMDD-HHMMSS>.<ext>`. The original
  *      stem is preserved as the leading text so the file is still recognizable.
+ *
+ *      Two sub-cases, to avoid a subtle double-rollover bug: if the assigned
+ *      date is just this file's own natural observing night (no override),
+ *      embed the file's TRUE capture date + time — reading it back re-derives
+ *      the assigned date via the exact same rollover rule that computed it
+ *      here, mirroring how hardware-native SeeStar/Dwarf filenames already
+ *      round-trip. If the assigned date is an explicit override (the user
+ *      merged/split sessions to a date that isn't this file's natural night),
+ *      embed the assigned date directly, with the time clamped into the
+ *      rollover-safe zone (see clampToNightSafeTime) — otherwise an unclamped
+ *      early-morning time next to an already-resolved date would roll it back
+ *      a second time the next time the file is read, silently sliding it to
+ *      the wrong day.
  *
  * This mirrors what dwarfLocalName already does for Dwarf rolling stacks, and
  * keeps the read path untouched: an imported library stays self-describing.
  */
-import { parseFilename } from '../telescopeFiles.js';
+import { parseFilename, sessionNightFor, observingNightDate, clampToNightSafeTime } from '../telescopeFiles.js';
 
-/** True when `name` already parses (via parseFilename) to `date` (YYYY-MM-DD). */
+/** True when `name` already parses (via parseFilename + the observing-night
+ *  rollover) to `date` (YYYY-MM-DD). */
 export function parsesToDate(name: string, date: string): boolean {
-  return parseFilename(name).date === date;
+  return sessionNightFor(parseFilename(name)) === date;
 }
 
 // Strip path separators, FS-reserved punctuation, and control characters so a
@@ -82,12 +99,15 @@ function bumpSeconds(hms: string): string {
  * files imported earlier in the same run); the returned name is guaranteed not
  * to be in it, and the caller should add it once committed.
  *
- * `time` is the file's HHMMSS time-of-day when known (from FITS or filename),
- * used to keep ordering and uniqueness sensible; falls back to midday.
+ * `trueDate` is the file's own derived capture date (dateDerivation's output,
+ * before any rollover) and `time` its HHMMSS time-of-day when known. Passing
+ * `null` for either means there's no real capture time to anchor to (e.g. the
+ * unsorted bucket assigned a date by hand) — treated as an override.
  */
 export function canonicalImportName(
   originalName: string,
   finalDate: string,
+  trueDate: string | null,
   time: string | null,
   used: ReadonlySet<string>,
 ): string {
@@ -99,10 +119,22 @@ export function canonicalImportName(
 
   // Case 2: build the simple dated form parseFilename understands.
   const { stem, ext, isThumbnail } = splitName(originalName);
-  const compactDate = finalDate.replace(/-/g, '');
+
+  // Is `finalDate` just this file's own natural observing night (the default,
+  // no-override case), or did the user explicitly reassign it to some other
+  // date? See the module doc comment for why this distinction matters.
+  const naturalNight = trueDate ? observingNightDate(trueDate, time) : null;
+  const isOverride = naturalNight !== null && naturalNight !== finalDate;
+
+  // Default: embed the TRUE capture date, so re-parsing + re-rolling lands
+  // back on finalDate exactly. Override: embed finalDate directly, with the
+  // time clamped so it can never roll further on the next read.
+  const embedDate = isOverride ? finalDate : (trueDate ?? finalDate);
+  const compactDate = embedDate.replace(/-/g, '');
   const thn = isThumbnail ? '_thn' : '';
 
   let hms = time && /^\d{6}$/.test(time) ? time : '120000';
+  if (isOverride) hms = clampToNightSafeTime(hms);
   // First try the natural timestamp, then walk seconds within the day, then
   // fall back to a numeric stem suffix so we always converge on a free name.
   for (let attempt = 0; attempt < 86400; attempt++) {

@@ -5,6 +5,7 @@ import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { DATA_DIR } from './paths.js';
 import { log } from './logger.js';
+import { isErrnoException } from './errors.js';
 
 export interface TLERecord {
   name: string;
@@ -302,7 +303,7 @@ export class SatelliteCatalog {
         console.log(`[tle] Pruned ${pruned} archive(s) older than 1 year`);
       }
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if (!isErrnoException(err) || err.code !== 'ENOENT') {
         console.warn('[tle] Failed to prune archives:', err);
       }
     }

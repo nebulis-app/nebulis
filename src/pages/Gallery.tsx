@@ -9,6 +9,10 @@ import { ImportModal } from '../components/ImportModal';
 import { FolderImportWizard } from '../components/folderImport/FolderImportWizard';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/AuthContext';
+import { useClickOutside } from '../hooks/useClickOutside';
+import { useFilterChipPrefs } from '../hooks/useFilterChipPrefs';
+import { FilterCustomizeMenu } from '../components/filters/FilterCustomizeMenu';
+import { buildTypeFilters, matchesFilter, defaultEnabledIds, ALL_FILTER_ID, FAVORITES_FILTER_ID } from '../lib/objectTypeFilters';
 
 type SortKey = 'name-asc' | 'name-desc' | 'session-date-desc' | 'session-date-asc' | 'session-count-desc' | 'import-desc';
 
@@ -48,7 +52,7 @@ export function Gallery() {
   const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-accent-500';
   const { isAdmin } = useAuth();
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('All');
+  const [activeFilterId, setActiveFilterId] = useState<string>(ALL_FILTER_ID);
   const [telescopeFilter, setTelescopeFilter] = useState<string>(ALL_TELESCOPES_FILTER);
   const [showImportModal, setShowImportModal] = useState(false);
   const [wizardPath, setWizardPath] = useState<string | null>(null);
@@ -58,6 +62,8 @@ export function Gallery() {
   const [sortKey, setSortKey] = useState<SortKey>(readStoredSort);
   const [sortOpen, setSortOpen] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
   const { data: objects, isLoading, error } = useQuery({
@@ -72,6 +78,51 @@ export function Gallery() {
   const { data: objectFilters = [] } = useQuery({
     queryKey: ['library-object-filters'],
     queryFn: getLibraryObjectFilters,
+  });
+
+  // Granular filters for every distinct object type in the library, with
+  // counts. Excludes any type whose label already matches a curated group
+  // (e.g. exact "Galaxy" vs the "Galaxy" group) to avoid two identically
+  // labeled chips.
+  const typeFilters = useMemo(
+    () => buildTypeFilters((objects ?? []).map(o => o.type), objectFilters),
+    [objects, objectFilters],
+  );
+  const defaultIds = useMemo(() => defaultEnabledIds(objectFilters), [objectFilters]);
+  const { enabledIds, toggle: toggleChip, clearAll: clearAllChips } = useFilterChipPrefs(defaultIds);
+
+  // Clearing unpins every chip AND resets the active selection (Favorites
+  // isn't gated by enabledIds, so it needs an explicit reset too).
+  function handleClearAllFilters() {
+    clearAllChips();
+    setActiveFilterId(ALL_FILTER_ID);
+  }
+
+  // The chips shown on the top row: enabled curated groups, then enabled types.
+  const chips = useMemo(() => {
+    const groupChips = objectFilters
+      .filter(f => f.id !== ALL_FILTER_ID && enabledIds.has(f.id))
+      .map(f => ({ id: f.id, label: f.label }));
+    const typeChips = typeFilters
+      .filter(t => enabledIds.has(t.id))
+      .map(t => ({ id: t.id, label: t.label }));
+    return [...groupChips, ...typeChips];
+  }, [objectFilters, typeFilters, enabledIds]);
+
+  // If the active chip was removed via the customize menu (or no longer
+  // corresponds to a visible chip, e.g. a type suppressed by the group-label
+  // collision check above) fall back to All during render (deriving avoids a
+  // corrective setState-in-effect).
+  const effectiveFilterId =
+    activeFilterId === ALL_FILTER_ID ||
+    activeFilterId === FAVORITES_FILTER_ID ||
+    chips.some(c => c.id === activeFilterId)
+      ? activeFilterId
+      : ALL_FILTER_ID;
+
+  useClickOutside(filterMenuRef, () => setFilterMenuOpen(false), {
+    enabled: filterMenuOpen,
+    closeOnEscape: true,
   });
 
   const { data: telescopes = [] } = useQuery({
@@ -159,13 +210,11 @@ export function Gallery() {
         obj.constellation.toLowerCase().includes(effectiveTerm) ||
         (obj.aliases ?? []).some(a => a.toLowerCase().startsWith(effectiveTerm));
 
-      const selectedFilter = objectFilters.find(filter => filter.label === typeFilter);
-      const matchesType =
-        typeFilter === 'All' ? true :
-        typeFilter === 'Favorites' ? Boolean(obj.isFavorite) :
-        selectedFilter
-          ? obj.filterTags?.includes(selectedFilter.id) ?? false
-          : obj.type.toLowerCase().includes(typeFilter.toLowerCase());
+      const matchesType = matchesFilter(
+        effectiveFilterId,
+        { objectType: obj.type, filterTags: obj.filterTags, isFavorite: obj.isFavorite },
+        objectFilters,
+      );
 
       const matchesTelescope =
         telescopeFilter === ALL_TELESCOPES_FILTER ||
@@ -194,7 +243,7 @@ export function Gallery() {
           return 0;
       }
     });
-  }, [objects, search, typeFilter, telescopeFilter, objectFilters, sortKey]);
+  }, [objects, search, effectiveFilterId, telescopeFilter, objectFilters, sortKey]);
 
   const isImporting = importStatus?.running ?? false;
   const importProgress = importStatus && importStatus.objectsTotal > 0
@@ -309,44 +358,103 @@ export function Gallery() {
       </div>
 
       {/* Object type filter bar */}
-      <div className={`flex items-center gap-2 flex-wrap ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-        <Filter className="w-4 h-4 shrink-0" />
-        {/* Favorites filter — special case that checks isFavorite */}
-        <button
-          onClick={() => setTypeFilter(typeFilter === 'Favorites' ? 'All' : 'Favorites')}
-          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-            typeFilter === 'Favorites'
-              ? isDark
-                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                : 'bg-amber-100 text-amber-700 border border-amber-300'
-              : isDark
-                ? 'hover:bg-slate-800 border border-transparent'
-                : 'hover:bg-slate-100 border border-transparent'
-          }`}
-        >
-          <Star className={`w-3.5 h-3.5 ${typeFilter === 'Favorites' ? 'fill-current' : ''}`} />
-          Favorites
-        </button>
-        {objectFilters.map(filter => (
+      {/*
+        Two grid columns, not a flex row: a nested flex-wrap child's preferred
+        (max-content) width is the width of ALL its chips laid out on one
+        line, so in a plain flex row it out-competes the telescope block for
+        space and both end up wrapping together. A grid column sized
+        `minmax(0, 1fr)` is genuinely constrained to the space left after the
+        `auto`-sized telescope column, so the chips wrap inside their own
+        column while the telescope column stays put at the top.
+      */}
+      <div
+        className={`${showTelescopeUI ? 'grid grid-cols-[minmax(0,1fr)_auto]' : 'flex'} items-start gap-3 ${
+          isDark ? 'text-slate-400' : 'text-slate-500'
+        }`}
+      >
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          {/* Filter icon opens the customize menu (pick which chips show). */}
+          <div ref={filterMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setFilterMenuOpen(o => !o)}
+              aria-label="Customize filters"
+              aria-haspopup="menu"
+              aria-expanded={filterMenuOpen}
+              title="Customize filters"
+              className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${
+                filterMenuOpen
+                  ? isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-100 border-slate-300 text-slate-700'
+                  : isDark ? 'border-transparent hover:bg-slate-800' : 'border-transparent hover:bg-slate-100'
+              }`}
+            >
+              <Filter className="w-4 h-4" />
+            </button>
+            {filterMenuOpen && (
+              <FilterCustomizeMenu
+                groups={objectFilters}
+                typeFilters={typeFilters}
+                enabledIds={enabledIds}
+                onToggle={toggleChip}
+                onClearAll={handleClearAllFilters}
+                isDark={isDark}
+              />
+            )}
+          </div>
+          {/* Favorites filter — special case that checks isFavorite */}
           <button
-            key={filter.id}
-            onClick={() => setTypeFilter(filter.label)}
+            onClick={() => setActiveFilterId(effectiveFilterId === FAVORITES_FILTER_ID ? ALL_FILTER_ID : FAVORITES_FILTER_ID)}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+              effectiveFilterId === FAVORITES_FILTER_ID
+                ? isDark
+                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                  : 'bg-amber-100 text-amber-700 border border-amber-300'
+                : isDark
+                  ? 'hover:bg-slate-800 border border-transparent'
+                  : 'hover:bg-slate-100 border border-transparent'
+            }`}
+          >
+            <Star className={`w-3.5 h-3.5 ${effectiveFilterId === FAVORITES_FILTER_ID ? 'fill-current' : ''}`} />
+            Favorites
+          </button>
+          <button
+            onClick={() => setActiveFilterId(ALL_FILTER_ID)}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-              typeFilter === filter.label
+              effectiveFilterId === ALL_FILTER_ID
                 ? isDark
                   ? 'bg-accent-500/15 text-accent-400 border border-accent-500/30'
                   : 'bg-accent-300 text-accent-700 border border-accent-400'
                 : isDark
                   ? 'hover:bg-slate-800 border border-transparent'
                   : 'hover:bg-slate-100 border border-transparent'
-              }`}
+            }`}
           >
-            {filter.label}
+            All
           </button>
-        ))}
-        {/* Telescope facet — only when more than one telescope is configured */}
+          {chips.map(chip => (
+            <button
+              key={chip.id}
+              onClick={() => setActiveFilterId(chip.id)}
+              className={`px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                effectiveFilterId === chip.id
+                  ? isDark
+                    ? 'bg-accent-500/15 text-accent-400 border border-accent-500/30'
+                    : 'bg-accent-300 text-accent-700 border border-accent-400'
+                  : isDark
+                    ? 'hover:bg-slate-800 border border-transparent'
+                    : 'hover:bg-slate-100 border border-transparent'
+                }`}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+        {/* Telescope facet — only when more than one telescope is configured.
+            A sibling flex item, not part of the chip row above, so it stays
+            anchored in its own corner regardless of how many rows the chips
+            wrap to. */}
         {showTelescopeUI && (
-          <div className={`flex items-center gap-1.5 ml-2 pl-2 border-l ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+          <div className={`flex items-center gap-1.5 shrink-0 pl-2 border-l ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
             <button
               onClick={() => setTelescopeFilter(ALL_TELESCOPES_FILTER)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all border ${
@@ -476,24 +584,24 @@ export function Gallery() {
           </div>
           <div className="space-y-2">
             <p className={`text-xl font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-              {typeFilter === 'Favorites'
+              {effectiveFilterId === FAVORITES_FILTER_ID
                 ? 'No favorites yet'
-                : search || typeFilter !== 'All'
+                : search || effectiveFilterId !== ALL_FILTER_ID
                   ? 'No objects match your search'
                   : 'Your library is empty'}
             </p>
-            {typeFilter === 'Favorites' && (
+            {effectiveFilterId === FAVORITES_FILTER_ID && (
               <p className="text-sm max-w-sm mx-auto">
                 Star an object from its detail page to add it to your favorites.
               </p>
             )}
-            {!search && typeFilter === 'All' && (
+            {!search && effectiveFilterId === ALL_FILTER_ID && (
               <p className="text-sm max-w-sm mx-auto">
                 Import images from your SeeStar to build your local library. Configure your telescope connection in Settings first.
               </p>
             )}
           </div>
-          {!search && typeFilter === 'All' && isAdmin && (
+          {!search && effectiveFilterId === ALL_FILTER_ID && isAdmin && (
             <div className="flex flex-wrap items-center justify-center gap-3">
               <button
                 onClick={() => importMutation.mutate()}

@@ -114,6 +114,7 @@ test.describe('Image Gallery', () => {
     await expect(
       page.getByRole('button', { name: /all|galaxy|nebula/i })
         .or(page.locator('select').filter({ hasText: /type|all/i }))
+        .first()
     ).toBeVisible();
   });
 

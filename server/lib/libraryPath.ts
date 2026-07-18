@@ -45,9 +45,12 @@ export const MARKER_FILENAME = '.nebulis-library.json';
 
 export interface LibraryMarker {
   libraryId: string;
-  createdAt: string;
-  appVersion: string;
-  note: string;
+  // Not required at the type level: readMarker/readMarkerAsync only validate
+  // libraryId (the only field any caller reads), so the type shouldn't claim
+  // a guarantee the parser doesn't enforce. writeMarker always sets all four.
+  createdAt?: string;
+  appVersion?: string;
+  note?: string;
 }
 
 /** Thrown by ensureLibraryDir() when a relocated library is not reachable. */
@@ -381,6 +384,9 @@ export interface LibraryLocationInfo {
   available: boolean;
   libraryId: string;
   locationType: 'local' | 'network';
+  /** The built-in location ({DATA_DIR}/library), so the Settings UI can offer
+   *  a one-click "move back to default" without the user browsing for it. */
+  defaultPath: string;
   /** Non-secret network fields, kept even in local mode so the Settings UI can
    *  prefill the form with the last-used values. Never includes the password. */
   network: { host: string; share: string; domain: string; username: string; subpath: string };
@@ -394,6 +400,7 @@ export async function getLibraryLocationInfo(): Promise<LibraryLocationInfo> {
     path: getLibraryDir(),
     isDefault: isDefaultLocation(),
     available: await isLibraryAvailable(),
+    defaultPath: getDefaultLibraryDir(),
     libraryId: getLibraryId(),
     locationType: cfg.locationType,
     network: {

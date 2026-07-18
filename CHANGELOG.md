@@ -1,4 +1,27 @@
 # Changelog
+## 1.4.2 (188) - July 18th, 2026
+### New
+- Import Files: choose "Folder on this computer" to import straight from a folder on the same machine running Nebulis, no browser upload needed.
+- Import Files: drag in a folder that already lives on the computer running Nebulis and it's detected automatically. The primary action switches to importing it in place with no upload, and uploading the files stays available as a fallback.
+- Added a setting to control how sessions that cross local midnight are grouped (Settings -> General -> Group sessions by observing night). An 11pm-1am session now counts as one night on the calendar by default; turn it off to go back to splitting by calendar date.
+- Gallery: customize which filter chips show on the top row. Pick any object type or curated group to pin, or clear back to defaults.
+
+### Updated
+- Object page: when a session has a stacked FITS file but no stacked JPG, the stacked FITS now renders in the main image slot instead of showing "No stacked image".
+- Folder import now reports how many files were skipped and why, instead of just showing a lower file count than expected.
+- Imports run noticeably faster: downloads now pipeline instead of running one at a time, thumbnail generation happens in the background instead of blocking each file, and local/USB copies stream directly instead of loading the whole file into memory first.
+- Enhanced Debugging (Settings -> Danger -> Debug Logging) now also captures telescope profile and import settings for easier troubleshooting.
+
+### Fixes
+- Planner: sessions planned from Android could sort out of order compared to ones planned on web or iOS; timestamps now sort correctly regardless of which device created them.
+- Planner: "Plan My Night" could mix a partial location override (latitude without longitude, or vice versa) with your saved location and place the plan at the wrong spot; it now requires both together.
+- Import: one unreadable Dwarf session folder no longer stops the rest of that import run. The failure is logged against that object and the run continues.
+- Import: closing the sub-frame sync dialog no longer cancels a different, unrelated import that happened to be running or waiting at the same time.
+- Import: fixed the import lock getting stuck as "in use" after a failed import, which required a restart before you could import again. A watchdog now also clears any lock left stuck for more than 6 hours.
+- Import: fixed a bug where certain import paths could overwrite session/telescope tags or bring back deleted sessions for objects the run never touched.
+- Import: importing a single object without explicitly choosing a telescope no longer fails with "No telescope was selected" when the object already has one attached.
+- Import: hardened file and path handling, a literal "%" in a filename or a malformed response from the telescope could previously cause an import to fail or write a file to the wrong folder.
+
 ## 1.4.1 (180) - July 11th, 2026
 ### New
 - Added functionality to move Library to a Network Share via UNC path. (Settings -> Storage)

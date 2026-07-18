@@ -16,7 +16,13 @@ import {
   type TelescopeProfile,
 } from '../telescopes.js';
 import { log } from '../logger.js';
-import { runImport, claimImportLock, getImportStatus } from './import.js';
+import { runImport, claimImportLock, getImportStatus, forceReleaseStaleLock, appendImportStatusError, getImportLockStartedAt } from './import.js';
+
+// Any real import (even a slow SMB pull of a large library) finishes well
+// inside this window. If the lock is still held past it, something crashed
+// or hung without releasing — force-release rather than 409ing every import
+// forever.
+const STALE_LOCK_MS = 6 * 60 * 60 * 1000;
 
 // ─── Junk-file purge ────────────────────────────────────────────────────────
 
@@ -135,7 +141,9 @@ export function scheduleAutoImport(): void {
   }, 60 * 1000);
 }
 
-async function tick(): Promise<void> {
+/** Exported for tests (the auto-import watchdog logic lives here); production
+ *  code only reaches it via the interval in scheduleAutoImport(). */
+export async function tick(): Promise<void> {
   // Don't import while the library is being moved, or when its drive/network
   // share is not reachable: a write would either fight the migration or
   // recreate the path on the wrong volume. For a network library, this call
@@ -170,8 +178,22 @@ async function tick(): Promise<void> {
     return;
   }
   if (!claimImportLock()) {
-    log.debug('[auto-import] tick skipped: import lock already held');
-    return;
+    const staleSince = getImportLockStartedAt();
+    const staleSinceMs = staleSince ? Date.parse(staleSince) : NaN;
+    if (!Number.isNaN(staleSinceMs) && Date.now() - staleSinceMs >= STALE_LOCK_MS) {
+      forceReleaseStaleLock(
+        `Auto-import found the import lock held since ${staleSince} (over 6 hours) with no ` +
+        `sign of progress. Force-released it so scheduled imports can resume; the stuck run ` +
+        `may have left partial data.`,
+      );
+      if (!claimImportLock()) {
+        log.debug('[auto-import] tick skipped: import lock claimed by another run immediately after watchdog release');
+        return;
+      }
+    } else {
+      log.debug('[auto-import] tick skipped: import lock already held');
+      return;
+    }
   }
 
   const runStart = now;
@@ -191,7 +213,13 @@ async function tick(): Promise<void> {
 async function runDueTelescopesImport(profiles: TelescopeProfile[]): Promise<void> {
   for (let i = 0; i < profiles.length; i++) {
     const profile = profiles[i];
-    if (i > 0 && !claimImportLock()) return;
+    if (i > 0 && !claimImportLock()) {
+      const skipped = profiles.slice(i).map(p => p.name).join(', ');
+      appendImportStatusError(
+        `Import lock was claimed by another run before ${skipped} could be synced. They'll be picked up on the next scheduled or manual import.`,
+      );
+      return;
+    }
     try {
       await runImport(undefined, undefined, { telescopeId: profile.id });
       const status = getImportStatus();

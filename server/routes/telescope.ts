@@ -12,6 +12,7 @@ import {
   isObjectFolder,
   isSubFolder,
   getFileCategory,
+  sessionNightFor,
 } from '../lib/telescopeFiles.js';
 import { cachedSmbListDir, BASE_PATH } from '../lib/smbCache.js';
 import { pickDefaultTarget } from '../lib/telescopes.js';
@@ -101,7 +102,7 @@ router.get('/objects/:objectId', (req: Request, res: Response) => {
     for (const fname of files) {
       const parsed = parseFilename(fname);
       if (parsed.isThumbnail) continue;
-      const key = parsed.date || 'unknown';
+      const key = sessionNightFor(parsed) || 'unknown';
       const existing = sessions.get(key);
       if (!existing) {
         sessions.set(key, { count: 1, latestTimestamp: parsed.timestamp || '' });
@@ -293,14 +294,14 @@ router.get('/objects/:objectId/subs', (req: Request, res: Response) => {
       })
       .filter(f => !f.isThumbnail)
       .filter(f => !fileTypeFilter || f.type === fileTypeFilter)
-      .filter(f => !sessionDate || f.date === sessionDate);
+      .filter(f => !sessionDate || sessionNightFor(parseFilename(f.name)) === sessionDate);
 
     const pagination = parsePagination(req, 100);
     const result = paginate(files, pagination);
 
     const dateGroups = new Map<string, number>();
     for (const f of files) {
-      const d = f.date || 'unknown';
+      const d = sessionNightFor(parseFilename(f.name)) || 'unknown';
       dateGroups.set(d, (dateGroups.get(d) || 0) + 1);
     }
 

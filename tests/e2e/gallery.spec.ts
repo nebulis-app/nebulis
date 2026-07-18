@@ -81,7 +81,9 @@ test.describe('Gallery', () => {
   });
 
   test('combining search and type filter works', async ({ page }) => {
-    await page.getByRole('button', { name: /nebula/i }).click();
+    // Anchor the name: with the full curated group set, /nebula/i would also
+    // match the "Planetary Nebula" chip.
+    await page.getByRole('button', { name: /^nebula$/i }).click();
     const searchInput = page.getByPlaceholder(/search/i);
     await searchInput.fill('North America');
 

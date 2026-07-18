@@ -61,6 +61,20 @@ export interface DirectoryEntry { name: string; path: string; }
 export const browseDirectory = (path: string) =>
   fetchJSON<{ path: string; directories: DirectoryEntry[] }>(`/storage/browse?path=${encodeURIComponent(path)}`);
 
+/** Ask the server whether a dropped folder already exists on its own disk.
+ *  Returns the scan-root path when a name + file-size fingerprint matches,
+ *  or null when nothing matches (fall back to uploading). */
+export const locateFolderOnServer = (
+  anchorName: string,
+  samples: Array<{ relativePath: string; size: number }>,
+  signal?: AbortSignal,
+) =>
+  fetchJSON<{ path: string | null }>('/storage/locate-folder', {
+    method: 'POST',
+    body: JSON.stringify({ anchorName, samples }),
+    signal,
+  });
+
 export interface NetworkLibraryConfig {
   host: string;
   share: string;
@@ -76,6 +90,9 @@ export interface LibraryLocation {
   available: boolean;
   libraryId: string;
   locationType: 'local' | 'network';
+  /** The built-in location ({DATA_DIR}/library) — lets the UI offer a
+   *  one-click "move back to default" without browsing for it. */
+  defaultPath: string;
   /** Non-secret fields only — kept around in local mode too, to prefill the
    *  "Network Share" form with the last-used values. Never a password. */
   network: Omit<NetworkLibraryConfig, 'password'>;

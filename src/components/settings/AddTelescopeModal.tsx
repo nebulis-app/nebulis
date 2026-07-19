@@ -66,7 +66,7 @@ export function AddTelescopeModal({
   // off — matches the previous global defaults. Edits seed from the existing
   // profile so users can flip a single toggle without re-checking everything.
   const [importJpg, setImportJpg] = useState(existing?.importJpg ?? true);
-  const [importFits, setImportFits] = useState(existing?.importFits ?? false);
+  const [importFits, setImportFits] = useState(existing?.importFits ?? true);
   const [importThumbnails, setImportThumbnails] = useState(existing?.importThumbnails ?? false);
   const [importSubFrames, setImportSubFrames] = useState(existing?.importSubFrames ?? false);
   const [importVideos, setImportVideos] = useState(existing?.importVideos ?? false);
@@ -698,7 +698,7 @@ export function AddTelescopeModal({
               />
               <FileTypeToggle
                 label="Stacked FITS (.fit)"
-                description="The stacked FITS file per session. Larger, needed for quality scoring."
+                description="The stacked FITS file per session. Larger file size."
                 checked={importFits}
                 onChange={setImportFits}
                 isDark={isDark}

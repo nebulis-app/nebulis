@@ -358,7 +358,7 @@ function saveSettingsRow(data: Record<string, unknown>): void {
     boolToInt(data.syncFits, 1), boolToInt(data.syncThumbnails, 1),
     boolToInt(data.syncSubFrames, 0), boolToInt(data.syncVideos, 0),
     boolToInt(data.autoImport, 0), num(data.autoImportInterval, 60),
-    boolToInt(data.importJpg, 1), boolToInt(data.importFits, 0),
+    boolToInt(data.importJpg, 1), boolToInt(data.importFits, 1),
     boolToInt(data.importThumbnails, 0), boolToInt(data.importSubFrames, 0),
     boolToInt(data.importVideos, 0),
     boolToInt(data.onboardingCompleted, 0),

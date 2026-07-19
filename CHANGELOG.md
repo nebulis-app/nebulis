@@ -1,5 +1,5 @@
 # Changelog
-## 1.4.2 (190) - July 18th, 2026
+## 1.4.2 (192) - July 18th, 2026
 ### New
 - Import Files: choose "Folder on this computer" to import straight from a folder on the same machine running Nebulis, no browser upload needed.
 - Import Files: drag in a folder that already lives on the computer running Nebulis and it's detected automatically. The primary action switches to importing it in place with no upload, and uploading the files stays available as a fallback.
@@ -11,6 +11,7 @@
 - Folder import now reports how many files were skipped and why, instead of just showing a lower file count than expected.
 - Imports run noticeably faster: downloads now pipeline instead of running one at a time, thumbnail generation happens in the background instead of blocking each file, and local/USB copies stream directly instead of loading the whole file into memory first.
 - Enhanced Debugging (Settings -> Danger -> Debug Logging) now also captures telescope profile and import settings for easier troubleshooting.
+- Import: Stacked FITS now selected to import by default, you can always disable on your telescope if you do not want pre-stacked FITs files imported from your telescope. 
 
 ### Fixes
 - MacOS MenuBar App: fixed a red "Bootstrap failed: 5: Input/output error" message that could linger next to the green "Running" dot after an update. The service was actually running fine; the error was left over from a startup retry and now clears itself once the service is confirmed up. 
@@ -22,6 +23,8 @@
 - Import: fixed a bug where certain import paths could overwrite session/telescope tags or bring back deleted sessions for objects the run never touched.
 - Import: importing a single object without explicitly choosing a telescope no longer fails with "No telescope was selected" when the object already has one attached.
 - Import: hardened file and path handling, a literal "%" in a filename or a malformed response from the telescope could previously cause an import to fail or write a file to the wrong folder.
+- Telescope status: the "connected" indicator no longer turns green for a custom SMB share that answers on the network but can't actually be read. The indicator now reflects whether the last real access to the share succeeded, not just whether the host is reachable, so it stays consistent with what a sync will actually do.
+- Import: a sync that fails to reach or read a share now writes the error to the normal log instead of only appearing with debug logging turned on. Previously an import could quietly pull nothing with no error in the log or an obvious sign of what went wrong.
 
 ## 1.4.1 (180) - July 11th, 2026
 ### New

@@ -71,7 +71,7 @@ db.exec(`
     autoImport          INTEGER NOT NULL DEFAULT 0,
     autoImportInterval  INTEGER NOT NULL DEFAULT 60,
     importJpg           INTEGER NOT NULL DEFAULT 1,
-    importFits          INTEGER NOT NULL DEFAULT 0,
+    importFits          INTEGER NOT NULL DEFAULT 1,
     importThumbnails    INTEGER NOT NULL DEFAULT 0,
     importSubFrames     INTEGER NOT NULL DEFAULT 0,
     importVideos        INTEGER NOT NULL DEFAULT 0,
@@ -526,7 +526,7 @@ db.exec(`
     db.prepare('ALTER TABLE telescopeProfiles ADD COLUMN importJpg INTEGER NOT NULL DEFAULT 1').run();
   }
   if (!tpCols.some(c => c.name === 'importFits')) {
-    db.prepare('ALTER TABLE telescopeProfiles ADD COLUMN importFits INTEGER NOT NULL DEFAULT 0').run();
+    db.prepare('ALTER TABLE telescopeProfiles ADD COLUMN importFits INTEGER NOT NULL DEFAULT 1').run();
   }
   if (!tpCols.some(c => c.name === 'importThumbnails')) {
     db.prepare('ALTER TABLE telescopeProfiles ADD COLUMN importThumbnails INTEGER NOT NULL DEFAULT 1').run();
@@ -544,6 +544,17 @@ db.exec(`
     // firmware that rejects unknown files at the share root, or simply not
     // wanting us to write to the device.
     db.prepare('ALTER TABLE telescopeProfiles ADD COLUMN trackDeviceIdentity INTEGER NOT NULL DEFAULT 1').run();
+  }
+
+  // Stacked FITS import shipped defaulting to off, so telescopes added before
+  // this changed silently skipped the file quality scoring needs. Force every
+  // existing profile on, exactly once — gated on a marker column so a user who
+  // deliberately disables it afterward isn't overridden on the next restart.
+  const asColsForFits = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
+  if (!asColsForFits.some(c => c.name === 'stackedFitsDefaultForced')) {
+    db.prepare('ALTER TABLE appSettings ADD COLUMN stackedFitsDefaultForced INTEGER NOT NULL DEFAULT 0').run();
+    db.prepare('UPDATE telescopeProfiles SET importFits = 1').run();
+    db.prepare('UPDATE appSettings SET stackedFitsDefaultForced = 1 WHERE id = 1').run();
   }
 
   // Per-user release-notes dismissal. NULL means "never acknowledged" —

@@ -634,16 +634,49 @@ function configureServerTimeouts(srv: import('http').Server): void {
   srv.headersTimeout = 66_000;
 }
 
+const activeServers: import('http').Server[] = [];
+
 const server = app.listen(Number(PORT), '::', onListening);
 configureServerTimeouts(server);
+activeServers.push(server);
 server.once('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EAFNOSUPPORT' || err.code === 'EADDRNOTAVAIL' || err.code === 'ENOTSUP') {
     console.warn(`  IPv6 dual-stack bind failed (${err.code}) — falling back to IPv4-only 0.0.0.0`);
-    configureServerTimeouts(app.listen(Number(PORT), '0.0.0.0', onListening));
+    const fallback = app.listen(Number(PORT), '0.0.0.0', onListening);
+    configureServerTimeouts(fallback);
+    activeServers.push(fallback);
   } else {
     throw err;
   }
 });
+
+// --- Graceful shutdown ---
+// launchd (macOS) and NSSM (Windows) stop the service with a signal and only
+// wait a few seconds before SIGKILL (launchd's exit timeout is 5s). The mDNS
+// and UDP-discovery blocks above register SIGTERM/SIGINT handlers, and merely
+// having a handler disables Node's default terminate-on-signal — with the HTTP
+// server and scheduler intervals keeping the event loop alive, the process sat
+// out the full 5 seconds and died by SIGKILL on every stop. During those 5
+// seconds launchd still holds the service label, so the menu bar app's
+// post-update `launchctl bootstrap` failed with EIO and the service stayed
+// stopped after a Sparkle update. Exit promptly instead: stop accepting
+// connections, drop keep-alive sockets, and exit within ~300ms.
+let shuttingDown = false;
+function shutdownOnSignal(signal: NodeJS.Signals): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}, shutting down`);
+  for (const srv of activeServers) {
+    srv.close();
+    srv.closeAllConnections();
+  }
+  // Brief delay so the log line and close callbacks flush; unref'd so an
+  // already-drained event loop can exit naturally even sooner. process.exit
+  // still runs the 'exit' handlers (dns-sd kill, SMB unmount).
+  setTimeout(() => process.exit(0), 300).unref();
+}
+process.on('SIGTERM', shutdownOnSignal);
+process.on('SIGINT', shutdownOnSignal);
 
 // Remove macOS resource forks and other junk files left in the library.
 // Fire-and-forget: purgeJunkFiles() is async (fs.promises, timeout-bounded)

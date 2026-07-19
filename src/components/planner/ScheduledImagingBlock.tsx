@@ -15,6 +15,8 @@ import type { PlannedSession } from '../../lib/api/plannedSessions';
 import type { VisibilityVerdict } from '../../lib/visibilityCheck';
 import type { MoonVerdict } from '../../lib/moonProximity';
 
+const MIN_IMAGING_ALT = 20;
+
 interface ScheduledImagingBlockProps {
   session: PlannedSession;
   /** Formatted display name, e.g. "M81 - Bode's Galaxy". Falls back to session.objectName. */
@@ -82,10 +84,14 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
   const leftFrac = leftPct / 100;   // column's start as a fraction of full width
   const laneFrac = 1 / laneCount;
 
+  // Minimum altitude considered usable for imaging (matches iOS/Android ScheduledBlockView).
+  const belowHorizon = verdict === 'all' && minAlt != null && minAlt < 0;
+  const lowInSky = verdict === 'all' && minAlt != null && minAlt >= 0 && minAlt < MIN_IMAGING_ALT;
+
   const stripeColor =
-    verdict === 'all' ? 'bg-emerald-500'
-    : verdict === 'partial' ? 'bg-amber-500'
-    : 'bg-red-500';
+    verdict === 'none' || belowHorizon ? 'bg-red-500'
+    : verdict === 'partial' || lowInSky ? 'bg-amber-500'
+    : 'bg-emerald-500';
 
   const start = new Date(session.startTime);
   const end = new Date(session.endTime);
@@ -136,6 +142,11 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
         {!isSaving && verdict !== 'all' && verdictReason && (
           <div className={`text-[10px] truncate ${verdict === 'none' ? 'text-red-300' : 'text-amber-300'}`}>
             {verdictReason}
+          </div>
+        )}
+        {!isSaving && (belowHorizon || lowInSky) && (
+          <div className={`text-[10px] truncate ${belowHorizon ? 'text-red-300' : 'text-amber-300'}`}>
+            {belowHorizon ? 'Sets below horizon during session' : `Low in sky (min ${Math.round(minAlt!)}°)`}
           </div>
         )}
         {!isSaving && moonVerdict !== 'ok' && moonReason && (

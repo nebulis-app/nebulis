@@ -194,15 +194,21 @@ export function getCatalogEntry(id: string): CatalogEntry | undefined {
 }
 
 export function searchCatalog(query: string): CatalogEntry[] {
-  const q = query.toLowerCase();
+  // Word-tokenized AND match, not whole-phrase substring: a query like "Eta
+  // Carina" must match "eta" and "carina" independently across the
+  // searchable text, since real object data splits them across fields
+  // (NGC 3372's name is "Carina Nebula", "Eta" only appears in its OpenNGC
+  // commonNames as the abbreviated "eta Car Nebula") rather than ever
+  // containing the literal typed phrase.
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const matchesAllWords = (haystack: string): boolean => words.every(w => haystack.includes(w));
+
   // Search curated first, then OpenNGC
-  const results: CatalogEntry[] = catalog.filter(
-    e =>
-      e.id.toLowerCase().includes(q) ||
-      e.name.toLowerCase().includes(q) ||
-      e.constellation.toLowerCase().includes(q) ||
-      e.type.toLowerCase().includes(q)
-  );
+  const results: CatalogEntry[] = catalog.filter(e => {
+    const haystack = [e.id, e.name, e.constellation, e.type, ...getAlsoKnownAs(e.id)].join(' ').toLowerCase();
+    return matchesAllWords(haystack);
+  });
 
   // Add OpenNGC matches not already in curated results
   const seen = new Set(results.map(r => r.id.toUpperCase()));
@@ -210,13 +216,11 @@ export function searchCatalog(query: string): CatalogEntry[] {
     const messierStr = ngc.messier != null ? String(ngc.messier) : null;
     const matchId = (messierStr ?? ngc.id).toUpperCase();
     if (seen.has(matchId)) continue;
-    if (
-      ngc.id.toLowerCase().includes(q) ||
-      (messierStr && messierStr.toLowerCase().includes(q)) ||
-      (ngc.name && ngc.name.toLowerCase().includes(q)) ||
-      (ngc.constellation && ngc.constellation.toLowerCase().includes(q)) ||
-      ngc.type.toLowerCase().includes(q)
-    ) {
+    const haystack = [ngc.id, messierStr, ngc.name, ngc.constellation, ngc.type, ...(ngc.commonNames ?? [])]
+      .filter((v): v is string => Boolean(v))
+      .join(' ')
+      .toLowerCase();
+    if (matchesAllWords(haystack)) {
       results.push({
         id: messierStr ?? ngc.id,
         name: ngc.name ?? messierStr ?? ngc.id,

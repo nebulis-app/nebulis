@@ -19,7 +19,7 @@ import * as mac from './smb.mac.js';
 import * as posix from './smb.posix.js';
 import * as local from './smb.local.js';
 import { loadSettings } from './smb.shared.js';
-import { ensureSmbReachable } from './smbReachability.js';
+import { ensureSmbReachable, recordSmbOpResult } from './smbReachability.js';
 import { debugLog, isDebugLoggingEnabled } from './debugLogger.js';
 import type { TelescopeProfile } from './telescopes.js';
 import type { SmbEntry } from './smb.shared.js';
@@ -85,7 +85,20 @@ export async function smbListDir(path: string, profile?: AnyProfile): Promise<Sm
   return withDebugLog('listDir', path, profile, async () => {
     if (isLocal(profile)) return local.localListDir(path, profile);
     await preflight(profile);
-    return smbImpl.smbListDir(path, profile);
+    // Record real-op health from listings: a directory listing succeeding is a
+    // clean proxy for "auth + share access work" (it's what import discovery and
+    // the settings connection-test both do). Failures here are host-level, so
+    // they flip the status pill; per-file get/put/delete failures are too
+    // file-specific to treat the same way and only record success below.
+    const { hostname } = loadSettings(profile);
+    try {
+      const entries = await smbImpl.smbListDir(path, profile);
+      recordSmbOpResult(hostname, true);
+      return entries;
+    } catch (err) {
+      recordSmbOpResult(hostname, false, err instanceof Error ? err.message : String(err));
+      throw err;
+    }
   }, entries => `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`);
 }
 
@@ -93,7 +106,11 @@ export async function smbGetFile(path: string, maxBytes?: number, profile?: AnyP
   return withDebugLog('getFile', path, profile, async () => {
     if (isLocal(profile)) return local.localGetFile(path, maxBytes, profile);
     await preflight(profile);
-    return smbImpl.smbGetFile(path, maxBytes, profile);
+    const buf = await smbImpl.smbGetFile(path, maxBytes, profile);
+    // Success proves the share is usable; a failed get can be file-specific
+    // (missing file, bad path) so it is not recorded as host-level health.
+    recordSmbOpResult(loadSettings(profile).hostname, true);
+    return buf;
   }, buf => `${buf.length} bytes`);
 }
 
@@ -112,7 +129,10 @@ export async function smbPutFile(path: string, data: Buffer, profile?: AnyProfil
   return withDebugLog('putFile', path, profile, async () => {
     if (isLocal(profile)) return local.localPutFile(path, data, profile);
     await preflight(profile);
-    return smbImpl.smbPutFile(path, data, profile);
+    await smbImpl.smbPutFile(path, data, profile);
+    // Success proves the share is writable; a failed put can be file-specific
+    // (permissions on one path) so it is not recorded as host-level health.
+    recordSmbOpResult(loadSettings(profile).hostname, true);
   }, () => `${data.length} bytes`);
 }
 

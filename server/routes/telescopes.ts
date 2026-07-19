@@ -16,7 +16,7 @@ import {
 } from '../lib/telescopes.js';
 import db from '../lib/db.js';
 import { smbListDir } from '../lib/smb.js';
-import { tcpProbe } from '../lib/smbReachability.js';
+import { tcpProbe, getSmbOpHealth } from '../lib/smbReachability.js';
 import { getWalkerConfig, isDwarfKind } from '../lib/walkers/index.js';
 import { log } from '../lib/logger.js';
 import { isObjectFolder } from '../lib/telescopeFiles.js';
@@ -402,14 +402,32 @@ function applyHysteresis(succeeded: boolean, latencyMs: number | null, cached: S
   return { online, latencyMs, checkedAt: Date.now(), consecutiveFailures };
 }
 
+// How long a recorded real-op failure keeps overriding a TCP-reachable host.
+// Long enough that a host that answers on 445 but can't actually serve its
+// share stays flagged, short enough that it recovers once a real op succeeds
+// (which overwrites the health) or the failure ages out.
+const OP_HEALTH_FRESH_MS = 5 * 60_000;
+
+/** Fold the last real-SMB-op outcome into a TCP-derived status. TCP-445 only
+ *  proves the host answers; if the most recent real op against it failed
+ *  recently, the share isn't actually usable, so it should not read as online.
+ *  Never upgrades an offline TCP result — only downgrades a would-be-online one. */
+function foldSmbOpHealth(status: StatusCache, hostname: string): StatusCache {
+  if (!status.online) return status;
+  const health = getSmbOpHealth(hostname);
+  if (!health || health.ok) return status;
+  if (Date.now() - health.checkedAt > OP_HEALTH_FRESH_MS) return status;
+  return { ...status, online: false };
+}
+
 async function probeWithCache(hostname: string): Promise<StatusCache> {
   const cached = statusCacheByHost.get(hostname);
   const ttl = cached && cached.consecutiveFailures > 0 ? FAILURE_RETRY_MS : STATUS_TTL;
-  if (cached && Date.now() - cached.checkedAt < ttl) return cached;
+  if (cached && Date.now() - cached.checkedAt < ttl) return foldSmbOpHealth(cached, hostname);
   const latencyMs = await tcpProbe(hostname);
   const fresh = applyHysteresis(latencyMs !== null, latencyMs, cached);
   statusCacheByHost.set(hostname, fresh);
-  return fresh;
+  return foldSmbOpHealth(fresh, hostname);
 }
 
 /**

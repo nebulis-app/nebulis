@@ -71,6 +71,42 @@ export async function ensureSmbReachable(host: string, timeoutMs = 2000): Promis
 
 /** Drop any cached result for a host (e.g. after the user edits its address). */
 export function invalidateSmbReachability(host?: string): void {
-  if (host) cache.delete(host);
-  else cache.clear();
+  if (host) {
+    cache.delete(host);
+    opHealth.delete(host);
+  } else {
+    cache.clear();
+    opHealth.clear();
+  }
+}
+
+// ─── Real-operation health ───────────────────────────────────────────────────
+// tcpProbe only proves the host answers on port 445. It says nothing about
+// whether SMB auth succeeds or the share is actually readable — a host can be
+// TCP-reachable while `smbclient` fails to negotiate, authenticate, or open the
+// share (exactly the "icon says connected but import fails" case). We passively
+// record the outcome of every real SMB operation (populated by smb.ts, no extra
+// network traffic) so the status pill can fold it in.
+
+export interface SmbOpHealth {
+  /** True if the last recorded real SMB op against this host succeeded. */
+  ok: boolean;
+  checkedAt: number;
+  /** Failure reason, when ok is false. */
+  error?: string;
+}
+
+const opHealth = new Map<string, SmbOpHealth>();
+
+/** Record the outcome of a real SMB operation (auth + share access) for `host`.
+ *  Called by the SMB dispatcher on every network op — success proves the share
+ *  is usable; a failure means it isn't, regardless of what TCP-445 reports. */
+export function recordSmbOpResult(host: string | undefined, ok: boolean, error?: string): void {
+  if (!host) return;
+  opHealth.set(host, { ok, checkedAt: Date.now(), error: ok ? undefined : error });
+}
+
+/** Last recorded real-op outcome for `host`, or undefined if none yet. */
+export function getSmbOpHealth(host: string): SmbOpHealth | undefined {
+  return opHealth.get(host);
 }

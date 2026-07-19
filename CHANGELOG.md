@@ -1,5 +1,5 @@
 # Changelog
-## 1.4.2 (189) - July 18th, 2026
+## 1.4.2 (190) - July 18th, 2026
 ### New
 - Import Files: choose "Folder on this computer" to import straight from a folder on the same machine running Nebulis, no browser upload needed.
 - Import Files: drag in a folder that already lives on the computer running Nebulis and it's detected automatically. The primary action switches to importing it in place with no upload, and uploading the files stays available as a fallback.
@@ -13,6 +13,7 @@
 - Enhanced Debugging (Settings -> Danger -> Debug Logging) now also captures telescope profile and import settings for easier troubleshooting.
 
 ### Fixes
+- MacOS MenuBar App: fixed a red "Bootstrap failed: 5: Input/output error" message that could linger next to the green "Running" dot after an update. The service was actually running fine; the error was left over from a startup retry and now clears itself once the service is confirmed up. 
 - Planner: sessions planned from Android could sort out of order compared to ones planned on web or iOS; timestamps now sort correctly regardless of which device created them.
 - Planner: "Plan My Night" could mix a partial location override (latitude without longitude, or vice versa) with your saved location and place the plan at the wrong spot; it now requires both together.
 - Import: one unreadable Dwarf session folder no longer stops the rest of that import run. The failure is logged against that object and the run continues.

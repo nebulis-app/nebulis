@@ -1169,7 +1169,22 @@ export async function runImport(
       debugLog('import:thumb', 'Gallery thumbnail pre-warm complete');
     }
   } catch (err) {
-    debugLog('import:error', `Fatal: ${err instanceof Error ? err.message : String(err)}`);
+    const reason = err instanceof Error ? err.message : String(err);
+    debugLog('import:error', `Fatal: ${reason}`);
+    // Also log at normal level: previously a fatal import failure was only
+    // captured via debugLog (off by default) and importStatus.error, so a user
+    // whose import silently pulled nothing saw no error in the log at all until
+    // they enabled debug logging.
+    log.error(
+      {
+        telescopeId: profile.id,
+        telescopeName: profile.name,
+        transport: profile.connectionType ?? 'smb',
+        address: transportAddress,
+        err: reason,
+      },
+      '[import] Import from %s failed: %s', profile.name, reason,
+    );
     importStatus.error = friendlyImportError(err, profile);
   } finally {
     debugLog('import:done', `Finished — objects: ${importStatus.objectsDone}/${importStatus.objectsTotal}, new files: ${importNewFiles.length}, bytes: ${importBytesNew}${importStatus.error ? ` | error: ${importStatus.error}` : ''}`);

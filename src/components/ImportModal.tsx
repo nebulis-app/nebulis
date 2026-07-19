@@ -268,14 +268,16 @@ export function ImportModal({ onClose, onReview }: {
 
   // ── Derived display info ─────────────────────────────────────────────────
 
-  const objectCounts = picked.reduce<Record<string, number>>((acc, { relativePath }) => {
-    const topDir = relativePath.split('/')[0];
-    if (topDir && relativePath.includes('/')) {
-      acc[topDir] = (acc[topDir] ?? 0) + 1;
-    }
-    return acc;
-  }, {});
-  const objectNames = Object.keys(objectCounts);
+  // Count distinct top-level folders for the staging summary. The file count
+  // does the real "did I pick the right thing?" job; the folder count is a
+  // secondary hint. We don't enumerate the names: for a Dwarf SD card that is
+  // hundreds of raw-capture folders, and the review step lists every object
+  // properly a click later anyway.
+  const folderCount = new Set(
+    picked
+      .filter(({ relativePath }) => relativePath.includes('/'))
+      .map(({ relativePath }) => relativePath.split('/')[0]),
+  ).size;
 
   const card = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
   const mutedText = isDark ? 'text-slate-500' : 'text-slate-400';
@@ -285,10 +287,10 @@ export function ImportModal({ onClose, onReview }: {
       isOpen
       onClose={requestClose}
       title="Import to Library"
-      className={`relative w-full max-w-lg rounded-2xl border shadow-2xl ${card}`}
+      className={`relative w-full max-w-lg max-h-[88vh] flex flex-col rounded-2xl border shadow-2xl ${card}`}
     >
       {/* Header */}
-      <div className={`flex items-center justify-between px-6 py-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+      <div className={`shrink-0 flex items-center justify-between px-6 py-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
         <h2 className={`font-display font-semibold text-lg ${isDark ? 'text-white' : 'text-slate-900'}`}>
           Import to Library
         </h2>
@@ -297,7 +299,7 @@ export function ImportModal({ onClose, onReview }: {
         </button>
       </div>
 
-      <div className="p-6 space-y-5">
+      <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
 
         {source === 'local' && (
           <>
@@ -436,11 +438,11 @@ export function ImportModal({ onClose, onReview }: {
 
         {/* Staged file summary */}
         {phase === 'staging' && picked.length > 0 && (
-          <div className={`rounded-xl border p-4 space-y-3 ${isDark ? 'border-slate-800 bg-slate-800/40' : 'border-slate-200 bg-slate-50'}`}>
+          <div className={`rounded-xl border p-4 ${isDark ? 'border-slate-800 bg-slate-800/40' : 'border-slate-200 bg-slate-50'}`}>
             <div className="flex items-center justify-between">
               <p className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
                 {picked.length} file{picked.length !== 1 ? 's' : ''} ready
-                {objectNames.length > 0 && ` across ${objectNames.length} folder${objectNames.length !== 1 ? 's' : ''}`}
+                {folderCount > 0 && ` across ${folderCount} folder${folderCount !== 1 ? 's' : ''}`}
               </p>
               <button
                 onClick={() => {
@@ -454,22 +456,6 @@ export function ImportModal({ onClose, onReview }: {
                 Clear
               </button>
             </div>
-            {objectNames.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {objectNames.map(name => (
-                  <span
-                    key={name}
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium truncate max-w-[200px] ${
-                      isDark ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700'
-                    }`}
-                    title={name}
-                  >
-                    {name}
-                    <span className={mutedText}>×{objectCounts[name]}</span>
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
         )}
 

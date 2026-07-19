@@ -1,5 +1,5 @@
 # Changelog
-## 1.4.2 (192) - July 18th, 2026
+## 1.4.2 (193) - July 18th, 2026
 ### New
 - Import Files: choose "Folder on this computer" to import straight from a folder on the same machine running Nebulis, no browser upload needed.
 - Import Files: drag in a folder that already lives on the computer running Nebulis and it's detected automatically. The primary action switches to importing it in place with no upload, and uploading the files stays available as a fallback.

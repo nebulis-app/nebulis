@@ -17,6 +17,7 @@ import {
   sanitizePath,
   validatePathNoTraversal,
   loadSettings,
+  parseShareName,
 } from './smb.shared.js';
 import type { TelescopeProfile } from './telescopes.js';
 
@@ -25,13 +26,27 @@ const execFileAsync = promisify(execFile);
 type Settings = SmbProfile;
 type ProfileArg = Partial<Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'>> | null | undefined;
 
+/** `\\host\share` — the share root only, which is what `net use` authenticates
+ *  against. Any folder inside the share is appended by toUncPath instead. */
 function uncRoot(settings: Settings): string {
-  return `\\\\${settings.hostname}\\${settings.shareName}`;
+  const { share } = parseShareName(settings.shareName);
+  return `\\\\${settings.hostname}\\${share}`;
 }
 
 function toUncPath(settings: Settings, smbPath: string): string {
-  const root = uncRoot(settings);
-  const joined = path.win32.normalize(path.win32.join(root, smbPath.replace(/\//g, '\\')));
+  const { subpath } = parseShareName(settings.shareName);
+  // Normalize the root before comparing. It used to be interpolated raw, so a
+  // share field containing a forward slash produced a root with `/` while
+  // `joined` came back normalized to `\` — the prefix check then failed and
+  // reported "Path traversal detected" for a path that was legal and inside
+  // the share. parseShareName now keeps separators out of `share` entirely,
+  // but normalizing here means the guard compares like with like regardless.
+  const root = path.win32.normalize(uncRoot(settings));
+  const rel = path.win32.join(
+    subpath.replace(/\//g, '\\'),
+    smbPath.replace(/\//g, '\\'),
+  );
+  const joined = path.win32.normalize(path.win32.join(root, rel));
   // Defense in depth: even with sanitizePath/validatePathNoTraversal upstream,
   // assert the resulting UNC path is rooted inside the configured share.
   // path.win32.normalize collapses ".." segments, so a sneaky input that

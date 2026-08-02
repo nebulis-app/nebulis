@@ -477,10 +477,11 @@ export function createProfile(data: Partial<TelescopeProfile>): TelescopeProfile
     model,
     hostname: data.hostname || '',
     shareName: data.shareName || 'EMMC Images',
-    // 'guest' is the SMB default; Dwarf profiles default to FTP, which must
-    // stay empty so toTarget() in smb.ftp.ts falls back to a true anonymous
-    // login instead of sending the literal string 'guest' as the username.
-    username: data.username || (isDwarfKind ? '' : 'guest'),
+    // 'guest' is the SMB default. Dwarf profiles default to FTP, whose
+    // documented anonymous login is 'anonymous' (smb.ftp.ts's toTarget()
+    // falls back to 'Anonymous' regardless, but firmware accepts any
+    // username, so this is filled in explicitly rather than left blank).
+    username: data.username || (isDwarfKind ? 'anonymous' : 'guest'),
     password: data.password || '',
     createdAt: new Date().toISOString(),
     kind,

@@ -13,6 +13,7 @@ import {
   sanitizePath,
   validatePathNoTraversal,
   loadSettings,
+  parseShareName,
 } from './smb.shared.js';
 import type { TelescopeProfile } from './telescopes.js';
 
@@ -36,8 +37,18 @@ function extractSmbReason(err: unknown): string {
   return 'Connection failed';
 }
 
+/** Prefix a path inside the share with the configured subpath. smbclient's
+ *  service argument takes `//server/share` and nothing more, so a folder
+ *  inside the share has to be reached by `cd` once connected. */
+function remoteDir(settings: SmbProfile, dir: string): string {
+  const { subpath } = parseShareName(settings.shareName);
+  if (!subpath) return dir;
+  if (!dir || dir === '.') return subpath;
+  return `${subpath}/${dir}`;
+}
+
 function buildSmbArgs(settings: SmbProfile): string[] {
-  const share = `//${settings.hostname}/${settings.shareName}`;
+  const share = `//${settings.hostname}/${parseShareName(settings.shareName).share}`;
   if (settings.password) {
     return [share, '-U', `${settings.username}%${settings.password}`];
   }
@@ -53,7 +64,7 @@ export async function smbListDir(smbPath: string, profile?: ProfileArg): Promise
   sanitizePath(smbPath);
   validatePathNoTraversal(smbPath);
 
-  const args = [...buildSmbArgs(settings), '-c', `cd "${smbPath}"; ls`];
+  const args = [...buildSmbArgs(settings), '-c', `cd "${remoteDir(settings, smbPath)}"; ls`];
 
   try {
     const { stdout } = await execFileAsync('smbclient', args, { timeout: 15000 });
@@ -111,7 +122,7 @@ export async function smbGetFile(smbPath: string, maxBytes?: number, profile?: P
   const dir = path.dirname(smbPath);
   const file = path.basename(smbPath);
 
-  const args = [...buildSmbArgs(settings), '-c', `cd "${dir}"; get "${file}" "${tmpFile}"`];
+  const args = [...buildSmbArgs(settings), '-c', `cd "${remoteDir(settings, dir)}"; get "${file}" "${tmpFile}"`];
 
   try {
     await execFileAsync('smbclient', args, { timeout: 300_000 });
@@ -148,7 +159,7 @@ export async function smbPutFile(smbPath: string, data: Buffer, profile?: Profil
   const file = path.basename(smbPath);
   fs.writeFileSync(tmpFile, data);
 
-  const args = [...buildSmbArgs(settings), '-c', `cd "${dir}"; put "${tmpFile}" "${file}"`];
+  const args = [...buildSmbArgs(settings), '-c', `cd "${remoteDir(settings, dir)}"; put "${tmpFile}" "${file}"`];
 
   try {
     await execFileAsync('smbclient', args, { timeout: 30000 });
@@ -175,7 +186,7 @@ export async function smbDelete(smbPath: string, profile?: ProfileArg): Promise<
   const dir = path.dirname(smbPath);
   const file = path.basename(smbPath);
 
-  const args = [...buildSmbArgs(settings), '-c', `cd "${dir}"; del "${file}"`];
+  const args = [...buildSmbArgs(settings), '-c', `cd "${remoteDir(settings, dir)}"; del "${file}"`];
 
   try {
     await execFileAsync('smbclient', args, { timeout: 15000 });

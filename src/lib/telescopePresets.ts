@@ -24,7 +24,8 @@ interface TelescopePreset {
   /** SMB share name to mount. Empty for `other` so the user fills it in, and
    *  empty for Dwarf kinds, which serve FTP rather than an SMB share. */
   shareName: string;
-  /** Default username. Empty for `other`. */
+  /** Default username. Empty for `other`. `anonymous` for Dwarf kinds,
+   *  matching the FTP login their firmware documents (smb.ftp.ts). */
   username: string;
   /** Short help text shown beneath the share-name input. */
   shareHelp: string;
@@ -66,7 +67,7 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
     label: 'DwarfLab Dwarf 3',
     model: 'Dwarf 3',
     shareName: '',
-    username: '',
+    username: 'anonymous',
     shareHelp: DWARF_FTP_HELP,
     defaultHostname: DWARF_AP_HOST,
   },
@@ -75,7 +76,7 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
     label: 'DwarfLab Dwarf II',
     model: 'Dwarf II',
     shareName: '',
-    username: '',
+    username: 'anonymous',
     shareHelp: DWARF_FTP_HELP,
     defaultHostname: DWARF_AP_HOST,
   },
@@ -84,7 +85,7 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
     label: 'DwarfLab Dwarf Mini',
     model: 'Dwarf Mini',
     shareName: '',
-    username: '',
+    username: 'anonymous',
     shareHelp: DWARF_FTP_HELP,
     defaultHostname: DWARF_AP_HOST,
   },
@@ -94,7 +95,7 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
     model: 'Custom',
     shareName: '',
     username: '',
-    shareHelp: 'Custom SMB share. See "Generic SMB Layout" for the folder convention this app expects.',
+    shareHelp: 'Custom SMB share. Use the share name on its own, or "share/folder" to start inside a subfolder. Do not paste a full smb:// address. See "Generic SMB Layout" for the folder convention this app expects.',
     defaultHostname: '',
   },
 };

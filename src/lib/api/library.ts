@@ -92,13 +92,15 @@ export const getImportStatus = () => fetchJSON<ImportStatus>('/library/import/st
 
 /** Format a transport kind for user-facing copy. Used in import progress
  *  strings and history rows so a Seestar reached via USB reads as "via USB"
- *  rather than "local" or "smb". FTP is named outright rather than folded into
- *  "Wi-Fi": a Dwarf owner can have both FTP and USB configured, and knowing
- *  which one a run used is the point of showing this at all. */
+ *  rather than "local" or "smb".
+ *
+ *  Both network protocols read as "Wi-Fi". We never say "SMB" to a user, so
+ *  saying "FTP" only for Dwarf owners leaked one vendor's wire protocol while
+ *  hiding the other's. The distinction a Dwarf owner actually needs (was this
+ *  run over the air or over the cable?) survives intact as Wi-Fi vs USB. */
 export function formatTransport(kind: TransportKind | null | undefined): string {
   if (kind === 'local') return 'USB';
-  if (kind === 'ftp') return 'FTP';
-  if (kind === 'smb') return 'Wi-Fi';
+  if (kind === 'ftp' || kind === 'smb') return 'Wi-Fi';
   return '';
 }
 

@@ -18,6 +18,7 @@ import {
   sanitizePath,
   validatePathNoTraversal,
   loadSettings,
+  parseShareName,
 } from './smb.shared.js';
 import type { TelescopeProfile } from './telescopes.js';
 
@@ -27,9 +28,22 @@ const execFileAsync = promisify(execFile);
 
 let mountDir: string | null = null;
 let mountedKey: string | null = null;
+/** True when `mountDir` is a mount we adopted rather than created, for example
+ *  one the user mounted in Finder. Those must never be unmounted by us. */
+let mountAdopted = false;
 
+/** Replace the password in a `//user:pass@host/share` URL. mount_smbfs echoes
+ *  its whole command line in error messages, so anything derived from one has
+ *  to pass through here before being logged. */
+function scrubUrl(text: string): string {
+  return text.replace(/(\/\/[^:/@\s]+):[^@\s]*@/g, '$1:***@');
+}
+
+/** Keyed on the share, not the raw share field: the mount is per-share, so two
+ *  profiles pointing at different folders inside one share should reuse a
+ *  single mount rather than tearing each other's down. */
 function profileKey(s: SmbProfile): string {
-  return `${s.hostname}|${s.shareName}|${s.username}`;
+  return `${s.hostname}|${parseShareName(s.shareName).share}|${s.username}`;
 }
 
 function buildMountUrl(settings: SmbProfile): string {
@@ -40,14 +54,23 @@ function buildMountUrl(settings: SmbProfile): string {
   // Without explicit credentials mount_smbfs falls back to the current user's
   // system credentials (Kerberos/NTLM), which the Seestar rejects.
   // //user:@host/share = explicit guest / no-password auth, equivalent to smbclient -N.
-  return `//${enc(user)}:${enc(pass)}@${settings.hostname}/${enc(settings.shareName)}`;
+  // Only the share is mountable. A folder inside it is appended to the mount
+  // point afterwards (see ensureMount) — percent-encoding the whole field made
+  // "share/folder" become a single bogus share name that could never mount.
+  return `//${enc(user)}:${enc(pass)}@${settings.hostname}/${enc(parseShareName(settings.shareName).share)}`;
 }
 
 async function teardownMount(): Promise<void> {
   if (!mountDir) return;
   const mp = mountDir;
+  const adopted = mountAdopted;
   mountDir = null;
   mountedKey = null;
+  mountAdopted = false;
+  // Never unmount a share we did not mount. It may be the user's own Finder
+  // mount, and pulling it out from under them would be a surprising side
+  // effect of opening a settings page.
+  if (adopted) return;
   await execFileAsync('umount', [mp]).catch(() => {});
   try { fs.rmdirSync(mp); } catch { /* ignore */ }
 }
@@ -55,28 +78,76 @@ async function teardownMount(): Promise<void> {
 // Check the OS mount table for an existing mount of this share (e.g. left over
 // from a dev-server restart). macOS rejects a second mount_smbfs call for the
 // same share, so we must reuse the existing mount point instead of creating one.
-async function findExistingMount(url: string): Promise<string | null> {
+/** One smbfs row from `mount`. Real format, which is NOT what this code
+ *  previously assumed:
+ *    //brent@Orion._smb._tcp.local/Seestar on /Volumes/Seestar (smbfs, nodev, ...)
+ *  Note there is no password, and the host is whatever name the share was
+ *  mounted with, which may be a Bonjour name where we hold an IP. */
+interface MountedShare { user: string; host: string; share: string; mountPoint: string }
+
+function parseMountLine(line: string): MountedShare | null {
+  const m = /^\/\/([^@/]+)@([^/]+)\/(\S+) on (.+?) \((.*)\)\s*$/.exec(line);
+  if (!m || !m[5].startsWith('smbfs')) return null;
+  return {
+    // The credential portion is kept verbatim by macOS, so a mount we made as
+    // "//guest:@host/share" reports the user as "guest:" and one with a
+    // password can report "user:password". Take only the username, or a guest
+    // share (the Seestar's own default) would never match.
+    user: decodeURIComponent(m[1].split(':')[0]),
+    host: m[2],
+    share: decodeURIComponent(m[3]),
+    mountPoint: m[4],
+  };
+}
+
+/**
+ * Find an existing OS mount of this share so we can reuse it. macOS refuses a
+ * second mount_smbfs of the same share and fails with "File exists", so
+ * missing one here turns every operation into a hard failure.
+ *
+ * This used to compare the full mount URL, password included, against the
+ * mount table. The table never contains a password, so the match could never
+ * succeed and the reuse path was dead: any share already mounted (by Finder,
+ * or by us before a dev-server restart) made Nebulis unusable for that share.
+ *
+ * Host is matched loosely on purpose. The same server is routinely mounted as
+ * an IP by us and as a Bonjour name by Finder, so requiring an exact host
+ * would reintroduce the same dead path. Share plus username is the identity we
+ * can actually rely on; an exact host match is preferred when one exists.
+ */
+async function findExistingMount(settings: SmbProfile): Promise<string | null> {
+  const { share } = parseShareName(settings.shareName);
+  const user = settings.username || 'guest';
   try {
     const { stdout } = await execFileAsync('mount', []);
-    for (const line of stdout.split('\n')) {
-      // Format: "//user:pass@host/share on /mount/point (smbfs, ...)"
-      if (line.startsWith(url + ' on ')) {
-        const mp = line.split(' on ')[1]?.split(' (')[0]?.trim();
-        if (mp) return mp;
-      }
-    }
+    const candidates = stdout
+      .split('\n')
+      .map(parseMountLine)
+      .filter((m): m is MountedShare => m !== null && m.share === share && m.user === user);
+    if (candidates.length === 0) return null;
+    const exact = candidates.find(m => m.host === settings.hostname);
+    return (exact ?? candidates[0]).mountPoint;
   } catch { /* ignore */ }
   return null;
 }
 
+/**
+ * Mount the share and return the directory callers should resolve paths
+ * against. That is the mount point plus any configured subpath, so every
+ * caller's `path.join(mp, smbPath)` lands inside the right folder without
+ * knowing a subpath exists. The module-level `mountDir` stays the true mount
+ * point, which is what teardown and the liveness check need.
+ */
 async function ensureMount(settings: SmbProfile): Promise<string> {
   const key = profileKey(settings);
+  const { subpath } = parseShareName(settings.shareName);
+  const withSubpath = (root: string) => (subpath ? path.join(root, subpath) : root);
 
   if (mountDir && mountedKey === key) {
     // Quick liveness check — if the mount point is gone or disconnected, remount.
     try {
       await fs.promises.access(mountDir, fs.constants.R_OK);
-      return mountDir;
+      return withSubpath(mountDir);
     } catch {
       await teardownMount();
     }
@@ -88,11 +159,12 @@ async function ensureMount(settings: SmbProfile): Promise<string> {
 
   // Reuse a pre-existing OS-level mount rather than calling mount_smbfs again —
   // macOS refuses to mount the same share twice and would return an error.
-  const existing = await findExistingMount(url);
+  const existing = await findExistingMount(settings);
   if (existing) {
     mountDir = existing;
     mountedKey = key;
-    return existing;
+    mountAdopted = true;
+    return withSubpath(existing);
   }
 
   const mp = fs.mkdtempSync(path.join(os.tmpdir(), 'nebulis-smb-'));
@@ -106,24 +178,42 @@ async function ensureMount(settings: SmbProfile): Promise<string> {
 
   mountDir = mp;
   mountedKey = key;
-  return mp;
+  mountAdopted = false;
+  return withSubpath(mp);
 }
 
 function extractMountReason(err: unknown): string {
   if (!(err instanceof Error)) return 'Unknown error';
   const stderr = (err as { stderr?: string }).stderr ?? '';
-  const msg = `${err.message} ${stderr}`;
-  console.warn('[smb] mount_smbfs raw error:', err.message, '| stderr:', stderr);
+  // Scrub before anything else. mount_smbfs echoes its full command line,
+  // credentials included, and this was writing the user's SMB password to
+  // server.log in plaintext. Classifying against the scrubbed text also stops
+  // a password that happens to contain "auth" from steering the result.
+  const msg = scrubUrl(`${err.message} ${stderr}`);
+  console.warn('[smb] mount_smbfs raw error:', msg);
   if (msg.includes('Connection refused')) return 'Connection refused';
   if (/timed out|timeout/i.test(msg)) return 'Connection timed out';
   if (/auth|credentials|password/i.test(msg)) return 'Authentication failed';
-  if (msg.includes('No such file') || msg.includes('does not exist')) return 'Share not found';
+  // "File exists" is mount_smbfs refusing to mount an already-mounted share.
+  // ensureMount tries to reuse one first, so getting here means that lookup
+  // missed and the user needs to know it is a mount collision, not a network
+  // problem.
+  if (/File exists/i.test(msg)) {
+    return 'That share is already mounted on this Mac and the existing mount could not be reused';
+  }
+  // Node's ENOENT text is lowercase ("no such file or directory"), so the old
+  // case-sensitive check never fired and a missing folder was reported as a
+  // connection failure.
+  if (/no such file|does not exist/i.test(msg)) return 'Share or folder not found';
   return 'Connection failed';
 }
 
 // Clean up the mount when the process exits so we don't leave dangling mounts.
+// Adopted mounts are left alone: they belong to whoever mounted them, and in
+// dev the server exits on every file change, which would otherwise unmount the
+// user's Finder shares repeatedly.
 process.on('exit', () => {
-  if (mountDir) {
+  if (mountDir && !mountAdopted) {
     try { execFileSync('umount', [mountDir]); } catch { /* ignore */ }
     try { fs.rmdirSync(mountDir); } catch { /* ignore */ }
   }

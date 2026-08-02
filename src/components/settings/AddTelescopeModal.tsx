@@ -23,6 +23,7 @@ import {
   isDwarfKind as isDwarfTelescopeKind,
   type TelescopeKind,
 } from '../../lib/telescopePresets';
+import { shareNameError } from '../../lib/shareName';
 import { getInputClass, getLabelClass, getHelperClass } from './SettingsUI';
 import { Modal } from '../ui/Modal';
 import { FileTypeToggle } from '../ui/FileTypeToggle';
@@ -264,7 +265,10 @@ export function AddTelescopeModal({
 
   const mutation = isEdit ? updateMutationInner : createMutation;
   const saveBusy = mutation.isPending || attachToExistingMutation.isPending;
-  const canSave = !saveBusy && (
+  // Only meaningful for SMB: FTP has no share and USB has no host. The server
+  // rejects the same values on write, so this is purely to fail fast.
+  const shareError = !isLocalKind && !isFtpMode ? shareNameError(shareName) : null;
+  const canSave = !saveBusy && !shareError && (
     isLocalKind
       ? localPath.trim().length > 0
       // FTP needs only an address: the Dwarf's server is anonymous and the
@@ -349,6 +353,7 @@ export function AddTelescopeModal({
   const canTest = !isLocalKind
     && hostname.trim().length > 0
     && (isFtpMode || shareName.trim().length > 0)
+    && !shareError
     && testStatus !== 'testing';
 
   return (
@@ -575,8 +580,11 @@ export function AddTelescopeModal({
                       value={shareName}
                       onChange={e => setShareName(e.target.value)}
                       className={inputClass}
+                      aria-invalid={!!shareError}
                     />
-                    <p className={helperClass}>{preset.shareHelp}</p>
+                    {shareError
+                      ? <p className={`text-xs mt-1 ${isDark ? 'text-red-400' : 'text-red-600'}`}>{shareError}</p>
+                      : <p className={helperClass}>{preset.shareHelp}</p>}
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-4">

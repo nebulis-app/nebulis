@@ -12,10 +12,14 @@ import {
   type ConnectionType,
 } from '../../lib/api/telescopes';
 import { isDwarfKind } from '../../lib/telescopePresets';
+import { shareNameError } from '../../lib/shareName';
 import { getInputClass, getLabelClass, getHelperClass } from './SettingsUI';
 import { Modal } from '../ui/Modal';
 
-const KIND_LABEL: Record<ConnectionType, string> = { smb: 'SMB (LAN share)', ftp: 'FTP (Wi-Fi)', local: 'USB / local path' };
+// Medium first, protocol as the parenthetical, matching AddTelescopeModal.
+// This is a config screen, so the protocol stays visible here even though the
+// status pills elsewhere show only "Wi-Fi" / "USB".
+const KIND_LABEL: Record<ConnectionType, string> = { smb: 'Wi-Fi (SMB share)', ftp: 'Wi-Fi (FTP)', local: 'USB / local path' };
 const KIND_ICON: Record<ConnectionType, typeof Usb> = { smb: Network, ftp: Wifi, local: Usb };
 
 interface FormState {
@@ -150,10 +154,12 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
     }
   }
 
-  const canTest = form.kind !== 'local' && form.hostname.trim().length > 0;
-  const canSubmit = form.kind === 'local'
+  // Only SMB carries a share. The server rejects the same values on write.
+  const shareError = form.kind === 'smb' ? shareNameError(form.shareName) : null;
+  const canTest = form.kind !== 'local' && form.hostname.trim().length > 0 && !shareError;
+  const canSubmit = !shareError && (form.kind === 'local'
     ? form.localPath.trim().length > 0
-    : form.hostname.trim().length > 0 && (form.kind === 'ftp' || form.shareName.trim().length > 0);
+    : form.hostname.trim().length > 0 && (form.kind === 'ftp' || form.shareName.trim().length > 0));
 
   return (
     <Modal
@@ -346,6 +352,10 @@ function TransportForm({
   submitting: boolean;
   submitLabel: string;
 }) {
+  // Recomputed here rather than passed down: the parent needs it for its
+  // submit/test guards, this component needs it to annotate the field. Both
+  // derive from the same `form`, so they cannot drift.
+  const shareError = form.kind === 'smb' ? shareNameError(form.shareName) : null;
   return (
     <div className={`px-3 py-3 space-y-3 ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
       {!kindLocked && (
@@ -393,7 +403,11 @@ function TransportForm({
                 onChange={e => setForm({ ...form, shareName: e.target.value })}
                 placeholder="EMMC Images"
                 className={inputClass}
+                aria-invalid={!!shareError}
               />
+              {shareError && (
+                <p className={`text-xs mt-1 ${isDark ? 'text-red-400' : 'text-red-600'}`}>{shareError}</p>
+              )}
             </div>
           )}
           <div className="grid grid-cols-2 gap-2">

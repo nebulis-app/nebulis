@@ -202,12 +202,12 @@ export function BackupStatus() {
                     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium border shrink-0 ${
                       !t.online
                         ? (isDark ? 'bg-slate-800/60 text-slate-500 border-slate-700/60' : 'bg-slate-100 text-slate-400 border-slate-200')
-                        : t.transportKind === 'smb'
-                          ? (isDark ? 'bg-sky-500/15 text-sky-300 border-sky-500/30' : 'bg-sky-50 text-sky-700 border-sky-200')
-                          : (isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-700 border-amber-200')
+                        : t.transportKind === 'local'
+                          ? (isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-700 border-amber-200')
+                          : (isDark ? 'bg-sky-500/15 text-sky-300 border-sky-500/30' : 'bg-sky-50 text-sky-700 border-sky-200')
                     }`}>
                       {t.transportKind === 'local' ? <Usb className="w-2.5 h-2.5" /> : <Network className="w-2.5 h-2.5" />}
-                      {t.transportKind === 'local' ? 'USB' : 'Wi-Fi'}
+                      {formatTransport(t.transportKind)}
                     </span>
                   )}
                 </div>
@@ -607,13 +607,17 @@ function SyncHistory({ isDark }: { isDark: boolean }) {
                 </div>
               </div>
 
-              {((entry.files && entry.files.length > 0) || (entry.skipped && entry.skipped.length > 0)) && (
+              {/* Failed runs carry no files and nothing skipped, so gating the
+                  details button purely on content used to hide it from exactly
+                  the rows worth inspecting. The row's error text is truncated,
+                  so `error` alone is reason enough to open the modal. */}
+              {(!!entry.error || (entry.files && entry.files.length > 0) || (entry.skipped && entry.skipped.length > 0)) && (
                 <button
                   onClick={() => setFilesModal(entry)}
                   className={`p-1.5 rounded-lg transition ${
                     isDark ? 'hover:bg-slate-700 text-slate-500' : 'hover:bg-slate-200 text-slate-400'
                   }`}
-                  title="View sync details"
+                  title={entry.error ? 'View error details' : 'View sync details'}
                 >
                   <Info className="w-4 h-4" />
                 </button>
@@ -654,6 +658,35 @@ function SyncHistory({ isDark }: { isDark: boolean }) {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-3 space-y-3">
+              {/* First in the modal: on a failed run this is the whole story,
+                  and the row above truncates it. Wraps and stays selectable so
+                  the full host/share can be copied into a bug report. */}
+              {filesModal.error && (
+                <div className={`rounded-xl border p-3 ${
+                  isDark ? 'bg-red-500/10 border-red-500/20' : 'bg-red-50 border-red-200'
+                }`}>
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+                    <div className="min-w-0 space-y-1.5">
+                      <p className={`text-xs font-semibold ${isDark ? 'text-red-300' : 'text-red-700'}`}>
+                        This sync failed
+                      </p>
+                      <p className={`text-xs leading-relaxed break-words select-text ${
+                        isDark ? 'text-red-200/90' : 'text-red-800'
+                      }`}>
+                        {filesModal.error}
+                      </p>
+                      {filesModal.telescopeName && (
+                        <p className={`text-[11px] ${isDark ? 'text-red-300/60' : 'text-red-600/80'}`}>
+                          {filesModal.telescopeName}
+                          {filesModal.transportKind && ` · ${formatTransport(filesModal.transportKind)}`}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Above the file list on purpose: a user who opens this is
                   usually looking for what is missing, not what arrived. */}
               <SkippedNotice

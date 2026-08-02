@@ -19,6 +19,7 @@ import {
   updateTelescope,
   archiveTelescope,
   unarchiveTelescope,
+  getAllTelescopeStatus,
   type TelescopeProfile,
   type ConnectionType,
 } from '../../lib/api/telescopes';
@@ -58,6 +59,20 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
     queryKey: ['telescopes'],
     queryFn: listTelescopes,
   });
+
+  // Live reachability, polled on the same 30 s tick (and the same query key)
+  // as the header pill, so this costs no extra request. The profile's
+  // `activeTransportId` only says which transport selectActiveTransport WOULD
+  // pick — for ftp/smb that is just "a hostname is configured", never a
+  // reachability check (only `local` verifies its mount). Without folding in
+  // this probe result the FTP pill stays lit forever once configured, long
+  // after the telescope's Wi-Fi is gone.
+  const { data: liveStatus = [] } = useQuery({
+    queryKey: ['telescope-status-all'],
+    queryFn: getAllTelescopeStatus,
+    refetchInterval: 30_000,
+  });
+  const onlineById = new Map(liveStatus.map(s => [s.id, s.online]));
 
   // Active telescopes drive auto-import + are valid reassign targets;
   // archived ones live below in their own list with restore + reassign actions.
@@ -173,6 +188,9 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
             key={t.id}
             telescope={t}
             isDark={isDark}
+            // Undefined until the first probe lands: assume online so the
+            // pills don't flash dim on initial paint.
+            online={onlineById.get(t.id) ?? true}
             onEdit={() => setEditing(t)}
             onArchive={() => handleArchive(t)}
             onReassign={() => setReassigning(t)}
@@ -244,6 +262,7 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
 function TelescopeRow({
   telescope,
   isDark,
+  online,
   onEdit,
   onArchive,
   onReassign,
@@ -257,6 +276,8 @@ function TelescopeRow({
 }: {
   telescope: TelescopeProfile;
   isDark: boolean;
+  /** Live reachability from the status probe, not just "is it configured". */
+  online: boolean;
   onEdit: () => void;
   onArchive: () => void;
   onReassign: () => void;
@@ -270,15 +291,18 @@ function TelescopeRow({
 }) {
   const sessions = telescope.sessionCount ?? 0;
   const transports = telescope.transports ?? [];
-  const smbCount = transports.filter(t => t.kind === 'smb').length;
+  // Wi-Fi covers both network protocols, matching the pills. Counting only
+  // `smb` here used to drop a Dwarf's FTP transport from the line entirely,
+  // so a Dwarf with FTP + USB read as just "1 USB".
+  const netCount = transports.filter(t => t.kind === 'smb' || t.kind === 'ftp').length;
   const localCount = transports.filter(t => t.kind === 'local').length;
   // Compose the secondary line. When the profile has more than one transport,
-  // show the breakdown (1 Wi-Fi + 1 USB) instead of just the SMB hostname so
-  // the user can see at a glance that this telescope has both reachable.
+  // show the breakdown (1 Wi-Fi + 1 USB) instead of just the hostname so the
+  // user can see at a glance that this telescope has both configured.
   let transportLine: string;
   if (transports.length > 1) {
     const parts: string[] = [];
-    if (smbCount > 0) parts.push(`${smbCount} Wi-Fi`);
+    if (netCount > 0) parts.push(`${netCount} Wi-Fi`);
     if (localCount > 0) parts.push(`${localCount} USB`);
     transportLine = parts.join(' + ');
   } else if (transports.length === 1) {
@@ -312,7 +336,7 @@ function TelescopeRow({
             title="Manage connections"
             className={`shrink-0 ${isDark ? 'hover:opacity-80' : 'hover:opacity-80'}`}
           >
-            <TransportPills telescope={telescope} isDark={isDark} />
+            <TransportPills telescope={telescope} isDark={isDark} online={online} />
           </button>
         </div>
         <div className={`text-xs truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -466,59 +490,74 @@ function ArchivedTelescopeRow({
   );
 }
 
-/** Small pills showing how each telescope is reachable. One pill per
- *  configured transport kind, so a Seestar with both SMB and USB shows two,
- *  and a Dwarf with both FTP and USB shows two. Dwarf never shows an SMB pill
- *  because those devices do not serve one. The pill matching the profile's
- *  `activeTransportId` (the one selectActiveTransport would pick right now)
- *  renders bright; the inactive ones render dim. */
-function TransportPills({ telescope, isDark }: { telescope: TelescopeProfile; isDark: boolean }) {
+/** Small pills showing how each telescope is reachable.
+ *
+ *  The pill names the *medium*, not the protocol: "Wi-Fi" or "USB". SMB and
+ *  FTP are both "Wi-Fi" because that is the only distinction a user can act
+ *  on. Nobody chooses FTP over SMB. The device decides (Seestar serves SMB,
+ *  Dwarf serves FTP) and the real question is only ever "over the air, or over
+ *  the cable?". Naming one vendor's wire protocol in the pill while hiding the
+ *  other's was the inconsistency. The protocol still appears in the tooltip
+ *  for support, and the setup screen already words it this way ("Wi-Fi (FTP)"
+ *  / "Wi-Fi (SMB)" in AddTelescopeModal).
+ *
+ *  At most one network pill renders. A profile carrying both an SMB and an FTP
+ *  row is a leftover from an earlier edit, not a device with two radios, so
+ *  showing two identical "Wi-Fi" pills would read as a rendering bug. FTP wins
+ *  that tiebreak, matching selectActiveTransport's own ranking. */
+function TransportPills({ telescope, isDark, online }: { telescope: TelescopeProfile; isDark: boolean; online: boolean }) {
   const isDwarf = telescope.kind === 'dwarf-2' || telescope.kind === 'dwarf-3' || telescope.kind === 'dwarf-mini';
   const transports = telescope.transports ?? [];
-  const smbTransport = transports.find(t => t.kind === 'smb');
+  const smbTransport = !isDwarf ? transports.find(t => t.kind === 'smb') : undefined;
   const ftpTransport = transports.find(t => t.kind === 'ftp');
   const localTransport = transports.find(t => t.kind === 'local');
 
-  const hasSmb = !isDwarf && !!smbTransport;
-  const hasFtp = !!ftpTransport;
+  // One network transport, preferring FTP the way selectActiveTransport does.
+  const netTransport = ftpTransport ?? smbTransport;
   const hasLocal = !!localTransport;
-  const hasAny = hasSmb || hasFtp || hasLocal;
 
   // If the transports array is empty (an older profile that hasn't been
   // re-read yet) fall back to the legacy mirror column so the row still shows
   // something rather than going blank.
-  const fallbackKind = hasAny ? null : telescope.connectionType;
+  const fallbackKind = !netTransport && !hasLocal ? telescope.connectionType : null;
 
-  const showSmb = hasSmb || fallbackKind === 'smb';
-  const showFtp = hasFtp || fallbackKind === 'ftp';
+  const netKind: ConnectionType | null = netTransport?.kind
+    ?? (fallbackKind === 'ftp' || fallbackKind === 'smb' ? fallbackKind : null);
   const showLocal = hasLocal || fallbackKind === 'local';
-  if (!showSmb && !showFtp && !showLocal) return null;
+  if (!netKind && !showLocal) return null;
 
   // Active transport: highlight the one selectActiveTransport picked. When
-  // only one transport is configured it's trivially active. The
-  // activeTransportId is null when nothing is reachable right now (we dim
-  // everything in that case so the user can tell the import won't run).
+  // only one transport is configured it's trivially active.
+  //
+  // `activeTransportId` alone is NOT a liveness signal. selectActiveTransport
+  // verifies the mount for `local` transports, but for ftp/smb it only checks
+  // that a hostname string is non-empty, and it caches its pick for 30 s. So a
+  // Dwarf whose Wi-Fi has been gone for an hour still reports its FTP
+  // transport as "active". Fold in the probe result, which does test
+  // reachability (with failure hysteresis), so an unreachable telescope dims
+  // every pill instead of advertising a connection that isn't there.
   const activeId = telescope.activeTransportId;
-  const noActive = activeId === null;
+  const noActive = activeId === null || !online;
   const soleTransport = transports.length === 1;
-  const isSmbActive = hasSmb && (soleTransport || smbTransport?.id === activeId);
-  const isFtpActive = hasFtp && (soleTransport || ftpTransport?.id === activeId);
+  const isNetActive = !!netTransport && (soleTransport || netTransport.id === activeId);
   const isLocalActive = hasLocal && (soleTransport || localTransport?.id === activeId);
 
   const pinnedId = telescope.pinnedTransportId;
 
   return (
     <div className="flex items-center gap-1 shrink-0">
-      {showSmb && <TransportPill kind="smb" active={!noActive && isSmbActive} pinned={smbTransport?.id === pinnedId} isDark={isDark} />}
-      {showFtp && <TransportPill kind="ftp" active={!noActive && isFtpActive} pinned={ftpTransport?.id === pinnedId} isDark={isDark} />}
-      {showLocal && <TransportPill kind="local" active={!noActive && isLocalActive} pinned={localTransport?.id === pinnedId} isDark={isDark} />}
+      {netKind && <TransportPill kind={netKind} active={!noActive && isNetActive} pinned={!!netTransport && netTransport.id === pinnedId} offline={!online} isDark={isDark} />}
+      {showLocal && <TransportPill kind="local" active={!noActive && isLocalActive} pinned={localTransport?.id === pinnedId} offline={!online} isDark={isDark} />}
     </div>
   );
 }
 
-function TransportPill({ kind, active, pinned, isDark }: { kind: ConnectionType; active: boolean; pinned: boolean; isDark: boolean }) {
+function TransportPill({ kind, active, pinned, offline, isDark }: { kind: ConnectionType; active: boolean; pinned: boolean; offline: boolean; isDark: boolean }) {
   const Icon = kind === 'local' ? Usb : Network;
-  const label = kind === 'local' ? 'USB' : kind === 'ftp' ? 'FTP' : 'Wi-Fi';
+  const label = kind === 'local' ? 'USB' : 'Wi-Fi';
+  // Protocol is tooltip-only detail: it is not something the user picks, but
+  // it is the first thing worth knowing when a connection misbehaves.
+  const detail = kind === 'ftp' ? 'Wi-Fi (FTP)' : kind === 'smb' ? 'Wi-Fi (SMB)' : 'USB';
   // Bright tones for the active transport (sky-blue for the network ones,
   // amber for USB) and a muted slate tone for the inactive ones, so the eye
   // lands on the transport actually in use.
@@ -527,11 +566,16 @@ function TransportPill({ kind, active, pinned, isDark }: { kind: ConnectionType;
     : kind === 'local'
       ? (isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-700 border-amber-200')
       : (isDark ? 'bg-sky-500/15 text-sky-300 border-sky-500/30' : 'bg-sky-50 text-sky-700 border-sky-200');
-  const title = pinned
-    ? `${label}: manually pinned as the transport to use`
-    : active
-      ? `${label}: active transport for this telescope right now`
-      : `${label}: configured but not the active transport right now`;
+  // Offline wins over the pinned/active wording: a pinned transport on an
+  // unreachable telescope is still configured, but saying it's "the transport
+  // to use" reads as a live connection.
+  const title = offline
+    ? `${detail}: configured, but this telescope is not reachable right now`
+    : pinned
+      ? `${detail}: manually pinned as the transport to use`
+      : active
+        ? `${detail}: active transport for this telescope right now`
+        : `${detail}: configured but not the active transport right now`;
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${tone}`} title={title}>
       {pinned && <Pin className="w-2.5 h-2.5" />}

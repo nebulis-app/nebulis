@@ -1,5 +1,20 @@
 # Changelog
-## 1.5.0 (200) - August 2nd, 2026
+## 1.5.1 (202) - August 2nd, 2026
+### Updated
+- The SMB share name field now accepts a folder inside the share, for example "Server/MyWorks", instead of only a top-level share name. Windows, macOS, and Docker all read it the same way.
+
+### Fixes
+- Dwarf FTP: Set default username to "anonymous" with no password
+- Telescope connections now read "Wi-Fi" or "USB" everywhere. A DWARF telescope showed "FTP" on the Settings page and "Wi-Fi" on Backup Status for the same connection. 
+- The connection tag on a telescope stayed lit after the telescope stopped responding, because it reflected whether an address had been saved rather than whether the telescope answered. It now dims when the telescope goes offline.
+- A DWARF telescope with both Wi-Fi and USB set up listed only "1 USB" on its Settings row. Both connections are now counted.
+- Pasting a full smb:// address into the SMB share name field reported "not reachable on the network", which pointed at the telescope address when the share name was the problem. It now says which part of the address belongs in which field, and the telescope can no longer be saved until it's fixed.
+- Windows: a share name that included a folder was rejected with "Path traversal detected" even when the folder was inside the share.
+- macOS: a share that was already mounted, for example one you opened in Finder, failed with "SMB connection failed: Connection failed". Nebulis is meant to reuse an existing mount, but it was looking for it by an address that included the password, which the system mount list never contains, so it never found one and macOS refused to mount the share a second time. Mounts that Nebulis did not create are also no longer unmounted when it shuts down.
+- macOS: connection errors now say what actually went wrong. A missing folder, an already-mounted share, and a genuine network failure all reported the same "Connection failed".
+- macOS: the SMB password was written to the server log in plaintext when a mount failed, because the system tool echoes its full command line in the error. Passwords are now removed before anything is logged. Delete logs/server.log if you'd rather not keep the older entries.
+
+## 1.5.0 (201) - August 2nd, 2026
 ### New
 - DWARF telescopes can now import over Wi-Fi via their built-in FTP server.
 - Observations: added a Map view showing where each observation was taken, from FITS GPS and manual site tagging.

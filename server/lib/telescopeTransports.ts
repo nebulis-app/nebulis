@@ -165,10 +165,9 @@ export function addTransport(
     priority: data.priority ?? defaultPriority(kind),
     hostname: data.hostname ?? '',
     shareName: data.shareName ?? 'EMMC Images',
-    // 'guest' is the SMB default; FTP transports (Dwarf) must stay empty so
-    // smb.ftp.ts's toTarget() falls back to a true anonymous login instead
-    // of sending the literal string 'guest' as the FTP username.
-    username: data.username ?? (kind === 'ftp' ? '' : 'guest'),
+    // 'guest' is the SMB default; FTP transports (Dwarf) default to
+    // 'anonymous', their documented FTP login.
+    username: data.username ?? (kind === 'ftp' ? 'anonymous' : 'guest'),
     password: data.password ?? '',
     localPath: data.localPath ?? '',
     lastSeenAt: null,

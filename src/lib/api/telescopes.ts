@@ -22,8 +22,8 @@ interface TelescopeStatusEntry {
   latencyMs: number | null;
   checkedAt: string | null;
   /** Which transport this probe is targeting right now. Local mount present
-   *  beats SMB; mirrors the import pipeline's selectActiveTransport. */
-  transportKind: 'smb' | 'local';
+   *  beats FTP/SMB; mirrors the import pipeline's selectActiveTransport. */
+  transportKind: ConnectionType;
 }
 export const getAllTelescopeStatus = () =>
   fetchJSON<TelescopeStatusEntry[]>('/telescopes/status/all');

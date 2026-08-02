@@ -16,6 +16,7 @@ import {
 } from '../lib/telescopes.js';
 import db from '../lib/db.js';
 import { smbListDir } from '../lib/smb.js';
+import { parseShareName } from '../lib/smb.shared.js';
 import { tcpProbe, getSmbOpHealth, SMB_PORT } from '../lib/smbReachability.js';
 import { ftpTestConnection, parseFtpHost } from '../lib/smb.ftp.js';
 import { getWalkerConfig, isDwarfKind } from '../lib/walkers/index.js';
@@ -42,11 +43,33 @@ const router = Router();
 
 const TelescopeKindSchema = z.enum(TELESCOPE_KINDS);
 
+/**
+ * Share fields are validated at the edge so a malformed value can never reach
+ * the database. Test Connection alone was not enough: nothing stopped a user
+ * from pasting a full smb:// URL and clicking Save without testing, leaving a
+ * profile that could never connect.
+ *
+ * parseShareName carries the specific guidance (which half of a pasted URL
+ * belongs in which field), so surface its message instead of a generic one.
+ * Empty passes: FTP transports carry no share name at all.
+ */
+const ShareNameSchema = z.string().optional().superRefine((val, ctx) => {
+  if (val === undefined || val.trim() === '') return;
+  try {
+    parseShareName(val);
+  } catch (err) {
+    ctx.addIssue({
+      code: 'custom',
+      message: err instanceof Error ? err.message : 'Invalid share name',
+    });
+  }
+});
+
 const TelescopeProfileBodySchema = z.object({
   name: z.string().min(1).optional(),
   model: z.string().optional(),
   hostname: z.string().optional(),
-  shareName: z.string().optional(),
+  shareName: ShareNameSchema,
   username: z.string().optional(),
   password: z.string().optional(),
   kind: TelescopeKindSchema.optional(),
@@ -87,7 +110,7 @@ const TransportBodySchema = z.object({
   kind: TransportKindSchema,
   priority: z.number().int().optional(),
   hostname: z.string().optional(),
-  shareName: z.string().optional(),
+  shareName: ShareNameSchema,
   username: z.string().optional(),
   password: z.string().optional(),
   localPath: z.string().optional(),
@@ -628,6 +651,17 @@ router.post('/test-connection', requireAdmin, async (req: Request, res: Response
 
   if (!shareName) {
     res.apiSuccess({ connected: false, error: 'Share name is required' });
+    return;
+  }
+
+  // Validate the share field before probing. Otherwise a full smb:// URL (the
+  // most common way this field gets filled in wrong) reaches the reachability
+  // preflight first and comes back as "not reachable on the network", pointing
+  // the user at their IP when the share is what needs fixing.
+  try {
+    parseShareName(shareName);
+  } catch (err: unknown) {
+    res.apiSuccess({ connected: false, error: err instanceof Error ? err.message : 'Invalid share name' });
     return;
   }
 

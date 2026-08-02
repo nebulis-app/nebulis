@@ -1,5 +1,5 @@
 # Changelog
-## 1.5.1 (202) - August 2nd, 2026
+## 1.5.1 (203) - August 2nd, 2026
 ### Updated
 - The SMB share name field now accepts a folder inside the share, for example "Server/MyWorks", instead of only a top-level share name. Windows, macOS, and Docker all read it the same way.
 

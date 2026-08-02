@@ -13,10 +13,23 @@ interface VersionInfo {
   build: number;
 }
 
-/** Versions with a hand-built, screenshot-driven popup instead of the plain
- *  ChangelogModal. Add a version here only alongside a matching modal
- *  component; everything else falls back to ChangelogModal automatically. */
-const ENHANCED_VERSIONS = new Set(['1.5.0']);
+/** Release series with a hand-built, screenshot-driven popup instead of the
+ *  plain ChangelogModal. Matched on `major.minor`, not the exact version, so
+ *  every patch in the series keeps the highlight reel: 1.5.0, 1.5.1, and
+ *  1.5.2 all get the 1.5 popup. Patch releases refine the same feature set
+ *  the reel is advertising, and a user upgrading straight from 1.4 to 1.5.1
+ *  would otherwise never see it at all.
+ *
+ *  Add a series here only alongside a matching modal component; everything
+ *  else falls back to ChangelogModal automatically. */
+const ENHANCED_SERIES = new Set(['1.5']);
+
+/** "1.5.1" to "1.5". Anything unparseable is returned whole, which simply
+ *  fails to match a series and falls back to ChangelogModal. */
+function versionSeries(version: string): string {
+  const match = /^(\d+)\.(\d+)/.exec(version);
+  return match ? `${match[1]}.${match[2]}` : version;
+}
 
 /**
  * First-login What's New popup.
@@ -101,7 +114,7 @@ export function WhatsNewAutoPopup() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastSeenQuery.isLoading, versionQuery.data?.version, lastSeenQuery.data?.lastSeenVersion]);
 
-  const useEnhancedModal = ackTarget !== null && ENHANCED_VERSIONS.has(ackTarget) && !viewAll;
+  const useEnhancedModal = ackTarget !== null && ENHANCED_SERIES.has(versionSeries(ackTarget)) && !viewAll;
 
   return (
     <>

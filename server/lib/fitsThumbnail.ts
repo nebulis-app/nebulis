@@ -2,20 +2,28 @@ import fs from 'fs';
 import path from 'path';
 import sharp from './sharp-optional.js';
 
-const THUMB_SIZE = 256;
-
 // Bumped when the rendering pipeline changes so stale thumbnails regenerate.
 // v2: color (RGB cubes + debayered CFA mosaics) with MTF autostretch.
-const THUMB_SUFFIX = '.v2.jpg';
+//
+// Two size tiers share the same pipeline:
+//   - 'thumb'   256px, for grid/list previews (generated eagerly on import).
+//   - 'preview' 1024px, for a full-screen preview that still avoids shipping
+//     the multi-MB FITS to a phone. Generated lazily on first request.
+export type FitsThumbnailTier = 'thumb' | 'preview';
+
+const TIERS: Record<FitsThumbnailTier, { size: number; suffix: string }> = {
+  thumb: { size: 256, suffix: '.v2.jpg' },
+  preview: { size: 1024, suffix: '.preview.v2.jpg' },
+};
 
 /** Thumbnail path for a FITS file (in the `.thumbs/` dir next to it). */
-export function fitsThumbnailPath(fitsPath: string): string {
-  return path.join(path.dirname(fitsPath), '.thumbs', path.basename(fitsPath) + THUMB_SUFFIX);
+export function fitsThumbnailPath(fitsPath: string, tier: FitsThumbnailTier = 'thumb'): string {
+  return path.join(path.dirname(fitsPath), '.thumbs', path.basename(fitsPath) + TIERS[tier].suffix);
 }
 
 /** Thumbnail filename relative to the object folder, for URL building. */
-export function fitsThumbnailRelName(fileName: string): string {
-  return fileName + THUMB_SUFFIX;
+export function fitsThumbnailRelName(fileName: string, tier: FitsThumbnailTier = 'thumb'): string {
+  return fileName + TIERS[tier].suffix;
 }
 
 /**
@@ -27,8 +35,11 @@ export function fitsThumbnailRelName(fileName: string): string {
  * planes; Bayer mosaics (BAYERPAT) are debayered with a 2x2 superpixel pass;
  * everything is stretched with a per-channel MTF autostretch.
  */
-export async function generateFitsThumbnail(fitsPath: string): Promise<void> {
-  const thumbPath = fitsThumbnailPath(fitsPath);
+export async function generateFitsThumbnail(
+  fitsPath: string,
+  tier: FitsThumbnailTier = 'thumb',
+): Promise<void> {
+  const thumbPath = fitsThumbnailPath(fitsPath, tier);
   if (fs.existsSync(thumbPath)) return;
 
   fs.mkdirSync(path.dirname(thumbPath), { recursive: true });
@@ -46,9 +57,10 @@ export async function generateFitsThumbnail(fitsPath: string): Promise<void> {
     throw new Error('FITS file has zero dimensions or no pixel data');
   }
 
-  const rgb = renderToRgbBuffer(parsed, THUMB_SIZE);
+  const size = TIERS[tier].size;
+  const rgb = renderToRgbBuffer(parsed, size);
 
-  await sharp(rgb, { raw: { width: THUMB_SIZE, height: THUMB_SIZE, channels: 3 } })
+  await sharp(rgb, { raw: { width: size, height: size, channels: 3 } })
     .jpeg({ quality: 85 })
     .toFile(thumbPath);
 }

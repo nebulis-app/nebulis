@@ -10,7 +10,7 @@
  */
 
 import SunCalc from 'suncalc';
-import { getSettingsData } from './telescopes.js';
+import { getActiveSite } from './observingSites.js';
 import { addDaysToDateKey, localDateKey, localParts, zonedDateTimeToUtc } from './timezone.js';
 
 export interface ForecastHour {
@@ -207,7 +207,7 @@ export async function buildForecast(lat: number, lon: number) {
   const sevenTimer = sevenTimerData.status === 'fulfilled' ? sevenTimerData.value : null;
   const forecastTimezone =
     (openMeteo?.timezone as string | undefined) ||
-    (getSettingsData().timezone as string | undefined) ||
+    getActiveSite().timezone ||
     Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Build hourly forecast from Open-Meteo (primary)
@@ -343,9 +343,9 @@ export async function buildForecast(lat: number, lon: number) {
 // ─── Background refresh ─────────────────────────────────────────
 
 export async function refreshForecastCache(): Promise<void> {
-  const settings = getSettingsData();
-  const lat = settings.latitude as number | null;
-  const lon = settings.longitude as number | null;
+  const site = getActiveSite();
+  const lat = site.latitude;
+  const lon = site.longitude;
   if (lat == null || lon == null) return;
 
   try {

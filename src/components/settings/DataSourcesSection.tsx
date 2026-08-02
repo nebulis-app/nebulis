@@ -14,7 +14,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { getCardClass } from './SettingsUI';
+import { Sec } from './SettingsUI';
 
 interface DataSource {
   name: string;
@@ -88,24 +88,12 @@ export function DataSourcesSection({ isDark }: { isDark: boolean }) {
   const totalSources = DATA_SOURCE_GROUPS.reduce((sum, g) => sum + g.sources.length, 0);
 
   return (
-    <div>
-      {/* Section header */}
-      <div className="flex items-center gap-3 mb-5">
-        <div className={`p-2 rounded-xl ${isDark ? 'bg-violet-500/10' : 'bg-violet-50'}`}>
-          <Database className="w-5 h-5 text-violet-500" />
-        </div>
-        <div>
-          <h2 className={`font-display text-[17px] font-semibold tracking-tight ${isDark ? 'text-white' : 'text-slate-800'}`}>
-            Data Sources
-          </h2>
-          <p className={`text-[13px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            {totalSources} services - all free, no API keys required
-          </p>
-        </div>
-      </div>
-
-      {/* Collapsible card */}
-      <div className={getCardClass(isDark)}>
+    <Sec
+      title="Data sources"
+      description={`${totalSources} services. All free, no API keys required.`}
+      isDark={isDark}
+    >
+      <div className="p-4 sm:p-5">
         <button
           onClick={() => setExpanded(e => !e)}
           className="w-full flex items-center justify-between"
@@ -197,7 +185,7 @@ export function DataSourcesSection({ isDark }: { isDark: boolean }) {
           </div>
         )}
       </div>
-    </div>
+    </Sec>
   );
 }
 

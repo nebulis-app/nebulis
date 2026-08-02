@@ -11,6 +11,7 @@ import { getCurrentUser } from '../lib/api/auth';
 import { clearAuthToken, getAuthToken } from '../lib/api/client';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { WhatsNewAutoPopup } from './help/WhatsNewAutoPopup';
+import { MobileMenu } from './MobileMenu';
 import { LibraryUnavailableBanner } from './LibraryUnavailableBanner';
 import { UpdateBanner } from './UpdateBanner';
 
@@ -330,6 +331,9 @@ export function Layout({ children }: LayoutProps) {
                   </span>
                 </Link>
               )}
+
+              {/* Mobile & TV apps */}
+              <MobileMenu />
 
               {/* Profile / theme dropdown */}
               <div ref={dropdownRef} className="relative ml-2">

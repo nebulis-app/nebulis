@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   isContainerFolder,
+  isNonObjectFolder,
   targetFromFileName,
   groupByTarget,
   planObjectFolder,
@@ -22,6 +23,40 @@ describe('isContainerFolder', () => {
     expect(isContainerFolder('NGC7000')).toBe(false);
     // Substring, not the container itself.
     expect(isContainerFolder('my_planetary_photo_backup')).toBe(false);
+  });
+});
+
+describe('isNonObjectFolder', () => {
+  it('matches the Dwarf folders that hold no observations, case-insensitively', () => {
+    // These sit next to the observation folders on a Dwarf volume. Treating them
+    // as objects created library entries named "CALI_FRAME"/"RESTACKED" and
+    // imported darks and flats as light frames of an object by that name.
+    for (const name of ['CALI_FRAME', 'DWARF_DARK', 'RESTACKED']) {
+      expect(isNonObjectFolder(name)).toBe(true);
+      expect(isNonObjectFolder(name.toLowerCase())).toBe(true);
+    }
+  });
+
+  it('matches the daytime capture-mode folders', () => {
+    expect(isNonObjectFolder('Normal_Photos')).toBe(true);
+    expect(isNonObjectFolder('Panoramas')).toBe(true);
+    expect(isNonObjectFolder('Burst')).toBe(true);
+    expect(isNonObjectFolder('Videos')).toBe(true);
+  });
+
+  it('does not match real object folders or Dwarf session folders', () => {
+    expect(isNonObjectFolder('M31')).toBe(false);
+    expect(isNonObjectFolder('NGC 7000')).toBe(false);
+    expect(isNonObjectFolder('DWARF3_RAW_M42_EXP_30_GAIN_80_2024-10-15_21-05-30-345')).toBe(false);
+    // Substring, not the whole name: a user's own folder must survive.
+    expect(isNonObjectFolder('M42_restacked')).toBe(false);
+    expect(isNonObjectFolder('my videos of M31')).toBe(false);
+  });
+
+  it('is disjoint from isContainerFolder', () => {
+    // A folder is either expanded into per-target objects or dropped, never both.
+    expect(isNonObjectFolder('planetary_photo')).toBe(false);
+    expect(isContainerFolder('cali_frame')).toBe(false);
   });
 });
 

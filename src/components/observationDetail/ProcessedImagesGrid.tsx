@@ -1,5 +1,6 @@
-import { Sparkles, Upload, ImagePlus, Crown, Download, Star, Trash2, Loader2 } from 'lucide-react';
+import { Sparkles, Upload, ImagePlus, Crown, Download, Star, Trash2, Loader2, FileDown, Layers } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
+import { isRenderableProcessed, processedFormatLabel } from '../../lib/processedFormats';
 import type { ProcessedImage } from '../../types';
 import type { CompareItem } from '../../pages/ObservationDetail';
 
@@ -47,7 +48,7 @@ export function ProcessedImagesGrid({
   const accentTextGlow = isDark ? 'text-accent-400' : 'text-accent-500';
 
   return (
-    <div className={`rounded-2xl border ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+    <div className={`rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
       {/* Header */}
       <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
         <div className="flex items-center gap-2">
@@ -127,31 +128,55 @@ export function ProcessedImagesGrid({
             {processedImages.map((img, idx) => {
               const procCompareSlot = compareItems[0]?.key === img.id ? 1 : compareItems[1]?.key === img.id ? 2 : null;
               const isProcSessionImage = img.path === sessionImagePath;
+              // Stored-only formats (XISF, FITS, PSD, RAW) can be downloaded and
+              // deleted, and nothing else. Every other action here ends in an
+              // <img> somewhere the format cannot render: the lightbox, the
+              // compare panes, the object's gallery card, the session image.
+              const canRender = isRenderableProcessed(img.originalName);
               return (
               <div
                 key={img.id}
-                className={`group rounded-xl overflow-hidden border cursor-pointer ${
+                className={`group rounded-xl overflow-hidden border ${canRender ? 'cursor-pointer' : ''} ${
                   procCompareSlot === 1
                     ? 'border-accent-500 ring-2 ring-accent-500/40'
                     : procCompareSlot === 2
                       ? 'border-violet-500 ring-2 ring-violet-500/40'
                       : isDark ? 'border-slate-800 bg-slate-800' : 'border-slate-200 bg-slate-100'
                 }`}
-                onClick={() => compareMode
-                  ? toggleCompareItem(img.id, { name: img.title || img.originalName, downloadUrl: img.url })
-                  : openProcessedGallery(idx)
-                }
+                onClick={() => {
+                  if (!canRender) return;
+                  if (compareMode) {
+                    toggleCompareItem(img.id, { name: img.title || img.originalName, downloadUrl: img.url });
+                  } else {
+                    openProcessedGallery(idx);
+                  }
+                }}
               >
                 {/* Image area */}
                 <div className="relative aspect-square">
-                  <img
-                    src={img.url}
-                    alt={img.title || img.originalName}
-                    className="w-full h-full object-cover"
-                  />
+                  {isRenderableProcessed(img.originalName) ? (
+                    <img
+                      src={img.url}
+                      alt={img.title || img.originalName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    /* Stored-only format (XISF, FITS, PSD, RAW). Pointing an
+                       <img> at one paints a broken-image icon, so show what the
+                       file is instead. The download action in the hover overlay
+                       is how you get it back out. */
+                    <div className={`w-full h-full flex flex-col items-center justify-center gap-2 ${isDark ? 'bg-slate-800/60' : 'bg-slate-100'}`}>
+                      <FileDown className={`w-7 h-7 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
+                      <span className={`font-mono text-xs font-bold tracking-wide ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        {processedFormatLabel(img.originalName) ?? 'FILE'}
+                      </span>
+                    </div>
+                  )}
 
-                  {/* Session image crown — top-left, z-10 above overlay */}
-                  {!procCompareSlot && (isProcSessionImage ? (
+                  {/* Session image crown — top-left, z-10 above overlay.
+                      Only for renderable formats: the session image is drawn as
+                      a thumbnail on the calendar and object pages. */}
+                  {canRender && !procCompareSlot && (isProcSessionImage ? (
                     <div className="absolute top-1 left-1 z-10 p-1 rounded-md bg-amber-400/90 text-white pointer-events-none">
                       <Crown className="w-3 h-3" />
                     </div>
@@ -179,18 +204,21 @@ export function ProcessedImagesGrid({
                       <Download className="w-3.5 h-3.5" />
                     </a>
 
-                    {/* Set as gallery image */}
-                    <button
-                      onClick={e => { e.stopPropagation(); handleSetProcessedAsGallery(img); }}
-                      disabled={!!settingGalleryId}
-                      className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30 transition disabled:opacity-50"
-                      title="Set as gallery image"
-                    >
-                      {settingGalleryId === img.id
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <Star className="w-3.5 h-3.5" />
-                      }
-                    </button>
+                    {/* Set as gallery image — renderable formats only, since the
+                        gallery card is an <img> pointed at this path. */}
+                    {canRender && (
+                      <button
+                        onClick={e => { e.stopPropagation(); handleSetProcessedAsGallery(img); }}
+                        disabled={!!settingGalleryId}
+                        className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30 transition disabled:opacity-50"
+                        title="Set as gallery image"
+                      >
+                        {settingGalleryId === img.id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Star className="w-3.5 h-3.5" />
+                        }
+                      </button>
+                    )}
 
                     {/* Delete — admin only */}
                     {isAdmin && (
@@ -208,13 +236,12 @@ export function ProcessedImagesGrid({
                     )}
                   </div>
 
-                  {/* File type badge (bottom-right, always visible) */}
+                  {/* File type badge (bottom-right, always visible). Suppressed
+                      for stored-only formats, whose placeholder above already
+                      shows the format prominently. */}
                   {(() => {
-                    const ext = img.originalName.split('.').pop()?.toUpperCase();
-                    let label: string | null = null;
-                    if (ext === 'JPG' || ext === 'JPEG') label = 'JPG';
-                    else if (ext === 'PNG') label = 'PNG';
-                    else if (ext === 'TIFF' || ext === 'TIF') label = 'TIFF';
+                    if (!isRenderableProcessed(img.originalName)) return null;
+                    const label = processedFormatLabel(img.originalName);
                     if (!label) return null;
                     return (
                       <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide bg-black/60 text-white/80 pointer-events-none">
@@ -240,9 +267,22 @@ export function ProcessedImagesGrid({
                   ) : (
                     <p className={`text-xs truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{img.originalName}</p>
                   )}
-                  <p className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                    {new Date(img.uploadedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <p className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                      {new Date(img.uploadedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                    {img.runDates && img.runDates.length > 1 && (
+                      <span
+                        title={`Combines ${img.runDates.length} nights: ${img.runDates.join(', ')}`}
+                        className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium ${
+                          isDark ? 'bg-accent-500/10 text-accent-400' : 'bg-accent-50 text-accent-600'
+                        }`}
+                      >
+                        <Layers className="w-2.5 h-2.5" />
+                        {img.runDates.length}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               );

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { HardDrive, FolderOpen, ChevronRight, ArrowUp, RefreshCw } from 'lucide-react';
+import { HardDrive, FolderOpen, ChevronRight, ArrowUp, RefreshCw, Telescope } from 'lucide-react';
 import { listVolumes, browseDirectory, type VolumeInfo, type DirectoryEntry } from '../../lib/api/storage';
 import { formatBytes } from '../../lib/utils';
 
@@ -12,9 +12,13 @@ import { formatBytes } from '../../lib/utils';
  * the library-location picker. `onChange` fires with the folder currently shown
  * (that is the folder that will be imported), or null before a drive is chosen.
  */
-export function ServerFolderPicker({ isDark, onChange }: {
+export function ServerFolderPicker({ isDark, onChange, suggestedPath }: {
   isDark: boolean;
   onChange: (path: string | null) => void;
+  /** The selected telescope's local-mirror transport path, if it has one.
+   *  Offered as a one-click starting point so the user doesn't have to hunt
+   *  through drives for a folder Nebulis already knows about. */
+  suggestedPath?: string | null;
 }) {
   const [volume, setVolume] = useState<VolumeInfo | null>(null);
   const [browsePath, setBrowsePath] = useState<string | null>(null);
@@ -43,11 +47,36 @@ export function ServerFolderPicker({ isDark, onChange }: {
     goTo(v.path);
   }
 
+  /** Jump straight to the telescope's known mirror path. A synthetic volume
+   *  floor is set to that same path so "up" navigation stops there rather
+   *  than climbing arbitrarily high — the same guarantee a real drive gives. */
+  function useSuggestedPath() {
+    if (!suggestedPath) return;
+    setVolume({ path: suggestedPath, label: 'Telescope folder', totalBytes: 0, freeBytes: 0, writable: true, external: true });
+    goTo(suggestedPath);
+  }
+
   const atVolumeRoot = volume ? browsePath === volume.path : true;
   const canGoUp = !!volume && !atVolumeRoot;
 
   return (
     <div className="space-y-4">
+      {suggestedPath && !volume && (
+        <button
+          type="button"
+          onClick={useSuggestedPath}
+          className={`w-full text-left px-3 py-2.5 rounded-xl border transition-colors ${
+            isDark ? 'border-accent-500/40 bg-accent-500/10 hover:bg-accent-500/15' : 'border-accent-300 bg-accent-50 hover:bg-accent-100'
+          }`}
+        >
+          <span className={`text-sm font-medium flex items-center gap-2 ${body}`}>
+            <Telescope className="w-4 h-4 shrink-0 text-accent-500" />
+            Known path for this telescope
+          </span>
+          <div className={`text-xs font-mono mt-0.5 truncate ${sub}`}>{suggestedPath}</div>
+        </button>
+      )}
+
       {/* Drives */}
       <div>
         <div className="flex items-center justify-between mb-2">

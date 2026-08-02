@@ -3,6 +3,7 @@ import { OnboardingStep2, type TestStatus } from './OnboardingStep2';
 import { OnboardingStep3 } from './OnboardingStep3';
 import { OnboardingStep4 } from './OnboardingStep4';
 import type { TelescopeKind } from '../../lib/telescopePresets';
+import type { ConnectionType } from '../../lib/api/telescopes';
 import type { StepNumber } from './stepReducer';
 
 interface OnboardingStepsProps {
@@ -26,7 +27,7 @@ interface OnboardingStepsProps {
   // Step 2
   kind: TelescopeKind | '';
   isLocalKind: boolean;
-  transportMode?: 'smb' | 'local';
+  transportMode?: ConnectionType;
   telescopeName: string;
   hostname: string;
   localPath: string;
@@ -36,7 +37,7 @@ interface OnboardingStepsProps {
   testStatus: TestStatus;
   testMessage: string;
   onKindChange: (kind: TelescopeKind | '') => void;
-  onTransportModeChange?: (mode: 'smb' | 'local') => void;
+  onTransportModeChange?: (mode: ConnectionType) => void;
   onTelescopeNameChange: (value: string) => void;
   onHostnameChange: (value: string) => void;
   onLocalPathChange: (value: string) => void;

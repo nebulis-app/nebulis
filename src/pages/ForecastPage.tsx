@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Cloud, CloudRain, CloudSun, Sun, Moon, Wind, Droplets,
-  MapPin, RotateCw, AlertCircle, Sunset, Star, X, RefreshCw,
+  RotateCw, AlertCircle, Sunset, Star, X, RefreshCw,
 } from 'lucide-react';
-import { getForecast, type ForecastHour, type NightRating } from '../lib/api/planner';
-import { getSettings, updateSettings } from '../lib/api/settings';
+import { getForecastForSite, type ForecastHour, type NightRating } from '../lib/api/planner';
+import { getSettings } from '../lib/api/settings';
+import { getSites, getActiveSite, setActiveSite, type ObservingSite } from '../lib/api/sites';
 import { useTheme } from '../hooks/useTheme';
 import { LocationPrompt } from '../components/LocationPrompt';
+import { SitePicker } from '../components/SitePicker';
 
 function formatTemp(celsius: number, unit: 'celsius' | 'fahrenheit'): string {
   if (unit === 'fahrenheit') return `${Math.round(celsius * 9 / 5 + 32)}°F`;
@@ -159,21 +161,44 @@ export function ForecastPage() {
   const [selectedHour, setSelectedHour] = useState<ForecastHour | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // temperatureUnit/windSpeedUnit are genuine app-wide preferences, not
+  // per-site, so these stay on the legacy settings fetch.
   const { data: appSettings } = useQuery({ queryKey: ['settings'], queryFn: getSettings, staleTime: Infinity });
   const tempUnit = appSettings?.temperatureUnit ?? 'fahrenheit';
   const windUnit = appSettings?.windSpeedUnit ?? 'mph';
-  const lat = appSettings?.latitude ?? null;
-  const lon = appSettings?.longitude ?? null;
+
+  // Coordinates/timezone/name come from the observing site instead — see
+  // PlannerPage for the same pattern and why it replaced the settings mirror.
+  const sitesQuery = useQuery({ queryKey: ['sites'], queryFn: getSites, staleTime: 0, refetchInterval: 60_000 });
+  const activeSiteQuery = useQuery({ queryKey: ['active-site'], queryFn: getActiveSite, staleTime: 0 });
+  const sites = sitesQuery.data ?? [];
+  const [pickedSiteId, setPickedSiteId] = useState<string | null>(null);
+  const effectiveSiteId = pickedSiteId ?? activeSiteQuery.data?.id ?? null;
+  const currentSite: ObservingSite | null =
+    sites.find(s => s.id === effectiveSiteId) ?? activeSiteQuery.data ?? null;
+
+  const setActiveSiteMut = useMutation({
+    mutationFn: (siteId: string) => setActiveSite(siteId),
+    onSuccess: (site) => {
+      setPickedSiteId(site.id);
+      queryClient.invalidateQueries({ queryKey: ['active-site'] });
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      queryClient.invalidateQueries({ queryKey: ['forecast'] });
+    },
+  });
+
+  const lat = currentSite?.latitude ?? null;
+  const lon = currentSite?.longitude ?? null;
   const locationSet = lat !== null && lon !== null;
 
   const { data: forecast, isLoading, error } = useQuery({
-    queryKey: ['forecast', lat, lon],
-    queryFn: () => getForecast(lat!, lon!),
-    enabled: lat !== null && lon !== null,
+    queryKey: ['forecast', effectiveSiteId],
+    queryFn: () => getForecastForSite(effectiveSiteId!),
+    enabled: effectiveSiteId != null && lat !== null && lon !== null,
     staleTime: 600_000,
   });
 
-  const tz = forecast?.timezone || appSettings?.timezone || undefined;
+  const tz = forecast?.timezone || currentSite?.timezone || undefined;
   const fmt = (iso: string) => formatTime(iso, tz);
 
   // The precise dark window for moon-penalty calculations. Prefer astronomical
@@ -215,25 +240,29 @@ export function ForecastPage() {
           </h1>
           {locationSet && (
             <div className="flex items-center gap-2 shrink-0">
-              <MapPin className={`w-4 h-4 shrink-0 ${accentText}`} />
-              <span className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                {appSettings?.locationName || (lat != null && lon != null ? `${lat.toFixed(2)}, ${lon.toFixed(2)}` : '')}
-              </span>
+              <SitePicker
+                isDark={isDark}
+                accentText={accentText}
+                sites={sites}
+                currentSite={currentSite}
+                fallbackLabel={lat != null && lon != null ? `${lat.toFixed(2)}, ${lon.toFixed(2)}` : ''}
+                onSelect={(id) => setActiveSiteMut.mutate(id)}
+                isSwitching={setActiveSiteMut.isPending}
+              />
               <button
                 onClick={async () => {
+                  if (!effectiveSiteId) return;
                   setRefreshing(true);
                   try {
-                    await updateSettings({ latitude: lat!, longitude: lon! });
-                    await queryClient.invalidateQueries({ queryKey: ['settings'] });
                     await queryClient.fetchQuery({
-                      queryKey: ['forecast', lat, lon],
-                      queryFn: () => getForecast(lat!, lon!, true),
+                      queryKey: ['forecast', effectiveSiteId],
+                      queryFn: () => getForecastForSite(effectiveSiteId, true),
                       staleTime: 0,
                     });
                   } catch { /* ignore */ }
                   setRefreshing(false);
                 }}
-                disabled={refreshing}
+                disabled={refreshing || !effectiveSiteId}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
                   isDark
                     ? 'hover:bg-slate-800 text-slate-400 disabled:opacity-40'
@@ -252,8 +281,10 @@ export function ForecastPage() {
         </p>
       </div>
 
-      {/* Location not set — same empty state as Planner; persists to settings */}
-      {!locationSet && (
+      {/* Location not set — same empty state as Planner; persists to the default
+          site. Gated on the site queries having resolved so this doesn't flash
+          before the sites list loads. */}
+      {!locationSet && !sitesQuery.isLoading && !activeSiteQuery.isLoading && (
         <LocationPrompt
           isDark={isDark}
           isNight={isNight}
@@ -271,7 +302,7 @@ export function ForecastPage() {
       )}
 
       {error && (
-        <div className={`text-center py-12 rounded-xl border ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200'}`}>
+        <div className={`text-center py-12 rounded-xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
           <AlertCircle className="w-10 h-10 mx-auto mb-3 text-danger-500/50" />
           <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>
             {error instanceof Error ? error.message : 'Failed to load forecast'}

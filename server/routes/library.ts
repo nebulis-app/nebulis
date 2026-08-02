@@ -19,12 +19,16 @@ import { isErrnoException } from '../lib/errors.js';
 import { THUMBNAILS_DIR, DATA_DIR } from '../lib/paths.js';
 import { getLibraryDir, isLibraryAvailable, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
 import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
+import { getSite } from '../lib/observingSites.js';
 import sharp from '../lib/sharp-optional.js';
+import { generateFitsThumbnail, fitsThumbnailPath, type FitsThumbnailTier } from '../lib/fitsThumbnail.js';
 import { normalizeCatalogId, parseFilename, isRealFile, sessionNightFor, clampToNightSafeTime } from '../lib/telescopeFiles.js';
 import {
   runImport,
   runAllTelescopesImport,
   reassignSessionTelescope,
+  reassignSessionSite,
+  backfillSingleSessionWeather,
   getImportStatus,
   cancelImport,
   claimImportLock,
@@ -69,6 +73,9 @@ import {
   addProcessedImage,
   deleteProcessedImage,
   getProcessedImageFile,
+  createProcessingRun,
+  getProcessingRun,
+  getProcessingRunsForObject,
   getObjectFolderName,
   scanImportFolder,
   LIBRARY_OBJECT_FILTERS,
@@ -82,7 +89,7 @@ import { prefetchSkyImage } from '../lib/skyImage.js';
 import { getById as getDsoById } from '../lib/dsoCatalog.js';
 import { caldwellToNgcId } from '../lib/caldwellCatalog.js';
 import { resolveCanonicalId } from '../lib/catalogAliases.js';
-import { getSettingsData } from '../lib/telescopes.js';
+import { getSettingsData, getProfileById } from '../lib/telescopes.js';
 import { queryString, contentDispositionHeader } from '../lib/queryHelpers.js';
 
 // Multer: temp-disk storage for file uploads.
@@ -184,11 +191,20 @@ const SessionTelescopeBodySchema = z.object({
   telescopeId: z.string().min(1, 'telescopeId is required'),
 });
 
+const SessionSiteBodySchema = z.object({
+  siteId: z.string().nullable(),
+});
+
 // Folder-import wizard: scan a folder (dry run) then commit an edited plan.
 const FolderScanBodySchema = z.object({
   rootPath: z.string().min(1, 'rootPath is required'),
   importSubFrames: z.boolean().optional(),
   importFits: z.boolean().optional(),
+  archiveAllFiles: z.boolean().optional(),
+  // Mirrors FolderCommitBodySchema's telescopeId — resolved to a kind so the
+  // scan can descend into the vendor base path (Astronomy, MyWorks, ...)
+  // exactly as commitFolderImport does, so the two phases keep agreeing.
+  telescopeId: z.string().nullable().optional(),
 });
 
 const FolderCommitObjectSchema = z.object({
@@ -205,6 +221,7 @@ const FolderCommitBodySchema = z.object({
   objects: z.array(FolderCommitObjectSchema).min(1, 'No objects to import'),
   importSubFrames: z.boolean().optional(),
   importFits: z.boolean().optional(),
+  archiveAllFiles: z.boolean().optional(),
   telescopeId: z.string().nullable().optional(),
 });
 
@@ -285,15 +302,26 @@ router.post('/import', requireAdmin, (req: Request, res: Response) => {
     return;
   }
 
-  // Run in background — don't await. Lock already claimed above.
+  // Run in background — don't await. Lock already claimed above. Each branch
+  // logs its own completion: unlike the scheduled auto-import tick, nothing
+  // else confirms server-side that a manually-triggered run actually finished
+  // and what it did.
   if (importAll && !objectId) {
     runAllTelescopesImport().catch(err => {
       console.error('Import error:', err.message);
     });
   } else {
-    runImport(objectId, undefined, telescopeId ? { telescopeId } : undefined).catch(err => {
-      console.error('Import error:', err.message);
-    });
+    runImport(objectId, undefined, { telescopeId, manual: true })
+      .then(() => {
+        const status = getImportStatus();
+        log.info(
+          { telescopeId: status.telescopeId, telescopeName: status.telescopeName, filesDone: status.filesDone, skipped: status.skippedFiles, objects: status.objectsDone, error: status.error ?? null },
+          '[import] Manual import completed',
+        );
+      })
+      .catch(err => {
+        console.error('Import error:', err.message);
+      });
   }
 
   res.apiSuccess({
@@ -321,7 +349,9 @@ router.post('/import/cancel', requireAdmin, (req: Request, res: Response) => {
   res.apiSuccess({ cancelled: true });
 });
 
-/** Get paginated sync history (runs with new files only). */
+/** Get paginated sync history: runs that imported new files, failed, or were
+ *  explicitly triggered by the user (even if they found nothing new). A
+ *  routine scheduled tick that finds nothing new stays hidden. */
 router.get('/import/history', (req: Request, res: Response) => {
   const limit = Math.min(Number(req.query.limit) || 10, 50);
   const offset = Math.max(Number(req.query.offset) || 0, 0);
@@ -357,7 +387,7 @@ router.post('/objects/:objectId/sessions/:date/sync', requireAdmin, (req: Reques
     '[session-sync] Syncing FITS for %s session %s on telescope %s',
     objectId, date, telescopeId ?? 'unknown',
   );
-  runImport(objectId, date, telescopeId ? { telescopeId } : undefined).catch(err => {
+  runImport(objectId, date, { telescopeId, manual: true }).catch(err => {
     console.error('Session sync error:', err.message);
   });
 
@@ -420,6 +450,40 @@ router.put('/objects/:objectId/sessions/:date/telescope', requireAdmin, (req: Re
 });
 
 /**
+ * Reassign a session to a different observing site. `siteId: null` clears the
+ * tag (resolves back to the default site). Nulls the session's cached weather
+ * — it was fetched at the old site's coordinates — and refetches it at the
+ * new coordinates for just this session before responding. The client
+ * invalidates its cached observation as soon as this responds, so if that
+ * refetch were only fired in the background (as it used to be), the
+ * observation would come back with `weather: null` and the Conditions card
+ * would vanish from the Details tab until the next full reload.
+ */
+router.put('/objects/:objectId/sessions/:date/site', requireAdmin, async (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const date = String(req.params.date);
+  const bodyParsed = SessionSiteBodySchema.safeParse(req.body);
+  if (!bodyParsed.success) {
+    res.apiError(400, 'BAD_REQUEST', bodyParsed.error.issues[0]?.message ?? 'siteId is required (or null)');
+    return;
+  }
+  const { siteId } = bodyParsed.data;
+  if (siteId !== null && !getSite(siteId)) {
+    res.apiError(404, 'SITE_NOT_FOUND', 'Observing site not found');
+    return;
+  }
+  const updated = reassignSessionSite(objectId, date, siteId);
+  if (!updated) {
+    res.apiError(404, 'NOT_FOUND', 'Session not found');
+    return;
+  }
+  await backfillSingleSessionWeather(objectId, date).catch(err =>
+    console.warn(`[library] Weather re-backfill after site retag failed for ${objectId}:`, err instanceof Error ? err.message : err),
+  );
+  res.apiSuccess({ updated: true, siteId });
+});
+
+/**
  * Folder-import wizard, phase 1: scan a folder and return the import plan
  * (objects, catalog matches, derived sessions, unsorted files). Read-only —
  * copies nothing and does not claim the import lock.
@@ -454,7 +518,7 @@ router.post('/import/scan', requireAdmin, (req: Request, res: Response) => {
     res.apiError(400, 'MISSING_PATH', parsed.error.issues[0]?.message ?? 'rootPath is required');
     return;
   }
-  const { rootPath, importSubFrames, importFits } = parsed.data;
+  const { rootPath, importSubFrames, importFits, archiveAllFiles, telescopeId } = parsed.data;
   if (!fs.existsSync(rootPath) || !fs.statSync(rootPath).isDirectory()) {
     res.apiError(400, 'INVALID_PATH', `Folder not found or not a directory: ${rootPath}`);
     return;
@@ -463,15 +527,17 @@ router.post('/import/scan', requireAdmin, (req: Request, res: Response) => {
     const overrides: Record<string, unknown> = {};
     if (importSubFrames !== undefined) overrides.importSubFrames = importSubFrames;
     if (importFits !== undefined) overrides.importFits = importFits;
+    if (archiveAllFiles !== undefined) overrides.archiveAllFiles = archiveAllFiles;
     const scanSettings = Object.keys(overrides).length > 0
       ? { ...getSettingsData(), ...overrides }
       : getSettingsData();
+    const scanProfile = telescopeId ? getProfileById(telescopeId) : null;
     debugLog('import:folder-scan',
       `Manual folder scan: ${rootPath}  |  effective settings → ` +
       `JPG:${scanSettings.importJpg !== false} FITS:${scanSettings.importFits !== false} ` +
       `Thumbs:${scanSettings.importThumbnails !== false} Subs:${scanSettings.importSubFrames === true} ` +
-      `Video:${scanSettings.importVideos === true}`);
-    const scanResult = scanImportFolder(rootPath, scanSettings);
+      `Video:${scanSettings.importVideos === true} Archive-all:${scanSettings.archiveAllFiles === true}`);
+    const scanResult = scanImportFolder(rootPath, scanSettings, scanProfile?.kind);
     debugLog('import:folder-scan',
       `Scan matched ${scanResult.totals.files} importable file(s) across ` +
       `${scanResult.totals.objects} object(s), ${scanResult.totals.sessions} session(s)` +
@@ -1030,6 +1096,49 @@ router.get('/file', async (req: Request, res: Response) => {
 
 // ─── Thumbnail (on-demand resize with disk cache) ────────────────────────────
 
+/**
+ * In-flight thumbnail renders, keyed by cache key.
+ *
+ * Concurrent requests for the same uncached thumbnail share one sharp decode
+ * instead of racing. That matters most for the formats this route exists to
+ * convert: a 32-bit float TIFF at sensor resolution is around 100 MB, and the
+ * observation page requests the same one more than once on load.
+ */
+const inFlightThumbnails = new Map<string, Promise<void>>();
+
+async function renderThumbnailOnce(
+  cacheKey: string,
+  cachePath: string,
+  absPath: string,
+  w: number,
+  h: number,
+): Promise<void> {
+  const existing = inFlightThumbnails.get(cacheKey);
+  if (existing) return existing;
+
+  const work = (async () => {
+    fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
+    // Write to a temp path and rename, so a concurrent reader can never pick up
+    // a half-written JPEG (sendFile does not coordinate with this write).
+    const tmpPath = `${cachePath}.${process.pid}.tmp`;
+    try {
+      await sharp(absPath)
+        .resize(w, h, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 80, progressive: true })
+        .toFile(tmpPath);
+      await fs.promises.rename(tmpPath, cachePath);
+    } catch (err) {
+      try { await fs.promises.rm(tmpPath, { force: true }); } catch { /* best effort */ }
+      throw err;
+    }
+  })().finally(() => {
+    inFlightThumbnails.delete(cacheKey);
+  });
+
+  inFlightThumbnails.set(cacheKey, work);
+  return work;
+}
+
 router.get('/file/thumbnail', async (req: Request, res: Response) => {
   const filePath = queryString(req.query.path);
   if (!filePath) {
@@ -1066,17 +1175,24 @@ router.get('/file/thumbnail', async (req: Request, res: Response) => {
     return;
   }
 
-  // Cache key: sha of (relative path + dimensions)
-  const cacheKey = Buffer.from(`${filePath}:${w}x${h}`).toString('base64url');
+  // Cache key includes mtime, matching the object-thumbnail route above: without
+  // it an in-place overwrite (a re-import replacing the same filename) serves the
+  // old thumbnail forever.
+  let mtimeMs = 0;
+  try {
+    mtimeMs = (await withTimeout(fs.promises.stat(absPath), LIBRARY_IO_TIMEOUT_MS)).mtimeMs;
+  } catch { /* fall through with 0; a miss is better than a stale hit */ }
+  const cacheKey = Buffer.from(`${filePath}:${w}x${h}:${mtimeMs}`).toString('base64url');
   const cachePath = path.join(THUMBNAILS_DIR, `${cacheKey}.jpg`);
 
   try {
     if (!fs.existsSync(cachePath)) {
-      fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
-      await sharp(absPath)
-        .resize(w, h, { fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 80, progressive: true })
-        .toFile(cachePath);
+      // Single-flight per cache key. This route converts formats a browser
+      // cannot display, which now includes a Dwarf's ~100 MB 32-bit float
+      // `img_stacked_all.tif`. An observation page asks for the same file twice
+      // at once (hero plus grid card), and without this each request starts its
+      // own 100 MB decode.
+      await renderThumbnailOnce(cacheKey, cachePath, absPath, w, h);
     }
 
     res.set('Content-Type', 'image/jpeg');
@@ -1084,6 +1200,65 @@ router.get('/file/thumbnail', async (req: Request, res: Response) => {
     res.sendFile(cachePath);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Thumbnail generation failed';
+    res.status(500).send(msg);
+  }
+});
+
+// ─── FITS thumbnail (colorized MTF autostretch → JPEG, generate-if-missing) ──
+//
+// Serves the pre-rendered JPEG for a FITS sub-frame so clients (mobile
+// especially) never download and decode the full multi-MB FITS just to show a
+// preview. Thumbnails are generated eagerly on import; this route lazily
+// generates any that are missing (older imports, or the 1024px preview tier
+// which is not pre-generated) and caches the result on disk next to the file.
+router.get('/fits-thumbnail', async (req: Request, res: Response) => {
+  const filePath = queryString(req.query.path);
+  if (!filePath) {
+    res.status(400).send('Missing path');
+    return;
+  }
+
+  const tier: FitsThumbnailTier = queryString(req.query.size) === 'preview' ? 'preview' : 'thumb';
+
+  // Only FITS files have a renderable thumbnail.
+  if (!/\.f(?:it|its|ts)$/i.test(filePath)) {
+    res.status(415).send('Unsupported file type for FITS thumbnail');
+    return;
+  }
+
+  // Resolve absolute path and keep it inside LIBRARY_DIR. Compare against the
+  // directory *with a trailing separator* so a sibling like `<...>/library-x`
+  // can't satisfy a bare `startsWith('<...>/library')` and escape the root.
+  const LIBRARY_DIR = getLibraryDir();
+  const absPath = path.resolve(LIBRARY_DIR, filePath);
+  const libRoot = LIBRARY_DIR.endsWith(path.sep) ? LIBRARY_DIR : LIBRARY_DIR + path.sep;
+  if (!absPath.startsWith(libRoot)) {
+    res.status(403).send('Forbidden');
+    return;
+  }
+
+  if (!(await requireLibraryReachable(res))) return;
+
+  try {
+    await withTimeout(fs.promises.access(absPath), LIBRARY_IO_TIMEOUT_MS);
+  } catch {
+    res.status(404).send('Not found');
+    return;
+  }
+
+  const thumbPath = fitsThumbnailPath(absPath, tier);
+  try {
+    // No-ops if it already exists; otherwise parses + renders + writes.
+    await generateFitsThumbnail(absPath, tier);
+    // Read + send the buffer rather than res.sendFile: the thumbnail lives in a
+    // `.thumbs/` directory, and Express's sendFile (via `send`) defaults to
+    // dotfiles:'ignore', which 404s any path with a dot-prefixed segment.
+    const data = await fs.promises.readFile(thumbPath);
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(data);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'FITS thumbnail generation failed';
     res.status(500).send(msg);
   }
 });
@@ -1147,10 +1322,23 @@ router.get('/download/objects/:objectId', async (req: Request, res: Response) =>
   const objectId = String(req.params.objectId);
   const fileType = queryString(req.query.fileType); // 'image', 'fits', 'all'
   const sessionDate = queryString(req.query.date);
+  // `?includeVariants=true` pulls in files from every variant of this object
+  // (e.g. M8 + M8_Mosaic), matching what the web UI's "Observations" grid and
+  // session count show. Without it, "Download All" silently omits any date
+  // that only exists under a variant id. Same family-discovery logic as the
+  // `/sessions?includeVariants=true` route above.
+  const includeVariants = req.query.includeVariants === 'true';
 
   try {
     if (!(await requireLibraryReachable(res))) return;
-    let files = getLocalFiles(objectId, sessionDate);
+    let ids = [objectId];
+    if (includeVariants) {
+      const all = getLocalObjects(req.userId ?? '');
+      const grouped = groupByVariants(all);
+      const family = grouped.find(g => g.id === objectId || g.variants.some(v => v.objectId === objectId));
+      ids = family ? [family.id, ...family.variants.map(v => v.objectId)] : [objectId];
+    }
+    let files = ids.flatMap(id => getLocalFiles(id, sessionDate));
 
     // Exclude thumbnails
     files = files.filter(f => !f.isThumbnail);
@@ -1659,16 +1847,51 @@ router.put('/objects/:objectId/sessions/:date/session-image', requireAdmin, (req
 
 // ─── Processed images (user-uploaded post-processing results) ─────────────────
 
+// Formats a browser can render in an <img>. These get a thumbnail in the
+// processed-images grid.
+const RENDERABLE_PROCESSED = /\.(jpg|jpeg|png|tiff?|tif)$/i;
+
+// Formats stored but never rendered: the output of a real processing workflow.
+// A PixInsight or Siril user's deliverable is an XISF or a 32-bit FITS, and
+// refusing those meant Nebulis could not hold the finished work it exists to
+// organize. The grid shows them as a file card with a download button.
+//
+// `.fits` is deliberately included even though telescope FITS arrives via
+// import: a calibrated or integrated stack coming *back* from an external tool
+// is a processed image, and there was previously no way to store one.
+const STORED_PROCESSED = /\.(xisf|fits?|fts|psd|xcf|dng|cr2|cr3|nef|arw)$/i;
+
+export function isRenderableProcessedName(name: string): boolean {
+  return RENDERABLE_PROCESSED.test(name);
+}
+
 const processedUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, os.tmpdir()),
     filename: (_req, file, cb) => cb(null, `processed_${randomUUID()}_${path.basename(file.originalname)}`),
   }),
-  limits: { fileSize: 300 * 1024 * 1024, fieldSize: 1 * 1024 * 1024 }, // 300 MB file, 1 MB fields
+  // 2 GB: a 32-bit XISF or FITS integration of a multi-night project routinely
+  // passes the old 300 MB cap. multer streams to a temp file, so the ceiling is
+  // disk rather than memory.
+  limits: { fileSize: 2 * 1024 * 1024 * 1024, fieldSize: 1 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = /\.(jpg|jpeg|png|tiff?|tif)$/i;
-    cb(null, allowed.test(file.originalname));
+    cb(null, RENDERABLE_PROCESSED.test(file.originalname) || STORED_PROCESSED.test(file.originalname));
   },
+});
+
+// Separate, deliberately narrow uploader for the "save edited image back into
+// the library folder" route below. That one writes into the *object* directory,
+// where getLocalFiles gates visibility on isRealFile's image extensions — a
+// stored-only format like XISF would land on disk and then be invisible. The
+// image editor only ever exports a canvas as JPG or PNG, so restricting to
+// renderable formats matches what that route can actually represent.
+const editedImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+    filename: (_req, file, cb) => cb(null, `edited_${randomUUID()}_${path.basename(file.originalname)}`),
+  }),
+  limits: { fileSize: 300 * 1024 * 1024, fieldSize: 1 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => cb(null, RENDERABLE_PROCESSED.test(file.originalname)),
 });
 
 router.get('/objects/:objectId/sessions/:date/processed-images', (req: Request, res: Response) => {
@@ -1688,16 +1911,36 @@ router.post('/objects/:objectId/sessions/:date/processed-images', requireAdmin, 
 
   const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
   const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+  const runIdRaw = typeof req.body?.runId === 'string' ? req.body.runId.trim() : '';
+  let runId: string | null = null;
+  if (runIdRaw) {
+    const run = getProcessingRun(runIdRaw);
+    if (!run || run.objectId !== objectId) {
+      try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+      res.apiError(422, 'VALIDATION_ERROR', 'runId does not belong to this object');
+      return;
+    }
+    runId = runIdRaw;
+  }
 
   const mimeMap: Record<string, string> = {
     jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
     tif: 'image/tiff', tiff: 'image/tiff',
+    // Stored-but-not-rendered formats. Real IANA types where one exists, so a
+    // browser download names and handles the file correctly.
+    fit: 'application/fits', fits: 'application/fits', fts: 'application/fits',
+    xisf: 'application/x-xisf',
+    psd: 'image/vnd.adobe.photoshop', xcf: 'image/x-xcf',
+    dng: 'image/x-adobe-dng', cr2: 'image/x-canon-cr2', cr3: 'image/x-canon-cr3',
+    nef: 'image/x-nikon-nef', arw: 'image/x-sony-arw',
   };
-  const ext = file.originalname.split('.').pop()?.toLowerCase() || 'jpg';
-  const mimeType = mimeMap[ext] || 'image/jpeg';
+  const ext = file.originalname.split('.').pop()?.toLowerCase() || '';
+  // Falling back to image/jpeg would tell the client an XISF is a renderable
+  // JPEG, so the grid would show a broken thumbnail instead of a file card.
+  const mimeType = mimeMap[ext] || 'application/octet-stream';
 
   try {
-    const record = addProcessedImage(objectId, date, file.path, file.originalname, mimeType, title, notes);
+    const record = addProcessedImage(objectId, date, file.path, file.originalname, mimeType, title, notes, runId);
     res.apiSuccess(record);
   } catch (err) {
     try { fs.unlinkSync(file.path); } catch { /* ignore */ }
@@ -1705,10 +1948,36 @@ router.post('/objects/:objectId/sessions/:date/processed-images', requireAdmin, 
   }
 });
 
+// ─── Processing runs (which nights a combined processed image draws on) ────
+
+const CreateProcessingRunSchema = z.object({
+  dates: z.array(z.string()).min(1, 'dates must be a non-empty array'),
+  title: z.string().optional(),
+  notes: z.string().optional(),
+  software: z.string().optional(),
+});
+
+router.get('/objects/:objectId/processing-runs', (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  res.apiSuccess(getProcessingRunsForObject(objectId));
+});
+
+router.post('/objects/:objectId/processing-runs', requireAdmin, (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const parsed = CreateProcessingRunSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
+    return;
+  }
+  const { dates, title, notes, software } = parsed.data;
+  const run = createProcessingRun(objectId, dates, title?.trim() ?? '', notes?.trim() ?? '', software?.trim() ?? '');
+  res.apiSuccess(run);
+});
+
 // ─── Save edited telescope image back into the library folder ─────────────────
 // Writes the canvas export alongside the original telescope files so it
 // appears in the Telescope Images section instead of Processed Images.
-router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, processedUpload.single('image'), (req: Request, res: Response) => {
+router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, editedImageUpload.single('image'), (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const date = String(req.params.date);
   const file = req.file;

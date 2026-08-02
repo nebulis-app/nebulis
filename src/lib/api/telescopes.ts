@@ -30,8 +30,10 @@ export const getAllTelescopeStatus = () =>
 
 // ─── Telescope profiles (multi-telescope support) ───────────────────────
 
-/** SMB = LAN share (SeeStar). Local = filesystem path (Dwarf USB mount). */
-type ConnectionType = 'smb' | 'local';
+/** SMB = LAN share (SeeStar). Local = filesystem path (USB mount).
+ *  FTP = anonymous FTP over Wi-Fi, the only network interface a Dwarf has.
+ *  Keep in sync with TRANSPORT_KINDS in server/lib/telescopeTransports.ts. */
+export type ConnectionType = 'smb' | 'local' | 'ftp';
 
 export interface TelescopeProfile {
   id: string;
@@ -48,9 +50,9 @@ export interface TelescopeProfile {
   autoImportInterval: number;
   archivedAt: number | null;
   sessionCount?: number;
-  /** SMB share (SeeStar) or local filesystem path (Dwarf USB). Mirrors the
-   *  active transport at creation time; the import pipeline reads transports
-   *  for live truth. */
+  /** SMB share (SeeStar), FTP over Wi-Fi (Dwarf), or a local filesystem path
+   *  (USB). Mirrors the active transport at creation time; the import pipeline
+   *  reads transports for live truth. */
   connectionType: ConnectionType;
   /** Absolute filesystem path when connectionType === 'local'. */
   localPath: string;
@@ -71,16 +73,22 @@ export interface TelescopeProfile {
   importThumbnails: boolean;
   importSubFrames: boolean;
   importVideos: boolean;
+  /** Also keep files Nebulis has no use for, so this telescope's folder can be
+   *  a complete copy of the device. Does not override the per-type toggles. */
+  archiveAllFiles: boolean;
   /** When true (default), the importer reads/writes `.nebulis.dat` on the
    *  device's storage root so the same physical telescope reached over SMB
    *  and USB resolves to one logical device. Power users can disable it. */
   trackDeviceIdentity: boolean;
+  /** transports[].id to force, overriding the automatic local > ftp > smb
+   *  selection. Null means "Auto". */
+  pinnedTransportId: string | null;
 }
 
 /** One way to reach a telescope. A profile can have several (e.g. one Seestar
  *  configured over both SMB and USB) — the import pipeline picks the active
  *  one at run time. */
-interface TelescopeTransport {
+export interface TelescopeTransport {
   id: string;
   profileId: string;
   kind: ConnectionType;
@@ -126,8 +134,9 @@ type TelescopeCreateInput =
   Omit<
     TelescopeProfile,
     | 'id' | 'createdAt' | 'archivedAt' | 'connectionType' | 'localPath'
-    | 'deviceId' | 'transports' | 'activeTransportId'
+    | 'deviceId' | 'transports' | 'activeTransportId' | 'pinnedTransportId'
     | 'importJpg' | 'importFits' | 'importThumbnails' | 'importSubFrames' | 'importVideos'
+    | 'archiveAllFiles'
     | 'trackDeviceIdentity'
   >
   & {
@@ -138,6 +147,7 @@ type TelescopeCreateInput =
     importThumbnails?: boolean;
     importSubFrames?: boolean;
     importVideos?: boolean;
+    archiveAllFiles?: boolean;
     trackDeviceIdentity?: boolean;
   };
 interface TelescopeUpdateInput extends Partial<Omit<TelescopeProfile, 'id' | 'createdAt'>> {}
@@ -191,13 +201,22 @@ export const reassignTelescopeSessions = (fromId: string, toTelescopeId: string)
     { method: 'POST', body: JSON.stringify({ toTelescopeId }) },
   );
 
-/** Probe a telescope's SMB share with arbitrary credentials. Used by the
- *  Add/Edit modal to test before saving — does not read from the stored
- *  profile, so it works for both brand-new and unsaved-edit cases. */
+/** Probe a telescope's SMB share or FTP server with arbitrary credentials.
+ *  Used by the Add/Edit modal to test before saving — does not read from the
+ *  stored profile, so it works for both brand-new and unsaved-edit cases.
+ *  `connectionType` defaults to 'smb' server-side when omitted. For FTP the
+ *  response also carries the auto-detected storage root. */
 export const testTelescopeConnection = (
-  data: { kind: TelescopeKind; hostname: string; shareName: string; username: string; password: string },
+  data: {
+    kind: TelescopeKind;
+    hostname: string;
+    shareName: string;
+    username: string;
+    password: string;
+    connectionType?: ConnectionType;
+  },
 ) =>
-  fetchJSON<{ connected: boolean; objectCount?: number; error?: string }>(
+  fetchJSON<{ connected: boolean; objectCount?: number; error?: string; remoteRoot?: string }>(
     '/telescopes/test-connection',
     { method: 'POST', body: JSON.stringify(data) },
   );
@@ -242,6 +261,24 @@ export const addProfileTransport = (
   fetchJSON<TelescopeTransport>(
     `/telescopes/${encodeURIComponent(profileId)}/transports`,
     { method: 'POST', body: JSON.stringify(data) },
+  );
+
+/** Edit an existing transport row. Pass the masked password back unchanged to keep it. */
+export const updateProfileTransport = (
+  profileId: string,
+  transportId: string,
+  data: Partial<Omit<TelescopeTransport, 'id' | 'profileId' | 'lastSeenAt' | 'createdAt'>>,
+) =>
+  fetchJSON<TelescopeTransport>(
+    `/telescopes/${encodeURIComponent(profileId)}/transports/${encodeURIComponent(transportId)}`,
+    { method: 'PUT', body: JSON.stringify(data) },
+  );
+
+/** Remove a transport. The server refuses to delete a profile's last transport. */
+export const deleteProfileTransport = (profileId: string, transportId: string) =>
+  fetchJSON<{ deleted: boolean }>(
+    `/telescopes/${encodeURIComponent(profileId)}/transports/${encodeURIComponent(transportId)}`,
+    { method: 'DELETE' },
   );
 
 /** Reassign a session (objectId + date) to a different telescope. */

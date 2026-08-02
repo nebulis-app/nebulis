@@ -14,7 +14,7 @@
  */
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { getSettingsData } from '../lib/telescopes.js';
+import { resolveSite, getActiveSite } from '../lib/observingSites.js';
 import { getAll as getWishlistAll } from '../lib/wishlist.js';
 import { getLocalObjects } from '../lib/localLibrary.js';
 import { getCatalog, search as searchDso, filterCatalog, getById } from '../lib/dsoCatalog.js';
@@ -32,15 +32,19 @@ const PlannerTonightQuerySchema = z.object({
    *  tonight. The night window is the dusk-to-dawn span beginning that
    *  evening. */
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** Explicit observing site to plan from. Wins over lat/lon and over the
+   *  server's active/default site — see resolveSite in observingSites.ts. */
+  siteId: z.string().optional(),
   /** Observer coordinates supplied by the client (e.g. phone GPS when
-   *  traveling with the scope). When present, these override the server's
-   *  saved location for this request only — nothing is persisted. Older
-   *  clients that omit these params continue to use the server settings. */
+   *  traveling with the scope). When present, these override the resolved
+   *  site's coordinates for this request only — nothing is persisted. Older
+   *  clients that omit these params continue to use the saved site. */
   lat: z.coerce.number().min(-90).max(90).optional(),
   lon: z.coerce.number().min(-180).max(180).optional(),
 });
 
 const PlannerCurveQuerySchema = z.object({
+  siteId: z.string().optional(),
   lat: z.coerce.number().min(-90).max(90).optional(),
   lon: z.coerce.number().min(-180).max(180).optional(),
 });
@@ -54,10 +58,6 @@ const DsoBrowseQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional(),
   offset: z.coerce.number().int().min(0).optional(),
 });
-
-function loadSettings() {
-  return getSettingsData();
-}
 
 function loadWishlist(): string[] {
   return getWishlistAll().map(i => i.objectId);
@@ -115,18 +115,20 @@ router.get('/tonight', async (req: Request, res: Response) => {
     return;
   }
 
-  const settings = loadSettings();
-  // Client-provided coordinates override saved settings for this request only
-  // (e.g. phone GPS when traveling with the scope). Older clients that omit
-  // lat/lon continue to use the server's saved location unchanged. Both must be
-  // present to override: a half-supplied pair would otherwise mix client
-  // latitude with the saved-settings longitude (or vice versa) and place the
-  // observer somewhere that is neither location.
-  const clientCoords = queryParsed.data.lat != null && queryParsed.data.lon != null
-    ? { lat: queryParsed.data.lat, lon: queryParsed.data.lon }
-    : null;
-  const lat = clientCoords?.lat ?? (typeof settings.latitude === 'number' ? settings.latitude : null);
-  const lon = clientCoords?.lon ?? (typeof settings.longitude === 'number' ? settings.longitude : null);
+  // Resolution order (see resolveSite): explicit siteId > client lat/lon
+  // override (e.g. phone GPS while travelling with the scope) > the server's
+  // active site > the default site. Both lat and lon must be present to
+  // override: a half-supplied pair would otherwise mix a client latitude with
+  // a stored longitude and place the observer somewhere that is neither
+  // location. Older clients that send neither siteId nor coordinates continue
+  // to plan from the active/default site unchanged.
+  const site = resolveSite({
+    siteId: queryParsed.data.siteId,
+    lat: queryParsed.data.lat,
+    lon: queryParsed.data.lon,
+  });
+  const lat = site.latitude;
+  const lon = site.longitude;
 
   if (lat === null || lon === null) {
     res.apiSuccess({
@@ -141,18 +143,20 @@ router.get('/tonight', async (req: Request, res: Response) => {
       moonIllumination: 0,
       moonPhase: 'Unknown',
       observerTimezone: null,
+      siteId: site.isTransient ? null : site.id,
+      siteName: site.name,
     });
     return;
   }
 
   const now = new Date();
-  // When the client supplies coordinates, derive timezone from those coords so
-  // displayed times match the scope's actual location. Fall back to the saved
-  // settings timezone if the lookup fails or no client coords were provided.
+  // When the resolved site carries no timezone (a transient client-coordinate
+  // override), derive one from the coordinates so displayed times match the
+  // scope's actual location.
   const observerTimezone = await observerTimezoneForCoordinates(
     lat,
     lon,
-    typeof settings.timezone === 'string' ? settings.timezone : null,
+    site.timezone || null,
   );
   // Anchor the night-window calculation at noon of the requested date (or
   // the default "tonight" anchor, if no date supplied). getNightWindow
@@ -183,6 +187,8 @@ router.get('/tonight', async (req: Request, res: Response) => {
       observerLat: lat,
       observerLon: lon,
       observerTimezone,
+      siteId: site.isTransient ? null : site.id,
+      siteName: site.name,
     };
     res.apiSuccess(payload);
     return;
@@ -204,18 +210,19 @@ router.get('/tonight', async (req: Request, res: Response) => {
   // still makes sense ("at the middle of this night").
   const refTime = dateParam ? moonSampleAt : now;
 
-  // Parse filters from query (query params override settings)
+  // Parse filters from query (query params override the resolved site)
   const typeFilter = queryParsed.data.type;
-  const minAlt = queryParsed.data.minAlt ?? (typeof settings.minAlt === 'number' ? settings.minAlt : 20);
+  const minAlt = queryParsed.data.minAlt ?? site.minAlt;
   const horizonProfile: number[] | undefined =
-    Array.isArray(settings.horizonProfile) && settings.horizonProfile.length === 36
-      ? settings.horizonProfile
-      : undefined;
+    site.horizonProfile.length === 36 ? site.horizonProfile : undefined;
   // No artificial limit — return all visible objects so the frontend never
   // misclassifies cut-off targets as "below threshold".
 
   // Return cached result if still fresh. "today" queries include altNow/azNow
   // which drift over time, so they use a shorter TTL than date-specific ones.
+  // Keyed on the resolved (lat, lon, horizonProfile) tuple, which already
+  // fully captures which site was used — a distinct site sharing coordinates
+  // with another still differs on horizonProfile/minAlt and so gets its own key.
   const cacheKey = plannerCacheKey(lat, lon, observerTimezone, dateParam, minAlt, typeFilter, horizonProfile);
   const cached = plannerCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
@@ -288,6 +295,8 @@ router.get('/tonight', async (req: Request, res: Response) => {
     observerLat: lat,
     observerLon: lon,
     observerTimezone,
+    siteId: site.isTransient ? null : site.id,
+    siteName: site.name,
   };
 
   // Cache: 2 min for "tonight" (altNow drifts), 10 min for specific dates.
@@ -311,22 +320,23 @@ router.get('/curve/:objectId', async (req: Request, res: Response) => {
     res.apiError(422, 'VALIDATION_ERROR', queryParsed.error.issues[0]?.message ?? 'Invalid query parameters');
     return;
   }
-  const settings = loadSettings();
-  // Both client coords must be present to override saved settings (see /tonight).
-  const clientCoords = queryParsed.data.lat != null && queryParsed.data.lon != null
-    ? { lat: queryParsed.data.lat, lon: queryParsed.data.lon }
-    : null;
-  const lat = clientCoords?.lat ?? (typeof settings.latitude === 'number' ? settings.latitude : null);
-  const lon = clientCoords?.lon ?? (typeof settings.longitude === 'number' ? settings.longitude : null);
+  // Same resolution order as /tonight: siteId > client lat/lon > active/default site.
+  const site = resolveSite({
+    siteId: queryParsed.data.siteId,
+    lat: queryParsed.data.lat,
+    lon: queryParsed.data.lon,
+  });
+  const lat = site.latitude;
+  const lon = site.longitude;
 
   if (lat === null || lon === null) {
-    res.apiError(400, 'NO_LOCATION', 'Observer location not set in settings');
+    res.apiError(400, 'NO_LOCATION', 'Observer location not set');
     return;
   }
   const observerTimezone = await observerTimezoneForCoordinates(
     lat,
     lon,
-    typeof settings.timezone === 'string' ? settings.timezone : null,
+    site.timezone || null,
   );
 
   const entry = getById(String(req.params.objectId));
@@ -387,9 +397,9 @@ router.get('/:id', (req: Request, res: Response) => {
   }
 
   // Add current alt/az if location is set
-  const settings = loadSettings();
-  const lat = typeof settings.latitude === 'number' ? settings.latitude : null;
-  const lon = typeof settings.longitude === 'number' ? settings.longitude : null;
+  const site = getActiveSite();
+  const lat = site.latitude;
+  const lon = site.longitude;
   const position = lat !== null && lon !== null
     ? altAz(entry.ra, entry.dec, lat, lon, new Date())
     : null;

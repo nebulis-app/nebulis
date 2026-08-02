@@ -13,7 +13,9 @@ import {
   stmts,
   getFolderName,
   LIBRARY_API_BASE,
+  type ProcessedImageRow,
 } from './objects.js';
+import { getRunDates } from './processingRuns.js';
 
 /**
  * Pick an on-disk name for an uploaded processed image that keeps the user's
@@ -51,45 +53,48 @@ export interface ProcessedImageRecord {
   url: string;
   /** Relative library path (folderName/processed/filename) — safe to pass to /library/file. */
   path: string;
+  runId: string | null;
+  /** All session dates the run covers, sorted, when runId is set and covers
+   *  more than one night. Null for single-session images so the UI only
+   *  needs to check truthiness to decide whether to show a "combined" badge. */
+  runDates: string[] | null;
 }
 
 // ─── CRUD ───────────────────────────────────────────────────────────────────
 
+function withRunDates(row: ProcessedImageRow, folderName: string): ProcessedImageRecord {
+  const dates = getRunDates(row.runId);
+  return {
+    ...row,
+    url: `${LIBRARY_API_BASE}/processed-images/${row.id}`,
+    path: `${folderName}/processed/${row.filename}`,
+    runDates: dates && dates.length > 1 ? dates : null,
+  };
+}
+
 /** List all processed images for a session, newest first. */
 export function getProcessedImages(objectId: string, date: string): ProcessedImageRecord[] {
   const folderName = getFolderName(objectId);
-  const rows = stmts.getProcessedImages.all(objectId, date);
-  return rows.map(r => ({
-    ...r,
-    url: `${LIBRARY_API_BASE}/processed-images/${r.id}`,
-    path: `${folderName}/processed/${r.filename}`,
-  }));
+  return stmts.getProcessedImages.all(objectId, date).map(r => withRunDates(r, folderName));
 }
 
 /** List all processed images for an object across all sessions, newest first. */
 export function getAllProcessedImagesForObject(objectId: string): ProcessedImageRecord[] {
   const folderName = getFolderName(objectId);
-  const rows = stmts.getAllProcessedImagesForObject.all(objectId);
-  return rows.map(r => ({
-    ...r,
-    url: `${LIBRARY_API_BASE}/processed-images/${r.id}`,
-    path: `${folderName}/processed/${r.filename}`,
-  }));
+  return stmts.getAllProcessedImagesForObject.all(objectId).map(r => withRunDates(r, folderName));
 }
 
 /** Get a single processed image record by id (null if not found). */
 export function getProcessedImageRecord(id: string): ProcessedImageRecord | null {
   const row = stmts.getProcessedImage.get(id);
   if (!row) return null;
-  const folderName = getFolderName(row.objectId);
-  return {
-    ...row,
-    url: `${LIBRARY_API_BASE}/processed-images/${row.id}`,
-    path: `${folderName}/processed/${row.filename}`,
-  };
+  return withRunDates(row, getFolderName(row.objectId));
 }
 
-/** Save an uploaded processed image to disk and record it in the DB. */
+/** Save an uploaded processed image to disk and record it in the DB.
+ *  `runId` links it to a processingRuns row (see processingRuns.ts) when the
+ *  upload combines more than one session; omit for the common single-session
+ *  case. */
 export function addProcessedImage(
   objectId: string,
   date: string,
@@ -98,6 +103,7 @@ export function addProcessedImage(
   mimeType: string,
   title: string,
   notes: string,
+  runId: string | null = null,
 ): ProcessedImageRecord {
   const LIBRARY_DIR = getLibraryDir();
   const id = `proc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -120,14 +126,16 @@ export function addProcessedImage(
   }
 
   const uploadedAt = new Date().toISOString();
-  stmts.insertProcessedImage.run(id, objectId, date, filename, originalName, title, notes, size, mimeType, uploadedAt);
+  stmts.insertProcessedImage.run(id, objectId, date, filename, originalName, title, notes, size, mimeType, uploadedAt, runId);
 
   const folderName = getFolderName(objectId);
+  const runDates = getRunDates(runId);
   return {
     id, objectId, date, filename, originalName, title, notes,
-    size, mimeType, uploadedAt,
+    size, mimeType, uploadedAt, runId,
     url: `${LIBRARY_API_BASE}/processed-images/${id}`,
     path: `${folderName}/processed/${filename}`,
+    runDates: runDates && runDates.length > 1 ? runDates : null,
   };
 }
 

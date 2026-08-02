@@ -1,20 +1,25 @@
 /**
  * Transport rows attached to a telescope profile. One profile can have
  * multiple transports — e.g. a Seestar reachable over both SMB (LAN) and a
- * USB-mounted eMMC. `selectActiveTransport` picks which one the SMB/local I/O
- * dispatcher should use on a given request: local mount present wins over
- * SMB; tiebreak by priority asc, then lastSeenAt desc.
+ * USB-mounted eMMC, or a Dwarf reachable over both FTP (Wi-Fi) and USB.
+ * `selectActiveTransport` picks which one the I/O dispatcher should use on a
+ * given request: a present local mount wins, then FTP, then SMB; tiebreak by
+ * priority asc, then lastSeenAt desc.
  */
 import { randomUUID } from 'crypto';
 import { statSync } from 'fs';
 import db from './db.js';
 import { encrypt, decrypt } from './crypto/secretBox.js';
 
-// Single source of truth for the SMB/local transport union — every consumer
-// (routes' z.enum validation, the OpenAPI schema, deviceIdentity, telescopes.ts's
+// Single source of truth for the transport union — every consumer (routes'
+// z.enum validation, the OpenAPI schema, deviceIdentity, telescopes.ts's
 // TelescopeProfile.connectionType) derives from this instead of hand-copying
-// the literal union, so a third transport kind only needs to be added here.
-export const TRANSPORT_KINDS = ['smb', 'local'] as const;
+// the literal union, so a new transport kind only needs to be added here.
+//
+//   smb   — LAN share (Seestar, generic NAS)
+//   local — direct filesystem path (USB-mounted eMMC / SD card)
+//   ftp   — anonymous FTP (DWARFLAB devices; their only network interface)
+export const TRANSPORT_KINDS = ['smb', 'local', 'ftp'] as const;
 export type TransportKind = (typeof TRANSPORT_KINDS)[number];
 export function isTransportKind(value: string): value is TransportKind {
   return (TRANSPORT_KINDS as readonly string[]).includes(value);
@@ -56,6 +61,12 @@ interface TelescopeTransportRow {
   createdAt: string;
 }
 
+// Queried directly rather than through telescopes.ts to avoid a circular
+// import (telescopes.ts already imports this module).
+const pinnedTransportStmt = db.prepare<[string], { pinnedTransportId: string | null }>(
+  'SELECT pinnedTransportId FROM telescopeProfiles WHERE id = ?',
+);
+
 const stmts = {
   getByProfile: db.prepare<[string], TelescopeTransportRow>(
     'SELECT * FROM telescopeTransports WHERE profileId = ? ORDER BY priority ASC, createdAt ASC',
@@ -84,9 +95,13 @@ function asKind(value: string | undefined | null): TransportKind {
 }
 
 function defaultPriority(kind: TransportKind): number {
-  // Lower beats higher. Local mount is structurally faster and avoids touching
-  // the network at all, so it leads the SMB transport by default.
-  return kind === 'local' ? 50 : 100;
+  // Lower beats higher. A local mount is structurally faster and avoids the
+  // network entirely, so it leads. FTP sits between local and SMB: it is the
+  // only network path a Dwarf has, and a profile that has both is a Dwarf
+  // whose USB cable is unplugged more often than not.
+  if (kind === 'local') return 50;
+  if (kind === 'ftp') return 75;
+  return 100;
 }
 
 function rowToTransport(row: TelescopeTransportRow): TelescopeTransport {
@@ -150,7 +165,10 @@ export function addTransport(
     priority: data.priority ?? defaultPriority(kind),
     hostname: data.hostname ?? '',
     shareName: data.shareName ?? 'EMMC Images',
-    username: data.username ?? 'guest',
+    // 'guest' is the SMB default; FTP transports (Dwarf) must stay empty so
+    // smb.ftp.ts's toTarget() falls back to a true anonymous login instead
+    // of sending the literal string 'guest' as the FTP username.
+    username: data.username ?? (kind === 'ftp' ? '' : 'guest'),
     password: data.password ?? '',
     localPath: data.localPath ?? '',
     lastSeenAt: null,
@@ -241,11 +259,13 @@ function localMountPresent(localPath: string): boolean {
  *  1. Among `local` transports whose `localPath` currently resolves to a
  *     directory, return the one with lowest priority (tiebreak by most
  *     recent lastSeenAt).
- *  2. Otherwise, among SMB transports that have a hostname configured,
+ *  2. Otherwise, among FTP transports that have a hostname configured, return
+ *     the one with lowest priority (same tiebreak).
+ *  3. Otherwise, among SMB transports that have a hostname configured,
  *     return the one with lowest priority (same tiebreak).
- *  3. If neither applies, return null — the caller should skip this profile
- *     this tick. We do not actively probe SMB reachability here; the import
- *     itself will fail and report a "not reachable" message back to the user.
+ *  4. If none applies, return null — the caller should skip this profile
+ *     this tick. We do not actively probe network reachability here; the
+ *     import itself will fail and report "not reachable" back to the user.
  *
  * Results cached 30s per profileId. The cache is invalidated whenever a
  * transport for the profile is added, updated, or deleted.
@@ -273,14 +293,39 @@ export function selectActiveTransport(profileId: string): TelescopeTransport | n
   const usable = orderForSelection.filter(t => !t.decryptFailed);
 
   let chosen: TelescopeTransport | null = null;
+
+  // Manual pin, if set, wins outright — honoured even when not currently
+  // reachable, so the import pipeline reports a real "not reachable" error
+  // against the transport the user actually chose instead of silently
+  // switching to a different one. A pin pointing at a deleted transport or
+  // one with unreadable credentials falls through to the heuristic below.
+  const pinnedRow = pinnedTransportStmt.get(profileId);
+  if (pinnedRow?.pinnedTransportId) {
+    const pinned = usable.find(t => t.id === pinnedRow.pinnedTransportId);
+    if (pinned) chosen = pinned;
+  }
+
   // First pass: any local transport whose mount is present.
-  for (const t of usable) {
-    if (t.kind === 'local' && localMountPresent(t.localPath)) {
-      chosen = t;
-      break;
+  if (!chosen) {
+    for (const t of usable) {
+      if (t.kind === 'local' && localMountPresent(t.localPath)) {
+        chosen = t;
+        break;
+      }
     }
   }
-  // Second pass: SMB transports with a configured hostname.
+  // Second pass: FTP transports with a configured hostname. Ranked above SMB
+  // because a profile carrying both is a Dwarf, and SMB is not something a
+  // Dwarf serves — the SMB row would be a leftover from an earlier edit.
+  if (!chosen) {
+    for (const t of usable) {
+      if (t.kind === 'ftp' && t.hostname.trim() !== '') {
+        chosen = t;
+        break;
+      }
+    }
+  }
+  // Third pass: SMB transports with a configured hostname.
   if (!chosen) {
     for (const t of usable) {
       if (t.kind === 'smb' && t.hostname.trim() !== '') {

@@ -153,7 +153,7 @@ export function CompareView() {
         )
       ) : (
         <div className={`text-center py-20 rounded-xl border ${
-          isDark ? 'bg-slate-900/50 border-slate-800 text-slate-500' : 'bg-white border-slate-200 text-slate-400'
+          isDark ? 'bg-slate-900 border-slate-700 text-slate-500' : 'bg-white border-slate-200 text-slate-400'
         }`}>
           <Layers className="w-10 h-10 mx-auto mb-3 opacity-40" />
           <p>Select two sessions above to compare</p>

@@ -3,6 +3,7 @@ import { Telescope, Satellite, Download, Trash2 } from 'lucide-react';
 import { FitsThumbnail } from '../FitsThumbnail';
 import { useTheme } from '../../hooks/useTheme';
 import type { SessionFile } from '../../types';
+import { thumbSrcFor } from '../../lib/sessionImageSrc';
 
 /** Telescope subframes tray: a fixed-height grid that measures how many
  *  64px tiles fit and reserves the last slot for the "open viewer" button.
@@ -50,7 +51,7 @@ export function SubframesPanel({
   }, []);
 
   return (
-    <div className={`rounded-2xl border min-w-0 flex flex-col ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+    <div className={`rounded-2xl border min-w-0 flex flex-col ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
       <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
         <h2 className={`font-display font-semibold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
           <Telescope className="w-4 h-4 flex-shrink-0 text-teal-500" />
@@ -160,7 +161,7 @@ export function SubframesPanel({
                       <FitsThumbnail url={file.downloadUrl} thumbUrl={file.thumbUrl} stretch={1.0} isDark={isDark} />
                     ) : (
                       <img
-                        src={file.downloadUrl}
+                        src={thumbSrcFor(file)}
                         alt={file.name}
                         className="w-full h-full object-cover"
                         onError={e => { if (e.target instanceof HTMLImageElement) e.target.style.display = 'none'; }}

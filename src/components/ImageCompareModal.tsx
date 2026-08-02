@@ -1,11 +1,17 @@
 import { useState } from 'react';
 import { X, Columns, GripVertical, ImageOff, Layers, Clock } from 'lucide-react';
 import { Modal } from './ui/Modal';
+import { previewSrcFor } from '../lib/sessionImageSrc';
 
 /** Minimal interface accepted by the compare modal — both SessionFile and ProcessedImage satisfy this. */
 export interface CompareFile {
   name: string;
   downloadUrl: string;
+  /** Server-rendered tiers, present for formats a browser cannot display raw
+   *  (TIFF, 16-bit PNG). Carried here so compare never points an `<img>` at a
+   *  100 MB float TIFF. See lib/sessionImageSrc.ts. */
+  thumbUrl?: string;
+  previewUrl?: string;
   exposure?: string | null;
   frameCount?: number | null;
   filter?: string | null;
@@ -85,8 +91,8 @@ export function ImageCompareModal({ leftFile, rightFile, onClose, isDark }: Imag
       <div className="flex-1 overflow-auto px-5 py-4">
         {mode === 'side-by-side' ? (
           <div className="grid grid-cols-2 gap-4 h-full">
-            <CompareImage src={leftFile.downloadUrl} alt="Image 1" isDark={isDark} />
-            <CompareImage src={rightFile.downloadUrl} alt="Image 2" isDark={isDark} />
+            <CompareImage src={previewSrcFor(leftFile)} alt="Image 1" isDark={isDark} />
+            <CompareImage src={previewSrcFor(rightFile)} alt="Image 2" isDark={isDark} />
           </div>
         ) : (
           <div className="flex flex-col gap-3 h-full">
@@ -99,7 +105,7 @@ export function ImageCompareModal({ leftFile, rightFile, onClose, isDark }: Imag
               isDark ? 'border-slate-800' : 'border-slate-200'
             }`}>
               <img
-                src={rightFile.downloadUrl}
+                src={previewSrcFor(rightFile)}
                 alt="Image 2"
                 className="w-full h-full object-contain"
                 style={{ display: 'block' }}
@@ -109,7 +115,7 @@ export function ImageCompareModal({ leftFile, rightFile, onClose, isDark }: Imag
                 style={{ width: `${sliderPos}%` }}
               >
                 <img
-                  src={leftFile.downloadUrl}
+                  src={previewSrcFor(leftFile)}
                   alt="Image 1"
                   className="h-full object-contain"
                   style={{ width: `${10000 / sliderPos}%`, maxWidth: 'none' }}

@@ -6,6 +6,7 @@ import { Router, Request, Response } from 'express';
 import {
   getLocalObservations,
   getLocalObservationDetail,
+  getObservationLocations,
 } from '../lib/localLibrary.js';
 
 const router = Router();
@@ -19,6 +20,18 @@ router.get('/', (_req: Request, res: Response) => {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to list observations';
     res.apiError(500, 'LIST_FAILED', message);
+  }
+});
+
+// ─── Observation-site coordinates for the world map ──────────────────
+// Single path segment, so it never collides with `/:objectId/:date` below.
+
+router.get('/locations', (_req: Request, res: Response) => {
+  try {
+    res.apiSuccess(getObservationLocations());
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to list observation locations';
+    res.apiError(500, 'LOCATIONS_FAILED', message);
   }
 });
 

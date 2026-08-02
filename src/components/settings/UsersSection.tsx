@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Key, Plus, ShieldCheck, Eye, EyeOff, Pencil } from 'lucide-react';
+import { Plus, ShieldCheck, Eye, EyeOff, Pencil } from 'lucide-react';
 import { getUsers, createUser, deleteAppUser, resetUserPassword, updateUserRole, updateUserProfile, toUserRole, type UserRole } from '../../lib/api/auth';
-import { getInputClass, getLabelClass, getCardClass } from './SettingsUI';
+import { getInputClass, getLabelClass, Sec } from './SettingsUI';
 
 export function UsersSection({ isDark }: { isDark: boolean }) {
   const queryClient = useQueryClient();
@@ -68,22 +68,11 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
   const selectClass = `${inputClass} cursor-pointer`;
 
   return (
-    <div>
-      {/* Section header */}
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-xl ${isDark ? 'bg-emerald-500/10' : 'bg-emerald-50'}`}>
-            <Key className="w-5 h-5 text-emerald-500" />
-          </div>
-          <div>
-            <h2 className={`font-display text-[17px] font-semibold tracking-tight ${isDark ? 'text-white' : 'text-slate-800'}`}>
-              Users
-            </h2>
-            <p className={`text-[13px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              Same credentials work for the web app and iOS app
-            </p>
-          </div>
-        </div>
+    <Sec
+      title="Users"
+      description="Same credentials work for the web app and iOS app."
+      isDark={isDark}
+      actions={
         <button
           onClick={() => {
             setShowCreateUser(true);
@@ -91,19 +80,18 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
             setShowNewUserPassword(false);
             setNewUser({ username: '', email: '', password: '', displayName: '', role: 'viewer' });
           }}
-          className={`inline-flex items-center gap-1.5 text-[13px] font-medium px-3.5 py-2 rounded-lg transition-all duration-150 ${
+          className={`inline-flex items-center gap-1.5 text-[13px] font-medium px-3.5 py-2 rounded-lg transition-all duration-150 border ${
             isDark
-              ? 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border border-slate-700'
-              : 'bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 border border-slate-200 shadow-sm'
+              ? 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border-slate-700'
+              : 'bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 border-slate-200 shadow-sm'
           }`}
         >
           <Plus className="w-3.5 h-3.5" />
-          Add User
+          Add user
         </button>
-      </div>
-
-      {/* Card */}
-      <div className={`${getCardClass(isDark)} space-y-4`}>
+      }
+    >
+      <div className="p-4 space-y-4">
         {/* Create user form */}
         {showCreateUser && (
           <div className={`p-5 rounded-xl border space-y-3 ${isDark ? 'bg-slate-800/40 border-slate-700/80' : 'bg-slate-50 border-slate-200'}`}>
@@ -184,7 +172,7 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
                 disabled={!newUser.username || !newUser.password || createUserMutation.isPending}
                 className="px-4 py-2 rounded-lg text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 transition-all duration-150 disabled:opacity-50"
               >
-                {createUserMutation.isPending ? 'Creating…' : 'Create User'}
+                {createUserMutation.isPending ? 'Creating…' : 'Create user'}
               </button>
               <button
                 onClick={() => { setShowCreateUser(false); setShowNewUserPassword(false); }}
@@ -310,7 +298,7 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
                         isDark ? 'text-slate-400 hover:bg-slate-700/50 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-100'
                       }`}
                     >
-                      Reset Password
+                      Reset password
                     </button>
                     <button
                       onClick={() => {
@@ -360,7 +348,7 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
                         disabled={!editProfileValues.displayName || updateProfileMutation.isPending}
                         className="px-4 py-2 rounded-lg text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 transition-all duration-150 disabled:opacity-50"
                       >
-                        {updateProfileMutation.isPending ? 'Saving…' : 'Save Changes'}
+                        {updateProfileMutation.isPending ? 'Saving…' : 'Save changes'}
                       </button>
                       <button
                         onClick={() => setEditProfileUserId(null)}
@@ -376,6 +364,6 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
           </div>
         )}
       </div>
-    </div>
+    </Sec>
   );
 }

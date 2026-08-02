@@ -204,7 +204,9 @@ export function enableDebugLogging(ctx?: DebugContext): DebugLogState {
     ctx.telescopes.forEach((t, i) => {
       const location = t.connectionType === 'local'
         ? (t.localPath || '(no path)')
-        : `//${t.hostname || '?'}/${t.shareName || '?'}`;
+        : t.connectionType === 'ftp'
+          ? `ftp://${t.hostname || '?'}`
+          : `//${t.hostname || '?'}/${t.shareName || '?'}`;
       const auto = t.autoImportEnabled
         ? `auto-import: on (${t.autoImportInterval} min)`
         : 'auto-import: off';

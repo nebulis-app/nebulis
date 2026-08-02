@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  BookOpen,
   Download,
   RotateCw,
   CheckCircle2,
@@ -9,11 +8,10 @@ import {
   X,
   Trash2,
   Package,
-  Satellite,
   AlertCircle,
 } from 'lucide-react';
 import type { Settings as SettingsType } from '../../types';
-import { Toggle, getCardClass } from './SettingsUI';
+import { Toggle, Sec } from './SettingsUI';
 import {
   getCatalogPrefetchStatus,
   startCatalogPrefetch,
@@ -32,26 +30,14 @@ export function CatalogSection({
   form: Partial<SettingsType>;
   setForm: React.Dispatch<React.SetStateAction<Partial<SettingsType>>>;
 }) {
+  // Two unrelated caches (object imagery vs. satellite orbital elements) used to
+  // share one header that only described the first, so the second rendered
+  // under a title that had nothing to do with it. Each gets its own Sec now.
   return (
-    <div>
-      {/* Section header */}
-      <div className="flex items-center gap-3 mb-5">
-        <div className={`p-2 rounded-xl ${isDark ? 'bg-accent-500/10' : 'bg-accent-50'}`}>
-          <BookOpen className="w-5 h-5 text-accent-500" />
-        </div>
-        <div>
-          <h2 className={`font-display text-[17px] font-semibold tracking-tight ${isDark ? 'text-white' : 'text-slate-800'}`}>
-            Offline Catalog Data
-          </h2>
-          <p className={`text-[13px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            Pre-cache imagery and metadata so objects load instantly
-          </p>
-        </div>
-      </div>
-
+    <>
       <OfflineCatalogCard isDark={isDark} form={form} setForm={setForm} />
       <TleCatalogCard isDark={isDark} />
-    </div>
+    </>
   );
 }
 
@@ -94,25 +80,24 @@ function OfflineCatalogCard({
   const isStarting = startAllMutation.isPending;
 
   return (
-    <div className={`${getCardClass(isDark)} space-y-4`}>
-      {/* Main enable toggle */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-            Offline Catalog Data
-          </h3>
-          <p className={`text-xs mt-1 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            Download imagery and descriptions from nebulis.app packs so objects load instantly.
-          </p>
-        </div>
+    <Sec
+      title="Offline catalog data"
+      description="Downloads imagery and descriptions from nebulis.app packs, so objects load instantly."
+      isDark={isDark}
+      actions={
         <Toggle
           checked={enabled}
           onChange={v => setForm(f => ({ ...f, prefetchCatalogAssets: v }))}
         />
-      </div>
-
-      {enabled && status && (
-        <div className={`pt-4 border-t space-y-3 ${isDark ? 'border-slate-800/70' : 'border-slate-100'}`}>
+      }
+    >
+      {!enabled || !status ? (
+        <p className={`p-4 sm:p-5 text-xs leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+          Turn this on to download packs in the background. Messier, Caldwell, and popular DSOs come bundled
+          with imagery and descriptions in one download.
+        </p>
+      ) : (
+        <div className="p-4 sm:p-5 space-y-3">
 
           <PackStatesRow
             isDark={isDark}
@@ -253,7 +238,7 @@ function OfflineCatalogCard({
           )}
         </div>
       )}
-    </div>
+    </Sec>
   );
 }
 
@@ -407,80 +392,72 @@ function TleCatalogCard({ isDark }: { isDark: boolean }) {
     }
   }
 
+  const statusBadge = status && (
+    status.isStale ? (
+      <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-50 text-amber-600'}`}>
+        <AlertCircle className="w-2.5 h-2.5" />
+        Stale
+      </span>
+    ) : status.count > 0 ? (
+      <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
+        <CheckCircle2 className="w-2.5 h-2.5" />
+        Current
+      </span>
+    ) : (
+      <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
+        <XCircle className="w-2.5 h-2.5" />
+        Not loaded
+      </span>
+    )
+  );
+
   return (
-    <div className={`${getCardClass(isDark)} mt-4`}>
-      <div className="flex items-start gap-3">
-        <div className={`mt-0.5 shrink-0 ${status?.count ? (isDark ? 'text-accent-400' : 'text-accent-500') : (isDark ? 'text-slate-600' : 'text-slate-400')}`}>
-          <Satellite className="w-4 h-4" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-              Satellite TLE Catalog
-            </span>
-            {status && (
-              status.isStale ? (
-                <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-50 text-amber-600'}`}>
-                  <AlertCircle className="w-2.5 h-2.5" />
-                  Stale
-                </span>
-              ) : status.count > 0 ? (
-                <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
-                  <CheckCircle2 className="w-2.5 h-2.5" />
-                  Current
-                </span>
-              ) : (
-                <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-                  <XCircle className="w-2.5 h-2.5" />
-                  Not loaded
-                </span>
-              )
+    <Sec
+      title="Satellite catalog"
+      description="Orbital elements for satellite trail identification, fetched from CelesTrak."
+      isDark={isDark}
+      actions={statusBadge}
+    >
+      <div className="p-4 sm:p-5">
+        {status && (
+          <div className={`flex flex-col gap-1 text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            {status.count > 0 && (
+              <span>{status.count.toLocaleString()} satellites from CelesTrak, refreshed every 24 hours.</span>
+            )}
+            {status.lastFetch && (
+              <span>Last download: {formatTleDate(status.lastFetch)}</span>
+            )}
+            {status.archiveRange.count > 0 && (
+              <span>
+                Historical archive: {formatArchiveDate(status.archiveRange.oldest)} – {formatArchiveDate(status.archiveRange.newest)} ({status.archiveRange.count} daily snapshot{status.archiveRange.count !== 1 ? 's' : ''})
+              </span>
+            )}
+            {status.archiveRange.count === 0 && (
+              <span>No historical archive yet. Snapshots are saved daily after each download.</span>
             )}
           </div>
-          {status ? (
-            <div className={`mt-1.5 flex flex-col gap-1 text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              {status.count > 0 && (
-                <span>{status.count.toLocaleString()} satellites from CelesTrak, refreshed every 24 hours</span>
-              )}
-              {status.lastFetch && (
-                <span>Last download: {formatTleDate(status.lastFetch)}</span>
-              )}
-              {status.archiveRange.count > 0 && (
-                <span>
-                  Historical archive: {formatArchiveDate(status.archiveRange.oldest)} – {formatArchiveDate(status.archiveRange.newest)} ({status.archiveRange.count} daily snapshot{status.archiveRange.count !== 1 ? 's' : ''})
-                </span>
-              )}
-              {status.archiveRange.count === 0 && (
-                <span>No historical archive yet. Snapshots are saved daily after each download.</span>
-              )}
-            </div>
-          ) : (
-            <p className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              Orbital elements for satellite trail identification, fetched from CelesTrak.
-            </p>
+        )}
+        <div className={`flex items-center gap-3 ${status ? 'mt-3' : ''}`}>
+          <button
+            onClick={handleClearCache}
+            disabled={clearingCache}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              isDark
+                ? 'bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-700/60 disabled:opacity-50'
+                : 'bg-slate-100 text-slate-500 hover:text-slate-700 hover:bg-slate-200 disabled:opacity-50'
+            }`}
+          >
+            <Trash2 className="w-3 h-3" />
+            {clearingCache ? 'Clearing…' : 'Clear detection cache'}
+          </button>
+          {clearResult === 'cleared' && (
+            <span className={`text-xs ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>Cache cleared</span>
           )}
-          <div className="flex items-center gap-3 mt-3">
-            <button
-              onClick={handleClearCache}
-              disabled={clearingCache}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                isDark
-                  ? 'bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-700/60 disabled:opacity-50'
-                  : 'bg-slate-100 text-slate-500 hover:text-slate-700 hover:bg-slate-200 disabled:opacity-50'
-              }`}
-            >
-              <Trash2 className="w-3 h-3" />
-              {clearingCache ? 'Clearing...' : 'Clear detection cache'}
-            </button>
-            {clearResult === 'cleared' && (
-              <span className={`text-xs ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>Cache cleared</span>
-            )}
-            {clearResult === 'error' && (
-              <span className={`text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>Failed to clear</span>
-            )}
-          </div>
+          {clearResult === 'error' && (
+            <span className={`text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>Failed to clear</span>
+          )}
         </div>
       </div>
-    </div>
+    </Sec>
   );
 }

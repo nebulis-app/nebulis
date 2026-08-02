@@ -80,7 +80,10 @@ describe('runImport — rejects path separators in remote listing names', () => 
     // and no file named ".." exists inside the object folder either.
     expect(fs.existsSync(path.join(LIBRARY_DIR, '..', 'escaped.fits'))).toBe(false);
     expect(fs.existsSync(path.join(DATA_DIR, 'escaped.fits'))).toBe(false);
-    const entries = fs.readdirSync(objDir).filter(e => e !== '.thumbs');
+    // Dot-prefixed bookkeeping (thumbnail cache, per-file manifest) is not part
+    // of what this test is asserting — the claim is that exactly one *imported*
+    // file landed here and neither hostile name produced a second one.
+    const entries = fs.readdirSync(objDir).filter(e => !e.startsWith('.'));
     expect(entries).toEqual(['stacked_M42.fits']);
   });
 });

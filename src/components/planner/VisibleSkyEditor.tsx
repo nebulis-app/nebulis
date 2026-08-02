@@ -149,7 +149,10 @@ function VisibleSkyEditorBody({ initialMap, onSave, onClose }: VisibleSkyEditorP
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      // z-[100]: must sit above the shared `Modal` primitive (z-[90]) now that
+      // this can be opened from inside SiteManagerModal, not just directly
+      // from the Planner toolbar.
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div

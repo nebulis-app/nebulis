@@ -846,9 +846,18 @@ export async function mockAllRoutes(page: Page) {
   await page.route('**/api/health', r =>
     r.fulfill(json(ok({ status: 'healthy', version: '1.0.0', uptime: 3600, timestamp: new Date().toISOString(), telescopeOnline: false }))));
 
-  // Satellite
+  // Satellite. Shape must track `TleCatalogStatus` in lib/api/observations.ts —
+  // this drifted from a real field rename (loaded/updatedAt -> isStale/
+  // archiveRange) and crashed any page that renders TleCatalogCard, since the
+  // component reads `status.archiveRange.count` unconditionally once `status`
+  // itself is truthy.
   await page.route('**/api/satellite/catalog/status', r =>
-    r.fulfill(json(ok({ loaded: true, count: 15000, updatedAt: '2024-03-15T12:00:00Z' }))));
+    r.fulfill(json(ok({
+      count: 15000,
+      lastFetch: '2024-03-15T12:00:00Z',
+      isStale: false,
+      archiveRange: { oldest: '2024-01-01', newest: '2024-03-15', count: 74 },
+    }))));
 }
 
 /**

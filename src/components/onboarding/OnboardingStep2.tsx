@@ -13,8 +13,10 @@ import {
   TELESCOPE_PRESETS,
   TELESCOPE_KINDS,
   toTelescopeKind,
+  isDwarfKind as isDwarfTelescopeKind,
   type TelescopeKind,
 } from '../../lib/telescopePresets';
+import type { ConnectionType } from '../../lib/api/telescopes';
 import { DwarfLocalPathPicker } from '../settings/DwarfLocalPathPicker';
 import { LocalPathPicker } from '../settings/LocalPathPicker';
 
@@ -22,12 +24,11 @@ export type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 
 interface OnboardingStep2Props {
   kind: TelescopeKind | '';
-  /** Resolved transport for this step. True when transportMode === 'local'
-   *  or the kind is Dwarf (Dwarf has no SMB path). */
+  /** Resolved transport for this step. True when transportMode === 'local'. */
   isLocalKind: boolean;
   /** Drives which transport fields render. Optional so legacy callers
    *  (none currently) still work. Defaults to following the kind. */
-  transportMode?: 'smb' | 'local';
+  transportMode?: ConnectionType;
   telescopeName: string;
   hostname: string;
   localPath: string;
@@ -42,7 +43,7 @@ interface OnboardingStep2Props {
   helperClass: string;
   subText: string;
   onKindChange: (kind: TelescopeKind | '') => void;
-  onTransportModeChange?: (mode: 'smb' | 'local') => void;
+  onTransportModeChange?: (mode: ConnectionType) => void;
   onTelescopeNameChange: (value: string) => void;
   onHostnameChange: (value: string) => void;
   onLocalPathChange: (value: string) => void;
@@ -81,7 +82,11 @@ export function OnboardingStep2({
 }: OnboardingStep2Props) {
   const preset = kind ? TELESCOPE_PRESETS[kind] : null;
   const isSeestarKind = kind === 'seestar-s50' || kind === 'seestar-s30';
-  const effectiveMode = transportMode ?? (isLocalKind ? 'local' : 'smb');
+  const isDwarfKind = kind !== '' && isDwarfTelescopeKind(kind);
+  const effectiveMode: ConnectionType = transportMode ?? (isLocalKind ? 'local' : 'smb');
+  const isFtpMode = effectiveMode === 'ftp';
+  /** The network transport this kind offers: FTP for Dwarf, SMB otherwise. */
+  const networkMode: ConnectionType = isDwarfKind ? 'ftp' : 'smb';
 
   return (
     <>
@@ -129,22 +134,23 @@ export function OnboardingStep2({
         />
       </div>
 
-      {/* Seestar transport selector */}
-      {isSeestarKind && onTransportModeChange && (
+      {/* Transport selector. The network option is FTP for Dwarf (its only
+          network interface) and SMB for Seestar. */}
+      {(isSeestarKind || isDwarfKind) && onTransportModeChange && (
         <div>
           <label className={labelClass}>Connection</label>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => onTransportModeChange('smb')}
+              onClick={() => onTransportModeChange(networkMode)}
               className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                effectiveMode === 'smb'
+                effectiveMode === networkMode
                   ? (isDark ? 'bg-teal-500/15 border border-teal-500/50 text-teal-200' : 'bg-teal-50 border border-teal-300 text-teal-900')
                   : (isDark ? 'border border-slate-800 text-slate-400 hover:border-slate-700' : 'border border-slate-200 text-slate-600 hover:border-slate-300')
               }`}
             >
               <Network className="w-4 h-4" />
-              Wi-Fi (SMB)
+              {isDwarfKind ? 'Wi-Fi (FTP)' : 'Wi-Fi (SMB)'}
             </button>
             <button
               type="button"
@@ -162,12 +168,15 @@ export function OnboardingStep2({
         </div>
       )}
 
-      {/* "Make sure powered on" — shown below transport selector for SMB, hidden for USB */}
+      {/* "Make sure powered on" — shown below the transport selector for the
+          network transports, hidden for USB. */}
       {!isLocalKind && (
         <div className={`flex items-start gap-3 p-3 rounded-xl ${isDark ? 'bg-slate-800/60' : 'bg-slate-50'}`}>
           <Info className={`w-4 h-4 mt-0.5 shrink-0 ${isDark ? 'text-accent-400' : 'text-accent-600'}`} />
           <p className={`text-sm ${subText}`}>
-            Make sure your telescope is powered on and connected to the same network as this device.
+            {isFtpMode
+              ? 'Make sure the telescope is powered on and this device is joined to its Wi-Fi, or that both are on the same network if you use station mode.'
+              : 'Make sure your telescope is powered on and connected to the same network as this device.'}
           </p>
         </div>
       )}
@@ -202,7 +211,7 @@ export function OnboardingStep2({
             <div className="flex gap-2 items-center">
               <input
                 type="text"
-                placeholder="192.168.1.100"
+                placeholder={preset?.defaultHostname || '192.168.1.100'}
                 value={hostname}
                 onChange={e => onHostnameChange(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && kind && hostname.trim() && onTestConnection()}
@@ -297,7 +306,9 @@ export function OnboardingStep2({
           }`}>
             <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
             <span>
-              For best reliability, configure a <strong>DHCP reservation</strong> in your router so your telescope keeps the same IP address.
+              {isFtpMode
+                ? <>Leave the address at <strong>192.168.88.1</strong> when you join the telescope Wi-Fi directly. If you run station mode instead, set a <strong>DHCP reservation</strong> in your router so the address stays put.</>
+                : <>For best reliability, configure a <strong>DHCP reservation</strong> in your router so your telescope keeps the same IP address.</>}
             </span>
           </div>
         </>

@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { Sparkles, X, ImagePlus, AlertTriangle, Loader2 } from 'lucide-react';
-import { uploadProcessedImage } from '../lib/api/library';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Sparkles, X, ImagePlus, AlertTriangle, Loader2, Layers, CheckSquare, Square } from 'lucide-react';
+import { uploadProcessedImage, createProcessingRun, getLibrarySessions } from '../lib/api/library';
+import { consumeCombinedSessions } from '../lib/lastCombinedSessions';
+import { canPreviewLocally, processedFormatLabel } from '../lib/processedFormats';
 import { useTheme } from '../hooks/useTheme';
 
 interface Props {
@@ -25,18 +27,49 @@ export function UploadProcessedModal({ isOpen, onClose, objectId, date, initialF
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // "Combine multiple nights" — off by default, so the common single-session
+  // upload is unchanged. When on, `selectedDates` (a superset of just `date`)
+  // becomes the nights a processingRun records this image as combining.
+  const [combineMultiple, setCombineMultiple] = useState(false);
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set([date]));
+  const [software, setSoftware] = useState('');
+
+  const { data: sessions = [] } = useQuery({
+    queryKey: ['library-sessions', objectId],
+    queryFn: () => getLibrarySessions(objectId),
+    enabled: isOpen,
+  });
+
   const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-accent-500';
+
+  // The live object URL, so it can be revoked when replaced or on unmount.
+  // Leaking these pins the whole file in memory, which is the thing we are
+  // trying to avoid.
+  const previewUrlRef = useRef<string | null>(null);
+  const releasePreview = useCallback(() => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+  }, []);
+  useEffect(() => releasePreview, [releasePreview]);
 
   const handleSelectFile = useCallback((file: File) => {
     setUploadFile(file);
     setUploadError('');
-    const reader = new FileReader();
-    reader.onload = e => {
-      const result = e.target?.result;
-      if (typeof result === 'string') setUploadPreview(result);
-    };
-    reader.readAsDataURL(file);
-  }, []);
+    releasePreview();
+    // Only preview formats a browser can draw, and only at a sane size.
+    // createObjectURL rather than readAsDataURL: the latter reads the whole file
+    // into a base64 string (roughly 1.4x its size), which at the 2 GB upload
+    // ceiling takes the tab down. An object URL costs nothing to create.
+    if (!canPreviewLocally(file)) {
+      setUploadPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    previewUrlRef.current = url;
+    setUploadPreview(url);
+  }, [releasePreview]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -44,28 +77,60 @@ export function UploadProcessedModal({ isOpen, onClose, objectId, date, initialF
     setUploadNotes('');
     setUploadError('');
     setIsDragging(false);
+    setSoftware('');
+    // A prior "Combine & Download" for this object hands us the nights it
+    // combined, one-shot, so the user doesn't have to re-pick them here.
+    const remembered = consumeCombinedSessions(objectId);
+    if (remembered && remembered.length > 1) {
+      setCombineMultiple(true);
+      setSelectedDates(new Set(remembered));
+    } else {
+      setCombineMultiple(false);
+      setSelectedDates(new Set([date]));
+    }
     if (initialFile) {
       handleSelectFile(initialFile);
     } else {
       setUploadFile(null);
       setUploadPreview(null);
     }
-  }, [isOpen, initialFile, handleSelectFile]);
+  }, [isOpen, objectId, date, initialFile, handleSelectFile]);
+
+  function toggleDate(d: string) {
+    setSelectedDates(prev => {
+      const next = new Set(prev);
+      if (next.has(d)) next.delete(d);
+      else next.add(d);
+      return next;
+    });
+  }
 
   const handleUpload = useCallback(async () => {
     if (!uploadFile || isUploading) return;
     setIsUploading(true);
     setUploadError('');
     try {
-      await uploadProcessedImage(objectId, date, uploadFile, uploadTitle, uploadNotes);
-      await queryClient.invalidateQueries({ queryKey: ['processedImages', objectId, date] });
+      const dates = combineMultiple ? Array.from(selectedDates) : [date];
+      let runId: string | undefined;
+      let targetDate = date;
+      if (dates.length > 1) {
+        const run = await createProcessingRun(objectId, { dates, title: uploadTitle, notes: uploadNotes, software });
+        runId = run.id;
+        targetDate = [...dates].sort().at(-1) ?? date;
+      }
+      await uploadProcessedImage(objectId, targetDate, uploadFile, uploadTitle, uploadNotes, runId);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['processedImages', objectId, targetDate] }),
+        queryClient.invalidateQueries({ queryKey: ['all-processed-images', objectId] }),
+        queryClient.invalidateQueries({ queryKey: ['processingRuns', objectId] }),
+      ]);
       onClose();
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setIsUploading(false);
     }
-  }, [uploadFile, isUploading, objectId, date, uploadTitle, uploadNotes, queryClient, onClose]);
+  }, [uploadFile, isUploading, objectId, date, uploadTitle, uploadNotes, software, combineMultiple, selectedDates, queryClient, onClose]);
 
   if (!isOpen) return null;
 
@@ -110,6 +175,21 @@ export function UploadProcessedModal({ isOpen, onClose, objectId, date, initialF
                   {uploadFile?.name} · {uploadFile ? (uploadFile.size / 1024 / 1024).toFixed(1) : 0} MB
                 </div>
               </div>
+            ) : uploadFile ? (
+              /* Selected but not previewable (XISF, FITS, PSD, RAW). Without
+                 this the drop zone falls back to its empty state and the user
+                 gets no sign their file was accepted. */
+              <div className="flex flex-col items-center justify-center gap-2 py-8">
+                <div className={`px-3 py-2 rounded-lg font-mono text-sm font-bold ${isDark ? 'bg-slate-800 text-accent-400' : 'bg-slate-100 text-accent-600'}`}>
+                  {processedFormatLabel(uploadFile.name) ?? 'FILE'}
+                </div>
+                <p className={`text-sm font-medium px-4 text-center break-all ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                  {uploadFile.name}
+                </p>
+                <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                  {(uploadFile.size / 1024 / 1024).toFixed(1)} MB · stored for download, not previewed
+                </p>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center gap-2 py-8">
                 <div className={`p-3 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
@@ -119,7 +199,7 @@ export function UploadProcessedModal({ isOpen, onClose, objectId, date, initialF
                   Drop your image here or click to browse
                 </p>
                 <p className={`text-xs ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                  JPG, PNG, TIFF · up to 300 MB
+                  JPG, PNG, TIFF, XISF, FITS, PSD, RAW · up to 2 GB
                 </p>
               </div>
             )}
@@ -127,7 +207,7 @@ export function UploadProcessedModal({ isOpen, onClose, objectId, date, initialF
           <input
             ref={fileInputRef}
             type="file"
-            accept=".jpg,.jpeg,.png,.tif,.tiff"
+            accept=".jpg,.jpeg,.png,.tif,.tiff,.xisf,.fit,.fits,.fts,.psd,.xcf,.dng,.cr2,.cr3,.nef,.arw"
             className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (f) handleSelectFile(f); }}
           />
@@ -164,6 +244,62 @@ export function UploadProcessedModal({ isOpen, onClose, objectId, date, initialF
                   : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-accent-500'
               } focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-500`}
             />
+          </div>
+
+          <div className={`rounded-xl border ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+            <button
+              type="button"
+              onClick={() => setCombineMultiple(v => !v)}
+              className={`w-full flex items-center gap-2 px-3 py-2.5 text-sm font-medium transition ${
+                isDark ? 'text-slate-300 hover:bg-slate-800/50' : 'text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              {combineMultiple
+                ? <CheckSquare className={`w-4 h-4 shrink-0 ${accentText}`} />
+                : <Square className={`w-4 h-4 shrink-0 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />}
+              <Layers className="w-3.5 h-3.5 shrink-0 opacity-60" />
+              <span className="flex-1 text-left">Combine multiple nights</span>
+            </button>
+            {combineMultiple && (
+              <div className={`px-3 pb-3 space-y-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                <p className={`text-xs pt-2.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Which nights does this stack combine?
+                </p>
+                <div className="max-h-32 overflow-y-auto space-y-1">
+                  {sessions.map(s => {
+                    const checked = selectedDates.has(s.date);
+                    return (
+                      <button
+                        type="button"
+                        key={s.date}
+                        onClick={() => toggleDate(s.date)}
+                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition ${
+                          checked
+                            ? isDark ? 'bg-accent-500/10 text-slate-100' : 'bg-accent-50 text-accent-700'
+                            : isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-50 text-slate-600'
+                        }`}
+                      >
+                        {checked
+                          ? <CheckSquare className="w-3.5 h-3.5 shrink-0 text-accent-500" />
+                          : <Square className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />}
+                        {s.date}
+                      </button>
+                    );
+                  })}
+                </div>
+                <input
+                  type="text"
+                  value={software}
+                  onChange={e => setSoftware(e.target.value)}
+                  placeholder="Software used (optional)"
+                  className={`w-full px-3 py-1.5 rounded-lg border text-xs transition ${
+                    isDark
+                      ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-600 focus:border-violet-500'
+                      : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-accent-500'
+                  } focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-500`}
+                />
+              </div>
+            )}
           </div>
 
           {uploadError && (

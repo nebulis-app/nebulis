@@ -162,6 +162,7 @@ export interface DwarfDiscoveredObject extends DiscoveredObject {
 export async function listDwarfObjectFiles(
   profile: TelescopeProfile,
   object: DwarfDiscoveredObject,
+  opts: { includeSubDirs?: boolean } = {},
 ): Promise<{ files: SmbEntry[]; subFiles: SmbEntry[] }> {
   const sessionFolders = object._dwarfSessionFolders ?? [];
   debugLog('walker:dwarf', `Listing files for target "${object.folderName}" across ${sessionFolders.length} session folder(s): ${sessionFolders.join(', ')}`);
@@ -201,6 +202,30 @@ export async function listDwarfObjectFiles(
       else { files.push(tagged); otherCount++; } // previews, metadata, anything else
     }
     debugLog('walker:dwarf', `  ${folder}: ${stackCount} stack(s), ${subCount} sub-frame(s), ${otherCount} other(s)`);
+
+    // Sub-directories inside a session (a Dwarf keeps per-frame previews in
+    // `Thumbnail/`) are only listed when the caller wants a complete copy.
+    // Listing them unconditionally would add an FTP round trip per session to
+    // every routine import for files the app does not use.
+    if (opts.includeSubDirs) {
+      for (const sub of entries.filter(e => e.type === 'dir' && !e.name.startsWith('.'))) {
+        const subPath = path.posix.join(folderPath, sub.name);
+        let subEntries: SmbEntry[] = [];
+        try {
+          subEntries = await smbListDir(subPath, profile);
+        } catch {
+          debugLog('walker:dwarf', `Failed to list ${subPath} — skipping`);
+          continue;
+        }
+        const inner = subEntries.filter(e => e.type === 'file');
+        for (const e of inner) {
+          // Tagged with the sub-directory so the import can mirror it rather
+          // than flattening these in beside the frames they preview.
+          files.push({ ...e, name: `${folder}/${sub.name}/${e.name}` });
+        }
+        debugLog('walker:dwarf', `  ${folder}/${sub.name}: ${inner.length} file(s) (archive mode)`);
+      }
+    }
   }
 
   debugLog('walker:dwarf', `Target "${object.folderName}": ${files.length} main file(s), ${subFiles.length} sub-file(s) total`);

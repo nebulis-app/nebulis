@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChangelogModal } from '../ChangelogModal';
+import { WhatsNewV15Modal } from './WhatsNewV15Modal';
 import { MobileAppsPromoModal } from './MobileAppsPromoModal';
 import { shouldShowMobilePromo } from '../../lib/mobilePromo';
 import { getLastSeenVersion, setLastSeenVersion } from '../../lib/api/auth';
@@ -11,6 +12,11 @@ interface VersionInfo {
   shortVersion: string;
   build: number;
 }
+
+/** Versions with a hand-built, screenshot-driven popup instead of the plain
+ *  ChangelogModal. Add a version here only alongside a matching modal
+ *  component; everything else falls back to ChangelogModal automatically. */
+const ENHANCED_VERSIONS = new Set(['1.5.0']);
 
 /**
  * First-login What's New popup.
@@ -55,7 +61,6 @@ export function WhatsNewAutoPopup() {
     mutationFn: (version: string) => setLastSeenVersion(version),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['last-seen-version'] });
-      setOpen(false);
     },
   });
 
@@ -96,17 +101,35 @@ export function WhatsNewAutoPopup() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastSeenQuery.isLoading, versionQuery.data?.version, lastSeenQuery.data?.lastSeenVersion]);
 
+  const useEnhancedModal = ackTarget !== null && ENHANCED_VERSIONS.has(ackTarget) && !viewAll;
+
   return (
     <>
       {open && ackTarget && (
-        <ChangelogModal
-          isOpen={open}
-          onClose={() => { setOpen(false); setViewAll(false); }}
-          onAcknowledge={() => acknowledge.mutate(ackTarget)}
-          acknowledging={acknowledge.isPending}
-          onlyVersion={viewAll ? undefined : ackTarget}
-          onViewAll={viewAll ? undefined : () => setViewAll(true)}
-        />
+        useEnhancedModal ? (
+          <WhatsNewV15Modal
+            isOpen={open}
+            onClose={() => { setOpen(false); setViewAll(false); }}
+            // "Got it" persists the dismissal, then chains straight into the
+            // full changelog rather than closing — the highlight reel is a
+            // teaser, not the whole story.
+            onAcknowledge={() => { acknowledge.mutate(ackTarget); setViewAll(true); }}
+            acknowledging={acknowledge.isPending}
+            onViewAll={() => setViewAll(true)}
+          />
+        ) : (
+          <ChangelogModal
+            isOpen={open}
+            onClose={() => { setOpen(false); setViewAll(false); }}
+            // Terminal step of the chain (reached either directly, for
+            // pre-1.5 versions, or after the enhanced popup above) — "Got it"
+            // here actually closes things out.
+            onAcknowledge={() => { acknowledge.mutate(ackTarget); setOpen(false); setViewAll(false); }}
+            acknowledging={acknowledge.isPending}
+            onlyVersion={viewAll ? undefined : ackTarget}
+            onViewAll={viewAll ? undefined : () => setViewAll(true)}
+          />
+        )
       )}
       <MobileAppsPromoModal
         isOpen={showPromo}

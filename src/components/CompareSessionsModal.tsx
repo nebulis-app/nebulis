@@ -13,8 +13,8 @@ interface Props {
 export function CompareSessionsModal({ objectId, onClose }: Props) {
   const { isDark } = useTheme();
   const [mode, setMode] = useState<'side-by-side' | 'slider'>('side-by-side');
-  const [leftUrl, setLeftUrl] = useState<string | null>(null);
-  const [rightUrl, setRightUrl] = useState<string | null>(null);
+  const [leftId, setLeftId] = useState<string | null>(null);
+  const [rightId, setRightId] = useState<string | null>(null);
   const [sliderPos, setSliderPos] = useState(50);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -36,16 +36,17 @@ export function CompareSessionsModal({ objectId, onClose }: Props) {
   } | null>(null);
 
   const { data: sessions } = useQuery({
-    queryKey: ['library-sessions', objectId],
-    queryFn: () => getLibrarySessions(objectId),
+    queryKey: ['library-sessions', objectId, 'includeVariants'],
+    queryFn: () => getLibrarySessions(objectId, { includeVariants: true }),
   });
 
   // Auto-select oldest → left, newest → right
-  const effectiveLeft = leftUrl ?? sessions?.[sessions.length - 1]?.thumbnailUrl ?? '';
-  const effectiveRight = rightUrl ?? sessions?.[0]?.thumbnailUrl ?? '';
+  const effectiveLeftId = leftId ?? sessions?.[sessions.length - 1]?.id ?? '';
+  const effectiveRightId = rightId ?? sessions?.[0]?.id ?? '';
 
   const sessionOptions = (sessions ?? []).map(s => ({
-    value: s.thumbnailUrl,
+    value: s.id,
+    thumbnailUrl: s.thumbnailUrl,
     label:
       s.date !== 'unknown'
         ? new Date(s.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -53,8 +54,12 @@ export function CompareSessionsModal({ objectId, onClose }: Props) {
     stackedCount: s.stackedCount,
   }));
 
-  const leftLabel = sessionOptions.find(s => s.value === effectiveLeft)?.label ?? '';
-  const rightLabel = sessionOptions.find(s => s.value === effectiveRight)?.label ?? '';
+  const leftSession = sessionOptions.find(s => s.value === effectiveLeftId);
+  const rightSession = sessionOptions.find(s => s.value === effectiveRightId);
+  const effectiveLeft = leftSession?.thumbnailUrl ?? '';
+  const effectiveRight = rightSession?.thumbnailUrl ?? '';
+  const leftLabel = leftSession?.label ?? '';
+  const rightLabel = rightSession?.label ?? '';
 
   const applyView = (z: number, p: { x: number; y: number }) => {
     zoomRef.current = z;
@@ -205,8 +210,8 @@ export function CompareSessionsModal({ objectId, onClose }: Props) {
             1
           </span>
           <select
-            value={effectiveLeft}
-            onChange={e => setLeftUrl(e.target.value)}
+            value={effectiveLeftId}
+            onChange={e => setLeftId(e.target.value)}
             className={`flex-1 min-w-0 ${selectClass}`}
           >
             {sessionOptions.map(s => (
@@ -222,8 +227,8 @@ export function CompareSessionsModal({ objectId, onClose }: Props) {
             2
           </span>
           <select
-            value={effectiveRight}
-            onChange={e => setRightUrl(e.target.value)}
+            value={effectiveRightId}
+            onChange={e => setRightId(e.target.value)}
             className={`flex-1 min-w-0 ${selectClass}`}
           >
             {sessionOptions.map(s => (

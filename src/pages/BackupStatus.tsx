@@ -10,6 +10,7 @@ import {
   Clock,
   HardDrive,
   FileStack,
+  FileX,
   FolderSync,
   Telescope,
   XCircle,
@@ -24,6 +25,7 @@ import {
 import { getImportStatus, triggerImport, getImportHistory, formatTransport, type ImportHistoryEntry } from '../lib/api/library';
 import { getAllTelescopeStatus } from '../lib/api/telescopes';
 import { useTheme } from '../hooks/useTheme';
+import { SkippedNotice } from '../components/SkippedNotice';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -79,6 +81,16 @@ export function BackupStatus() {
 
   const importMutation = useMutation({
     mutationFn: () => triggerImport(allTelescopeStatus && allTelescopeStatus.length > 1 ? { all: true } : {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['import-status'] });
+    },
+  });
+
+  /** Sync one telescope. Separate from the sync-all mutation above so the card
+   *  that was clicked can show its own pending state, and so a failure on one
+   *  telescope is reported against that card rather than the page header. */
+  const singleImportMutation = useMutation({
+    mutationFn: (telescopeId: string) => triggerImport({ telescopeId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['import-status'] });
     },
@@ -151,7 +163,9 @@ export function BackupStatus() {
             }`}
           >
             <Download className="w-4 h-4" />
-            Sync Now
+            {/* Distinguished from the per-telescope buttons on the cards below,
+                which would otherwise both read "Sync". */}
+            {allTelescopeStatus && allTelescopeStatus.length > 1 ? 'Sync All' : 'Sync Now'}
           </button>
         )}
       </div>
@@ -211,6 +225,16 @@ export function BackupStatus() {
               }`}>
                 {t.online ? 'Online' : 'Offline'}
               </span>
+              <TelescopeSyncButton
+                telescope={t}
+                isDark={isDark}
+                // Imports hold a single global lock, so any run blocks all the
+                // buttons; the one whose telescope is actually running says so.
+                importRunning={isRunning}
+                runningTelescopeId={status?.telescopeId ?? null}
+                pending={singleImportMutation.isPending && singleImportMutation.variables === t.id}
+                onSync={() => singleImportMutation.mutate(t.id)}
+              />
             </div>
           ))}
         </div>
@@ -306,6 +330,14 @@ export function BackupStatus() {
             />
           </div>
 
+          {/* What this run is leaving on the telescope, and why. Grows as the
+              run walks each object, so it is worth showing mid-sync. */}
+          <SkippedNotice
+            skipped={status.skipped}
+            isDark={isDark}
+            heading={total => `${total.toLocaleString()} file${total !== 1 ? 's' : ''} on the telescope are being left out:`}
+          />
+
           {/* Error */}
           {status.error && (
             <div className={`flex items-start gap-3 px-4 py-3 rounded-xl ${
@@ -373,6 +405,18 @@ export function BackupStatus() {
                     )}
                   </div>
                 )}
+                {/* Kept on screen after the run ends: "why did it pull fewer
+                    files than are on my telescope?" is asked once the sync is
+                    over, not while it is running. */}
+                {status && !status.running && (
+                  <div className="mt-3">
+                    <SkippedNotice
+                      skipped={status.skipped}
+                      isDark={isDark}
+                      heading={total => `${total.toLocaleString()} file${total !== 1 ? 's' : ''} were left on the telescope:`}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -383,6 +427,57 @@ export function BackupStatus() {
 }
 
 const PAGE_SIZE = 10;
+
+/**
+ * Per-telescope sync trigger.
+ *
+ * Imports take a single global lock (one run at a time, server-side), so any
+ * running import disables every button rather than only the one that started it.
+ * The card whose telescope is actually mid-run says "Syncing" so the disabled
+ * state is explained instead of just looking broken.
+ */
+function TelescopeSyncButton({
+  telescope, isDark, importRunning, runningTelescopeId, pending, onSync,
+}: {
+  telescope: { id: string; online: boolean; configured: boolean };
+  isDark: boolean;
+  importRunning: boolean;
+  runningTelescopeId: string | null;
+  pending: boolean;
+  onSync: () => void;
+}) {
+  const isThisOne = importRunning && runningTelescopeId === telescope.id;
+  const disabled = !telescope.online || !telescope.configured || importRunning || pending;
+
+  const title = !telescope.configured
+    ? 'This telescope has no connection configured yet'
+    : !telescope.online
+      ? 'This telescope is offline'
+      : importRunning && !isThisOne
+        ? 'Another sync is running. Only one can run at a time.'
+        : 'Sync this telescope now';
+
+  return (
+    <button
+      onClick={onSync}
+      disabled={disabled}
+      title={title}
+      aria-label={isThisOne ? 'Syncing this telescope' : 'Sync this telescope now'}
+      className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+        disabled
+          ? isDark
+            ? 'bg-slate-800/60 text-slate-600 cursor-not-allowed'
+            : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+          : isDark
+            ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+      }`}
+    >
+      <RefreshCw className={`w-3.5 h-3.5 ${isThisOne || pending ? 'animate-spin' : ''}`} />
+      {isThisOne ? 'Syncing' : 'Sync'}
+    </button>
+  );
+}
 
 function SyncHistory({ isDark }: { isDark: boolean }) {
   const [page, setPage] = useState(0);
@@ -476,10 +571,13 @@ function SyncHistory({ isDark }: { isDark: boolean }) {
                       <Telescope className="w-3 h-3" />
                       <span className="truncate">{entry.telescopeName}</span>
                       {entry.transportKind && (
+                        // Amber marks the cable, sky marks the network. FTP is a
+                        // network transport, so it groups with SMB rather than
+                        // falling into the USB colour by being "not smb".
                         <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 ml-1 rounded-full text-[10px] font-medium border ${
-                          entry.transportKind === 'smb'
-                            ? (isDark ? 'bg-sky-500/15 text-sky-300 border-sky-500/30' : 'bg-sky-50 text-sky-700 border-sky-200')
-                            : (isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-700 border-amber-200')
+                          entry.transportKind === 'local'
+                            ? (isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-700 border-amber-200')
+                            : (isDark ? 'bg-sky-500/15 text-sky-300 border-sky-500/30' : 'bg-sky-50 text-sky-700 border-sky-200')
                         }`}>
                           {entry.transportKind === 'local' ? <Usb className="w-2.5 h-2.5" /> : <Network className="w-2.5 h-2.5" />}
                           {formatTransport(entry.transportKind)}
@@ -497,19 +595,25 @@ function SyncHistory({ isDark }: { isDark: boolean }) {
                       {formatBytes(entry.bytesNew)}
                     </span>
                   )}
+                  {entry.skipped && entry.skipped.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      <FileX className="w-3 h-3" />
+                      {entry.skipped.reduce((n, s) => n + s.count, 0).toLocaleString()} left out
+                    </span>
+                  )}
                   {entry.error && (
                     <span className="text-red-500 truncate max-w-[200px]">{entry.error}</span>
                   )}
                 </div>
               </div>
 
-              {entry.files && entry.files.length > 0 && (
+              {((entry.files && entry.files.length > 0) || (entry.skipped && entry.skipped.length > 0)) && (
                 <button
                   onClick={() => setFilesModal(entry)}
                   className={`p-1.5 rounded-lg transition ${
                     isDark ? 'hover:bg-slate-700 text-slate-500' : 'hover:bg-slate-200 text-slate-400'
                   }`}
-                  title="View synced files"
+                  title="View sync details"
                 >
                   <Info className="w-4 h-4" />
                 </button>
@@ -530,7 +634,7 @@ function SyncHistory({ isDark }: { isDark: boolean }) {
             }`}>
               <div>
                 <h3 className={`font-display font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  Files Synced
+                  Sync Details
                 </h3>
                 <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                   {new Date(filesModal.finishedAt).toLocaleDateString('en-US', {
@@ -549,7 +653,14 @@ function SyncHistory({ isDark }: { isDark: boolean }) {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-5 py-3">
+            <div className="flex-1 overflow-y-auto px-5 py-3 space-y-3">
+              {/* Above the file list on purpose: a user who opens this is
+                  usually looking for what is missing, not what arrived. */}
+              <SkippedNotice
+                skipped={filesModal.skipped}
+                isDark={isDark}
+                heading={total => `${total.toLocaleString()} file${total !== 1 ? 's' : ''} were left on the telescope:`}
+              />
               <div className="space-y-1">
                 {(filesModal.files ?? []).map((file, i) => (
                   <div

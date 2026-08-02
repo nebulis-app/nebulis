@@ -60,7 +60,7 @@ export function HelpHub({ onOpenArticle, onOpenTopic }: HelpHubProps) {
   const body    = isDark ? 'text-slate-300' : 'text-slate-600';
   const muted   = isDark ? 'text-slate-500' : 'text-slate-500';
   const card    = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
-  const cardAlt = isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200';
+  const cardAlt = isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-200';
   const inputCls= isDark
     ? 'bg-slate-900 border-slate-700 text-slate-100 placeholder-slate-500 focus:border-accent-500 focus-visible:ring-2 focus-visible:ring-accent-500/40'
     : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-accent-400 focus-visible:ring-2 focus-visible:ring-accent-500/40';
@@ -275,7 +275,7 @@ function TopicCard({ topic, onOpen }: { topic: TopicMeta; onOpen: () => void }) 
 function FooterStrip() {
   const { isDark } = useTheme();
 
-  const card      = isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200';
+  const card      = isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-200';
   const muted     = isDark ? 'text-slate-500' : 'text-slate-400';
   const nameColor = isDark ? 'text-slate-300' : 'text-slate-600';
 

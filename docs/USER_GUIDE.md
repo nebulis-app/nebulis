@@ -32,9 +32,10 @@
 ### System Requirements
 
 - A modern web browser (Chrome, Firefox, Safari, or Edge; current versions recommended)
-- A ZWO Seestar S30 or S50 telescope connected to your local network
-- Seestar Hub running on a computer or server on the same local network as your telescope
-- Network file sharing (SMB) enabled on the Seestar device (enabled by default)
+- A supported smart telescope on your local network: a ZWO Seestar S30 or S50, or a DWARFLAB Dwarf II, Dwarf 3, or Dwarf Mini
+- Seestar Hub running on a computer or server that can reach the telescope
+- For Seestar: network file sharing (SMB) enabled on the device (enabled by default)
+- For Dwarf: the telescope's Wi-Fi active. Dwarf models share their storage over FTP rather than SMB, so the computer running Seestar Hub must be joined to the telescope's own Wi-Fi, or on the same network as the telescope if you use station mode
 
 > **Note:** Seestar Hub is a self-hosted application. It runs on a computer you control, not in the cloud. Your images never leave your local network unless you choose to download and share them yourself.
 
@@ -272,10 +273,14 @@ When no user account exists yet, Seestar Hub runs in open mode and lets you get 
 2. Configure each section:
 
 **Telescope Connection**
-- **Hostname or IP:** The network address of your Seestar (for example, `seestar.local` or `192.168.1.50`).
-- **Share Name:** The SMB share name on the device (default: `EMMC Images`).
-- **Username / Password:** Network credentials for the share (often blank for Seestar devices).
-- **Model:** Select your Seestar model (S30 or S50).
+- **Model:** Select your telescope (Seestar S30/S50, or Dwarf II / Dwarf 3 / Dwarf Mini). This sets sensible defaults for everything below.
+- **Connection:** Choose **Wi-Fi** or **USB cable**. USB is faster and needs no network, but only works while the telescope's storage is plugged into the computer running Seestar Hub.
+- **Hostname or IP:** The network address of the telescope (for example, `seestar.local` or `192.168.1.50`). For a Dwarf on its own Wi-Fi this is `192.168.88.1`; type it in yourself, it is shown as a placeholder hint but not filled in for you.
+- **Share Name:** *Seestar only.* The SMB share name on the device (default: `EMMC Images`). Dwarf telescopes have no share name: they use FTP, and the right storage folder is detected for you.
+- **Username / Password:** Network credentials (often blank for Seestar, and not needed for Dwarf, whose FTP server allows anonymous access).
+- **Test Connection:** Verifies the telescope answers before you save. For a Dwarf it also reports which storage layout was found, which is the quickest way to catch a wrong model selection.
+
+You can configure both Wi-Fi and USB for the same telescope. Seestar Hub then uses whichever is available, preferring the cable when it is plugged in.
 
 **Observer Location**
 - **Latitude and Longitude:** Your observing site coordinates (required for the Planner and Forecast).
@@ -517,14 +522,16 @@ Seestar Hub supports three display themes, selectable in Settings:
 ### No objects appear in the Gallery after import
 
 **Possible causes:**
-- The SMB share name is incorrect.
+- The SMB share name is incorrect (Seestar).
+- The wrong Dwarf model is selected, so the app looked in the wrong storage folder.
 - The telescope's directory structure differs from expected.
 - The import completed with errors.
 
 **Steps to resolve:**
-1. Go to **Settings → Telescope Connection** and verify the **Share Name** field. The default for Seestar devices is `EMMC Images`.
-2. Check the **Backup** page for any error messages in the import log.
-3. If sessions exist on the device but are not appearing, contact support with the import log output.
+1. Go to **Settings → Telescope Connection** and verify the **Share Name** field. The default for Seestar devices is `EMMC Images`. Dwarf telescopes have no share name.
+2. For a Dwarf, press **Test Connection** and check the storage folder it reports. If it does not match your model, correct the model selection and save again.
+3. Check the **Backup** page for any error messages in the import log.
+4. If sessions exist on the device but are not appearing, contact support with the import log output.
 
 ---
 
@@ -639,6 +646,8 @@ A: Yes. Navigate to **Observations → New Observation** to create a session man
 | **RA / Dec**     | Right Ascension and Declination: the celestial coordinate system used to locate objects in the sky. |
 | **Seeing**       | A measure of atmospheric steadiness. Poor seeing causes stars to twinkle and appear blurry.         |
 | **SMB**          | Server Message Block: a network file-sharing protocol used by Seestar to expose its storage.       |
+| **FTP**          | File Transfer Protocol: the protocol Dwarf telescopes use to expose their storage over Wi-Fi. Dwarf models do not offer SMB. |
+| **Station mode** | A Dwarf setting that joins the telescope to your home Wi-Fi instead of it broadcasting its own. In station mode the telescope's address comes from your router rather than being `192.168.88.1`. |
 | **Sub-frame**    | A single, unprocessed exposure captured by the telescope. Multiple sub-frames are later combined (stacked). |
 | **Transparency** | A measure of atmospheric clarity (absence of haze, dust, and humidity). High transparency improves contrast. |
 | **Transit**      | The moment when an object crosses the meridian and reaches its highest point in the sky.            |

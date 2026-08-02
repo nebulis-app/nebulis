@@ -21,13 +21,26 @@ interface TelescopePreset {
   label: string;
   /** Stored in `TelescopeProfile.model` — used to pick port/protocol defaults */
   model: string;
-  /** SMB share name to mount. Empty for `other` so the user fills it in. */
+  /** SMB share name to mount. Empty for `other` so the user fills it in, and
+   *  empty for Dwarf kinds, which serve FTP rather than an SMB share. */
   shareName: string;
-  /** Default SMB username. Empty for `other`. */
+  /** Default username. Empty for `other`. */
   username: string;
   /** Short help text shown beneath the share-name input. */
   shareHelp: string;
+  /** Pre-filled address for the connection field. Dwarf devices always sit at
+   *  192.168.88.1 when running their own access point. Empty means the user
+   *  has to find their telescope's IP themselves. */
+  defaultHostname: string;
 }
+
+/** Address a DWARFLAB telescope serves from when broadcasting its own Wi-Fi.
+ *  In station mode (joined to a home router) the address comes from DHCP. */
+export const DWARF_AP_HOST = '192.168.88.1';
+
+/** Help text under the Dwarf address field. Same for all three models. */
+const DWARF_FTP_HELP =
+  'Dwarf telescopes serve their storage over FTP, not SMB. Connect to the telescope Wi-Fi and leave the address at 192.168.88.1, or enter the address your router gave it if you have station mode on.';
 
 export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
   'seestar-s50': {
@@ -37,6 +50,7 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
     shareName: 'EMMC Images',
     username: 'guest',
     shareHelp: 'SeeStar S50 publishes its photo storage as the SMB share "EMMC Images" with guest access.',
+    defaultHostname: '',
   },
   'seestar-s30': {
     kind: 'seestar-s30',
@@ -45,30 +59,34 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
     shareName: 'EMMC Images',
     username: 'guest',
     shareHelp: 'SeeStar S30 publishes its photo storage as the SMB share "EMMC Images" with guest access.',
+    defaultHostname: '',
   },
   'dwarf-3': {
     kind: 'dwarf-3',
     label: 'DwarfLab Dwarf 3',
     model: 'Dwarf 3',
-    shareName: 'Astronomy',
-    username: 'dwarf',
-    shareHelp: 'Dwarf 3 exposes its astronomy storage as an SMB share named "Astronomy". The default SMB user is "dwarf".',
+    shareName: '',
+    username: '',
+    shareHelp: DWARF_FTP_HELP,
+    defaultHostname: DWARF_AP_HOST,
   },
   'dwarf-2': {
     kind: 'dwarf-2',
     label: 'DwarfLab Dwarf II',
     model: 'Dwarf II',
-    shareName: 'Astronomy',
-    username: 'dwarf',
-    shareHelp: 'Dwarf II exposes its astronomy storage as an SMB share named "Astronomy". The default SMB user is "dwarf".',
+    shareName: '',
+    username: '',
+    shareHelp: DWARF_FTP_HELP,
+    defaultHostname: DWARF_AP_HOST,
   },
   'dwarf-mini': {
     kind: 'dwarf-mini',
     label: 'DwarfLab Dwarf Mini',
     model: 'Dwarf Mini',
-    shareName: 'Astronomy',
-    username: 'dwarf',
-    shareHelp: 'Dwarf Mini exposes its astronomy storage as an SMB share named "Astronomy". The default SMB user is "dwarf".',
+    shareName: '',
+    username: '',
+    shareHelp: DWARF_FTP_HELP,
+    defaultHostname: DWARF_AP_HOST,
   },
   'other': {
     kind: 'other',
@@ -77,8 +95,15 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
     shareName: '',
     username: '',
     shareHelp: 'Custom SMB share. See "Generic SMB Layout" for the folder convention this app expects.',
+    defaultHostname: '',
   },
 };
+
+/** True for the DWARFLAB models, which share one transport story: FTP over
+ *  Wi-Fi, or USB mass storage. Never SMB. */
+export function isDwarfKind(kind: TelescopeKind): boolean {
+  return kind === 'dwarf-2' || kind === 'dwarf-3' || kind === 'dwarf-mini';
+}
 
 /** Coerce a DOM select string to TelescopeKind. Unknown values fall back to 'other'. */
 export function toTelescopeKind(v: string): TelescopeKind {

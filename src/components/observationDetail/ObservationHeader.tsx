@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Calendar, Clock, Pencil, CheckCircle2, ArrowRightLeft, Trash2 } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Pencil, CheckCircle2, Merge, Trash2, NotebookPen } from 'lucide-react';
 import { reassignSessionTelescope } from '../../lib/api/telescopes';
 import type { TelescopeProfile } from '../../lib/api/telescopes';
 import type { ObservationDetail } from '../../lib/api/observations';
@@ -34,6 +34,9 @@ export function ObservationHeader({
   telescopes,
   onMove,
   onDelete,
+  onOpenNotes,
+  hasNote,
+  canOpenNotes,
 }: {
   objectId: string;
   date: string;
@@ -46,6 +49,10 @@ export function ObservationHeader({
   telescopes: TelescopeProfile[];
   onMove: () => void;
   onDelete: () => void;
+  onOpenNotes: () => void;
+  /** Whether a note already exists, which switches the button to "edit". */
+  hasNote: boolean;
+  canOpenNotes: boolean;
 }) {
   const { isDark } = useTheme();
   const queryClient = useQueryClient();
@@ -205,26 +212,60 @@ export function ObservationHeader({
             )}
           </div>
         </div>
-        <div className={`flex items-center gap-3 text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+        <div className="flex items-center gap-2">
           {observation && (
             <>
+              {/* Notes is an action, so it sits with the other actions. It used
+                  to be an amber tile inside the session-metrics grid, where it
+                  outweighed every actual measurement on the page. Bordered like
+                  its siblings so it reads as a button at rest, not only on
+                  hover — a bare hover-tint doesn't signal "clickable" until the
+                  cursor happens to land on it. */}
+              {canOpenNotes && (isAdmin || hasNote) && (
+                <button
+                  onClick={onOpenNotes}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border transition ${
+                    hasNote
+                      ? isDark
+                        ? 'border-accent-500/30 bg-accent-500/10 text-accent-400 hover:bg-accent-500/15'
+                        : 'border-accent-300 bg-accent-50 text-accent-700 hover:bg-accent-100'
+                      : isDark
+                        ? 'border-slate-700 text-slate-300 hover:bg-slate-800'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  title={isAdmin ? (hasNote ? 'Edit session notes' : 'Add session notes') : 'View session notes'}
+                >
+                  <NotebookPen className="w-4 h-4" />
+                  Notes
+                  {hasNote && <CheckCircle2 className="w-3.5 h-3.5" />}
+                </button>
+              )}
               {isAdmin && (
                 <button
                   onClick={onMove}
-                  className={`ml-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${isDark ? 'text-slate-500 hover:text-accent-400 hover:bg-accent-500/10' : 'text-slate-400 hover:text-accent-500 hover:bg-accent-50'}`}
-                  title="Move observation to different object"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border transition ${
+                    isDark
+                      ? 'border-slate-700 text-slate-300 hover:bg-slate-800'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  title="Combine this session with another object's observation"
                 >
-                  <ArrowRightLeft className="w-4 h-4" />
-                  Move
+                  <Merge className="w-4 h-4" />
+                  Combine
                 </button>
               )}
               {isAdmin && (
                 <button
                   onClick={onDelete}
-                  className={`p-1.5 rounded-lg transition ${isDark ? 'text-slate-600 hover:text-red-400 hover:bg-red-500/10' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border transition ${
+                    isDark
+                      ? 'border-red-500/30 text-red-400 hover:bg-red-500/10'
+                      : 'border-red-200 text-red-600 hover:bg-red-50'
+                  }`}
                   title="Delete observation"
                 >
                   <Trash2 className="w-4 h-4" />
+                  Delete
                 </button>
               )}
             </>

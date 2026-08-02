@@ -3,7 +3,8 @@
  *   - Windows      → UNC paths via Node fs (smb.win) — no binary, guest works
  *   - macOS        → mount_smbfs, built into macOS (smb.mac)
  *   - Linux/Docker → the smbclient CLI (smb.posix)
- *   - connectionType 'local' → direct filesystem reads (Dwarf USB mounts)
+ *   - connectionType 'local' → direct filesystem reads (USB mounts)
+ *   - connectionType 'ftp'   → anonymous FTP (Dwarf's only network interface)
  *
  * History: the in-process @marsaud/smb2 client (smb.node) was tried to avoid an
  * external binary, but it mishandles the SeeStar's SMB2 async interim responses
@@ -18,6 +19,7 @@ import * as win from './smb.win.js';
 import * as mac from './smb.mac.js';
 import * as posix from './smb.posix.js';
 import * as local from './smb.local.js';
+import * as ftp from './smb.ftp.js';
 import { loadSettings } from './smb.shared.js';
 import { ensureSmbReachable, recordSmbOpResult } from './smbReachability.js';
 import { debugLog, isDebugLoggingEnabled } from './debugLogger.js';
@@ -35,6 +37,10 @@ type AnyProfile = Partial<Pick<TelescopeProfile, 'connectionType' | 'localPath' 
 
 function isLocal(profile: AnyProfile): boolean {
   return profile?.connectionType === 'local';
+}
+
+function isFtp(profile: AnyProfile): boolean {
+  return profile?.connectionType === 'ftp';
 }
 
 // Fail fast when the telescope isn't on the network. Without this, an offline
@@ -60,6 +66,7 @@ async function preflight(profile: AnyProfile): Promise<void> {
 function connectionLabel(profile: AnyProfile): string {
   if (isLocal(profile)) return `local:${profile?.localPath ?? '?'}`;
   const { hostname, shareName } = loadSettings(profile);
+  if (isFtp(profile)) return `ftp://${hostname ?? '?'}`;
   return `smb://${hostname ?? '?'}/${shareName ?? '?'}`;
 }
 
@@ -84,6 +91,20 @@ async function withDebugLog<T>(op: string, path: string, profile: AnyProfile, fn
 export async function smbListDir(path: string, profile?: AnyProfile): Promise<SmbEntry[]> {
   return withDebugLog('listDir', path, profile, async () => {
     if (isLocal(profile)) return local.localListDir(path, profile);
+    if (isFtp(profile)) {
+      // smb.ftp runs its own port-21 preflight; the port-445 one would reject
+      // every Dwarf. Op health is still recorded so the status pill reflects
+      // whether real reads work, not just whether the port answers.
+      const { hostname } = loadSettings(profile);
+      try {
+        const entries = await ftp.ftpListDir(path, profile);
+        recordSmbOpResult(hostname, true);
+        return entries;
+      } catch (err) {
+        recordSmbOpResult(hostname, false, err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+    }
     await preflight(profile);
     // Record real-op health from listings: a directory listing succeeding is a
     // clean proxy for "auth + share access work" (it's what import discovery and
@@ -105,6 +126,11 @@ export async function smbListDir(path: string, profile?: AnyProfile): Promise<Sm
 export async function smbGetFile(path: string, maxBytes?: number, profile?: AnyProfile): Promise<Buffer> {
   return withDebugLog('getFile', path, profile, async () => {
     if (isLocal(profile)) return local.localGetFile(path, maxBytes, profile);
+    if (isFtp(profile)) {
+      const buf = await ftp.ftpGetFile(path, maxBytes, profile);
+      recordSmbOpResult(loadSettings(profile).hostname, true);
+      return buf;
+    }
     await preflight(profile);
     const buf = await smbImpl.smbGetFile(path, maxBytes, profile);
     // Success proves the share is usable; a failed get can be file-specific
@@ -114,20 +140,36 @@ export async function smbGetFile(path: string, maxBytes?: number, profile?: AnyP
   }, buf => `${buf.length} bytes`);
 }
 
-/** Local (USB) transport only: copy a file straight from the mounted source
- *  to `destPath` without staging it in memory. Callers must check
- *  connectionType === 'local' themselves — network transports have no local
- *  source path to copy from and must use smbGetFile instead. */
+/** Copy a file straight to `destPath` without staging it in memory. Supported
+ *  on the local (USB) transport, which is already a filesystem, and on FTP,
+ *  where basic-ftp can stream the data socket to a file. Callers must check
+ *  `supportsStreamedCopy(profile)` first — the SMB backends go through a
+ *  native client that has no such path and must use smbGetFile instead. */
 export async function smbCopyFileTo(path: string, destPath: string, profile?: AnyProfile): Promise<void> {
+  if (isFtp(profile)) {
+    return withDebugLog('copyFileTo', path, profile, () => ftp.ftpCopyFileTo(path, destPath, profile));
+  }
   if (!isLocal(profile)) {
-    throw new Error('smbCopyFileTo is only supported for local (USB) transports.');
+    throw new Error('smbCopyFileTo is only supported for local (USB) and FTP transports.');
   }
   return withDebugLog('copyFileTo', path, profile, () => local.localCopyFileTo(path, destPath, profile));
+}
+
+/** True when smbCopyFileTo can stream this transport straight to disk. The
+ *  import pipeline branches on this to avoid buffering multi-hundred-MB FITS
+ *  and video files in memory. */
+export function supportsStreamedCopy(profile?: AnyProfile): boolean {
+  return isLocal(profile) || isFtp(profile);
 }
 
 export async function smbPutFile(path: string, data: Buffer, profile?: AnyProfile): Promise<void> {
   return withDebugLog('putFile', path, profile, async () => {
     if (isLocal(profile)) return local.localPutFile(path, data, profile);
+    if (isFtp(profile)) {
+      await ftp.ftpPutFile(path, data, profile);
+      recordSmbOpResult(loadSettings(profile).hostname, true);
+      return;
+    }
     await preflight(profile);
     await smbImpl.smbPutFile(path, data, profile);
     // Success proves the share is writable; a failed put can be file-specific
@@ -139,6 +181,7 @@ export async function smbPutFile(path: string, data: Buffer, profile?: AnyProfil
 export async function smbDelete(path: string, profile?: AnyProfile): Promise<void> {
   return withDebugLog('delete', path, profile, async () => {
     if (isLocal(profile)) return local.localDelete(path, profile);
+    if (isFtp(profile)) return ftp.ftpDelete(path, profile);
     await preflight(profile);
     return smbImpl.smbDelete(path, profile);
   });

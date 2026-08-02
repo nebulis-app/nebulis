@@ -58,6 +58,7 @@ export function Gallery() {
   const [wizardPath, setWizardPath] = useState<string | null>(null);
   const [wizardSubframes, setWizardSubframes] = useState(false);
   const [wizardFits, setWizardFits] = useState(true);
+  const [wizardArchiveAll, setWizardArchiveAll] = useState(false);
   const [wizardTelescopeId, setWizardTelescopeId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>(readStoredSort);
   const [sortOpen, setSortOpen] = useState(false);
@@ -641,10 +642,11 @@ export function Gallery() {
       {showImportModal && (
         <ImportModal
           onClose={() => setShowImportModal(false)}
-          onReview={(folderPath, includeSubframes, includeFits, telescopeId) => {
+          onReview={(folderPath, includeSubframes, includeFits, telescopeId, archiveAll) => {
             setShowImportModal(false);
             setWizardSubframes(includeSubframes);
             setWizardFits(includeFits);
+            setWizardArchiveAll(archiveAll);
             setWizardTelescopeId(telescopeId);
             setWizardPath(folderPath);
           }}
@@ -657,6 +659,7 @@ export function Gallery() {
           rootPath={wizardPath}
           includeSubframes={wizardSubframes}
           includeFits={wizardFits}
+          archiveAll={wizardArchiveAll}
           telescopeId={wizardTelescopeId}
           onClose={() => setWizardPath(null)}
           onDone={() => queryClient.invalidateQueries({ queryKey: ['library-objects'] })}

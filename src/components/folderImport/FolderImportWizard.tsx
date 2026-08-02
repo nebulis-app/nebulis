@@ -8,41 +8,15 @@ import {
   commitFolderImport,
   getImportStatus,
   type ImportScanResult,
-  type ImportScanSkip,
+  type ImportSkip,
   type ImportCommitPlan,
 } from '../../lib/api/library';
 import { useTheme } from '../../hooks/useTheme';
 import { Modal } from '../ui/Modal';
+import { SkippedNotice } from '../SkippedNotice';
 import { ObjectReviewCard, type ObjectEdit } from './ObjectReviewCard';
 
 type Phase = 'scanning' | 'review' | 'committing' | 'done';
-
-/** Accounts for files the scan found but will not import. Without it, the only
- *  signal is a file count lower than the folder the user picked, which reads as
- *  the import being broken rather than as a setting doing its job. */
-function SkippedNotice({ skipped, isDark }: { skipped: ImportScanSkip[]; isDark: boolean }) {
-  if (skipped.length === 0) return null;
-  const total = skipped.reduce((n, s) => n + s.count, 0);
-  return (
-    <div className={`p-3 rounded-xl text-sm text-left ${isDark ? 'bg-slate-800/60 text-slate-300' : 'bg-slate-50 text-slate-600'}`}>
-      <div className="flex items-start gap-2">
-        <AlertCircle className={`w-4 h-4 shrink-0 mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-400'}`} />
-        <div className="space-y-1">
-          <span>
-            {total.toLocaleString()} file{total !== 1 ? 's' : ''} will not be imported:
-          </span>
-          <ul className="space-y-0.5">
-            {skipped.map(s => (
-              <li key={s.reason} className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-                {s.count.toLocaleString()} {s.label}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function buildEdits(result: ImportScanResult): ObjectEdit[] {
   return result.objects.map(o => ({
@@ -71,6 +45,7 @@ function buildPlan(
   edits: ObjectEdit[],
   includeSubframes: boolean,
   includeFits: boolean,
+  archiveAll: boolean,
   telescopeId: string | null,
 ): ImportCommitPlan {
   const objects = edits
@@ -86,13 +61,20 @@ function buildPlan(
         sessionMap,
       };
     });
-  return { rootPath, objects, importSubFrames: includeSubframes, importFits: includeFits, telescopeId };
+  return {
+    rootPath, objects,
+    importSubFrames: includeSubframes,
+    importFits: includeFits,
+    archiveAllFiles: archiveAll,
+    telescopeId,
+  };
 }
 
 export function FolderImportWizard({
   rootPath,
   includeSubframes = false,
   includeFits = true,
+  archiveAll = false,
   telescopeId = null,
   onClose,
   onDone,
@@ -100,6 +82,7 @@ export function FolderImportWizard({
   rootPath: string;
   includeSubframes?: boolean;
   includeFits?: boolean;
+  archiveAll?: boolean;
   telescopeId?: string | null;
   onClose: () => void;
   onDone: () => void;
@@ -109,7 +92,8 @@ export function FolderImportWizard({
   const [phase, setPhase] = useState<Phase>('scanning');
   const [edits, setEdits] = useState<ObjectEdit[]>([]);
   const [truncated, setTruncated] = useState(false);
-  const [skipped, setSkipped] = useState<ImportScanSkip[]>([]);
+  const [skipped, setSkipped] = useState<ImportSkip[]>([]);
+  const [basePathDetected, setBasePathDetected] = useState<string | null>(null);
 
   const card = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
   const subText = isDark ? 'text-slate-400' : 'text-slate-500';
@@ -118,11 +102,12 @@ export function FolderImportWizard({
 
   // ── Phase 1: scan ────────────────────────────────────────────────────────
   const scanMutation = useMutation({
-    mutationFn: () => scanImportFolder(rootPath, includeSubframes, includeFits),
+    mutationFn: () => scanImportFolder(rootPath, includeSubframes, includeFits, archiveAll, telescopeId),
     onSuccess: (result) => {
       setEdits(buildEdits(result));
       setTruncated(result.truncated);
       setSkipped(result.skipped ?? []);
+      setBasePathDetected(result.basePathDetected ?? null);
       setPhase('review');
     },
   });
@@ -192,7 +177,7 @@ export function FolderImportWizard({
 
   const handleCommit = () => {
     if (totals.objects === 0 || totals.files === 0) return;
-    commitMutation.mutate(buildPlan(rootPath, edits, includeSubframes, includeFits, telescopeId));
+    commitMutation.mutate(buildPlan(rootPath, edits, includeSubframes, includeFits, archiveAll, telescopeId));
   };
 
   return (
@@ -261,6 +246,12 @@ export function FolderImportWizard({
                   <span>{edits.length} object{edits.length !== 1 ? 's' : ''} found.</span>
                   <span className={mutedText}>Confirm the catalog match and session dates, then import.</span>
                 </div>
+                {basePathDetected && (
+                  <div className={`flex items-start gap-2 p-3 rounded-xl text-sm ${isDark ? 'bg-sky-500/10 text-sky-300' : 'bg-sky-50 text-sky-700'}`}>
+                    <FolderSearch className="w-4 h-4 shrink-0 mt-0.5" />
+                    Detected a device root and scanned inside its <span className="font-mono">{basePathDetected}</span> folder.
+                  </div>
+                )}
                 {truncated && (
                   <div className={`flex items-start gap-2 p-3 rounded-xl text-sm ${isDark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700'}`}>
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />

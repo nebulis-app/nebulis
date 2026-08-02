@@ -1,7 +1,7 @@
 import { useTheme, type Theme } from '../../hooks/useTheme';
 import { useNavVisibility, NAV_ITEMS } from '../../hooks/useNavVisibility';
 import type { Settings as SettingsType } from '../../types';
-import { Sec, Row, Seg, RadioCard, ToggleRow, getCardClass } from './SettingsUI';
+import { Sec, Row, RowGroup, Seg, RadioCard, Toggle } from './SettingsUI';
 import { SoftwareUpdateCard } from './SoftwareUpdateCard';
 import { NightlyMaintenanceSection } from './NightlyMaintenanceSection';
 import { Telescope, Globe, CloudMoon, Crosshair, BookOpen, HelpCircle } from 'lucide-react';
@@ -13,11 +13,13 @@ const NAV_ITEM_ICONS: Record<string, React.ReactNode> = {
   help:     <HelpCircle className="w-4 h-4" />,
 };
 
+// Each description says what the theme looks like or when to reach for it, in
+// the same shape, so the four read as one set of choices.
 const THEME_OPTIONS: { id: Theme; label: string; description: string }[] = [
-  { id: 'light', label: 'Light', description: 'Clean and bright' },
-  { id: 'dark',  label: 'Dark',  description: 'Easy on the eyes' },
-  { id: 'space', label: 'Space', description: 'Cosmic nebula vibes' },
-  { id: 'night', label: 'Night', description: 'Red light. Preserves dark adaptation.' },
+  { id: 'light', label: 'Light', description: 'Bright, for daytime' },
+  { id: 'dark',  label: 'Dark',  description: 'Default, for indoor use' },
+  { id: 'space', label: 'Space', description: 'Deep violet, high contrast' },
+  { id: 'night', label: 'Night', description: 'Red light, preserves night vision' },
 ];
 
 /** Tiny mini-UI swatches that hint at what the theme looks like. */
@@ -120,10 +122,11 @@ export function GeneralSection({
 
   return (
     <>
-      {/* Appearance — theme cards with mini previews */}
+      {/* Appearance — theme cards only. The nav toggles used to share this card
+          via a second nested card; they are their own section now. */}
       <Sec
         title="Appearance"
-        description="Choose how Nebulis looks. Dark is the default. Night mode keeps eyes adapted to dark skies."
+        description="How Nebulis looks. Night mode keeps your eyes adapted at the telescope."
         isDark={isDark}
       >
         <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -140,48 +143,44 @@ export function GeneralSection({
             />
           ))}
         </div>
+      </Sec>
 
-        {/* Navigation bar items */}
-        <div className={`${getCardClass(isDark)} space-y-0.5`}>
-          <div className="mb-2">
-            <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-              Navigation Bar
-            </h3>
-            <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              Choose which items appear in the top menu bar.
-            </p>
-          </div>
-          {NAV_ITEMS.map(item => (
-            <ToggleRow
-              key={item.id}
-              label={item.label}
-              checked={isVisible(item.id)}
-              onChange={() => toggle(item.id)}
-              isDark={isDark}
-              icon={NAV_ITEM_ICONS[item.id]}
-            />
-          ))}
-        </div>
+      {/* Navigation */}
+      <Sec
+        title="Navigation bar"
+        description="Which items appear in the top menu."
+        isDark={isDark}
+      >
+        {NAV_ITEMS.map(item => (
+          <Row key={item.id} label={item.label} isDark={isDark}>
+            <span className="flex items-center gap-3">
+              <span className={isDark ? 'text-slate-500' : 'text-slate-400'}>
+                {NAV_ITEM_ICONS[item.id]}
+              </span>
+              <Toggle checked={isVisible(item.id)} onChange={() => toggle(item.id)} />
+            </span>
+          </Row>
+        ))}
       </Sec>
 
       {/* Units */}
       <Sec
         title="Units"
-        description="How values display across the app."
+        description="How values are displayed across the app."
         isDark={isDark}
       >
-        <Row label="Temperature" description="Used for weather, dew point, and sensor readings." isDark={isDark}>
+        <Row label="Temperature" description="Weather, dew point, and sensor readings." isDark={isDark}>
           <Seg
             value={tempUnit}
             options={[
-              { id: 'celsius',    label: '°C  Celsius' },
-              { id: 'fahrenheit', label: '°F  Fahrenheit' },
+              { id: 'celsius',    label: '°C' },
+              { id: 'fahrenheit', label: '°F' },
             ]}
             onChange={(id) => setForm(f => ({ ...f, temperatureUnit: id }))}
             isDark={isDark}
           />
         </Row>
-        <Row label="Wind Speed" description="Used for wind readings on the forecast page." isDark={isDark}>
+        <Row label="Wind speed" description="Forecast page readings." isDark={isDark}>
           <Seg
             value={windUnit}
             options={[
@@ -194,107 +193,87 @@ export function GeneralSection({
         </Row>
       </Sec>
 
-      {/* Library display settings */}
+      {/* Library — one card, with label strips where nested cards used to be. */}
       <Sec
         title="Library"
-        description="Customize library cards and gallery slideshow behavior."
+        description="How object cards and the slideshow behave."
         isDark={isDark}
       >
-        {/* Default card image */}
-        <div className={`${getCardClass(isDark)} space-y-3`}>
-          <div>
-            <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-              Default Object Image
-            </h3>
-            <p className={`text-xs mt-0.5 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              Which image to show on library cards when you haven't set a custom image for an object
-            </p>
-          </div>
-          <div className="space-y-2">
-            <ImageSourceOption
-              value="sky-survey"
-              current={imageSource}
-              onSelect={v => setForm(f => ({ ...f, galleryImageSource: v }))}
-              isDark={isDark}
-              icon={<Globe className="w-4 h-4" />}
-              label="Reference Image"
-              description="Catalog reference imagery from sources like Hubble, DSS2, NASA, and Caldwell. Rich color, wide availability."
-            />
-            <ImageSourceOption
-              value="telescope"
-              current={imageSource}
-              onSelect={v => setForm(f => ({ ...f, galleryImageSource: v }))}
-              isDark={isDark}
-              icon={<Telescope className="w-4 h-4" />}
-              label="My Telescope Images"
-              description="Show your own telescope captures: a personal view of every object you've imaged"
-            />
-          </div>
+        <RowGroup
+          label="Default object image"
+          description="Shown on library cards when an object has no custom image."
+          isDark={isDark}
+        />
+        <div className={`p-4 space-y-2 border-b ${isDark ? 'border-slate-800/70' : 'border-slate-100'}`}>
+          <ImageSourceOption
+            value="sky-survey"
+            current={imageSource}
+            onSelect={v => setForm(f => ({ ...f, galleryImageSource: v }))}
+            isDark={isDark}
+            icon={<Globe className="w-4 h-4" />}
+            label="Reference image"
+            description="Catalog imagery from Hubble, DSS2, NASA, and Caldwell. Rich color, wide availability."
+          />
+          <ImageSourceOption
+            value="telescope"
+            current={imageSource}
+            onSelect={v => setForm(f => ({ ...f, galleryImageSource: v }))}
+            isDark={isDark}
+            icon={<Telescope className="w-4 h-4" />}
+            label="My telescope images"
+            description="Your own captures, for every object you have imaged."
+          />
         </div>
 
-        {/* Catalog naming */}
-        <div className={`${getCardClass(isDark)} space-y-3`}>
-          <div>
-            <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-              Catalog Naming
-            </h3>
-            <p className={`text-xs mt-0.5 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              Which catalog to use for new object folder names when an object has both an NGC/IC and a Caldwell designation
-            </p>
-          </div>
-          <ToggleRow
-            label="Prefer Caldwell numbers"
-            description={'New objects with a Caldwell designation are named "C5" instead of "IC342". Existing folders are not renamed.'}
+        <RowGroup
+          label="Catalog naming"
+          description="Which catalog names a new object's folder when it has both an NGC/IC and a Caldwell designation."
+          isDark={isDark}
+        />
+        <Row
+          label="Prefer Caldwell numbers"
+          description={'New objects are named "C5" rather than "IC342". Existing folders are not renamed.'}
+          isDark={isDark}
+        >
+          <Toggle
             checked={(form.preferredCatalog ?? 'default') === 'caldwell'}
             onChange={v => setForm(f => ({ ...f, preferredCatalog: v ? 'caldwell' : 'default' }))}
-            isDark={isDark}
           />
-        </div>
+        </Row>
 
-        {/* Session Grouping */}
-        <div className={`${getCardClass(isDark)} space-y-3`}>
-          <div>
-            <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-              Session Grouping
-            </h3>
-            <p className={`text-xs mt-0.5 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              How a session that runs past local midnight shows up on the calendar
-            </p>
-          </div>
-          <ToggleRow
-            label="Group sessions by observing night"
-            description="An 11pm-1am session counts as one night instead of splitting across two calendar dates. Turn off to go back to splitting by calendar date."
+        <RowGroup label="Session grouping" isDark={isDark} />
+        <Row
+          label="Group by observing night"
+          description="An 11pm to 1am session counts as one night rather than splitting across two calendar dates."
+          isDark={isDark}
+        >
+          <Toggle
             checked={form.groupObservingNights ?? true}
             onChange={v => setForm(f => ({ ...f, groupObservingNights: v }))}
-            isDark={isDark}
           />
-        </div>
+        </Row>
 
-        {/* Planetarium Mode */}
-        <div className={`${getCardClass(isDark)} space-y-3`}>
-          <div>
-            <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-              Planetarium Mode
-            </h3>
-            <p className={`text-xs mt-0.5 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              Controls the full-screen slideshow experience
-            </p>
-          </div>
-          <ToggleRow
-            label="Show object information"
-            description="Display the object name, type, and distance while images are playing"
+        <RowGroup label="Planetarium mode" isDark={isDark} />
+        <Row
+          label="Show object information"
+          description="Shows the name, type, and distance while images play."
+          isDark={isDark}
+        >
+          <Toggle
             checked={form.planetariumShowInfo ?? true}
             onChange={v => setForm(f => ({ ...f, planetariumShowInfo: v }))}
-            isDark={isDark}
           />
-          <ToggleRow
-            label="Rotate images 90° counter-clockwise"
-            description="Correct orientation for telescopes that capture images rotated 90°. Applies in slideshow and planetarium mode."
+        </Row>
+        <Row
+          label="Rotate images 90° counter-clockwise"
+          description="Corrects telescopes that capture rotated. Applies to the slideshow too."
+          isDark={isDark}
+        >
+          <Toggle
             checked={form.slideshowRotateCCW ?? false}
             onChange={v => setForm(f => ({ ...f, slideshowRotateCCW: v }))}
-            isDark={isDark}
           />
-        </div>
+        </Row>
       </Sec>
 
       {/* Nightly maintenance */}

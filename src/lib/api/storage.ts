@@ -138,3 +138,40 @@ export const testNetworkLibraryConnection = (network: NetworkLibraryConfig) =>
     body: JSON.stringify(network),
   });
 
+
+// ─── Library reorganize (flat → per-session layout) ─────────────────────────
+
+export interface RenestObjectResult {
+  objectId: string;
+  moved: number;
+  skipped: number;
+  alreadyNested: boolean;
+  error?: string;
+}
+
+export interface RenestSummary {
+  objects: number;
+  moved: number;
+  failed: number;
+  results: RenestObjectResult[];
+}
+
+export interface RenestStatus {
+  running: boolean;
+  startedAt: string | null;
+  objectsTotal: number;
+  objectsDone: number;
+  currentObject: string | null;
+  summary: RenestSummary | null;
+  error: string | null;
+}
+
+export const getRenestStatus = () =>
+  fetchJSON<{ renest: RenestStatus; flatObjects: number }>('/storage/renest/status');
+
+/** Omit objectId to reorganize the whole library. */
+export const startRenest = (objectId?: string) =>
+  fetchJSON<{ summary?: RenestSummary; result?: RenestObjectResult }>('/storage/renest', {
+    method: 'POST',
+    body: JSON.stringify(objectId ? { objectId } : {}),
+  });

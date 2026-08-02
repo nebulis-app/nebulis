@@ -26,7 +26,14 @@ import {
 import { debugLog } from './debugLogger.js';
 import type { TelescopeProfile } from './telescopes.js';
 
-type ProfileArg = Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'> | null | undefined;
+// `connectionType` and `localPath` are part of this even though nothing in
+// this file reads them: smb.ts dispatches on connectionType, so omitting it
+// from the type would let a caller pass a stripped-down object that silently
+// routes a USB or FTP telescope through the SMB backend.
+type ProfileArg =
+  | Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password' | 'connectionType' | 'localPath'>
+  | null
+  | undefined;
 
 // ─── Cache directory ────────────────────────────────────────────────
 

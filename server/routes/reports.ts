@@ -9,8 +9,10 @@ import { parseFitsHeader } from '../lib/fitsParser.js';
 import { getLibraryDir } from '../lib/libraryPath.js';
 import { getCatalogEntry } from '../data/catalog.js';
 import { getById as getDsoById } from '../lib/dsoCatalog.js';
-import { normalizeCatalogId, parseFilename, sessionNightFor } from '../lib/telescopeFiles.js';
+import { normalizeCatalogId } from '../lib/telescopeFiles.js';
 import { getObjectFolderName } from '../lib/localLibrary.js';
+import { listObjectFiles, getObjectLayout } from '../lib/library/libraryLayout.js';
+import { resolverFor } from '../lib/library/libraryFiles.js';
 import SunCalc from 'suncalc';
 
 const router = Router();
@@ -49,9 +51,13 @@ function computeSessionStats(objectId: string, sessionDate: string): SessionStat
   if (!objDir.startsWith(LIBRARY_DIR + path.sep)) return null;
   if (!fs.existsSync(objDir)) return null;
 
-  const fitsFiles = fs.readdirSync(objDir).filter(
-    f => /\.(fit|fits)$/i.test(f) && sessionNightFor(parseFilename(f)) === sessionDate
-  );
+  // Layout-aware, and session membership comes from the recorded rows rather
+  // than from re-parsing the name: a nested import keeps the device's own file
+  // names, which carry no date at all.
+  const identity = resolverFor(objectId);
+  const fitsFiles = listObjectFiles(objDir, getObjectLayout(objectId))
+    .filter(e => /\.(fit|fits)$/i.test(e.fileName) && identity.session(e.relPath) === sessionDate)
+    .map(e => e.relPath);
 
   if (fitsFiles.length === 0) return null;
 
@@ -233,17 +239,23 @@ router.get('/integration/:objectId', (req: Request, res: Response) => {
     return;
   }
 
-  const fitsFiles = fs.readdirSync(objDir).filter(f => /\.(fit|fits)$/i.test(f));
+  const integrationIdentity = resolverFor(objectId);
+  const fitsFiles = listObjectFiles(objDir, getObjectLayout(objectId))
+    .filter(e => /\.(fit|fits)$/i.test(e.fileName));
 
   // Group by session date (YYYYMMDD from filename)
   const sessionMap = new Map<string, { frames: number; exposureSec: number }>();
   let totalExposureSec = 0;
 
-  for (const fname of fitsFiles.slice(0, 500)) {
-    const dateMatch = fname.match(/(\d{8})/);
-    const dateKey = dateMatch
-      ? `${dateMatch[1].slice(0, 4)}-${dateMatch[1].slice(4, 6)}-${dateMatch[1].slice(6, 8)}`
-      : 'unknown';
+  for (const entry of fitsFiles.slice(0, 500)) {
+    const fname = entry.relPath;
+    // Prefer the recorded session; fall back to the digits in the name, which
+    // is all this had before and is still right for a flat legacy object.
+    const dateMatch = entry.fileName.match(/(\d{8})/);
+    const dateKey = integrationIdentity.session(entry.relPath)
+      ?? (dateMatch
+        ? `${dateMatch[1].slice(0, 4)}-${dateMatch[1].slice(4, 6)}-${dateMatch[1].slice(6, 8)}`
+        : 'unknown');
 
     try {
       const fullPath = path.join(objDir, fname);

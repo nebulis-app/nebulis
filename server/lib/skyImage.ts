@@ -341,3 +341,63 @@ export async function prefetchSkyImage(
     return null;
   }
 }
+
+// ─── fetchSkyCutout ──────────────────────────────────────────────────────
+
+const CUTOUT_DIR = path.join(SKY_CACHE_DIR, 'cutouts');
+
+/** Round a FOV to a coarse bucket so nearby zoom levels share a cache file. */
+export function bucketCutoutFov(fovDeg: number): number {
+  const f = Math.min(20, Math.max(0.1, fovDeg));
+  if (f < 2) return Math.round(f * 10) / 10; // 0.1° steps
+  if (f < 6) return Math.round(f * 2) / 2; // 0.5° steps
+  return Math.round(f); // 1° steps
+}
+
+/**
+ * Fetch a SQUARE DSS2 sky cutout centered on ra/dec spanning `fovDeg` degrees,
+ * for the framing atlas. Unlike prefetchSkyImage (one master per object at a
+ * fixed field), this caches per object + FOV bucket, so the sky can be shown at
+ * any zoom. Returns the cached file path, or null on failure.
+ */
+export async function fetchSkyCutout(opts: {
+  id: string;
+  ra: number; // decimal degrees
+  dec: number; // decimal degrees
+  fovDeg: number;
+  sizePx?: number;
+  timeoutMs?: number;
+}): Promise<string | null> {
+  const size = Math.min(1200, Math.max(256, Math.round(opts.sizePx ?? 800)));
+  const fov = bucketCutoutFov(opts.fovDeg);
+  const key = `${opts.id.replace(/\s+/g, '').toUpperCase()}_${fov}_${size}`.replace(/[^a-zA-Z0-9_.-]/g, '_');
+  const cachePath = path.join(CUTOUT_DIR, `${key}.jpg`);
+
+  try {
+    const stat = fs.statSync(cachePath);
+    if (stat.size > 0) return cachePath;
+  } catch { /* no cache */ }
+
+  const url = `https://alasky.cds.unistra.fr/hips-image-services/hips2fits`
+    + `?hips=CDS/P/DSS2/color`
+    + `&width=${size}&height=${size}`
+    + `&fov=${fov}`
+    + `&ra=${opts.ra}&dec=${opts.dec}`
+    + `&projection=TAN`
+    + `&format=jpg`;
+
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(opts.timeoutMs ?? 15000) });
+    if (!resp.ok) {
+      console.warn(`[skyImage] cutout fetch failed for ${opts.id}: HTTP ${resp.status} (fov=${fov})`);
+      return null;
+    }
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    fs.mkdirSync(CUTOUT_DIR, { recursive: true });
+    fs.writeFileSync(cachePath, buffer);
+    return cachePath;
+  } catch (err) {
+    console.warn(`[skyImage] cutout fetch error for ${opts.id}:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}

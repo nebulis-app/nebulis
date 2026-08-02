@@ -25,6 +25,8 @@ import {
   deleteLocalFile,
   getObjectFolderName,
 } from '../lib/localLibrary.js';
+import { listObjectFiles, getObjectLayout } from '../lib/library/libraryLayout.js';
+import { resolverFor } from '../lib/library/libraryFiles.js';
 
 const router = Router();
 
@@ -96,13 +98,17 @@ router.get('/objects/:objectId', (req: Request, res: Response) => {
     const normalized = normalizeCatalogId(objectId);
     const catalogEntry = getCatalogEntry(normalized) || getCatalogEntry(objectId);
 
-    const files = fs.readdirSync(objDir).filter(isRealFile);
+    // Layout-aware, with session membership from the recorded rows: a nested
+    // object's files live one level down and keep names that carry no date.
+    const identity = resolverFor(objectId);
+    const files = listObjectFiles(objDir, getObjectLayout(objectId))
+      .filter(e => isRealFile(e.fileName));
     const sessions = new Map<string, { count: number; latestTimestamp: string }>();
 
-    for (const fname of files) {
-      const parsed = parseFilename(fname);
+    for (const entry of files) {
+      const parsed = parseFilename(entry.fileName);
       if (parsed.isThumbnail) continue;
-      const key = sessionNightFor(parsed) || 'unknown';
+      const key = identity.session(entry.relPath) || 'unknown';
       const existing = sessions.get(key);
       if (!existing) {
         sessions.set(key, { count: 1, latestTimestamp: parsed.timestamp || '' });
@@ -114,7 +120,7 @@ router.get('/objects/:objectId', (req: Request, res: Response) => {
       }
     }
 
-    const stackedCount = files.filter(f => parseFilename(f).type === 'stacked').length;
+    const stackedCount = files.filter(e => identity.role(e.relPath) === 'stacked').length;
 
     // Check for local sub folder
     let subFrameCount = 0;

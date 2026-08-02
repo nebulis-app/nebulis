@@ -12,7 +12,7 @@ import {
   type ConnectedDeviceWithOwner,
 } from '../../lib/api/devices';
 import { useAuth } from '../../contexts/AuthContext';
-import { getCardClass, getInputClass } from './SettingsUI';
+import { Sec, Seg, getInputClass } from './SettingsUI';
 
 function relativeTime(ms: number): string {
   const diff = Date.now() - ms;
@@ -33,7 +33,6 @@ type Scope = 'mine' | 'all';
 export function ConnectedDevicesSection({ isDark }: { isDark: boolean }) {
   const queryClient = useQueryClient();
   const { isAdmin } = useAuth();
-  const cardClass = getCardClass(isDark);
   const inputClass = getInputClass(isDark);
 
   const [scope, setScope] = useState<Scope>('mine');
@@ -105,78 +104,53 @@ export function ConnectedDevicesSection({ isDark }: { isDark: boolean }) {
   }
 
   return (
-    <div className="space-y-6">
-      {showConnect && <ConnectDeviceModal isDark={isDark} onClose={() => setShowConnect(false)} />}
-
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className={`font-display text-2xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            Devices
-          </h2>
-          <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-            Phones and Apple TVs linked to your account.
-          </p>
-        </div>
+    <Sec
+      title="Devices"
+      description="Phones and Apple TVs linked to your account."
+      isDark={isDark}
+      actions={
         <button
           type="button"
           onClick={() => setShowConnect(true)}
-          className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition-colors shadow-sm"
+          className="shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[13px] font-medium bg-accent-500 text-white hover:bg-accent-600 transition-colors shadow-sm"
         >
           <QrCode className="w-4 h-4" />
           Connect a device
         </button>
+      }
+    >
+      {showConnect && <ConnectDeviceModal isDark={isDark} onClose={() => setShowConnect(false)} />}
+
+      <div className={`flex items-start justify-between gap-4 px-5 py-4 border-b ${isDark ? 'border-slate-800/70' : 'border-slate-100'}`}>
+        <p className={`text-xs flex-1 min-w-0 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+          {scope === 'all'
+            ? 'Every device linked across all users.'
+            : <>On your Apple TV, open Nebulis, then visit{' '}
+                <a
+                  href={`${window.location.origin}/link`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`font-mono underline underline-offset-2 ${isDark ? 'text-accent-400 hover:text-accent-300' : 'text-accent-700 hover:text-accent-600'}`}
+                >
+                  {window.location.origin}/link
+                </a>{' '}
+                on this device to pair it.</>}
+        </p>
+
+        {isAdmin && (
+          <Seg<Scope>
+            value={scope}
+            onChange={setScope}
+            isDark={isDark}
+            options={[
+              { id: 'mine', label: 'Mine' },
+              { id: 'all', label: 'All devices' },
+            ]}
+          />
+        )}
       </div>
 
-      <div className={cardClass}>
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div className="flex-1 min-w-0">
-            <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-              Linked devices
-            </h3>
-            <p className={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-              {scope === 'all'
-                ? 'Every device linked across all users.'
-                : <>On your Apple TV, open Nebulis, then visit{' '}
-                    <a
-                      href={`${window.location.origin}/link`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={`font-mono underline underline-offset-2 ${isDark ? 'text-accent-400 hover:text-accent-300' : 'text-accent-700 hover:text-accent-600'}`}
-                    >
-                      {window.location.origin}/link
-                    </a>{' '}
-                    on this device to pair it.</>}
-            </p>
-          </div>
-
-          {isAdmin && (
-            <div
-              role="tablist"
-              aria-label="Device scope"
-              className={`shrink-0 inline-flex rounded-full p-0.5 text-xs font-medium ${
-                isDark ? 'bg-slate-800/80' : 'bg-slate-100'
-              }`}
-            >
-              {(['mine', 'all'] as Scope[]).map(s => (
-                <button
-                  key={s}
-                  role="tab"
-                  aria-selected={scope === s}
-                  type="button"
-                  onClick={() => setScope(s)}
-                  className={`px-3 py-1 rounded-full transition-colors ${
-                    scope === s
-                      ? isDark ? 'bg-slate-700 text-white' : 'bg-white text-slate-900 shadow-sm'
-                      : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  {s === 'mine' ? 'Mine' : 'All Devices'}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
+      <div className="p-4">
         {isLoading && (
           <div className={`flex items-center gap-2 text-sm py-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -326,6 +300,6 @@ export function ConnectedDevicesSection({ isDark }: { isDark: boolean }) {
           </ul>
         )}
       </div>
-    </div>
+    </Sec>
   );
 }

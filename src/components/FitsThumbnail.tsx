@@ -31,11 +31,16 @@ export const FitsThumbnail = memo(function FitsThumbnail({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
+  // The server thumbnail can 404/500 for an unparseable FITS. When that
+  // happens, fall through to the client-side render path below instead of
+  // showing a broken image.
+  const [serverThumbFailed, setServerThumbFailed] = useState(false);
+  const useServerThumb = !!thumbUrl && !serverThumbFailed;
 
   // Trigger fetch once the thumbnail enters the viewport. Skipped when the
   // server has already pre-rendered a JPEG (thumbUrl path below).
   useEffect(() => {
-    if (thumbUrl) return;
+    if (useServerThumb) return;
     const el = containerRef.current;
     if (!el) return;
 
@@ -50,11 +55,11 @@ export const FitsThumbnail = memo(function FitsThumbnail({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [thumbUrl]);
+  }, [useServerThumb]);
 
   // Fetch + render when state becomes 'loading'
   useEffect(() => {
-    if (thumbUrl || state !== 'loading') return;
+    if (useServerThumb || state !== 'loading') return;
     const controller = new AbortController();
 
     fetchBinary(url, controller.signal)
@@ -72,25 +77,27 @@ export const FitsThumbnail = memo(function FitsThumbnail({
       });
 
     return () => { controller.abort(); };
-  }, [thumbUrl, state, url, stretch, colormap, maxDim]);
+  }, [useServerThumb, state, url, stretch, colormap, maxDim]);
 
   // Re-fetch when colormap/stretch changes, but only if already loaded — don't
   // bypass IntersectionObserver on mount (which would cause all thumbnails to
   // start fetching simultaneously, exhausting the browser's connection limit).
   useEffect(() => {
-    if (thumbUrl) return;
+    if (useServerThumb) return;
     setState(s => (s === 'idle' ? 'idle' : 'loading'));
-  }, [thumbUrl, colormap, stretch]);
+  }, [useServerThumb, colormap, stretch]);
 
   // Fast path: server has already rendered a small JPEG — no need to download
-  // the full FITS file or do any client-side pixel work.
-  if (thumbUrl) {
+  // the full FITS file or do any client-side pixel work. On load failure, mark
+  // it failed so the render below takes over the client-side decode path.
+  if (useServerThumb) {
     return (
       <img
         src={thumbUrl}
         alt=""
         loading="lazy"
         className="w-full h-full object-cover"
+        onError={() => setServerThumbFailed(true)}
       />
     );
   }

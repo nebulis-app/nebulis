@@ -11,6 +11,8 @@ import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
 import { listVolumes, listDirectories } from '../lib/volumes.js';
 import { locateFolderOnDisk, validateLocateInput, type LocateSample } from '../lib/folderLocate.js';
 import { startMigration, getMigrationStatus } from '../lib/libraryMigration.js';
+import { renestObject, renestLibrary, getRenestStatus, countFlatObjects } from '../lib/library/libraryRenest.js';
+import { getImportStatus } from '../lib/library/import.js';
 import { testNetworkLibraryConnection, NETWORK_MOUNT_DIR, type NetworkLibraryConfig } from '../lib/libraryNetwork.js';
 import { requireAdmin } from '../middleware/auth.js';
 import db from '../lib/db.js';
@@ -600,6 +602,70 @@ router.post('/migrate', requireAdmin, (req: Request, res: Response) => {
 // GET /api/v1/storage/migrate/status — poll migration progress
 router.get('/migrate/status', (_req: Request, res: Response) => {
   res.apiSuccess({ migration: getMigrationStatus() });
+});
+
+// ─── Re-nest (flat → per-session layout) ────────────────────────────────────
+// A one-way migration, not a preference: supporting both shapes forever would
+// mean maintaining two read paths across the whole library. New objects are
+// created nested already; this converts the ones that predate that.
+
+router.get('/renest/status', (_req: Request, res: Response) => {
+  res.apiSuccess({ renest: getRenestStatus(), flatObjects: countFlatObjects() });
+});
+
+router.post('/renest', requireAdmin, async (req: Request, res: Response) => {
+  if (!(await isLibraryAvailable())) {
+    res.apiError(503, 'LIBRARY_UNAVAILABLE', 'Your library is not connected. Reconnect it and try again.');
+    return;
+  }
+  if (isLibraryMigrating()) {
+    res.apiError(409, 'LIBRARY_BUSY', 'The library is being moved. Wait for that to finish first.');
+    return;
+  }
+  if (getRenestStatus().running) {
+    res.apiError(409, 'RENEST_RUNNING', 'A reorganize is already running.');
+    return;
+  }
+  if (getImportStatus().running) {
+    res.apiError(409, 'IMPORT_RUNNING', 'An import or sync is running. Wait for that to finish first.');
+    return;
+  }
+
+  const objectId = typeof (req.body as { objectId?: unknown })?.objectId === 'string'
+    ? String((req.body as { objectId: string }).objectId)
+    : null;
+
+  try {
+    if (objectId) {
+      const result = renestObject(objectId);
+      if (result.error) {
+        if (/running/i.test(result.error)) {
+          res.apiError(409, 'IMPORT_RUNNING', result.error);
+          return;
+        }
+        res.apiError(500, 'RENEST_FAILED', result.error);
+        return;
+      }
+      res.apiSuccess({ result });
+      return;
+    }
+    // Fire-and-forget: renestLibrary() now yields between objects specifically
+    // so the client can track it via /renest/status polling (the UI already
+    // has a progress bar for this). Awaiting it here would hold this request
+    // open for the whole run and defeat that, same as import's routes.
+    renestLibrary().catch(err => {
+      console.error('[renest] library run failed:', err instanceof Error ? err.message : err);
+    });
+    res.apiSuccess({ started: true });
+    return;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Reorganize failed';
+    if (/running/i.test(message)) {
+      res.apiError(409, 'IMPORT_RUNNING', message);
+      return;
+    }
+    res.apiError(500, 'RENEST_FAILED', message);
+  }
 });
 
 export { router as storageRouter };

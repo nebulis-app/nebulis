@@ -67,6 +67,7 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
   if (
     req.path.match(/^\/library\/file(\?|\/|$)/) ||
     req.path.match(/^\/library\/file\/thumbnail(\?|\/|$)/) ||
+    req.path.match(/^\/library\/fits-thumbnail(\?|\/|$)/) ||
     req.path.match(/^\/library\/objects\/[^/]+\/thumbnail(\?|\/|$)/) ||
     req.path.match(/^\/library\/processed-images\//) ||
     req.path.match(/^\/library\/download\/objects\//) ||
@@ -75,6 +76,7 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
     req.path.match(/^\/telescope\/objects\/[^/]+\/thumbnail(\?|\/|$)/) ||
     req.path.match(/^\/reports\/session\//) ||
     req.path.match(/^\/catalog\/[^/]+\/image(\?|\/|$)/) ||
+    req.path.match(/^\/catalog\/[^/]+\/sky(\?|\/|$)/) ||
     req.path.match(/^\/catalog\/prefetch\/pack-debug(\?|$)/)
   ) {
     return next();

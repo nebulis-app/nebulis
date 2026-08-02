@@ -14,6 +14,7 @@
 import { getCatalog } from './dsoCatalog.js';
 import { getNightWindow, visibilityWindow } from './astroCalc.js';
 import { getSettingsData, updateSettingsData } from './telescopes.js';
+import { getActiveSite } from './observingSites.js';
 import { findCachedMaster, prewarmThumbnails } from './catalogPrefetch.js';
 import { prefetchSkyImage } from './skyImage.js';
 import { purgeJunkFiles, purgeStaleImportTmp } from './library/housekeeping.js';
@@ -141,18 +142,22 @@ async function runNightlyTasks(): Promise<void> {
 // ─── Planner job ──────────────────────────────────────────────────────────────
 
 export async function runPlannerNightlyPrefetch(): Promise<void> {
-  const settings = getSettingsData();
-  const lat = settings.latitude as number | null | undefined;
-  const lon = settings.longitude as number | null | undefined;
+  // Warms the cache for whichever site the planner is currently pointed at.
+  // A multi-site user who switches sites during the day gets that night's
+  // targets pre-warmed for the site they'll actually observe from tonight;
+  // other sites' thumbnails are computed on demand instead of pre-warmed.
+  const site = getActiveSite();
+  const lat = site.latitude;
+  const lon = site.longitude;
 
   if (typeof lat !== 'number' || typeof lon !== 'number') {
     console.log('[planner-prefetch] Skipping — no observer location configured');
     return;
   }
 
-  const minAlt = (settings.minAlt as number | undefined) ?? 20;
-  const horizonProfile = (settings.horizonProfile as number[] | undefined) ?? Array(36).fill(0);
-  const tz = (settings.timezone as string | undefined) || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const minAlt = site.minAlt;
+  const horizonProfile = site.horizonProfile;
+  const tz = site.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const now = new Date();
   const anchor = defaultNightAnchor(now, tz);

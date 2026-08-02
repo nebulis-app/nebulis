@@ -7,6 +7,7 @@
  */
 import Database from 'better-sqlite3';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { DATA_DIR } from './paths.js';
 import { encrypt as encryptSecret, decrypt as decryptSecret } from './crypto/secretBox.js';
 
@@ -75,6 +76,10 @@ db.exec(`
     importThumbnails    INTEGER NOT NULL DEFAULT 0,
     importSubFrames     INTEGER NOT NULL DEFAULT 0,
     importVideos        INTEGER NOT NULL DEFAULT 0,
+    -- Keep files Nebulis has no use for, so the library can be a complete copy
+    -- of the device. Relaxes the unrecognized-extension, img_ working-file, and
+    -- failed-frame rejections only; the five per-type toggles above still apply.
+    archiveAllFiles     INTEGER NOT NULL DEFAULT 0,
     onboardingCompleted INTEGER NOT NULL DEFAULT 0,
     prefetchCatalogAssets INTEGER NOT NULL DEFAULT 1,
     planetariumShowInfo INTEGER NOT NULL DEFAULT 1,
@@ -244,7 +249,11 @@ db.exec(`
     distanceLy    REAL,
     wikiUrl       TEXT,
     sizeArcmin    TEXT,
-    primaryTelescopeId TEXT
+    primaryTelescopeId TEXT,
+    -- 'flat' | 'nested'. See libraryLayout.ts. Defaults to 'flat' so a legacy
+    -- database reaching the ALTER below keeps describing itself accurately;
+    -- new objects are stamped 'nested' explicitly at creation.
+    layout        TEXT NOT NULL DEFAULT 'flat'
   );
   CREATE INDEX IF NOT EXISTS idx_libraryObjects_deleted ON libraryObjects(deleted);
 
@@ -262,6 +271,82 @@ db.exec(`
     date     TEXT NOT NULL,
     PRIMARY KEY (objectId, date)
   );
+
+  -- ─── Per-file record (the "filenames stop carrying identity" table) ──
+  -- Historically the library had no per-file table: session membership was
+  -- recomputed by running parseFilename(name).date through sessionNightFor on
+  -- every read, which is why the importer had to rewrite filenames to stamp a
+  -- session timestamp into them. This table records what the filename used to
+  -- have to encode, so a file can keep the name the telescope gave it.
+  --
+  -- captureDate/captureTime hold the RAW capture instant, not the observing
+  -- night. The night is derived at read time via observingNightDate() because
+  -- the groupObservingNights setting can be toggled at any point and every
+  -- session boundary in the app has to move with it. Storing a resolved night
+  -- would freeze that toggle for imported files. sessionDateOverride is the
+  -- escape hatch for a date the user pinned by hand (the folder wizard's
+  -- unsorted bucket, or a later reassignment) and wins over the derivation.
+  CREATE TABLE IF NOT EXISTS libraryFiles (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    objectId            TEXT NOT NULL,
+    -- '<folderName>/<fileName>', matching the relative form used everywhere
+    -- else in the library (never an absolute path — see libraryPath.ts).
+    relPath             TEXT NOT NULL UNIQUE,
+    fileName            TEXT NOT NULL,
+    -- The name the source gave the file, kept even when fileName was rewritten
+    -- on the way in. Equal to fileName for anything imported without renaming.
+    originalName        TEXT NOT NULL,
+    role                TEXT NOT NULL,
+    captureDate         TEXT,
+    captureTime         TEXT,
+    sessionDateOverride TEXT,
+    telescopeId         TEXT,
+    bytes               INTEGER NOT NULL DEFAULT 0,
+    -- Path on the telescope / source folder this came from, for provenance.
+    sourcePath          TEXT,
+    importedAt          TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_libraryFiles_object ON libraryFiles(objectId);
+  CREATE INDEX IF NOT EXISTS idx_libraryFiles_session
+    ON libraryFiles(objectId, captureDate);
+  CREATE INDEX IF NOT EXISTS idx_libraryFiles_role ON libraryFiles(objectId, role);
+
+  -- ─── Capture info parsed from device sidecars (shotsInfo.json) ───────
+  -- The authoritative per-run record the device itself wrote: exposure, gain,
+  -- filter, target coordinates, and how many frames were kept out of how many
+  -- taken out of how many planned. Nebulis used to discard this entirely and
+  -- re-derive a weaker version by parsing filenames and FITS headers.
+  --
+  -- Keyed on (objectId, sessionFolder), NOT on the observing night. Two capture
+  -- runs can share one night with different settings — a real library has C 5
+  -- shot at 60s/gain 60 and again at 120s/gain 40 on the same evening — so a
+  -- night-keyed row would have to discard one of them. sessionDate is stored
+  -- alongside for querying but is not the identity.
+  CREATE TABLE IF NOT EXISTS captureInfo (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    objectId      TEXT NOT NULL,
+    -- Session directory the sidecar was found in; '' for a flat object.
+    sessionFolder TEXT NOT NULL DEFAULT '',
+    sessionDate   TEXT,
+    exposureSec   REAL,
+    gain          INTEGER,
+    filter        TEXT,
+    binning       TEXT,
+    framesStacked INTEGER,
+    framesTaken   INTEGER,
+    framesPlanned INTEGER,
+    minTempC      REAL,
+    maxTempC      REAL,
+    -- RA in HOURS, Dec in DEGREES, exactly as the device writes them.
+    raHours       REAL,
+    decDeg        REAL,
+    target        TEXT,
+    sourceRelPath TEXT,
+    updatedAt     TEXT NOT NULL,
+    UNIQUE (objectId, sessionFolder)
+  );
+  CREATE INDEX IF NOT EXISTS idx_captureInfo_session
+    ON captureInfo(objectId, sessionDate);
 
   CREATE TABLE IF NOT EXISTS libraryMeta (
     id        INTEGER PRIMARY KEY CHECK (id = 1),
@@ -350,6 +435,38 @@ db.exec(`
     updatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_plannedSessions_start ON plannedSessions(startTime);
+
+  -- ─── Observing sites ─────────────────────────────────────────
+  -- One row per place-and-sky the user observes from. An entry bundles the
+  -- coordinates with the sky settings that apply there (minAlt, horizon
+  -- profile, visible-sky mask), so "same garden, looking north" and "same
+  -- garden, looking south" are two entries sharing coordinates.
+  --
+  -- The matching columns on appSettings (latitude/longitude/locationName/
+  -- timezone/minAlt/horizonProfile/visibleSkyMap) are kept as a projection of
+  -- whichever row has isDefault = 1. Shipped iOS/Android clients read those
+  -- fields off GET /settings, so they must never stop reflecting a real site.
+  -- See server/lib/observingSites.ts.
+  CREATE TABLE IF NOT EXISTS observingSites (
+    id             TEXT PRIMARY KEY,
+    name           TEXT    NOT NULL,
+    latitude       REAL,
+    longitude      REAL,
+    timezone       TEXT    NOT NULL DEFAULT '',
+    minAlt         INTEGER NOT NULL DEFAULT 20,
+    horizonProfile TEXT    NOT NULL DEFAULT '[]',
+    visibleSkyMap  TEXT    NOT NULL DEFAULT '[]',
+    bortleClass    INTEGER,
+    isDefault      INTEGER NOT NULL DEFAULT 0,
+    sortOrder      INTEGER NOT NULL DEFAULT 0,
+    createdAt      TEXT    NOT NULL
+  );
+  -- Exactly one default, enforced here rather than by application discipline.
+  -- Partial index: only isDefault = 1 rows participate, so the many 0s don't
+  -- collide with each other.
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_observingSites_default
+    ON observingSites(isDefault) WHERE isDefault = 1;
+  CREATE INDEX IF NOT EXISTS idx_observingSites_sort ON observingSites(sortOrder, createdAt);
 `);
 
 // ─── Column migrations for existing databases ────────────────────────────────
@@ -401,6 +518,12 @@ db.exec(`
     // sky as visible." The planner UI flips that into a length-288 array
     // when the user opens the Set Visible Sky editor.
     db.prepare("ALTER TABLE appSettings ADD COLUMN visibleSkyMap TEXT NOT NULL DEFAULT '[]'").run();
+  }
+  if (!cols.some(c => c.name === 'activeSiteId')) {
+    // Which observing site the planner/forecast currently compute for. Empty
+    // means "use the default site" — that is also the value every existing
+    // install starts on, so the switcher is opt-in and nothing moves on upgrade.
+    db.prepare("ALTER TABLE appSettings ADD COLUMN activeSiteId TEXT NOT NULL DEFAULT ''").run();
   }
   if (!cols.some(c => c.name === 'libraryPath')) {
     db.prepare("ALTER TABLE appSettings ADD COLUMN libraryPath TEXT NOT NULL DEFAULT ''").run();
@@ -545,6 +668,14 @@ db.exec(`
     // wanting us to write to the device.
     db.prepare('ALTER TABLE telescopeProfiles ADD COLUMN trackDeviceIdentity INTEGER NOT NULL DEFAULT 1').run();
   }
+  if (!tpCols.some(c => c.name === 'pinnedTransportId')) {
+    // NULL (default) means "Auto" — selectActiveTransport keeps ranking
+    // local > ftp > smb. Set to a telescopeTransports.id to force that
+    // transport regardless of reachability, so a manual pick fails loudly
+    // (a clear "not reachable" error) instead of silently falling back to a
+    // transport the user didn't choose.
+    db.prepare('ALTER TABLE telescopeProfiles ADD COLUMN pinnedTransportId TEXT').run();
+  }
 
   // Stacked FITS import shipped defaulting to off, so telescopes added before
   // this changed silently skipped the file quality scoring needs. Force every
@@ -571,6 +702,31 @@ db.exec(`
   }
   db.prepare('CREATE INDEX IF NOT EXISTS idx_librarySessions_telescope ON librarySessions(telescopeId)').run();
 
+  // Cached observation-site coordinates (from FITS SITELAT/SITELONG). `lat`/`lon`
+  // hold the FITS-derived location; `coordsResolved = 1` means we already read
+  // the FITS header for this session (lat/lon may still be NULL when the file
+  // carries no location), so the map endpoint never re-reads a coordless file.
+  if (!lsCols.some(c => c.name === 'lat')) {
+    db.prepare('ALTER TABLE librarySessions ADD COLUMN lat REAL').run();
+  }
+  if (!lsCols.some(c => c.name === 'lon')) {
+    db.prepare('ALTER TABLE librarySessions ADD COLUMN lon REAL').run();
+  }
+  if (!lsCols.some(c => c.name === 'coordsResolved')) {
+    db.prepare('ALTER TABLE librarySessions ADD COLUMN coordsResolved INTEGER NOT NULL DEFAULT 0').run();
+  }
+
+  // Which observing site this session was captured from. NULL means "the
+  // default site", which is what every pre-existing session resolves to, so
+  // adding the column changes nothing until the user retags something.
+  //
+  // Deliberately no foreign key: deleting a site must degrade its sessions to
+  // the default, never cascade away observation history.
+  if (!lsCols.some(c => c.name === 'siteId')) {
+    db.prepare('ALTER TABLE librarySessions ADD COLUMN siteId TEXT').run();
+  }
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_librarySessions_site ON librarySessions(siteId)').run();
+
   // Audit 4 (indexes): `getAllFavorites` filters by userId; the table's
   // primary key is (objectId, userId) which doesn't help. Same shape for
   // `getAllImageFavorites`. Both queries fire on every /library/objects load.
@@ -580,6 +736,24 @@ db.exec(`
   const loCols = db.prepare<[], { name: string }>('PRAGMA table_info(libraryObjects)').all();
   if (!loCols.some(c => c.name === 'primaryTelescopeId')) {
     db.prepare('ALTER TABLE libraryObjects ADD COLUMN primaryTelescopeId TEXT').run();
+  }
+  // On-disk shape of this object's folder: 'flat' (every night's files mixed in
+  // one directory, which is why the importer renames) or 'nested' (one
+  // directory per session). Per object, not global, so the re-nesting migration
+  // can convert one object at a time and a failure can never leave the reader
+  // disagreeing with the disk. Existing rows default to 'flat' — that is what
+  // every library created before this column looked like.
+  const tpArchiveCols = db.prepare<[], { name: string }>('PRAGMA table_info(telescopeProfiles)').all();
+  if (!tpArchiveCols.some(c => c.name === 'archiveAllFiles')) {
+    db.prepare('ALTER TABLE telescopeProfiles ADD COLUMN archiveAllFiles INTEGER NOT NULL DEFAULT 0').run();
+  }
+  const asArchiveCols = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
+  if (!asArchiveCols.some(c => c.name === 'archiveAllFiles')) {
+    db.prepare('ALTER TABLE appSettings ADD COLUMN archiveAllFiles INTEGER NOT NULL DEFAULT 0').run();
+  }
+
+  if (!loCols.some(c => c.name === 'layout')) {
+    db.prepare("ALTER TABLE libraryObjects ADD COLUMN layout TEXT NOT NULL DEFAULT 'flat'").run();
   }
 }
 
@@ -954,6 +1128,64 @@ db.exec(`
   if (!cols.some(c => c.name === 'distanceLy')) {
     db.prepare('ALTER TABLE catalogCache ADD COLUMN distanceLy REAL').run();
   }
+}
+
+/**
+ * Seed the first observing site from the legacy `appSettings` location columns.
+ *
+ * Only acts when `observingSites` is empty, which makes it idempotent across
+ * reboots and means a user who later deletes down to a single different site
+ * never gets their old location resurrected.
+ *
+ * Every pre-existing session keeps `siteId = NULL` and therefore resolves to
+ * this row (see `siteForSession` in observingSites.ts), so upgrading an install
+ * changes nothing observable.
+ *
+ * Exported so tests can drive it directly. It lives here rather than in
+ * observingSites.ts because that module imports `db` — putting the seed there
+ * would make the cycle db → observingSites → db, and the seed has to run before
+ * any module queries the table.
+ *
+ * @returns true when a row was inserted, false when the table already had one.
+ */
+export function seedDefaultObservingSite(): boolean {
+  const count = db.prepare<[], { c: number }>('SELECT COUNT(*) AS c FROM observingSites').get();
+  if ((count?.c ?? 0) > 0) return false;
+
+  const row = db.prepare<[], {
+    latitude: number | null; longitude: number | null; locationName: string;
+    timezone: string; minAlt: number; horizonProfile: string; visibleSkyMap: string;
+  }>(`SELECT latitude, longitude, locationName, timezone, minAlt, horizonProfile, visibleSkyMap
+        FROM appSettings WHERE id = 1`).get();
+  if (!row) return false;
+
+  db.prepare(
+    `INSERT INTO observingSites
+       (id, name, latitude, longitude, timezone, minAlt, horizonProfile,
+        visibleSkyMap, bortleClass, isDefault, sortOrder, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, 0, ?)`,
+  ).run(
+    randomUUID(),
+    // An install with no location configured yet gets a placeholder name for
+    // display. syncDefaultSiteToAppSettings deliberately does not project that
+    // placeholder back into `locationName`, so "no location set" stays
+    // detectable by the UI.
+    row.locationName.trim() || 'My Location',
+    row.latitude,
+    row.longitude,
+    row.timezone,
+    row.minAlt,
+    row.horizonProfile,
+    row.visibleSkyMap,
+    new Date().toISOString(),
+  );
+  return true;
+}
+
+// Runs after the JSON-blob → appSettings migration above, so it copies the
+// final values rather than the pre-migration defaults.
+if (seedDefaultObservingSite()) {
+  console.log('Seeded default observing site from appSettings');
 }
 
 export default db;

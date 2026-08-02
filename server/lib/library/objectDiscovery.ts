@@ -24,6 +24,42 @@ export function isContainerFolder(name: string): boolean {
   return CONTAINER_FOLDERS.has(name.toLowerCase());
 }
 
+/**
+ * Folders that sit alongside the observation folders on a Dwarf volume (and so
+ * in any replicated copy of one) but are not observations of a target.
+ *
+ * Without this, pointing the folder-import wizard at a replicated Dwarf tree
+ * created library objects literally named "CALI_FRAME" and "RESTACKED" — and in
+ * the calibration case imported dark and flat frames as though they were light
+ * frames of an object by that name. `isObjectFolder` accepts any directory that
+ * is not dot-prefixed, `Samples`, or a `_sub` companion, so the exclusion has to
+ * be explicit.
+ *
+ *   CALI_FRAME    Dwarf 3 / Dwarf Mini calibration frames
+ *   DWARF_DARK    Dwarf II dark library
+ *   RESTACKED     MegaStack output, one subfolder per stack version
+ *   Normal_Photos / Panoramas / Burst / Videos
+ *                 daytime and terrestrial capture modes
+ *
+ * These are excluded from *object discovery* only, and the scan reports them so
+ * the user is told rather than left to notice a shorter list. Calibration frames
+ * and restacks are real data that deserve a home; they do not have one yet, and
+ * inventing an object per folder was worse than leaving them out.
+ */
+const NON_OBJECT_FOLDERS = new Set([
+  'cali_frame',
+  'dwarf_dark',
+  'restacked',
+  'normal_photos',
+  'panoramas',
+  'burst',
+  'videos',
+]);
+
+export function isNonObjectFolder(name: string): boolean {
+  return NON_OBJECT_FOLDERS.has(name.toLowerCase());
+}
+
 /** The target a filename names, or null when it encodes none. parseFilename
  *  falls back to the whole filename when nothing matches, which is not a
  *  target; the `_thn` suffix is stripped so a thumbnail groups with the image

@@ -187,7 +187,7 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, timeZone, isDark, onS
   return (
     <div
       className={`rounded-xl border max-w-xl ${
-        isDark ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/80 border-slate-200'
+        isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-50/80 border-slate-200'
       }`}
     >
       {/* Header — shows hovered point when scrubbing, otherwise live "now" */}

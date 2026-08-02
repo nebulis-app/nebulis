@@ -35,11 +35,30 @@ export interface ObservationDetail extends ObservationSummary {
   weather: import('../../types').SessionWeather | null;
   sessionImage: string | null;
   telescopeId: string | null;
+  /** Observing site this session is tagged to. Null = the default site. */
+  siteId: string | null;
+  /** What the telescope recorded about this night, parsed from its own sidecar
+   *  (a Dwarf's shotsInfo.json). Null when no sidecar was imported. */
+  capture: import('../../types').SessionCaptureSummary | null;
+}
+
+export interface ObservationLocation {
+  objectId: string;
+  date: string;
+  objectName: string;
+  catalogId: string;
+  telescopeId: string | null;
+  lat: number;
+  lon: number;
+  /** 'fits' = precise (from the file); 'settings' = the saved observer location. */
+  source: 'fits' | 'settings';
 }
 
 export const getObservations = () => fetchJSON<ObservationSummary[]>('/library/observations');
 export const getObservationDetail = (objectId: string, date: string) =>
   fetchJSON<ObservationDetail>(`/library/observations/${encodeURIComponent(objectId)}/${encodeURIComponent(date)}`);
+export const getObservationLocations = () =>
+  fetchJSON<ObservationLocation[]>('/observations/locations');
 
 // Object info (from public datasource)
 interface ObjectInfoData {

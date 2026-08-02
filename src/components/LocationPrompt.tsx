@@ -52,8 +52,13 @@ export function LocationPrompt({
         const lon = Math.round(pos.coords.longitude * 10000) / 10000;
         setStatus('saving');
         try {
+          // Writes through to the default observing site server-side (see
+          // routes/settings.ts), so both legacy settings readers and the
+          // sites-aware Planner/Forecast pages need invalidating.
           await updateSettings({ latitude: lat, longitude: lon });
           await queryClient.invalidateQueries({ queryKey: ['settings'] });
+          await queryClient.invalidateQueries({ queryKey: ['sites'] });
+          await queryClient.invalidateQueries({ queryKey: ['active-site'] });
           // Always invalidate forecast and planner so both pages update when location changes
           await queryClient.invalidateQueries({ queryKey: ['forecast'] });
           await queryClient.invalidateQueries({ queryKey: ['planner-tonight'] });

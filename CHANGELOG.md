@@ -1,4 +1,38 @@
 # Changelog
+## 1.5.0 (200) - August 2nd, 2026
+### New
+- DWARF telescopes can now import over Wi-Fi via their built-in FTP server.
+- Observations: added a Map view showing where each observation was taken, from FITS GPS and manual site tagging.
+- Moved .fit rendering for mobile clients server-side, for better performance.
+- Processed Images now accepts XISF, FITS, PSD, XCF, and camera RAW alongside JPG/PNG/TIFF. Formats a browser can't preview get a download-only card. Upload limit raised to 2 GB.
+- Observing Sites: define multiple locations, each with its own coordinates, minimum altitude, and sky mask. Switch sites from the Planner and Forecast pages, manage them in Settings, and retag past observations. Available on web, iOS, and Android. (Settings -> Sky -> Observing Sites)
+- Import: added an "Archive everything" option that copies every file on the device as-is, folder structure and all, including sub-frames, rejected frames, logs, and unrecognized types. Files Nebulis can't display are still stored and downloadable (Settings -> Hardware -> Add/Edit Telescope).
+- Library: new imports now give each session its own folder and keep the file names your telescope gave them, instead of sharing one folder per object with names rewritten to avoid collisions. A "Reorganize library" button converts existing objects to the new layout; files are moved, never deleted (Settings -> Storage -> Folder layout).
+
+### Updated
+- Observations: added a List view alongside Calendar and Map, showing every observation in one sortable table of object name, catalog id, and date. Unlike the calendar it is not limited to a single month.
+- Observations: Share now matches whichever view you're on. Calendar still shares a branded month card; List shares the table as it's currently sorted (as an image or plain text); Map shares an image of the map you're looking at, tiles and site markers in the same place, size, and color as on screen.
+- Observation page redesigned around tabs (Images, Subframes, Processed, Details) instead of stacked stat tiles and split panels. Images and Subframes now use the full page width, and capture info, conditions, and location live together under Details.
+- Telescope sync now shows what it left behind and why (import settings, rejected frames, deleted sessions, unreadable Dwarf folders), live during the sync and saved to Sync History.
+- Import no longer creates objects from non-observation folders (CALI_FRAME, DWARF_DARK, RESTACKED, etc.); the review screen shows how many were skipped.
+- Object ZIP downloads now include your uploaded processed images, under a processed/ folder.
+- Image viewer: zoom now works in real image pixels, so the percentage means what it says and a new 1:1 button shows one image pixel per screen pixel. Scroll wheel and trackpad pinch zoom toward the pointer, double-click toggles fit and 1:1, and the image can no longer be dragged off screen.
+- Image viewer: added keyboard shortcuts (F to fit, 1 for actual size, + and - to zoom, Home and End for first and last, D to download) alongside the existing arrow keys and Escape.
+- Image viewer: the header now shows what the frame actually is (object, sub count, exposure, filter, capture time, file size) with the filename underneath, instead of just the filename.
+- Image viewer: images either side of the current one are loaded ahead of time, and the grid thumbnail fills the frame while the full image arrives, so navigating no longer shows an empty pane.
+- Image viewer: the toolbar now wraps to its own row on phones instead of overflowing, and the thumbnail strip's "+N" markers are buttons that jump through long sub-frame lists.
+
+### Fixes
+- Compare and Download All now include every variant of an object (for example a Mosaic captured on a different night). Previously both only looked at the base object, so Compare could show the same observation on both sides and Download All could silently skip dates that only existed under a variant.
+- Image viewer: deleting a processed image left it on screen with a dead thumbnail until you closed the viewer.
+- Image viewer: deleting sub-frames down to the last remaining FITS file closed the viewer instead of showing that file.
+- Image viewer: deleting a file did not refresh object file counts elsewhere in the app.
+- Image viewer: arrow keys moved between images instead of adjusting the FITS stretch slider when it was focused.
+- Image viewer: Escape closed the whole viewer while a delete confirmation was open, instead of dismissing the confirmation.
+- Image viewer: the page behind the viewer scrolled, Tab moved focus into it, and screen readers were not told a dialog had opened.
+- Image viewer: the "use arrow keys" hint sat permanently over the thumbnail strip and was unreadable in light mode. It now appears briefly and goes away.
+- Sharing an image no longer opens a mail draft containing a network address that only works on your own network. It uses the system share sheet where available and copies the image or link otherwise.
+
 ## 1.4.2 (193) - July 18th, 2026
 ### New
 - Import Files: choose "Folder on this computer" to import straight from a folder on the same machine running Nebulis, no browser upload needed.

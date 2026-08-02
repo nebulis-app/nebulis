@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RotateCw, CheckCircle2 } from 'lucide-react';
 import { getSettings, updateSettings } from '../lib/api/settings';
@@ -26,7 +27,13 @@ export function SettingsPage() {
   const [form, setForm] = useState<Partial<SettingsType>>({});
   const [savedForm, setSavedForm] = useState<Partial<SettingsType>>({});
   const [formInitialized, setFormInitialized] = useState(false);
-  const [activeTab, setActiveTab] = useState(SETTINGS_TABS[0].id);
+  const [searchParams] = useSearchParams();
+  // Lets other parts of the app deep-link straight to a tab, e.g. the v1.5
+  // "What's New" popup linking to Settings -> Storage via /settings?tab=storage.
+  // Read once on mount (the route remounts on navigation into /settings from
+  // elsewhere); invalid ids are harmless since resolvedActive falls back to
+  // the first tab.
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || SETTINGS_TABS[0].id);
   const [justSaved, setJustSaved] = useState(false);
 
   const visibleTabs = SETTINGS_TABS.filter(t => !t.adminOnly || isAdmin);
@@ -109,10 +116,18 @@ export function SettingsPage() {
       {/* Centered horizontal tab nav, sticky under topnav */}
       <SettingsTabs activeId={resolvedActive} onNavigate={navigateTo} isDark={isDark} isAdmin={isAdmin} />
 
-      {/* Hero — Library cadence: title + one-line subtitle, left-aligned */}
+      {/* Hero. The eyebrow names the page and the heading names the tab, so the
+          two never contradict each other. Previously the General tab showed a
+          heading of "Settings" while its tab read "General", and every other tab
+          simply repeated the tab label as the largest text on screen. */}
       <header className="max-w-[960px] mx-auto px-1 pt-10 pb-6">
+        <div className={`text-[10.5px] font-display font-bold uppercase tracking-[0.14em] mb-1 ${
+          isDark ? 'text-accent-400' : 'text-accent-700'
+        }`}>
+          Settings
+        </div>
         <h1 className={`font-display text-[32px] font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-          {activeMeta.label === 'General' ? 'Settings' : activeMeta.label}
+          {activeMeta.label}
         </h1>
         <p className={`mt-1.5 text-sm ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
           {subtitleFor(resolvedActive)}
@@ -191,8 +206,8 @@ export function SettingsPage() {
 
 function subtitleFor(id: string): string {
   switch (id) {
-    case 'general':  return 'Appearance, units, time, and other preferences.';
-    case 'account':  return 'Profile, plan, and the people who can access this library.';
+    case 'general':  return 'Appearance, units, and how the library is displayed.';
+    case 'account':  return 'The people who can sign in to this library.';
     case 'hardware': return 'Telescopes, cameras, and connection details.';
     case 'sky':      return 'Observing site, catalogs, and external data sources.';
     case 'storage':  return 'Where library data lives and how it stays in sync.';

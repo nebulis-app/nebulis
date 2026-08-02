@@ -23,12 +23,14 @@ import { downloadRouter } from './routes/download.js';
 import { storageRouter } from './routes/storage.js';
 import { notesRouter } from './routes/notes.js';
 import { telescopesRouter } from './routes/telescopes.js';
+import { sitesRouter } from './routes/sites.js';
 import { forecastRouter } from './routes/forecast.js';
 import { authRouter } from './routes/auth.js';
 import { observationsRouter } from './routes/observations.js';
 import { satelliteRouter } from './routes/satellite.js';
 import { libraryRouter } from './routes/library.js';
 import { repairSpaceDirectories, repairAliasDirectories } from './lib/library/objects.js';
+import { backfillLibraryFiles, rebuildFromManifests } from './lib/library/libraryFiles.js';
 import { plannerRouter } from './routes/planner.js';
 import { plannedSessionsRouter } from './routes/plannedSessions.js';
 import { wishlistRouter } from './routes/wishlist.js';
@@ -322,6 +324,7 @@ v1.use('/download', downloadRouter);
 v1.use('/storage', storageRouter);
 v1.use('/notes', notesRouter);
 v1.use('/telescopes', telescopesRouter);
+v1.use('/sites', sitesRouter);
 v1.use('/forecast', forecastRouter);
 v1.use('/observations', observationsRouter);
 v1.use('/satellite', satelliteRouter);
@@ -359,6 +362,7 @@ legacy.use('/settings', settingsRouter);
 legacy.use('/notes', notesRouter);
 legacy.use('/storage', storageRouter);
 legacy.use('/telescopes', telescopesRouter);
+legacy.use('/sites', sitesRouter);
 legacy.use('/download', downloadRouter);
 legacy.use('/forecast', forecastRouter);
 legacy.use('/observations', observationsRouter);
@@ -547,6 +551,20 @@ function onListening(): void {
 
   repairSpaceDirectories();
   repairAliasDirectories();
+  // Populate libraryFiles for anything imported before the table existed. Both
+  // calls are idempotent and skip objects that already have rows, so this is a
+  // no-op on every boot after the first. Manifests are tried first: they carry
+  // originalName and any pinned dates, which a disk walk cannot recover.
+  try {
+    const restored = rebuildFromManifests();
+    if (restored > 0) console.log(`[library] Restored ${restored} file record(s) from manifests`);
+    const { objects, files } = backfillLibraryFiles();
+    if (files > 0) console.log(`[library] Recorded ${files} file(s) across ${objects} object(s)`);
+  } catch (err) {
+    // A failed backfill leaves the read paths on their filename fallback,
+    // which is exactly the pre-table behavior. Never fatal at boot.
+    console.warn('[library] libraryFiles backfill failed:', err instanceof Error ? err.message : err);
+  }
   startPackUpdateChecker(prewarmThumbnails);
   startAppUpdateChecker();
   startPlannerNightlyScheduler();

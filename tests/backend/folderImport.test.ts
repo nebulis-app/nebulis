@@ -25,6 +25,24 @@ import { LIBRARY_DIR } from '../../server/lib/paths';
 import { createProfile, updateSettingsData } from '../../server/lib/telescopes';
 import { parseFilename, sessionNightFor } from '../../server/lib/telescopeFiles';
 import { stmts } from '../../server/lib/library/objects';
+import { getLibraryFilesForObject, sessionDateForRow } from '../../server/lib/library/libraryFiles';
+
+/**
+ * Every file inside an object folder, at any depth, as basenames.
+ *
+ * Objects created by the wizard are now nested (one directory per session), so
+ * a flat readdir would report an object as empty. These assertions are about
+ * *which files landed*, not where in the object folder they sit.
+ */
+function objectFileNames(objDir: string): string[] {
+  const walk = (dir: string): string[] => {
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+    return entries.flatMap(e =>
+      e.isDirectory() ? walk(path.join(dir, e.name)) : [e.name]);
+  };
+  return walk(objDir).filter(n => !n.startsWith('.'));
+}
 
 /** Build a minimal FITS header buffer with the given cards. */
 function fitsBuffer(cards: Record<string, string>): Buffer {
@@ -83,6 +101,74 @@ describe('scan + commit', () => {
   }
 
   const settings = { importFits: true, importJpg: true };
+
+  /** A replicated Dwarf tree: one real session folder plus the non-observation
+   *  folders that sit next to it on the volume. */
+  function makeDwarfVolumeTree(): string {
+    const root = tmpDir('src-dwarf-vol-');
+    const session = 'DWARF3_RAW_M42_EXP_30_GAIN_80_2024-10-15_21-05-30-345';
+    fs.mkdirSync(path.join(root, session));
+    // A rolling-stack preview (imported by default) plus a numbered sub-frame
+    // (gated behind importSubFrames). Both undated in their own names, so the
+    // session date comes from the folder name.
+    fs.writeFileSync(path.join(root, session, 'stacked.jpg'), 'jpg');
+    fs.writeFileSync(
+      path.join(root, session, '001-DWARF3_M42_2024-10-15_21-05-30-345.fits'),
+      fitsBuffer({ OBJECT: 'M42' }),
+    );
+    // Calibration frames, restacks, and daytime captures.
+    for (const dir of ['CALI_FRAME', 'DWARF_DARK', 'RESTACKED', 'Normal_Photos', 'Panoramas']) {
+      fs.mkdirSync(path.join(root, dir), { recursive: true });
+      fs.writeFileSync(path.join(root, dir, 'dark_001.fits'), fitsBuffer({ 'DATE-OBS': '2024-10-15T21:00:00' }));
+    }
+    return root;
+  }
+
+  it('never turns CALI_FRAME/DWARF_DARK/RESTACKED into library objects', () => {
+    // Regression: isObjectFolder accepts any non-dot, non-_sub directory, so a
+    // replicated Dwarf tree produced objects literally named "CALI_FRAME" and
+    // imported darks as if they were light frames of an object by that name.
+    const root = makeDwarfVolumeTree();
+    const result = scanImportFolder(root, settings);
+
+    expect(result.objects.map(o => o.folderName)).toEqual(['M42']);
+    for (const name of ['CALI_FRAME', 'DWARF_DARK', 'RESTACKED', 'Normal_Photos', 'Panoramas']) {
+      expect(result.objects.map(o => o.folderName)).not.toContain(name);
+    }
+  });
+
+  it('reports excluded folders so the user is told rather than left guessing', () => {
+    const root = makeDwarfVolumeTree();
+    const result = scanImportFolder(root, settings);
+
+    const skip = result.skipped.find(s => s.reason === 'non-observation-folder');
+    expect(skip).toBeDefined();
+    // Counted per folder, not per file.
+    expect(skip!.count).toBe(5);
+    expect(skip!.label).toMatch(/calibration/i);
+  });
+
+  it('commit does not import from an excluded folder even if the plan names it', () => {
+    // The plan is user-editable and arrives over the wire, so commit must not
+    // trust it to have excluded these. collectObjectSources drops them for both
+    // phases, which is what keeps scan and commit in agreement.
+    const root = makeDwarfVolumeTree();
+    return commitFolderImport({
+      rootPath: root,
+      importFits: true,
+      objects: [
+        {
+          folderName: 'CALI_FRAME',
+          targetObjectId: 'CALI_FRAME',
+          targetFolderName: 'CALI_FRAME',
+          sessionMap: { '2024-10-15': '2024-10-15' },
+        },
+      ],
+    }).then(() => {
+      expect(fs.existsSync(path.join(LIBRARY_DIR, 'CALI_FRAME'))).toBe(false);
+      expect(getLocalSessions('CALI_FRAME')).toEqual([]);
+    });
+  });
 
   it('scans into objects and derived sessions without copying anything', () => {
     const root = makeSourceTree();
@@ -259,8 +345,15 @@ describe('scan + commit', () => {
     const off = scanImportFolder(root, { ...settings, importSubFrames: false });
     expect(off.totals.files).toBe(1);
     expect(off.skipped).toEqual([
-      { reason: 'sub-frames-disabled', label: expect.stringContaining('Include subframes'), count: 4 },
+      {
+        reason: 'sub-frames-disabled',
+        label: expect.stringContaining('Include subframes'),
+        count: 4,
+        // Sized, so the review screen can say how much turning it on would add.
+        bytes: expect.any(Number),
+      },
     ]);
+    expect(off.skipped[0].bytes).toBeGreaterThan(0);
 
     // With sub-frames on there is nothing left to explain.
     const on = scanImportFolder(root, { ...settings, importSubFrames: true });
@@ -360,7 +453,7 @@ describe('scan + commit', () => {
     });
 
     const m42Dir = path.join(LIBRARY_DIR, 'M42');
-    const m42Files = fs.readdirSync(m42Dir);
+    const m42Files = objectFileNames(m42Dir);
     // JPG keeps its original name — no timestamp rename for .jpg files.
     expect(m42Files).toContain('Stacked_10_M42_30.0s_IRCUT_20240115-220000.jpg');
     // light_001.fits is not imported because importFits defaults to false in a
@@ -415,20 +508,25 @@ describe('scan + commit', () => {
     });
 
     const m42Dir = path.join(LIBRARY_DIR, 'M42');
-    const m42Files = fs.readdirSync(m42Dir);
+    const m42Files = objectFileNames(m42Dir);
     expect(m42Files).toContain('Stacked_10_M42_30.0s_IRCUT_20240115-220000.jpg');
-    // The renamed FITS keeps its TRUE capture date+time (2024-01-16 01:00), not
-    // the assigned session date — reading it back re-derives 2024-01-15 via the
-    // same rollover rule, so a second scan/reconcile pass can't drift it.
-    expect(m42Files).toContain('light_001_20240116-010000.fits');
+    // The FITS keeps its own name. It used to be rewritten to
+    // `light_001_20240116-010000.fits` so that re-parsing it would re-derive
+    // the right night; the libraryFiles row carries the capture instant now, so
+    // the name no longer has to encode anything.
+    expect(m42Files).toContain('light_001.fits');
 
     const sessions = getLocalSessions('M42');
     expect(sessions.map(s => s.date)).toEqual(['2024-01-15']);
     expect(sessions[0].fileCount).toBe(2);
 
-    // Re-deriving from the on-disk filename must land on the same night —
-    // this is what protects against the double-rollover bug.
-    expect(sessionNightFor(parseFilename('light_001_20240116-010000.fits'))).toBe('2024-01-15');
+    // The invariant the old rename existed to protect still holds: a 01:00
+    // capture lands on the previous night, and a re-read cannot drift it. It is
+    // now enforced by the stored capture instant rather than by the filename.
+    const row = getLibraryFilesForObject('M42').find(r => r.fileName === 'light_001.fits')!;
+    expect(row.captureDate).toBe('2024-01-16');
+    expect(sessionDateForRow(row)).toBe('2024-01-15');
+    expect(sessionDateForRow(row)).toBe(sessionDateForRow(row)); // idempotent
   });
 
   it('reconciles a stale pre-fix librarySessions row left over from a split midnight session', async () => {
@@ -498,13 +596,20 @@ describe('scan + commit', () => {
         }],
       });
 
-      const m42Files = fs.readdirSync(path.join(LIBRARY_DIR, 'M42TOGGLETEST'));
+      const m42Files = objectFileNames(path.join(LIBRARY_DIR, 'M42TOGGLETEST'));
       expect(m42Files).toContain('Stacked_10_M42_30.0s_IRCUT_20240115-220000.jpg');
-      // Renamed FITS keeps its literal raw date, unclamped/unrolled.
-      expect(m42Files).toContain('light_001_20240116-010000.fits');
+      // Unrenamed, as everywhere else now.
+      expect(m42Files).toContain('light_001.fits');
 
       const sessions = getLocalSessions('M42TOGGLETEST').map(s => s.date).sort();
       expect(sessions).toEqual(['2024-01-15', '2024-01-16']);
+      // The point of this test: with grouping off the 01:00 capture stays on
+      // its own raw calendar date instead of rolling back. That now comes from
+      // deriving the night off the stored instant, which is exactly why the
+      // instant is stored raw rather than pre-rolled.
+      const row = getLibraryFilesForObject('M42TOGGLETEST')
+        .find(r => r.fileName === 'light_001.fits')!;
+      expect(sessionDateForRow(row)).toBe('2024-01-16');
     } finally {
       updateSettingsData({ groupObservingNights: true });
     }
@@ -555,7 +660,7 @@ describe('scan + commit', () => {
       ],
     });
 
-    const files = fs.readdirSync(path.join(LIBRARY_DIR, 'NGC1647'));
+    const files = objectFileNames(path.join(LIBRARY_DIR, 'NGC1647'));
     expect(files).toContain(rawName);
 
     const [session] = getLocalSessions('NGC1647');

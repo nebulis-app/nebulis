@@ -10,7 +10,8 @@ import path from 'path';
 import { getLibraryDir, isLibraryAvailable, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../libraryPath.js';
 import { isLibraryMigrating } from '../libraryMaintenance.js';
 import { DATA_DIR } from '../paths.js';
-import { isRealFile } from '../telescopeFiles.js';
+import { isRealFile, isSidecarFile } from '../telescopeFiles.js';
+import { MANIFEST_NAME } from './libraryFiles.js';
 import {
   getAutoImportProfiles,
   type TelescopeProfile,
@@ -56,11 +57,28 @@ export async function purgeJunkFiles(): Promise<{ deleted: number; errors: numbe
     try {
       const stat = await withTimeout(fs.promises.stat(objPath), LIBRARY_IO_TIMEOUT_MS);
       if (!stat.isDirectory()) continue;
-      const files = await withTimeout(fs.promises.readdir(objPath), LIBRARY_IO_TIMEOUT_MS);
-      for (const fname of files) {
-        if (!isRealFile(fname)) {
+      const entries = await withTimeout(
+        fs.promises.readdir(objPath, { withFileTypes: true }), LIBRARY_IO_TIMEOUT_MS,
+      );
+      for (const ent of entries) {
+        // Directories are never junk. A nested object's session folders (and
+        // `processed/`, `.thumbs/`) have no file extension, so isRealFile says
+        // false for them and this loop would try to unlink a directory on every
+        // scheduled run — failing every time and inflating the error count.
+        if (!ent.isFile()) continue;
+        // The per-file manifest is dot-prefixed, which means isRealFile rejects
+        // it exactly like a .DS_Store. Deleting it would silently destroy the
+        // rebuild-from-disk guarantee (see libraryFiles.ts) on every pass, so it
+        // is excluded by name rather than by the dot rule — real junk like
+        // `._foo` and `.DS_Store` must still be purged.
+        if (ent.name === MANIFEST_NAME) continue;
+        // Sidecars (shotsInfo.json and friends) are imported on purpose but are
+        // deliberately outside isRealFile's image-only allowlist, so this purge
+        // would delete every one of them on the next scheduled pass.
+        if (isSidecarFile(ent.name)) continue;
+        if (!isRealFile(ent.name)) {
           try {
-            await withTimeout(fs.promises.unlink(path.join(objPath, fname)), LIBRARY_IO_TIMEOUT_MS);
+            await withTimeout(fs.promises.unlink(path.join(objPath, ent.name)), LIBRARY_IO_TIMEOUT_MS);
             deleted++;
           } catch {
             errors++;

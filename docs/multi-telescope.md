@@ -21,10 +21,12 @@ A user can configure N telescopes (S50 + S30 + Dwarf 3 + …). Every imported se
 | Column | Notes |
 |---|---|
 | `id` | UUID primary key |
-| `name`, `model`, `hostname`, `shareName`, `username`, `password` | SMB connection |
+| `name`, `model`, `hostname`, `shareName`, `username`, `password` | Connection details. Mirrors the active transport row; `telescopeTransports` is live truth. |
 | `isActive` | Single row at a time has 1 |
 | `createdAt` | ISO timestamp |
-| **`kind`** | `'seestar-s50' \| 'seestar-s30' \| 'dwarf-3' \| 'dwarf-2' \| 'other'`. Drives walker dispatch and default color/share. |
+| **`kind`** | `'seestar-s50' \| 'seestar-s30' \| 'dwarf-3' \| 'dwarf-2' \| 'dwarf-mini' \| 'other'`. Drives walker dispatch and default color/share. |
+| **`connectionType`** | `'smb' \| 'local' \| 'ftp'`. Defaults to `'ftp'` for Dwarf kinds (they serve no SMB share), `'smb'` otherwise. |
+| **`localPath`** | Absolute filesystem path when `connectionType === 'local'`. Empty for SMB and FTP. |
 | **`color`** | Hex (e.g. `#3b82f6`). Drives badge tint. Default per-kind palette in [server/lib/db.ts](../server/lib/db.ts) and [src/lib/telescopePresets.ts](../src/lib/telescopePresets.ts); keep them in sync. |
 | **`autoImportEnabled`** | INTEGER (0/1). When 0, the auto-import scheduler skips this scope; manual imports still work. |
 
@@ -75,32 +77,66 @@ After the first boot post-upgrade, all subsequent boots find nothing to do and s
 
 ---
 
-## 3. SMB layer
+## 3. Transport layer
 
-`smbListDir`, `smbGetFile`, `smbDelete` (and the cached wrappers in [smbCache.ts](../server/lib/smbCache.ts)) all accept an optional trailing `profile` parameter. When provided, the call uses that profile's credentials; when omitted, the call falls back to `getActiveProfile()` (legacy single-telescope behavior, still used by status probes, single-file fetches, etc.).
+`smbListDir`, `smbGetFile`, `smbCopyFileTo`, `smbPutFile`, `smbDelete` (and the cached wrappers in [smbCache.ts](../server/lib/smbCache.ts)) all accept an optional trailing `profile` parameter. When provided, the call uses that profile's connection; when omitted, the call falls back to the legacy single-telescope behavior, still used by status probes, single-file fetches, etc.
 
 ```ts
-// Active profile (legacy)
+// Legacy fallback
 await smbListDir('MyWorks');
 
 // Specific profile (multi-telescope import worker)
 await smbListDir('MyWorks', profile);
 ```
 
-This is the foundational change that makes everything else possible. Without it, the SMB layer was a singleton tied to whichever profile happened to be active.
+This is the foundational change that makes everything else possible. Without it, the layer was a singleton tied to whichever profile happened to be active.
+
+[smb.ts](../server/lib/smb.ts) is the dispatcher; everything behind it implements the same five-function surface over `SmbEntry`, so adding a transport never touches a caller. It dispatches on `profile.connectionType`:
+
+| Kind | Module | Used by |
+|---|---|---|
+| `smb` | [smb.win.ts](../server/lib/smb.win.ts) / [smb.mac.ts](../server/lib/smb.mac.ts) / [smb.posix.ts](../server/lib/smb.posix.ts) | SeeStar, generic NAS |
+| `local` | [smb.local.ts](../server/lib/smb.local.ts) | Any device whose storage is USB-mounted |
+| `ftp` | [smb.ftp.ts](../server/lib/smb.ftp.ts) | DWARFLAB (Dwarf II / 3 / Mini) |
+
+### Transports per profile
+
+One profile owns N rows in `telescopeTransports`, so a single physical telescope can be reachable several ways at once (a Dwarf over both FTP and USB, a Seestar over both SMB and USB). `selectActiveTransport(profileId)` picks one per request:
+
+1. any `local` transport whose `localPath` currently stats to a directory (priority 50)
+2. otherwise any `ftp` transport with a hostname (priority 75)
+3. otherwise any `smb` transport with a hostname (priority 100)
+4. otherwise `null` — the caller skips this profile for this tick
+
+Tiebreak within a kind is priority ascending, then `lastSeenAt` descending. Results are cached 30s per profile and invalidated on any transport write. `TRANSPORT_KINDS` in [telescopeTransports.ts](../server/lib/telescopeTransports.ts) is the single source of truth for the union; routes' `z.enum`, the OpenAPI schema, and `TelescopeProfile.connectionType` all derive from it.
+
+The same physical device reached two ways collapses into one profile via `.nebulis.dat`, a hidden identity file at the storage root ([deviceIdentity.ts](../server/lib/deviceIdentity.ts)).
+
+### FTP (Dwarf)
+
+A Dwarf exposes **no SMB share** — anonymous FTP is its only network interface, which is why `ftp` is the default for those kinds. Port 21, passive, `Anonymous` with an empty password. The host is `192.168.88.1` when the telescope runs its own access point, or a DHCP address in station mode; the address field also accepts a `host:port` suffix.
+
+The awkward part is that **the storage root differs per model**: Dwarf 3 serves `Astronomy` at the FTP root, Dwarf II serves `/DWARF_II/Astronomy`, Dwarf Mini serves `/DWARF_mini/Astronomy`. `resolveRemoteRoot()` probes the known prefixes for a directory named `Astronomy` and caches the winner, so walkers stay model-agnostic and an unrecognised layout degrades to the plain FTP root instead of erroring.
+
+Connection handling has two constraints worth knowing before editing that file: a single FTP control socket cannot interleave commands (so connections are pooled one-per-target and operations serialised through a per-target queue), and FTP has no ranged read (so a capped `maxBytes` read aborts by destroying the data socket and then discards the control connection). Full contract in [CLAUDE.md](../CLAUDE.md#ftp-transport-dwarflab).
+
+`smbCopyFileTo` streams straight to disk on `local` and `ftp`. Callers gate on `supportsStreamedCopy(profile)` rather than testing `connectionType` themselves.
 
 ---
 
 ## 4. Walkers
 
-The `server/lib/walkers/` directory abstracts share-relative folder layout per telescope kind.
+The `server/lib/walkers/` directory abstracts folder layout per telescope kind. Walkers are **transport-agnostic**: they emit device-relative paths and the transport resolves them.
 
 | File | Role |
 |---|---|
-| [seestarWalker.ts](../server/lib/walkers/seestarWalker.ts) | Discovers `<base>/<Object>/...` and `<base>/<Object>_sub/...` folders. The active implementation for every kind today. |
-| [index.ts](../server/lib/walkers/index.ts) | `getWalkerConfig(kind)` returns `{ basePath }`. SeeStar uses `'MyWorks'`; Dwarf and `other` use `''` (share root). |
+| [telescopeWalker.ts](../server/lib/walkers/telescopeWalker.ts) | SeeStar. Discovers `<base>/<Object>/...` and `<base>/<Object>_sub/...` folders. |
+| [dwarfWalker.ts](../server/lib/walkers/dwarfWalker.ts) | DWARFLAB. Session folders (`DWARF3_RAW_*` / `DWARF_RAW_*`) under `Astronomy/`, one folder per session rather than per object. |
+| [index.ts](../server/lib/walkers/index.ts) | `getWalkerConfig(kind)` returns `{ basePath }`. SeeStar uses `'MyWorks'`, Dwarf uses `'Astronomy'`, `other` uses `''` (share root). `isDwarfKind(kind)` distinguishes the two layout families. |
 
-**Why no Dwarf or generic walker file yet:** the Dwarf SMB layout is assumed to match SeeStar's flat object-folder convention until verified against a real Dwarf 3. The "generic" layout documented in the Add Telescope modal (session subfolders + `lights/subframes/`) is a *different* tree structure that nobody has actually tested an importer against. Writing that walker today would be speculative. When real divergence shows up, drop a new file in `walkers/` and dispatch on `kind` in `index.ts`.
+`DWARF_BASE_PATH` is `'Astronomy'` for every Dwarf model no matter how the device is reached. The knowledge that a Dwarf II keeps that folder under `/DWARF_II` lives in the FTP transport, not the walker — a USB mount exposes it at the volume root regardless of model.
+
+**Still speculative:** the "generic" layout documented in the Add Telescope modal for the `other` kind (session subfolders + `lights/subframes/`) is a different tree that no importer has been tested against. `other` currently runs the SeeStar walker at the share root.
 
 ---
 
@@ -217,11 +253,13 @@ Per-telescope `color` is the visual primary key. The frontend palette and `abbre
 
 Single component handles both create and edit modes. Pass `existing?: TelescopeProfile` to switch.
 
-- **Kind dropdown** → preset auto-fills shareName/username/color (only on create; edit preserves user values).
+- **Kind dropdown** → preset auto-fills shareName/username/color, the default hostname, and the transport mode (only on create; edit preserves user values). Picking a Dwarf kind selects FTP and pre-fills `192.168.88.1`.
+- **Connection toggle** → Wi-Fi vs USB, shown for Seestar and Dwarf. The Wi-Fi option is labelled "Wi-Fi (SMB)" for Seestar and "Wi-Fi (FTP)" for Dwarf, and sets `connectionType` accordingly. `other` is SMB-only and skips the toggle.
+- **Advanced settings** → share name is hidden in FTP mode (FTP has no shares and the storage root is auto-detected); username/password remain, defaulting to anonymous.
 - **Color picker** → 8 hand-picked swatches from the palette.
 - **Auto-import toggle** → maps to `autoImportEnabled`.
 - **Password field** → in edit mode, blank means "keep existing" (server treats the masked sentinel as no-change too).
-- **Test Connection** → calls `POST /api/telescopes/test-connection` with the *current form values* (hostname, share, username, password, kind). Works for both Add (before the profile exists) and Edit (without saving unsaved changes). Returns `{ connected, objectCount?, error? }` with a green/red banner under the button.
+- **Test Connection** → calls `POST /api/telescopes/test-connection` with the *current form values* (hostname, share, username, password, kind, connectionType). Works for both Add (before the profile exists) and Edit (without saving unsaved changes). Returns `{ connected, objectCount?, error?, remoteRoot? }` with a green/red banner under the button. For FTP the banner also reports the detected storage root, which is the fastest way to spot a wrong model selection.
 
 The Settings → Connection list also exposes a per-row auto-import toggle that calls `updateTelescope(id, { autoImportEnabled })` directly without opening the modal, for the common "I'm not using the S30 this winter, stop polling it" case.
 
@@ -230,7 +268,8 @@ The Settings → Connection list also exposes a per-row auto-import toggle that 
 ## 9. What's still open
 
 1. **Two scopes, same target, same night.** Collides on the `(objectId, date)` PK. Needs a PK rebuild to include `telescopeId`. See [multi-telescope-support.md §3](multi-telescope-support.md#3-schema-changes).
-2. **Real Dwarf 3 share.** Walker assumes SeeStar layout. Verify against hardware before claiming Dwarf is "supported".
-3. **Generic walker.** The "Other" kind currently uses the SeeStar walker, which doesn't match the layout documented in the Add Telescope modal (session subfolders + `lights/subframes/`). Either build the walker or remove the doc.
-4. **Per-telescope status panel.** Today `importStatus` is global, so the UI shows the most recently importing telescope. A multi-scope user wouldn't know if scope B failed mid-fan-out unless they checked logs. Worth revisiting when there are real users with multiple scopes.
-5. **Reassign-on-add suggestion.** When the user adds a new telescope and the backfill stamps every existing session with the previously-active id, there's no UI prompt to say "hey, want to reassign these?" The user has to do it manually per session. Possibly too clever; revisit if it comes up.
+2. **Real Dwarf hardware.** The Dwarf walker and the FTP transport are both written from vendor docs and third-party drivers, and the FTP transport is covered by tests against an in-process FTP server ([ftpTransport.test.ts](../tests/backend/ftpTransport.test.ts)). Neither has been run against a physical Dwarf. The storage-root probe and the `ls -l` listing format are the two things most likely to need adjusting once someone tries it.
+3. **Transport list editor.** Adding a second transport to an existing profile only happens implicitly, via the merge prompt when `.nebulis.dat` identifies a device already owned by another profile. There is no "add another way to reach this telescope" button, no editor, and no way to pin a transport manually (`selectActiveTransport` is fully automatic). The API routes for it already exist.
+4. **Generic walker.** The "Other" kind currently uses the SeeStar walker, which doesn't match the layout documented in the Add Telescope modal (session subfolders + `lights/subframes/`). Either build the walker or remove the doc.
+5. **Per-telescope status panel.** Today `importStatus` is global, so the UI shows the most recently importing telescope. A multi-scope user wouldn't know if scope B failed mid-fan-out unless they checked logs. Worth revisiting when there are real users with multiple scopes.
+6. **Reassign-on-add suggestion.** When the user adds a new telescope and the backfill stamps every existing session with the previously-active id, there's no UI prompt to say "hey, want to reassign these?" The user has to do it manually per session. Possibly too clever; revisit if it comes up.

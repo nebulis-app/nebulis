@@ -33,11 +33,12 @@ export interface TelescopeProfile {
   autoImportEnabled: boolean;
   autoImportInterval: number;
   archivedAt: number | null;
-  /** SMB = LAN share (SeeStar). Local = direct filesystem path (Dwarf USB).
+  /** SMB = LAN share (SeeStar). Local = direct filesystem path (USB mount).
+   *  FTP = anonymous FTP over Wi-Fi (Dwarf's only network interface).
    *  Defaults to 'smb' so existing rows keep working without migration. */
   connectionType: TransportKind;
   /** Absolute filesystem path to the device's storage root when
-   *  connectionType === 'local'. Empty string for SMB profiles. */
+   *  connectionType === 'local'. Empty string for SMB and FTP profiles. */
   localPath: string;
   /** UUID identifying the physical device, read from `.nebulis.dat` on the
    *  device's storage root. Null until the first successful connection
@@ -53,12 +54,18 @@ export interface TelescopeProfile {
   importThumbnails: boolean;
   importSubFrames: boolean;
   importVideos: boolean;
+  /** Keep files Nebulis has no use for, so this telescope's library folder can
+   *  be a complete copy of the device. See classifyImportFile. */
+  archiveAllFiles: boolean;
   /** When true (default), the import pipeline reads/writes `.nebulis.dat`
    *  on this device's storage root so the same physical telescope reached
    *  over SMB and USB resolves to one logical device. Disable for firmware
    *  that rejects unknown files at the share root, or when the user simply
    *  prefers we not write to the device. */
   trackDeviceIdentity: boolean;
+  /** telescopeTransports.id to force, overriding selectActiveTransport's
+   *  local > ftp > smb heuristic. Null (default) means "Auto". */
+  pinnedTransportId: string | null;
 }
 
 interface FullSettings {
@@ -91,7 +98,9 @@ interface TelescopeProfileRow {
   importThumbnails: number;
   importSubFrames: number;
   importVideos: number;
+  archiveAllFiles: number;
   trackDeviceIdentity: number;
+  pinnedTransportId: string | null;
 }
 
 const COLOR_BY_KIND: Record<TelescopeKind, string> = {
@@ -124,11 +133,11 @@ const profileStmts = {
   getAll: db.prepare<[], TelescopeProfileRow>('SELECT * FROM telescopeProfiles ORDER BY createdAt ASC'),
   getById: db.prepare<[string], TelescopeProfileRow>('SELECT * FROM telescopeProfiles WHERE id = ?'),
   insert: db.prepare(
-    `INSERT INTO telescopeProfiles (id, name, model, hostname, shareName, username, password, isActive, createdAt, kind, color, autoImportEnabled, autoImportInterval, connectionType, localPath, importJpg, importFits, importThumbnails, importSubFrames, importVideos, trackDeviceIdentity)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO telescopeProfiles (id, name, model, hostname, shareName, username, password, isActive, createdAt, kind, color, autoImportEnabled, autoImportInterval, connectionType, localPath, importJpg, importFits, importThumbnails, importSubFrames, importVideos, archiveAllFiles, trackDeviceIdentity)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ),
   update: db.prepare(
-    `UPDATE telescopeProfiles SET name = ?, model = ?, hostname = ?, shareName = ?, username = ?, password = ?, kind = ?, color = ?, autoImportEnabled = ?, autoImportInterval = ?, connectionType = ?, localPath = ?, importJpg = ?, importFits = ?, importThumbnails = ?, importSubFrames = ?, importVideos = ?, trackDeviceIdentity = ? WHERE id = ?`
+    `UPDATE telescopeProfiles SET name = ?, model = ?, hostname = ?, shareName = ?, username = ?, password = ?, kind = ?, color = ?, autoImportEnabled = ?, autoImportInterval = ?, connectionType = ?, localPath = ?, importJpg = ?, importFits = ?, importThumbnails = ?, importSubFrames = ?, importVideos = ?, archiveAllFiles = ?, trackDeviceIdentity = ?, pinnedTransportId = ? WHERE id = ?`
   ),
   delete: db.prepare('DELETE FROM telescopeProfiles WHERE id = ?'),
   count: db.prepare<[], { c: number }>('SELECT COUNT(*) as c FROM telescopeProfiles'),
@@ -158,7 +167,7 @@ const appSettingsStmts = {
     syncSubFrames = ?, syncVideos = ?,
     autoImport = ?, autoImportInterval = ?,
     importJpg = ?, importFits = ?, importThumbnails = ?,
-    importSubFrames = ?, importVideos = ?,
+    importSubFrames = ?, importVideos = ?, archiveAllFiles = ?,
     onboardingCompleted = ?,
     prefetchCatalogAssets = ?,
     planetariumShowInfo = ?,
@@ -226,11 +235,13 @@ function rowToProfile(row: TelescopeProfileRow): TelescopeProfile {
     importThumbnails: Boolean(row.importThumbnails),
     importSubFrames: Boolean(row.importSubFrames),
     importVideos: Boolean(row.importVideos),
+    archiveAllFiles: Boolean(row.archiveAllFiles),
     // Legacy rows pre-migration have NULL here; default to true so existing
     // installs keep the tracking they had until the user opts out.
     trackDeviceIdentity: row.trackDeviceIdentity === null || row.trackDeviceIdentity === undefined
       ? true
       : Boolean(row.trackDeviceIdentity),
+    pinnedTransportId: row.pinnedTransportId ?? null,
   };
 }
 
@@ -255,6 +266,7 @@ interface AppSettingsRow {
   importThumbnails: number;
   importSubFrames: number;
   importVideos: number;
+  archiveAllFiles: number;
   onboardingCompleted: number;
   prefetchCatalogAssets: number;
   planetariumShowInfo: number;
@@ -313,6 +325,7 @@ function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
     importThumbnails: Boolean(row.importThumbnails),
     importSubFrames: Boolean(row.importSubFrames),
     importVideos: Boolean(row.importVideos),
+    archiveAllFiles: Boolean(row.archiveAllFiles),
     onboardingCompleted: Boolean(row.onboardingCompleted),
     prefetchCatalogAssets: Boolean(row.prefetchCatalogAssets),
     planetariumShowInfo: Boolean(row.planetariumShowInfo),
@@ -360,7 +373,7 @@ function saveSettingsRow(data: Record<string, unknown>): void {
     boolToInt(data.autoImport, 0), num(data.autoImportInterval, 60),
     boolToInt(data.importJpg, 1), boolToInt(data.importFits, 1),
     boolToInt(data.importThumbnails, 0), boolToInt(data.importSubFrames, 0),
-    boolToInt(data.importVideos, 0),
+    boolToInt(data.importVideos, 0), boolToInt(data.archiveAllFiles, 0),
     boolToInt(data.onboardingCompleted, 0),
     boolToInt(data.prefetchCatalogAssets, 0),
     boolToInt(data.planetariumShowInfo, 1),
@@ -398,9 +411,10 @@ export function getProfileById(id: string): TelescopeProfile | null {
 }
 
 /** A profile is "addressable" if it has at least one transport with either a
- *  hostname (SMB) or a localPath (USB) configured. Falls back to the legacy
- *  mirror columns when a profile has no transport rows yet (only possible
- *  during the transition; createProfile seeds a row on every fresh insert). */
+ *  hostname (SMB / FTP) or a localPath (USB) configured. Falls back to the
+ *  legacy mirror columns when a profile has no transport rows yet (only
+ *  possible during the transition; createProfile seeds a row on every fresh
+ *  insert). */
 function isAddressable(p: TelescopeProfile): boolean {
   const transports = getTransportsForProfile(p.id);
   if (transports.length > 0) {
@@ -451,17 +465,22 @@ export function createProfile(data: Partial<TelescopeProfile>): TelescopeProfile
   const count = profileStmts.count.get()?.c ?? 0;
   const model = data.model || 'SeeStar S50';
   const kind = data.kind ? asKind(data.kind) : kindFromModel(model);
-  // Default Dwarf kinds to local-fs connection (Dwarf devices expose USB mass
-  // storage, not SMB); everything else stays on SMB.
-  const defaultConnectionType: TransportKind =
-    kind === 'dwarf-2' || kind === 'dwarf-3' || kind === 'dwarf-mini' ? 'local' : 'smb';
+  // Default Dwarf kinds to FTP: it is the only network interface those devices
+  // expose (no SMB share at all) and works without a cable. USB mass storage
+  // is still available as a second transport the user can add. Everything else
+  // stays on SMB.
+  const isDwarfKind = kind === 'dwarf-2' || kind === 'dwarf-3' || kind === 'dwarf-mini';
+  const defaultConnectionType: TransportKind = isDwarfKind ? 'ftp' : 'smb';
   const profile: TelescopeProfile = {
     id: randomUUID(),
     name: data.name || `SeeStar ${count + 1}`,
     model,
     hostname: data.hostname || '',
     shareName: data.shareName || 'EMMC Images',
-    username: data.username || 'guest',
+    // 'guest' is the SMB default; Dwarf profiles default to FTP, which must
+    // stay empty so toTarget() in smb.ftp.ts falls back to a true anonymous
+    // login instead of sending the literal string 'guest' as the username.
+    username: data.username || (isDwarfKind ? '' : 'guest'),
     password: data.password || '',
     createdAt: new Date().toISOString(),
     kind,
@@ -472,12 +491,14 @@ export function createProfile(data: Partial<TelescopeProfile>): TelescopeProfile
     connectionType: data.connectionType ?? defaultConnectionType,
     localPath: data.localPath ?? '',
     deviceId: null,
+    archiveAllFiles: data.archiveAllFiles ?? false,
     importJpg: data.importJpg ?? true,
     importFits: data.importFits ?? true,
     importThumbnails: data.importThumbnails ?? false,
     importSubFrames: data.importSubFrames ?? false,
     importVideos: data.importVideos ?? false,
     trackDeviceIdentity: data.trackDeviceIdentity ?? true,
+    pinnedTransportId: null,
   };
 
   profileStmts.insert.run(
@@ -493,6 +514,7 @@ export function createProfile(data: Partial<TelescopeProfile>): TelescopeProfile
     profile.importThumbnails ? 1 : 0,
     profile.importSubFrames ? 1 : 0,
     profile.importVideos ? 1 : 0,
+    profile.archiveAllFiles ? 1 : 0,
     profile.trackDeviceIdentity ? 1 : 0,
   );
 
@@ -503,7 +525,9 @@ export function createProfile(data: Partial<TelescopeProfile>): TelescopeProfile
   addTransport(profile.id, {
     kind: profile.connectionType,
     hostname: profile.hostname,
-    shareName: profile.shareName,
+    // FTP has no share concept, so the row stays empty rather than carrying
+    // the SMB default around where it can only mislead.
+    shareName: profile.connectionType === 'ftp' ? '' : profile.shareName,
     username: profile.username,
     password: profile.password,
     localPath: profile.localPath,
@@ -530,14 +554,16 @@ export function updateProfile(id: string, data: Partial<TelescopeProfile>): Tele
     asKind(updated.kind), updated.color || COLOR_BY_KIND[asKind(updated.kind)],
     updated.autoImportEnabled ? 1 : 0,
     updated.autoImportInterval ?? 60,
-    updated.connectionType === 'local' ? 'local' : 'smb',
+    isTransportKind(updated.connectionType) ? updated.connectionType : 'smb',
     updated.localPath ?? '',
     updated.importJpg ? 1 : 0,
     updated.importFits ? 1 : 0,
     updated.importThumbnails ? 1 : 0,
     updated.importSubFrames ? 1 : 0,
     updated.importVideos ? 1 : 0,
+    updated.archiveAllFiles ? 1 : 0,
     updated.trackDeviceIdentity ? 1 : 0,
+    updated.pinnedTransportId ?? null,
     id
   );
 
@@ -546,13 +572,14 @@ export function updateProfile(id: string, data: Partial<TelescopeProfile>): Tele
   // the transport row stays stale — and the import pipeline reads from the
   // transports table, so the edits silently wouldn't take effect.
   //
-  // Strategy: for each kind ('smb' and 'local') the user has connection data
-  // for, find the matching transport rows and patch them. If a kind has no
-  // transport row yet, only create one when its fields are populated *and*
+  // Strategy: for each kind ('smb', 'ftp', 'local') the user has connection
+  // data for, find the matching transport rows and patch them. If a kind has
+  // no transport row yet, only create one when its fields are populated *and*
   // it matches the saved `connectionType` — otherwise we'd spawn empty rows
   // every time someone edits a Seestar that only uses one transport.
   const transports = getTransportsForProfile(id);
   const smbTransports = transports.filter(t => t.kind === 'smb');
+  const ftpTransports = transports.filter(t => t.kind === 'ftp');
   const localTransports = transports.filter(t => t.kind === 'local');
 
   if (updated.hostname || updated.shareName || updated.username || updated.password) {
@@ -569,6 +596,27 @@ export function updateProfile(id: string, data: Partial<TelescopeProfile>): Tele
         kind: 'smb',
         hostname: updated.hostname,
         shareName: updated.shareName,
+        username: updated.username,
+        password: updated.password,
+      });
+    }
+  }
+  // FTP transports carry only host + credentials. shareName is meaningless on
+  // FTP (there are no shares) and the storage root is auto-detected, so it is
+  // left empty rather than mirroring the SMB default onto the row.
+  if (updated.hostname) {
+    for (const t of ftpTransports) {
+      updateTransport(t.id, {
+        hostname: updated.hostname,
+        username: updated.username,
+        password: updated.password,
+      });
+    }
+    if (ftpTransports.length === 0 && updated.connectionType === 'ftp') {
+      addTransport(id, {
+        kind: 'ftp',
+        hostname: updated.hostname,
+        shareName: '',
         username: updated.username,
         password: updated.password,
       });

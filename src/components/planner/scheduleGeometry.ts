@@ -8,7 +8,7 @@
 const PX_PER_HOUR = 80;
 export const PX_PER_MINUTE = PX_PER_HOUR / 60;
 export const SNAP_MINUTES = 10;
-export const DEFAULT_BLOCK_MINUTES = 60;
+export const DEFAULT_BLOCK_MINUTES = 90;
 export const MIN_BLOCK_MINUTES = 15;
 
 // The timeline scale (pixels per minute) is computed at runtime so the night

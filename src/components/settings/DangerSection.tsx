@@ -362,7 +362,7 @@ function DeleteConfirmModal({ isDark, onClose }: { isDark: boolean; onClose: () 
                 {resetDb.isPending ? (
                   <>
                     <RotateCw className="w-4 h-4 animate-spin" />
-                    Deleting...
+                    Deleting…
                   </>
                 ) : (
                   <>

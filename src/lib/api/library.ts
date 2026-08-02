@@ -1,6 +1,7 @@
 import type { AstroObject, Session, ProcessedImage } from '../../types';
 export type { ProcessedImage };
 import { fetchJSON, authHeaders, BASE } from './client';
+import type { ConnectionType as TransportKind } from './telescopes';
 
 // FITS header inspection
 type FitsValue = string | number | boolean;
@@ -10,6 +11,20 @@ interface FitsHeaderData {
   categorized: Record<string, Array<{ key: string; value: FitsValue; comment: string }>>;
 }
 
+
+/** One reason files were left out of an import, and how many. `label` is
+ *  server-authored and reads as "<count> <label>". Produced identically by the
+ *  folder-import scan, the folder-import commit, and the telescope import, so
+ *  one renderer covers all three. */
+export interface ImportSkip {
+  reason: string;
+  label: string;
+  count: number;
+  /** Total size of the group. 0 means the size was not measured (a remote
+   *  listing without sizes, or a history row from before this field existed),
+   *  which the UI renders the same as absent rather than as "0 B". */
+  bytes?: number;
+}
 
 export interface ImportStatus {
   running: boolean;
@@ -23,9 +38,9 @@ export interface ImportStatus {
   /** Display name for the telescope (e.g. "Dwarf II"). Null when
    *  telescopeId is null. */
   telescopeName: string | null;
-  /** Which transport ("smb" or "local" for USB) this run is using. Null when
-   *  there's no telescope context (folder import or upload). */
-  transportKind: 'smb' | 'local' | null;
+  /** Which transport this run is using. Null when there's no telescope context
+   *  (folder import or upload). */
+  transportKind: TransportKind | null;
   objectsTotal: number;
   objectsDone: number;
   filesTotal: number;
@@ -34,7 +49,12 @@ export interface ImportStatus {
   currentObjectFilesDone: number;
   bytesTotal: number;
   bytesDone: number;
+  /** Files that were already present locally, so nothing was transferred.
+   *  Rendered as "already synced" — not the same thing as `skipped`. */
   skippedFiles: number;
+  /** Files the run found but will not import, grouped by why. Empty when
+   *  nothing was left behind. */
+  skipped: ImportSkip[];
   lastRun: string | null;
   error: string | null;
   startedAt: string | null;
@@ -72,9 +92,12 @@ export const getImportStatus = () => fetchJSON<ImportStatus>('/library/import/st
 
 /** Format a transport kind for user-facing copy. Used in import progress
  *  strings and history rows so a Seestar reached via USB reads as "via USB"
- *  rather than "local" or "smb". */
-export function formatTransport(kind: 'smb' | 'local' | null | undefined): string {
+ *  rather than "local" or "smb". FTP is named outright rather than folded into
+ *  "Wi-Fi": a Dwarf owner can have both FTP and USB configured, and knowing
+ *  which one a run used is the point of showing this at all. */
+export function formatTransport(kind: TransportKind | null | undefined): string {
   if (kind === 'local') return 'USB';
+  if (kind === 'ftp') return 'FTP';
   if (kind === 'smb') return 'Wi-Fi';
   return '';
 }
@@ -82,7 +105,7 @@ export function formatTransport(kind: 'smb' | 'local' | null | undefined): strin
 /** Build the "from <name> via <transport>" suffix used in progress messages. */
 export function formatTransportSuffix(
   telescopeName: string | null | undefined,
-  transportKind: 'smb' | 'local' | null | undefined,
+  transportKind: TransportKind | null | undefined,
 ): string {
   const parts: string[] = [];
   if (telescopeName) parts.push(`from ${telescopeName}`);
@@ -115,13 +138,18 @@ export interface ImportHistoryEntry {
   /** Name snapshotted at run time — survives later profile renames. */
   telescopeName: string | null;
   /** Transport used for this run. */
-  transportKind: 'smb' | 'local' | null;
+  transportKind: TransportKind | null;
+  /** What the run left behind and why. Null on rows recorded before this was
+   *  tracked, and on runs that skipped nothing. */
+  skipped: ImportSkip[] | null;
 }
 export const getImportHistory = (limit = 10, offset = 0) =>
   fetchJSON<{ entries: ImportHistoryEntry[]; total: number }>(`/library/import/history?limit=${limit}&offset=${offset}`);
 
-export const getLibrarySessions = (objectId: string) =>
-  fetchJSON<Session[]>(`/library/objects/${encodeURIComponent(objectId)}/sessions`);
+export const getLibrarySessions = (objectId: string, opts?: { includeVariants?: boolean }) =>
+  fetchJSON<Session[]>(
+    `/library/objects/${encodeURIComponent(objectId)}/sessions${opts?.includeVariants ? '?includeVariants=true' : ''}`
+  );
 export const getLibraryFitsHeaders = (path: string) =>
   fetchJSON<FitsHeaderData>(`/library/headers?path=${encodeURIComponent(path)}`);
 export const deleteLibraryFile = (path: string) =>
@@ -237,21 +265,17 @@ interface ImportScannedObject {
   catalogMatch: ImportCatalogMatch | null;
 }
 
-/** One reason files under the scan root will not be imported, and how many.
- *  `label` is server-authored and reads as "<count> <label>". */
-export interface ImportScanSkip {
-  reason: string;
-  label: string;
-  count: number;
-}
-
 export interface ImportScanResult {
   rootPath: string;
   objects: ImportScannedObject[];
   totals: { objects: number; files: number; sessions: number; unsorted: number; bytes: number };
   /** Files found but not importable, grouped by why, largest group first. */
-  skipped: ImportScanSkip[];
+  skipped: ImportSkip[];
   truncated: boolean;
+  /** Set when the scan detected the given root was a device volume root and
+   *  descended into the telescope's vendor base path (e.g. "Astronomy") to
+   *  find objects, so the UI can tell the user why. */
+  basePathDetected: string | null;
 }
 
 interface ImportCommitObject {
@@ -270,20 +294,28 @@ export interface ImportCommitPlan {
   importSubFrames?: boolean;
   /** Override the importFits app setting for this run. */
   importFits?: boolean;
+  /** Keep files Nebulis has no use for, so the imported folder is a complete
+   *  copy. Does not override the per-type choices above. */
+  archiveAllFiles?: boolean;
   /** Telescope to tag every session created by this import with, or null to
    *  leave sessions untagged. */
   telescopeId?: string | null;
 }
 
-/** Phase 1: scan a server-readable folder and return the import plan. */
+/** Phase 1: scan a server-readable folder and return the import plan.
+ *  `telescopeId`, when passed, lets the scan recognise a device volume root
+ *  and descend into that telescope's vendor base path automatically —
+ *  otherwise identical to today's "Not sure / mixed sources" behavior. */
 export const scanImportFolder = (
   rootPath: string,
   importSubFrames?: boolean,
   importFits?: boolean,
+  archiveAllFiles?: boolean,
+  telescopeId?: string | null,
 ) =>
   fetchJSON<ImportScanResult>('/library/import/scan', {
     method: 'POST',
-    body: JSON.stringify({ rootPath, importSubFrames, importFits }),
+    body: JSON.stringify({ rootPath, importSubFrames, importFits, archiveAllFiles, telescopeId }),
   });
 
 /** Phase 2: commit a reviewed plan. Runs in the background; watch progress via
@@ -335,6 +367,8 @@ function parseProcessedImage(value: unknown): ProcessedImage {
     uploadedAt: reqStr('uploadedAt'),
     url: reqStr('url'),
     path: reqStr('path'),
+    runId: typeof v.runId === 'string' ? v.runId : null,
+    runDates: Array.isArray(v.runDates) ? v.runDates.filter((d): d is string => typeof d === 'string') : null,
   };
 }
 
@@ -570,11 +604,13 @@ export async function uploadProcessedImage(
   file: File,
   title: string,
   notes: string,
+  runId?: string | null,
 ): Promise<ProcessedImage> {
   const formData = new FormData();
   formData.append('image', file, file.name);
   formData.append('title', title);
   formData.append('notes', notes);
+  if (runId) formData.append('runId', runId);
   const res = await fetch(
     `${BASE}/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/processed-images`,
     { method: 'POST', headers: authHeaders(), body: formData }
@@ -591,6 +627,29 @@ export const deleteProcessedImage = (objectId: string, date: string, id: string)
   fetchJSON<{ deleted: boolean; id: string }>(
     `/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/processed-images/${id}`,
     { method: 'DELETE' }
+  );
+
+// Processing runs — which session dates a combined processed image draws on.
+export interface ProcessingRun {
+  id: string;
+  objectId: string;
+  title: string;
+  notes: string;
+  software: string;
+  createdAt: string;
+  dates: string[];
+}
+
+export const getProcessingRuns = (objectId: string) =>
+  fetchJSON<ProcessingRun[]>(`/library/objects/${encodeURIComponent(objectId)}/processing-runs`);
+
+export const createProcessingRun = (
+  objectId: string,
+  data: { dates: string[]; title?: string; notes?: string; software?: string },
+) =>
+  fetchJSON<ProcessingRun>(
+    `/library/objects/${encodeURIComponent(objectId)}/processing-runs`,
+    { method: 'POST', body: JSON.stringify(data) },
   );
 
 export const getLibraryFileUrl = (filePath: string) =>
@@ -633,10 +692,11 @@ export async function uploadLibraryFile(
 }
 
 // Download URL — streams a ZIP of locally-imported library files (no SMB)
-export const getDownloadUrl = (objectId: string, opts?: { fileType?: string; date?: string }) => {
+export const getDownloadUrl = (objectId: string, opts?: { fileType?: string; date?: string; includeVariants?: boolean }) => {
   const params = new URLSearchParams();
   if (opts?.fileType) params.set('fileType', opts.fileType);
   if (opts?.date) params.set('date', opts.date);
+  if (opts?.includeVariants) params.set('includeVariants', 'true');
   return `${BASE}/library/download/objects/${encodeURIComponent(objectId)}?${params.toString()}`;
 };
 

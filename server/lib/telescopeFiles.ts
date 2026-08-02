@@ -12,7 +12,7 @@
  *   M42_sub/
  *     sub_00001_M42_10.0s_IRCUT_20241015-205200.fit      ← raw sub-frame
  *
- * ── Dwarf II / Dwarf 3 (Astronomy / SMB path) ──────────────────────────────
+ * ── Dwarf II / Dwarf 3 (Astronomy/, over FTP or a USB mount) ───────────────
  * Each session gets its own date-stamped folder under Astronomy/:
  *
  *   DWARF_ASTRO_NGC_1647_EXP_15_GAIN_60_2026-03-18_20-13-22/
@@ -484,7 +484,42 @@ const REAL_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.tif', '.tiff', '.fit
  * and anything without a recognized extension.
  */
 export function isRealFile(name: string): boolean {
-  if (name.startsWith('._') || name.startsWith('.')) return false;
+  if (isHiddenOrSystemFile(name)) return false;
   const ext = name.substring(name.lastIndexOf('.')).toLowerCase();
   return REAL_EXTENSIONS.has(ext);
+}
+
+/**
+ * OS bookkeeping rather than anything the user captured: macOS AppleDouble
+ * sidecars (`._foo`), `.DS_Store`, `Thumbs.db`, and any dot-prefixed file.
+ *
+ * Split out of `isRealFile` because archive mode needs the two halves
+ * separately. "Unrecognized extension" is a file the user may well want kept;
+ * "OS junk" never is, and copying it into an archive would be noise.
+ */
+export function isHiddenOrSystemFile(name: string): boolean {
+  if (name.startsWith('.')) return true;
+  return name.toLowerCase() === 'thumbs.db';
+}
+
+/**
+ * Companion files that describe a capture without being one.
+ *
+ * Deliberately a SEPARATE predicate from `isRealFile` rather than an addition
+ * to `REAL_EXTENSIONS`. `isRealFile` has ~50 call sites and gates the gallery,
+ * thumbnail generation, session file counts, and the ZIP export; widening it
+ * would surface metadata as broken images throughout the app. Keeping the two
+ * apart means a sidecar is stored and downloadable but is automatically absent
+ * from every image query, with no extra filtering anywhere.
+ *
+ * The Dwarf's `shotsInfo.json` is the motivating case: exposure, gain, filter,
+ * target coordinates, and frame counts, all previously discarded because the
+ * importer only accepted image extensions.
+ */
+const SIDECAR_EXTENSIONS = new Set(['.json', '.txt']);
+
+export function isSidecarFile(name: string): boolean {
+  if (name.startsWith('._') || name.startsWith('.')) return false;
+  const ext = name.substring(name.lastIndexOf('.')).toLowerCase();
+  return SIDECAR_EXTENSIONS.has(ext);
 }

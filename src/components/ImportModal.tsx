@@ -85,7 +85,7 @@ type Source = 'upload' | 'local';
 
 export function ImportModal({ onClose, onReview }: {
   onClose: () => void;
-  onReview: (folderPath: string, includeSubframes: boolean, includeFits: boolean, telescopeId: string | null) => void;
+  onReview: (folderPath: string, includeSubframes: boolean, includeFits: boolean, telescopeId: string | null, archiveAll: boolean) => void;
 }) {
   const { isDark } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -98,6 +98,7 @@ export function ImportModal({ onClose, onReview }: {
   const [error, setError] = useState<string | null>(null);
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [includeSubframes, setIncludeSubframes] = useState(false);
+  const [archiveAll, setArchiveAll] = useState(false);
   // FITS files (stacked and raw) are always imported; only subframes are optional.
   const includeFits = true;
 
@@ -119,6 +120,12 @@ export function ImportModal({ onClose, onReview }: {
     staleTime: 30_000,
   });
   const activeTelescopes = (telescopes ?? []).filter(t => !t.archivedAt);
+  // The selected telescope's local-mirror transport path, if it has one —
+  // offered as a one-click starting point in the folder browser so the user
+  // doesn't have to hunt for a folder Nebulis already knows about.
+  const suggestedFolderPath = activeTelescopes
+    .find(t => t.id === telescopeId)
+    ?.transports?.find(tr => tr.kind === 'local' && tr.localPath)?.localPath ?? null;
 
   const isDirty = phase === 'staging' || phase === 'uploading';
 
@@ -234,7 +241,7 @@ export function ImportModal({ onClose, onReview }: {
     if (debug) {
       reportImportDebug(
         `[browser] import dialog: ${picked.length} files staged for upload ` +
-        `(include sub-frames: ${includeSubframes}, include FITS: ${includeFits}, ` +
+        `(include sub-frames: ${includeSubframes}, include FITS: ${includeFits}, archive all: ${archiveAll}, ` +
         `telescope: ${telescopeId || 'none'})`,
       );
     }
@@ -251,7 +258,7 @@ export function ImportModal({ onClose, onReview }: {
         controller.signal,
       );
       setPhase('done');
-      onReview(result.tmpPath, includeSubframes, includeFits, telescopeId || null);
+      onReview(result.tmpPath, includeSubframes, includeFits, telescopeId || null, archiveAll);
     } catch (err) {
       // A cancelled upload already unmounted (or is about to) via the discard
       // path — don't flash an error or bounce the phase back to 'staging' on
@@ -303,7 +310,7 @@ export function ImportModal({ onClose, onReview }: {
 
         {source === 'local' && (
           <>
-            <ServerFolderPicker isDark={isDark} onChange={setServerPath} />
+            <ServerFolderPicker isDark={isDark} onChange={setServerPath} suggestedPath={suggestedFolderPath} />
             <p className={`text-xs ${mutedText}`}>
               Nothing is uploaded: the server reads the folder in place, so large libraries import in seconds.
             </p>
@@ -413,6 +420,24 @@ export function ImportModal({ onClose, onReview }: {
               <span className={`text-xs ${mutedText}`}>(individual raw exposures)</span>
             </label>
 
+            <label className={`flex items-start gap-2.5 cursor-pointer select-none text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              <input
+                type="checkbox"
+                checked={archiveAll}
+                onChange={e => setArchiveAll(e.target.checked)}
+                className="w-4 h-4 mt-0.5 rounded accent-accent-500"
+              />
+              <span>
+                Archive everything
+                <span className={`block text-xs mt-0.5 ${mutedText}`}>
+                  Copy every file in the folder, overriding the choice above. Includes
+                  sub-frames, per-frame thumbnails, working and calibration images, rejected
+                  frames, logs, and unrecognized types, keeping the original folder structure.
+                  This can be very large.
+                </span>
+              </span>
+            </label>
+
             <div className="space-y-1.5">
               <label className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
                 Captured with
@@ -471,7 +496,7 @@ export function ImportModal({ onClose, onReview }: {
           <div className="space-y-2">
             <button
               type="button"
-              onClick={() => onReview(locatedPath, includeSubframes, includeFits, telescopeId || null)}
+              onClick={() => onReview(locatedPath, includeSubframes, includeFits, telescopeId || null, archiveAll)}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 transition"
             >
               <HardDrive className="w-4 h-4" />
@@ -504,7 +529,7 @@ export function ImportModal({ onClose, onReview }: {
         {source === 'local' && (
           <button
             type="button"
-            onClick={() => serverPath && onReview(serverPath, includeSubframes, includeFits, telescopeId || null)}
+            onClick={() => serverPath && onReview(serverPath, includeSubframes, includeFits, telescopeId || null, archiveAll)}
             disabled={!serverPath}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 transition disabled:opacity-50"
           >

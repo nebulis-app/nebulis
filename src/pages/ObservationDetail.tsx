@@ -13,6 +13,7 @@ import {
   Crown,
   Pencil,
   Columns,
+  Frame,
 } from 'lucide-react';
 import { getObservationDetail, getObjectInfo } from '../lib/api/observations';
 import {
@@ -32,6 +33,7 @@ import { getTelescopeStatus, listTelescopes } from '../lib/api/telescopes';
 import { fetchLocationName } from '../lib/api/catalog';
 import { getNote } from '../lib/api/notes';
 import { formatObjectTitle } from '../lib/dsoSearch';
+import { previewSrcFor, thumbSrcFor, isPoorHeroCandidate } from '../lib/sessionImageSrc';
 import { MoveObservationModal } from '../components/MoveObservationModal';
 import { UploadProcessedModal } from '../components/UploadProcessedModal';
 import { DeleteSessionModal } from '../components/DeleteSessionModal';
@@ -45,9 +47,13 @@ import { ImageCompareModal, type CompareFile } from '../components/ImageCompareM
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useSyncSubframes } from '../contexts/SyncSubframesContext';
 import { SatelliteTrailScanModal } from '../components/SatelliteTrailScanModal';
+import { FramingModal, FRAMING_MOSAIC_ENABLED } from '../components/catalogs/FramingModal';
 import { ObservationHeader } from '../components/observationDetail/ObservationHeader';
 import { WeatherPanel } from '../components/observationDetail/WeatherPanel';
-import { ObservationStatsTiles } from '../components/observationDetail/ObservationStatsTiles';
+import { CapturePanel } from '../components/observationDetail/CapturePanel';
+import { ObservedFromControl } from '../components/observationDetail/ObservedFromPanel';
+import { ObservationStrip } from '../components/observationDetail/ObservationStrip';
+import { ObservationTabs, type ObservationTab } from '../components/observationDetail/ObservationTabs';
 import { SessionFileGrid } from '../components/observationDetail/SessionFileGrid';
 import { SubframesPanel } from '../components/observationDetail/SubframesPanel';
 import { ProcessedImagesGrid } from '../components/observationDetail/ProcessedImagesGrid';
@@ -82,6 +88,35 @@ function formatDec(dec: string): string {
 // processed-images grid, since either can supply either side of a compare.
 export type CompareItem = { key: string; file: CompareFile };
 
+/**
+ * How the hero is sized, which depends on the frame's orientation.
+ *
+ * The two supported telescopes disagree about shape: a Dwarf stack is wide,
+ * a Seestar stack is tall. One fixed layout cannot serve both. An uncapped
+ * image pushed the whole session below the fold, but capping height alone left
+ * a portrait frame as a narrow ribbon stranded in a wide column.
+ *
+ * So the column tracks the image. A landscape frame gets the wide column and a
+ * shorter cap; a portrait frame gets a narrow column and more height to use, so
+ * it fills its space and the About card beside it gains the width instead.
+ * Nothing is ever cropped, since cropping an astro frame hides the framing the
+ * user is checking. Full resolution stays one click away in the gallery.
+ */
+const HERO_SIZING = {
+  landscape: {
+    grid: 'lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]',
+    maxH: 'max-h-[420px]',
+  },
+  portrait: {
+    grid: 'lg:grid-cols-[minmax(0,0.5fr)_minmax(0,1fr)]',
+    maxH: 'max-h-[600px]',
+  },
+} as const;
+
+/** Taller than this much of its width counts as portrait. The margin keeps a
+ *  roughly square frame in the landscape layout, where it looks better. */
+const PORTRAIT_RATIO = 1.1;
+
 export function ObservationDetail() {
   const { objectId = '', date = '' } = useParams<{ objectId: string; date: string }>();
   const { isDark, isNight, isSpace } = useTheme();
@@ -92,7 +127,9 @@ export function ObservationDetail() {
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [galleryOpen, setGalleryOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'all' | 'fits' | 'image'>('image');
+  // Defaults to 'all' so the tab's contents match the count on its badge. A
+  // session whose stack is a FITS looked empty under the old image-only default.
+  const [viewMode, setViewMode] = useState<'all' | 'fits' | 'image'>('all');
   const [headerFile, setHeaderFile] = useState<SessionFile | null>(null);
   const [galleryPage, setGalleryPage] = useState(0);
   useEffect(() => { setGalleryPage(0); }, [viewMode]);
@@ -123,7 +160,29 @@ export function ObservationDetail() {
   const [archiveState, setArchiveState] = useState<{ done: number; total: number } | 'idle' | 'error'>('idle');
   const archiveAbortRef = useRef(false);
   const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [framingOpen, setFramingOpen] = useState(false);
   const [locationName, setLocationName] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<ObservationTab>('images');
+  const tabsSectionRef = useRef<HTMLDivElement | null>(null);
+  const isFirstTabRender = useRef(true);
+
+  /** Tabs swap in content of very different heights (a tall image grid vs. a
+   *  short or empty Details/Subframes panel). Left alone, the document shrinks
+   *  when a shorter tab mounts and the browser clamps scrollY to whatever the
+   *  new height allows, landing mid-page instead of at the top of the new
+   *  content. Switching back then lands at that same clamped position rather
+   *  than where the grid had actually been scrolled to, cutting off rows that
+   *  were visible before. Anchoring to the tab bar on every switch keeps the
+   *  landing spot the same no matter how tall each tab's content is. Skips
+   *  the initial mount so loading the page doesn't itself cause a scroll.
+   */
+  useEffect(() => {
+    if (isFirstTabRender.current) { isFirstTabRender.current = false; return; }
+    tabsSectionRef.current?.scrollIntoView({ block: 'start' });
+  }, [activeTab]);
+  /** Set from the hero's natural dimensions once it loads. Null until then, so
+   *  the first paint uses the landscape layout rather than flashing a guess. */
+  const [heroIsPortrait, setHeroIsPortrait] = useState<boolean | null>(null);
 
   // Note existence (for Session Notes tile indicator)
   const { data: existingNote } = useQuery({
@@ -246,7 +305,15 @@ export function ObservationDetail() {
     return f.type === 'fits' || f.type === 'image';
   });
 
-  const stackedImage = files.find(f => f.fileType === 'stacked' && f.type === 'image');
+  // The Images tab badge counts everything that tab can ever show, not what the
+  // current All/Image/FITS filter happens to leave visible. Using the filtered
+  // length would make the badge change every time the user flips that toggle.
+  const imageTabCount = files.filter(
+    f => f.fileType !== 'sub' && (f.type === 'image' || f.type === 'fits'),
+  ).length;
+
+  const stackedImages = files.filter(f => f.fileType === 'stacked' && f.type === 'image');
+  const stackedImage = stackedImages.find(f => !isPoorHeroCandidate(f)) ?? stackedImages[0];
   // Stacked FITS fallback: some sessions have a stacked .fit but no rendered .jpg.
   const stackedFits = files.find(f => f.fileType === 'stacked' && f.type === 'fits');
 
@@ -257,9 +324,38 @@ export function ObservationDetail() {
   const designatedProcessedImage = observation?.sessionImage
     ? processedImages.find(img => img.path === observation.sessionImage) ?? null
     : null;
-  const heroFile = designatedSessionFile ?? stackedImage ?? files.find(f => f.type === 'image' && !f.isThumbnail) ?? stackedFits ?? null;
+  /**
+   * Hero pick, ordered so a cheaply displayable image always beats an expensive
+   * one even when the expensive one is the better-classified "stack".
+   *
+   * A Dwarf session holds both `img_stacked_all.tif` (a ~100 MB 32-bit float
+   * master, classified `stacked`) and `stacked.jpg` (the device's own preview,
+   * which classifies only as a plain image). Preferring the `stacked` category
+   * first therefore featured the 100 MB TIFF, which crashed Safari when it was
+   * handed to an `<img>` and still costs a full decode server-side even after
+   * routing it through the preview tier. Cheap-first fixes the cause rather than
+   * the symptom; the TIFF is still used when it is the only image there.
+   */
+  const anyImage = files.filter(f => f.type === 'image' && !f.isThumbnail);
+  const heroFile = designatedSessionFile
+    ?? (stackedImage && !isPoorHeroCandidate(stackedImage) ? stackedImage : undefined)
+    ?? anyImage.find(f => !isPoorHeroCandidate(f))
+    ?? stackedImage
+    ?? anyImage[0]
+    ?? stackedFits
+    ?? null;
   const heroIsUserDesignated = (!!designatedSessionFile && designatedSessionFile !== stackedImage) || !!designatedProcessedImage;
   const heroIsFits = heroFile?.type === 'fits';
+
+  const heroSizing = heroIsPortrait ? HERO_SIZING.portrait : HERO_SIZING.landscape;
+  const noteHeroSize = useCallback((w: number, h: number) => {
+    setHeroIsPortrait(h > w * PORTRAIT_RATIO);
+  }, []);
+  // A different hero (crowned image, navigation to another session) may have the
+  // opposite orientation, so the measurement has to be retaken rather than left
+  // over from the previous frame.
+  const heroKey = designatedProcessedImage?.id ?? heroFile?.path ?? null;
+  useEffect(() => { setHeroIsPortrait(null); }, [heroKey]);
 
   const formattedDate = date && date !== 'unknown'
     ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
@@ -414,7 +510,34 @@ if (isLoading) {
         telescopes={telescopes}
         onMove={() => setShowMoveModal(true)}
         onDelete={() => setShowDeleteModal(true)}
+        onOpenNotes={() => setNotesModalOpen(true)}
+        hasNote={!!existingNote}
+        canOpenNotes={!!objectId && !!date}
       />
+
+      {FRAMING_MOSAIC_ENABLED && (
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={() => setFramingOpen(true)}
+          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition ${
+            isDark ? 'border-slate-800 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+          title="Preview how this object frames in your telescope, and plan a mosaic"
+        >
+          <Frame className="w-4 h-4 text-sky-500" />
+          Framing &amp; Mosaic
+        </button>
+      </div>
+      )}
+
+      {framingOpen && (
+        <FramingModal
+          catalogId={observation?.catalogId || objectId}
+          objectName={displayName}
+          isDark={isDark}
+          onClose={() => setFramingOpen(false)}
+        />
+      )}
 
       {/* Compare mode page-level banner */}
       {compareMode && (
@@ -433,8 +556,10 @@ if (isLoading) {
         </div>
       )}
 
-      {/* Top section: Image + Details side by side */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-5 items-start">
+      {/* Top section: Image + About side by side. The column split follows the
+          hero's orientation, so a tall Seestar frame does not sit marooned in a
+          column sized for a wide Dwarf one. */}
+      <div className={`grid grid-cols-1 ${heroSizing.grid} gap-5 items-start transition-[grid-template-columns] duration-200`}>
         {/* Left: Session image (user-designated or stacked fallback — click to enlarge) */}
         {designatedProcessedImage ? (
           <div className={`rounded-xl border overflow-hidden ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
@@ -448,7 +573,8 @@ if (isLoading) {
               <img
                 src={designatedProcessedImage.url}
                 alt={designatedProcessedImage.title || designatedProcessedImage.originalName}
-                className="w-full object-contain"
+                onLoad={e => noteHeroSize(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
+                className={`block mx-auto w-auto max-w-full ${heroSizing.maxH}`}
               />
               <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-amber-500/90 text-white text-[11px] font-semibold flex items-center gap-1 shadow">
                 <Crown className="w-3 h-3" />
@@ -485,8 +611,9 @@ if (isLoading) {
               className="cursor-pointer relative group"
               onClick={() => {
                 if (heroIsFits) {
-                  // Stacked FITS may not be in the (image-only) default filteredFiles list,
-                  // so open the gallery with just this file.
+                  // A stacked FITS is in filteredFiles under the default 'all'
+                  // view but not once the user switches to Image, so fall back
+                  // to opening the gallery on just this file.
                   const idx = filteredFiles.findIndex(f => f.path === heroFile.path);
                   if (idx >= 0) openGallery(idx);
                   else openGallery(0, [heroFile]);
@@ -497,12 +624,18 @@ if (isLoading) {
               }}
             >
               {heroIsFits ? (
-                <FitsPreview url={heroFile.downloadUrl} isDark={isDark} />
+                <FitsPreview
+                  url={heroFile.downloadUrl}
+                  isDark={isDark}
+                  onNaturalSize={noteHeroSize}
+                  maxHeightClass={heroSizing.maxH}
+                />
               ) : (
                 <img
-                  src={heroFile.downloadUrl}
+                  src={previewSrcFor(heroFile)}
                   alt={displayName}
-                  className="w-full object-contain"
+                  onLoad={e => noteHeroSize(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
+                  className={`block mx-auto w-auto max-w-full ${heroSizing.maxH}`}
                 />
               )}
               {/* Crown badge for user-designated session image */}
@@ -553,7 +686,7 @@ if (isLoading) {
             </div>
           </div>
         ) : (
-          <div className={`rounded-xl border flex flex-col items-center justify-center gap-3 py-14 ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+          <div className={`rounded-xl border flex flex-col items-center justify-center gap-3 py-14 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
             <FileImage className={`w-8 h-8 ${isDark ? 'text-slate-700' : 'text-slate-300'}`} />
             <div className="text-center space-y-1">
               <p className={`text-sm font-medium ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>No stacked image</p>
@@ -568,7 +701,7 @@ if (isLoading) {
         <div className="space-y-4">
           {/* Object Information */}
           {objectInfo && (
-            <div className={`rounded-xl border p-4 ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+            <div className={`rounded-xl border p-4 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
               <div className="flex items-start gap-4">
                 {/* Left: header + description + wiki link */}
                 <div className="flex-1 min-w-0">
@@ -676,90 +809,39 @@ if (isLoading) {
             </div>
           )}
 
-          {/* Weather conditions */}
-          {observation?.weather && (
-            <WeatherPanel weather={observation.weather} tempUnit={tempUnit} />
-          )}
-
-          {/* Observation Location Map */}
-          {observation?.coordinates && (
-            <div
-              className={`rounded-xl border overflow-hidden ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}
-              style={{ isolation: 'isolate', position: 'relative', zIndex: 0 }}
-            >
-              <div className={`px-4 py-2 border-b flex items-center justify-between ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-                <h3 className={`font-display font-semibold text-sm flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  <MapPin className={`w-3.5 h-3.5 ${accentText}`} />
-                  Location
-                </h3>
-                <span className={`text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                  {locationName && <span className="mr-1">{locationName} ·</span>}
-                  {observation.coordinates.lat.toFixed(2)}°, {observation.coordinates.lon.toFixed(2)}°
-                </span>
-              </div>
-              <div className="h-[150px]">
-                <ObservationMap
-                  lat={observation.coordinates.lat}
-                  lon={observation.coordinates.lon}
-                  isDark={isDark}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Session Metrics and Notes */}
-          <ObservationStatsTiles
+          {/* The session's headline numbers. Sits under the object description
+              rather than in a band of its own: the hero is taller than the About
+              card, so this fills that gap instead of adding a full-width strip
+              below and pushing the tabs down. Prefers the telescope's own
+              sidecar values over the filename parse, so each figure appears once
+              and comes from the better source. */}
+          <ObservationStrip
+            capture={observation?.capture}
             files={files}
-            hasNote={!!existingNote}
-            canOpenNotes={!!objectId && !!date}
-            isAdmin={isAdmin}
-            onOpenNotes={() => setNotesModalOpen(true)}
+            weather={observation?.weather}
+            note={observation?.note}
+            tempUnit={tempUnit}
           />
-
-          {/* Sky Conditions */}
-          {observation?.note && (
-            <div className={`rounded-xl border p-4 space-y-2 ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
-              <h3 className={`font-display font-semibold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                Sky Conditions
-              </h3>
-              <div className={`flex flex-wrap gap-3 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {observation.note.bortleClass && (
-                  <div>
-                    <span className={isDark ? 'text-slate-600' : 'text-slate-400'}>Bortle </span>
-                    <span className="font-medium">Class {observation.note.bortleClass}</span>
-                  </div>
-                )}
-                {observation.note.seeingRating && (
-                  <div>
-                    <span className={isDark ? 'text-slate-600' : 'text-slate-400'}>Seeing </span>
-                    <span className="font-medium">{observation.note.seeingRating}/5</span>
-                  </div>
-                )}
-                {observation.note.transparencyRating && (
-                  <div>
-                    <span className={isDark ? 'text-slate-600' : 'text-slate-400'}>Transparency </span>
-                    <span className="font-medium">{observation.note.transparencyRating}/5</span>
-                  </div>
-                )}
-                {observation.note.moonPhase && (
-                  <div>
-                    <span className={isDark ? 'text-slate-600' : 'text-slate-400'}>Moon </span>
-                    <span className="font-medium">
-                      {observation.note.moonPhase}
-                      {observation.note.moonIllumination != null && ` (${observation.note.moonIllumination}%)`}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Below: FITS Gallery + Satellite Trail Detection (full width) */}
-      <div className="space-y-6">
-        {/* Telescope Images + Subframes side by side */}
-        <div className="grid grid-cols-2 gap-6">
+      {/* Everything below the strip lives in one of these panels. That keeps the
+          page a fixed height as content grows (a new file category is a tab, new
+          session metadata is a row inside Details) and gives each grid the full
+          width, where Images and Subframes used to split it in half. */}
+      <div ref={tabsSectionRef}>
+        <ObservationTabs
+          active={activeTab}
+          onChange={setActiveTab}
+          counts={{
+            images: imageTabCount,
+            subframes: subFrames.length,
+            processed: processedImages.length,
+          }}
+        />
+
+        <div className="pt-5">
+        {activeTab === 'images' && (
         <SessionFileGrid
           files={filteredFiles}
           viewMode={viewMode}
@@ -771,7 +853,12 @@ if (isLoading) {
           compareItems={compareItems}
           toggleCompareItem={toggleCompareItem}
           sessionImagePath={observation?.sessionImage}
-          stackedImagePath={(stackedImage ?? stackedFits)?.path}
+          // The crown marks whatever is actually being shown as the hero, so it
+          // has to be heroFile, not the raw "first stacked file" pick. Those
+          // diverge: hero selection prefers a cheaply displayable image, so a
+          // Dwarf's `stacked.jpg` beats `img_stacked_all.tif` even though the
+          // TIFF classifies as the stack.
+          stackedImagePath={(heroFile ?? stackedFits)?.path}
           handleSetSessionImage={handleSetSessionImage}
           settingSessionImage={settingSessionImage}
           imageFavoriteSet={imageFavoriteSet}
@@ -780,7 +867,9 @@ if (isLoading) {
           openGallery={openGallery}
           isAdmin={isAdmin}
         />
+        )}
 
+        {activeTab === 'subframes' && (
         <SubframesPanel
           subFrames={subFrames}
           isAdmin={isAdmin}
@@ -792,8 +881,9 @@ if (isLoading) {
           onDeleteAllSubframes={() => setConfirmDeleteSubframes(true)}
           onOpenGallery={openGallery}
         />
-        </div>{/* end side-by-side grid */}
+        )}
 
+        {activeTab === 'processed' && (
         <ProcessedImagesGrid
           processedImages={processedImages}
           compareMode={compareMode}
@@ -813,6 +903,67 @@ if (isLoading) {
           onUploadClick={() => { setPendingUploadFile(null); setShowUploadModal(true); }}
           onDropFile={file => { setPendingUploadFile(file); setShowUploadModal(true); }}
         />
+        )}
+
+        {/* Details: the capture sidecar, conditions, and where it was shot.
+            These were four separate cards in a vertical rail. */}
+        {activeTab === 'details' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
+            {observation?.capture && (
+              <CapturePanel capture={observation.capture} tempUnit={tempUnit} />
+            )}
+
+            <WeatherPanel
+              weather={observation?.weather}
+              sky={observation?.note}
+              tempUnit={tempUnit}
+            />
+
+            {(observation?.coordinates || observation) && (
+              <div
+                className={`rounded-xl border p-4 space-y-3 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}
+                style={{ isolation: 'isolate', position: 'relative', zIndex: 0 }}
+              >
+                <h3 className={`font-display font-semibold text-sm flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  <MapPin className={`w-3.5 h-3.5 ${accentText}`} />
+                  Location
+                </h3>
+
+                {/* The site picker lives here rather than in a card of its own,
+                    which is what put the site name on the page twice. */}
+                {observation && (
+                  <ObservedFromControl
+                    objectId={objectId}
+                    date={date}
+                    siteId={observation.siteId}
+                    isAdmin={isAdmin}
+                  />
+                )}
+
+                {observation?.coordinates && (
+                  <>
+                    <div className="h-[150px] rounded-lg overflow-hidden">
+                      <ObservationMap
+                        lat={observation.coordinates.lat}
+                        lon={observation.coordinates.lon}
+                        isDark={isDark}
+                      />
+                    </div>
+                    <div className={`flex items-center justify-between text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      <span className={isDark ? 'text-slate-600' : 'text-slate-400'}>
+                        {locationName || 'Coordinates'}
+                      </span>
+                      <span className="font-medium tabular-nums">
+                        {observation.coordinates.lat.toFixed(2)}°, {observation.coordinates.lon.toFixed(2)}°
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        </div>
       </div>
 
       <UploadProcessedModal
@@ -846,6 +997,7 @@ if (isLoading) {
         items={galleryItems}
         defaultIndex={galleryIndex}
         objectId={objectId}
+        objectName={displayName}
         date={date}
         isAdmin={isAdmin}
         onClose={() => setGalleryOpen(false)}
@@ -925,9 +1077,9 @@ if (isLoading) {
           isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
         }`}>
           <div className="flex items-center gap-2">
-            <img src={compareItems[0].file.downloadUrl} alt="Image 1" className="w-12 h-12 rounded-lg object-cover border-2 border-accent-500" />
+            <img src={thumbSrcFor(compareItems[0].file)} alt="Image 1" className="w-12 h-12 rounded-lg object-cover border-2 border-accent-500" />
             <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>vs</span>
-            <img src={compareItems[1].file.downloadUrl} alt="Image 2" className="w-12 h-12 rounded-lg object-cover border-2 border-violet-500" />
+            <img src={thumbSrcFor(compareItems[1].file)} alt="Image 2" className="w-12 h-12 rounded-lg object-cover border-2 border-violet-500" />
           </div>
           <button
             onClick={() => setCompareModalOpen(true)}

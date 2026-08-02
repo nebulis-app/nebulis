@@ -124,6 +124,33 @@ describe('purgeJunkFiles', () => {
     expect(fs.existsSync(path.join(objDir(), 'Stacked.jpg'))).toBe(true);
   });
 
+  it('keeps the per-file manifest, which is dot-prefixed like real junk', async () => {
+    // `.nebulis-files.json` fails isRealFile for exactly the same reason
+    // `.DS_Store` does, so without an explicit exclusion this purge silently
+    // destroys the rebuild-from-disk record on every scheduled run.
+    write('.nebulis-files.json');
+    write('.DS_Store');
+
+    const result = await purgeJunkFiles();
+
+    expect(result.deleted).toBe(1);
+    expect(fs.existsSync(path.join(objDir(), '.nebulis-files.json'))).toBe(true);
+    expect(fs.existsSync(path.join(objDir(), '.DS_Store'))).toBe(false);
+  });
+
+  it('does not try to unlink a nested object\'s session directories', async () => {
+    // Session folder names carry no file extension, so isRealFile calls them
+    // junk. Unlinking a directory fails, which would count an error on every
+    // run for every session of every nested object.
+    fs.mkdirSync(path.join(objDir(), 'DWARF_RAW_TELE_M42_EXP_60_GAIN_60_2026-02-26-21-54-49-673'));
+    fs.mkdirSync(path.join(objDir(), 'processed'));
+
+    const result = await purgeJunkFiles();
+
+    expect(result).toEqual({ deleted: 0, errors: 0 });
+    expect(fs.existsSync(path.join(objDir(), 'processed'))).toBe(true);
+  });
+
   it('is a no-op when the library directory does not exist', async () => {
     fs.rmSync(LIBRARY_DIR, { recursive: true, force: true });
     const result = await purgeJunkFiles();

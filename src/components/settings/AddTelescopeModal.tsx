@@ -9,6 +9,7 @@ import {
   addProfileTransport,
   type TelescopeProfile,
   type DetectedDrive,
+  type ConnectionType,
 } from '../../lib/api/telescopes';
 import { DwarfLocalPathPicker } from './DwarfLocalPathPicker';
 import { LocalPathPicker } from './LocalPathPicker';
@@ -19,6 +20,7 @@ import {
   TELESCOPE_COLOR_PALETTE,
   modelToKind,
   toTelescopeKind,
+  isDwarfKind as isDwarfTelescopeKind,
   type TelescopeKind,
 } from '../../lib/telescopePresets';
 import { getInputClass, getLabelClass, getHelperClass } from './SettingsUI';
@@ -69,25 +71,30 @@ export function AddTelescopeModal({
   const [importFits, setImportFits] = useState(existing?.importFits ?? true);
   const [importThumbnails, setImportThumbnails] = useState(existing?.importThumbnails ?? false);
   const [importSubFrames, setImportSubFrames] = useState(existing?.importSubFrames ?? false);
+  const [archiveAllFiles, setArchiveAllFiles] = useState(existing?.archiveAllFiles ?? false);
   const [importVideos, setImportVideos] = useState(existing?.importVideos ?? false);
   // Toggle for the hidden `.nebulis.dat` device-tracking file. On by default
   // so SMB + USB transports of the same telescope merge into one logical
   // device; user can opt out from inside Advanced share settings.
   const [trackDeviceIdentity, setTrackDeviceIdentity] = useState(existing?.trackDeviceIdentity ?? true);
   const [showOtherHelp, setShowOtherHelp] = useState(false);
-  // Local-fs path for USB-mounted telescopes (eMMC over USB). Dwarf is local
-  // only; Seestar can pick between SMB and local via the transport selector.
+  // Local-fs path for USB-mounted telescopes (eMMC over USB). Both Dwarf and
+  // Seestar can pick between a network transport and USB.
   const [localPath, setLocalPath] = useState(existing?.localPath ?? '');
-  const isDwarfKind = kind === 'dwarf-2' || kind === 'dwarf-3' || kind === 'dwarf-mini';
+  const isDwarfKind = isDwarfTelescopeKind(kind);
   const isSeestarKind = kind === 'seestar-s50' || kind === 'seestar-s30';
   // Transport mode picks which set of inputs to render and which connection
-  // type to save on the profile. Dwarf is always 'local'; for everything else
-  // we default to whatever the existing profile uses (or SMB for fresh adds).
-  const [transportMode, setTransportMode] = useState<'smb' | 'local'>(() => {
-    if (existing) return existing.connectionType === 'local' ? 'local' : 'smb';
-    return isDwarfKind ? 'local' : 'smb';
+  // type to save on the profile. Dwarf gets FTP (its only network interface)
+  // or USB; everything else gets SMB or USB. Edits seed from the saved value.
+  const [transportMode, setTransportMode] = useState<ConnectionType>(() => {
+    if (existing) return existing.connectionType;
+    return isDwarfKind ? 'ftp' : 'smb';
   });
-  const isLocalKind = isDwarfKind || transportMode === 'local';
+  const isLocalKind = transportMode === 'local';
+  const isFtpMode = transportMode === 'ftp';
+  /** The network transport this kind offers. Dwarf serves FTP and no SMB
+   *  share at all; everything else is SMB. */
+  const networkMode: ConnectionType = isDwarfKind ? 'ftp' : 'smb';
   // Tracks the drive picked from the LocalPathPicker so the merge prompt can
   // skip a redundant probe when the row already advertises an existing pairing.
   const [pickedDrive, setPickedDrive] = useState<DetectedDrive | null>(null);
@@ -119,12 +126,15 @@ export function AddTelescopeModal({
     if (!isEdit) {
       setShareName(preset.shareName);
       setUsername(preset.username);
+      // The address field is never auto-filled, even for Dwarf's fixed
+      // AP-mode IP: the placeholder hints at it, but the user must type it
+      // themselves so a wrong/stale address is never silently submitted.
     }
     setColor(DEFAULT_COLOR_BY_KIND[kindMemo]);
-    // Dwarf has no SMB path so its transport is always local. Other kinds
-    // keep whatever the user picked.
-    if (!isEdit && (kindMemo === 'dwarf-2' || kindMemo === 'dwarf-3' || kindMemo === 'dwarf-mini')) {
-      setTransportMode('local');
+    // Dwarf serves FTP over Wi-Fi and no SMB share; everything else is SMB.
+    // Both keep USB as the alternative, which the user picks explicitly.
+    if (!isEdit && isDwarfTelescopeKind(kindMemo)) {
+      setTransportMode('ftp');
     } else if (!isEdit && (kindMemo === 'seestar-s50' || kindMemo === 'seestar-s30')) {
       setTransportMode('smb');
     }
@@ -151,12 +161,13 @@ export function AddTelescopeModal({
       color,
       autoImportEnabled,
       autoImportInterval,
-      connectionType: isLocalKind ? 'local' : 'smb',
+      connectionType: transportMode,
       localPath: localPath.trim(),
       importJpg,
       importFits,
       importThumbnails,
       importSubFrames,
+      archiveAllFiles,
       importVideos,
       trackDeviceIdentity,
     }),
@@ -170,19 +181,39 @@ export function AddTelescopeModal({
     },
   });
 
+  // Connection fields for the currently selected transport mode. USB carries
+  // only a path; FTP carries a host (and optional credentials, though the
+  // Dwarf's FTP server is anonymous); SMB carries the full share tuple.
+  const transportPayload = (): {
+    kind: ConnectionType;
+    hostname: string;
+    shareName: string;
+    username: string;
+    password: string;
+    localPath: string;
+  } => {
+    if (isLocalKind) {
+      return { kind: 'local', hostname: '', shareName: '', username: '', password: '', localPath: localPath.trim() };
+    }
+    if (isFtpMode) {
+      return { kind: 'ftp', hostname: hostname.trim(), shareName: '', username: username.trim(), password, localPath: '' };
+    }
+    return {
+      kind: 'smb',
+      hostname: hostname.trim(),
+      shareName: shareName.trim(),
+      username: username.trim(),
+      password,
+      localPath: '',
+    };
+  };
+
   // "Attach to existing" mutation, used when the merge prompt confirms that
   // this transport belongs to an already-known telescope. We add the transport
   // to that profile instead of creating a duplicate.
   const attachToExistingMutation = useMutation({
     mutationFn: (profileId: string) =>
-      addProfileTransport(profileId, {
-        kind: isLocalKind ? 'local' : 'smb',
-        hostname: isLocalKind ? '' : hostname.trim(),
-        shareName: isLocalKind ? '' : shareName.trim(),
-        username: isLocalKind ? '' : username.trim(),
-        password: isLocalKind ? '' : password,
-        localPath: isLocalKind ? localPath.trim() : '',
-      }),
+      addProfileTransport(profileId, transportPayload()),
     onSuccess: (_t, profileId) => {
       queryClient.invalidateQueries({ queryKey: ['telescopes'] });
       queryClient.invalidateQueries({ queryKey: ['telescope-status'] });
@@ -209,12 +240,13 @@ export function AddTelescopeModal({
         color,
         autoImportEnabled,
         autoImportInterval,
-        connectionType: isLocalKind ? 'local' : 'smb',
+        connectionType: transportMode,
         localPath: localPath.trim(),
         importJpg,
         importFits,
         importThumbnails,
         importSubFrames,
+        archiveAllFiles,
         importVideos,
         trackDeviceIdentity,
       };
@@ -235,7 +267,11 @@ export function AddTelescopeModal({
   const canSave = !saveBusy && (
     isLocalKind
       ? localPath.trim().length > 0
-      : (hostname.trim().length > 0 && shareName.trim().length > 0)
+      // FTP needs only an address: the Dwarf's server is anonymous and the
+      // storage root is auto-detected. SMB additionally needs a share name.
+      : isFtpMode
+        ? hostname.trim().length > 0
+        : (hostname.trim().length > 0 && shareName.trim().length > 0)
   );
 
   // Probe-then-create. The probe writes `.nebulis.dat` if missing and tells
@@ -255,14 +291,7 @@ export function AddTelescopeModal({
     setProbing(true);
     try {
       const result = await probeTransportIdentity({
-        transport: {
-          kind: isLocalKind ? 'local' : 'smb',
-          hostname: isLocalKind ? '' : hostname.trim(),
-          shareName: isLocalKind ? '' : shareName.trim(),
-          username: isLocalKind ? '' : username.trim(),
-          password: isLocalKind ? '' : password,
-          localPath: isLocalKind ? localPath.trim() : '',
-        },
+        transport: transportPayload(),
         model: preset.model,
       });
       if (result.alreadyKnownProfileId && result.alreadyKnownProfileName) {
@@ -296,10 +325,15 @@ export function AddTelescopeModal({
         shareName: shareName.trim(),
         username: username.trim(),
         password,
+        connectionType: transportMode,
       });
       if (result.connected) {
         setTestStatus('success');
-        setTestMessage(`Connected. Found ${result.objectCount ?? 0} object folder${result.objectCount === 1 ? '' : 's'}.`);
+        const found = `Connected. Found ${result.objectCount ?? 0} ${isFtpMode ? 'session' : 'object'} folder${result.objectCount === 1 ? '' : 's'}.`;
+        // The Dwarf models each serve their storage under a different prefix,
+        // so tell the user which layout was detected. It is the fastest way to
+        // spot a wrong model selection.
+        setTestMessage(isFtpMode && result.remoteRoot ? `${found} Storage root: ${result.remoteRoot}` : found);
       } else {
         setTestStatus('error');
         setTestMessage(result.error || 'Connection failed');
@@ -309,10 +343,13 @@ export function AddTelescopeModal({
       setTestMessage(err instanceof Error ? err.message : 'Connection failed');
     }
   };
-  // Connection test is SMB-only — there's nothing analogous to "auth handshake"
-  // for a local filesystem mount. For Dwarf, fs.existsSync at save time is the
-  // closest equivalent and happens implicitly during the first scan.
-  const canTest = !isLocalKind && hostname.trim().length > 0 && shareName.trim().length > 0 && testStatus !== 'testing';
+  // Connection test covers the network transports only — there's nothing
+  // analogous to an auth handshake for a local filesystem mount, where
+  // fs.stat at save time is the closest equivalent.
+  const canTest = !isLocalKind
+    && hostname.trim().length > 0
+    && (isFtpMode || shareName.trim().length > 0)
+    && testStatus !== 'testing';
 
   return (
     <Modal
@@ -409,23 +446,25 @@ export function AddTelescopeModal({
           {/* ── Connection ───────────────────────────────────────── */}
           <SectionHeading isDark={isDark}>Connection</SectionHeading>
 
-          {/* Seestar transport mode (SMB vs USB). Dwarf is local-only so we
-              skip the selector for it; "other" is SMB-only by convention. */}
-          {isSeestarKind && (
+          {/* Transport mode (network vs USB). "other" is SMB-only by
+              convention so it skips the selector. The network option differs
+              per vendor: Seestar publishes an SMB share, Dwarf runs an FTP
+              server and no SMB at all. */}
+          {(isSeestarKind || isDwarfKind) && (
             <div>
               <label className={labelClass}>Connection</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setTransportMode('smb')}
+                  onClick={() => setTransportMode(networkMode)}
                   className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                    transportMode === 'smb'
+                    transportMode === networkMode
                       ? (isDark ? 'bg-teal-500/15 border border-teal-500/50 text-teal-200' : 'bg-teal-50 border border-teal-300 text-teal-900')
                       : (isDark ? 'border border-slate-800 text-slate-400 hover:border-slate-700' : 'border border-slate-200 text-slate-600 hover:border-slate-300')
                   }`}
                 >
                   <Network className="w-4 h-4" />
-                  Wi-Fi (SMB)
+                  {isDwarfKind ? 'Wi-Fi (FTP)' : 'Wi-Fi (SMB)'}
                 </button>
                 <button
                   type="button"
@@ -441,13 +480,15 @@ export function AddTelescopeModal({
                 </button>
               </div>
               <p className={helperClass}>
-                Wi-Fi reads files over the LAN. USB is faster and works without a network, when the eMMC is mounted as an external drive.
+                {isDwarfKind
+                  ? 'Wi-Fi pulls files off the telescope over FTP, with no cable. USB is faster but needs the telescope plugged into this computer.'
+                  : 'Wi-Fi reads files over the LAN. USB is faster and works without a network, when the eMMC is mounted as an external drive.'}
               </p>
             </div>
           )}
 
           {/* Local-path picker for Dwarf (USB-mounted storage) */}
-          {isDwarfKind && (
+          {isDwarfKind && isLocalKind && (
             <DwarfLocalPathPicker
               localPath={localPath}
               setLocalPath={setLocalPath}
@@ -481,13 +522,17 @@ export function AddTelescopeModal({
             <label className={labelClass}>Hostname / IP Address</label>
             <input
               type="text"
-              placeholder="192.168.1.100"
+              placeholder={preset.defaultHostname || '192.168.1.100'}
               value={hostname}
               onChange={e => setHostname(e.target.value)}
               className={inputClass}
               autoFocus={!isEdit}
             />
-            <p className={helperClass}>For reliable connectivity, assign a static IP or DHCP reservation.</p>
+            <p className={helperClass}>
+              {isFtpMode
+                ? preset.shareHelp
+                : 'For reliable connectivity, assign a static IP or DHCP reservation.'}
+            </p>
           </div>
 
           {/* Advanced share settings — share name, username, password.
@@ -504,12 +549,14 @@ export function AddTelescopeModal({
             >
               <span className="flex items-center gap-2">
                 <Settings2 className="w-4 h-4" />
-                Advanced share settings
+                {isFtpMode ? 'Advanced connection settings' : 'Advanced share settings'}
               </span>
               <span className="flex items-center gap-2">
                 {!advancedShareOpen && (
                   <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                    {shareName || preset.shareName} · {username || preset.username || 'guest'}
+                    {isFtpMode
+                      ? `port 21 · ${username || 'anonymous'}`
+                      : `${shareName || preset.shareName} · ${username || preset.username || 'guest'}`}
                   </span>
                 )}
                 <ChevronDown className={`w-4 h-4 transition-transform ${advancedShareOpen ? 'rotate-180' : ''}`} />
@@ -517,23 +564,27 @@ export function AddTelescopeModal({
             </button>
             {advancedShareOpen && (
               <div className="px-4 pb-4 space-y-4">
-                <div>
-                  <label className={labelClass}>SMB Share Name</label>
-                  <input
-                    type="text"
-                    placeholder={kind === 'other' ? 'e.g. Astronomy' : preset.shareName}
-                    value={shareName}
-                    onChange={e => setShareName(e.target.value)}
-                    className={inputClass}
-                  />
-                  <p className={helperClass}>{preset.shareHelp}</p>
-                </div>
+                {/* FTP has no share concept, and the Dwarf storage root is
+                    detected automatically, so there is nothing to fill in. */}
+                {!isFtpMode && (
+                  <div>
+                    <label className={labelClass}>SMB Share Name</label>
+                    <input
+                      type="text"
+                      placeholder={kind === 'other' ? 'e.g. Astronomy' : preset.shareName}
+                      value={shareName}
+                      onChange={e => setShareName(e.target.value)}
+                      className={inputClass}
+                    />
+                    <p className={helperClass}>{preset.shareHelp}</p>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className={labelClass}>Username</label>
                     <input
                       type="text"
-                      placeholder={preset.username || 'guest'}
+                      placeholder={isFtpMode ? 'anonymous' : (preset.username || 'guest')}
                       value={username}
                       onChange={e => setUsername(e.target.value)}
                       className={inputClass}
@@ -570,10 +621,11 @@ export function AddTelescopeModal({
                   </button>
                   <div className="flex-1 min-w-0">
                     <div className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                      Track this telescope across SMB and USB
+                      Track this telescope across Wi-Fi and USB
                     </div>
                     <p className={helperClass}>
                       Writes a small hidden file (.nebulis.dat) to the device so reaching it over Wi-Fi or USB resolves to the same telescope. Disable if your firmware rejects unknown files or you'd rather we not write to the device. Files imported with this off use the per-profile dedup fallback.
+                      {isFtpMode && ' Dwarf firmware may refuse the write, in which case this quietly does nothing.'}
                     </p>
                   </div>
                 </div>
@@ -715,6 +767,13 @@ export function AddTelescopeModal({
                 description="Lunar and planetary video captures."
                 checked={importVideos}
                 onChange={setImportVideos}
+                isDark={isDark}
+              />
+              <FileTypeToggle
+                label="Archive everything"
+                description="Copy every file on the device, overriding the five choices above. Includes sub-frames, per-frame thumbnails, working and calibration images, rejected frames, logs, and unrecognized types, with the device's folder structure preserved. Files Nebulis cannot display are stored and downloadable. This can be very large."
+                checked={archiveAllFiles}
+                onChange={setArchiveAllFiles}
                 isDark={isDark}
               />
             </div>

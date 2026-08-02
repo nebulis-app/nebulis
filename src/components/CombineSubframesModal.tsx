@@ -11,6 +11,7 @@ import {
 import { useTheme } from '../hooks/useTheme';
 import { Modal } from './ui/Modal';
 import { CloseConfirm } from './ui/CloseConfirm';
+import { rememberCombinedSessions } from '../lib/lastCombinedSessions';
 
 interface Props {
   objectId: string;
@@ -147,6 +148,9 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
         stopPolling();
         setZipSize(status.size ?? 0);
         setPhase('done');
+        // Hand these nights to UploadProcessedModal so bringing the external
+        // stack back in doesn't require re-picking the same sessions.
+        rememberCombinedSessions(objectId, Array.from(selected));
         const a = document.createElement('a');
         a.href = `/api/library/download/tmp/${status.token}`;
         a.click();

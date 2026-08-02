@@ -8,8 +8,11 @@ import path from 'path';
 import archiver from 'archiver';
 import { getLibraryDir, isLibraryAvailable, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
 import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
-import { getFileCategory, isRealFile, parseFilename, sessionNightFor } from '../lib/telescopeFiles.js';
+import { getFileCategory, isRealFile } from '../lib/telescopeFiles.js';
 import { getObjectFolderName } from '../lib/localLibrary.js';
+import { getProcessedImages, getAllProcessedImagesForObject } from '../lib/library/processed.js';
+import { listObjectFiles, getObjectLayout } from '../lib/library/libraryLayout.js';
+import { resolverFor } from '../lib/library/libraryFiles.js';
 import { queryString, contentDispositionHeader } from '../lib/queryHelpers.js';
 
 const router = Router();
@@ -49,23 +52,46 @@ router.get('/objects/:objectId', async (req: Request, res: Response) => {
       return;
     }
 
-    let files = (await withTimeout(fs.promises.readdir(objDir), LIBRARY_IO_TIMEOUT_MS))
-      .filter(f => isRealFile(f) && !f.toLowerCase().includes('_thn.'));
+    // Layout-aware: a nested object keeps its files one level down, inside a
+    // per-session directory. A flat readdir here would silently export an empty
+    // archive for every nested object.
+    let files = listObjectFiles(objDir, getObjectLayout(objectId))
+      .filter(e => isRealFile(e.fileName) && !e.fileName.toLowerCase().includes('_thn.'));
 
     // Filter by type
     if (fileType && fileType !== 'all') {
-      files = files.filter(f => getFileCategory(f) === fileType);
+      files = files.filter(e => getFileCategory(e.fileName) === fileType);
     }
 
-    // Filter by date
+    // Filter by date. Uses the recorded session rather than re-parsing the
+    // filename, because a nested import keeps the device's own names and those
+    // carry no date at all.
     if (sessionDate) {
-      files = files.filter(f => {
-        const parsed = parseFilename(f);
-        return sessionNightFor(parsed) === sessionDate;
-      });
+      const identity = resolverFor(objectId);
+      files = files.filter(e => identity.session(e.relPath) === sessionDate);
     }
 
-    if (files.length === 0) {
+    // Processed images live in a `processed/` subdirectory and were previously
+    // absent from the archive entirely, because the listing above is a
+    // non-recursive readdir. That made it impossible to get your own
+    // post-processing work back out of Nebulis in one action.
+    //
+    // Taken from the DB rather than by walking the directory, for two reasons:
+    // the records carry the session each image belongs to (a processed
+    // filename is arbitrary, so the filename-based date filter above cannot
+    // work on them), and they are not constrained to `isRealFile`'s image
+    // extensions, so formats we store without rendering still come along.
+    //
+    // Only included in an unfiltered export: a "FITS only" or "images only"
+    // request is asking for telescope output, not derived work.
+    const includeProcessed = !fileType || fileType === 'all';
+    const processed = includeProcessed
+      ? (sessionDate
+          ? getProcessedImages(objectId, sessionDate)
+          : getAllProcessedImagesForObject(objectId))
+      : [];
+
+    if (files.length === 0 && processed.length === 0) {
       res.apiError(404, 'NO_FILES', 'No files match the filter criteria');
       return;
     }
@@ -83,10 +109,25 @@ router.get('/objects/:objectId', async (req: Request, res: Response) => {
     });
     archive.pipe(res);
 
-    // Add files from local library
-    for (const fname of files) {
-      const fullPath = path.join(objDir, fname);
-      archive.file(fullPath, { name: `${objectId}/${fname}` });
+    // Add files from local library. The object-relative path is preserved
+    // inside the archive, so an extracted nested object mirrors the library
+    // (and therefore the telescope's own) directory structure.
+    for (const entry of files) {
+      const fullPath = path.join(objDir, entry.relPath);
+      archive.file(fullPath, { name: `${objectId}/${entry.relPath}` });
+    }
+
+    // Processed images keep their `processed/` prefix inside the archive so the
+    // extracted tree mirrors the library layout. A DB row whose file is missing
+    // is skipped rather than handed to archiver, which would abort the whole
+    // stream mid-download for one absent file.
+    for (const record of processed) {
+      const fullPath = path.join(objDir, 'processed', record.filename);
+      if (!fs.existsSync(fullPath)) {
+        console.warn(`[download] Skipping missing processed image: ${record.filename}`);
+        continue;
+      }
+      archive.file(fullPath, { name: `${objectId}/processed/${record.filename}` });
     }
 
     archive.finalize();

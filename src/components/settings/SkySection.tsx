@@ -1,5 +1,5 @@
 import type { Settings as SettingsType } from '../../types';
-import { LocationSection } from './LocationSection';
+import { SitesSection } from './SitesSection';
 import { CatalogSection } from './CatalogSection';
 import { DataSourcesSection } from './DataSourcesSection';
 
@@ -15,7 +15,7 @@ export function SkySection({
 }) {
   return (
     <div className="space-y-10">
-      <LocationSection isDark={isDark} form={form} setForm={setForm} />
+      <SitesSection isDark={isDark} />
       <CatalogSection isDark={isDark} form={form} setForm={setForm} />
       <DataSourcesSection isDark={isDark} />
     </div>

@@ -21,10 +21,11 @@ import {
   type DragMoveEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { Moon, Compass, MapPin, Calendar, ChevronLeft, ChevronRight, Check, Crosshair, Sparkles, Share2, Copy } from 'lucide-react';
+import { Moon, Compass, Calendar, ChevronLeft, ChevronRight, Check, Crosshair, Sparkles, Share2, Copy } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { getPlannerTargets } from '../lib/api/planner';
-import { getSettings, updateSettings } from '../lib/api/settings';
+import { getSites, getActiveSite, setActiveSite, updateSite, type ObservingSite } from '../lib/api/sites';
+import { SitePicker } from '../components/SitePicker';
 import { listPlannedSessions, createPlannedSession, updatePlannedSession, deletePlannedSession, type PlannedSession, type PlannedSessionCreate } from '../lib/api/plannedSessions';
 import { getCatalogObjectInfo } from '../lib/api/catalog';
 import { getCatalogThumbnailUrl } from '../lib/catalogImage';
@@ -72,20 +73,35 @@ export function PlannerPage() {
   // was scheduled into rather than the planner's own default "today".
   const initialFocusDate = navState?.focusDate;
 
-  // staleTime: 0 so navigating to the planner always loads current settings
-  // (sky map and location can be changed from another device/tab).
-  // refetchInterval keeps the sky map in sync while the planner is open.
-  const settingsQuery = useQuery({
-    queryKey: ['settings'],
-    queryFn: getSettings,
-    staleTime: 0,
-    refetchInterval: 60_000,
+  // ── Observing site ───────────────────────────────────────────────────────
+  // Every location/sky value below (coordinates, minAlt, horizon, visible-sky
+  // mask) comes from whichever site is selected. staleTime: 0 + a refetch
+  // interval so a site edited from another tab/device (or the sky map redrawn
+  // from the Planner there) shows up here without a manual reload — the same
+  // guarantee the old settings-only fetch used to provide.
+  const sitesQuery = useQuery({ queryKey: ['sites'], queryFn: getSites, staleTime: 0, refetchInterval: 60_000 });
+  const activeSiteQuery = useQuery({ queryKey: ['active-site'], queryFn: getActiveSite, staleTime: 0 });
+  const sites = sitesQuery.data ?? [];
+  // Local override for this tab, seeded null so the tab starts on whatever
+  // the server reports as active. Switching sites here also persists via
+  // setActiveSite, so other tabs/devices pick it up on their own next fetch.
+  const [pickedSiteId, setPickedSiteId] = useState<string | null>(null);
+  const effectiveSiteId = pickedSiteId ?? activeSiteQuery.data?.id ?? null;
+  const currentSite: ObservingSite | null =
+    sites.find(s => s.id === effectiveSiteId) ?? activeSiteQuery.data ?? null;
+
+  const setActiveSiteMut = useMutation({
+    mutationFn: (siteId: string) => setActiveSite(siteId),
+    onSuccess: (site) => {
+      setPickedSiteId(site.id);
+      queryClient.invalidateQueries({ queryKey: ['active-site'] });
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      queryClient.invalidateQueries({ queryKey: ['planner-targets'] });
+    },
   });
 
-  const settings = settingsQuery.data;
-
-  const observerLat = settings?.latitude ?? null;
-  const observerLon = settings?.longitude ?? null;
+  const observerLat = currentSite?.latitude ?? null;
+  const observerLon = currentSite?.longitude ?? null;
 
   // ── Date / night window ────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState<Date>(() =>
@@ -99,12 +115,16 @@ export function PlannerPage() {
   // Server is now date-aware: /planner/tonight?date=YYYY-MM-DD returns the
   // catalog filtered for that night's visibility. For today, we omit the
   // param so the server uses "now" semantics (correct altNow/azNow).
-  const settingsTimezone = settings?.timezone || undefined;
+  const settingsTimezone = currentSite?.timezone || undefined;
   const settingsToday = useMemo(() => plannerToday(new Date(), settingsTimezone), [settingsTimezone]);
   const isToday = sameLocalDay(selectedDate, settingsToday);
   const plannerQuery = useQuery({
-    queryKey: ['planner-targets', observerLat, observerLon, settingsTimezone, isToday ? 'today' : selectedDateKey],
-    queryFn: () => getPlannerTargets(isToday ? {} : { date: selectedDateKey }),
+    queryKey: ['planner-targets', effectiveSiteId, isToday ? 'today' : selectedDateKey],
+    queryFn: () => getPlannerTargets({
+      ...(isToday ? {} : { date: selectedDateKey }),
+      ...(effectiveSiteId ? { siteId: effectiveSiteId } : {}),
+    }),
+    enabled: sitesQuery.isSuccess && activeSiteQuery.isSuccess,
   });
   const planner = plannerQuery.data;
   const observerTimezone = planner?.observerTimezone || settingsTimezone;
@@ -168,7 +188,8 @@ export function PlannerPage() {
   });
   const sessions = useMemo(() => sessionsQuery.data ?? [], [sessionsQuery.data]);
 
-  const visibleSkyMap: VisibleSkyMap | null = settings?.visibleSkyMap?.length === SKY_MAP_CELLS ? settings.visibleSkyMap : null;
+  const visibleSkyMap: VisibleSkyMap | null =
+    currentSite?.visibleSkyMap?.length === SKY_MAP_CELLS ? currentSite.visibleSkyMap : null;
 
   // ── Mutations ──────────────────────────────────────────────────────────
   const createMut = useMutation({
@@ -247,9 +268,14 @@ export function PlannerPage() {
   });
   const [skyMapSaveError, setSkyMapSaveError] = useState<string | null>(null);
   const saveSkyMapMut = useMutation({
-    mutationFn: (map: VisibleSkyMap) => updateSettings({ visibleSkyMap: map }),
+    mutationFn: (map: VisibleSkyMap) => {
+      if (!effectiveSiteId) return Promise.reject(new Error('No observing site selected'));
+      return updateSite(effectiveSiteId, { visibleSkyMap: map });
+    },
     onSuccess: () => {
       setSkyMapSaveError(null);
+      queryClient.invalidateQueries({ queryKey: ['sites'] });
+      queryClient.invalidateQueries({ queryKey: ['active-site'] });
       queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
     onError: (err: Error) => setSkyMapSaveError(err.message ?? 'Failed to save sky map'),
@@ -557,7 +583,7 @@ export function PlannerPage() {
 
 
   // ── Render ─────────────────────────────────────────────────────────────
-  if (settingsQuery.isLoading || plannerQuery.isLoading) {
+  if (sitesQuery.isLoading || activeSiteQuery.isLoading || plannerQuery.isLoading) {
     return <div className={`p-6 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>Loading planner...</div>;
   }
 
@@ -623,12 +649,15 @@ export function PlannerPage() {
         </h1>
         {observerLat != null && observerLon != null && (
           <div className="flex flex-col items-end gap-1 shrink-0">
-            <div className={`flex items-center gap-1.5 text-sm ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-              <MapPin className={`w-4 h-4 shrink-0 ${accentText}`} />
-              <span className="font-medium">
-                {settings?.locationName || `${observerLat.toFixed(2)}, ${observerLon.toFixed(2)}`}
-              </span>
-            </div>
+            <SitePicker
+              isDark={isDark}
+              accentText={accentText}
+              sites={sites}
+              currentSite={currentSite}
+              fallbackLabel={`${observerLat.toFixed(2)}, ${observerLon.toFixed(2)}`}
+              onSelect={(id) => setActiveSiteMut.mutate(id)}
+              isSwitching={setActiveSiteMut.isPending}
+            />
             <div className={`flex items-center gap-3 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
               <SaveIndicator
                 isPending={createMut.isPending || updateMut.isPending || deleteMut.isPending}
@@ -767,7 +796,7 @@ export function PlannerPage() {
             observerLon={observerLon}
             nightStart={nightStart ?? timelineStart}
             nightEnd={nightEnd ?? timelineEnd}
-            minAlt={settings?.minAlt ?? null}
+            minAlt={currentSite?.minAlt ?? null}
             visibleSkyMap={visibleSkyMap}
             onShowDetails={(t) => setDetailsSession({
               objectId: t.id,
@@ -811,7 +840,7 @@ export function PlannerPage() {
                   sessions={sessions}
                   observerLat={observerLat}
                   observerLon={observerLon}
-                  minAlt={settings?.minAlt}
+                  minAlt={currentSite?.minAlt}
                   observerTimezone={observerTimezone}
                 />
               )}
@@ -853,7 +882,7 @@ export function PlannerPage() {
           scheduleStart={autoPlanStart}
           scheduleHardEnd={planWindowEnd}
           moonIllumination={planner?.moonIllumination ?? 0}
-          minAlt={settings?.minAlt ?? 30}
+          minAlt={currentSite?.minAlt ?? 30}
           visibleSkyMap={visibleSkyMap}
           observerTimezone={observerTimezone}
           nightLabel={nightLabel}
@@ -904,7 +933,7 @@ export function PlannerPage() {
           observerTimezone={observerTimezone}
           nightStart={nightStart}
           nightEnd={nightEnd}
-          minAlt={settings?.minAlt}
+          minAlt={currentSite?.minAlt}
           isDark={isDark}
           onClose={() => setDetailsSession(null)}
         />

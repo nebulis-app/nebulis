@@ -54,6 +54,10 @@ interface ForecastData {
 export const getForecast = (lat: number, lon: number, refresh = false) =>
   fetchJSON<ForecastData>(`/forecast?lat=${lat}&lon=${lon}${refresh ? '&refresh=1' : ''}`);
 
+/** Forecast for an explicit observing site rather than raw coordinates. */
+export const getForecastForSite = (siteId: string, refresh = false) =>
+  fetchJSON<ForecastData>(`/forecast?siteId=${encodeURIComponent(siteId)}${refresh ? '&refresh=1' : ''}`);
+
 // Planner
 export interface PlannerTarget {
   id: string;
@@ -93,6 +97,11 @@ interface PlannerResponse {
   observerLat?: number;
   observerLon?: number;
   observerTimezone?: string | null;
+  /** Which observing site the server actually resolved this response from.
+   *  Null when resolved from an ad-hoc lat/lon override rather than a named
+   *  site. Absent on older servers. */
+  siteId?: string | null;
+  siteName?: string;
 }
 
 export interface DsoEntry {
@@ -110,12 +119,17 @@ export interface DsoEntry {
   messier: number | null;
 }
 
-export const getPlannerTargets = (opts?: { type?: string; minAlt?: number; limit?: number; date?: string }) => {
+export const getPlannerTargets = (opts?: {
+  type?: string; minAlt?: number; limit?: number; date?: string;
+  /** Explicit observing site to plan from. Omit to use the server's active/default site. */
+  siteId?: string;
+}) => {
   const params = new URLSearchParams();
   if (opts?.type) params.set('type', opts.type);
   if (opts?.minAlt != null) params.set('minAlt', String(opts.minAlt));
   if (opts?.limit) params.set('limit', String(opts.limit));
   if (opts?.date) params.set('date', opts.date);
+  if (opts?.siteId) params.set('siteId', opts.siteId);
   const qs = params.toString();
   return fetchJSON<PlannerResponse>(`/planner/tonight${qs ? `?${qs}` : ''}`);
 };

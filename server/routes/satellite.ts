@@ -9,7 +9,8 @@ import { DATA_DIR } from '../lib/paths.js';
 import { getLibraryDir } from '../lib/libraryPath.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { getSessionTelescopeId } from '../lib/localLibrary.js';
-import { getProfileById, getSettingsData, type TelescopeKind } from '../lib/telescopes.js';
+import { getProfileById, type TelescopeKind } from '../lib/telescopes.js';
+import { getActiveSite } from '../lib/observingSites.js';
 import { parseFilename, normalizeObjectId, sessionNightFor } from '../lib/telescopeFiles.js';
 
 /**
@@ -202,14 +203,14 @@ router.post('/detect', requireAdmin, async (req: Request, res: Response) => {
 
     // Resolution order for observer coordinates:
     //   1. FITS headers (SeeStar writes SITELAT/SITELONG; others use variants)
-    //   2. App settings (user-configured location for planning/forecasting)
+    //   2. The active observing site (user-configured location for planning/forecasting)
     //   3. Client-supplied override (from browser geolocation popup)
     let obsLat: unknown = v['OBS-LAT'] ?? v['SITELAT'] ?? v['LAT-OBS'] ?? v['OBSLAT'] ?? v['LATITUDE'];
     let obsLon: unknown = v['OBS-LONG'] ?? v['SITELONG'] ?? v['LONG-OBS'] ?? v['OBSLONG'] ?? v['LONGITUD'];
     if (obsLat == null || obsLon == null) {
-      const settings = getSettingsData();
-      if (typeof settings.latitude === 'number') obsLat = settings.latitude;
-      if (typeof settings.longitude === 'number') obsLon = settings.longitude;
+      const site = getActiveSite();
+      if (site.latitude != null) obsLat = site.latitude;
+      if (site.longitude != null) obsLon = site.longitude;
     }
     if ((obsLat == null || obsLon == null) && typeof overrideLat === 'number' && typeof overrideLon === 'number') {
       obsLat = overrideLat;

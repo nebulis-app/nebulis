@@ -8,6 +8,11 @@ interface FitsPreviewProps {
   isDark: boolean;
   /** Auto-stretch amount (0–1). Matches the FitsViewer default. */
   stretch?: number;
+  /** Natural pixel dimensions, once the FITS has been parsed. Lets the hero
+   *  slot size its column to the frame's orientation. */
+  onNaturalSize?: (width: number, height: number) => void;
+  /** Tailwind max-height for the canvas, so the caller controls the cap. */
+  maxHeightClass?: string;
 }
 
 /**
@@ -16,10 +21,20 @@ interface FitsPreviewProps {
  * this is meant for a hero slot where the real image shape should show. It
  * loads immediately rather than lazily, since the hero is above the fold.
  */
-export function FitsPreview({ url, isDark, stretch = 0.5 }: FitsPreviewProps) {
+export function FitsPreview({
+  url,
+  isDark,
+  stretch = 0.5,
+  onNaturalSize,
+  maxHeightClass = 'max-h-[420px]',
+}: FitsPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [state, setState] = useState<'loading' | 'done' | 'error'>('loading');
   const [error, setError] = useState<string | null>(null);
+
+  // Held in a ref so a caller passing an inline arrow doesn't re-run the fetch.
+  const onNaturalSizeRef = useRef(onNaturalSize);
+  onNaturalSizeRef.current = onNaturalSize;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -31,6 +46,8 @@ export function FitsPreview({ url, isDark, stretch = 0.5 }: FitsPreviewProps) {
         const fits = parseFits(buffer);
         if (canvasRef.current) {
           renderFitsToCanvas(canvasRef.current, fits, stretch, 'gray', window.devicePixelRatio || 1);
+          const { width, height } = canvasRef.current;
+          if (width > 0 && height > 0) onNaturalSizeRef.current?.(width, height);
         }
         setState('done');
       })
@@ -60,9 +77,13 @@ export function FitsPreview({ url, isDark, stretch = 0.5 }: FitsPreviewProps) {
         </div>
       )}
 
+      {/* Height is capped for the same reason the hero <img> is: an uncapped
+          frame in a wide column renders tall enough to push the rest of the
+          session below the fold. The cap itself comes from the caller, which
+          knows the frame's orientation. See heroSizing in ObservationDetail. */}
       <canvas
         ref={canvasRef}
-        className={`w-full h-auto object-contain transition-opacity ${state === 'done' ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
+        className={`block mx-auto w-auto max-w-full ${maxHeightClass} transition-opacity ${state === 'done' ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
       />
     </div>
   );

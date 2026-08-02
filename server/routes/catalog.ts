@@ -30,7 +30,7 @@ import {
 } from '../lib/catalogPrefetch.js';
 import { getAllPackStates } from '../lib/catalogPack/state.js';
 import { getById as getDsoById } from '../lib/dsoCatalog.js';
-import { prefetchSkyImage } from '../lib/skyImage.js';
+import { prefetchSkyImage, fetchSkyCutout } from '../lib/skyImage.js';
 import { enrichObjectData } from '../lib/localLibrary.js';
 import { DATA_DIR } from '../lib/paths.js';
 import { caldwellToNgcId, CALDWELL_FALLBACK_COORDS } from '../lib/caldwellCatalog.js';
@@ -363,6 +363,76 @@ router.get('/:id/image', async (req: Request, res: Response) => {
   } catch (err) {
     console.error(`[catalog] resize failed for ${id} ${width}x${height}:`, err);
     if (!res.headersSent) res.apiError(500, 'RESIZE_FAILED', 'Failed to resize image');
+  }
+});
+
+/** Resolve an object's RA/Dec to decimal degrees (DSO catalog → library DB →
+ *  Caldwell fallback). Mirrors the resolution in the /:id/image route. */
+function resolveObjectRaDecDegs(id: string, rawId: string): { ra: number; dec: number } | null {
+  const dsoEntry = getDsoById(id);
+  let raDegs: number | undefined = dsoEntry?.ra != null ? dsoEntry.ra * 15 : undefined;
+  let decDegs: number | undefined = dsoEntry?.dec;
+
+  if (raDegs == null || decDegs == null) {
+    // Typed prepared statement — SQL trust boundary enforced by libraryObjects schema.
+    const libCoordsStmt = db.prepare<[string, string], { ra: string | null; dec: string | null }>(
+      `SELECT ra, dec FROM libraryObjects WHERE (objectId = ? OR objectId = ?) AND deleted = 0 LIMIT 1`,
+    );
+    const libCoords = libCoordsStmt.get(id, rawId);
+    if (libCoords?.ra) raDegs = raToDegs(libCoords.ra);
+    if (libCoords?.dec) decDegs = decToDegs(libCoords.dec);
+  }
+
+  if (raDegs == null || decDegs == null) {
+    const m = rawId.match(/^C(\d{1,3})$/i);
+    const fallback = m ? (CALDWELL_FALLBACK_COORDS[parseInt(m[1], 10)] ?? null) : null;
+    if (fallback) { raDegs = fallback.ra * 15; decDegs = fallback.dec; }
+  }
+
+  if (raDegs == null || decDegs == null) return null;
+  return { ra: raDegs, dec: decDegs };
+}
+
+// ─── Framing atlas: square sky cutout at an arbitrary FOV ────────────────
+//
+// Unlike /:id/image (one master per object at a fixed field), this returns a
+// square DSS2 cutout spanning the requested `fov` degrees, centered on the
+// object, cached per FOV bucket. The framing/mosaic modal uses it so the sky
+// fills the background at any zoom level. Public (see auth bypass list) so a
+// plain <img> tag can load it without an Authorization header.
+router.get('/:id/sky', async (req: Request, res: Response) => {
+  const rawId = normalizeCatalogId(String(req.params.id));
+  const id = caldwellToNgcId(rawId) ?? rawId;
+
+  const fovDeg = Number(req.query.fov);
+  if (!Number.isFinite(fovDeg) || fovDeg <= 0) {
+    res.apiError(400, 'BAD_FOV', 'A positive fov (degrees) is required.');
+    return;
+  }
+  const sizePx = Number(req.query.size) || 800;
+
+  const coords = resolveObjectRaDecDegs(id, rawId);
+  if (!coords) {
+    res.apiError(404, 'NO_COORDS', `No coordinates known for "${rawId}".`);
+    return;
+  }
+
+  const file = await fetchSkyCutout({ id, ra: coords.ra, dec: coords.dec, fovDeg, sizePx });
+  if (!file) {
+    res.apiError(404, 'NOT_CACHED', `No sky image available for "${rawId}".`);
+    return;
+  }
+
+  try {
+    const stat = fs.statSync(file);
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Content-Length', String(stat.size));
+    res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+    const s = fs.createReadStream(file);
+    s.on('error', () => { if (!res.headersSent) res.status(500).end(); });
+    s.pipe(res);
+  } catch {
+    res.apiError(404, 'NOT_CACHED', `No sky image available for "${rawId}".`);
   }
 });
 

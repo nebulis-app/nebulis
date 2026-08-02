@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Image, Check, RotateCw, ImagePlus, RefreshCw } from 'lucide-react';
 import {
@@ -9,6 +9,7 @@ import {
   getLibraryFileUrl,
 } from '../lib/api/library';
 import { getCatalogSources, prefetchCatalogObject, type CatalogSource } from '../lib/api/catalog';
+import { isRenderableProcessed, canPreviewLocally } from '../lib/processedFormats';
 import {
   getCatalogThumbnailUrl,
   getCatalogSourceThumbnailUrl,
@@ -36,6 +37,12 @@ export function GalleryImageModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  // Live object URL for the local preview. Revoked when replaced and on unmount;
+  // leaking one pins the whole selected file in memory.
+  const previewUrlRef = useRef<string | null>(null);
+  useEffect(() => () => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+  }, []);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   // undefined = no change pending; null = sky survey selected; string = image path selected
@@ -46,10 +53,17 @@ export function GalleryImageModal({
     queryFn: () => getStackedImages(objectId),
   });
 
-  const { data: processedImages = [] } = useQuery({
+  const { data: allProcessedImages = [] } = useQuery({
     queryKey: ['all-processed-images', objectId],
     queryFn: () => getAllProcessedImagesForObject(objectId),
   });
+  // Stored-only formats (XISF, FITS, PSD, RAW) can be held in the library but
+  // not drawn, so they are not candidates for the object's gallery image. Each
+  // tile here is an <img> pointed at the file.
+  const processedImages = useMemo(
+    () => allProcessedImages.filter(img => isRenderableProcessed(img.originalName)),
+    [allProcessedImages],
+  );
 
   // What catalog masters are currently cached on disk for this object — drives
   // the "pin to a specific source" tiles below the Auto tile in the Sky Survey
@@ -111,9 +125,18 @@ export function GalleryImageModal({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => setUploadPreview(reader.result as string);
-    reader.readAsDataURL(file);
+    // createObjectURL, not readAsDataURL: the latter reads the whole file into a
+    // base64 string and there was no size or format gate here at all, so a large
+    // pick could take the tab down before the upload even started.
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = null;
+    if (canPreviewLocally(file)) {
+      const url = URL.createObjectURL(file);
+      previewUrlRef.current = url;
+      setUploadPreview(url);
+    } else {
+      setUploadPreview(null);
+    }
 
     handleUpload(file);
   };

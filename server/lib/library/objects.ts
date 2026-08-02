@@ -24,6 +24,14 @@ import { parseFitsHeader } from '../fitsParser.js';
 import { log } from '../logger.js';
 import { fetchWikipediaSummary } from '../wikipedia.js';
 import { getLibraryObjectFilterTags } from './objectFilters.js';
+import {
+  resolverFor,
+  deleteLibraryFileRow,
+  deleteLibraryFileRowsForObject,
+  writeObjectManifest,
+} from './libraryFiles.js';
+import { listObjectFiles, getObjectLayout } from './libraryLayout.js';
+import { deleteCaptureInfoForObject } from './captureInfo.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -81,6 +89,9 @@ export interface LibrarySessionRow {
   visibility: number | null;
   precipProb: number | null;
   sessionImage: string | null;
+  /** Which observing site this session was captured from. NULL = the default
+   *  site. See server/lib/observingSites.ts. */
+  siteId: string | null;
 }
 
 export interface LibraryMetaRow {
@@ -102,6 +113,7 @@ export interface ProcessedImageRow {
   size: number;
   mimeType: string;
   uploadedAt: string;
+  runId: string | null;
 }
 
 export interface ImportHistoryRow {
@@ -118,6 +130,10 @@ export interface ImportHistoryRow {
   telescopeId: string | null;
   telescopeName: string | null;
   transportKind: TransportKind | null;
+  /** JSON-serialized ImportSkipSummary[], or NULL when nothing was skipped. */
+  skipped: string | null;
+  /** 1 if the user explicitly triggered this run, 0 for a scheduled auto-import tick. */
+  manual: number;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -199,8 +215,23 @@ db.prepare('CREATE INDEX IF NOT EXISTS idx_importHistory_finished ON importHisto
     db.prepare('ALTER TABLE importHistory ADD COLUMN telescopeName TEXT').run();
   }
   if (!ihCols.some(c => c.name === 'transportKind')) {
-    // 'smb' | 'local' | NULL (no transport context).
+    // 'smb' | 'local' | 'ftp' | NULL (no transport context).
     db.prepare('ALTER TABLE importHistory ADD COLUMN transportKind TEXT').run();
+  }
+  if (!ihCols.some(c => c.name === 'skipped')) {
+    // JSON-serialized ImportSkipSummary[]: what the run found but did not
+    // import, and why. NULL on rows written before this existed and on runs
+    // that skipped nothing, so a NULL never means "we skipped things and lost
+    // track of what they were".
+    db.prepare('ALTER TABLE importHistory ADD COLUMN skipped TEXT').run();
+  }
+  if (!ihCols.some(c => c.name === 'manual')) {
+    // 1 when the user explicitly triggered this run (Sync Now button, a
+    // per-object/session sync), 0 for the scheduled auto-import tick. Lets
+    // getHistory surface a zero-new-file run when the user asked for it
+    // directly, while still hiding the routine "nothing changed" noise a
+    // background tick produces every interval.
+    db.prepare('ALTER TABLE importHistory ADD COLUMN manual INTEGER NOT NULL DEFAULT 0').run();
   }
 }
 
@@ -218,6 +249,63 @@ db.prepare(`CREATE TABLE IF NOT EXISTS sessionProcessedImages (
   uploadedAt   TEXT NOT NULL
 )`).run();
 db.prepare('CREATE INDEX IF NOT EXISTS idx_sessionProcessedImages_session ON sessionProcessedImages(objectId, date)').run();
+
+// A processing run records which nights a processed image actually combines
+// (a "day 1+2+3 stack" needs to say so), separate from `sessionProcessedImages.date`
+// which stays the single anchor session the row is filed under for the
+// existing per-session list endpoint.
+db.prepare(`CREATE TABLE IF NOT EXISTS processingRuns (
+  id        TEXT PRIMARY KEY,
+  objectId  TEXT NOT NULL,
+  title     TEXT NOT NULL DEFAULT '',
+  notes     TEXT NOT NULL DEFAULT '',
+  software  TEXT NOT NULL DEFAULT '',
+  createdAt TEXT NOT NULL
+)`).run();
+db.prepare('CREATE INDEX IF NOT EXISTS idx_processingRuns_object ON processingRuns(objectId)').run();
+
+db.prepare(`CREATE TABLE IF NOT EXISTS processingRunSessions (
+  runId TEXT NOT NULL REFERENCES processingRuns(id) ON DELETE CASCADE,
+  date  TEXT NOT NULL,
+  PRIMARY KEY (runId, date)
+)`).run();
+
+// sessionProcessedImages.runId — added after initial schema. NULL means the
+// image predates processing runs; backfilled below into one-session runs so
+// every processed image ends up with a run and "which nights" is uniform.
+{
+  const spiCols = db.prepare<[], { name: string }>('PRAGMA table_info(sessionProcessedImages)').all();
+  if (!spiCols.some(c => c.name === 'runId')) {
+    db.prepare('ALTER TABLE sessionProcessedImages ADD COLUMN runId TEXT').run();
+  }
+}
+{
+  const orphaned = db
+    .prepare<[], { objectId: string; date: string }>(
+      'SELECT DISTINCT objectId, date FROM sessionProcessedImages WHERE runId IS NULL',
+    )
+    .all();
+  if (orphaned.length > 0) {
+    const insertRun = db.prepare(
+      `INSERT INTO processingRuns (id, objectId, title, notes, software, createdAt) VALUES (?, ?, '', '', '', ?)`,
+    );
+    const insertRunSession = db.prepare(
+      'INSERT INTO processingRunSessions (runId, date) VALUES (?, ?)',
+    );
+    const setRunId = db.prepare(
+      'UPDATE sessionProcessedImages SET runId = ? WHERE objectId = ? AND date = ? AND runId IS NULL',
+    );
+    const backfillRuns = db.transaction(() => {
+      for (const { objectId, date } of orphaned) {
+        const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        insertRun.run(runId, objectId, new Date().toISOString());
+        insertRunSession.run(runId, date);
+        setRunId.run(runId, objectId, date);
+      }
+    });
+    backfillRuns();
+  }
+}
 
 // Migrate: strip spaces from objectIds ("M 16" → "M16", "IC 1318" → "IC1318")
 {
@@ -243,7 +331,7 @@ db.prepare('CREATE INDEX IF NOT EXISTS idx_sessionProcessedImages_session ON ses
         db.prepare(`DELETE FROM favorites WHERE objectId = ?`).run(normalized);
         db.prepare(`UPDATE favorites SET objectId = ? WHERE objectId = ?`).run(normalized, objectId);
         // Sessions: compound PK so use INSERT+DELETE
-        db.prepare(`INSERT OR IGNORE INTO librarySessions (objectId, date, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage) SELECT ?, date, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage FROM librarySessions WHERE objectId = ?`).run(normalized, objectId);
+        db.prepare(`INSERT OR IGNORE INTO librarySessions (objectId, date, siteId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage) SELECT ?, date, siteId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage FROM librarySessions WHERE objectId = ?`).run(normalized, objectId);
         db.prepare(`DELETE FROM librarySessions WHERE objectId = ?`).run(objectId);
         db.prepare(`INSERT OR IGNORE INTO libraryDeletedSessions (objectId, date) SELECT ?, date FROM libraryDeletedSessions WHERE objectId = ?`).run(normalized, objectId);
         db.prepare(`DELETE FROM libraryDeletedSessions WHERE objectId = ?`).run(objectId);
@@ -281,7 +369,7 @@ db.prepare('CREATE INDEX IF NOT EXISTS idx_sessionProcessedImages_session ON ses
           db.prepare(`UPDATE wishlist SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
           db.prepare(`DELETE FROM favorites WHERE objectId = ?`).run(canonical);
           db.prepare(`UPDATE favorites SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
-          db.prepare(`INSERT OR IGNORE INTO librarySessions (objectId, date, telescopeId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage) SELECT ?, date, telescopeId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage FROM librarySessions WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`INSERT OR IGNORE INTO librarySessions (objectId, date, telescopeId, siteId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage) SELECT ?, date, telescopeId, siteId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage FROM librarySessions WHERE objectId = ?`).run(canonical, objectId);
           db.prepare(`DELETE FROM librarySessions WHERE objectId = ?`).run(objectId);
           db.prepare(`INSERT OR IGNORE INTO libraryDeletedSessions (objectId, date) SELECT ?, date FROM libraryDeletedSessions WHERE objectId = ?`).run(canonical, objectId);
           db.prepare(`DELETE FROM libraryDeletedSessions WHERE objectId = ?`).run(objectId);
@@ -290,7 +378,7 @@ db.prepare('CREATE INDEX IF NOT EXISTS idx_sessionProcessedImages_session ON ses
           db.prepare(`DELETE FROM libraryObjects WHERE objectId = ?`).run(objectId);
         } else {
           // Merge: fold alias sessions into the canonical row, then drop the alias
-          db.prepare(`INSERT OR IGNORE INTO librarySessions (objectId, date, telescopeId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage) SELECT ?, date, telescopeId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage FROM librarySessions WHERE objectId = ?`).run(canonical, objectId);
+          db.prepare(`INSERT OR IGNORE INTO librarySessions (objectId, date, telescopeId, siteId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage) SELECT ?, date, telescopeId, siteId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage FROM librarySessions WHERE objectId = ?`).run(canonical, objectId);
           db.prepare(`DELETE FROM librarySessions WHERE objectId = ?`).run(objectId);
           db.prepare(`INSERT OR IGNORE INTO libraryDeletedSessions (objectId, date) SELECT ?, date FROM libraryDeletedSessions WHERE objectId = ?`).run(canonical, objectId);
           db.prepare(`DELETE FROM libraryDeletedSessions WHERE objectId = ?`).run(objectId);
@@ -553,6 +641,16 @@ export const stmts = {
     `INSERT INTO librarySessions (objectId, date, telescopeId) VALUES (?, ?, ?)
      ON CONFLICT(objectId, date) DO UPDATE SET telescopeId = COALESCE(librarySessions.telescopeId, excluded.telescopeId)`,
   ),
+  // Unconditional variant. Only safe where the caller has already verified
+  // this exact (objectId, date) genuinely received new files from this
+  // telescope THIS run (commitFolderImport's stampedDates gate) — otherwise
+  // use addSessionStamped, whose COALESCE protects dates this run never
+  // touched from being reattributed (see setObjectPrimaryTelescopeIfNull
+  // comment below for the incident that pattern guards against).
+  addSessionStampedForce: db.prepare(
+    `INSERT INTO librarySessions (objectId, date, telescopeId) VALUES (?, ?, ?)
+     ON CONFLICT(objectId, date) DO UPDATE SET telescopeId = excluded.telescopeId`,
+  ),
   // Sets the per-object color/attribution telescope, but only if the object
   // hasn't been claimed yet. Re-imports from a different profile must NOT
   // overwrite this — that's what caused the cross-profile clobber where the
@@ -625,20 +723,28 @@ export const stmts = {
     'SELECT * FROM sessionProcessedImages WHERE id = ?',
   ),
   insertProcessedImage: db.prepare(
-    `INSERT INTO sessionProcessedImages (id, objectId, date, filename, originalName, title, notes, size, mimeType, uploadedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO sessionProcessedImages (id, objectId, date, filename, originalName, title, notes, size, mimeType, uploadedAt, runId)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ),
   deleteProcessedImageRow: db.prepare('DELETE FROM sessionProcessedImages WHERE id = ?'),
 
   // Import history
   insertHistory: db.prepare(
-    `INSERT INTO importHistory (startedAt, finishedAt, objectsTotal, filesTotal, newFiles, bytesTotal, bytesNew, error, files, telescopeId, telescopeName, transportKind)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO importHistory (startedAt, finishedAt, objectsTotal, filesTotal, newFiles, bytesTotal, bytesNew, error, files, telescopeId, telescopeName, transportKind, skipped, manual)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ),
+  // A run is worth surfacing when it actually did something (newFiles > 0),
+  // failed (error is always actionable regardless of file count), or the
+  // user explicitly asked for it (manual = 1) — the last clause is what lets
+  // "I clicked Sync Now and it found nothing new" show up as a real, visible
+  // entry instead of vanishing identically to a routine scheduled tick that
+  // (correctly, silently) found nothing.
   getHistory: db.prepare<[number, number], ImportHistoryRow>(
-    'SELECT * FROM importHistory WHERE newFiles > 0 ORDER BY finishedAt DESC LIMIT ? OFFSET ?',
+    'SELECT * FROM importHistory WHERE newFiles > 0 OR error IS NOT NULL OR manual = 1 ORDER BY finishedAt DESC LIMIT ? OFFSET ?',
   ),
-  getHistoryCount: db.prepare<[], { count: number }>('SELECT COUNT(*) as count FROM importHistory WHERE newFiles > 0'),
+  getHistoryCount: db.prepare<[], { count: number }>(
+    'SELECT COUNT(*) as count FROM importHistory WHERE newFiles > 0 OR error IS NOT NULL OR manual = 1',
+  ),
   getLatestHistory: db.prepare<[], Pick<ImportHistoryRow, 'finishedAt'>>('SELECT finishedAt FROM importHistory ORDER BY finishedAt DESC LIMIT 1'),
 };
 
@@ -945,24 +1051,38 @@ export function findFallbackObservationImage(objectId: string): string | null {
   let thumbnail: string | null = null;
   let stacked: string | null = null;
   let any: string | null = null;
+  // Second-choice buckets for formats that are viewable but expensive: a Dwarf's
+  // `img_stacked_all.tif` is a ~100 MB 32-bit float image, so featuring it means
+  // a 100 MB sharp decode every time this object's card misses the thumbnail
+  // cache. Used only when there is no JPEG/PNG alternative.
+  let costlyStacked: string | null = null;
+  let costlyAny: string | null = null;
 
-  for (const fname of fs.readdirSync(objDir)) {
+  // Layout-aware: a nested object keeps its files in per-session directories, so
+  // an object-level readdir would find no image at all and every card would fall
+  // back to the sky survey.
+  for (const entry of listObjectFiles(objDir, getObjectLayout(objectId))) {
+    const fname = entry.fileName;
     if (!isRealFile(fname)) continue;
     if (fname.startsWith('sky_') || fname.startsWith('gallery_')) continue;
     const parsed = parseFilename(fname);
     const ext = parsed.extension;
     const isViewable = ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.tif' || ext === '.tiff';
     if (!isViewable) continue;
+    const cheap = ext === '.jpg' || ext === '.jpeg';
     if (parsed.isThumbnail) {
-      if (!thumbnail) thumbnail = fname;
+      if (!thumbnail) thumbnail = entry.relPath;
     } else if (parsed.type === 'stacked') {
-      if (!stacked) stacked = fname;
-    } else if (!any) {
-      any = fname;
+      if (cheap) { if (!stacked) stacked = entry.relPath; }
+      else if (!costlyStacked) costlyStacked = entry.relPath;
+    } else if (cheap) {
+      if (!any) any = entry.relPath;
+    } else if (!costlyAny) {
+      costlyAny = entry.relPath;
     }
   }
 
-  const best = stacked ?? any ?? thumbnail;
+  const best = stacked ?? any ?? thumbnail ?? costlyStacked ?? costlyAny;
   return best ? `${folderName}/${best}` : null;
 }
 
@@ -1189,7 +1309,11 @@ export function deleteLocalObject(objectId: string): void {
       cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy);
   }
 
-  // Now safe to remove files
+  // Now safe to remove files. The per-file rows go with them — the manifest
+  // is deleted along with the directory, so there is nothing left to rebuild
+  // this object from.
+  deleteLibraryFileRowsForObject(objectId);
+  deleteCaptureInfoForObject(objectId);
   const objDir = path.join(LIBRARY_DIR, getFolderName(objectId));
   if (fs.existsSync(objDir)) {
     for (const fname of fs.readdirSync(objDir)) {
@@ -1301,11 +1425,17 @@ export function deleteLocalFile(relativePath: string): void {
   const firstSegment = normalized.split(path.sep)[0];
   const objectId = stmts.getObjectByFolderName.get(firstSegment)?.objectId ?? firstSegment;
   const objDir = path.join(LIBRARY_DIR, firstSegment);
+  // Drop the row before rebuilding sessions below, so the resolver doesn't
+  // still report a night for the file we just unlinked.
+  deleteLibraryFileRow(normalized.split(path.sep).join('/'));
   try {
-    const remaining = fs.readdirSync(objDir);
+    // Dot-prefixed entries are Nebulis bookkeeping (.thumbs, the per-file
+    // manifest), never imported files, so they must not inflate fileCount.
+    const remaining = fs.readdirSync(objDir).filter(f => !f.startsWith('.'));
+    const identity = resolverFor(objectId);
     const sessionSet = new Set<string>();
     for (const fname of remaining) {
-      const night = sessionNightFor(parseFilename(fname));
+      const night = identity.session(fname);
       if (night) sessionSet.add(night);
     }
     stmts.updateObjectFileCount.run(remaining.length, objectId);
@@ -1314,5 +1444,6 @@ export function deleteLocalFile(relativePath: string): void {
     for (const date of sessionSet) {
       stmts.addSession.run(objectId, date);
     }
+    writeObjectManifest(objectId, firstSegment);
   } catch { /* ignore */ }
 }

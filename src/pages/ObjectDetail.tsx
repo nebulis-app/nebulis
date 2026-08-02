@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Calendar, FolderOpen, RotateCw, Image, Layers, Columns, Download, PlusCircle, Trash2, AlertTriangle, Pencil, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Calendar, FolderOpen, RotateCw, Image, Layers, Columns, Download, PlusCircle, Trash2, AlertTriangle, Pencil, ExternalLink, Frame } from 'lucide-react';
 import { getLibrarySessions, getDownloadUrl, deleteLibraryObject, deleteLibrarySession, getGalleryImage, getLibraryFileUrl, getLibraryObjects } from '../lib/api/library';
 import { getCatalogEntry } from '../lib/api/catalog';
 import { getCatalogThumbnailUrl, getCatalogSourceThumbnailUrl, parseSourceSentinel } from '../lib/catalogImage';
@@ -11,6 +11,7 @@ import { GalleryImageModal } from '../components/GalleryImageModal';
 import { CompareSessionsModal } from '../components/CompareSessionsModal';
 import { CombineSubframesModal } from '../components/CombineSubframesModal';
 import { EditObjectModal } from '../components/EditObjectModal';
+import { FramingModal, FRAMING_MOSAIC_ENABLED } from '../components/catalogs/FramingModal';
 
 export function ObjectDetail() {
   const { objectId } = useParams<{ objectId: string }>();
@@ -25,6 +26,7 @@ export function ObjectDetail() {
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [combineSubframesOpen, setCombineSubframesOpen] = useState(false);
   const [editObjectOpen, setEditObjectOpen] = useState(false);
+  const [framingOpen, setFramingOpen] = useState(false);
   const [headerImgLoaded, setHeaderImgLoaded] = useState(false);
   const [headerImgError, setHeaderImgError] = useState(false);
   // Tracks how many times we've force-refetched gallery data after an image load
@@ -464,6 +466,16 @@ export function ObjectDetail() {
         />
       )}
 
+      {/* Framing & mosaic planner */}
+      {framingOpen && (
+        <FramingModal
+          catalogId={catalogEntry?.id || baseObjectId}
+          objectName={catalogEntry?.name || objectId || baseObjectId}
+          isDark={isDark}
+          onClose={() => setFramingOpen(false)}
+        />
+      )}
+
       {/* Gallery image modal */}
       {galleryModalOpen && (
         <GalleryImageModal
@@ -499,8 +511,20 @@ export function ObjectDetail() {
           <Layers className="w-4 h-4 text-emerald-500" />
           Combine Subframes &amp; Download
         </button>
+        {FRAMING_MOSAIC_ENABLED && (
+        <button
+          onClick={() => setFramingOpen(true)}
+          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition ${
+            isDark ? 'border-slate-800 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+          title="Preview how this object frames in your telescope, and plan a mosaic"
+        >
+          <Frame className="w-4 h-4 text-sky-500" />
+          Framing &amp; Mosaic
+        </button>
+        )}
         <a
-          href={getDownloadUrl(activeObjectId, { fileType: 'all' })}
+          href={getDownloadUrl(activeObjectId, { fileType: 'all', includeVariants: true })}
           className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition ${
             isDark ? 'border-slate-800 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
           }`}
@@ -570,7 +594,7 @@ export function ObjectDetail() {
           </div>
         ) : (
           <div className={`text-center py-12 rounded-xl border ${
-            isDark ? 'bg-slate-900/50 border-slate-800 text-slate-500' : 'bg-white border-slate-200 text-slate-400'
+            isDark ? 'bg-slate-900 border-slate-700 text-slate-500' : 'bg-white border-slate-200 text-slate-400'
           }`}>
             <FolderOpen className="w-10 h-10 mx-auto mb-3 opacity-40" />
             <p>No observations found for this object</p>

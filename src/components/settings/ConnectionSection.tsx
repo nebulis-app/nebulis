@@ -11,6 +11,7 @@ import {
   Usb,
   Network,
   RefreshCw,
+  Pin,
 } from 'lucide-react';
 import {
   listTelescopes,
@@ -19,10 +20,13 @@ import {
   archiveTelescope,
   unarchiveTelescope,
   type TelescopeProfile,
+  type ConnectionType,
 } from '../../lib/api/telescopes';
 import { triggerImport, getImportStatus } from '../../lib/api/library';
 import { AddTelescopeModal } from './AddTelescopeModal';
 import { ReassignTelescopeModal } from './ReassignTelescopeModal';
+import { TransportEditorModal } from './TransportEditorModal';
+import { Sec } from './SettingsUI';
 
 /**
  * Connection settings — the per-telescope card grid.
@@ -46,6 +50,9 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editing, setEditing] = useState<TelescopeProfile | null>(null);
   const [reassigning, setReassigning] = useState<TelescopeProfile | null>(null);
+  // Held as an id (not a snapshot) so the modal re-renders with fresh
+  // pin/active state after every mutation-triggered ['telescopes'] refetch.
+  const [managingTransportsId, setManagingTransportsId] = useState<string | null>(null);
 
   const { data: telescopes = [] } = useQuery({
     queryKey: ['telescopes'],
@@ -56,6 +63,7 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
   // archived ones live below in their own list with restore + reassign actions.
   const active = telescopes.filter(t => t.archivedAt === null);
   const archived = telescopes.filter(t => t.archivedAt !== null);
+  const managingTransports = telescopes.find(t => t.id === managingTransportsId) ?? null;
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ['telescopes'] });
@@ -120,7 +128,11 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
   }
 
   return (
-    <div>
+    <Sec
+      title="Telescopes"
+      description="Each telescope imports independently. Click a card to edit its connection, color, or auto-import setting."
+      isDark={isDark}
+    >
       {showAddModal && (
         <AddTelescopeModal isDark={isDark} onClose={() => setShowAddModal(false)} />
       )}
@@ -140,16 +152,15 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
           onClose={() => setReassigning(null)}
         />
       )}
+      {managingTransports && (
+        <TransportEditorModal
+          isDark={isDark}
+          profile={managingTransports}
+          onClose={() => setManagingTransportsId(null)}
+        />
+      )}
 
-      <div className="mb-5">
-        <h2 className={`font-display text-2xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-          Telescopes
-        </h2>
-        <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-          Each telescope imports independently. Click a card to edit its connection, color, or auto-import setting.
-        </p>
-      </div>
-
+      <div className="p-4 sm:p-5">
       {archiveMutation.error && (
         <p className="mb-3 text-sm text-red-400">
           {archiveMutation.error instanceof Error ? archiveMutation.error.message : 'Failed to archive telescope. Try again.'}
@@ -165,6 +176,7 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
             onEdit={() => setEditing(t)}
             onArchive={() => handleArchive(t)}
             onReassign={() => setReassigning(t)}
+            onManageTransports={() => setManagingTransportsId(t.id)}
             onToggleAutoImport={() => toggleAutoImportMutation.mutate({ id: t.id, autoImportEnabled: !t.autoImportEnabled })}
             onSync={() => syncMutation.mutate(t.id)}
             // Disable sync when this telescope (or any other) is already
@@ -182,12 +194,12 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
         onClick={() => setShowAddModal(true)}
         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition w-full justify-center ${
           isDark
-            ? 'bg-slate-900/50 border-slate-800 text-slate-300 hover:border-teal-500/50 hover:bg-slate-800/50'
+            ? 'bg-slate-900 border-slate-700 text-slate-300 hover:border-teal-500/50 hover:bg-slate-800/50'
             : 'bg-white border-slate-200 text-slate-700 hover:border-teal-300 hover:bg-teal-50/50'
         }`}
       >
         <Plus className="w-4 h-4" />
-        Add Smart Telescope
+        Add smart telescope
       </button>
 
       {archived.length > 0 && (
@@ -218,7 +230,8 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </Sec>
   );
 }
 
@@ -234,6 +247,7 @@ function TelescopeRow({
   onEdit,
   onArchive,
   onReassign,
+  onManageTransports,
   onToggleAutoImport,
   onSync,
   isSyncingThis,
@@ -246,6 +260,7 @@ function TelescopeRow({
   onEdit: () => void;
   onArchive: () => void;
   onReassign: () => void;
+  onManageTransports: () => void;
   onToggleAutoImport: () => void;
   onSync: () => void;
   isSyncingThis: boolean;
@@ -277,7 +292,7 @@ function TelescopeRow({
       onClick={onEdit}
       className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition cursor-pointer ${
         isDark
-          ? 'bg-slate-900/50 border-slate-800 hover:border-slate-700'
+          ? 'bg-slate-900 border-slate-700 hover:border-slate-600'
           : 'bg-white border-slate-200 hover:border-slate-300'
       } ${isPending ? 'opacity-60 pointer-events-none' : ''}`}
     >
@@ -292,7 +307,13 @@ function TelescopeRow({
           <div className={`text-sm font-medium truncate ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
             {telescope.name}
           </div>
-          <TransportPills telescope={telescope} isDark={isDark} />
+          <button
+            onClick={(e) => { e.stopPropagation(); onManageTransports(); }}
+            title="Manage connections"
+            className={`shrink-0 ${isDark ? 'hover:opacity-80' : 'hover:opacity-80'}`}
+          >
+            <TransportPills telescope={telescope} isDark={isDark} />
+          </button>
         </div>
         <div className={`text-xs truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
           {telescope.model} · {transportLine} · {sessions} session{sessions === 1 ? '' : 's'}
@@ -445,65 +466,75 @@ function ArchivedTelescopeRow({
   );
 }
 
-/** Small pills showing how each telescope is reachable. Dwarf is USB-only by
- *  spec so it always renders the USB pill regardless of transport state.
- *  Everything else renders one pill per configured transport kind, so a
- *  Seestar with both SMB and USB shows both pills. The pill matching the
- *  profile's `activeTransportId` (the one selectActiveTransport would pick
- *  right now) renders bright; the inactive transport renders dim. */
+/** Small pills showing how each telescope is reachable. One pill per
+ *  configured transport kind, so a Seestar with both SMB and USB shows two,
+ *  and a Dwarf with both FTP and USB shows two. Dwarf never shows an SMB pill
+ *  because those devices do not serve one. The pill matching the profile's
+ *  `activeTransportId` (the one selectActiveTransport would pick right now)
+ *  renders bright; the inactive ones render dim. */
 function TransportPills({ telescope, isDark }: { telescope: TelescopeProfile; isDark: boolean }) {
   const isDwarf = telescope.kind === 'dwarf-2' || telescope.kind === 'dwarf-3' || telescope.kind === 'dwarf-mini';
   const transports = telescope.transports ?? [];
   const smbTransport = transports.find(t => t.kind === 'smb');
+  const ftpTransport = transports.find(t => t.kind === 'ftp');
   const localTransport = transports.find(t => t.kind === 'local');
 
   const hasSmb = !isDwarf && !!smbTransport;
-  const hasLocal = isDwarf || !!localTransport;
+  const hasFtp = !!ftpTransport;
+  const hasLocal = !!localTransport;
+  const hasAny = hasSmb || hasFtp || hasLocal;
 
-  // If the transports array is empty (older profile that hasn't been re-read
-  // yet) fall back to the legacy mirror so the row still shows something.
-  const fallbackSmb = !isDwarf && !hasSmb && !hasLocal && telescope.connectionType !== 'local';
-  const fallbackLocal = !isDwarf && !hasSmb && !hasLocal && telescope.connectionType === 'local';
+  // If the transports array is empty (an older profile that hasn't been
+  // re-read yet) fall back to the legacy mirror column so the row still shows
+  // something rather than going blank.
+  const fallbackKind = hasAny ? null : telescope.connectionType;
 
-  const showSmb = hasSmb || fallbackSmb;
-  const showLocal = hasLocal || fallbackLocal;
-  if (!showSmb && !showLocal) return null;
+  const showSmb = hasSmb || fallbackKind === 'smb';
+  const showFtp = hasFtp || fallbackKind === 'ftp';
+  const showLocal = hasLocal || fallbackKind === 'local';
+  if (!showSmb && !showFtp && !showLocal) return null;
 
   // Active transport: highlight the one selectActiveTransport picked. When
   // only one transport is configured it's trivially active. The
-  // activeTransportId is null when no transport is reachable right now (we
-  // dim both in that case so the user can tell the import won't run).
+  // activeTransportId is null when nothing is reachable right now (we dim
+  // everything in that case so the user can tell the import won't run).
   const activeId = telescope.activeTransportId;
-  const noActive = activeId === null && (showSmb || showLocal);
-  const isSmbActive = hasSmb && (transports.length === 1 || smbTransport?.id === activeId);
-  const isLocalActive = (hasLocal && (transports.length === 1 || localTransport?.id === activeId)) ||
-    (isDwarf && transports.length === 0);
+  const noActive = activeId === null;
+  const soleTransport = transports.length === 1;
+  const isSmbActive = hasSmb && (soleTransport || smbTransport?.id === activeId);
+  const isFtpActive = hasFtp && (soleTransport || ftpTransport?.id === activeId);
+  const isLocalActive = hasLocal && (soleTransport || localTransport?.id === activeId);
+
+  const pinnedId = telescope.pinnedTransportId;
 
   return (
     <div className="flex items-center gap-1 shrink-0">
-      {showSmb && <TransportPill kind="smb" active={!noActive && isSmbActive} isDark={isDark} />}
-      {showLocal && <TransportPill kind="local" active={!noActive && isLocalActive} isDark={isDark} />}
+      {showSmb && <TransportPill kind="smb" active={!noActive && isSmbActive} pinned={smbTransport?.id === pinnedId} isDark={isDark} />}
+      {showFtp && <TransportPill kind="ftp" active={!noActive && isFtpActive} pinned={ftpTransport?.id === pinnedId} isDark={isDark} />}
+      {showLocal && <TransportPill kind="local" active={!noActive && isLocalActive} pinned={localTransport?.id === pinnedId} isDark={isDark} />}
     </div>
   );
 }
 
-function TransportPill({ kind, active, isDark }: { kind: 'smb' | 'local'; active: boolean; isDark: boolean }) {
-  const isSmb = kind === 'smb';
-  const Icon = isSmb ? Network : Usb;
-  const label = isSmb ? 'Wi-Fi' : 'USB';
-  // Bright tones for the active transport (sky-blue for SMB, amber for USB)
-  // and a muted slate tone for the inactive one so the user's eye lands on
-  // the transport actually in use.
+function TransportPill({ kind, active, pinned, isDark }: { kind: ConnectionType; active: boolean; pinned: boolean; isDark: boolean }) {
+  const Icon = kind === 'local' ? Usb : Network;
+  const label = kind === 'local' ? 'USB' : kind === 'ftp' ? 'FTP' : 'Wi-Fi';
+  // Bright tones for the active transport (sky-blue for the network ones,
+  // amber for USB) and a muted slate tone for the inactive ones, so the eye
+  // lands on the transport actually in use.
   const tone = !active
     ? (isDark ? 'bg-slate-800/60 text-slate-500 border-slate-700/60' : 'bg-slate-100 text-slate-400 border-slate-200')
-    : isSmb
-      ? (isDark ? 'bg-sky-500/15 text-sky-300 border-sky-500/30' : 'bg-sky-50 text-sky-700 border-sky-200')
-      : (isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-700 border-amber-200');
-  const title = active
-    ? `${label}: active transport for this telescope right now`
-    : `${label}: configured but not the active transport right now`;
+    : kind === 'local'
+      ? (isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-700 border-amber-200')
+      : (isDark ? 'bg-sky-500/15 text-sky-300 border-sky-500/30' : 'bg-sky-50 text-sky-700 border-sky-200');
+  const title = pinned
+    ? `${label}: manually pinned as the transport to use`
+    : active
+      ? `${label}: active transport for this telescope right now`
+      : `${label}: configured but not the active transport right now`;
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${tone}`} title={title}>
+      {pinned && <Pin className="w-2.5 h-2.5" />}
       <Icon className="w-2.5 h-2.5" />
       {label}
     </span>

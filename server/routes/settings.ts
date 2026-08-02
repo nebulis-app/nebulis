@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import { getSettingsData, updateSettingsData, getApiKey, setApiKey, getAllProfiles } from '../lib/telescopes.js';
+import { getDefaultSite, updateSite, type ObservingSite } from '../lib/observingSites.js';
 import { SKY_MAP_BANDS } from '../lib/skyMapConfig.js';
 import { UPDATE_CHANNELS } from '../lib/appUpdate/manifest.js';
 import db from '../lib/db.js';
@@ -54,6 +55,7 @@ const SettingsUpdateBodySchema = z.object({
   syncThumbnails: z.boolean().optional(),
   syncSubFrames: z.boolean().optional(),
   syncVideos: z.boolean().optional(),
+  archiveAllFiles: z.boolean().optional(),
   autoImportInterval: z.number().int().min(0).optional(),
   importJpg: z.boolean().optional(),
   importFits: z.boolean().optional(),
@@ -194,7 +196,7 @@ const defaultSettings: Settings = {
   nightlyForecastLastRun: null,
 };
 
-const appFields = ['apiKey', 'latitude', 'longitude', 'locationName', 'timezone', 'minAlt', 'horizonProfile', 'visibleSkyMap', 'syncEnabled', 'syncJpg', 'syncFits', 'syncThumbnails', 'syncSubFrames', 'syncVideos', 'autoImportInterval', 'importJpg', 'importFits', 'importThumbnails', 'importSubFrames', 'importVideos', 'onboardingCompleted', 'prefetchCatalogAssets', 'planetariumShowInfo', 'galleryImageSource', 'slideshowRotateCCW', 'preferredCatalog', 'groupObservingNights', 'temperatureUnit', 'windSpeedUnit', 'updateChannel', 'autoUpdateEnabled', 'plannerPrefetchEnabled', 'plannerPrefetchTime', 'nightlyCatalogPackCheckEnabled', 'nightlyHousekeepingEnabled', 'nightlyForecastPrefetchEnabled'] as const;
+const appFields = ['apiKey', 'latitude', 'longitude', 'locationName', 'timezone', 'minAlt', 'horizonProfile', 'visibleSkyMap', 'syncEnabled', 'syncJpg', 'syncFits', 'syncThumbnails', 'syncSubFrames', 'syncVideos', 'autoImportInterval', 'importJpg', 'importFits', 'importThumbnails', 'importSubFrames', 'importVideos', 'archiveAllFiles', 'onboardingCompleted', 'prefetchCatalogAssets', 'planetariumShowInfo', 'galleryImageSource', 'slideshowRotateCCW', 'preferredCatalog', 'groupObservingNights', 'temperatureUnit', 'windSpeedUnit', 'updateChannel', 'autoUpdateEnabled', 'plannerPrefetchEnabled', 'plannerPrefetchTime', 'nightlyCatalogPackCheckEnabled', 'nightlyHousekeepingEnabled', 'nightlyForecastPrefetchEnabled'] as const;
 
 function loadSettings(): Settings {
   const appData = getSettingsData();
@@ -284,6 +286,28 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
 
   if (Object.keys(filtered).length > 0) {
     updateSettingsData(filtered);
+  }
+
+  // Legacy clients (native builds that predate observing sites) PUT the seven
+  // location/sky fields directly here instead of through /sites. Route
+  // whichever of them were sent into the default site so it stays the source
+  // of truth; updateSite's own syncDefaultSiteToAppSettings call re-mirrors
+  // them back onto appSettings immediately after, so the two never diverge.
+  // Without this, the write above would stick only until the next site edit,
+  // when the mirror would silently revert it.
+  const siteUpdate: Partial<ObservingSite> = {};
+  // locationName (appSettings) renames to `name` on ObservingSite.
+  if ('locationName' in filtered && typeof filtered.locationName === 'string') {
+    siteUpdate.name = filtered.locationName;
+  }
+  if ('latitude' in filtered) siteUpdate.latitude = filtered.latitude as number | null;
+  if ('longitude' in filtered) siteUpdate.longitude = filtered.longitude as number | null;
+  if ('timezone' in filtered) siteUpdate.timezone = filtered.timezone as string;
+  if ('minAlt' in filtered) siteUpdate.minAlt = filtered.minAlt as number;
+  if ('horizonProfile' in filtered) siteUpdate.horizonProfile = filtered.horizonProfile as number[];
+  if ('visibleSkyMap' in filtered) siteUpdate.visibleSkyMap = filtered.visibleSkyMap as boolean[];
+  if (Object.keys(siteUpdate).length > 0) {
+    updateSite(getDefaultSite().id, siteUpdate);
   }
 
   if (prefetchFlippedOn || onboardingJustFinishedWithPrefetch) {

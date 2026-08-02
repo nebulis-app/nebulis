@@ -21,10 +21,18 @@ import {
   observingNightDate,
 } from '../telescopeFiles.js';
 import { getCatalogEntry } from '../../data/catalog.js';
-import { classifyImportFile, SKIP_LABELS, type ImportSkipReason } from './importFilter.js';
-import { planObjectFolder, groupByTarget, targetFromFileName } from './objectDiscovery.js';
+import {
+  classifyImportFile,
+  countSkip,
+  summarizeSkips,
+  type ImportSkipSummary,
+  type SkipTally,
+} from './importFilter.js';
+import { planObjectFolder, groupByTarget, targetFromFileName, isNonObjectFolder } from './objectDiscovery.js';
 import { deriveFileDate, confidenceForSource, type DerivedDate, type DateSource } from './dateDerivation.js';
 import { isDwarfSessionFolder, extractTargetFromSessionFolder } from '../walkers/dwarfWalker.js';
+import { getWalkerConfig } from '../walkers/index.js';
+import type { TelescopeKind } from '../telescopes.js';
 
 /** A source object discovered under the scan root: one library object built
  *  from one top-level folder (plus its `_sub` companion), or the root's own
@@ -42,6 +50,21 @@ export interface ObjectSource {
   fileNames?: Set<string>;
 }
 
+/** What `collectObjectSources` found under a scan root. */
+export interface CollectedSources {
+  sources: ObjectSource[];
+  /** Directory names left out because they hold no observations, so callers can
+   *  tell the user instead of silently returning a shorter list. */
+  excludedFolders: string[];
+  /** Set when a known telescope's vendor base path (e.g. "Astronomy" for
+   *  Dwarf) was found as a direct child of the given root and the scan
+   *  descended into it instead of treating the root's own children as
+   *  objects. Lets the caller tell the user why: pointing the wizard at a
+   *  Dwarf volume root instead of its Astronomy/ folder used to collapse
+   *  every target into one pseudo-object named after the base path. */
+  basePathDetected: string | null;
+}
+
 export interface WalkedFile {
   absPath: string;
   /** Path relative to its source dir, posix-style (for the folder-date hint). */
@@ -49,6 +72,11 @@ export interface WalkedFile {
   name: string;
   size: number;
   derived: DerivedDate;
+  /** True when the file was found under a `_sub` directory. The walk already
+   *  knows this (it is what gates classifyImportFile); carrying it on the file
+   *  lets the commit record the same directory-wins role in libraryFiles
+   *  instead of re-guessing sub-frame-ness from the name. */
+  fromSubFolder: boolean;
 }
 
 export interface CatalogMatch {
@@ -78,13 +106,10 @@ export interface ScannedObject {
   catalogMatch: CatalogMatch | null;
 }
 
-/** One reason files under the scan root will not be imported, and how many. */
-export interface ScanSkip {
-  reason: ImportSkipReason;
-  /** User-facing wording. Reads as "<count> <label>". */
-  label: string;
-  count: number;
-}
+/** One reason files under the scan root will not be imported, and how many.
+ *  Alias of the shared shape so the wizard and the telescope import can't
+ *  drift into reporting the same skip two different ways. */
+export type ScanSkip = ImportSkipSummary;
 
 export interface ScanResult {
   rootPath: string;
@@ -102,6 +127,11 @@ export interface ScanResult {
   skipped: ScanSkip[];
   /** True when the file cap was hit and the scan is incomplete. */
   truncated: boolean;
+  /** Set when the scan detected the given root was a device volume root and
+   *  descended into the telescope's vendor base path (e.g. "Astronomy") to
+   *  find objects. Null when no descent happened, including when no
+   *  telescope kind was supplied. */
+  basePathDetected: string | null;
 }
 
 /** One object's decisions in the edited plan the user sends back to commit.
@@ -130,6 +160,9 @@ export interface CommitPlan {
   importSubFrames?: boolean;
   /** Per-import override for the importFits app setting. */
   importFits?: boolean;
+  /** Per-import override for archive mode: keep files Nebulis has no use for,
+   *  so the imported folder can be a complete copy. See classifyImportFile. */
+  archiveAllFiles?: boolean;
   /** Telescope to stamp every session created by this import with, or null/
    *  absent to leave sessions untagged. */
   telescopeId?: string | null;
@@ -170,11 +203,42 @@ const SOURCE_RANK: Record<DateSource, number> = {
  * object, not which will be imported. That is why this takes no settings —
  * classifyImportFile makes the keep/drop call during the walk, so the two can
  * never disagree and the scan can report what it skipped and why.
+ *
+ * When `telescopeKind` is known, this first checks whether the given root is
+ * actually the *device's* root (e.g. a Dwarf volume mount) rather than the
+ * folder that directly contains object folders — recognisable because the
+ * vendor's base path (`Astronomy` for every Dwarf model) exists as a direct
+ * child. If so, it descends into that child before classifying anything as
+ * an object folder. Without this, pointing the wizard at a Dwarf volume root
+ * finds one child ("Astronomy"), which passes as a single object folder and
+ * swallows every target's every session into one pseudo-object. Omitting
+ * `telescopeKind` (the wizard's "Not sure / mixed sources" case) preserves
+ * the previous behaviour exactly: the given root's direct children are
+ * always the object level.
  */
-export function collectObjectSources(rootPath: string): ObjectSource[] {
+export function collectObjectSources(rootPath: string, telescopeKind?: TelescopeKind): CollectedSources {
+  let basePathDetected: string | null = null;
+  if (telescopeKind) {
+    const { basePath } = getWalkerConfig(telescopeKind);
+    if (basePath) {
+      const candidate = path.join(rootPath, basePath);
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+        rootPath = candidate;
+        basePathDetected = basePath;
+      }
+    }
+  }
+
   const entries = fs.readdirSync(rootPath, { withFileTypes: true });
-  const objectDirs = entries.filter(e => e.isDirectory() && isObjectFolder(e.name));
-  const subDirs = entries.filter(e => e.isDirectory() && isSubFolder(e.name));
+  // Folders that are not observations (CALI_FRAME, RESTACKED, Panoramas, ...)
+  // are pulled out before anything else so they can never become library
+  // objects. Excluding them here rather than at either call site is what keeps
+  // the scan's plan and commit's re-derivation in agreement.
+  const allDirs = entries.filter(e => e.isDirectory());
+  const excludedFolders = allDirs.filter(e => isNonObjectFolder(e.name)).map(e => e.name).sort();
+  const candidateDirs = allDirs.filter(e => !isNonObjectFolder(e.name));
+  const objectDirs = candidateDirs.filter(e => isObjectFolder(e.name));
+  const subDirs = candidateDirs.filter(e => isSubFolder(e.name));
 
   const sources: ObjectSource[] = [];
   /** `_sub` dirs claimed by an object folder below. Whatever is left over has
@@ -309,7 +373,7 @@ export function collectObjectSources(rootPath: string): ObjectSource[] {
     }
   }
 
-  return sources;
+  return { sources, excludedFolders, basePathDetected };
 }
 
 /** Walk an object's source dirs, gating by import settings and deriving a
@@ -317,9 +381,9 @@ export function collectObjectSources(rootPath: string): ObjectSource[] {
 export function walkObjectFiles(
   source: ObjectSource,
   settings: Record<string, unknown>,
-): { files: WalkedFile[]; truncated: boolean; skipped: Map<ImportSkipReason, number> } {
+): { files: WalkedFile[]; truncated: boolean; skipped: SkipTally } {
   const files: WalkedFile[] = [];
-  const skipped = new Map<ImportSkipReason, number>();
+  const skipped: SkipTally = new Map();
   let truncated = false;
 
   /** `inSub` is sticky: once we are under a `_sub` dir everything below it is a
@@ -340,7 +404,10 @@ export function walkObjectFiles(
       if (ent.isDirectory()) {
         if (source.topLevelOnly) continue;
         if (depth >= MAX_DEPTH) continue;
-        if (/^thumbnails?$/i.test(ent.name)) continue;
+        // A `Thumbnail/` directory holds per-frame previews the app has no use
+        // for, so it is skipped normally. Archive mode wants a complete copy, so
+        // it is walked then.
+        if (/^thumbnails?$/i.test(ent.name) && settings.archiveAllFiles !== true) continue;
         visit(baseDir, abs, depth + 1, inSub || isSubFolder(ent.name));
         continue;
       }
@@ -351,11 +418,12 @@ export function walkObjectFiles(
       if (source.fileNames && !source.fileNames.has(ent.name)) continue;
       const decision = classifyImportFile(ent.name, settings, { fromSubFolder: inSub });
       if (!decision.import) {
-        // Hidden/system junk (.DS_Store, AppleDouble) is noise the user never
-        // thinks of as "their files"; counting it would only add confusion.
-        if (decision.reason !== 'not-a-real-file') {
-          skipped.set(decision.reason, (skipped.get(decision.reason) ?? 0) + 1);
-        }
+        // Size the rejection so the report can say how much was left behind,
+        // which is what makes "turn on archiving?" an informed choice. A stat
+        // on a local file is the same order of cost as the readdir above.
+        let skippedBytes = 0;
+        try { skippedBytes = fs.statSync(abs).size; } catch { /* size unknown */ }
+        countSkip(skipped, decision.reason, 1, skippedBytes);
         continue;
       }
       let stat: fs.Stats;
@@ -367,7 +435,7 @@ export function walkObjectFiles(
       const relPath = path.relative(baseDir, abs).split(path.sep).join('/');
       const useMtimeFallback = settings.importMtimeFallback !== false;
       const derived = deriveFileDate(abs, relPath, stat, { useMtimeFallback });
-      files.push({ absPath: abs, relPath, name: ent.name, size: stat.size, derived });
+      files.push({ absPath: abs, relPath, name: ent.name, size: stat.size, derived, fromSubFolder: inSub });
     }
   };
 
@@ -452,19 +520,25 @@ export function matchCatalog(folderName: string): CatalogMatch | null {
 export function scanImportFolder(
   rootPath: string,
   settings: Record<string, unknown>,
+  telescopeKind?: TelescopeKind,
 ): ScanResult {
-  const sources = collectObjectSources(rootPath);
+  const { sources, excludedFolders, basePathDetected } = collectObjectSources(rootPath, telescopeKind);
   const objects: ScannedObject[] = [];
-  const skipTotals = new Map<ImportSkipReason, number>();
+  const skipTotals: SkipTally = new Map();
   let truncated = false;
+
+  // Counted per folder rather than per file: "3 folders that hold no
+  // observations" tells the user more than a raw dark-frame count would, and it
+  // avoids walking directories we are going to discard anyway.
+  countSkip(skipTotals, 'non-observation-folder', excludedFolders.length);
 
   for (const source of sources) {
     const { files, truncated: t, skipped } = walkObjectFiles(source, settings);
     if (t) truncated = true;
     // Tallied before the empty check: an object that is *entirely* skipped is
     // exactly the case the user most needs explained.
-    for (const [reason, n] of skipped) {
-      skipTotals.set(reason, (skipTotals.get(reason) ?? 0) + n);
+    for (const [reason, v] of skipped) {
+      countSkip(skipTotals, reason, v.count, v.bytes);
     }
     if (files.length === 0) continue;
 
@@ -495,9 +569,5 @@ export function scanImportFolder(
     { objects: 0, files: 0, sessions: 0, unsorted: 0, bytes: 0 },
   );
 
-  const skipped: ScanSkip[] = Array.from(skipTotals.entries())
-    .map(([reason, count]) => ({ reason, label: SKIP_LABELS[reason], count }))
-    .sort((a, b) => b.count - a.count);
-
-  return { rootPath, objects, totals, skipped, truncated };
+  return { rootPath, objects, totals, skipped: summarizeSkips(skipTotals), truncated, basePathDetected };
 }

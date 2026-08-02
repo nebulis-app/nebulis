@@ -9,7 +9,7 @@ import {
   startLibraryMigration, startNetworkLibraryMigration, testNetworkLibraryConnection,
   type VolumeInfo, type DirectoryEntry, type MigrationStatus, type LibraryLocation, type NetworkLibraryConfig,
 } from '../../lib/api/storage';
-import { getCardClass, getInputClass } from './SettingsUI';
+import { Sec, getInputClass } from './SettingsUI';
 import { formatBytes } from '../../lib/utils';
 
 // Join a server-side path with a folder name using that path's own separator
@@ -52,33 +52,22 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
     setDismissedKeys(k => ({ ...k, [completionKey]: true }));
   }
 
-  const cardCls = getCardClass(isDark);
   const heading = isDark ? 'text-white' : 'text-slate-800';
   const sub = isDark ? 'text-slate-500' : 'text-slate-400';
   const body = isDark ? 'text-slate-300' : 'text-slate-600';
 
   return (
-    <div>
-      <div className="flex items-center gap-3 mb-5">
-        <div className={`p-2 rounded-xl ${isDark ? 'bg-blue-500/10' : 'bg-blue-50'}`}>
-          <HardDrive className="w-5 h-5 text-blue-500" />
-        </div>
-        <div>
-          <h2 className={`font-display text-[17px] font-semibold tracking-tight ${heading}`}>
-            Library location
-          </h2>
-          <p className={`text-[13px] mt-0.5 ${sub}`}>
-            Where your imported images and sub-frames are stored
-          </p>
-        </div>
-      </div>
-
-      <div className={`${cardCls} space-y-4`}>
+    <Sec
+      title="Library location"
+      description="Where your imported images and sub-frames are stored."
+      isDark={isDark}
+    >
+      <div className="p-4 sm:p-5 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className={`text-xs font-medium uppercase tracking-wide ${sub}`}>Current location</div>
             <div className={`text-sm font-mono mt-1 break-all ${body}`}>
-              {location?.path ?? 'Loading...'}
+              {location?.path ?? 'Loading…'}
             </div>
             {location?.locationType === 'network' && location.network.host && (
               <div className={`text-xs font-mono mt-0.5 truncate ${sub}`}>
@@ -196,7 +185,7 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
           }}
         />
       )}
-    </div>
+    </Sec>
   );
 }
 

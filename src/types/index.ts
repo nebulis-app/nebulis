@@ -29,6 +29,9 @@ export interface Settings {
   importThumbnails: boolean;
   importSubFrames: boolean;
   importVideos: boolean;
+  /** Also keep files Nebulis has no use for, so this telescope's folder can be
+   *  a complete copy of the device. Does not override the per-type toggles. */
+  archiveAllFiles: boolean;
   // Onboarding
   onboardingCompleted: boolean;
   // Offline catalog imagery + Wikipedia descriptions
@@ -154,6 +157,22 @@ export interface Session {
   weather: SessionWeather | null;
 }
 
+/** Rolled-up view of what the telescope recorded for one observing night.
+ *  A null exposureSec/gain/filter means the night's capture runs disagreed
+ *  ("mixed"), which is different from the value being unknown. */
+export interface SessionCaptureSummary {
+  runs: number;
+  integrationSec: number | null;
+  framesStacked: number | null;
+  framesTaken: number | null;
+  framesPlanned: number | null;
+  exposureSec: number | null;
+  gain: number | null;
+  filter: string | null;
+  minTempC: number | null;
+  maxTempC: number | null;
+}
+
 export interface SessionFile {
   name: string;
   size: number;
@@ -166,8 +185,14 @@ export interface SessionFile {
   date: string | null;
   frameCount: number | null;
   isThumbnail: boolean;
+  /** False when no rendering of this file can be trusted (a linear float TIFF),
+   *  so it must be shown as a download card rather than an `<img>`. Absent on
+   *  older responses, which is treated as previewable. */
+  previewable?: boolean;
   downloadUrl: string;
   thumbUrl?: string;
+  /** Larger (1024px) server-rendered JPEG for full-screen preview (FITS only). */
+  previewUrl?: string;
   subIndex?: number | null;
 }
 
@@ -185,4 +210,8 @@ export interface ProcessedImage {
   url: string;
   /** Relative library path (folderName/processed/filename) — safe to pass to /library/file. */
   path: string;
+  runId: string | null;
+  /** Session dates the run covers, when this image combines more than one
+   *  night. Null for ordinary single-session images. */
+  runDates: string[] | null;
 }

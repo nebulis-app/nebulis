@@ -16,7 +16,8 @@ import {
 } from '../lib/telescopes.js';
 import db from '../lib/db.js';
 import { smbListDir } from '../lib/smb.js';
-import { tcpProbe, getSmbOpHealth } from '../lib/smbReachability.js';
+import { tcpProbe, getSmbOpHealth, SMB_PORT } from '../lib/smbReachability.js';
+import { ftpTestConnection, parseFtpHost } from '../lib/smb.ftp.js';
 import { getWalkerConfig, isDwarfKind } from '../lib/walkers/index.js';
 import { log } from '../lib/logger.js';
 import { isObjectFolder } from '../lib/telescopeFiles.js';
@@ -50,6 +51,7 @@ const TelescopeProfileBodySchema = z.object({
   password: z.string().optional(),
   kind: TelescopeKindSchema.optional(),
   color: z.string().optional(),
+  archiveAllFiles: z.boolean().optional(),
   autoImportEnabled: z.boolean().optional(),
   autoImportInterval: z.number().int().min(0).optional(),
   connectionType: z.enum(TRANSPORT_KINDS).optional(),
@@ -60,6 +62,7 @@ const TelescopeProfileBodySchema = z.object({
   importSubFrames: z.boolean().optional(),
   importVideos: z.boolean().optional(),
   trackDeviceIdentity: z.boolean().optional(),
+  pinnedTransportId: z.string().nullable().optional(),
 });
 
 const TestConnectionBodySchema = z.object({
@@ -68,6 +71,10 @@ const TestConnectionBodySchema = z.object({
   username: z.string().optional(),
   password: z.string().optional(),
   kind: TelescopeKindSchema.optional(),
+  /** Which network transport to test. Omitted means SMB, which is what every
+   *  client sent before FTP existed. 'local' is not testable here — a USB
+   *  mount is verified by the drive picker instead. */
+  connectionType: z.enum(TRANSPORT_KINDS).optional(),
 });
 
 const ReassignBodySchema = z.object({
@@ -167,9 +174,9 @@ router.post('/probe-identity', requireAdmin, async (req: Request, res: Response)
     id: 'probe',
     profileId: 'probe',
     kind: t.kind,
-    priority: t.priority ?? (t.kind === 'local' ? 50 : 100),
+    priority: t.priority ?? (t.kind === 'local' ? 50 : t.kind === 'ftp' ? 75 : 100),
     hostname: t.hostname ?? '',
-    shareName: t.shareName ?? 'EMMC Images',
+    shareName: t.kind === 'ftp' ? '' : (t.shareName ?? 'EMMC Images'),
     username: t.username ?? 'guest',
     password: t.password ?? '',
     localPath: t.localPath ?? '',
@@ -227,7 +234,8 @@ router.post('/:id/transports', requireAdmin, (req: Request, res: Response) => {
     return;
   }
   if (isDwarfKind(profile.kind) && parsed.data.kind === 'smb') {
-    res.apiError(422, 'VALIDATION_ERROR', 'Dwarf telescopes use USB storage, not network (SMB) connections.');
+    res.apiError(422, 'VALIDATION_ERROR',
+      'Dwarf telescopes do not expose an SMB share. Use FTP over Wi-Fi, or USB storage.');
     return;
   }
   const transport = addTransport(id, parsed.data);
@@ -250,7 +258,8 @@ router.put('/:id/transports/:tid', requireAdmin, (req: Request, res: Response) =
     return;
   }
   if (profile && isDwarfKind(profile.kind) && parsed.data.kind === 'smb') {
-    res.apiError(422, 'VALIDATION_ERROR', 'Dwarf telescopes use USB storage, not network (SMB) connections.');
+    res.apiError(422, 'VALIDATION_ERROR',
+      'Dwarf telescopes do not expose an SMB share. Use FTP over Wi-Fi, or USB storage.');
     return;
   }
   const updates = { ...parsed.data };
@@ -282,6 +291,10 @@ router.delete('/:id/transports/:tid', requireAdmin, (req: Request, res: Response
     return;
   }
   deleteTransport(tid);
+  const profile = getProfileById(id);
+  if (profile?.pinnedTransportId === tid) {
+    updateProfile(id, { pinnedTransportId: null });
+  }
   res.apiSuccess({ deleted: true });
 });
 
@@ -305,7 +318,15 @@ router.put('/:id', requireAdmin, (req: Request, res: Response) => {
   }
   const updates = { ...parsed.data };
   if (updates.password === '••••••••') delete updates.password;
-  const updated = updateProfile(String(req.params.id), updates);
+  const id = String(req.params.id);
+  if (updates.pinnedTransportId) {
+    const transports = getTransportsForProfile(id);
+    if (!transports.some(t => t.id === updates.pinnedTransportId)) {
+      res.apiError(422, 'VALIDATION_ERROR', 'pinnedTransportId must reference a transport on this telescope');
+      return;
+    }
+  }
+  const updated = updateProfile(id, updates);
   if (updated) {
     res.apiSuccess({ ...updated, password: updated.password ? '••••••••' : '' });
   } else {
@@ -420,13 +441,16 @@ function foldSmbOpHealth(status: StatusCache, hostname: string): StatusCache {
   return { ...status, online: false };
 }
 
-async function probeWithCache(hostname: string): Promise<StatusCache> {
-  const cached = statusCacheByHost.get(hostname);
+async function probeWithCache(hostname: string, port = SMB_PORT): Promise<StatusCache> {
+  // Cache per (host, port): the same address can legitimately answer on one
+  // port and not the other, and a Dwarf never answers on 445 at all.
+  const cacheKey = port === SMB_PORT ? hostname : `${hostname}:${port}`;
+  const cached = statusCacheByHost.get(cacheKey);
   const ttl = cached && cached.consecutiveFailures > 0 ? FAILURE_RETRY_MS : STATUS_TTL;
   if (cached && Date.now() - cached.checkedAt < ttl) return foldSmbOpHealth(cached, hostname);
-  const latencyMs = await tcpProbe(hostname);
+  const latencyMs = await tcpProbe(hostname, port);
   const fresh = applyHysteresis(latencyMs !== null, latencyMs, cached);
-  statusCacheByHost.set(hostname, fresh);
+  statusCacheByHost.set(cacheKey, fresh);
   return foldSmbOpHealth(fresh, hostname);
 }
 
@@ -470,7 +494,13 @@ async function probeProfile(profile: TelescopeProfile): Promise<StatusCache> {
   if (!hostname) {
     return { online: false, latencyMs: null, checkedAt: Date.now(), consecutiveFailures: 0 };
   }
-  return probeWithCache(hostname);
+  // A Dwarf on FTP never answers on 445, so probing the SMB port would report
+  // every one of them offline. The address may also carry a `:port` suffix.
+  if (profile.connectionType === 'ftp') {
+    const { host, port } = parseFtpHost(hostname);
+    return probeWithCache(host, port);
+  }
+  return probeWithCache(hostname, SMB_PORT);
 }
 
 // GET /api/v1/telescopes/status — any-telescope summary used by legacy callers
@@ -569,11 +599,33 @@ router.post('/test-connection', requireAdmin, async (req: Request, res: Response
   const username = parsed.data.username?.trim() ?? '';
   const password = parsed.data.password ?? '';
   const kind: TelescopeKind = parsed.data.kind ?? 'other';
+  const connectionType = parsed.data.connectionType ?? 'smb';
 
   if (!hostname) {
     res.apiSuccess({ connected: false, error: 'Hostname is required' });
     return;
   }
+
+  // FTP (Dwarf): no share name, no credentials in the normal case. Report the
+  // detected storage root back so the user can see which layout was found.
+  if (connectionType === 'ftp') {
+    log.info({ hostname, kind }, '[ftp] test-connection attempt');
+    try {
+      const { entries, remoteRoot } = await ftpTestConnection(
+        { hostname, username, password },
+        getWalkerConfig(kind).basePath,
+      );
+      const objectCount = entries.filter(e => e.type === 'dir').length;
+      log.info({ hostname, remoteRoot, objectCount }, '[ftp] test-connection ok');
+      res.apiSuccess({ connected: true, objectCount, remoteRoot: remoteRoot || '/' });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Connection failed';
+      log.warn({ hostname, error: message }, '[ftp] test-connection failed: %s', message);
+      res.apiSuccess({ connected: false, error: message });
+    }
+    return;
+  }
+
   if (!shareName) {
     res.apiSuccess({ connected: false, error: 'Share name is required' });
     return;

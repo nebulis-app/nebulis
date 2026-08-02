@@ -1,9 +1,11 @@
-import { Telescope, Columns, Crown, Download, Heart, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Telescope, Columns, Crown, Download, Heart, ChevronLeft, ChevronRight, FileImage } from 'lucide-react';
 import { FitsThumbnail } from '../FitsThumbnail';
 import { useTheme } from '../../hooks/useTheme';
 import type { SessionFile } from '../../types';
 import type { CompareItem } from '../../pages/ObservationDetail';
 import type { CompareFile } from '../ImageCompareModal';
+import { thumbSrcFor, canPreviewImage } from '../../lib/sessionImageSrc';
+import { processedFormatLabel as formatLabel } from '../../lib/processedFormats';
 
 const GALLERY_PAGE_SIZE = 12; // 3 rows × 4 columns (md breakpoint)
 
@@ -52,7 +54,7 @@ export function SessionFileGrid({
   const { isDark } = useTheme();
 
   return (
-    <div className={`rounded-2xl border ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+    <div className={`rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
       <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
         <h2 className={`font-display font-semibold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
           <Telescope className="w-4 h-4 flex-shrink-0 text-teal-500" />
@@ -121,14 +123,26 @@ export function SessionFileGrid({
                   {/* Image area */}
                   <div className="relative aspect-square">
                     <button
-                      onClick={() => (compareMode && !isFitsInCompareMode) ? toggleCompareItem(file.path, { name: file.name, downloadUrl: file.downloadUrl, exposure: file.exposure, frameCount: file.frameCount, filter: file.filter }) : openGallery(globalIdx)}
+                      onClick={() => (compareMode && !isFitsInCompareMode) ? toggleCompareItem(file.path, { name: file.name, downloadUrl: file.downloadUrl, thumbUrl: file.thumbUrl, previewUrl: file.previewUrl, exposure: file.exposure, frameCount: file.frameCount, filter: file.filter }) : openGallery(globalIdx)}
                       className="w-full h-full block cursor-pointer"
                     >
                       {file.type === 'fits' ? (
                         <FitsThumbnail url={file.downloadUrl} stretch={1.0} isDark={isDark} />
+                      ) : !canPreviewImage(file) ? (
+                        // A linear float TIFF renders pure white, so say what the
+                        // file is instead of showing a blank rectangle.
+                        <div className={`w-full h-full flex flex-col items-center justify-center gap-1.5 ${
+                          isDark ? 'bg-slate-800/60 text-slate-400' : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          <FileImage className="w-6 h-6" />
+                          <span className="text-[10px] font-medium tracking-wide">
+                            {formatLabel(file.name)}
+                          </span>
+                          <span className="text-[10px] opacity-70">No preview</span>
+                        </div>
                       ) : (
                         <img
-                          src={file.downloadUrl}
+                          src={thumbSrcFor(file)}
                           alt={file.name}
                           className="w-full h-full object-cover"
                           onError={e => { if (e.target instanceof HTMLImageElement) e.target.style.display = 'none'; }}

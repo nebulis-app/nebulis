@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useCallback, useState, useMemo, useRef, useEffect, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Calendar,
@@ -12,8 +12,25 @@ import {
   Pencil,
   NotebookPen,
   Telescope as TelescopeIcon,
+  Map as MapIcon,
+  MapPin,
+  List,
+  Share2,
 } from 'lucide-react';
-import { getObservations, type ObservationSummary } from '../lib/api/observations';
+import { getObservations, getObservationLocations, type ObservationSummary } from '../lib/api/observations';
+import { CalendarShareModal } from '../components/calendar/CalendarShareModal';
+import { ListShareModal } from '../components/observations/ListShareModal';
+import { MapShareModal } from '../components/observations/MapShareModal';
+import { ObservationsList } from '../components/observations/ObservationsList';
+import { resolveObjectLabel, formatObservationDate } from '../lib/observationDisplay';
+import type { CalendarShareData } from '../lib/calendarShare';
+import type { ListShareData } from '../lib/listShare';
+
+// Leaflet is heavy; only pull it in when the user opens the map view.
+const ObservationsWorldMap = lazy(() =>
+  import('../components/ObservationsWorldMap').then(m => ({ default: m.ObservationsWorldMap })),
+);
+import type { ObservationsWorldMapHandle } from '../components/ObservationsWorldMap';
 import { listTelescopes, type TelescopeProfile } from '../lib/api/telescopes';
 import { useTheme } from '../hooks/useTheme';
 import { cleanCatalogId, formatObjectName } from '../lib/utils';
@@ -33,9 +50,25 @@ export function ObservationsCalendar() {
     return { year: now.getFullYear(), month: now.getMonth() };
   });
 
+  // Which view's Share modal is open, if any — each view shares something
+  // different (a calendar card, the table, or a screenshot of the map), so
+  // there's one modal per view rather than one shareOpen boolean.
+  const [shareModal, setShareModal] = useState<'calendar' | 'list' | 'map' | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [expandedDayRect, setExpandedDayRect] = useState<DOMRect | null>(null);
   const expandedRef = useRef<HTMLDivElement>(null);
+  const mapHandleRef = useRef<ObservationsWorldMapHandle>(null);
+
+  // Mirrors what the List view currently has on screen — bubbled up from
+  // ObservationsList so "Share" exports exactly what's sorted/visible there,
+  // not a separately-recomputed default order.
+  const [listShareState, setListShareState] = useState<{ rows: ObservationSummary[]; sortLabel: string }>({
+    rows: [],
+    sortLabel: 'Sorted by date, newest first',
+  });
+  const handleListSortedRowsChange = useCallback((rows: ObservationSummary[], sortLabel: string) => {
+    setListShareState({ rows, sortLabel });
+  }, []);
 
   // ── Hover-preview state ─────────────────────────────────────────────
   // A single shared preview tile that follows whichever observation the
@@ -94,7 +127,16 @@ export function ObservationsCalendar() {
     queryFn: listTelescopes,
   });
   const showTelescopeUI = telescopes.length >= 2;
+  const [view, setView] = useState<'calendar' | 'list' | 'map'>('calendar');
   const [telescopeFilter, setTelescopeFilter] = useState<string>(ALL_TELESCOPES_FILTER);
+
+  // Observation-site coordinates power the map view; fetched lazily on first open.
+  const { data: locations = [], isLoading: locationsLoading } = useQuery({
+    queryKey: ['observation-locations'],
+    queryFn: getObservationLocations,
+    staleTime: 5 * 60 * 1000,
+    enabled: view === 'map',
+  });
   const telescopeById = useMemo(() => {
     const map = new Map<string, TelescopeProfile>();
     for (const t of telescopes) map.set(t.id, t);
@@ -138,6 +180,11 @@ export function ObservationsCalendar() {
     if (telescopeFilter === ALL_TELESCOPES_FILTER) return observations;
     return observations.filter(o => o.telescopeId === telescopeFilter);
   }, [observations, telescopeFilter]);
+
+  const filteredLocations = useMemo(() => {
+    if (telescopeFilter === ALL_TELESCOPES_FILTER) return locations;
+    return locations.filter(l => l.telescopeId === telescopeFilter);
+  }, [locations, telescopeFilter]);
 
   const observationsByDate = useMemo(() => {
     const map = new Map<string, ObservationSummary[]>();
@@ -246,6 +293,74 @@ export function ObservationsCalendar() {
   const totalObservations = filteredObservations.length;
   const uniqueObjects = new Set(filteredObservations.map(o => o.objectId)).size;
 
+  // Month of observations, packaged for the printable / shareable calendar card.
+  const shareData: CalendarShareData = useMemo(() => {
+    const weeks: CalendarShareData['weeks'] = [];
+    for (let i = 0; i < calendarDays.length; i += 7) {
+      weeks.push(
+        calendarDays.slice(i, i + 7).map(d => ({
+          date: d.date,
+          day: d.day,
+          isCurrentMonth: d.isCurrentMonth,
+          observations: observationsByDate.get(d.date) ?? [],
+        })),
+      );
+    }
+    // Drop trailing weeks that hold no day of the current month (the padded 6th row).
+    while (weeks.length > 1 && weeks[weeks.length - 1].every(d => !d.isCurrentMonth)) {
+      weeks.pop();
+    }
+    const telescopeColorById: Record<string, string> = {};
+    for (const t of telescopes) telescopeColorById[t.id] = t.color;
+    return {
+      monthLabel,
+      weeks,
+      totalObservations,
+      uniqueObjects,
+      today,
+      telescopeColorById,
+      showTelescopeDots: showTelescopeUI,
+    };
+  }, [calendarDays, observationsByDate, telescopes, monthLabel, totalObservations, uniqueObjects, today, showTelescopeUI]);
+
+  // List view's share card. Sourced from `listShareState` (bubbled up from
+  // ObservationsList, see handleListSortedRowsChange) rather than
+  // `filteredObservations` directly, so the export matches the table's
+  // current sort instead of always reflecting some other default order.
+  const listShareData: ListShareData = useMemo(() => ({
+    rows: listShareState.rows.map(obs => {
+      const { display, catalog } = resolveObjectLabel(obs);
+      const scope = obs.telescopeId ? telescopeById.get(obs.telescopeId) : undefined;
+      return {
+        id: obs.id,
+        display,
+        catalog,
+        dateLabel: formatObservationDate(obs.date),
+        telescopeColor: scope?.color,
+      };
+    }),
+    uniqueObjects,
+    sortLabel: listShareState.sortLabel,
+    showTelescopeDots: showTelescopeUI,
+  }), [listShareState, telescopeById, uniqueObjects, showTelescopeUI]);
+
+  // Map view has nothing to export until the map has actually loaded some
+  // locations — sharing an empty or still-loading map isn't a useful action.
+  const canShare = view === 'map'
+    ? !locationsLoading && filteredLocations.length > 0
+    : totalObservations > 0;
+
+  const shareTitle = view === 'map'
+    ? 'Save or share this map'
+    : view === 'list'
+      ? 'Print, share, or save this list'
+      : 'Print, share, or save this month as a calendar';
+
+  const handleCaptureMap = useCallback(() => {
+    if (!mapHandleRef.current) return Promise.reject(new Error('Map is not ready'));
+    return mapHandleRef.current.captureImage();
+  }, []);
+
   const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-accent-500';
   const accentBg = isNight ? 'bg-red-500' : isSpace ? 'bg-violet-500' : 'bg-accent-500';
 
@@ -263,138 +378,241 @@ export function ObservationsCalendar() {
           </p>
         </div>
 
-        {showTelescopeUI && (
-          <div className="flex items-center gap-1.5 shrink-0 mt-1">
-            <TelescopeIcon className={`w-3.5 h-3.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
-            <select
-              id="telescope-filter"
-              value={telescopeFilter}
-              onChange={e => setTelescopeFilter(e.target.value)}
-              className={`text-xs px-2 py-1 rounded-lg border ${
-                isDark
-                  ? 'bg-slate-800 border-slate-700 text-slate-300'
-                  : 'bg-white border-slate-200 text-slate-600'
-              }`}
-            >
-              <option value={ALL_TELESCOPES_FILTER}>All telescopes</option>
-              {telescopes.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
+        <div className="flex items-center gap-3 shrink-0 mt-1">
+          {/* Calendar / List / Map view switch */}
+          <div className={`flex items-center gap-0.5 rounded-lg border p-0.5 ${
+            isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
+          }`}>
+            {([
+              { id: 'calendar' as const, label: 'Calendar', Icon: Calendar },
+              { id: 'list' as const, label: 'List', Icon: List },
+              { id: 'map' as const, label: 'Map', Icon: MapIcon },
+            ]).map(({ id, label, Icon }) => {
+              const active = view === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setView(id)}
+                  aria-pressed={active}
+                  className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md transition ${
+                    active
+                      ? `${accentBg} text-white`
+                      : isDark ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              );
+            })}
           </div>
-        )}
-      </div>
 
-      {/* Month navigation */}
-      <div className={`flex items-center justify-between rounded-xl border px-2 py-1.5 ${
-        isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
-      }`}>
-        <button
-          onClick={() => navigateMonth(-1)}
-          className={`p-1.5 rounded-lg transition ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
-          aria-label="Previous month"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-
-        {/* Clickable month/year — opens picker popup */}
-        <div className="relative" ref={pickerRef}>
-          <button
-            onClick={openPicker}
-            className={`font-display font-semibold text-sm px-3 py-1 rounded-lg transition ${
-              isDark ? 'text-white hover:bg-slate-800' : 'text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            {monthLabel}
-          </button>
-
-          {pickerOpen && (
-            <div className={`absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 rounded-xl border shadow-xl p-3 w-56 ${
-              isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
-            }`}>
-              {/* Year navigation */}
-              <div className="flex items-center justify-between mb-2">
-                <button
-                  onClick={() => setPickerYear(y => Math.max(2018, y - 1))}
-                  className={`p-1 rounded-lg transition ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
-                  aria-label="Previous year"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-                <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                  {pickerYear}
-                </span>
-                <button
-                  onClick={() => setPickerYear(y => Math.min(thisYear, y + 1))}
-                  className={`p-1 rounded-lg transition ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
-                  aria-label="Next year"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Month grid */}
-              <div className="grid grid-cols-3 gap-1">
-                {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((m, i) => {
-                  const isSelected = pickerYear === currentMonth.year && i === currentMonth.month;
-                  const isFuture = pickerYear > thisYear || (pickerYear === thisYear && i > new Date().getMonth());
-                  return (
-                    <button
-                      key={m}
-                      disabled={isFuture}
-                      onClick={() => { setCurrentMonth({ year: pickerYear, month: i }); setPickerOpen(false); }}
-                      className={`text-xs py-1.5 rounded-lg transition font-medium ${
-                        isSelected
-                          ? `${isDark ? 'bg-accent-500 text-white' : 'bg-accent-500 text-white'}`
-                          : isFuture
-                            ? `${isDark ? 'text-slate-700' : 'text-slate-300'} cursor-not-allowed`
-                            : `${isDark ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-700 hover:bg-slate-100'}`
-                      }`}
-                    >
-                      {m}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Jump to today */}
-              <button
-                onClick={() => {
-                  const now = new Date();
-                  setCurrentMonth({ year: now.getFullYear(), month: now.getMonth() });
-                  setPickerOpen(false);
-                }}
-                className={`mt-2 w-full text-xs py-1 rounded-lg transition ${
-                  isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
+          {showTelescopeUI && (
+            <div className="flex items-center gap-1.5">
+              <TelescopeIcon className={`w-3.5 h-3.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+              <select
+                id="telescope-filter"
+                value={telescopeFilter}
+                onChange={e => setTelescopeFilter(e.target.value)}
+                className={`text-xs px-2 py-1 rounded-lg border ${
+                  isDark
+                    ? 'bg-slate-800 border-slate-700 text-slate-300'
+                    : 'bg-white border-slate-200 text-slate-600'
                 }`}
               >
-                Today
-              </button>
+                <option value={ALL_TELESCOPES_FILTER}>All telescopes</option>
+                {telescopes.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
             </div>
           )}
-        </div>
 
-        <button
-          onClick={() => navigateMonth(1)}
-          className={`p-1.5 rounded-lg transition ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
-          aria-label="Next month"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
+          {canShare && (
+            <button
+              onClick={() => setShareModal(view)}
+              className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition ${
+                isDark
+                  ? 'bg-slate-800 border-slate-700 text-slate-100 hover:bg-slate-700'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+              }`}
+              title={shareTitle}
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              Share
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Calendar grid */}
-      {isLoading ? (
-        <div className={`rounded-2xl border p-8 text-center ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200'}`}>
-          <div className="animate-pulse flex flex-col items-center gap-3">
-            <Calendar className={`w-8 h-8 ${isDark ? 'text-slate-700' : 'text-slate-300'}`} />
-            <p className={isDark ? 'text-slate-600' : 'text-slate-400'}>Loading observations...</p>
+      {shareModal === 'calendar' && (
+        <CalendarShareModal data={shareData} onClose={() => setShareModal(null)} />
+      )}
+      {shareModal === 'list' && (
+        <ListShareModal data={listShareData} onClose={() => setShareModal(null)} />
+      )}
+      {shareModal === 'map' && (
+        <MapShareModal onCapture={handleCaptureMap} onClose={() => setShareModal(null)} />
+      )}
+
+      {view === 'list' ? (
+        <ObservationsList
+          observations={filteredObservations}
+          telescopeById={telescopeById}
+          showTelescopeUI={showTelescopeUI}
+          isDark={isDark}
+          onSortedRowsChange={handleListSortedRowsChange}
+        />
+      ) : view === 'map' ? (
+        <div className={`rounded-2xl border overflow-hidden ${
+          isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'
+        }`}>
+          <div className="relative w-full h-[70vh] min-h-[420px]">
+            {locationsLoading ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                <MapIcon className={`w-8 h-8 animate-pulse ${isDark ? 'text-slate-700' : 'text-slate-300'}`} />
+                <p className={isDark ? 'text-slate-600' : 'text-slate-400'}>Loading observation locations...</p>
+              </div>
+            ) : filteredLocations.length === 0 ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
+                <MapPin className={`w-8 h-8 ${isDark ? 'text-slate-700' : 'text-slate-300'}`} />
+                <p className={`font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>No location data yet</p>
+                <p className={`text-sm ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                  Observations show here once their images include GPS coordinates, or once you set your location in Settings.
+                </p>
+              </div>
+            ) : (
+              <Suspense fallback={
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <MapIcon className={`w-8 h-8 animate-pulse ${isDark ? 'text-slate-700' : 'text-slate-300'}`} />
+                </div>
+              }>
+                <ObservationsWorldMap
+                  ref={mapHandleRef}
+                  locations={filteredLocations}
+                  telescopeById={telescopeById}
+                  showTelescopeUI={showTelescopeUI}
+                  isDark={isDark}
+                  isNight={isNight}
+                  isSpace={isSpace}
+                />
+              </Suspense>
+            )}
           </div>
         </div>
       ) : (
-        <div className={`rounded-2xl border overflow-hidden ${
-          isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+      /* Calendar */
+      <div className={`rounded-2xl border overflow-hidden ${
+        isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'
+      }`}>
+        {/* Month navigation */}
+        <div className={`flex items-center justify-center gap-2 border-b px-2 py-1.5 ${
+          isDark ? 'border-slate-800' : 'border-slate-200'
         }`}>
+          <button
+            onClick={() => navigateMonth(-1)}
+            className={`p-1.5 rounded-lg transition ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+            aria-label="Previous month"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          {/* Clickable month/year — opens picker popup */}
+          <div className="relative" ref={pickerRef}>
+            <button
+              onClick={openPicker}
+              className={`font-display font-semibold text-sm px-3 py-1 rounded-lg transition ${
+                isDark ? 'text-white hover:bg-slate-800' : 'text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              {monthLabel}
+            </button>
+
+            {pickerOpen && (
+              <div className={`absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 rounded-xl border shadow-xl p-3 w-56 ${
+                isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
+              }`}>
+                {/* Year navigation */}
+                <div className="flex items-center justify-between mb-2">
+                  <button
+                    onClick={() => setPickerYear(y => Math.max(2018, y - 1))}
+                    className={`p-1 rounded-lg transition ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+                    aria-label="Previous year"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                    {pickerYear}
+                  </span>
+                  <button
+                    onClick={() => setPickerYear(y => Math.min(thisYear, y + 1))}
+                    className={`p-1 rounded-lg transition ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+                    aria-label="Next year"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Month grid */}
+                <div className="grid grid-cols-3 gap-1">
+                  {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((m, i) => {
+                    const isSelected = pickerYear === currentMonth.year && i === currentMonth.month;
+                    const isFuture = pickerYear > thisYear || (pickerYear === thisYear && i > new Date().getMonth());
+                    return (
+                      <button
+                        key={m}
+                        disabled={isFuture}
+                        onClick={() => { setCurrentMonth({ year: pickerYear, month: i }); setPickerOpen(false); }}
+                        className={`text-xs py-1.5 rounded-lg transition font-medium ${
+                          isSelected
+                            ? `${isDark ? 'bg-accent-500 text-white' : 'bg-accent-500 text-white'}`
+                            : isFuture
+                              ? `${isDark ? 'text-slate-700' : 'text-slate-300'} cursor-not-allowed`
+                              : `${isDark ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-700 hover:bg-slate-100'}`
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Jump to today */}
+                <button
+                  onClick={() => {
+                    const now = new Date();
+                    setCurrentMonth({ year: now.getFullYear(), month: now.getMonth() });
+                    setPickerOpen(false);
+                  }}
+                  className={`mt-2 w-full text-xs py-1 rounded-lg transition ${
+                    isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  Today
+                </button>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => navigateMonth(1)}
+            className={`p-1.5 rounded-lg transition ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+            aria-label="Next month"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Calendar grid */}
+        {isLoading ? (
+          <div className="p-8 text-center">
+            <div className="animate-pulse flex flex-col items-center gap-3">
+              <Calendar className={`w-8 h-8 ${isDark ? 'text-slate-700' : 'text-slate-300'}`} />
+              <p className={isDark ? 'text-slate-600' : 'text-slate-400'}>Loading observations...</p>
+            </div>
+          </div>
+        ) : (
+          <>
           {/* Day headers */}
           <div className="grid grid-cols-7">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
@@ -507,11 +725,13 @@ export function ObservationsCalendar() {
               );
             })}
           </div>
-        </div>
+          </>
+        )}
+      </div>
       )}
 
       {/* Observation list (below calendar) */}
-      {filteredObservations.length > 0 && (
+      {view === 'calendar' && filteredObservations.length > 0 && (
         <div className="space-y-3">
           <h3 className={`font-display font-semibold text-lg ${isDark ? 'text-white' : 'text-slate-900'}`}>
             Recent Observations
@@ -525,7 +745,7 @@ export function ObservationsCalendar() {
                 to={`/observations/${encodeURIComponent(obs.objectId)}/${encodeURIComponent(obs.date)}`}
                 className={`flex items-center gap-4 p-4 rounded-2xl border transition group ${
                   isDark
-                    ? 'bg-slate-900/50 border-slate-800 hover:border-slate-700'
+                    ? 'bg-slate-900 border-slate-700 hover:border-slate-600'
                     : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
                 }`}
               >

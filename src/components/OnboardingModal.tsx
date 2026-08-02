@@ -2,11 +2,12 @@ import { useEffect, useReducer, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { registerUser } from '../lib/api/auth';
 import { setAuthToken } from '../lib/api/client';
-import { createTelescope, testTelescopeConnection } from '../lib/api/telescopes';
+import { createTelescope, testTelescopeConnection, type ConnectionType } from '../lib/api/telescopes';
 import { updateSettings } from '../lib/api/settings';
 import {
   TELESCOPE_PRESETS,
   DEFAULT_COLOR_BY_KIND,
+  isDwarfKind as isDwarfTelescopeKind,
   type TelescopeKind,
 } from '../lib/telescopePresets';
 import { useTheme } from '../hooks/useTheme';
@@ -32,12 +33,12 @@ export function OnboardingModal({ onComplete }: { onComplete: () => void }) {
 
   // Step 2, connection
   const [kind, setKind] = useState<TelescopeKind | ''>('');
-  const isDwarfKind = kind === 'dwarf-2' || kind === 'dwarf-3' || kind === 'dwarf-mini';
-  const isSeestarKind = kind === 'seestar-s50' || kind === 'seestar-s30';
-  // Transport mode lets Seestar pick between Wi-Fi (SMB) and USB. Dwarf is
-  // local-only; SMB is the default for everything else.
-  const [transportMode, setTransportMode] = useState<'smb' | 'local'>('smb');
-  const isLocalKind = isDwarfKind || (isSeestarKind && transportMode === 'local');
+  // Transport mode lets the user pick between the vendor's network transport
+  // and USB. The network option is FTP for Dwarf (its only network interface)
+  // and SMB for everything else.
+  const [transportMode, setTransportMode] = useState<ConnectionType>('smb');
+  const isLocalKind = transportMode === 'local';
+  const isFtpMode = transportMode === 'ftp';
   const [telescopeName, setTelescopeName] = useState('');
   const [hostname, setHostname] = useState('');
   const [localPath, setLocalPath] = useState('');
@@ -84,14 +85,15 @@ export function OnboardingModal({ onComplete }: { onComplete: () => void }) {
           name: telescopeName.trim() || preset.label,
           model: preset.model,
           hostname: isLocalKind ? '' : hostname.trim(),
-          shareName: isLocalKind ? '' : smbShareName.trim(),
+          // FTP has no share concept and the storage root is auto-detected.
+          shareName: isLocalKind || isFtpMode ? '' : smbShareName.trim(),
           username: isLocalKind ? '' : smbUsername.trim(),
           password: isLocalKind ? '' : smbPassword,
           kind,
           color: DEFAULT_COLOR_BY_KIND[kind],
           autoImportEnabled: autoImportOn,
           autoImportInterval: autoImportOn ? autoImportInterval : 60,
-          connectionType: isLocalKind ? 'local' : 'smb',
+          connectionType: transportMode,
           localPath: isLocalKind ? localPath.trim() : '',
         });
       }
@@ -139,6 +141,7 @@ export function OnboardingModal({ onComplete }: { onComplete: () => void }) {
         shareName: smbShareName.trim(),
         username: smbUsername.trim(),
         password: smbPassword,
+        connectionType: transportMode,
       });
       if (result.connected) {
         setTestStatus('success');
@@ -163,11 +166,16 @@ export function OnboardingModal({ onComplete }: { onComplete: () => void }) {
   function handleKindChange(newKind: TelescopeKind | '') {
     setKind(newKind);
     if (newKind) {
-      setSmbShareName(TELESCOPE_PRESETS[newKind].shareName);
-      setSmbUsername(TELESCOPE_PRESETS[newKind].username);
-      // Default Dwarf to local (USB-only) and Seestar to SMB.
-      if (newKind === 'dwarf-2' || newKind === 'dwarf-3' || newKind === 'dwarf-mini') setTransportMode('local');
-      else if (newKind === 'seestar-s50' || newKind === 'seestar-s30') setTransportMode('smb');
+      const newPreset = TELESCOPE_PRESETS[newKind];
+      setSmbShareName(newPreset.shareName);
+      setSmbUsername(newPreset.username);
+      // The address field is never auto-filled, even for Dwarf's fixed AP-mode
+      // IP: the placeholder (see the address input) hints at it, but the user
+      // must type it themselves so a wrong/stale address is never silently
+      // submitted.
+      // Default Dwarf to FTP (its only network interface) and Seestar to SMB.
+      if (isDwarfTelescopeKind(newKind)) setTransportMode('ftp');
+      else setTransportMode('smb');
     } else {
       setSmbShareName('');
       setSmbUsername('');

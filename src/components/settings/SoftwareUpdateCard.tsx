@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Download, CheckCircle2, AlertTriangle } from 'lucide-react';
 import type { Settings as SettingsType } from '../../types';
 import { getUpdateStatus, checkForUpdate, applyUpdate } from '../../lib/api/update';
-import { Sec, Row, Seg, ToggleRow, getCardClass } from './SettingsUI';
+import { Sec, Row, Seg, Toggle } from './SettingsUI';
 import { ChangelogModal } from '../ChangelogModal';
 
 /**
@@ -64,11 +64,13 @@ export function SoftwareUpdateCard({
 
   return (
     <Sec
-      title="Software Updates"
-      description="Keep Nebulis up to date. Updates are signed and verified before they install."
+      title="Software updates"
+      description="Updates are signed and verified before they install."
       isDark={isDark}
     >
-      <div className={`${getCardClass(isDark)} space-y-3`}>
+      {/* A plain padded block, not a second card: `Sec` already draws the card,
+          and the status area is free-form rather than a run of rows. */}
+      <div className={`px-5 py-5 space-y-3 border-b ${isDark ? 'border-slate-800/70' : 'border-slate-100'}`}>
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className={`text-sm font-medium ${strong}`}>Current version</div>
@@ -193,13 +195,16 @@ export function SoftwareUpdateCard({
 
       {isDesktop && (
         <>
-          <ToggleRow
+          <Row
             label="Check for updates automatically"
-            description="When enabled, updates download in the background for faster installation."
-            checked={form.autoUpdateEnabled ?? false}
-            onChange={v => setForm(f => ({ ...f, autoUpdateEnabled: v }))}
+            description="Updates download in the background so they install faster."
             isDark={isDark}
-          />
+          >
+            <Toggle
+              checked={form.autoUpdateEnabled ?? false}
+              onChange={v => setForm(f => ({ ...f, autoUpdateEnabled: v }))}
+            />
+          </Row>
           <Row
             label="Update channel"
             description="Stable is recommended. Beta gets new features earlier, with more risk."

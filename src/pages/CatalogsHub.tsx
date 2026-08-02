@@ -72,7 +72,7 @@ function CatalogCard({
       to={`/catalogs/${id}`}
       className={`group relative flex gap-5 items-center p-5 rounded-2xl border transition-all duration-200 hover:scale-[1.015] ${
         isDark
-          ? 'bg-slate-900/70 border-slate-800 hover:border-slate-600 hover:bg-slate-900'
+          ? 'bg-slate-900 border-slate-700 hover:border-slate-600 hover:bg-slate-800'
           : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-md'
       }`}
     >

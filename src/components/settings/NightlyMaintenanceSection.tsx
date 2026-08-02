@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Telescope, HardDrive, Cloud, Package, Play } from 'lucide-react';
+import { Play } from 'lucide-react';
 import type { Settings as SettingsType } from '../../types';
 import { runNightlyMaintenanceNow } from '../../lib/api/settings';
-import { Sec, getCardClass } from './SettingsUI';
-import { Toggle } from './SettingsUI';
+import { Sec, Row, Toggle } from './SettingsUI';
 
 function formatShortDate(ms: number): string {
   const diff = Date.now() - ms;
@@ -17,7 +16,6 @@ function formatShortDate(ms: number): string {
 
 interface TaskRowProps {
   isDark: boolean;
-  icon: React.ReactNode;
   label: string;
   description: string;
   checked: boolean;
@@ -25,25 +23,19 @@ interface TaskRowProps {
   lastRun: number | null;
 }
 
-function TaskRow({ isDark, icon, label, description, checked, onChange, lastRun }: TaskRowProps) {
+/** One maintenance task, as a standard settings row. The per-task icon was
+ *  dropped along with the nested card: four icons in a column read as a legend
+ *  the reader has to decode, and none of them named anything the label did not
+ *  already say. */
+function TaskRow({ isDark, label, description, checked, onChange, lastRun }: TaskRowProps) {
   return (
-    <div className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
-      <div className="flex items-start gap-3 min-w-0">
-        <div className={`mt-0.5 shrink-0 ${checked ? (isDark ? 'text-accent-400' : 'text-accent-500') : (isDark ? 'text-slate-600' : 'text-slate-400')}`}>
-          {icon}
-        </div>
-        <div className="min-w-0">
-          <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>{label}</p>
-          <p className={`text-xs mt-0.5 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{description}</p>
-          {lastRun !== null && (
-            <p className={`text-[11px] mt-1 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-              Last run: {formatShortDate(lastRun)}
-            </p>
-          )}
-        </div>
-      </div>
+    <Row
+      label={label}
+      description={lastRun !== null ? `${description} Last run ${formatShortDate(lastRun)}.` : description}
+      isDark={isDark}
+    >
       <Toggle checked={checked} onChange={onChange} />
-    </div>
+    </Row>
   );
 }
 
@@ -81,50 +73,47 @@ export function NightlyMaintenanceSection({
 
   return (
     <Sec
-      title="Nightly Maintenance"
-      description="Tasks the server runs automatically each night while you sleep."
+      title="Nightly maintenance"
+      description="Tasks the server runs on its own each night."
       isDark={isDark}
     >
-      <div className={`${getCardClass(isDark)} divide-y ${isDark ? 'divide-slate-800/70' : 'divide-slate-100'}`}>
-        <TaskRow
-          isDark={isDark}
-          icon={<Telescope className="w-4 h-4" />}
-          label="Planner Pre-cache"
-          description="Pre-downloads thumbnails for every object visible from your location so the Planner opens instantly."
-          checked={plannerEnabled}
-          onChange={v => setForm(f => ({ ...f, plannerPrefetchEnabled: v }))}
-          lastRun={form.plannerPrefetchLastRun ?? null}
-        />
-        <TaskRow
-          isDark={isDark}
-          icon={<Package className="w-4 h-4" />}
-          label="Catalog Pack Updates"
-          description="Checks nebulis.app for newer versions of installed asset packs and downloads updates silently."
-          checked={catalogCheckEnabled}
-          onChange={v => setForm(f => ({ ...f, nightlyCatalogPackCheckEnabled: v }))}
-          lastRun={null}
-        />
-        <TaskRow
-          isDark={isDark}
-          icon={<HardDrive className="w-4 h-4" />}
-          label="Library Housekeeping"
-          description="Purges junk files (macOS resource forks, stale upload temp dirs) from the library folder."
-          checked={housekeepingEnabled}
-          onChange={v => setForm(f => ({ ...f, nightlyHousekeepingEnabled: v }))}
-          lastRun={form.nightlyHousekeepingLastRun ?? null}
-        />
-        <TaskRow
-          isDark={isDark}
-          icon={<Cloud className="w-4 h-4" />}
-          label="Forecast Pre-warm"
-          description="Refreshes the weather and seeing forecast cache so conditions load instantly when you open the app at night."
-          checked={forecastEnabled}
-          onChange={v => setForm(f => ({ ...f, nightlyForecastPrefetchEnabled: v }))}
-          lastRun={form.nightlyForecastLastRun ?? null}
-        />
+      <TaskRow
+        isDark={isDark}
+        label="Planner pre-cache"
+        description="Downloads thumbnails for every object visible from your location, so the Planner opens instantly."
+        checked={plannerEnabled}
+        onChange={v => setForm(f => ({ ...f, plannerPrefetchEnabled: v }))}
+        lastRun={form.plannerPrefetchLastRun ?? null}
+      />
+      <TaskRow
+        isDark={isDark}
+        label="Catalog pack updates"
+        description="Checks nebulis.app for newer asset packs and downloads them in the background."
+        checked={catalogCheckEnabled}
+        onChange={v => setForm(f => ({ ...f, nightlyCatalogPackCheckEnabled: v }))}
+        lastRun={null}
+      />
+      <TaskRow
+        isDark={isDark}
+        label="Library housekeeping"
+        description="Removes junk files, such as macOS resource forks and stale upload temp folders."
+        checked={housekeepingEnabled}
+        onChange={v => setForm(f => ({ ...f, nightlyHousekeepingEnabled: v }))}
+        lastRun={form.nightlyHousekeepingLastRun ?? null}
+      />
+      <TaskRow
+        isDark={isDark}
+        label="Forecast pre-warm"
+        description="Refreshes the weather and seeing cache, so conditions load instantly at night."
+        checked={forecastEnabled}
+        onChange={v => setForm(f => ({ ...f, nightlyForecastPrefetchEnabled: v }))}
+        lastRun={form.nightlyForecastLastRun ?? null}
+      />
 
-        {anyEnabled && (
-          <div className={`pt-3 flex items-center gap-3 flex-wrap`}>
+      {anyEnabled && (
+        <div className={`px-5 py-4 flex items-center gap-3 flex-wrap border-t ${
+          isDark ? 'border-slate-800/70' : 'border-slate-100'
+        }`}>
             <label className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
               Run at
             </label>
@@ -157,19 +146,18 @@ export function NightlyMaintenanceSection({
               {runNow.isPending ? 'Starting…' : 'Run now'}
             </button>
 
-            {justStarted && (
-              <span className={`text-xs w-full ${isDark ? 'text-accent-400' : 'text-accent-600'}`}>
-                Maintenance started. Tasks are running in the background.
-              </span>
-            )}
-            {runNow.isError && (
-              <span className={`text-xs w-full ${isDark ? 'text-red-400' : 'text-red-600'}`}>
-                {runNow.error instanceof Error ? runNow.error.message : 'Could not start maintenance.'}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
+          {justStarted && (
+            <span className={`text-xs w-full ${isDark ? 'text-accent-400' : 'text-accent-600'}`}>
+              Maintenance started. Tasks are running in the background.
+            </span>
+          )}
+          {runNow.isError && (
+            <span className={`text-xs w-full ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+              {runNow.error instanceof Error ? runNow.error.message : 'Could not start maintenance.'}
+            </span>
+          )}
+        </div>
+      )}
     </Sec>
   );
 }

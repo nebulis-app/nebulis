@@ -34,49 +34,6 @@ export function Toggle({
   );
 }
 
-export function ToggleRow({
-  label,
-  description,
-  checked,
-  onChange,
-  isDark,
-  icon,
-}: {
-  label: string;
-  description?: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  isDark: boolean;
-  icon?: ReactNode;
-}) {
-  return (
-    <label
-      className={`flex items-center justify-between gap-4 py-2.5 px-3 rounded-xl cursor-pointer transition-colors duration-150 select-none ${
-        isDark ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'
-      }`}
-    >
-      <div className="flex items-center gap-3 min-w-0">
-        {icon && (
-          <span className={`shrink-0 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            {icon}
-          </span>
-        )}
-        <div className="min-w-0">
-          <div className={`text-[13px] font-medium leading-snug ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-            {label}
-          </div>
-          {description && (
-            <p className={`text-xs mt-0.5 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              {description}
-            </p>
-          )}
-        </div>
-      </div>
-      <Toggle checked={checked} onChange={onChange} />
-    </label>
-  );
-}
-
 export function getInputClass(isDark: boolean): string {
   return `w-full px-4 py-2.5 rounded-xl border text-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/30 ${
     isDark
@@ -91,12 +48,6 @@ export function getLabelClass(isDark: boolean): string {
 
 export function getHelperClass(isDark: boolean): string {
   return `text-xs mt-1.5 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`;
-}
-
-export function getCardClass(isDark: boolean): string {
-  return `rounded-2xl border p-6 ${
-    isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
-  }`;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -132,9 +83,14 @@ export function Sec({
         </div>
         {actions && <div className="shrink-0">{actions}</div>}
       </div>
+      {/* Solid fill, not translucent: at 40% opacity slate-900 sat only ~3
+          luminance points above the slate-950 page, so a page with several
+          stacked Secs read as one continuous surface with no card edges. A
+          solid fill plus a lighter border give each section a real edge,
+          which matters once six of these are stacked on one page. */}
       <div
         className={`rounded-2xl border ${
-          isDark ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'
         }`}
       >
         {children}
@@ -175,6 +131,50 @@ export function Row({
       <div className="min-w-0 flex items-center justify-start md:justify-end">
         {children}
       </div>
+    </div>
+  );
+}
+
+/**
+ * A label strip that names a run of `Row`s inside a `Sec`.
+ *
+ * This exists so sub-grouping costs a label rather than a card. Sections used to
+ * nest a second bordered card (`getCardClass`) inside `Sec` purely to get a
+ * heading over a few related rows, which put every control behind two borders
+ * and two radii. Rows that follow this strip read as belonging to it, with no
+ * extra chrome.
+ *
+ * Expects whatever precedes it to supply its own bottom border, which `Row`
+ * already does.
+ */
+export function RowGroup({
+  label,
+  description,
+  isDark,
+}: {
+  label: string;
+  description?: string;
+  isDark: boolean;
+}) {
+  return (
+    <div
+      className={`px-5 pt-3.5 pb-2.5 border-b ${
+        // Tinted darker than the (now solid) card fill, so the strip still
+        // reads as a distinct band rather than disappearing into a same-color
+        // parent the way a translucent slate-900 would.
+        isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50/70 border-slate-100'
+      }`}
+    >
+      <div className={`text-[10px] font-semibold uppercase tracking-[0.1em] ${
+        isDark ? 'text-slate-500' : 'text-slate-400'
+      }`}>
+        {label}
+      </div>
+      {description && (
+        <p className={`text-[12px] mt-1 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+          {description}
+        </p>
+      )}
     </div>
   );
 }

@@ -286,9 +286,9 @@ const spec = {
           connectionType: {
             type: 'string',
             enum: [...TRANSPORT_KINDS],
-            description: '"smb" = LAN share (SeeStar); "local" = direct filesystem path (Dwarf USB mount)',
+            description: '"smb" = LAN share (SeeStar); "local" = direct filesystem path (USB mount); "ftp" = anonymous FTP over Wi-Fi (Dwarf)',
           },
-          localPath: { type: 'string', description: 'Absolute filesystem path when connectionType is "local". Empty for SMB profiles.' },
+          localPath: { type: 'string', description: 'Absolute filesystem path when connectionType is "local". Empty for SMB and FTP profiles.' },
           deviceId: nullable({ type: 'string', description: 'Physical device UUID read from the device once connected; null until then' }),
           importJpg:        { type: 'boolean', description: 'Per-telescope file-type import filter' },
           importFits:       { type: 'boolean', description: 'Per-telescope file-type import filter' },
@@ -297,7 +297,7 @@ const spec = {
           importVideos:     { type: 'boolean', description: 'Per-telescope file-type import filter' },
           trackDeviceIdentity: {
             type: 'boolean',
-            description: 'When true, the import pipeline reads/writes a device-identity marker so the same physical telescope reached over SMB and USB resolves to one logical device',
+            description: 'When true, the import pipeline reads/writes a device-identity marker so the same physical telescope reached over two transports (e.g. Wi-Fi and USB) resolves to one logical device',
           },
         },
       },
@@ -467,7 +467,7 @@ const spec = {
       get: {
         summary: 'Telescope online status',
         tags: ['Telescope'],
-        description: 'Probes TCP port 445 (SMB) on the configured hostname to determine reachability. Result is cached for 30 seconds.',
+        description: 'Probes the configured transport to determine reachability: TCP port 445 for SMB profiles, port 21 for FTP (Dwarf), or a filesystem stat for USB. Result is cached for 30 seconds.',
         responses: {
           200: {
             description: 'Status object',
@@ -630,7 +630,7 @@ const spec = {
       post: {
         summary: 'Trigger library import',
         tags: ['Library (Local)'],
-        description: 'Starts a background import from the telescope SMB share into local storage.',
+        description: 'Starts a background import from the telescope into local storage, over whichever transport the profile resolves to (SMB, FTP, or a USB mount).',
         responses: { 200: { description: 'Import started or already running' } },
       },
     },

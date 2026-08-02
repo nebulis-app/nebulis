@@ -9,7 +9,9 @@
 import fs from 'fs';
 import path from 'path';
 import { getLibraryDir } from '../libraryPath.js';
-import { parseFilename, normalizeCatalogId, sessionNightFor } from '../telescopeFiles.js';
+import { normalizeCatalogId } from '../telescopeFiles.js';
+import { listObjectFiles, getObjectLayout } from './libraryLayout.js';
+import { resolverFor } from './libraryFiles.js';
 import {
   stmts,
   getFolderName,
@@ -81,18 +83,21 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
     const objDir = path.join(LIBRARY_DIR, obj.folderName);
     if (!fs.existsSync(objDir)) continue;
 
-    for (const file of fs.readdirSync(objDir)) {
+    // Layout-aware: a nested object's images live inside per-session
+    // directories, so a flat readdir would leave it out of the gallery.
+    const identity = resolverFor(obj.objectId);
+    for (const entry of listObjectFiles(objDir, getObjectLayout(obj.objectId))) {
+      const file = entry.fileName;
       const lower = file.toLowerCase();
       if (!lower.endsWith('.jpg') && !lower.endsWith('.jpeg') && !lower.endsWith('.png')) continue;
       if (lower.includes('_thn.')) continue;
       if (file.startsWith('sky_') || file.startsWith('gallery_')) continue;
 
-      const parsed = parseFilename(file);
-      const filePath = `${obj.folderName}/${file}`;
+      const filePath = `${obj.folderName}/${entry.relPath}`;
       results.push({
         name: file,
         path: filePath,
-        date: sessionNightFor(parsed) || 'unknown',
+        date: identity.session(entry.relPath) || 'unknown',
         objectId: obj.objectId,
         objectName: obj.objectName || obj.objectId,
         objectType: obj.objectType,
@@ -167,20 +172,20 @@ export function getStackedImages(objectId: string): Array<{ name: string; path: 
   if (!fs.existsSync(objDir)) return [];
 
   const results: Array<{ name: string; path: string; date: string; downloadUrl: string }> = [];
-  const files = fs.readdirSync(objDir);
+  const identity = resolverFor(objectId);
 
-  for (const file of files) {
+  for (const entry of listObjectFiles(objDir, getObjectLayout(objectId))) {
+    const file = entry.fileName;
     const lower = file.toLowerCase();
     if (!lower.endsWith('.jpg') && !lower.endsWith('.jpeg') && !lower.endsWith('.png')) continue;
     if (lower.includes('_thn.')) continue; // skip thumbnails
     if (file.startsWith('sky_') || file.startsWith('gallery_')) continue; // skip managed images
 
-    const parsed = parseFilename(file);
-    const filePath = `${folderName}/${file}`;
+    const filePath = `${folderName}/${entry.relPath}`;
     results.push({
       name: file,
       path: filePath,
-      date: sessionNightFor(parsed) || 'unknown',
+      date: identity.session(entry.relPath) || 'unknown',
       downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(filePath)}`,
     });
   }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 const FOCUSABLE = [
   'a[href]',
@@ -20,6 +21,17 @@ interface ModalProps {
   /** Extra classes for the dialog panel (the centered card). The backdrop
    *  is always full-screen with a semi-transparent overlay. */
   className?: string;
+  /** Inline style for the backdrop. Lets a consumer drive backdrop opacity
+   *  from a gesture (the lightbox fades it out during swipe-to-close).
+   *  Omitted leaves the default `bg-black/60` styling untouched. */
+  backdropStyle?: React.CSSProperties;
+  /** Where focus lands on open. `'first'` (default) focuses the first
+   *  focusable child, which suits form dialogs. `'dialog'` focuses the panel
+   *  itself, which suits viewers where the first control is an arbitrary
+   *  toolbar button and a focus ring on it would be noise. */
+  focusOnOpen?: 'first' | 'dialog';
+  /** Extra classes for the backdrop element. */
+  backdropClassName?: string;
 }
 
 /**
@@ -31,7 +43,16 @@ interface ModalProps {
  * left to the consumer via `className` and `children`, so each modal keeps
  * its existing look. This primitive only owns accessibility plumbing.
  */
-export function Modal({ isOpen, onClose, title, children, className }: ModalProps) {
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  className,
+  backdropStyle,
+  backdropClassName,
+  focusOnOpen = 'first',
+}: ModalProps) {
   const labelId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -48,14 +69,14 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
     const dialog = dialogRef.current;
     if (dialog) {
       const focusable = dialog.querySelectorAll<HTMLElement>(FOCUSABLE);
-      const target = focusable[0] ?? dialog;
+      const target = focusOnOpen === 'dialog' ? dialog : (focusable[0] ?? dialog);
       target.focus();
     }
 
     return () => {
       previousFocusRef.current?.focus?.();
     };
-  }, [isOpen]);
+  }, [isOpen, focusOnOpen]);
 
   // Body scroll lock.
   useEffect(() => {
@@ -106,13 +127,20 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
 
   if (!isOpen) return null;
 
-  return (
+  // Portal to <body> rather than rendering in place. A `fixed` element's
+  // containing block becomes its nearest ancestor with a transform/filter/
+  // backdrop-filter, so a Modal triggered from inside e.g. the nav bar's
+  // `backdrop-blur-xl` would size and center itself against the ~64px nav
+  // strip instead of the real viewport, shoving most of the dialog off
+  // screen. Rendering at <body> sidesteps any such ancestor entirely.
+  return createPortal(
     <div
       className="fixed inset-0 z-[90] flex items-center justify-center p-4"
       onKeyDown={handleKeyDown}
     >
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className={`absolute inset-0 backdrop-blur-sm ${backdropClassName ?? 'bg-black/60'}`}
+        style={backdropStyle}
         onClick={onClose}
         aria-hidden="true"
       />
@@ -127,6 +155,7 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
         <h2 id={labelId} className="sr-only">{title}</h2>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

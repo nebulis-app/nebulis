@@ -14,20 +14,33 @@ import {
   parseFilename,
   getFileCategory,
   isRealFile,
+  isSidecarFile,
   sessionNightFor,
   rolloverDateUnconditional,
 } from '../telescopeFiles.js';
 import { getNote } from '../notes.js';
 import { parseFitsHeader } from '../fitsParser.js';
-import { fitsThumbnailRelName } from '../fitsThumbnail.js';
 import {
   stmts,
   getFolderName,
   resolveCatalogMeta,
-  loadSettings,
   loadIndex,
   LIBRARY_API_BASE,
 } from './objects.js';
+import {
+  resolverFor,
+  deleteLibraryFileRow,
+  getLibraryFileRow,
+  moveLibraryFileRow,
+  writeObjectManifest,
+} from './libraryFiles.js';
+import { listObjectFiles, getObjectLayout, setObjectLayout } from './libraryLayout.js';
+import {
+  deleteCaptureInfoForSession,
+  getCaptureInfoForSession,
+  summarizeSessionCapture,
+} from './captureInfo.js';
+import { getSite, getDefaultSite, siteForSession, type ObservingSite } from '../observingSites.js';
 
 // ─── Session weather ────────────────────────────────────────────────────────
 
@@ -37,13 +50,16 @@ export type { SessionWeather };
 /**
  * Fetch historical weather for a date from Open-Meteo's archive API.
  * Returns average conditions during nighttime hours (8 PM – 4 AM) for the date.
- * Returns null if location is not set or the API call fails.
+ * Returns null if the site has no coordinates or the API call fails.
+ *
+ * `site` is the observing site this *specific session* was captured from
+ * (see siteForSession), not necessarily the currently-active one — weather is
+ * historical fact about where the telescope was, and must stay correct even
+ * after the user switches which site the planner points at.
  */
-async function fetchSessionWeather(date: string): Promise<SessionWeather | null> {
-  const settings = loadSettings();
-  // Narrow via typeof instead of casting — settings comes back as `Record<string, unknown>`.
-  const lat = typeof settings.latitude === 'number' ? settings.latitude : null;
-  const lon = typeof settings.longitude === 'number' ? settings.longitude : null;
+async function fetchSessionWeather(date: string, site: ObservingSite): Promise<SessionWeather | null> {
+  const lat = site.latitude;
+  const lon = site.longitude;
   if (lat == null || lon == null) return null;
 
   // Open-Meteo archive API covers past dates; forecast API covers recent/future
@@ -125,10 +141,15 @@ async function fetchSessionWeather(date: string): Promise<SessionWeather | null>
  */
 export async function backfillSessionWeather(objectId: string): Promise<void> {
   const rows = stmts.getSessions.all(objectId);
+  const defaultSite = getDefaultSite();
   for (const row of rows) {
     if (row.temperature != null) continue; // already has weather
     if (row.date === 'unknown') continue;
-    const weather = await fetchSessionWeather(row.date);
+    // row.siteId came from the same SELECT * this loop is already iterating,
+    // so resolving it directly avoids a redundant per-row session lookup
+    // (which is what siteForSession would otherwise do).
+    const site = (row.siteId && getSite(row.siteId)) || defaultSite;
+    const weather = await fetchSessionWeather(row.date, site);
     if (weather) {
       stmts.setSessionWeather.run(
         weather.temperature, weather.cloudCover, weather.humidity,
@@ -136,6 +157,34 @@ export async function backfillSessionWeather(objectId: string): Promise<void> {
         objectId, row.date
       );
     }
+  }
+}
+
+/**
+ * Fetch and store weather for exactly one session, awaited by the caller.
+ *
+ * Used right after a site retag: `reassignSessionSite` nulls that one
+ * session's weather columns, and the route used to fire `backfillSessionWeather`
+ * (which walks every session of the object still missing weather) in the
+ * background and respond immediately. The client invalidates its cached
+ * observation on that response, refetches, gets `weather: null`, and the
+ * Conditions card disappears from the Details grid — nothing ever told the
+ * client to invalidate again once the background fetch finished, so it
+ * stayed gone until the next full page load. Awaiting a single-session fetch
+ * here is fast enough to do inline, so the response already carries the
+ * re-fetched weather and the card never blanks out.
+ */
+export async function backfillSingleSessionWeather(objectId: string, date: string): Promise<void> {
+  const row = stmts.getSession.get(objectId, date);
+  if (!row || row.temperature != null) return;
+  const site = (row.siteId && getSite(row.siteId)) || getDefaultSite();
+  const weather = await fetchSessionWeather(date, site);
+  if (weather) {
+    stmts.setSessionWeather.run(
+      weather.temperature, weather.cloudCover, weather.humidity,
+      weather.windSpeed, weather.dewPoint, weather.visibility, weather.precipProb,
+      objectId, date
+    );
   }
 }
 
@@ -275,6 +324,10 @@ export function getLocalSessions(objectId: string) {
     thumbnailFile: string | null;   // _thn.jpg
     stackedImageFile: string | null; // Stacked_*.jpg (non-thumbnail)
     anyImageFile: string | null;     // any other .jpg/.png fallback
+    /** Whether the chosen file is a JPEG (servable as-is). Lets a JPEG found
+     *  later replace a costly earlier pick without a second pass. */
+    stackedImageIsCheap: boolean;
+    anyImageIsCheap: boolean;
   }>();
 
   // Processed-image counts per session date (separate `sessionProcessedImages`
@@ -322,7 +375,7 @@ export function getLocalSessions(objectId: string) {
   for (const r of sessionRows) {
     if (r.date === 'unknown') continue; // stale rows from old imports — skip
     if (!deletedSessions.has(r.date) && !sessionMap.has(r.date)) {
-      sessionMap.set(r.date, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null });
+      sessionMap.set(r.date, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false });
     }
     if (r.temperature != null) {
       weatherMap.set(r.date, {
@@ -356,27 +409,53 @@ export function getLocalSessions(objectId: string) {
       }));
   }
 
-  const files = fs.readdirSync(objDir).filter(f => isRealFile(f) && !f.startsWith('sky_') && !f.startsWith('gallery_'));
+  // Layout-aware listing: flat objects are one level, nested objects are
+  // object/<session>/<file>. listObjectFiles is the only place that knows the
+  // difference, so everything below works on an object-relative path.
+  const entries = listObjectFiles(objDir, getObjectLayout(objectId))
+    .filter(e => isRealFile(e.fileName)
+      && !e.fileName.startsWith('sky_')
+      && !e.fileName.startsWith('gallery_'));
 
-  for (const fname of files) {
+  // Session membership comes from libraryFiles when the file has a row, and
+  // falls back to parsing the name when it doesn't. See resolverFor().
+  const identity = resolverFor(objectId);
+
+  for (const entry of entries) {
+    const fname = entry.fileName;
     const parsed = parseFilename(fname);
-    const sessionKey = sessionNightFor(parsed);
+    const sessionKey = identity.session(entry.relPath);
     if (!sessionKey) continue; // skip files we can't assign a session date to
     if (deletedSessions.has(sessionKey)) continue;
     if (!sessionMap.has(sessionKey)) {
-      sessionMap.set(sessionKey, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null });
+      sessionMap.set(sessionKey, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false });
     }
     const s = sessionMap.get(sessionKey)!;
     s.fileCount++;
-    if (parsed.type === 'stacked') s.stackedKeys.add(fname.slice(0, fname.length - path.extname(fname).length));
-    if (parsed.isThumbnail && !s.thumbnailFile) s.thumbnailFile = fname;
+    // Keyed on the object-relative path: in a nested object every session has
+    // its own `stacked.jpg`, so a basename key would merge distinct stacks.
+    if (parsed.type === 'stacked') s.stackedKeys.add(entry.relPath.slice(0, entry.relPath.length - path.extname(fname).length));
+    // The preview fields hold object-relative paths because they are turned
+    // into `<folderName>/<relPath>` URLs below.
+    if (parsed.isThumbnail && !s.thumbnailFile) s.thumbnailFile = entry.relPath;
     const isViewableImage = parsed.extension === '.jpg' || parsed.extension === '.jpeg'
       || parsed.extension === '.png' || parsed.extension === '.tif' || parsed.extension === '.tiff';
-    if (!parsed.isThumbnail && parsed.type === 'stacked' && !s.stackedImageFile && isViewableImage) {
-      s.stackedImageFile = fname;
+    // A JPEG can be served straight to the client; anything else has to be
+    // converted by sharp on the way out. That matters for the pick, not just the
+    // URL: featuring a Dwarf's ~100 MB float `img_stacked_all.tif` means a 100 MB
+    // decode every time this card misses the thumbnail cache. Prefer a cheap
+    // format, and only settle for a costly one when it is the session's only
+    // image (tracked separately below so a later JPEG can still win).
+    const isCheapImage = parsed.extension === '.jpg' || parsed.extension === '.jpeg';
+    if (!parsed.isThumbnail && parsed.type === 'stacked' && isViewableImage
+      && (!s.stackedImageFile || (isCheapImage && !s.stackedImageIsCheap))) {
+      s.stackedImageFile = entry.relPath;
+      s.stackedImageIsCheap = isCheapImage;
     }
-    if (!parsed.isThumbnail && parsed.type !== 'stacked' && !s.anyImageFile && isViewableImage) {
-      s.anyImageFile = fname;
+    if (!parsed.isThumbnail && parsed.type !== 'stacked' && isViewableImage
+      && (!s.anyImageFile || (isCheapImage && !s.anyImageIsCheap))) {
+      s.anyImageFile = entry.relPath;
+      s.anyImageIsCheap = isCheapImage;
     }
     if (parsed.type === 'sub') s.subFrameCount++;
     const cat = getFileCategory(fname);
@@ -432,15 +511,20 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
   if (!objDir.startsWith(LIBRARY_DIR + path.sep)) return [];
   if (!fs.existsSync(objDir)) return [];
 
-  return fs.readdirSync(objDir)
-    .filter(f => isRealFile(f) && !f.startsWith('sky_') && !f.startsWith('gallery_'))
-    .filter(fname => {
+  const identity = resolverFor(objectId);
+
+  return listObjectFiles(objDir, getObjectLayout(objectId))
+    .filter(e => isRealFile(e.fileName)
+      && !e.fileName.startsWith('sky_')
+      && !e.fileName.startsWith('gallery_'))
+    .filter(entry => {
       if (!sessionDate) return true;
-      return sessionNightFor(parseFilename(fname)) === sessionDate;
+      return identity.session(entry.relPath) === sessionDate;
     })
-    .map(fname => {
+    .map(entry => {
+      const fname = entry.fileName;
       const parsed = parseFilename(fname);
-      const fullPath = path.join(objDir, fname);
+      const fullPath = path.join(objDir, entry.relPath);
       const stat = fs.statSync(fullPath);
       const category = getFileCategory(fname);
       // `getFileCategory` and `parsed.type` come back as wider string types
@@ -450,25 +534,78 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
       const knownType: 'image' | 'fits' | 'video' | 'thumbnail' | 'other' =
         category === 'image' || category === 'fits' || category === 'video' || category === 'thumbnail'
           ? category : 'other';
+      // Prefer the recorded role, falling back to the filename parse. The two
+      // can legitimately disagree: the Dwarf master stack is a `.tif` that
+      // parseFilename types as 'other' but which is genuinely a stack, and a
+      // nested import keeps device names that carry no type hint at all.
+      const role = identity.role(entry.relPath);
+      const roleFileType = role === 'stacked' || role === 'sub' || role === 'thumbnail' || role === 'video'
+        ? role : null;
       const knownFileType: 'stacked' | 'sub' | 'thumbnail' | 'video' | 'other' =
-        parsed.type === 'stacked' || parsed.type === 'sub' || parsed.type === 'thumbnail' || parsed.type === 'video'
-          ? parsed.type : 'other';
+        roleFileType ?? (
+          parsed.type === 'stacked' || parsed.type === 'sub' || parsed.type === 'thumbnail' || parsed.type === 'video'
+            ? parsed.type : 'other');
+      // The library path is folderName + the object-relative path, so a
+      // nested object's session directory is carried into every URL.
+      const libPath = `${folderName}/${entry.relPath}`;
+      const needsRasterConversion = /\.(png|tiff?)$/i.test(fname);
+      /**
+       * TIFF gets no preview at all, and is shown as a file card instead.
+       *
+       * A Dwarf's `img_stacked_all.tif` is 32-bit float LINEAR data (measured:
+       * min 251, max 9,672,048). sharp reads it as scene-linear scRGB where 1.0
+       * is white, so every value clips and the render comes out pure white.
+       * Rescaling before the conversion does not behave predictably either: the
+       * output brightness is non-monotonic in the window (a white point at
+       * mean+0.1σ gives mean 219, at mean+0.5σ gives mean 12), so there is no
+       * stable calibration to pick.
+       *
+       * Displaying it properly needs a real astro render (decode the TIFF
+       * directly, then the midtone-transfer autostretch fitsThumbnail.ts already
+       * implements). Until then a file card is the honest answer: a linear
+       * archival master is not a preview, and the device ships `stacked.jpg`
+       * alongside it for exactly that purpose.
+       *
+       * 8-bit TIFFs lose their preview too. Accepted: they are rare from these
+       * devices, and a download card beats a white rectangle.
+       */
+      const previewable = !/\.tiff?$/i.test(fname);
       return {
         name: fname,
         size: stat.size,
         type: knownType,
         fileType: knownFileType,
-        path: `${folderName}/${fname}`,
+        path: libPath,
+        sessionFolder: entry.sessionFolder,
         exposure: parsed.exposure || null,
         filter: parsed.filter || null,
         timestamp: parsed.timestamp || null,
         date: parsed.date || null,
         frameCount: parsed.frameCount || null,
         isThumbnail: parsed.isThumbnail,
-        downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(`${folderName}/${fname}`)}`,
-        thumbUrl: fs.existsSync(path.join(objDir, '.thumbs', fitsThumbnailRelName(fname)))
-          ? `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(`${folderName}/.thumbs/${fitsThumbnailRelName(fname)}`)}`
-          : undefined,
+        /** False when no rendering of this file can be trusted, so clients must
+         *  show a download card rather than an `<img>`. */
+        previewable,
+        downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(libPath)}`,
+        // FITS files get a server-rendered JPEG (colorized MTF autostretch) so
+        // clients never decode the raw FITS just to preview it. The endpoint
+        // generates on demand, so this is emitted whether or not the thumb has
+        // been rendered yet (older imports are backfilled on first request).
+        // `previewUrl` is a larger 1024px tier for full-screen viewing.
+        thumbUrl: knownType === 'fits'
+          ? `${LIBRARY_API_BASE}/fits-thumbnail?path=${encodeURIComponent(libPath)}`
+          // TIFF and PNG need a server-side conversion too. A 16-bit PNG or a
+          // 32-bit float TIFF (the Dwarf master stack) cannot be shown by a
+          // browser <img> at all, so hand the client a rendered JPEG rather
+          // than a URL it will fail to display.
+          : needsRasterConversion && previewable
+            ? `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(libPath)}`
+            : undefined,
+        previewUrl: knownType === 'fits'
+          ? `${LIBRARY_API_BASE}/fits-thumbnail?size=preview&path=${encodeURIComponent(libPath)}`
+          : needsRasterConversion && previewable
+            ? `${LIBRARY_API_BASE}/file/thumbnail?w=1200&h=1200&path=${encodeURIComponent(libPath)}`
+            : undefined,
         subIndex: parsed.subIndex || null,
       };
     })
@@ -535,8 +672,13 @@ export function getLocalObservations() {
     const objDir = path.join(LIBRARY_DIR, obj.folderName || objectId);
     if (!fs.existsSync(objDir)) continue;
 
-    const files = fs.readdirSync(objDir);
-    try { reconcileStaleSessionDates(objectId, files); } catch { /* best-effort */ }
+    // Layout-aware: a nested object keeps its files inside per-session
+    // directories, so an object-level readdir would report it as having no
+    // files at all and it would show up empty on the calendar.
+    const entries = listObjectFiles(objDir, getObjectLayout(objectId));
+    const identity = resolverFor(objectId);
+    // reconcileStaleSessionDates parses bare filenames, so it takes basenames.
+    try { reconcileStaleSessionDates(objectId, entries.map(e => e.fileName)); } catch { /* best-effort */ }
     const sessionRows = stmts.getSessions.all(objectId);
     const sessions = sessionRows.map(r => r.date);
     // User-crowned per-session preview wins over the object-level thumbnail.
@@ -558,34 +700,46 @@ export function getLocalObservations() {
       fitsCount: number;
       subFrameCount: number;
       stackedImageFile: string | null;
+      /** True when stackedImageFile is a JPEG, so a later JPEG can displace a
+       *  costly earlier pick. See getLocalSessions for the reasoning. */
+      stackedImageIsCheap: boolean;
     }>();
 
     // Seed from DB so note-only manual entries appear on the calendar
     for (const d of sessions) {
       if (d === 'unknown') continue;
       if (!sessionMap.has(d)) {
-        sessionMap.set(d, { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null });
+        sessionMap.set(d, { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null, stackedImageIsCheap: false });
       }
     }
 
-    for (const fname of files) {
+    for (const entry of entries) {
+      const fname = entry.fileName;
       const parsed = parseFilename(fname);
       if (parsed.isThumbnail) continue;
-      const date = sessionNightFor(parsed);
+      const date = identity.session(entry.relPath);
       if (!date) continue; // skip files we can't assign a session date to
       if (!sessionMap.has(date)) {
-        sessionMap.set(date, { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null });
+        sessionMap.set(date, { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null, stackedImageIsCheap: false });
       }
       const s = sessionMap.get(date)!;
       s.fileCount++;
       if (parsed.timestamp) s.timestamps.push(parsed.timestamp);
-      if (parsed.type === 'stacked') s.stackedKeys.add(fname.slice(0, fname.length - path.extname(fname).length));
+      // Keyed on the object-relative path: every nested session has its own
+      // `stacked.jpg`, which a basename key would merge into one stack.
+      if (parsed.type === 'stacked') s.stackedKeys.add(entry.relPath.slice(0, entry.relPath.length - path.extname(fname).length));
       if (parsed.type === 'sub') s.subFrameCount++;
       const ext = parsed.extension?.toLowerCase();
       if (ext === '.fit' || ext === '.fits') s.fitsCount++;
       const isViewableImage = ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.tif' || ext === '.tiff';
-      if (!s.stackedImageFile && parsed.type === 'stacked' && isViewableImage) {
-        s.stackedImageFile = fname;
+      // Cheap-first, same reasoning as getLocalSessions: a costly pick means a
+      // ~100 MB sharp decode per calendar card on a thumbnail-cache miss.
+      const isCheapImage = ext === '.jpg' || ext === '.jpeg';
+      if (parsed.type === 'stacked' && isViewableImage
+        && (!s.stackedImageFile || (isCheapImage && !s.stackedImageIsCheap))) {
+        // Object-relative, because it is turned into a `<folderName>/<path>` URL.
+        s.stackedImageFile = entry.relPath;
+        s.stackedImageIsCheap = isCheapImage;
       }
     }
 
@@ -631,6 +785,135 @@ export function getLocalObservations() {
 
   observations.sort((a, b) => b.date.localeCompare(a.date));
   return observations;
+}
+
+// ─── Observation-site coordinates (world map) ───────────────────────────────
+
+/**
+ * Read observer coordinates from a session's first FITS header.
+ * Returns null when the file carries no SITELAT/SITELONG (or can't be read).
+ * These values are fixed per file, so callers cache the result.
+ */
+function readFitsCoords(fitsPath: string): { lat: number; lon: number } | null {
+  try {
+    const fd = fs.openSync(fitsPath, 'r');
+    const buf = Buffer.alloc(28800);
+    fs.readSync(fd, buf, 0, 28800, 0);
+    fs.closeSync(fd);
+    const header = parseFitsHeader(buf);
+    const lat = header.values['OBS-LAT'] ?? header.values['SITELAT'] ?? null;
+    const lon = header.values['OBS-LONG'] ?? header.values['SITELONG'] ?? null;
+    if (lat === null || lon === null) return null;
+    const latNum = typeof lat === 'number' ? lat : parseFloat(String(lat));
+    const lonNum = typeof lon === 'number' ? lon : parseFloat(String(lon));
+    if (isNaN(latNum) || isNaN(lonNum)) return null;
+    if (latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180) return null;
+    // Exactly (0, 0) is the "GPS not acquired" sentinel some scopes write, not a
+    // real observing site in the Gulf of Guinea.
+    if (latNum === 0 && lonNum === 0) return null;
+    return { lat: latNum, lon: lonNum };
+  } catch {
+    return null;
+  }
+}
+
+export interface ObservationLocation {
+  objectId: string;
+  date: string;
+  objectName: string;
+  catalogId: string;
+  telescopeId: string | null;
+  lat: number;
+  lon: number;
+  /** 'fits' = precise (from the file); 'settings' = fell back to the saved observer location. */
+  source: 'fits' | 'settings';
+}
+
+/**
+ * Every imported observation that has a known location, for the world map.
+ * FITS-derived coordinates are cached on librarySessions (see db.ts migration)
+ * so only never-seen sessions pay the file-read cost. Sessions with no FITS
+ * location fall back to the session's own observing site (applied at read
+ * time, not cached, so retagging a session or editing a site's coordinates
+ * takes effect immediately).
+ */
+export function getObservationLocations(): ObservationLocation[] {
+  const LIBRARY_DIR = getLibraryDir();
+  if (!fs.existsSync(LIBRARY_DIR)) return [];
+
+  const defaultSite = getDefaultSite();
+
+  const readCoordsCache = db.prepare<[string, string], { lat: number | null; lon: number | null; coordsResolved: number; siteId: string | null }>(
+    'SELECT lat, lon, coordsResolved, siteId FROM librarySessions WHERE objectId = ? AND date = ?',
+  );
+  const writeCoordsCache = db.prepare<[number | null, number | null, string, string]>(
+    'UPDATE librarySessions SET lat = ?, lon = ?, coordsResolved = 1 WHERE objectId = ? AND date = ?',
+  );
+
+  const out: ObservationLocation[] = [];
+
+  for (const obs of getLocalObservations()) {
+    const { objectId, date } = obs;
+
+    // Cache-first: only touch the FITS file the first time we see a session.
+    let fitsCoords: { lat: number; lon: number } | null = null;
+    const cached = readCoordsCache.get(objectId, date);
+    if (cached && cached.coordsResolved === 1) {
+      // Ignore the legacy (0, 0) sentinel that older caches may hold.
+      if (cached.lat !== null && cached.lon !== null && !(cached.lat === 0 && cached.lon === 0)) {
+        fitsCoords = { lat: cached.lat, lon: cached.lon };
+      }
+    } else {
+      // Resolve from the session's first non-thumbnail FITS file, then cache it.
+      const folderName = getFolderName(objectId);
+      const objDir = path.join(LIBRARY_DIR, folderName);
+      let firstFits: string | null = null;
+      try {
+        for (const fname of fs.readdirSync(objDir)) {
+          const parsed = parseFilename(fname);
+          if (parsed.isThumbnail) continue;
+          const ext = parsed.extension?.toLowerCase();
+          if (ext !== '.fit' && ext !== '.fits') continue;
+          if (sessionNightFor(parsed) !== date) continue;
+          firstFits = fname;
+          break;
+        }
+      } catch { /* dir gone; treated as resolved-with-no-coords */ }
+
+      fitsCoords = firstFits ? readFitsCoords(path.join(objDir, firstFits)) : null;
+      // Best-effort cache write (no row to update for file-only sessions is fine).
+      try { writeCoordsCache.run(fitsCoords?.lat ?? null, fitsCoords?.lon ?? null, objectId, date); } catch { /* best-effort */ }
+    }
+
+    let lat: number | null = null;
+    let lon: number | null = null;
+    let source: 'fits' | 'settings' = 'fits';
+    if (fitsCoords) {
+      lat = fitsCoords.lat;
+      lon = fitsCoords.lon;
+    } else {
+      const site = (cached?.siteId && getSite(cached.siteId)) || defaultSite;
+      if (site.latitude !== null && site.longitude !== null) {
+        lat = site.latitude;
+        lon = site.longitude;
+        source = 'settings';
+      }
+    }
+    if (lat === null || lon === null) continue; // no location for this session
+
+    out.push({
+      objectId,
+      date,
+      objectName: obs.objectName,
+      catalogId: obs.catalogId,
+      telescopeId: obs.telescopeId,
+      lat,
+      lon,
+      source,
+    });
+  }
+
+  return out;
 }
 
 export function getLocalObservationDetail(objectId: string, date: string) {
@@ -680,13 +963,11 @@ export function getLocalObservationDetail(objectId: string, date: string) {
     } catch { /* best-effort */ }
   }
 
-  // Fall back to user's configured observer location if no FITS coordinates
+  // Fall back to this session's observing site if no FITS coordinates
   if (!coordinates) {
-    const settings = loadSettings();
-    const lat = typeof settings.latitude === 'number' ? settings.latitude : null;
-    const lon = typeof settings.longitude === 'number' ? settings.longitude : null;
-    if (lat !== null && lon !== null) {
-      coordinates = { lat, lon };
+    const site = siteForSession(objectId, date);
+    if (site.latitude !== null && site.longitude !== null) {
+      coordinates = { lat: site.latitude, lon: site.longitude };
     }
   }
 
@@ -730,6 +1011,12 @@ export function getLocalObservationDetail(objectId: string, date: string) {
     sizeArcmin: obj?.sizeArcmin || null,
     hasNotes: !!note,
     sessionImage: sessionImagePath,
+    // What the device itself recorded about this night, parsed from its own
+    // sidecar. `captureRuns` is plural because one night can hold several runs
+    // at different exposure and gain; `capture` is the rolled-up view, with
+    // exposure/gain/filter left null when the runs disagree.
+    capture: summarizeSessionCapture(getCaptureInfoForSession(objectId, date)),
+    captureRuns: getCaptureInfoForSession(objectId, date),
     files: sortedFiles,
     note,
     coordinates,
@@ -751,6 +1038,11 @@ export function getLocalObservationDetail(objectId: string, date: string) {
       const row = stmts.getSession.get(objectId, date);
       return row?.telescopeId ?? obj?.primaryTelescopeId ?? null;
     })(),
+    // NULL means the default site (see siteForSession in observingSites.ts).
+    // Read directly off the row rather than resolved to a concrete site here,
+    // so the client can distinguish "explicitly tagged" from "using whatever
+    // the default currently is."
+    siteId: stmts.getSession.get(objectId, date)?.siteId ?? null,
   };
 }
 
@@ -774,22 +1066,48 @@ export function deleteLocalSession(objectId: string, date: string): void {
   }
   stmts.addSessionTombstone.run(objectId, date);
   stmts.removeSession.run(objectId, date);
+  // The sidecar that produced this is deleted below, so its parsed record goes
+  // with it rather than lingering as a row describing files that are gone.
+  deleteCaptureInfoForSession(objectId, date);
 
-  // Now safe to remove files
+  // Now safe to remove files. Membership comes from the resolver, not from
+  // re-parsing the name: once the importer stops rewriting filenames, a file's
+  // session lives in its libraryFiles row and the name may carry no date at all.
+  const folderName = getFolderName(objectId);
+  const layout = getObjectLayout(objectId);
+  const identity = resolverFor(objectId);
+  const emptiedDirs = new Set<string>();
   if (fs.existsSync(objDir)) {
-    for (const fname of fs.readdirSync(objDir).filter(isRealFile)) {
-      const parsed = parseFilename(fname);
-      if (sessionNightFor(parsed) === date) {
-        try { fs.unlinkSync(path.join(objDir, fname)); } catch { /* ignore */ }
-      }
+    for (const entry of listObjectFiles(objDir, layout)) {
+      // Sidecars go with the session they describe. They are outside
+      // isRealFile's image-only allowlist, so they have to be named explicitly
+      // or a deleted session would leave its shotsInfo.json behind (and the
+      // session directory would never be pruned because it isn't empty).
+      if (!isRealFile(entry.fileName) && !isSidecarFile(entry.fileName)) continue;
+      if (identity.session(entry.relPath) !== date) continue;
+      try { fs.unlinkSync(path.join(objDir, entry.relPath)); } catch { /* ignore */ }
+      deleteLibraryFileRow(`${folderName}/${entry.relPath}`);
+      if (entry.sessionFolder) emptiedDirs.add(entry.sessionFolder);
+    }
+    // A nested session folder that gave up all its files is now an empty
+    // directory. Remove it, but only if it really is empty — a sidecar we do
+    // not manage must not be silently taken with it.
+    for (const dir of emptiedDirs) {
+      const abs = path.join(objDir, dir);
+      try {
+        if (fs.readdirSync(abs).length === 0) fs.rmdirSync(abs);
+      } catch { /* not empty or unreadable — leave it */ }
     }
   }
 
   // Recount remaining files
   try {
-    const remaining = fs.existsSync(objDir) ? fs.readdirSync(objDir).filter(isRealFile) : [];
+    const remaining = fs.existsSync(objDir)
+      ? listObjectFiles(objDir, layout).filter(e => isRealFile(e.fileName))
+      : [];
     stmts.updateObjectFileCount.run(remaining.length, objectId);
   } catch { /* ignore */ }
+  writeObjectManifest(objectId, folderName);
 }
 
 /**
@@ -800,18 +1118,25 @@ export function deleteSessionSubFrames(objectId: string, date: string): { delete
   const LIBRARY_DIR = getLibraryDir();
   const objDir = path.join(LIBRARY_DIR, getFolderName(objectId));
   let deleted = 0;
+  const folderName = getFolderName(objectId);
+  const layout = getObjectLayout(objectId);
+  const identity = resolverFor(objectId);
   if (fs.existsSync(objDir)) {
-    for (const fname of fs.readdirSync(objDir).filter(isRealFile)) {
-      const parsed = parseFilename(fname);
-      if (parsed.type === 'sub' && sessionNightFor(parsed) === date) {
-        try { fs.unlinkSync(path.join(objDir, fname)); deleted++; } catch { /* ignore */ }
-      }
+    for (const entry of listObjectFiles(objDir, layout)) {
+      if (!isRealFile(entry.fileName)) continue;
+      if (identity.role(entry.relPath) !== 'sub') continue;
+      if (identity.session(entry.relPath) !== date) continue;
+      try { fs.unlinkSync(path.join(objDir, entry.relPath)); deleted++; } catch { /* ignore */ }
+      deleteLibraryFileRow(`${folderName}/${entry.relPath}`);
     }
   }
   try {
-    const remaining = fs.existsSync(objDir) ? fs.readdirSync(objDir).filter(isRealFile) : [];
+    const remaining = fs.existsSync(objDir)
+      ? listObjectFiles(objDir, layout).filter(e => isRealFile(e.fileName))
+      : [];
     stmts.updateObjectFileCount.run(remaining.length, objectId);
   } catch { /* ignore */ }
+  writeObjectManifest(objectId, folderName);
   return { deleted };
 }
 
@@ -885,17 +1210,22 @@ export function purgeSubFrameImages(opts: { dryRun?: boolean } = {}): SubFrameIm
     let removedHere = 0;
     let matchedHere = 0;
     const groupFiles: string[] = [];
-    let entries: string[];
-    try { entries = fs.readdirSync(objDir); } catch { continue; }
-    for (const fname of entries) {
-      if (!isRealFile(fname)) continue;
-      if (!isSubFramePreview(fname)) continue;
+    // Layout-aware: frame-named previews land inside session directories for a
+    // nested object, and this purge would otherwise never find them.
+    const objectIdForDir = folderToObjectId.get(folderName);
+    const entries = listObjectFiles(objDir, objectIdForDir ? getObjectLayout(objectIdForDir) : 'flat');
+    for (const entry of entries) {
+      if (!isRealFile(entry.fileName)) continue;
+      if (!isSubFramePreview(entry.fileName)) continue;
       result.matched++;
       matchedHere++;
-      if (groupFiles.length < FILES_PER_GROUP_CAP) groupFiles.push(fname);
+      if (groupFiles.length < FILES_PER_GROUP_CAP) groupFiles.push(entry.relPath);
       if (!opts.dryRun) {
-        try { fs.unlinkSync(path.join(objDir, fname)); result.deleted++; removedHere++; }
-        catch { result.errors++; }
+        try {
+          fs.unlinkSync(path.join(objDir, entry.relPath));
+          deleteLibraryFileRow(`${folderName}/${entry.relPath}`);
+          result.deleted++; removedHere++;
+        } catch { result.errors++; }
       }
     }
 
@@ -907,7 +1237,8 @@ export function purgeSubFrameImages(opts: { dryRun?: boolean } = {}): SubFrameIm
       const objectId = folderToObjectId.get(folderName);
       if (objectId) {
         try {
-          const remaining = fs.readdirSync(objDir).filter(isRealFile).length;
+          const remaining = listObjectFiles(objDir, getObjectLayout(objectId))
+            .filter(e => isRealFile(e.fileName)).length;
           stmts.updateObjectFileCount.run(remaining, objectId);
         } catch { /* ignore */ }
       }
@@ -931,29 +1262,53 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
     throw new Error('Source and target objects are the same');
   }
 
-  // Find files to move
+  // Find files to move. Object-relative paths, so a nested source keeps its
+  // session directory and lands under the same directory in the target.
+  const fromFolderName = getFolderName(fromObjectId);
+  const fromLayout = getObjectLayout(fromObjectId);
+  const identity = resolverFor(fromObjectId);
   const fromDirExists = fs.existsSync(fromDir);
-  const allFiles = fromDirExists ? fs.readdirSync(fromDir).filter(isRealFile) : [];
-  const filesToMove = allFiles.filter(fname => sessionNightFor(parseFilename(fname)) === date);
+  const allFiles = fromDirExists
+    ? listObjectFiles(fromDir, fromLayout).filter(e => isRealFile(e.fileName))
+    : [];
+  const filesToMove = allFiles.filter(e => identity.session(e.relPath) === date);
 
   // Ensure target directory exists
   if (!fs.existsSync(toDir)) {
     fs.mkdirSync(toDir, { recursive: true });
   }
 
+  // Moving a nested session into a flat target (or vice versa) would leave the
+  // target holding both shapes at once, which no read path can explain. Adopt
+  // the source's shape when the target has no files of its own; otherwise keep
+  // the session's directory only when both sides agree it is nested.
+  const targetHasFiles = fs.existsSync(toDir)
+    && listObjectFiles(toDir, getObjectLayout(toObjectId)).length > 0;
+  const keepSessionDirs = targetHasFiles
+    ? getObjectLayout(toObjectId) === 'nested' && fromLayout === 'nested'
+    : fromLayout === 'nested';
+
+  /** Where a source entry lands inside the target object folder. */
+  const destRelFor = (e: { relPath: string; fileName: string }): string =>
+    keepSessionDirs ? e.relPath : e.fileName;
+
   // Move files on disk.
   // If the destination already has a file with the same name (e.g. from a
   // previous partial move or auto-import re-downloading from the telescope),
   // remove the source copy — the target already has the canonical version.
   let moved = 0;
-  for (const fname of filesToMove) {
-    const src = path.join(fromDir, fname);
-    const dest = path.join(toDir, fname);
+  const movedDirs = new Set<string>();
+  for (const entry of filesToMove) {
+    const destRel = destRelFor(entry);
+    const src = path.join(fromDir, entry.relPath);
+    const dest = path.join(toDir, destRel);
+    if (entry.sessionFolder) movedDirs.add(entry.sessionFolder);
     if (fs.existsSync(dest)) {
       // Target already has this file — just remove the stale source copy.
       try { fs.unlinkSync(src); moved++; } catch { /* ignore */ }
     } else {
       try {
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.renameSync(src, dest);
       } catch (renameErr) {
         if (isErrnoException(renameErr) && renameErr.code === 'EXDEV') {
@@ -965,6 +1320,27 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
       }
       moved++;
     }
+  }
+
+  // Follow the files in libraryFiles. A row already sitting at the destination
+  // path means the target owns that file now, so the source row is dropped
+  // rather than moved onto it (relPath is UNIQUE).
+  for (const entry of filesToMove) {
+    const destRel = destRelFor(entry);
+    const fromRel = `${fromFolderName}/${entry.relPath}`;
+    if (getLibraryFileRow(`${toFolderName}/${destRel}`)) {
+      deleteLibraryFileRow(fromRel);
+    } else {
+      moveLibraryFileRow(fromRel, toObjectId, toFolderName, destRel);
+    }
+  }
+
+  // Drop session directories the move emptied out.
+  for (const dir of movedDirs) {
+    const abs = path.join(fromDir, dir);
+    try {
+      if (fs.readdirSync(abs).length === 0) fs.rmdirSync(abs);
+    } catch { /* not empty or unreadable — leave it */ }
   }
 
   // Processed images live in a separate `<objectFolder>/processed/` directory
@@ -1007,6 +1383,10 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
         cat.catalogId, cat.objectName, cat.objectType, cat.constellation,
         cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy);
     }
+    // An empty target adopts the source's shape. Must run after the upsert
+    // above: setObjectLayout is an UPDATE, so doing it earlier would silently
+    // no-op and leave a nested folder being read as flat.
+    if (!targetHasFiles && keepSessionDirs) setObjectLayout(toObjectId, 'nested');
 
     // Tombstone the source session so it cannot resurface from disk (e.g. if
     // auto-import re-downloads the files from the telescope into the source folder).
@@ -1021,17 +1401,21 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
       .run(toObjectId, fromObjectId, date);
 
     // Recount files for both objects
-    const fromRemaining = fs.existsSync(fromDir) ? fs.readdirSync(fromDir).filter(isRealFile) : [];
+    const fromRemaining = fs.existsSync(fromDir)
+      ? listObjectFiles(fromDir, getObjectLayout(fromObjectId)).filter(e => isRealFile(e.fileName))
+      : [];
     stmts.updateObjectFileCount.run(fromRemaining.length, fromObjectId);
 
-    const toFiles = fs.readdirSync(toDir).filter(isRealFile);
+    const toFiles = listObjectFiles(toDir, getObjectLayout(toObjectId)).filter(e => isRealFile(e.fileName));
     stmts.updateObjectFileCount.run(toFiles.length, toObjectId);
 
     // Rebuild sessions for source from remaining disk files (excluding the
-    // tombstoned date so it cannot be re-added here).
+    // tombstoned date so it cannot be re-added here). Fresh resolvers: the
+    // rows moved above, so the ones built before the move are stale.
+    const fromIdentity = resolverFor(fromObjectId);
     const fromSessionSet = new Set<string>();
-    for (const fname of fromRemaining) {
-      const night = sessionNightFor(parseFilename(fname));
+    for (const entry of fromRemaining) {
+      const night = fromIdentity.session(entry.relPath);
       if (night && night !== date) fromSessionSet.add(night);
     }
     stmts.clearSessions.run(fromObjectId);
@@ -1040,9 +1424,10 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
     }
 
     // Rebuild sessions for target from actual files on disk
+    const toIdentity = resolverFor(toObjectId);
     const toSessionSet = new Set<string>();
-    for (const fname of toFiles) {
-      const night = sessionNightFor(parseFilename(fname));
+    for (const entry of toFiles) {
+      const night = toIdentity.session(entry.relPath);
       if (night) toSessionSet.add(night);
     }
     // Snapshot any manual (DB-only) sessions on the target before clearing
@@ -1068,6 +1453,9 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
       cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy, new Date().toISOString(), toObjectId);
   });
   updateDb();
+
+  writeObjectManifest(fromObjectId, fromFolderName);
+  writeObjectManifest(toObjectId, toFolderName);
 
   return { moved };
 }
@@ -1114,5 +1502,26 @@ export function reassignSessionTelescope(objectId: string, date: string, telesco
       stmts.setObjectPrimaryTelescope.run(top.telescopeId, objectId);
     }
   }
+  return update.changes > 0;
+}
+
+/**
+ * Reassign a session (objectId+date) to a different observing site. `siteId:
+ * null` clears the tag, which resolves back to the default site (see
+ * siteForSession). Returns true if a row was updated.
+ *
+ * Side effect: nulls the session's cached weather columns. They were fetched
+ * at the OLD site's coordinates and are now wrong for the new one; the caller
+ * is expected to kick off backfillSessionWeather(objectId) afterward (the
+ * route handler does this in the background) so the columns get re-filled at
+ * the new coordinates instead of just going blank until the next import.
+ */
+export function reassignSessionSite(objectId: string, date: string, siteId: string | null): boolean {
+  const update = db.prepare(
+    `UPDATE librarySessions
+        SET siteId = ?, temperature = NULL, cloudCover = NULL, humidity = NULL,
+            windSpeed = NULL, dewPoint = NULL, visibility = NULL, precipProb = NULL
+      WHERE objectId = ? AND date = ?`,
+  ).run(siteId, objectId, date);
   return update.changes > 0;
 }

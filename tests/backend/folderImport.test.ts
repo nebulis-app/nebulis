@@ -19,7 +19,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 });
 
 import { scanImportFolder } from '../../server/lib/library/folderScan';
-import { commitFolderImport, runImport, claimImportLock } from '../../server/lib/library/import';
+import { commitFolderImport, runImport, claimImportLock, getImportStatus } from '../../server/lib/library/import';
 import { getLocalSessions } from '../../server/lib/library/observations';
 import { LIBRARY_DIR } from '../../server/lib/paths';
 import { createProfile, updateSettingsData } from '../../server/lib/telescopes';
@@ -456,16 +456,109 @@ describe('scan + commit', () => {
     const m42Files = objectFileNames(m42Dir);
     // JPG keeps its original name — no timestamp rename for .jpg files.
     expect(m42Files).toContain('Stacked_10_M42_30.0s_IRCUT_20240115-220000.jpg');
-    // light_001.fits is not imported because importFits defaults to false in a
-    // fresh DB; the FITS import gate is exercised via scanImportFolder settings.
+    // light_001.fits is imported (importFits defaults to true — see the
+    // appSettings schema default in db.ts), but its DATE-OBS (01:00) rolls
+    // back to the observing night of the 22:00 JPG, so it merges into the
+    // same '2024-01-15' session rather than adding a second one. NGC7000
+    // below proves the FITS import itself happened, since it has no other
+    // file to merge with.
 
     const sessions = getLocalSessions('M42').map(s => s.date).sort();
     expect(sessions).toEqual(['2024-01-15']);
+    expect(objectFileNames(m42Dir)).toContain('light_001.fits');
 
-    // NGC7000 uses only a .fits file; importFits defaults to false in a fresh
-    // DB so the file is not imported and no session row is written.
+    // NGC7000 uses only a .fits file with no DATE-OBS card, so its session
+    // date comes from the source's date-named directory instead.
     const ngcSessions = getLocalSessions('NGC7000').map(s => s.date);
-    expect(ngcSessions).toEqual([]);
+    expect(ngcSessions).toEqual(['2023-09-10']);
+  });
+
+  // ── Upload staging cleanup ────────────────────────────────────────────────
+  // A wizard upload is written to DATA_DIR/import-tmp in full before the import
+  // starts, so without releasing each staged file as it lands, a large import
+  // needs free space for two complete copies of itself. That is what filled a
+  // user's system drive with 125 GB of leftovers.
+
+  /** A source tree staged under import-tmp, as an upload would leave it. */
+  function makeStagedTree(): { root: string; files: string[] } {
+    const stagingRoot = path.join(TEST_DATA_DIR, 'import-tmp', '3f2504e0-4f89-11d3-9a0c-0305e82c3301');
+    fs.rmSync(stagingRoot, { recursive: true, force: true });
+    fs.mkdirSync(path.join(stagingRoot, 'M42'), { recursive: true });
+    const files = [
+      'Stacked_10_M42_30.0s_IRCUT_20240115-220000.jpg',
+      'Stacked_20_M42_30.0s_IRCUT_20240115-223000.jpg',
+    ];
+    for (const f of files) fs.writeFileSync(path.join(stagingRoot, 'M42', f), 'jpg');
+    return { root: stagingRoot, files };
+  }
+
+  const m42StagedPlan = (root: string) => ({
+    rootPath: root,
+    objects: [{
+      folderName: 'M42',
+      targetObjectId: 'M42',
+      targetFolderName: 'M42',
+      sessionMap: { '2024-01-15': '2024-01-15' },
+    }],
+  });
+
+  it('deletes each staged upload file once it has landed in the library', async () => {
+    const { root, files } = makeStagedTree();
+
+    await commitFolderImport(m42StagedPlan(root));
+
+    // Imported...
+    const imported = objectFileNames(path.join(LIBRARY_DIR, 'M42'));
+    for (const f of files) expect(imported).toContain(f);
+    // ...and the staging directory is gone, not merely emptied.
+    expect(fs.existsSync(root)).toBe(false);
+  });
+
+  it('never touches the source of an in-place import', async () => {
+    // The mirror image of the test above: a folder the user pointed us at is
+    // not ours to delete, and the same code path handles both.
+    const root = makeSourceTree();
+    const before = objectFileNames(path.join(root, 'M42'));
+
+    await commitFolderImport({
+      rootPath: root,
+      objects: [{
+        folderName: 'M42',
+        targetObjectId: 'M42',
+        targetFolderName: 'M42',
+        sessionMap: { '2024-01-15': '2024-01-15', '2024-01-16': '2024-01-16' },
+      }],
+    });
+
+    expect(fs.existsSync(root)).toBe(true);
+    expect(objectFileNames(path.join(root, 'M42'))).toEqual(before);
+  });
+
+  it('refuses to start when the library volume cannot hold the import', async () => {
+    // Preflight rather than ENOSPC partway through: the free-space check runs
+    // after the pre-walk and before the first copy. Simulated by claiming the
+    // volume has no room, which is what a nearly-full disk reports.
+    const { root } = makeStagedTree();
+    const realStatfs = fs.statfsSync;
+    const spy = vi.spyOn(fs, 'statfsSync').mockImplementation(((p: string) => {
+      const real = realStatfs(p);
+      return { ...real, bsize: 1, blocks: 1000, bfree: 0, bavail: 0 };
+    }) as typeof fs.statfsSync);
+
+    try {
+      await commitFolderImport(m42StagedPlan(root));
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(getImportStatus().error).toContain('Not enough free space');
+    // Nothing was copied...
+    expect(objectFileNames(path.join(LIBRARY_DIR, 'M42'))).toEqual([]);
+    // ...and the staged upload is released rather than left occupying the disk
+    // that just proved too full. The error says so, since it means the user has
+    // to upload again after freeing space.
+    expect(fs.existsSync(root)).toBe(false);
+    expect(getImportStatus().error).toContain('uploaded copy has been discarded');
   });
 
   it('merges two derived sessions when mapped to the same final date', async () => {
@@ -559,7 +652,8 @@ describe('scan + commit', () => {
     // Hand-write the stale row a pre-fix import would have produced for that
     // raw date, carrying weather + telescope attribution.
     stmts.addSessionStamped.run('M42', '2024-01-16', 'stale-telescope-id');
-    stmts.setSessionWeather.run(-5, 20, 60, 10, -8, 15, 5, 'M42', '2024-01-16');
+    // NULL weatherLat/weatherLon: a pre-fix row predates those columns.
+    stmts.setSessionWeather.run(-5, 20, 60, 10, -8, 15, 5, null, null, 'M42', '2024-01-16');
 
     const sessions = getLocalSessions('M42');
     // The stale row is merged forward, not left as a second (phantom) session.

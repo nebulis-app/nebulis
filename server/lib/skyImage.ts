@@ -316,7 +316,10 @@ export async function prefetchSkyImage(
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(opts.timeoutMs ?? 60000) });
     if (!resp.ok) {
-      console.warn(`[skyImage] CDS HiPS fetch failed for ${id}: HTTP ${resp.status} (ra=${ra}, dec=${dec}, fov=${fov})`);
+      // id is request-controlled (catalog id from the URL); keep it out of
+      // the format-string position (console.warn %-substitutes its first
+      // argument) and pass it as a %s argument instead.
+      console.warn('[skyImage] CDS HiPS fetch failed for %s: HTTP %s (ra=%s, dec=%s, fov=%s)', id, resp.status, ra, dec, fov);
       if (resp.status >= 400 && resp.status < 500) {
         negativeImageCache.set(normalizedId, Date.now());
         saveNegativeCache();
@@ -333,7 +336,7 @@ export async function prefetchSkyImage(
     fs.writeFileSync(cachePath, buffer);
     return cachePath;
   } catch (err) {
-    console.warn(`[skyImage] CDS HiPS fetch error for ${id}:`, err instanceof Error ? err.message : err);
+    console.warn('[skyImage] CDS HiPS fetch error for %s:', id, err instanceof Error ? err.message : err);
     // Network-level failure (timeout, DNS, unreachable). The image likely
     // exists upstream, so remember the failure only briefly — long enough to
     // stop an offline session from re-hanging on every thumbnail request.
@@ -389,7 +392,7 @@ export async function fetchSkyCutout(opts: {
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(opts.timeoutMs ?? 15000) });
     if (!resp.ok) {
-      console.warn(`[skyImage] cutout fetch failed for ${opts.id}: HTTP ${resp.status} (fov=${fov})`);
+      console.warn('[skyImage] cutout fetch failed for %s: HTTP %s (fov=%s)', opts.id, resp.status, fov);
       return null;
     }
     const buffer = Buffer.from(await resp.arrayBuffer());
@@ -397,7 +400,7 @@ export async function fetchSkyCutout(opts: {
     fs.writeFileSync(cachePath, buffer);
     return cachePath;
   } catch (err) {
-    console.warn(`[skyImage] cutout fetch error for ${opts.id}:`, err instanceof Error ? err.message : err);
+    console.warn('[skyImage] cutout fetch error for %s:', opts.id, err instanceof Error ? err.message : err);
     return null;
   }
 }

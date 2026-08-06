@@ -648,7 +648,11 @@ export function PlannerPage() {
           Planner
         </h1>
         {observerLat != null && observerLon != null && (
-          <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className="flex items-center gap-3 shrink-0">
+            <SaveIndicator
+              isPending={createMut.isPending || updateMut.isPending || deleteMut.isPending}
+              isDark={isDark}
+            />
             <SitePicker
               isDark={isDark}
               accentText={accentText}
@@ -658,18 +662,6 @@ export function PlannerPage() {
               onSelect={(id) => setActiveSiteMut.mutate(id)}
               isSwitching={setActiveSiteMut.isPending}
             />
-            <div className={`flex items-center gap-3 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              <SaveIndicator
-                isPending={createMut.isPending || updateMut.isPending || deleteMut.isPending}
-                isDark={isDark}
-              />
-              {planner?.moonIllumination != null && (
-                <span className="flex items-center gap-1">
-                  <Moon className="w-3.5 h-3.5" />
-                  Moon {planner.moonIllumination}% ({planner.moonPhase})
-                </span>
-              )}
-            </div>
           </div>
         )}
       </div>
@@ -773,18 +765,26 @@ export function PlannerPage() {
             Could not save sky map: {skyMapSaveError}
           </div>
         )}
-        {sessions.length > 0 && timelineStart && timelineEnd && (
-          <button
-            onClick={() => setShareOpen(true)}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition shrink-0 ${
-              isDark ? 'bg-slate-800 text-slate-100 hover:bg-slate-700' : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
-            }`}
-            title="Share this night's plan as text or an image"
-          >
-            <Share2 className="w-4 h-4" />
-            Share
-          </button>
-        )}
+        <div className="flex items-center gap-3 shrink-0">
+          {planner?.moonIllumination != null && (
+            <span className={`flex items-center gap-1 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+              <Moon className="w-3.5 h-3.5" />
+              Moon {planner.moonIllumination}% ({planner.moonPhase})
+            </span>
+          )}
+          {sessions.length > 0 && timelineStart && timelineEnd && (
+            <button
+              onClick={() => setShareOpen(true)}
+              className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition shrink-0 ${
+                isDark ? 'bg-slate-800 text-slate-100 hover:bg-slate-700' : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+              }`}
+              title="Share this night's plan as text or an image"
+            >
+              <Share2 className="w-4 h-4" />
+              Share
+            </button>
+          )}
+        </div>
       </header>
 
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd}>
@@ -950,10 +950,24 @@ function addDays(d: Date, n: number): Date {
 }
 
 function SaveIndicator({ isPending, isDark }: { isPending: boolean; isDark: boolean }) {
+  const [showSaved, setShowSaved] = useState(false);
+  const wasPending = useRef(false);
+
+  useEffect(() => {
+    const justFinished = wasPending.current && !isPending;
+    wasPending.current = isPending;
+    if (justFinished) {
+      setShowSaved(true);
+      const timer = setTimeout(() => setShowSaved(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isPending]);
+
+  if (!isPending && !showSaved) return null;
+
   return (
     <span
-      className={`inline-flex items-center gap-1 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}
-      title="Plans save automatically on every change"
+      className={`inline-flex items-center gap-1 text-xs transition-opacity ${isDark ? 'text-slate-500' : 'text-slate-500'}`}
     >
       {isPending ? (
         <>

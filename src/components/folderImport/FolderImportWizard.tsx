@@ -7,6 +7,8 @@ import {
   scanImportFolder,
   commitFolderImport,
   getImportStatus,
+  cancelImport,
+  discardImportTempSession,
   type ImportScanResult,
   type ImportSkip,
   type ImportCommitPlan,
@@ -16,7 +18,7 @@ import { Modal } from '../ui/Modal';
 import { SkippedNotice } from '../SkippedNotice';
 import { ObjectReviewCard, type ObjectEdit } from './ObjectReviewCard';
 
-type Phase = 'scanning' | 'review' | 'committing' | 'done';
+type Phase = 'scanning' | 'review' | 'waiting' | 'committing' | 'done';
 
 function buildEdits(result: ImportScanResult): ObjectEdit[] {
   return result.objects.map(o => ({
@@ -76,6 +78,7 @@ export function FolderImportWizard({
   includeFits = true,
   archiveAll = false,
   telescopeId = null,
+  tmpId = null,
   onClose,
   onDone,
 }: {
@@ -84,6 +87,13 @@ export function FolderImportWizard({
   includeFits?: boolean;
   archiveAll?: boolean;
   telescopeId?: string | null;
+  // Set only when rootPath is a staged upload (ImportModal's upload flow), so
+  // this wizard can drop the staging dir if the user cancels before commit.
+  // A commit that starts and finishes (even via cancelImport) already deletes
+  // it server-side; this only fills the scanning/review/waiting gap. Also
+  // safe to call redundantly (running import refuses the delete; an already
+  // cleaned-up dir is just a no-op), so it's fired on every close path.
+  tmpId?: string | null;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -118,13 +128,41 @@ export function FolderImportWizard({
   }, [startScan]);
 
   // ── Phase 2: commit ──────────────────────────────────────────────────────
+  // Retries on a lock conflict (409) instead of failing outright, mirroring
+  // SyncSubframesModal: the auto-import scheduler can fire at any moment, and
+  // a review session the user spent minutes on shouldn't be thrown away just
+  // because it lost a race to claim the lock.
   const commitMutation = useMutation({
-    mutationFn: (plan: ImportCommitPlan) => commitFolderImport(plan),
+    mutationFn: async (plan: ImportCommitPlan) => {
+      let attempt = 0;
+      while (true) {
+        try {
+          return await commitFolderImport(plan);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : '';
+          const isLocked = msg.toLowerCase().includes('already in progress');
+          if (!isLocked || attempt >= 20) throw err;
+          attempt++;
+          setPhase('waiting');
+          await new Promise<void>(resolve => {
+            const id = setInterval(async () => {
+              try {
+                const s = await getImportStatus();
+                if (!s.running) { clearInterval(id); resolve(); }
+              } catch { /* network hiccup, keep waiting */ }
+            }, 2000);
+          });
+        }
+      }
+    },
     onSuccess: () => {
       // Remove any stale import-status cache (e.g. from a previous telescope
       // import) so the polling loop always starts with a fresh server response.
       queryClient.removeQueries({ queryKey: ['import-status'] });
       setPhase('committing');
+    },
+    onError: () => {
+      setPhase('review');
     },
   });
 
@@ -148,6 +186,16 @@ export function FolderImportWizard({
       if (!status.error) onDone();
     }
   }, [phase, statusQuery.data, queryClient, onDone]);
+
+  // The commit only reaches 'committing' after this wizard's own commit call
+  // has claimed the import lock (waiting out any conflicting run first), so
+  // no other import can be active for the lifetime of this phase — a plain
+  // cancelImport() with no runId is unambiguous here.
+  const [cancelRequested, setCancelRequested] = useState(false);
+  const handleCancelCommit = () => {
+    setCancelRequested(true);
+    cancelImport().catch(() => {});
+  };
 
   const skippedTotal = useMemo(() => skipped.reduce((n, s) => n + s.count, 0), [skipped]);
 
@@ -180,10 +228,15 @@ export function FolderImportWizard({
     commitMutation.mutate(buildPlan(rootPath, edits, includeSubframes, includeFits, archiveAll, telescopeId));
   };
 
+  const handleClose = () => {
+    if (tmpId) discardImportTempSession(tmpId);
+    onClose();
+  };
+
   return (
     <Modal
       isOpen
-      onClose={onClose}
+      onClose={handleClose}
       title="Import library from a folder"
       className={`relative w-full max-w-3xl max-h-[88vh] flex flex-col rounded-2xl border shadow-2xl ${card}`}
     >
@@ -195,7 +248,7 @@ export function FolderImportWizard({
           </h2>
           <p className={`text-xs mt-0.5 font-mono truncate ${mutedText}`}>{rootPath}</p>
         </div>
-        <button onClick={onClose} className={`p-1.5 rounded-lg transition ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}>
+        <button onClick={handleClose} className={`p-1.5 rounded-lg transition ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}>
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -215,7 +268,7 @@ export function FolderImportWizard({
                   <button onClick={() => scanMutation.mutate()} className={`px-3 py-1.5 rounded-lg text-sm border ${border} ${subText}`}>
                     Try again
                   </button>
-                  <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-sm bg-accent-500 text-white">Close</button>
+                  <button onClick={handleClose} className="px-3 py-1.5 rounded-lg text-sm bg-accent-500 text-white">Close</button>
                 </div>
               </>
             ) : (
@@ -267,6 +320,19 @@ export function FolderImportWizard({
           </div>
         )}
 
+        {/* Waiting for a lock conflict (e.g. the auto-import scheduler) to clear */}
+        {phase === 'waiting' && (
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+            <RotateCw className={`w-8 h-8 ${isDark ? 'text-slate-500' : 'text-slate-400'} animate-spin`} />
+            <p className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+              Waiting for the current import to finish…
+            </p>
+            <p className={`text-xs max-w-xs ${mutedText}`}>
+              Another import is running right now. This import will start automatically once it's done.
+            </p>
+          </div>
+        )}
+
         {/* Committing / Done */}
         {(phase === 'committing' || phase === 'done') && (
           <CommitProgress
@@ -276,6 +342,7 @@ export function FolderImportWizard({
             objectsDone={statusQuery.data?.objectsDone ?? 0}
             objectsTotal={statusQuery.data?.objectsTotal ?? totals.objects}
             error={statusQuery.data?.error ?? null}
+            cancelling={cancelRequested}
           />
         )}
       </div>
@@ -294,7 +361,7 @@ export function FolderImportWizard({
                 {commitMutation.error instanceof Error ? commitMutation.error.message : 'Failed to start'}
               </span>
             )}
-            <button onClick={onClose} className={`px-4 py-2 rounded-xl text-sm font-medium border transition ${border} ${subText} ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}>
+            <button onClick={handleClose} className={`px-4 py-2 rounded-xl text-sm font-medium border transition ${border} ${subText} ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}>
               Cancel
             </button>
             <button
@@ -310,9 +377,21 @@ export function FolderImportWizard({
         </div>
       )}
 
+      {phase === 'committing' && (
+        <div className={`flex items-center justify-end px-6 py-4 border-t ${border}`}>
+          <button
+            onClick={handleCancelCommit}
+            disabled={cancelRequested}
+            className={`px-4 py-2 rounded-xl text-sm font-medium border transition disabled:opacity-50 ${border} ${subText} ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}
+          >
+            {cancelRequested ? 'Cancelling…' : 'Cancel import'}
+          </button>
+        </div>
+      )}
+
       {phase === 'done' && (
         <div className={`flex items-center justify-end px-6 py-4 border-t ${border}`}>
-          <button onClick={onClose} className="px-5 py-2 rounded-xl text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 transition">
+          <button onClick={handleClose} className="px-5 py-2 rounded-xl text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 transition">
             Done
           </button>
         </div>
@@ -322,7 +401,7 @@ export function FolderImportWizard({
 }
 
 function CommitProgress({
-  phase, filesTotal, filesDone, objectsDone, objectsTotal, error,
+  phase, filesTotal, filesDone, objectsDone, objectsTotal, error, cancelling,
 }: {
   phase: Phase;
   filesTotal: number;
@@ -330,6 +409,7 @@ function CommitProgress({
   objectsDone: number;
   objectsTotal: number;
   error: string | null;
+  cancelling: boolean;
 }) {
   const { isDark } = useTheme();
   const subText = isDark ? 'text-slate-400' : 'text-slate-500';
@@ -364,7 +444,7 @@ function CommitProgress({
           <div className="h-full bg-accent-500 transition-all" style={{ width: `${pct}%` }} />
         </div>
         <p className={`text-sm mt-3 ${subText}`}>
-          Importing... {filesDone} of {filesTotal} file{filesTotal !== 1 ? 's' : ''}
+          {cancelling ? 'Cancelling…' : 'Importing...'} {filesDone} of {filesTotal} file{filesTotal !== 1 ? 's' : ''}
           {objectsTotal > 0 ? ` · object ${Math.min(objectsDone + 1, objectsTotal)} of ${objectsTotal}` : ''}
         </p>
       </div>

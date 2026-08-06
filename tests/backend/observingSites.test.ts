@@ -10,7 +10,6 @@ import {
   updateSite,
   deleteSite,
   setDefaultSite,
-  siteForSession,
   resolveSite,
   syncDefaultSiteToAppSettings,
 } from '../../server/lib/observingSites';
@@ -388,47 +387,6 @@ describe('observingSites', () => {
       expect(resolved.latitude).toBe(0);
       expect(resolved.longitude).toBe(0);
       expect(resolved.isTransient).toBe(true);
-    });
-  });
-
-  // ─── Per-session resolution ───────────────────────────────────────────────
-
-  describe('siteForSession', () => {
-    function addSession(objectId: string, date: string, siteId: string | null) {
-      db.prepare(
-        'INSERT OR REPLACE INTO libraryObjects (objectId, folderName, fileCount, lastImport) VALUES (?, ?, 0, ?)',
-      ).run(objectId, objectId, new Date().toISOString());
-      db.prepare(
-        'INSERT OR REPLACE INTO librarySessions (objectId, date, siteId) VALUES (?, ?, ?)',
-      ).run(objectId, date, siteId);
-    }
-
-    it('returns the default site for an untagged session', () => {
-      const home = createSite({ name: 'Home', latitude: 1, longitude: 2, isDefault: true });
-      addSession('M31', '2026-07-01', null);
-      expect(siteForSession('M31', '2026-07-01').id).toBe(home.id);
-    });
-
-    it('returns the tagged site', () => {
-      createSite({ name: 'Home', latitude: 1, longitude: 2, isDefault: true });
-      const dark = createSite({ name: 'Dark', latitude: 3, longitude: 4 });
-      addSession('M31', '2026-07-01', dark.id);
-      expect(siteForSession('M31', '2026-07-01').id).toBe(dark.id);
-    });
-
-    it('degrades to the default when the tagged site was deleted', () => {
-      const home = createSite({ name: 'Home', latitude: 1, longitude: 2, isDefault: true });
-      const dark = createSite({ name: 'Dark', latitude: 3, longitude: 4 });
-      addSession('M31', '2026-07-01', dark.id);
-      deleteSite(dark.id);
-      // The dangling siteId is left on the row on purpose: observation history
-      // is never rewritten by a site deletion.
-      expect(siteForSession('M31', '2026-07-01').id).toBe(home.id);
-    });
-
-    it('returns the default for a session that does not exist', () => {
-      const home = createSite({ name: 'Home', latitude: 1, longitude: 2, isDefault: true });
-      expect(siteForSession('M999', '1999-01-01').id).toBe(home.id);
     });
   });
 

@@ -373,6 +373,31 @@ export function collectObjectSources(rootPath: string, telescopeKind?: Telescope
     }
   }
 
+  // Guarantee a unique folderName per source. Nothing above prevents two
+  // independently-discovered sources landing on the same name — e.g. a split
+  // target from one folder's filenames colliding with a literal top-level
+  // directory of that name, or a loose-file target colliding with an object
+  // folder. commitFolderImport's planByFolder keys the user's per-object
+  // decisions (targetObjectId, sessionMap, skip) by folderName in a plain
+  // Map, so two sources sharing a name used to silently collapse onto one
+  // plan entry: both got processed, but only one's session-date decisions
+  // applied, and the other's files were session-mapped by a plan that never
+  // saw their actual dates (usually landing in date-dropped). Disambiguating
+  // here keeps a strict 1:1 between what the scan shows the user and what a
+  // commit plan entry can address; the user can still merge them by hand
+  // afterward (rename one to the other's target) same as any other alias.
+  const nameCounts = new Map<string, number>();
+  for (const source of sources) {
+    nameCounts.set(source.folderName, (nameCounts.get(source.folderName) ?? 0) + 1);
+  }
+  const nameSeen = new Map<string, number>();
+  for (const source of sources) {
+    if ((nameCounts.get(source.folderName) ?? 0) <= 1) continue;
+    const seen = (nameSeen.get(source.folderName) ?? 0) + 1;
+    nameSeen.set(source.folderName, seen);
+    if (seen > 1) source.folderName = `${source.folderName} (${seen})`;
+  }
+
   return { sources, excludedFolders, basePathDetected };
 }
 

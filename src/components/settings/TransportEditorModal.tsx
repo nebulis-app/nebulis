@@ -13,6 +13,7 @@ import {
 } from '../../lib/api/telescopes';
 import { isDwarfKind } from '../../lib/telescopePresets';
 import { shareNameError } from '../../lib/shareName';
+import { hostAddressError } from '../../lib/hostAddress';
 import { getInputClass, getLabelClass, getHelperClass } from './SettingsUI';
 import { Modal } from '../ui/Modal';
 
@@ -154,10 +155,12 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
     }
   }
 
-  // Only SMB carries a share. The server rejects the same values on write.
+  // Only SMB carries a share; local (USB) has no address. The server rejects
+  // the same values on write.
   const shareError = form.kind === 'smb' ? shareNameError(form.shareName) : null;
-  const canTest = form.kind !== 'local' && form.hostname.trim().length > 0 && !shareError;
-  const canSubmit = !shareError && (form.kind === 'local'
+  const hostError = form.kind === 'local' ? null : hostAddressError(form.hostname);
+  const canTest = form.kind !== 'local' && form.hostname.trim().length > 0 && !shareError && !hostError;
+  const canSubmit = !shareError && !hostError && (form.kind === 'local'
     ? form.localPath.trim().length > 0
     : form.hostname.trim().length > 0 && (form.kind === 'ftp' || form.shareName.trim().length > 0));
 
@@ -356,6 +359,7 @@ function TransportForm({
   // submit/test guards, this component needs it to annotate the field. Both
   // derive from the same `form`, so they cannot drift.
   const shareError = form.kind === 'smb' ? shareNameError(form.shareName) : null;
+  const hostError = form.kind === 'local' ? null : hostAddressError(form.hostname);
   return (
     <div className={`px-3 py-3 space-y-3 ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
       {!kindLocked && (
@@ -392,7 +396,11 @@ function TransportForm({
               onChange={e => setForm({ ...form, hostname: e.target.value })}
               placeholder={form.kind === 'ftp' ? '192.168.88.1' : '192.168.1.50'}
               className={`${inputClass} font-mono`}
+              aria-invalid={!!hostError}
             />
+            {hostError && (
+              <p className={`text-xs mt-1 ${isDark ? 'text-red-400' : 'text-red-600'}`}>{hostError}</p>
+            )}
           </div>
           {form.kind === 'smb' && (
             <div>

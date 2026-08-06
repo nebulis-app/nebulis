@@ -53,7 +53,7 @@ vi.mock('../../server/lib/walkers/index', async (importOriginal) => {
   };
 });
 
-import { runImport, claimImportLock, getImportStatus, cancelImport } from '../../server/lib/library/import';
+import { runImport, claimImportLock, getImportStatus, cancelImport, getImportHistory } from '../../server/lib/library/import';
 import { createProfile } from '../../server/lib/telescopes';
 
 afterAll(() => {
@@ -100,6 +100,7 @@ describe('cancelImport — scoped to a runId', () => {
     await runPromise;
 
     expect(getImportStatus().error ?? '').not.toMatch(/cancelled/i);
+    expect(getImportStatus().cancelled).toBe(false);
   });
 
   it('cancels a run when the runId matches', async () => {
@@ -122,5 +123,11 @@ describe('cancelImport — scoped to a runId', () => {
     await runPromise;
 
     expect(getImportStatus().error).toMatch(/cancelled/i);
+    expect(getImportStatus().cancelled).toBe(true);
+
+    // Recorded in Sync History as a cancellation, not a generic failure, so
+    // the UI can tell the two apart without guessing from the error text.
+    const { entries } = getImportHistory(1, 0);
+    expect(entries[0].cancelled).toBe(true);
   });
 });

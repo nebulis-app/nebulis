@@ -104,12 +104,16 @@ function extractDescription(html: string, num: number): string {
   const stripTags = (s: string) =>
     s
       .replace(/<[^>]+>/g, ' ')
-      .replace(/&amp;/g, '&')
+      // &amp; decodes last, not first: decoding it first would turn a literal
+      // "&amp;lt;" (i.e. the text "&lt;") into "&lt;" and then, on the very
+      // next line, into "<" — double-unescaping text that was never meant to
+      // become a tag character.
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
       .replace(/&#0?39;/g, "'")
       .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
       .replace(/\s{2,}/g, ' ')
       .trim();
 

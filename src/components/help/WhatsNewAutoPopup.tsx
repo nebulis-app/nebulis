@@ -42,7 +42,9 @@ function versionSeries(version: string): string {
  *
  * After the changelog is dismissed (or if the user has already seen the
  * current version), the MobileAppsPromoModal appears once per session until
- * the user permanently dismisses it.
+ * the user permanently dismisses it. Currently disabled: `shouldShowMobilePromo`
+ * returns false while MOBILE_PROMO_ENABLED is off, so the chain below stays
+ * wired but never opens anything. See lib/mobilePromo.ts.
  *
  * Designed to be mounted once at the app shell level (Layout). Renders
  * nothing visually until the comparison succeeds — fail-silent on either

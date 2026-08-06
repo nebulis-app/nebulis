@@ -1,14 +1,9 @@
-import { createContext, useContext, useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { SyncSubframesModal } from '../components/SyncSubframesModal';
+import { SyncSubframesContext, type SyncSubframesContextValue } from './syncSubframesContextObject';
 
 interface SyncArgs { objectId: string; sessionId: string; }
-
-interface SyncSubframesContextValue {
-  openSync: (objectId: string, sessionId: string) => void;
-}
-
-const SyncSubframesContext = createContext<SyncSubframesContextValue | null>(null);
 
 export function SyncSubframesProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
@@ -48,8 +43,7 @@ export function SyncSubframesProvider({ children }: { children: React.ReactNode 
   );
 }
 
-export function useSyncSubframes(): SyncSubframesContextValue {
-  const ctx = useContext(SyncSubframesContext);
-  if (!ctx) throw new Error('useSyncSubframes must be used within SyncSubframesProvider');
-  return ctx;
-}
+// Re-exported so existing imports keep working. The binding points at the
+// stable module above, so the hook and the context object it reads stay in
+// sync across Fast Refresh updates.
+export { useSyncSubframes } from './syncSubframesContextObject';

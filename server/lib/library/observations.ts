@@ -19,7 +19,6 @@ import {
   rolloverDateUnconditional,
 } from '../telescopeFiles.js';
 import { getNote } from '../notes.js';
-import { parseFitsHeader } from '../fitsParser.js';
 import {
   stmts,
   getFolderName,
@@ -40,7 +39,8 @@ import {
   getCaptureInfoForSession,
   summarizeSessionCapture,
 } from './captureInfo.js';
-import { getSite, getDefaultSite, siteForSession, type ObservingSite } from '../observingSites.js';
+import { type ObservingSite } from '../observingSites.js';
+import { sessionLocation, type SessionLocation } from './sessionLocation.js';
 
 // ─── Session weather ────────────────────────────────────────────────────────
 
@@ -52,10 +52,11 @@ export type { SessionWeather };
  * Returns average conditions during nighttime hours (8 PM – 4 AM) for the date.
  * Returns null if the site has no coordinates or the API call fails.
  *
- * `site` is the observing site this *specific session* was captured from
- * (see siteForSession), not necessarily the currently-active one — weather is
+ * `site` is where this *specific session* was captured from (see
+ * sessionLocation.ts), not necessarily the currently-active site. Weather is
  * historical fact about where the telescope was, and must stay correct even
- * after the user switches which site the planner points at.
+ * after the user switches which site the planner points at. It may be a
+ * transient site carrying coordinates the capture files recorded.
  */
 async function fetchSessionWeather(date: string, site: ObservingSite): Promise<SessionWeather | null> {
   const lat = site.latitude;
@@ -141,23 +142,43 @@ async function fetchSessionWeather(date: string, site: ObservingSite): Promise<S
  */
 export async function backfillSessionWeather(objectId: string): Promise<void> {
   const rows = stmts.getSessions.all(objectId);
-  const defaultSite = getDefaultSite();
   for (const row of rows) {
-    if (row.temperature != null) continue; // already has weather
     if (row.date === 'unknown') continue;
-    // row.siteId came from the same SELECT * this loop is already iterating,
-    // so resolving it directly avoids a redundant per-row session lookup
-    // (which is what siteForSession would otherwise do).
-    const site = (row.siteId && getSite(row.siteId)) || defaultSite;
-    const weather = await fetchSessionWeather(row.date, site);
+    const location = sessionLocation(objectId, row.date);
+    if (row.temperature != null && !weatherIsStale(row, location)) continue;
+    const weather = await fetchSessionWeather(row.date, location.site);
     if (weather) {
       stmts.setSessionWeather.run(
         weather.temperature, weather.cloudCover, weather.humidity,
         weather.windSpeed, weather.dewPoint, weather.visibility, weather.precipProb,
+        location.lat, location.lon,
         objectId, row.date
       );
     }
   }
+}
+
+/**
+ * Whether cached weather was fetched somewhere other than where the session now
+ * resolves to, and so has to be re-fetched.
+ *
+ * A NULL `weatherLat` predates the columns. Those rows are re-fetched only when
+ * the session now resolves from its own files: every fetch made before this
+ * existed used a site's coordinates, so a session that now reads its location
+ * out of its FITS headers necessarily has weather from the wrong place. Rows
+ * still resolving to a site were already fetched at that site and are left
+ * alone, which keeps an upgrade from re-fetching the entire library.
+ */
+function weatherIsStale(
+  row: { weatherLat: number | null; weatherLon: number | null },
+  location: SessionLocation,
+): boolean {
+  if (location.lat === null || location.lon === null) return false;
+  if (row.weatherLat === null || row.weatherLon === null) return location.source === 'fits';
+  // Open-Meteo resolves to a grid cell, so only a real move matters. 0.01° is
+  // about a kilometre, well inside one cell.
+  return Math.abs(row.weatherLat - location.lat) > 0.01
+    || Math.abs(row.weatherLon - location.lon) > 0.01;
 }
 
 /**
@@ -176,13 +197,15 @@ export async function backfillSessionWeather(objectId: string): Promise<void> {
  */
 export async function backfillSingleSessionWeather(objectId: string, date: string): Promise<void> {
   const row = stmts.getSession.get(objectId, date);
-  if (!row || row.temperature != null) return;
-  const site = (row.siteId && getSite(row.siteId)) || getDefaultSite();
-  const weather = await fetchSessionWeather(date, site);
+  if (!row) return;
+  const location = sessionLocation(objectId, date);
+  if (row.temperature != null && !weatherIsStale(row, location)) return;
+  const weather = await fetchSessionWeather(date, location.site);
   if (weather) {
     stmts.setSessionWeather.run(
       weather.temperature, weather.cloudCover, weather.humidity,
       weather.windSpeed, weather.dewPoint, weather.visibility, weather.precipProb,
+      location.lat, location.lon,
       objectId, date
     );
   }
@@ -275,9 +298,14 @@ function reconcileStaleSessionDates(objectId: string, files: string[]): void {
       stmts.addSessionStamped.run(objectId, newDate, row.telescopeId);
       const dest = stmts.getSession.get(objectId, newDate);
       if (dest && dest.temperature == null && row.temperature != null) {
+        // The provenance moves with the weather: these readings were fetched at
+        // the stale row's coordinates, and dropping that would make them look
+        // freshly-fetched for wherever the merged session now resolves to.
         stmts.setSessionWeather.run(
           row.temperature, row.cloudCover, row.humidity, row.windSpeed,
-          row.dewPoint, row.visibility, row.precipProb, objectId, newDate,
+          row.dewPoint, row.visibility, row.precipProb,
+          row.weatherLat, row.weatherLon,
+          objectId, newDate,
         );
       }
       if (dest && !dest.sessionImage && row.sessionImage) {
@@ -482,8 +510,15 @@ export function getLocalSessions(objectId: string) {
         // Only use the crowned path if the file still exists on disk — a
         // re-import can rename or remove the previously crowned file, which
         // would leave a broken URL that shows "No preview" indefinitely.
-        const crownedExists = crowned && fs.existsSync(path.join(LIBRARY_DIR, crowned));
-        if (crownedExists) return `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(crowned)}`;
+        // sessionImage is set via PUT .../session-image, an admin-supplied
+        // string with no path validation at write time — resolve+contain here
+        // rather than a bare path.join, so a crafted value can't be used as a
+        // file-existence oracle against paths outside LIBRARY_DIR.
+        const crownedAbs = crowned ? path.resolve(LIBRARY_DIR, crowned) : null;
+        const crownedExists = crownedAbs
+          && (crownedAbs === LIBRARY_DIR || crownedAbs.startsWith(LIBRARY_DIR + path.sep))
+          && fs.existsSync(crownedAbs);
+        if (crownedExists) return `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(crowned!)}`;
         const best = stats.thumbnailFile ?? stats.stackedImageFile ?? stats.anyImageFile;
         if (!best) return `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/thumbnail`;
         const fullPath = getFolderName(objectId) + '/' + best;
@@ -548,28 +583,8 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
       // The library path is folderName + the object-relative path, so a
       // nested object's session directory is carried into every URL.
       const libPath = `${folderName}/${entry.relPath}`;
-      const needsRasterConversion = /\.(png|tiff?)$/i.test(fname);
-      /**
-       * TIFF gets no preview at all, and is shown as a file card instead.
-       *
-       * A Dwarf's `img_stacked_all.tif` is 32-bit float LINEAR data (measured:
-       * min 251, max 9,672,048). sharp reads it as scene-linear scRGB where 1.0
-       * is white, so every value clips and the render comes out pure white.
-       * Rescaling before the conversion does not behave predictably either: the
-       * output brightness is non-monotonic in the window (a white point at
-       * mean+0.1σ gives mean 219, at mean+0.5σ gives mean 12), so there is no
-       * stable calibration to pick.
-       *
-       * Displaying it properly needs a real astro render (decode the TIFF
-       * directly, then the midtone-transfer autostretch fitsThumbnail.ts already
-       * implements). Until then a file card is the honest answer: a linear
-       * archival master is not a preview, and the device ships `stacked.jpg`
-       * alongside it for exactly that purpose.
-       *
-       * 8-bit TIFFs lose their preview too. Accepted: they are rare from these
-       * devices, and a download card beats a white rectangle.
-       */
-      const previewable = !/\.tiff?$/i.test(fname);
+      const isTiff = /\.tiff?$/i.test(fname);
+      const needsRasterConversion = /\.png$/i.test(fname) || isTiff;
       return {
         name: fname,
         size: stat.size,
@@ -585,27 +600,35 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
         isThumbnail: parsed.isThumbnail,
         /** False when no rendering of this file can be trusted, so clients must
          *  show a download card rather than an `<img>`. */
-        previewable,
+        previewable: true,
         downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(libPath)}`,
         // FITS files get a server-rendered JPEG (colorized MTF autostretch) so
-        // clients never decode the raw FITS just to preview it. The endpoint
-        // generates on demand, so this is emitted whether or not the thumb has
-        // been rendered yet (older imports are backfilled on first request).
-        // `previewUrl` is a larger 1024px tier for full-screen viewing.
+        // clients never decode the raw FITS just to preview it. TIFF gets the
+        // same treatment via /tiff-thumbnail: a Dwarf's `img_stacked_all.tif`
+        // is 32-bit float scene-linear data (measured min 251, max 9,672,048),
+        // and sharp's plain resize+encode reads that as scRGB where 1.0 is
+        // white, clipping every pixel to a blank square. tiffThumbnail.ts
+        // decodes the true samples and autostretches them the same way FITS
+        // does before ever handing bytes to sharp. Both endpoints generate on
+        // demand, so this is emitted whether or not the thumb has been
+        // rendered yet. `previewUrl` is a larger 1024px tier for full-screen
+        // viewing.
         thumbUrl: knownType === 'fits'
           ? `${LIBRARY_API_BASE}/fits-thumbnail?path=${encodeURIComponent(libPath)}`
-          // TIFF and PNG need a server-side conversion too. A 16-bit PNG or a
-          // 32-bit float TIFF (the Dwarf master stack) cannot be shown by a
-          // browser <img> at all, so hand the client a rendered JPEG rather
-          // than a URL it will fail to display.
-          : needsRasterConversion && previewable
-            ? `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(libPath)}`
-            : undefined,
+          : isTiff
+            ? `${LIBRARY_API_BASE}/tiff-thumbnail?path=${encodeURIComponent(libPath)}`
+            // PNG needs a server-side conversion too: a 16-bit PNG from Dwarf
+            // stacking cannot be shown by a browser <img> at all.
+            : needsRasterConversion
+              ? `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(libPath)}`
+              : undefined,
         previewUrl: knownType === 'fits'
           ? `${LIBRARY_API_BASE}/fits-thumbnail?size=preview&path=${encodeURIComponent(libPath)}`
-          : needsRasterConversion && previewable
-            ? `${LIBRARY_API_BASE}/file/thumbnail?w=1200&h=1200&path=${encodeURIComponent(libPath)}`
-            : undefined,
+          : isTiff
+            ? `${LIBRARY_API_BASE}/tiff-thumbnail?size=preview&path=${encodeURIComponent(libPath)}`
+            : needsRasterConversion
+              ? `${LIBRARY_API_BASE}/file/thumbnail?w=1200&h=1200&path=${encodeURIComponent(libPath)}`
+              : undefined,
         subIndex: parsed.subIndex || null,
       };
     })
@@ -789,34 +812,6 @@ export function getLocalObservations() {
 
 // ─── Observation-site coordinates (world map) ───────────────────────────────
 
-/**
- * Read observer coordinates from a session's first FITS header.
- * Returns null when the file carries no SITELAT/SITELONG (or can't be read).
- * These values are fixed per file, so callers cache the result.
- */
-function readFitsCoords(fitsPath: string): { lat: number; lon: number } | null {
-  try {
-    const fd = fs.openSync(fitsPath, 'r');
-    const buf = Buffer.alloc(28800);
-    fs.readSync(fd, buf, 0, 28800, 0);
-    fs.closeSync(fd);
-    const header = parseFitsHeader(buf);
-    const lat = header.values['OBS-LAT'] ?? header.values['SITELAT'] ?? null;
-    const lon = header.values['OBS-LONG'] ?? header.values['SITELONG'] ?? null;
-    if (lat === null || lon === null) return null;
-    const latNum = typeof lat === 'number' ? lat : parseFloat(String(lat));
-    const lonNum = typeof lon === 'number' ? lon : parseFloat(String(lon));
-    if (isNaN(latNum) || isNaN(lonNum)) return null;
-    if (latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180) return null;
-    // Exactly (0, 0) is the "GPS not acquired" sentinel some scopes write, not a
-    // real observing site in the Gulf of Guinea.
-    if (latNum === 0 && lonNum === 0) return null;
-    return { lat: latNum, lon: lonNum };
-  } catch {
-    return null;
-  }
-}
-
 export interface ObservationLocation {
   objectId: string;
   date: string;
@@ -825,81 +820,27 @@ export interface ObservationLocation {
   telescopeId: string | null;
   lat: number;
   lon: number;
-  /** 'fits' = precise (from the file); 'settings' = fell back to the saved observer location. */
+  /** 'fits' = precise (from the file); 'settings' = fell back to an observing site. */
   source: 'fits' | 'settings';
 }
 
 /**
  * Every imported observation that has a known location, for the world map.
- * FITS-derived coordinates are cached on librarySessions (see db.ts migration)
- * so only never-seen sessions pay the file-read cost. Sessions with no FITS
- * location fall back to the session's own observing site (applied at read
- * time, not cached, so retagging a session or editing a site's coordinates
- * takes effect immediately).
+ * Resolution (and the FITS-coordinate cache behind it) lives in
+ * sessionLocation.ts, which the detail page and the weather lookup share.
  */
 export function getObservationLocations(): ObservationLocation[] {
-  const LIBRARY_DIR = getLibraryDir();
-  if (!fs.existsSync(LIBRARY_DIR)) return [];
-
-  const defaultSite = getDefaultSite();
-
-  const readCoordsCache = db.prepare<[string, string], { lat: number | null; lon: number | null; coordsResolved: number; siteId: string | null }>(
-    'SELECT lat, lon, coordsResolved, siteId FROM librarySessions WHERE objectId = ? AND date = ?',
-  );
-  const writeCoordsCache = db.prepare<[number | null, number | null, string, string]>(
-    'UPDATE librarySessions SET lat = ?, lon = ?, coordsResolved = 1 WHERE objectId = ? AND date = ?',
-  );
+  if (!fs.existsSync(getLibraryDir())) return [];
 
   const out: ObservationLocation[] = [];
 
   for (const obs of getLocalObservations()) {
     const { objectId, date } = obs;
 
-    // Cache-first: only touch the FITS file the first time we see a session.
-    let fitsCoords: { lat: number; lon: number } | null = null;
-    const cached = readCoordsCache.get(objectId, date);
-    if (cached && cached.coordsResolved === 1) {
-      // Ignore the legacy (0, 0) sentinel that older caches may hold.
-      if (cached.lat !== null && cached.lon !== null && !(cached.lat === 0 && cached.lon === 0)) {
-        fitsCoords = { lat: cached.lat, lon: cached.lon };
-      }
-    } else {
-      // Resolve from the session's first non-thumbnail FITS file, then cache it.
-      const folderName = getFolderName(objectId);
-      const objDir = path.join(LIBRARY_DIR, folderName);
-      let firstFits: string | null = null;
-      try {
-        for (const fname of fs.readdirSync(objDir)) {
-          const parsed = parseFilename(fname);
-          if (parsed.isThumbnail) continue;
-          const ext = parsed.extension?.toLowerCase();
-          if (ext !== '.fit' && ext !== '.fits') continue;
-          if (sessionNightFor(parsed) !== date) continue;
-          firstFits = fname;
-          break;
-        }
-      } catch { /* dir gone; treated as resolved-with-no-coords */ }
-
-      fitsCoords = firstFits ? readFitsCoords(path.join(objDir, firstFits)) : null;
-      // Best-effort cache write (no row to update for file-only sessions is fine).
-      try { writeCoordsCache.run(fitsCoords?.lat ?? null, fitsCoords?.lon ?? null, objectId, date); } catch { /* best-effort */ }
-    }
-
-    let lat: number | null = null;
-    let lon: number | null = null;
-    let source: 'fits' | 'settings' = 'fits';
-    if (fitsCoords) {
-      lat = fitsCoords.lat;
-      lon = fitsCoords.lon;
-    } else {
-      const site = (cached?.siteId && getSite(cached.siteId)) || defaultSite;
-      if (site.latitude !== null && site.longitude !== null) {
-        lat = site.latitude;
-        lon = site.longitude;
-        source = 'settings';
-      }
-    }
+    const loc = sessionLocation(objectId, date);
+    const { lat, lon } = loc;
     if (lat === null || lon === null) continue; // no location for this session
+    const source = loc.source === 'fits' ? 'fits' as const : 'settings' as const;
 
     out.push({
       objectId,
@@ -917,7 +858,6 @@ export function getObservationLocations(): ObservationLocation[] {
 }
 
 export function getLocalObservationDetail(objectId: string, date: string) {
-  const LIBRARY_DIR = getLibraryDir();
   const obj = stmts.getObject.get(objectId);
   const files = getLocalFiles(objectId, date);
 
@@ -940,36 +880,13 @@ export function getLocalObservationDetail(objectId: string, date: string) {
 
   const note = getNote(objectId, date) || null;
 
-  // Extract coordinates from the first available local FITS file
-  let coordinates: { lat: number; lon: number } | null = null;
-  const firstFits = files.find(f => f.type === 'fits' && !f.isThumbnail);
-  if (firstFits) {
-    try {
-      const fullPath = path.join(LIBRARY_DIR, getFolderName(objectId), firstFits.name);
-      const fd = fs.openSync(fullPath, 'r');
-      const buf = Buffer.alloc(28800);
-      fs.readSync(fd, buf, 0, 28800, 0);
-      fs.closeSync(fd);
-      const header = parseFitsHeader(buf);
-      const lat = header.values['OBS-LAT'] ?? header.values['SITELAT'] ?? null;
-      const lon = header.values['OBS-LONG'] ?? header.values['SITELONG'] ?? null;
-      if (lat !== null && lon !== null) {
-        const latNum = typeof lat === 'number' ? lat : parseFloat(String(lat));
-        const lonNum = typeof lon === 'number' ? lon : parseFloat(String(lon));
-        if (!isNaN(latNum) && !isNaN(lonNum)) {
-          coordinates = { lat: latNum, lon: lonNum };
-        }
-      }
-    } catch { /* best-effort */ }
-  }
-
-  // Fall back to this session's observing site if no FITS coordinates
-  if (!coordinates) {
-    const site = siteForSession(objectId, date);
-    if (site.latitude !== null && site.longitude !== null) {
-      coordinates = { lat: site.latitude, lon: site.longitude };
-    }
-  }
+  // Where this session was captured from. See sessionLocation.ts for the
+  // precedence: an explicit site tag, then what the files recorded, then the
+  // default site.
+  const location = sessionLocation(objectId, date);
+  const coordinates = location.lat !== null && location.lon !== null
+    ? { lat: location.lat, lon: location.lon }
+    : null;
 
   // Sort: stacked first, then images, then FITS subs by index/timestamp
   const sortedFiles = [...files].sort((a, b) => {
@@ -1038,11 +955,20 @@ export function getLocalObservationDetail(objectId: string, date: string) {
       const row = stmts.getSession.get(objectId, date);
       return row?.telescopeId ?? obj?.primaryTelescopeId ?? null;
     })(),
-    // NULL means the default site (see siteForSession in observingSites.ts).
-    // Read directly off the row rather than resolved to a concrete site here,
-    // so the client can distinguish "explicitly tagged" from "using whatever
-    // the default currently is."
-    siteId: stmts.getSession.get(objectId, date)?.siteId ?? null,
+    // NULL means "not explicitly tagged" — the coordinates then come from the
+    // files, or from the default site when the files carry none. Reported
+    // unresolved so the client can tell an explicit tag apart from a fallback.
+    siteId: location.siteId,
+    /** 'fits' = the capture files recorded these coordinates; 'site' = they came
+     *  from an observing site. Lets the UI avoid implying the user picked a
+     *  location they never chose. */
+    locationSource: location.source,
+    /** The name to show for the location. A transient "From image data" site is
+     *  not in the site list, so the client cannot look this up itself. */
+    locationLabel: location.site.name,
+    /** What the capture files recorded, reported even when a site tag outranks
+     *  it, so the UI can offer a way back to it. */
+    fileCoordinates: location.fileCoords,
   };
 }
 
@@ -1508,7 +1434,7 @@ export function reassignSessionTelescope(objectId: string, date: string, telesco
 /**
  * Reassign a session (objectId+date) to a different observing site. `siteId:
  * null` clears the tag, which resolves back to the default site (see
- * siteForSession). Returns true if a row was updated.
+ * sessionLocation.ts). Returns true if a row was updated.
  *
  * Side effect: nulls the session's cached weather columns. They were fetched
  * at the OLD site's coordinates and are now wrong for the new one; the caller

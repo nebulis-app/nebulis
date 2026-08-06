@@ -26,11 +26,26 @@ type ProfileArg = Partial<Pick<TelescopeProfile, 'hostname' | 'shareName' | 'use
 
 const execFileAsync = promisify(execFile);
 
-let mountDir: string | null = null;
-let mountedKey: string | null = null;
-/** True when `mountDir` is a mount we adopted rather than created, for example
- *  one the user mounted in Finder. Those must never be unmounted by us. */
-let mountAdopted = false;
+interface MountEntry {
+  mountDir: string;
+  /** True when `mountDir` is a mount we adopted rather than created, for
+   *  example one the user mounted in Finder. Those must never be unmounted
+   *  by us. */
+  adopted: boolean;
+}
+
+/** One live mount per profileKey (host|share|user), not a single global mount.
+ *  A single shared mountDir meant that touching telescope B while an import
+ *  from telescope A was in flight tore down A's mount out from under it —
+ *  every operation resolved paths against whatever ensureMount() last set,
+ *  regardless of which profile it was for. */
+const mounts = new Map<string, MountEntry>();
+/** In-flight first-touch mount per key, so two concurrent callers for the
+ *  same profile (e.g. a status poll racing an import's own discovery call)
+ *  don't both invoke mount_smbfs — macOS refuses the second one for the same
+ *  share and fails with "File exists". Mirrors the reachInFlight pattern in
+ *  smb.ftp.ts. */
+const mountInFlight = new Map<string, Promise<string>>();
 
 /** Replace the password in a `//user:pass@host/share` URL. mount_smbfs echoes
  *  its whole command line in error messages, so anything derived from one has
@@ -60,19 +75,16 @@ function buildMountUrl(settings: SmbProfile): string {
   return `//${enc(user)}:${enc(pass)}@${settings.hostname}/${enc(parseShareName(settings.shareName).share)}`;
 }
 
-async function teardownMount(): Promise<void> {
-  if (!mountDir) return;
-  const mp = mountDir;
-  const adopted = mountAdopted;
-  mountDir = null;
-  mountedKey = null;
-  mountAdopted = false;
+async function teardownMount(key: string): Promise<void> {
+  const entry = mounts.get(key);
+  if (!entry) return;
+  mounts.delete(key);
   // Never unmount a share we did not mount. It may be the user's own Finder
   // mount, and pulling it out from under them would be a surprising side
   // effect of opening a settings page.
-  if (adopted) return;
-  await execFileAsync('umount', [mp]).catch(() => {});
-  try { fs.rmdirSync(mp); } catch { /* ignore */ }
+  if (entry.adopted) return;
+  await execFileAsync('umount', [entry.mountDir]).catch(() => {});
+  try { fs.rmdirSync(entry.mountDir); } catch { /* ignore */ }
 }
 
 // Check the OS mount table for an existing mount of this share (e.g. left over
@@ -135,7 +147,7 @@ async function findExistingMount(settings: SmbProfile): Promise<string | null> {
  * Mount the share and return the directory callers should resolve paths
  * against. That is the mount point plus any configured subpath, so every
  * caller's `path.join(mp, smbPath)` lands inside the right folder without
- * knowing a subpath exists. The module-level `mountDir` stays the true mount
+ * knowing a subpath exists. `mounts.get(key).mountDir` stays the true mount
  * point, which is what teardown and the liveness check need.
  */
 async function ensureMount(settings: SmbProfile): Promise<string> {
@@ -143,43 +155,49 @@ async function ensureMount(settings: SmbProfile): Promise<string> {
   const { subpath } = parseShareName(settings.shareName);
   const withSubpath = (root: string) => (subpath ? path.join(root, subpath) : root);
 
-  if (mountDir && mountedKey === key) {
+  const existingEntry = mounts.get(key);
+  if (existingEntry) {
     // Quick liveness check — if the mount point is gone or disconnected, remount.
     try {
-      await fs.promises.access(mountDir, fs.constants.R_OK);
-      return withSubpath(mountDir);
+      await fs.promises.access(existingEntry.mountDir, fs.constants.R_OK);
+      return withSubpath(existingEntry.mountDir);
     } catch {
-      await teardownMount();
+      await teardownMount(key);
     }
-  } else if (mountDir) {
-    await teardownMount();
   }
 
-  const url = buildMountUrl(settings);
+  // Serialize concurrent first-touch mounts for the same key so two callers
+  // racing in (e.g. a status poll and an import's discovery call) don't both
+  // invoke mount_smbfs for the same share.
+  const inFlight = mountInFlight.get(key);
+  if (inFlight) return withSubpath(await inFlight);
 
-  // Reuse a pre-existing OS-level mount rather than calling mount_smbfs again —
-  // macOS refuses to mount the same share twice and would return an error.
-  const existing = await findExistingMount(settings);
-  if (existing) {
-    mountDir = existing;
-    mountedKey = key;
-    mountAdopted = true;
-    return withSubpath(existing);
-  }
+  const mountPromise = (async (): Promise<string> => {
+    // Reuse a pre-existing OS-level mount rather than calling mount_smbfs
+    // again — macOS refuses to mount the same share twice and would error.
+    const existing = await findExistingMount(settings);
+    if (existing) {
+      mounts.set(key, { mountDir: existing, adopted: true });
+      return existing;
+    }
 
-  const mp = fs.mkdtempSync(path.join(os.tmpdir(), 'nebulis-smb-'));
-
+    const url = buildMountUrl(settings);
+    const mp = fs.mkdtempSync(path.join(os.tmpdir(), 'nebulis-smb-'));
+    try {
+      await execFileAsync('mount_smbfs', [url, mp], { timeout: 15000 });
+    } catch (err) {
+      try { fs.rmdirSync(mp); } catch { /* ignore */ }
+      throw err;
+    }
+    mounts.set(key, { mountDir: mp, adopted: false });
+    return mp;
+  })();
+  mountInFlight.set(key, mountPromise);
   try {
-    await execFileAsync('mount_smbfs', [url, mp], { timeout: 15000 });
-  } catch (err) {
-    try { fs.rmdirSync(mp); } catch { /* ignore */ }
-    throw err;
+    return withSubpath(await mountPromise);
+  } finally {
+    mountInFlight.delete(key);
   }
-
-  mountDir = mp;
-  mountedKey = key;
-  mountAdopted = false;
-  return withSubpath(mp);
 }
 
 function extractMountReason(err: unknown): string {
@@ -208,14 +226,15 @@ function extractMountReason(err: unknown): string {
   return 'Connection failed';
 }
 
-// Clean up the mount when the process exits so we don't leave dangling mounts.
-// Adopted mounts are left alone: they belong to whoever mounted them, and in
-// dev the server exits on every file change, which would otherwise unmount the
-// user's Finder shares repeatedly.
+// Clean up every mount when the process exits so we don't leave dangling
+// mounts. Adopted mounts are left alone: they belong to whoever mounted them,
+// and in dev the server exits on every file change, which would otherwise
+// unmount the user's Finder shares repeatedly.
 process.on('exit', () => {
-  if (mountDir && !mountAdopted) {
-    try { execFileSync('umount', [mountDir]); } catch { /* ignore */ }
-    try { fs.rmdirSync(mountDir); } catch { /* ignore */ }
+  for (const entry of mounts.values()) {
+    if (entry.adopted) continue;
+    try { execFileSync('umount', [entry.mountDir]); } catch { /* ignore */ }
+    try { fs.rmdirSync(entry.mountDir); } catch { /* ignore */ }
   }
 });
 
@@ -261,7 +280,7 @@ export async function smbListDir(smbPath: string, profile?: ProfileArg): Promise
         }),
     );
   } catch (err) {
-    await teardownMount();
+    await teardownMount(profileKey(settings));
     throw new Error(`SMB connection failed: ${extractMountReason(err)}`);
   }
 }
@@ -289,7 +308,7 @@ export async function smbGetFile(smbPath: string, maxBytes?: number, profile?: P
     }
     return data;
   } catch (err) {
-    await teardownMount();
+    await teardownMount(profileKey(settings));
     throw new Error(`SMB connection failed: ${extractMountReason(err)}`);
   }
 }
@@ -313,7 +332,7 @@ export async function smbPutFile(smbPath: string, data: Buffer, profile?: Profil
   try {
     await fs.promises.writeFile(path.join(mp, smbPath), data);
   } catch (err) {
-    await teardownMount();
+    await teardownMount(profileKey(settings));
     throw new Error(`SMB connection failed: ${extractMountReason(err)}`);
   }
 }
@@ -341,7 +360,7 @@ export async function smbDelete(smbPath: string, profile?: ProfileArg): Promise<
   try {
     await fs.promises.unlink(path.join(mp, smbPath));
   } catch (err) {
-    await teardownMount();
+    await teardownMount(profileKey(settings));
     throw new Error(`SMB connection failed: ${extractMountReason(err)}`);
   }
 }

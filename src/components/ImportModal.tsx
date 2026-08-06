@@ -1,7 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, FolderOpen, RotateCw, CheckCircle2, Upload, HardDrive } from 'lucide-react';
-import { uploadFolderTemp, reportImportDebug } from '../lib/api/library';
+import {
+  uploadFolderTemp,
+  reportImportDebug,
+  preflightImportSpace,
+  discardImportTempSession,
+} from '../lib/api/library';
 import { locateFolderOnServer } from '../lib/api/storage';
 import { listTelescopes } from '../lib/api/telescopes';
 import { getDebugLoggingStatus } from '../lib/api/settings';
@@ -85,7 +90,7 @@ type Source = 'upload' | 'local';
 
 export function ImportModal({ onClose, onReview }: {
   onClose: () => void;
-  onReview: (folderPath: string, includeSubframes: boolean, includeFits: boolean, telescopeId: string | null, archiveAll: boolean) => void;
+  onReview: (folderPath: string, includeSubframes: boolean, includeFits: boolean, telescopeId: string | null, archiveAll: boolean, tmpId: string | null) => void;
 }) {
   const { isDark } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -108,6 +113,10 @@ export function ImportModal({ onClose, onReview }: {
   // running in the background, and its eventual resolution could still fire
   // onReview into a caller that had already moved on.
   const uploadAbortRef = useRef<AbortController | null>(null);
+  // Staging session id, known once the first batch lands. Held so cancelling
+  // can tell the server to delete what was already uploaded instead of leaving
+  // it to the cleanup sweep.
+  const tmpIdRef = useRef<string | null>(null);
   // When the dropped folder is found on the server's own disk (matched by
   // name + file-size fingerprint), this holds the scan-root path so the
   // import can read it in place instead of uploading the same bytes.
@@ -229,6 +238,21 @@ export function ImportModal({ onClose, onReview }: {
   async function handleUpload() {
     if (picked.length === 0) return;
     locateAbortRef.current?.abort();
+
+    // Check the server has room before sending a byte. An upload is staged in
+    // full on the server's data drive before any of it is imported, so a
+    // folder bigger than the free space there fails partway through and leaves
+    // the staged part behind. Asking first turns that into a message in this
+    // dialog. A preflight that itself fails is not treated as a refusal: the
+    // upload proceeds and the per-batch guard still protects the disk.
+    try {
+      const check = await preflightImportSpace(picked.reduce((sum, p) => sum + p.file.size, 0));
+      if (!check.ok) {
+        setError(check.message ?? 'There is not enough free space on the server to stage this upload.');
+        return;
+      }
+    } catch { /* preflight unavailable; the server-side batch guard still applies */ }
+
     setPhase('uploading');
     setUploadProgress(0);
     setError(null);
@@ -256,14 +280,26 @@ export function ImportModal({ onClose, onReview }: {
         (sent, total) => setUploadProgress(total > 0 ? Math.round((sent / total) * 100) : 0),
         debug,
         controller.signal,
+        id => { tmpIdRef.current = id; },
       );
+      // Handed off to the review step, which now owns the staged files: it
+      // deletes them on commit, or discards the session itself if the user
+      // cancels before committing. Clearing the ref here only stops *this*
+      // dialog from also trying to discard it (e.g. on a lingering unmount).
+      tmpIdRef.current = null;
       setPhase('done');
-      onReview(result.tmpPath, includeSubframes, includeFits, telescopeId || null, archiveAll);
+      onReview(result.tmpPath, includeSubframes, includeFits, telescopeId || null, archiveAll, result.tmpId);
     } catch (err) {
       // A cancelled upload already unmounted (or is about to) via the discard
       // path — don't flash an error or bounce the phase back to 'staging' on
       // the way out.
       if (err instanceof DOMException && err.name === 'AbortError') return;
+      // A failed upload's partial staging is dead weight: the retry starts a
+      // fresh session rather than resuming this one, so release it now.
+      if (tmpIdRef.current) {
+        discardImportTempSession(tmpIdRef.current);
+        tmpIdRef.current = null;
+      }
       const message = err instanceof Error ? err.message : 'Upload failed';
       if (debug) reportImportDebug(`[browser] import dialog: upload aborted with error: ${message}`);
       setError(message);
@@ -496,7 +532,7 @@ export function ImportModal({ onClose, onReview }: {
           <div className="space-y-2">
             <button
               type="button"
-              onClick={() => onReview(locatedPath, includeSubframes, includeFits, telescopeId || null, archiveAll)}
+              onClick={() => onReview(locatedPath, includeSubframes, includeFits, telescopeId || null, archiveAll, null)}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 transition"
             >
               <HardDrive className="w-4 h-4" />
@@ -529,7 +565,7 @@ export function ImportModal({ onClose, onReview }: {
         {source === 'local' && (
           <button
             type="button"
-            onClick={() => serverPath && onReview(serverPath, includeSubframes, includeFits, telescopeId || null, archiveAll)}
+            onClick={() => serverPath && onReview(serverPath, includeSubframes, includeFits, telescopeId || null, archiveAll, null)}
             disabled={!serverPath}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 transition disabled:opacity-50"
           >
@@ -553,6 +589,13 @@ export function ImportModal({ onClose, onReview }: {
             setConfirmingClose(false);
             uploadAbortRef.current?.abort();
             locateAbortRef.current?.abort();
+            // Whatever batches already landed are now orphaned, and for a
+            // large folder that can be tens of gigabytes. Ask the server to
+            // drop them rather than waiting hours for the sweep.
+            if (tmpIdRef.current) {
+              discardImportTempSession(tmpIdRef.current);
+              tmpIdRef.current = null;
+            }
             onClose();
           }}
         />

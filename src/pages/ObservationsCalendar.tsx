@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  Star,
   Layers,
   Image as ImageIcon,
   Pencil,
@@ -802,10 +801,6 @@ export function ObservationsCalendar() {
                         )}
                       </span>
                     )}
-                    <span className="flex items-center gap-1">
-                      <Star className="w-3 h-3" />
-                      {obs.constellation}
-                    </span>
                   </div>
                 </div>
 

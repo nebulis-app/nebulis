@@ -196,7 +196,11 @@ export function classifyImportFile(
   // The filename usually gives it away (SeeStar names sub-frames Light_*), but
   // the directory is the real authority: everything in a `_sub` folder is a
   // sub-frame however it happens to be named.
-  if (opts.fromSubFolder === true || parsed.type === 'sub') {
+  // `framePreview` is the device's per-frame JPG/PNG: parseFilename labels it a
+  // thumbnail (it is one), but it arrives one-per-sub-frame and belongs to this
+  // gate, not to the thumbnail setting. Without it, turning thumbnails on would
+  // pull in a preview for every raw frame on the device.
+  if (opts.fromSubFolder === true || parsed.type === 'sub' || parsed.framePreview === true) {
     if (settings.importSubFrames !== true) {
       return drop(filename, 'sub-frames-disabled', 'sub-frame — importSubFrames disabled');
     }

@@ -17,6 +17,20 @@ import {
 } from './objects.js';
 import { getRunDates } from './processingRuns.js';
 
+/** Resolve `<LIBRARY_DIR>/<folder for objectId>[/...extra]`, refusing to
+ *  return a path outside LIBRARY_DIR. getFolderName falls back to the raw
+ *  objectId on a DB miss, so a crafted objectId with traversal tokens would
+ *  otherwise escape the library root for every function in this module that
+ *  reads, writes, or deletes a processed image. */
+function resolveContainedObjectDir(objectId: string, ...extra: string[]): string {
+  const LIBRARY_DIR = getLibraryDir();
+  const dir = path.resolve(LIBRARY_DIR, getFolderName(objectId), ...extra);
+  if (dir !== LIBRARY_DIR && !dir.startsWith(LIBRARY_DIR + path.sep)) {
+    throw new Error(`Object id "${objectId}" resolves outside the library`);
+  }
+  return dir;
+}
+
 /**
  * Pick an on-disk name for an uploaded processed image that keeps the user's
  * original filename intact (so it matches whatever the telescope/stacking app
@@ -105,10 +119,9 @@ export function addProcessedImage(
   notes: string,
   runId: string | null = null,
 ): ProcessedImageRecord {
-  const LIBRARY_DIR = getLibraryDir();
   const id = `proc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-  const processedDir = path.join(LIBRARY_DIR, getFolderName(objectId), 'processed');
+  const processedDir = resolveContainedObjectDir(objectId, 'processed');
   if (!fs.existsSync(processedDir)) fs.mkdirSync(processedDir, { recursive: true });
 
   const filename = uniqueProcessedFilename(processedDir, originalName);
@@ -141,20 +154,18 @@ export function addProcessedImage(
 
 /** Get the file data for a processed image (null if not found). */
 export function getProcessedImageFile(id: string): { data: Buffer; name: string; mimeType: string } | null {
-  const LIBRARY_DIR = getLibraryDir();
   const row = stmts.getProcessedImage.get(id);
   if (!row) return null;
-  const filePath = path.join(LIBRARY_DIR, getFolderName(row.objectId), 'processed', row.filename);
+  const filePath = resolveContainedObjectDir(row.objectId, 'processed', row.filename);
   if (!fs.existsSync(filePath)) return null;
   return { data: fs.readFileSync(filePath), name: row.originalName, mimeType: row.mimeType };
 }
 
 /** Delete a processed image record and its file from disk. */
 export function deleteProcessedImage(id: string): void {
-  const LIBRARY_DIR = getLibraryDir();
   const row = stmts.getProcessedImage.get(id);
   if (!row) return;
-  const filePath = path.join(LIBRARY_DIR, getFolderName(row.objectId), 'processed', row.filename);
+  const filePath = resolveContainedObjectDir(row.objectId, 'processed', row.filename);
   try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { /* best-effort */ }
   stmts.deleteProcessedImageRow.run(id);
 }

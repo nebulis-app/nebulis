@@ -96,7 +96,7 @@ export function HelpReader({ articleId, onOpenArticle, onOpenTopic, onHome }: He
                       className={`w-full text-left text-xs leading-snug py-1.5 px-2 -ml-px rounded transition-colors ${
                         isActive
                           ? `font-semibold ${t.chipText} ${isDark ? 'bg-slate-800/60' : 'bg-slate-100'}`
-                          : `${muted} hover:${heading.replace('text-', 'text-')} ${isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-100'}`
+                          : `${muted} hover:${heading} ${isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-100'}`
                       }`}
                     >
                       {a.title}

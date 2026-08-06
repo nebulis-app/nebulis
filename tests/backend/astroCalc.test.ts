@@ -222,4 +222,18 @@ describe('visibilityWindow', () => {
       expect(withoutProfile.rises).not.toBeNull();
     }
   });
+
+  it('reports rises=null (not visible) when a horizon profile blocks the object all night, even though its geometric max is above minAlt', () => {
+    // Regression: a stale "already above threshold for the entire night"
+    // fallback used to set rises=nightStart based on maxAlt >= minAlt alone,
+    // ignoring the horizon profile entirely. That made an object a horizon
+    // profile blocks all night (never crosses `floor` in the main loop, so
+    // `rises` stays null through the loop) get reported as visible from dusk.
+    const wallOfMountains = new Array(36).fill(60);
+    const result = visibilityWindow(2.0, 0, LAT, LON, nightStart, nightEnd, 20, wallOfMountains);
+    expect(result.maxAlt).toBeGreaterThanOrEqual(20); // geometrically above minAlt
+    expect(result.maxAlt).toBeLessThan(60);            // but never clears the 60° wall
+    expect(result.rises).toBeNull();
+    expect(result.sets).toBeNull();
+  });
 });

@@ -44,6 +44,7 @@ import {
   isRealFile,
   observingNightDate,
   sessionNightFor,
+  FITS_EXTENSIONS,
 } from '../telescopeFiles.js';
 import { isDwarfMasterStack } from './importFilter.js';
 
@@ -124,7 +125,10 @@ export function roleForFile(
   if (parsed.isThumbnail) return 'thumbnail';
   // The directory outranks the filename: everything inside a `_sub` folder is
   // a sub-frame however it happens to be named. Mirrors classifyImportFile.
-  if (opts.fromSubFolder === true || parsed.type === 'sub') return 'sub';
+  // Except on extension: a sub-frame is FITS, so a JPG/PNG sitting in a `_sub`
+  // folder is a preview of one, not one. parseFilename applies the same rule to
+  // the names it recognises; this covers the names it doesn't.
+  if ((opts.fromSubFolder === true || parsed.type === 'sub') && FITS_EXTENSIONS.has(ext)) return 'sub';
   if (parsed.type === 'stacked') return 'stacked';
   if (parsed.type === 'video') return 'video';
   if (ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.tif' || ext === '.tiff') {
@@ -394,7 +398,7 @@ export function writeObjectManifest(objectId: string, folderName: string): void 
   } catch (err) {
     // A manifest is a convenience, never the authority. Failing to write one
     // must not fail an import that already put the file on disk.
-    console.warn(`[libraryFiles] Could not write manifest for ${objectId}:`, err instanceof Error ? err.message : err);
+    console.warn('[libraryFiles] Could not write manifest for %s:', objectId, err instanceof Error ? err.message : err);
     try { fs.rmSync(tmp, { force: true }); } catch { /* best effort */ }
   }
 }

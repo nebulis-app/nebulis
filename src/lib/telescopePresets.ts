@@ -106,6 +106,14 @@ export function isDwarfKind(kind: TelescopeKind): boolean {
   return kind === 'dwarf-2' || kind === 'dwarf-3' || kind === 'dwarf-mini';
 }
 
+/** What to call this device in a sentence. The `other` kind is a NAS or a PC
+ *  sharing a folder, so calling it a telescope reads as nonsense to whoever
+ *  chose that option. Mirrors deviceNoun in server/lib/deviceWording.ts, which
+ *  words the connection errors; keep the two in step. */
+export function deviceNoun(kind: TelescopeKind | null | undefined): string {
+  return kind === 'other' ? 'server' : 'telescope';
+}
+
 /** Coerce a DOM select string to TelescopeKind. Unknown values fall back to 'other'. */
 export function toTelescopeKind(v: string): TelescopeKind {
   return (TELESCOPE_KINDS as readonly string[]).includes(v) ? (v as TelescopeKind) : 'other';

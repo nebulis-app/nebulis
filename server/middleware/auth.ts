@@ -68,6 +68,7 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
     req.path.match(/^\/library\/file(\?|\/|$)/) ||
     req.path.match(/^\/library\/file\/thumbnail(\?|\/|$)/) ||
     req.path.match(/^\/library\/fits-thumbnail(\?|\/|$)/) ||
+    req.path.match(/^\/library\/tiff-thumbnail(\?|\/|$)/) ||
     req.path.match(/^\/library\/objects\/[^/]+\/thumbnail(\?|\/|$)/) ||
     req.path.match(/^\/library\/processed-images\//) ||
     req.path.match(/^\/library\/download\/objects\//) ||
@@ -83,7 +84,11 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
   }
 
   // Try JWT token first (from Authorization: Bearer header)
-  const bearerMatch = (req.headers.authorization || '').match(/^Bearer\s+(.+)$/i);
+  // \s+ followed by .+ are adjacent quantifiers over overlapping character
+  // classes (both match a space) — worst-case quadratic backtracking on a
+  // client-controlled header. \S+ for the token is disjoint from \s+ (a JWT
+  // never contains whitespace anyway), which removes the ambiguity entirely.
+  const bearerMatch = (req.headers.authorization || '').match(/^Bearer\s+(\S+)$/i);
   if (bearerMatch) {
     const token = bearerMatch[1];
 

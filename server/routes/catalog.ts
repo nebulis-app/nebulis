@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { requireAdmin } from '../middleware/auth.js';
+import { strictRateLimiter } from '../middleware/rateLimit.js';
 import fs from 'fs';
 import path from 'path';
 import sharp from '../lib/sharp-optional.js';
@@ -400,7 +401,7 @@ function resolveObjectRaDecDegs(id: string, rawId: string): { ra: number; dec: n
 // object, cached per FOV bucket. The framing/mosaic modal uses it so the sky
 // fills the background at any zoom level. Public (see auth bypass list) so a
 // plain <img> tag can load it without an Authorization header.
-router.get('/:id/sky', async (req: Request, res: Response) => {
+router.get('/:id/sky', strictRateLimiter, async (req: Request, res: Response) => {
   const rawId = normalizeCatalogId(String(req.params.id));
   const id = caldwellToNgcId(rawId) ?? rawId;
 
@@ -846,7 +847,10 @@ async function reverseGeocode(lat: number, lon: number): Promise<string | null> 
     const location = city && state ? `${city}, ${state}` : city || state || null;
     geocodeCache.set(key, location);
     saveGeocodeCache();
-    return city;
+    // `location`, not `city`: the cache-hit path above returns what was stored,
+    // so returning the bare city here made the first view of a location show
+    // "Destin" and every later view show "Destin, FL".
+    return location;
   } catch {
     return null; // Don't cache network errors
   }

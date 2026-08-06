@@ -68,6 +68,110 @@ export function validatePathNoTraversal(filePath: string): void {
   }
 }
 
+/**
+ * Validate the hostname/address field: an IP address or a hostname, with an
+ * optional `:port`, and nothing else.
+ *
+ * The counterpart to parseShareName, and it exists for the mirror-image
+ * mistake. A user pasted `10.0.1.5/SeeStar/` into the address field, which is
+ * their host and their share run together. Every backend then tried to reach a
+ * machine literally named `10.0.1.5/SeeStar/` and failed with a network error
+ * that said nothing about the real problem. Whichever half a user pastes into
+ * the wrong field, they now get told which part belongs where.
+ *
+ * Deliberately permissive about what counts as a hostname: `_` is accepted
+ * because mDNS names like `UNAS-Pro._smb._tcp.local` contain it, and a trailing
+ * root dot is accepted because it is a legal FQDN. The check is aimed at
+ * separators and pasted URLs, not at policing name syntax.
+ *
+ * Returns the trimmed address. Throws with user-facing guidance otherwise.
+ */
+export function validateHostAddress(raw: string | null | undefined): string {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed) throw new Error('Hostname or IP address is required.');
+
+  // "host/share/folder" → name the two halves so the user can act on it.
+  const splitForAdvice = (rest: string): string => {
+    const [host, ...segments] = rest.replace(/\\/g, '/').split('/').filter(Boolean);
+    const share = segments.join('/');
+    return host && share
+      ? ` Put "${host}" here and "${share}" in the SMB Share Name field.`
+      : '';
+  };
+
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(trimmed);
+  if (scheme) {
+    throw new Error(
+      `Enter the address only, not a full ${scheme[1]}:// URL.`
+      + splitForAdvice(trimmed.slice(scheme[0].length)),
+    );
+  }
+  if (/^[\\/]{2}/.test(trimmed)) {
+    throw new Error(
+      'Enter the address only, not a full \\\\server\\share path.'
+      + splitForAdvice(trimmed.replace(/^[\\/]+/, '')),
+    );
+  }
+  if (/[\\/]/.test(trimmed)) {
+    throw new Error(
+      'The address cannot contain a slash.' + splitForAdvice(trimmed),
+    );
+  }
+  // `user@host`, copied out of an SSH or mount command.
+  if (trimmed.includes('@')) {
+    const [user, host] = trimmed.split('@');
+    throw new Error(
+      'The address cannot contain a username.'
+      + (user && host ? ` Put "${host}" here and "${user}" in the Username field.` : ''),
+    );
+  }
+  if (/\s/.test(trimmed)) throw new Error('The address cannot contain spaces.');
+
+  // Split off an optional port. A bracketed IPv6 literal keeps its brackets
+  // out of the host, and a bare IPv6 address (many colons) is left whole.
+  let host = trimmed;
+  let portText: string | null = null;
+  const bracketed = /^\[(.+)\](?::(.*))?$/.exec(trimmed);
+  if (bracketed) {
+    host = bracketed[1];
+    portText = bracketed[2] ?? null;
+  } else {
+    const idx = trimmed.lastIndexOf(':');
+    if (idx >= 0 && trimmed.indexOf(':') === idx) {
+      host = trimmed.slice(0, idx);
+      portText = trimmed.slice(idx + 1);
+    }
+  }
+
+  if (portText !== null) {
+    const port = Number(portText);
+    if (!/^\d+$/.test(portText) || !Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error(`"${portText}" is not a valid port number. Use a number from 1 to 65535.`);
+    }
+  }
+  if (!host) throw new Error('Hostname or IP address is required.');
+
+  // Bare or bracketed IPv6: hex groups and colons, with the :: shorthand and
+  // the IPv4-mapped tail (::ffff:10.0.1.5) both allowed.
+  if (host.includes(':')) {
+    if (!/^[0-9a-f:.]+$/i.test(host)) {
+      throw new Error(`"${host}" is not a valid IP address or hostname.`);
+    }
+    return trimmed;
+  }
+
+  // Hostname, FQDN, or IPv4. A trailing root dot is legal and kept.
+  const labels = host.replace(/\.$/, '').split('.');
+  const labelOk = (label: string) =>
+    label.length > 0 && label.length <= 63
+    && /^[a-z0-9_-]+$/i.test(label)
+    && !label.startsWith('-') && !label.endsWith('-');
+  if (!labels.every(labelOk)) {
+    throw new Error(`"${host}" is not a valid IP address or hostname.`);
+  }
+  return trimmed;
+}
+
 /** A share field split into the share to connect to and an optional folder
  *  inside it. The three backends need this split at different points —
  *  `mount_smbfs` and `smbclient` take a bare share, UNC takes the whole path —

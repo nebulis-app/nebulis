@@ -57,6 +57,10 @@ export interface ImportStatus {
   skipped: ImportSkip[];
   lastRun: string | null;
   error: string | null;
+  /** True when `error` describes a user-requested cancellation rather than a
+   *  genuine failure — a cancelled run is expected, not something that needs
+   *  a "something went wrong" treatment. */
+  cancelled: boolean;
   startedAt: string | null;
   warmingThumbnails: { done: number; total: number } | null;
 }
@@ -134,6 +138,10 @@ export interface ImportHistoryEntry {
   bytesTotal: number;
   bytesNew: number;
   error: string | null;
+  /** True when `error` describes a user-requested cancellation rather than a
+   *  genuine failure. False (including rows recorded before this existed)
+   *  otherwise. */
+  cancelled: boolean;
   files: string[] | null;
   /** Telescope that ran this import (null for folder/upload imports). */
   telescopeId: string | null;
@@ -390,6 +398,53 @@ export function reportImportDebug(message: string): void {
   } catch { /* best-effort */ }
 }
 
+export interface ImportSpaceCheck {
+  ok: boolean;
+  /** Directory whose volume was measured (the upload staging area). */
+  path: string;
+  freeBytes: number;
+  requiredBytes: number;
+  /** Explanation to show the user. Null when `ok`. */
+  message: string | null;
+}
+
+/** Ask whether the server has room to stage an upload of `bytes` before
+ *  sending any of it. */
+export const preflightImportSpace = (bytes: number) =>
+  fetchJSON<ImportSpaceCheck>('/library/import/preflight', {
+    method: 'POST',
+    body: JSON.stringify({ bytes }),
+  });
+
+export interface ImportTempUsage {
+  path: string;
+  bytes: number;
+  files: number;
+  sessions: number;
+  oldestAt: string | null;
+}
+
+export const getImportTempUsage = () =>
+  fetchJSON<ImportTempUsage>('/library/import/temp-usage');
+
+export interface ImportTempCleanupResult {
+  deleted: number;
+  errors: number;
+  bytes: number;
+  skippedActive: number;
+}
+
+export const cleanupImportTemp = () =>
+  fetchJSON<ImportTempCleanupResult>('/library/import/temp-cleanup', { method: 'POST' });
+
+/** Drop a single staged upload session. Best-effort: used when the import
+ *  dialog is dismissed mid-upload, where a failure just means the sweeper
+ *  reclaims the space later instead. */
+export function discardImportTempSession(tmpId: string): void {
+  void fetchJSON(`/library/import/temp/${encodeURIComponent(tmpId)}`, { method: 'DELETE' })
+    .catch(() => { /* best-effort */ });
+}
+
 /** Upload a folder's files to a server temp dir, returning the temp path for
  *  use with /import/scan and /import/commit. relativePaths should have the
  *  top-level folder name already stripped (client responsibility).
@@ -406,14 +461,20 @@ export function reportImportDebug(message: string): void {
  *  immediate mid-batch, not preemptive. Without this, a caller that dismisses
  *  the upload UI mid-upload has no way to actually stop the batch loop: it
  *  keeps POSTing into the void, and its eventual resolution can still fire
- *  `onProgress`/resolve into a caller that thinks it moved on. */
+ *  `onProgress`/resolve into a caller that thinks it moved on.
+ *
+ *  `onTmpId` fires as soon as the server names the staging session, which is
+ *  after the first batch rather than at the end. A caller that cancels partway
+ *  needs that id to tell the server to drop what was already staged: without
+ *  it, an abandoned upload holds its bytes until the sweeper runs. */
 export async function uploadFolderTemp(
   files: File[],
   relativePaths: string[],
   onProgress?: (sent: number, total: number) => void,
   debug = false,
   signal?: AbortSignal,
-): Promise<{ tmpPath: string; fileCount: number }> {
+  onTmpId?: (tmpId: string) => void,
+): Promise<{ tmpPath: string; tmpId: string | null; fileCount: number }> {
   // Split into batches: max 500 MB or 100 files per request.
   const BATCH_BYTES = 500 * 1024 * 1024;
   const BATCH_FILES = 100;
@@ -532,6 +593,7 @@ export async function uploadFolderTemp(
     });
 
     tmpPath = result.tmpPath;
+    if (result.tmpId !== tmpId) onTmpId?.(result.tmpId);
     tmpId = result.tmpId;
     totalFileCount += result.fileCount;
     if (debug) {
@@ -543,7 +605,7 @@ export async function uploadFolderTemp(
   }
 
   if (debug) reportImportDebug(`[browser] upload finished: ${totalFileCount} files accepted across ${batches.length} batches`);
-  return { tmpPath, fileCount: totalFileCount };
+  return { tmpPath, tmpId, fileCount: totalFileCount };
 }
 
 // Gallery image

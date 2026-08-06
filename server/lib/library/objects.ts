@@ -89,9 +89,13 @@ export interface LibrarySessionRow {
   visibility: number | null;
   precipProb: number | null;
   sessionImage: string | null;
-  /** Which observing site this session was captured from. NULL = the default
-   *  site. See server/lib/observingSites.ts. */
+  /** Which observing site this session was captured from. NULL = not explicitly
+   *  tagged, in which case the location comes from the capture files and only
+   *  then from the default site. See server/lib/library/sessionLocation.ts. */
   siteId: string | null;
+  /** Where the cached weather above was fetched. NULL predates the columns. */
+  weatherLat: number | null;
+  weatherLon: number | null;
 }
 
 export interface LibraryMetaRow {
@@ -134,6 +138,10 @@ export interface ImportHistoryRow {
   skipped: string | null;
   /** 1 if the user explicitly triggered this run, 0 for a scheduled auto-import tick. */
   manual: number;
+  /** 1 when `error` describes a user-requested cancellation rather than a
+   *  genuine failure, 0 (including rows written before this column existed)
+   *  otherwise. */
+  cancelled: number;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -232,6 +240,12 @@ db.prepare('CREATE INDEX IF NOT EXISTS idx_importHistory_finished ON importHisto
     // directly, while still hiding the routine "nothing changed" noise a
     // background tick produces every interval.
     db.prepare('ALTER TABLE importHistory ADD COLUMN manual INTEGER NOT NULL DEFAULT 0').run();
+  }
+  if (!ihCols.some(c => c.name === 'cancelled')) {
+    // 1 when the run stopped because the user clicked Cancel, 0 for a
+    // genuine failure. Lets Sync History show "Cancelled" instead of
+    // "Failed" without guessing from the error text.
+    db.prepare('ALTER TABLE importHistory ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0').run();
   }
 }
 
@@ -667,8 +681,12 @@ export const stmts = {
     `INSERT INTO sessionImportLog (telescopeId, remotePath, importedAt, objectId, sessionDate, outcome, message, deviceId)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ),
+  // weatherLat/weatherLon record where this fetch happened, so a session that
+  // later resolves to a different location re-fetches instead of showing another
+  // place's conditions. See weatherIsStale in observations.ts.
   setSessionWeather: db.prepare(
-    `UPDATE librarySessions SET temperature=?, cloudCover=?, humidity=?, windSpeed=?, dewPoint=?, visibility=?, precipProb=?
+    `UPDATE librarySessions SET temperature=?, cloudCover=?, humidity=?, windSpeed=?, dewPoint=?, visibility=?, precipProb=?,
+       weatherLat=?, weatherLon=?
      WHERE objectId=? AND date=?`
   ),
   removeSession: db.prepare('DELETE FROM librarySessions WHERE objectId = ? AND date = ?'),
@@ -730,8 +748,8 @@ export const stmts = {
 
   // Import history
   insertHistory: db.prepare(
-    `INSERT INTO importHistory (startedAt, finishedAt, objectsTotal, filesTotal, newFiles, bytesTotal, bytesNew, error, files, telescopeId, telescopeName, transportKind, skipped, manual)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO importHistory (startedAt, finishedAt, objectsTotal, filesTotal, newFiles, bytesTotal, bytesNew, error, files, telescopeId, telescopeName, transportKind, skipped, manual, cancelled)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ),
   // A run is worth surfacing when it actually did something (newFiles > 0),
   // failed (error is always actionable regardless of file count), or the
@@ -984,6 +1002,17 @@ export function getObjectFolderName(objectId: string): string {
   return getFolderName(objectId);
 }
 
+/** Resolve `<LIBRARY_DIR>/<folder for objectId>[/...extra]`, or null if the
+ *  result would escape LIBRARY_DIR. getFolderName falls back to the raw
+ *  objectId on a DB miss, so a crafted objectId with traversal tokens would
+ *  otherwise reach every caller that joins it onto LIBRARY_DIR unchecked. */
+export function resolveContainedObjectDir(objectId: string, ...extra: string[]): string | null {
+  const LIBRARY_DIR = getLibraryDir();
+  const dir = path.resolve(LIBRARY_DIR, getFolderName(objectId), ...extra);
+  if (dir !== LIBRARY_DIR && !dir.startsWith(LIBRARY_DIR + path.sep)) return null;
+  return dir;
+}
+
 // ─── Settings helper ─────────────────────────────────────────────────────────
 
 export function loadSettings(): Record<string, unknown> {
@@ -1043,10 +1072,8 @@ export function loadIndex(): LibraryIndex {
  * previous fallback.
  */
 export function findFallbackObservationImage(objectId: string): string | null {
-  const LIBRARY_DIR = getLibraryDir();
-  const folderName = getFolderName(objectId);
-  const objDir = path.join(LIBRARY_DIR, folderName);
-  if (!fs.existsSync(objDir)) return null;
+  const objDir = resolveContainedObjectDir(objectId);
+  if (!objDir || !fs.existsSync(objDir)) return null;
 
   let thumbnail: string | null = null;
   let stacked: string | null = null;
@@ -1083,7 +1110,7 @@ export function findFallbackObservationImage(objectId: string): string | null {
   }
 
   const best = stacked ?? any ?? thumbnail ?? costlyStacked ?? costlyAny;
-  return best ? `${folderName}/${best}` : null;
+  return best ? `${path.basename(objDir)}/${best}` : null;
 }
 
 // Negative cache for the fallback-image scan. An object with no resolvable
@@ -1240,9 +1267,8 @@ export function getLocalObjects(userId = '', search = '') {
 }
 
 export function getLocalThumbnail(objectId: string): Buffer | null {
-  const LIBRARY_DIR = getLibraryDir();
-  const objDir = path.join(LIBRARY_DIR, getFolderName(objectId));
-  if (!fs.existsSync(objDir)) return null;
+  const objDir = resolveContainedObjectDir(objectId);
+  if (!objDir || !fs.existsSync(objDir)) return null;
 
   const files = fs.readdirSync(objDir).filter(isRealFile);
 
@@ -1297,7 +1323,6 @@ export async function getLocalFile(relativePath: string): Promise<{ data: Buffer
  * The tombstone prevents any future re-import from the telescope.
  */
 export function deleteLocalObject(objectId: string): void {
-  const LIBRARY_DIR = getLibraryDir();
   // Update DB FIRST so a crash mid-delete never leaves the DB referencing removed files
   const existing = stmts.getObject.get(objectId);
   if (existing) {
@@ -1314,12 +1339,9 @@ export function deleteLocalObject(objectId: string): void {
   // this object from.
   deleteLibraryFileRowsForObject(objectId);
   deleteCaptureInfoForObject(objectId);
-  const objDir = path.join(LIBRARY_DIR, getFolderName(objectId));
-  if (fs.existsSync(objDir)) {
-    for (const fname of fs.readdirSync(objDir)) {
-      try { fs.unlinkSync(path.join(objDir, fname)); } catch { /* ignore */ }
-    }
-    try { fs.rmdirSync(objDir); } catch { /* ignore non-empty */ }
+  const objDir = resolveContainedObjectDir(objectId);
+  if (objDir && fs.existsSync(objDir)) {
+    try { fs.rmSync(objDir, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 }
 
@@ -1335,9 +1357,8 @@ function formatDuration(seconds: number): string {
 }
 
 export function getLocalIntegrationStats(objectId: string) {
-  const LIBRARY_DIR = getLibraryDir();
-  const objDir = path.join(LIBRARY_DIR, getFolderName(objectId));
-  if (!fs.existsSync(objDir)) {
+  const objDir = resolveContainedObjectDir(objectId);
+  if (!objDir || !fs.existsSync(objDir)) {
     return { objectId, totalFrames: 0, totalExposureSec: 0, totalFormatted: '0s', sessions: [] };
   }
 

@@ -19,7 +19,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 import { purgeStaleImportTmp, purgeJunkFiles, tick } from '../../server/lib/library/housekeeping';
 import { LIBRARY_DIR } from '../../server/lib/paths';
 import { setLibraryMigrating } from '../../server/lib/libraryMaintenance';
-import { claimImportLock, getImportStatus, getImportLockStartedAt } from '../../server/lib/library/import';
+import { claimImportLock, releaseImportLock, getImportStatus, getImportLockStartedAt } from '../../server/lib/library/import';
 import { createProfile } from '../../server/lib/telescopes';
 import { stmts } from '../../server/lib/library/objects';
 
@@ -28,7 +28,9 @@ afterAll(() => {
 });
 
 const IMPORT_TMP_BASE = path.join(TEST_DATA_DIR, 'import-tmp');
-const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+/** Matches IMPORT_TMP_MAX_AGE_MS in housekeeping.ts. */
+const CUTOFF_MS = 6 * HOUR_MS;
 
 function mkStaleDir(name: string, ageMs: number): void {
   const dir = path.join(IMPORT_TMP_BASE, name);
@@ -43,31 +45,34 @@ describe('purgeStaleImportTmp', () => {
   });
 
   it('is a no-op when the import-tmp base directory does not exist', () => {
-    expect(purgeStaleImportTmp()).toEqual({ deleted: 0, errors: 0 });
+    expect(purgeStaleImportTmp()).toMatchObject({ deleted: 0, errors: 0, bytes: 0 });
   });
 
-  it('deletes directories older than 24h and keeps fresh ones', () => {
-    mkStaleDir('stale-1', DAY_MS + 60_000); // 24h + 1min old
+  it('deletes directories older than the cutoff and keeps fresh ones', () => {
+    mkStaleDir('stale-1', CUTOFF_MS + 60_000);
     mkStaleDir('fresh-1', 60_000); // 1 minute old
 
     const result = purgeStaleImportTmp();
 
-    expect(result).toEqual({ deleted: 1, errors: 0 });
+    expect(result).toMatchObject({ deleted: 1, errors: 0, skippedActive: 1 });
     expect(fs.existsSync(path.join(IMPORT_TMP_BASE, 'stale-1'))).toBe(false);
     expect(fs.existsSync(path.join(IMPORT_TMP_BASE, 'fresh-1'))).toBe(true);
   });
 
-  it('treats the 24h boundary as inclusive (>=, not >)', () => {
-    mkStaleDir('exactly-24h', DAY_MS);
+  it('treats the cutoff as inclusive (>=, not >)', () => {
+    mkStaleDir('exactly-at-cutoff', CUTOFF_MS);
     const result = purgeStaleImportTmp();
-    expect(result).toEqual({ deleted: 1, errors: 0 });
-    expect(fs.existsSync(path.join(IMPORT_TMP_BASE, 'exactly-24h'))).toBe(false);
+    expect(result).toMatchObject({ deleted: 1, errors: 0 });
+    expect(fs.existsSync(path.join(IMPORT_TMP_BASE, 'exactly-at-cutoff'))).toBe(false);
   });
 
-  it('keeps a directory 1ms under the 24h boundary', () => {
-    mkStaleDir('just-under', DAY_MS - 1);
+  it('keeps a directory just under the cutoff', () => {
+    // Margin rather than 1ms: the purge reads its own Date.now() after this
+    // line, so a sub-millisecond gap races the clock and the assertion here is
+    // about which side of the cutoff wins, not about clock resolution.
+    mkStaleDir('just-under', CUTOFF_MS - 5_000);
     const result = purgeStaleImportTmp();
-    expect(result).toEqual({ deleted: 0, errors: 0 });
+    expect(result).toMatchObject({ deleted: 0, errors: 0, skippedActive: 1 });
     expect(fs.existsSync(path.join(IMPORT_TMP_BASE, 'just-under'))).toBe(true);
   });
 
@@ -75,26 +80,39 @@ describe('purgeStaleImportTmp', () => {
     fs.mkdirSync(IMPORT_TMP_BASE, { recursive: true });
     const stray = path.join(IMPORT_TMP_BASE, 'stray.txt');
     fs.writeFileSync(stray, 'x');
-    const oldTime = new Date(Date.now() - DAY_MS - 60_000);
+    const oldTime = new Date(Date.now() - CUTOFF_MS - 60_000);
     fs.utimesSync(stray, oldTime, oldTime);
 
     const result = purgeStaleImportTmp();
 
-    expect(result).toEqual({ deleted: 0, errors: 0 });
+    expect(result).toMatchObject({ deleted: 0, errors: 0 });
     expect(fs.existsSync(stray)).toBe(true);
   });
 
-  it('deletes a stale directory recursively, including its contents', () => {
+  it('deletes a stale directory recursively, and reports the bytes reclaimed', () => {
     const dir = path.join(IMPORT_TMP_BASE, 'stale-with-children');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'upload.part'), 'x');
-    const mtime = new Date(Date.now() - DAY_MS - 60_000);
+    fs.mkdirSync(path.join(dir, 'nested'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'upload.part'), 'x'.repeat(100));
+    fs.writeFileSync(path.join(dir, 'nested', 'more.part'), 'x'.repeat(50));
+    const mtime = new Date(Date.now() - CUTOFF_MS - 60_000);
     fs.utimesSync(dir, mtime, mtime);
 
     const result = purgeStaleImportTmp();
 
-    expect(result).toEqual({ deleted: 1, errors: 0 });
+    expect(result).toMatchObject({ deleted: 1, errors: 0, bytes: 150 });
     expect(fs.existsSync(dir)).toBe(false);
+  });
+
+  it('skips the sweep entirely while an import is running', () => {
+    mkStaleDir('stale-during-import', CUTOFF_MS + 60_000);
+    expect(claimImportLock()).toBe(true);
+    try {
+      const result = purgeStaleImportTmp();
+      expect(result).toMatchObject({ deleted: 0, errors: 0 });
+      expect(fs.existsSync(path.join(IMPORT_TMP_BASE, 'stale-during-import'))).toBe(true);
+    } finally {
+      releaseImportLock();
+    }
   });
 });
 

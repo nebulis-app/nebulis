@@ -1,18 +1,41 @@
 # Changelog
-## 1.5.1 (203) - August 2nd, 2026
+## 1.5.1 (207) - August 5th, 2026
+### New
+- Cancel a manual import or an automatic backup while it is running.
+- TIFF images now get thumbnails and previews, so a Dwarf's img_stacked_all.tif appears in the grid instead of only as a download card.
+- Sub-frame sync says "Already up to date" when every frame for the session is downloaded. It used to report no sub-frames found.
+
 ### Updated
-- The SMB share name field now accepts a folder inside the share, for example "Server/MyWorks", instead of only a top-level share name. Windows, macOS, and Docker all read it the same way.
+- The SMB share name field accepts a folder inside the share, for example "Server/MyWorks". Windows, macOS, and Docker read it the same way.
+- Folder uploads no longer need room for two copies. Each file leaves the temporary area as soon as it lands in your library.
+- Import checks free disk space before it starts and says how much is needed, instead of filling the disk and failing partway through.
+- Settings -> Storage shows how much space unfinished uploads are holding, with a button to free it.
+- The subframes tray fills the row and says how many of the session's frames it is showing, instead of stopping mid-row with a "+N" tile.
+- API endpoints are now rate limited.
 
 ### Fixes
-- Dwarf FTP: Set default username to "anonymous" with no password
-- Telescope connections now read "Wi-Fi" or "USB" everywhere. A DWARF telescope showed "FTP" on the Settings page and "Wi-Fi" on Backup Status for the same connection. 
-- The connection tag on a telescope stayed lit after the telescope stopped responding, because it reflected whether an address had been saved rather than whether the telescope answered. It now dims when the telescope goes offline.
-- A DWARF telescope with both Wi-Fi and USB set up listed only "1 USB" on its Settings row. Both connections are now counted.
-- Pasting a full smb:// address into the SMB share name field reported "not reachable on the network", which pointed at the telescope address when the share name was the problem. It now says which part of the address belongs in which field, and the telescope can no longer be saved until it's fixed.
+- Observations: a session stored with one folder per session showed your default site as its location, on both the observation page and the map, even when the images recorded where they were taken. Imports since 1.5.0 use that folder layout, so most recent sessions were affected.
+- Observations: conditions were fetched for your default site rather than where the images were actually taken. Affected sessions correct themselves the next time weather is refreshed.
+- Observations: the location picker only offered saved observing sites, so an image taken somewhere you have not set one up looked like it came from a site you never chose. It now offers "From image data" and uses it when the images carry a location. Picking a site still overrides it, and you can switch back.
+- Observations: the place name under the map showed only the city the first time you opened a location, then "City, State" on every later visit.
+- Sub-frames are FITS only. A Dwarf writes a preview JPG beside every frame and both were counted.
+- Sub-frame sync into a session-folder library saved a second copy of each frame at the object root instead of in the session folder. It also found nothing for objects whose catalog id differs from the telescope's folder name, for example "C 5" against IC342.
+- Planner: an object your horizon profile blocks all night was reported visible from dusk.
+- Folder import: two folders that resolved to the same name collapsed into one entry in the review step, so the session dates you chose for one of them were ignored.
+- Device pairing: an approved pairing code stayed redeemable indefinitely instead of expiring.
+- Gallery image and catalog paths are now checked for traversal, and slow filename matching patterns were tightened.
+- Connection errors on a custom SMB share called it a telescope and gave advice about power and Wi-Fi, which does not apply to a NAS or a PC. They now say server and point at the address, the machine being on, and SMB sharing being enabled.
+- The Hostname / IP Address field accepted anything, so "10.0.1.5/SeeStar/" saved without complaint and then failed every connection. It now takes a hostname or IP with an optional port and says which half belongs in which field. The server enforces the same rule, so onboarding and the API get it too.
+- A cancelled or failed folder upload left its files behind for 24 hours, in one reported case 125 GB on the system drive. The space is freed right away now, and the unattended cleanup runs hourly against a 6 hour cutoff.
+- Dwarf FTP logs in as "anonymous" with no password by default.
+- Telescope connections read "Wi-Fi" or "USB" everywhere. A DWARF showed "FTP" on the Settings page and "Wi-Fi" on Backup Status for the same connection.
+- The connection tag stayed lit after a telescope stopped responding, because it showed whether an address had been saved rather than whether the telescope answered. It now dims when the telescope goes offline.
+- A DWARF with both Wi-Fi and USB listed only "1 USB" on its Settings row. Both are counted.
+- Pasting a full smb:// address into the share name field reported "not reachable on the network", pointing at the telescope address when the share name was the problem. It now says which part belongs in which field and blocks saving until it is fixed.
 - Windows: a share name that included a folder was rejected with "Path traversal detected" even when the folder was inside the share.
-- macOS: a share that was already mounted, for example one you opened in Finder, failed with "SMB connection failed: Connection failed". Nebulis is meant to reuse an existing mount, but it was looking for it by an address that included the password, which the system mount list never contains, so it never found one and macOS refused to mount the share a second time. Mounts that Nebulis did not create are also no longer unmounted when it shuts down.
-- macOS: connection errors now say what actually went wrong. A missing folder, an already-mounted share, and a genuine network failure all reported the same "Connection failed".
-- macOS: the SMB password was written to the server log in plaintext when a mount failed, because the system tool echoes its full command line in the error. Passwords are now removed before anything is logged. Delete logs/server.log if you'd rather not keep the older entries.
+- macOS: a share that was already mounted, for example one you opened in Finder, failed with "SMB connection failed". Nebulis looked for the existing mount by an address that included the password, which the system mount list never contains. Mounts Nebulis did not create are also no longer unmounted at shutdown.
+- macOS: connection errors say what went wrong. A missing folder, an already-mounted share, and a real network failure all reported "Connection failed".
+- macOS: the SMB password was written to the server log in plaintext when a mount failed, because the system tool echoes its command line in the error. Passwords are removed before logging now. Delete logs/server.log if you would rather not keep the older entries.
 
 ## 1.5.0 (201) - August 2nd, 2026
 ### New

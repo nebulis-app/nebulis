@@ -1,12 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
-import { Telescope, Satellite, Download, Trash2 } from 'lucide-react';
+import { Telescope, Satellite, Download, Trash2, ArrowRight } from 'lucide-react';
 import { FitsThumbnail } from '../FitsThumbnail';
 import { useTheme } from '../../hooks/useTheme';
 import type { SessionFile } from '../../types';
 import { thumbSrcFor } from '../../lib/sessionImageSrc';
 
-/** Telescope subframes tray: a fixed-height grid that measures how many
- *  64px tiles fit and reserves the last slot for the "open viewer" button.
+/** Smallest a tile may be. Tiles stretch past this to consume the leftover
+ *  pixels of the row, so the strip always ends flush with the panel edge. */
+const MIN_TILE = 64;
+/** gap-1.5 */
+const GAP = 6;
+
+/**
+ * Evenly spaced indices across [0, total), endpoints included, so the strip
+ * represents the whole session rather than only its first few minutes. The
+ * returned values are real indices into the subframe list, which is what the
+ * viewer needs to open on the frame that was clicked.
+ *
+ * To go back to a plain "first N frames" strip, return
+ * `Array.from({ length: Math.min(count, total) }, (_, i) => i)`.
+ */
+function sampleIndices(total: number, count: number): number[] {
+  if (count >= total) return Array.from({ length: total }, (_, i) => i);
+  if (count <= 1) return [0];
+  return Array.from({ length: count }, (_, i) => Math.round((i * (total - 1)) / (count - 1)));
+}
+
+/** Telescope subframes tray: a single row of tiles that always fills the panel
+ *  width exactly. The row renders as many columns as fit at MIN_TILE and no
+ *  more, so it can never wrap and strand a tile on a second row. What is hidden
+ *  is stated in the footer instead of in an overflow tile.
  *  The ResizeObserver measurement is entirely local to this panel. */
 export function SubframesPanel({
   subFrames,
@@ -32,23 +55,24 @@ export function SubframesPanel({
   const { isDark } = useTheme();
   const hasSubFrames = subFrames.length > 0;
 
+  // Measured on the grid itself, which carries no padding of its own, so
+  // clientWidth is exactly the space the tiles have to divide up.
   const subFramesRowRef = useRef<HTMLDivElement>(null);
-  const [subFramesVisible, setSubFramesVisible] = useState(20);
+  const [columns, setColumns] = useState(16);
   useEffect(() => {
     const el = subFramesRowRef.current;
     if (!el) return;
-    const TILE = 64 + 6; // w-16 + gap-1.5
-    const PADDING = 24;  // p-3 each side
     const measure = () => {
-      const cols = Math.max(1, Math.floor((el.offsetWidth - PADDING + 6) / TILE));
-      const rows = Math.max(1, Math.floor((el.offsetHeight - PADDING + 6) / TILE));
-      setSubFramesVisible(cols * rows);
+      setColumns(Math.max(1, Math.floor((el.clientWidth + GAP) / (MIN_TILE + GAP))));
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  const shownIndices = sampleIndices(subFrames.length, columns);
+  const hiddenCount = subFrames.length - shownIndices.length;
 
   return (
     <div className={`rounded-2xl border min-w-0 flex flex-col ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
@@ -140,20 +164,25 @@ export function SubframesPanel({
       </div>
 
       {subFrames.length > 0 ? (
-        <div ref={subFramesRowRef} className="flex flex-wrap gap-1.5 p-3 flex-1 min-h-0 content-start">
-          {(() => {
-            // Always reserve the last slot for the "···" viewer button
-            const capacity = subFramesVisible - 1;
-            const shown = Math.min(capacity, subFrames.length);
-            const overflow = subFrames.length - shown;
-            return (
-              <>
-                {subFrames.slice(0, shown).map((file, idx) => (
+        <>
+          <div className="p-3">
+            <div
+              ref={subFramesRowRef}
+              className="grid gap-1.5"
+              // An explicit column count, rather than flex-wrap or auto-fill,
+              // is what guarantees a single row: the tiles divide up whatever
+              // width there is instead of overflowing onto a second line when
+              // the measurement is a pixel off.
+              style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+            >
+              {shownIndices.map(idx => {
+                const file = subFrames[idx];
+                return (
                   <button
                     key={file.path}
                     onClick={() => onOpenGallery(idx, subFrames)}
-                    title={file.name}
-                    className={`flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 ${
+                    title={`${file.name} (frame ${idx + 1} of ${subFrames.length})`}
+                    className={`aspect-square rounded-lg overflow-hidden border-2 ${
                       isDark ? 'border-slate-700 hover:border-slate-500 bg-slate-800' : 'border-slate-200 hover:border-slate-400 bg-slate-100'
                     }`}
                   >
@@ -168,21 +197,30 @@ export function SubframesPanel({
                       />
                     )}
                   </button>
-                ))}
-                <button
-                  onClick={() => onOpenGallery(overflow > 0 ? shown : 0, subFrames)}
-                  title={overflow > 0 ? `${overflow} more subframes. Open viewer.` : 'Open subframe viewer'}
-                  className={`flex-shrink-0 w-16 h-16 rounded-lg border-2 flex flex-col items-center justify-center gap-0.5 ${
-                    isDark ? 'border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-400 hover:text-slate-200' : 'border-slate-200 hover:border-slate-400 bg-slate-100 text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  <span className="text-lg leading-none tracking-widest">···</span>
-                  {overflow > 0 && <span className="text-[10px] font-medium">+{overflow}</span>}
-                </button>
-              </>
-            );
-          })()}
-        </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className={`px-4 py-2.5 border-t flex items-center justify-between gap-3 ${
+            isDark ? 'border-slate-800' : 'border-slate-200'
+          }`}>
+            <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              {hiddenCount > 0
+                ? `Showing ${shownIndices.length} of ${subFrames.length}, sampled across the session`
+                : `Showing all ${subFrames.length}`}
+            </span>
+            <button
+              onClick={() => onOpenGallery(0, subFrames)}
+              className={`flex items-center gap-1.5 text-xs font-medium transition flex-shrink-0 ${
+                isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {hiddenCount > 0 ? `View all ${subFrames.length}` : 'Open viewer'}
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </>
       ) : (
         <div className={`p-8 text-center ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
           No subframes downloaded yet - connect your telescope and use Download Subs to sync them.

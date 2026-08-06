@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
+import { strictRateLimiter, burstyRateLimiter } from '../middleware/rateLimit.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -16,12 +17,13 @@ import multer from 'multer';
 import { log } from '../lib/logger.js';
 import { debugLog, isDebugLoggingEnabled } from '../lib/debugLogger.js';
 import { isErrnoException } from '../lib/errors.js';
-import { THUMBNAILS_DIR, DATA_DIR } from '../lib/paths.js';
+import { THUMBNAILS_DIR } from '../lib/paths.js';
 import { getLibraryDir, isLibraryAvailable, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
 import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
 import { getSite } from '../lib/observingSites.js';
 import sharp from '../lib/sharp-optional.js';
 import { generateFitsThumbnail, fitsThumbnailPath, type FitsThumbnailTier } from '../lib/fitsThumbnail.js';
+import { generateTiffThumbnail, tiffThumbnailPath, type TiffThumbnailTier } from '../lib/tiffThumbnail.js';
 import { normalizeCatalogId, parseFilename, isRealFile, sessionNightFor, clampToNightSafeTime } from '../lib/telescopeFiles.js';
 import {
   runImport,
@@ -62,6 +64,7 @@ import {
   getGalleryImageRow,
   setGalleryImage,
   setGalleryImageUserChosen,
+  isCatalogSourceSentinel,
   findFallbackObservationImage,
   getStackedImages,
   getImportHistory,
@@ -83,6 +86,14 @@ import {
   resolveCatalogSourceSentinel,
 } from '../lib/localLibrary.js';
 import { stageUploadDestPath } from '../lib/library/uploadPath.js';
+import {
+  IMPORT_TMP_BASE,
+  isValidTmpId,
+  getImportTmpUsage,
+  purgeImportTmp,
+  purgeImportTmpSession,
+  checkFreeSpace,
+} from '../lib/library/importStaging.js';
 import { createNote, getNote } from '../lib/notes.js';
 import { hasCachedCatalogImage, fovForEntry, findCachedMaster, prefetchObjectWiki, prefetchObjectHubble } from '../lib/catalogPrefetch.js';
 import { prefetchSkyImage } from '../lib/skyImage.js';
@@ -478,7 +489,11 @@ router.put('/objects/:objectId/sessions/:date/site', requireAdmin, async (req: R
     return;
   }
   await backfillSingleSessionWeather(objectId, date).catch(err =>
-    console.warn(`[library] Weather re-backfill after site retag failed for ${objectId}:`, err instanceof Error ? err.message : err),
+    // objectId is request-controlled; keep it out of the format-string position
+    // (console.warn applies %-substitution to its first argument) and pass it
+    // as a plain %s argument instead, so a value containing its own %-specifiers
+    // can't be misinterpreted as formatting directives.
+    console.warn('[library] Weather re-backfill after site retag failed for %s:', objectId, err instanceof Error ? err.message : err),
   );
   res.apiSuccess({ updated: true, siteId });
 });
@@ -575,7 +590,74 @@ router.post('/import/commit', requireAdmin, (req: Request, res: Response) => {
   res.apiSuccess({ started: true, objects: plan.objects.filter(o => !o.skip).length });
 });
 
-const IMPORT_TMP_BASE = path.join(DATA_DIR, 'import-tmp');
+/**
+ * Folder-import wizard, preflight: does the staging volume have room for this
+ * upload? Called with the total byte size of the picked folder before the
+ * first batch goes out, so a doomed 125 GB upload is refused in the dialog
+ * instead of filling the system drive and failing partway through.
+ */
+router.post('/import/preflight', requireAdmin, (req: Request, res: Response) => {
+  const bytes = Number(req.body?.bytes);
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    res.apiError(400, 'VALIDATION_ERROR', 'bytes must be a non-negative number');
+    return;
+  }
+  const check = checkFreeSpace(IMPORT_TMP_BASE, bytes, 'to upload these files');
+  res.apiSuccess({
+    ok: check.ok,
+    path: check.path,
+    freeBytes: check.freeBytes,
+    requiredBytes: check.requiredBytes,
+    message: check.message,
+  });
+});
+
+/**
+ * Current size of the upload staging area, for the Storage settings card.
+ */
+router.get('/import/temp-usage', requireAdmin, (_req: Request, res: Response) => {
+  res.apiSuccess(getImportTmpUsage());
+});
+
+/**
+ * Manual "clean up temporary files". Deletes staged upload sessions that
+ * haven't been written to recently.
+ *
+ * The short age floor is deliberate: an upload batch in flight refreshes its
+ * session directory's mtime, so anything untouched for five minutes is not an
+ * active upload. A running import is refused outright rather than age-gated,
+ * since a commit reading from a staged dir would lose the files under it.
+ */
+const MANUAL_PURGE_MIN_AGE_MS = 5 * 60 * 1000;
+
+router.post('/import/temp-cleanup', requireAdmin, (_req: Request, res: Response) => {
+  if (getImportStatus().running) {
+    res.apiError(409, 'IMPORT_RUNNING', 'An import is running. Wait for it to finish, then clean up.');
+    return;
+  }
+  const result = purgeImportTmp(MANUAL_PURGE_MIN_AGE_MS);
+  log.info(result, '[library] manual import-tmp cleanup');
+  res.apiSuccess(result);
+});
+
+/**
+ * Drop one upload session. The wizard calls this when it is dismissed
+ * mid-upload, so an abandoned staging dir is reclaimed immediately instead of
+ * waiting for the sweeper.
+ */
+router.delete('/import/temp/:tmpId', requireAdmin, (req: Request, res: Response) => {
+  const tmpId = String(req.params.tmpId);
+  if (!isValidTmpId(tmpId)) {
+    res.apiError(400, 'INVALID_TMP_ID', 'Invalid upload session ID');
+    return;
+  }
+  if (getImportStatus().running) {
+    res.apiError(409, 'IMPORT_RUNNING', 'An import is running. Wait for it to finish.');
+    return;
+  }
+  const result = purgeImportTmpSession(tmpId);
+  res.apiSuccess(result);
+});
 
 /**
  * Folder-import wizard, pre-phase: accept an uploaded folder, reconstruct its
@@ -585,11 +667,28 @@ const IMPORT_TMP_BASE = path.join(DATA_DIR, 'import-tmp');
  * The client strips the top-level folder name from relative paths before
  * sending, so the temp dir IS the scan root (no extra nesting).
  */
-router.post('/import/upload-temp', requireAdmin, (req: Request, _res: Response, next) => {
+router.post('/import/upload-temp', requireAdmin, (req: Request, res: Response, next) => {
   const contentLengthHeader = req.headers['content-length'];
   const contentMb = contentLengthHeader
     ? (parseInt(contentLengthHeader, 10) / (1024 * 1024)).toFixed(1)
     : 'unknown';
+
+  // Per-batch space guard. The client preflights the whole upload before it
+  // starts, but batches arrive over minutes and something else may eat the
+  // disk in between, so each one is re-checked against what it declares. This
+  // is what stops a long upload from consuming the last free byte on the
+  // system drive: once free space drops under a batch plus headroom, the
+  // upload fails with an explanation instead of filling the volume.
+  const declaredBytes = contentLengthHeader ? parseInt(contentLengthHeader, 10) : NaN;
+  if (Number.isFinite(declaredBytes)) {
+    const space = checkFreeSpace(IMPORT_TMP_BASE, declaredBytes, 'to stage this upload');
+    if (!space.ok) {
+      log.warn({ declaredBytes, free: space.freeBytes, path: space.path }, '[upload-temp] refused: disk nearly full');
+      res.apiError(507, 'INSUFFICIENT_STORAGE', space.message ?? 'Not enough free space to stage this upload.');
+      return;
+    }
+  }
+
   req.__uploadStart = Date.now();
   req.__bytesReceived = 0;
   // Passive byte counter: does not put the stream in a competing flow — Node
@@ -958,7 +1057,15 @@ router.get('/objects/:objectId/sessions', (req: Request, res: Response) => {
 
 // ─── Delete object / session (tombstone) ─────────────────────────────────────
 
+// A running import can be actively writing into the same directory tree
+// these routes delete/move from (a new file mid-copy, a session folder being
+// created). Refused outright rather than age-gated or best-effort, same
+// posture as the import-tmp cleanup routes above.
 router.delete('/objects/:objectId', requireAdmin, (req: Request, res: Response) => {
+  if (getImportStatus().running) {
+    res.apiError(409, 'IMPORT_RUNNING', 'An import is running. Wait for it to finish, then delete.');
+    return;
+  }
   const objectId = String(req.params.objectId);
   try {
     deleteLocalObject(objectId);
@@ -971,6 +1078,10 @@ router.delete('/objects/:objectId', requireAdmin, (req: Request, res: Response) 
 });
 
 router.delete('/objects/:objectId/sessions/:date', requireAdmin, (req: Request, res: Response) => {
+  if (getImportStatus().running) {
+    res.apiError(409, 'IMPORT_RUNNING', 'An import is running. Wait for it to finish, then delete.');
+    return;
+  }
   const objectId = String(req.params.objectId);
   const date = String(req.params.date);
   try {
@@ -984,6 +1095,10 @@ router.delete('/objects/:objectId/sessions/:date', requireAdmin, (req: Request, 
 });
 
 router.delete('/objects/:objectId/sessions/:date/subframes', requireAdmin, (req: Request, res: Response) => {
+  if (getImportStatus().running) {
+    res.apiError(409, 'IMPORT_RUNNING', 'An import is running. Wait for it to finish, then delete.');
+    return;
+  }
   const objectId = String(req.params.objectId);
   const date = String(req.params.date);
   try {
@@ -1015,6 +1130,10 @@ router.post('/maintenance/purge-subframe-previews', requireAdmin, (req: Request,
 // ─── Move observation ────────────────────────────────────────────────────────
 
 router.post('/objects/:objectId/sessions/:date/move', requireAdmin, (req: Request, res: Response) => {
+  if (getImportStatus().running) {
+    res.apiError(409, 'IMPORT_RUNNING', 'An import is running. Wait for it to finish, then move.');
+    return;
+  }
   const fromObjectId = String(req.params.objectId);
   const date = String(req.params.date);
   const bodyParsed = MoveObservationBodySchema.safeParse(req.body);
@@ -1139,7 +1258,7 @@ async function renderThumbnailOnce(
   return work;
 }
 
-router.get('/file/thumbnail', async (req: Request, res: Response) => {
+router.get('/file/thumbnail', burstyRateLimiter, async (req: Request, res: Response) => {
   const filePath = queryString(req.query.path);
   if (!filePath) {
     res.status(400).send('Missing path');
@@ -1200,7 +1319,11 @@ router.get('/file/thumbnail', async (req: Request, res: Response) => {
     res.sendFile(cachePath);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Thumbnail generation failed';
-    res.status(500).send(msg);
+    // Explicit text/plain: res.send(string) defaults to text/html, and this
+    // message can carry the request's own `path` query value (e.g. inside an
+    // ENOENT message), which the browser would otherwise be free to render
+    // and, in principle, execute as markup.
+    res.status(500).type('text/plain').send(msg);
   }
 });
 
@@ -1259,7 +1382,64 @@ router.get('/fits-thumbnail', async (req: Request, res: Response) => {
     res.send(data);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'FITS thumbnail generation failed';
-    res.status(500).send(msg);
+    // See the /file/thumbnail route above — explicit text/plain so a `path`
+    // value reflected into the error message is never eligible for the
+    // browser to render as HTML.
+    res.status(500).type('text/plain').send(msg);
+  }
+});
+
+// ─── TIFF thumbnail (linear-float MTF autostretch → JPEG, generate-if-missing) ──
+//
+// A Dwarf's `img_stacked_all.tif` master stack is ~100 MB of 32-bit float
+// scene-linear data. sharp's normal resize+encode reads it as clipped-white
+// (see server/lib/tiffThumbnail.ts for the measurements), so this route
+// exists the same way /fits-thumbnail does: decode the true samples and
+// autostretch before ever handing bytes to sharp, then cache the JPEG.
+router.get('/tiff-thumbnail', async (req: Request, res: Response) => {
+  const filePath = queryString(req.query.path);
+  if (!filePath) {
+    res.status(400).send('Missing path');
+    return;
+  }
+
+  const tier: TiffThumbnailTier = queryString(req.query.size) === 'preview' ? 'preview' : 'thumb';
+
+  if (!/\.tiff?$/i.test(filePath)) {
+    res.status(415).send('Unsupported file type for TIFF thumbnail');
+    return;
+  }
+
+  const LIBRARY_DIR = getLibraryDir();
+  const absPath = path.resolve(LIBRARY_DIR, filePath);
+  const libRoot = LIBRARY_DIR.endsWith(path.sep) ? LIBRARY_DIR : LIBRARY_DIR + path.sep;
+  if (!absPath.startsWith(libRoot)) {
+    res.status(403).send('Forbidden');
+    return;
+  }
+
+  if (!(await requireLibraryReachable(res))) return;
+
+  try {
+    await withTimeout(fs.promises.access(absPath), LIBRARY_IO_TIMEOUT_MS);
+  } catch {
+    res.status(404).send('Not found');
+    return;
+  }
+
+  const thumbPath = tiffThumbnailPath(absPath, tier);
+  try {
+    await generateTiffThumbnail(absPath, tier);
+    // Read + send the buffer rather than res.sendFile: the thumbnail lives in
+    // a `.thumbs/` directory, and Express's sendFile (via `send`) defaults to
+    // dotfiles:'ignore', which 404s any path with a dot-prefixed segment.
+    const data = await fs.promises.readFile(thumbPath);
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(data);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'TIFF thumbnail generation failed';
+    res.status(500).type('text/plain').send(msg);
   }
 });
 
@@ -1318,7 +1498,7 @@ router.get('/headers', async (req: Request, res: Response) => {
 
 // ─── ZIP download (local files only) ─────────────────────────────────────────
 
-router.get('/download/objects/:objectId', async (req: Request, res: Response) => {
+router.get('/download/objects/:objectId', strictRateLimiter, async (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const fileType = queryString(req.query.fileType); // 'image', 'fits', 'all'
   const sessionDate = queryString(req.query.date);
@@ -1765,12 +1945,34 @@ router.put('/objects/:objectId/gallery-image', requireAdmin, (req: Request, res:
     let resolved = imagePath || null;
     // When resetting to default (null), find the stored sky survey image
     if (resolved === null) {
+      // getObjectFolderName falls back to the raw objectId on a DB miss, so a
+      // crafted objectId with traversal tokens would otherwise escape LIBRARY_DIR.
       const folderName = getObjectFolderName(objectId);
-      const objDir = path.join(getLibraryDir(), folderName);
+      const LIBRARY_DIR = getLibraryDir();
+      const objDir = path.resolve(LIBRARY_DIR, folderName);
+      if (!objDir.startsWith(LIBRARY_DIR + path.sep)) {
+        res.apiError(400, 'INVALID_OBJECT_ID', 'Object id resolves outside the library');
+        return;
+      }
       try {
         const skyFile = fs.readdirSync(objDir).find(f => f.startsWith('sky_') && /\.(jpg|jpeg|png)$/i.test(f));
         if (skyFile) resolved = `${folderName}/${skyFile}`;
       } catch { /* dir may not exist */ }
+    }
+    // A client-supplied imagePath (the common case: picking one of this
+    // object's own images) must resolve inside LIBRARY_DIR. Without this,
+    // a value like "../../../../etc/passwd" gets stored verbatim and later
+    // reaches sharp() on the *public*, auth-bypassed /thumbnail route via
+    // resolveObjectImagePath — an unauthenticated arbitrary-file read, and
+    // (on a decode failure) delete. The catalog-source:* sentinel is a fixed
+    // literal, not a path, so it's exempt.
+    if (resolved !== null && !isCatalogSourceSentinel(resolved)) {
+      const LIBRARY_DIR = getLibraryDir();
+      const abs = path.resolve(LIBRARY_DIR, resolved);
+      if (abs !== LIBRARY_DIR && !abs.startsWith(LIBRARY_DIR + path.sep)) {
+        res.apiError(400, 'INVALID_PATH', 'imagePath resolves outside the library');
+        return;
+      }
     }
     setGalleryImageUserChosen(objectId, resolved);
     res.apiSuccess({ objectId, galleryImage: resolved });
@@ -1790,8 +1992,17 @@ router.post('/objects/:objectId/gallery-image/upload', requireAdmin, manualUploa
   }
 
   try {
+    // getObjectFolderName falls back to the raw objectId on a DB miss, so a
+    // crafted objectId with traversal tokens would otherwise let this upload
+    // (which mkdirs + writes) land outside LIBRARY_DIR.
     const folderName = getObjectFolderName(objectId);
-    const objDir = path.join(getLibraryDir(), folderName);
+    const LIBRARY_DIR = getLibraryDir();
+    const objDir = path.resolve(LIBRARY_DIR, folderName);
+    if (!objDir.startsWith(LIBRARY_DIR + path.sep)) {
+      try { fs.unlinkSync(imageFile.path); } catch { /* ignore */ }
+      res.apiError(400, 'INVALID_OBJECT_ID', 'Object id resolves outside the library');
+      return;
+    }
     if (!fs.existsSync(objDir)) {
       fs.mkdirSync(objDir, { recursive: true });
     }
@@ -1828,7 +2039,7 @@ router.get('/objects/:objectId/sessions/:date/session-image', (req: Request, res
   res.apiSuccess({ objectId, date, sessionImage });
 });
 
-router.put('/objects/:objectId/sessions/:date/session-image', requireAdmin, (req: Request, res: Response) => {
+router.put('/objects/:objectId/sessions/:date/session-image', requireAdmin, strictRateLimiter, (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const date = String(req.params.date);
   const bodyParsed = SessionImageBodySchema.safeParse(req.body ?? {});
@@ -1840,6 +2051,16 @@ router.put('/objects/:objectId/sessions/:date/session-image', requireAdmin, (req
   if (imagePath !== null && imagePath !== undefined && !imagePath.trim()) {
     res.apiError(400, 'INVALID_PATH', 'imagePath must be a non-empty string or null');
     return;
+  }
+  // Stored verbatim and later joined with LIBRARY_DIR for an existence check
+  // (see getLocalSessions) — reject anything that would resolve outside it.
+  if (imagePath) {
+    const LIBRARY_DIR = getLibraryDir();
+    const abs = path.resolve(LIBRARY_DIR, imagePath);
+    if (abs !== LIBRARY_DIR && !abs.startsWith(LIBRARY_DIR + path.sep)) {
+      res.apiError(400, 'INVALID_PATH', 'imagePath resolves outside the library');
+      return;
+    }
   }
   setSessionImage(objectId, date, imagePath ?? null);
   res.apiSuccess({ objectId, date, sessionImage: imagePath ?? null });
@@ -1987,8 +2208,16 @@ router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, edi
   }
 
   try {
+    // getObjectFolderName falls back to the raw objectId on a DB miss, so a
+    // crafted objectId with traversal tokens would otherwise let this upload
+    // (which mkdirs + writes) land outside LIBRARY_DIR. Thrown, not returned
+    // directly, so the catch below still cleans up the staged upload.
     const folderName = getObjectFolderName(objectId);
-    const objDir = path.join(getLibraryDir(), folderName);
+    const LIBRARY_DIR = getLibraryDir();
+    const objDir = path.resolve(LIBRARY_DIR, folderName);
+    if (!objDir.startsWith(LIBRARY_DIR + path.sep)) {
+      throw new Error('Object id resolves outside the library');
+    }
     if (!fs.existsSync(objDir)) fs.mkdirSync(objDir, { recursive: true });
 
     // Build a filename that parseFilename can associate with the correct session

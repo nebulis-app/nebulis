@@ -5,6 +5,13 @@ on:
     branches: ['**']
   pull_request:
 
+# Least-privilege default: this workflow only checks out code, runs tests,
+# and uploads a coverage artifact — it never needs to write to the repo,
+# issues, or PRs. Without an explicit block, jobs run with the repo's default
+# GITHUB_TOKEN permissions, which can be broader than this workflow needs.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

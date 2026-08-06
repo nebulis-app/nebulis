@@ -233,9 +233,37 @@ export function setSessionImage(objectId: string, date: string, imagePath: strin
 
 // ─── Object image resolution ─────────────────────────────────────────────────
 
+/** Resolve a stored `galleryImage` value to an absolute path, but only when it
+ *  stays inside LIBRARY_DIR. `galleryImage` is set via PUT
+ *  /objects/:objectId/gallery-image, which accepts any string in its request
+ *  body — a value like "../../../../etc/passwd" would otherwise let
+ *  resolveObjectImagePath hand back an arbitrary path. That return value
+ *  reaches `sharp(srcPath)` on the *public* (auth-bypassed)
+ *  /objects/:objectId/thumbnail route, so an unvalidated escape isn't just a
+ *  read of arbitrary file content: a decode failure there also unlinks
+ *  `srcPath`, i.e. an admin's bad input becomes an unauthenticated arbitrary
+ *  file read + delete primitive. Returns null (same as "no such file") rather
+ *  than throwing, so this composes with resolveObjectImagePath's existing
+ *  fallback-through-priority-tiers structure. */
+function safeGalleryImagePath(galleryImage: string): string | null {
+  const LIBRARY_DIR = getLibraryDir();
+  const abs = path.resolve(LIBRARY_DIR, galleryImage);
+  if (abs !== LIBRARY_DIR && !abs.startsWith(LIBRARY_DIR + path.sep)) return null;
+  return abs;
+}
+
+const CATALOG_SOURCE_SENTINEL_RE = /^catalog-source:(hubble|wiki|dss2)$/;
+
+/** True for the `catalog-source:hubble|wiki|dss2` sentinel — a fixed set of
+ *  literal values, not a filesystem path, so route-level path validation must
+ *  let it through unchanged. */
+export function isCatalogSourceSentinel(value: string): boolean {
+  return CATALOG_SOURCE_SENTINEL_RE.test(value);
+}
+
 /** `catalog-source:hubble|wiki|dss2` sentinel → cached master path on disk. */
 export function resolveCatalogSourceSentinel(value: string, resolvedId: string): string | null {
-  const match = value.match(/^catalog-source:(hubble|wiki|dss2)$/);
+  const match = value.match(CATALOG_SOURCE_SENTINEL_RE);
   if (!match) return null;
   const source = match[1];
   const candidate = source === 'hubble' ? hubbleImagePath(resolvedId)
@@ -270,17 +298,17 @@ export async function resolveObjectImagePath(
   if (row.userSet && row.galleryImage) {
     const sentinel = resolveCatalogSourceSentinel(row.galleryImage, resolvedId);
     if (sentinel) return sentinel;
-    const abs = path.join(getLibraryDir(), row.galleryImage);
-    if (fs.existsSync(abs)) return abs;
-    console.warn(`[gallery] ${objectId}: userSet galleryImage="${row.galleryImage}" did not resolve `
-      + `(sentinel=${row.galleryImage.startsWith('catalog-source:')}, abs=${abs}); falling back to sky survey`);
+    const abs = safeGalleryImagePath(row.galleryImage);
+    if (abs && fs.existsSync(abs)) return abs;
+    console.warn('[gallery] %s: userSet galleryImage=%s did not resolve (sentinel=%s, abs=%s); falling back to sky survey',
+      objectId, row.galleryImage, row.galleryImage.startsWith('catalog-source:'), abs);
   }
 
   if (!preferSkySurvey && row.galleryImage) {
     const sentinel = resolveCatalogSourceSentinel(row.galleryImage, resolvedId);
     if (sentinel) return sentinel;
-    const abs = path.join(getLibraryDir(), row.galleryImage);
-    if (fs.existsSync(abs)) return abs;
+    const abs = safeGalleryImagePath(row.galleryImage);
+    if (abs && fs.existsSync(abs)) return abs;
   }
 
   const cached = findCachedMaster(resolvedId);
@@ -298,8 +326,8 @@ export async function resolveObjectImagePath(
   } catch { /* external service unavailable */ }
 
   if (row.galleryImage) {
-    const abs = path.join(getLibraryDir(), row.galleryImage);
-    if (fs.existsSync(abs)) return abs;
+    const abs = safeGalleryImagePath(row.galleryImage);
+    if (abs && fs.existsSync(abs)) return abs;
   }
 
   return null;

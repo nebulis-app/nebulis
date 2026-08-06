@@ -102,9 +102,6 @@ const stmts = {
             minAlt = ?, horizonProfile = ?, visibleSkyMap = ?
       WHERE id = 1`,
   ),
-  sessionSiteId: db.prepare<[string, string], { siteId: string | null }>(
-    'SELECT siteId FROM librarySessions WHERE objectId = ? AND date = ?',
-  ),
 };
 
 // ─── Row ↔ domain ───────────────────────────────────────────────────────────
@@ -206,23 +203,6 @@ export function getActiveSite(): ObservingSite {
 export function setActiveSite(id: string | null): void {
   if (id && !getSite(id)) throw new Error(`Unknown observing site: ${id}`);
   stmts.setActiveSiteId.run(id ?? '');
-}
-
-/**
- * The site an already-imported session was captured from.
- *
- * `siteId = NULL` (every session that predates retagging) means the default
- * site, which is exactly the location those sessions resolved to before this
- * feature existed. A dangling id also falls back to the default, so deleting a
- * site degrades its sessions instead of erroring.
- */
-export function siteForSession(objectId: string, date: string): ObservingSite {
-  const row = stmts.sessionSiteId.get(objectId, date);
-  if (row?.siteId) {
-    const site = getSite(row.siteId);
-    if (site) return site;
-  }
-  return getDefaultSite();
 }
 
 /**
@@ -371,7 +351,7 @@ export function setDefaultSite(id: string): boolean {
  * bottoms out at a default site.
  *
  * Sessions tagged to the deleted site keep their now-dangling `siteId` and read
- * back as the default (see `siteForSession`), so no observation history is
+ * back as the default (see sessionLocation.ts), so no observation history is
  * touched. Deleting the default promotes the next site by sort order.
  */
 export function deleteSite(id: string): { deleted: boolean; reason?: string } {

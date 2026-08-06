@@ -238,6 +238,11 @@ export function pollPairing(deviceCode: string): PollResult {
   if (row.status === 'rejected') return { status: 'rejected' };
   if (row.status === 'consumed') return { status: 'expired' }; // already exchanged
   if (row.status !== 'approved' || !row.userId) return { status: 'expired' };
+  // Approval does not extend the pairing TTL. Without this, a userCode
+  // approved on the TV screen (or a QR from startApprovedPairing, which
+  // inserts pre-approved) stays redeemable for a 30-day device token forever,
+  // since sweepExpired only runs lazily inside startPairing.
+  if (row.expiresAt < Date.now()) return { status: 'expired' };
 
   const user = getUserById(row.userId);
   if (!user) return { status: 'expired' };

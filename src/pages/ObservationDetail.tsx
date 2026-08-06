@@ -936,6 +936,7 @@ if (isLoading) {
                     objectId={objectId}
                     date={date}
                     siteId={observation.siteId}
+                    fileCoordinates={observation.fileCoordinates}
                     isAdmin={isAdmin}
                   />
                 )}

@@ -16,7 +16,7 @@ import {
 } from '../lib/telescopes.js';
 import db from '../lib/db.js';
 import { smbListDir } from '../lib/smb.js';
-import { parseShareName } from '../lib/smb.shared.js';
+import { parseShareName, validateHostAddress } from '../lib/smb.shared.js';
 import { tcpProbe, getSmbOpHealth, SMB_PORT } from '../lib/smbReachability.js';
 import { ftpTestConnection, parseFtpHost } from '../lib/smb.ftp.js';
 import { getWalkerConfig, isDwarfKind } from '../lib/walkers/index.js';
@@ -65,10 +65,31 @@ const ShareNameSchema = z.string().optional().superRefine((val, ctx) => {
   }
 });
 
+/**
+ * The mirror of ShareNameSchema for the address field, for the mirror-image
+ * mistake: a host and share pasted together as "10.0.1.5/SeeStar/". That saved
+ * without complaint and then failed every connection with a network error that
+ * never mentioned the real problem.
+ *
+ * Empty passes for the same reason it does above: a local (USB) transport has
+ * no address at all.
+ */
+const HostnameSchema = z.string().optional().superRefine((val, ctx) => {
+  if (val === undefined || val.trim() === '') return;
+  try {
+    validateHostAddress(val);
+  } catch (err) {
+    ctx.addIssue({
+      code: 'custom',
+      message: err instanceof Error ? err.message : 'Invalid hostname or IP address',
+    });
+  }
+});
+
 const TelescopeProfileBodySchema = z.object({
   name: z.string().min(1).optional(),
   model: z.string().optional(),
-  hostname: z.string().optional(),
+  hostname: HostnameSchema,
   shareName: ShareNameSchema,
   username: z.string().optional(),
   password: z.string().optional(),
@@ -89,7 +110,7 @@ const TelescopeProfileBodySchema = z.object({
 });
 
 const TestConnectionBodySchema = z.object({
-  hostname: z.string().optional(),
+  hostname: HostnameSchema,
   shareName: z.string().optional(),
   username: z.string().optional(),
   password: z.string().optional(),
@@ -109,7 +130,7 @@ const TransportKindSchema = z.enum(TRANSPORT_KINDS);
 const TransportBodySchema = z.object({
   kind: TransportKindSchema,
   priority: z.number().int().optional(),
-  hostname: z.string().optional(),
+  hostname: HostnameSchema,
   shareName: ShareNameSchema,
   username: z.string().optional(),
   password: z.string().optional(),
@@ -669,7 +690,11 @@ router.post('/test-connection', requireAdmin, async (req: Request, res: Response
   log.info({ hostname, shareName, username: username || 'guest', kind }, '[smb] test-connection attempt');
   try {
     const entries = await smbListDir(walker.basePath, {
-      hostname, shareName, username: username || 'guest', password,
+      // kind is passed so an unreachable host is reported as "the server" for a
+      // custom SMB share and "the telescope" for a real one. Without it this
+      // ad-hoc profile falls back to telescope wording, which is what made a
+      // mistyped NAS address report a missing telescope.
+      kind, hostname, shareName, username: username || 'guest', password,
     });
     const objectCount = entries.filter(e => e.type === 'dir' && isObjectFolder(e.name)).length;
     log.info({ hostname, shareName, objectCount }, '[smb] test-connection ok');

@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { getLibraryDir, isLibraryAvailable, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../libraryPath.js';
 import { isLibraryMigrating } from '../libraryMaintenance.js';
-import { DATA_DIR } from '../paths.js';
+import { purgeImportTmp, type PurgeResult } from './importStaging.js';
 import { isRealFile, isSidecarFile } from '../telescopeFiles.js';
 import { MANIFEST_NAME } from './libraryFiles.js';
 import {
@@ -38,10 +38,16 @@ const STALE_LOCK_MS = 6 * 60 * 60 * 1000;
  * entire event loop for as long as the OS's SMB client took to give up. Gated
  * on isLibraryAvailable() up front so a disconnected/migrating library skips
  * the scan entirely instead of attempting it.
+ *
+ * Also skipped entirely while an import is running, same reasoning as
+ * purgeStaleImportTmp() below: an import writes `<dest>.tmp` files before
+ * renaming them into place, and this purge would otherwise delete an
+ * in-flight staging file out from under a running import.
  */
 export async function purgeJunkFiles(): Promise<{ deleted: number; errors: number }> {
   let deleted = 0;
   let errors = 0;
+  if (getImportStatus().running) return { deleted, errors };
   if (isLibraryMigrating() || !(await isLibraryAvailable())) return { deleted, errors };
 
   const LIBRARY_DIR = getLibraryDir();
@@ -95,51 +101,43 @@ export async function purgeJunkFiles(): Promise<{ deleted: number; errors: numbe
 
 // ─── Import-tmp cleanup ──────────────────────────────────────────────────────
 
-const IMPORT_TMP_BASE = path.join(DATA_DIR, 'import-tmp');
-const IMPORT_TMP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/**
+ * How long an abandoned upload session is kept before the unattended sweep
+ * reclaims it. This was 24 hours, which is far too generous for something that
+ * holds a full second copy of the user's import: a 125 GB upload that failed
+ * or was abandoned sat on the system drive for a day and filled it. Six hours
+ * is still well past any legitimate "I'll finish the wizard in a minute" gap,
+ * and the manual cleanup button covers anyone who wants the space back now.
+ */
+const IMPORT_TMP_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 /**
- * Delete UUID subdirectories under DATA_DIR/import-tmp that are older than
- * 24 hours. These are created by the folder-import wizard upload step and
- * cleaned up automatically when the commit phase completes. If the user
- * abandons the wizard before committing, the dirs accumulate indefinitely
- * without this sweep.
+ * Delete UUID subdirectories under DATA_DIR/import-tmp older than the cutoff.
+ * These are created by the folder-import wizard upload step and cleaned up
+ * automatically when the commit phase completes. If the user abandons the
+ * wizard before committing, the dirs accumulate without this sweep.
+ *
+ * Skipped entirely while an import is running: a commit reading from a staged
+ * dir refreshes its mtime as it deletes files, so it would not normally look
+ * stale, but a long stall on one huge file could age it past the cutoff and
+ * this would delete the very files the running import is about to copy.
  */
-export function purgeStaleImportTmp(): { deleted: number; errors: number } {
-  let deleted = 0;
-  let errors = 0;
-  if (!fs.existsSync(IMPORT_TMP_BASE)) return { deleted, errors };
-
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(IMPORT_TMP_BASE, { withFileTypes: true });
-  } catch {
-    return { deleted, errors };
+export function purgeStaleImportTmp(): PurgeResult {
+  if (getImportStatus().running) {
+    return { deleted: 0, errors: 0, bytes: 0, skippedActive: 0 };
   }
-
-  const now = Date.now();
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const dirPath = path.join(IMPORT_TMP_BASE, entry.name);
-    try {
-      const { mtimeMs } = fs.statSync(dirPath);
-      if (now - mtimeMs >= IMPORT_TMP_MAX_AGE_MS) {
-        fs.rmSync(dirPath, { recursive: true, force: true });
-        deleted++;
-      }
-    } catch {
-      errors++;
-    }
+  const result = purgeImportTmp(IMPORT_TMP_MAX_AGE_MS);
+  if (result.deleted > 0) {
+    console.log(
+      `[library] Purged ${result.deleted} stale import-tmp dir(s)` +
+      `${result.errors > 0 ? ` (${result.errors} errors)` : ''}`,
+    );
   }
-
-  if (deleted > 0) {
-    console.log(`[library] Purged ${deleted} stale import-tmp dir(s)${errors > 0 ? ` (${errors} errors)` : ''}`);
-  }
-  return { deleted, errors };
+  return result;
 }
 
 export function scheduleImportTmpCleanup(): void {
-  setInterval(() => { purgeStaleImportTmp(); }, 24 * 60 * 60 * 1000);
+  setInterval(() => { purgeStaleImportTmp(); }, 60 * 60 * 1000);
 }
 
 // ─── Auto-import scheduler ──────────────────────────────────────────────────

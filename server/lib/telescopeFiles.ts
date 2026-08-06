@@ -51,7 +51,15 @@ export interface ParsedFilename {
   suffix?: string;       // e.g. 'A'
   extension: string;
   isThumbnail: boolean;
+  /** Set when the name matched a sub-frame pattern but the extension is not
+   *  FITS: this is a device's per-frame preview. `type` reads 'thumbnail',
+   *  which is what it is, but the import filter still needs to recognise it as
+   *  frame-shaped so it can refuse one preview per sub-frame. */
+  framePreview?: boolean;
 }
+
+/** A sub-frame is a raw exposure, and every device writes those as FITS. */
+export const FITS_EXTENSIONS = new Set(['.fit', '.fits', '.fts']);
 
 /**
  * Parse a SeeStar filename into structured metadata.
@@ -61,8 +69,33 @@ export interface ParsedFilename {
  *   sub_00001_M42_10.0s_IRCUT_20241015-205200.fit
  *   Stacked_150_M42_10.0s_IRCUT_20241015-210530A_thn.jpg
  *   Lunar_20241015-193000.avi
+ *
+ * Several of the sub-frame patterns below match a device's per-frame *preview*
+ * as readily as the frame itself, because the two share a stem and differ only
+ * by extension. Dwarf is the clearest case: a RAW_TELE session folder holds
+ *
+ *   IC 1396_60s60_Duo-Band_20260704-235645742_34C.fits    (16 MB, the frame)
+ *   Thumbnail/IC 1396_60s60_Duo-Band_20260704-235645742_34C.jpg   (45 KB)
+ *
+ * and only the directory tells them apart, which this function never sees.
+ * So the rule is enforced once, on the way out: a sub-frame is FITS. Anything
+ * else that matched a sub-frame pattern is that frame's preview and is
+ * reclassified as a thumbnail, which is what it is.
  */
 export function parseFilename(filename: string): ParsedFilename {
+  const parsed = parseFilenameFormat(filename);
+  if (parsed.type === 'sub' && !FITS_EXTENSIONS.has(parsed.extension)) {
+    // subIndex is dropped with it: an index only means something for a frame
+    // in the capture sequence, and keeping it would let a preview sort itself
+    // in among the real ones.
+    return { ...parsed, type: 'thumbnail', isThumbnail: true, subIndex: undefined, framePreview: true };
+  }
+  return parsed;
+}
+
+/** Pattern matching only. Call `parseFilename`, which applies the rules that
+ *  hold regardless of which pattern a name happened to match. */
+function parseFilenameFormat(filename: string): ParsedFilename {
   const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
   const isThumbnail = filename.includes('_thn.') || /thumbnail/i.test(filename);
 
@@ -179,8 +212,14 @@ export function parseFilename(filename: string): ParsedFilename {
   // below but prefixed stacked-<N>_ (lowercase dash) and no temperature suffix.
   //   stacked-16_Barnard 33_15s60_Duo-Band_20260325-200347458.fits
   //   Pattern: stacked-<N>_<target>_<exp>s<gain>_<mode>_<YYYYMMDD>-<HHMMSS>[mmm].<ext>
+  //
+  // The exposure token uses the same (?:\.\d+)? shape as exposurePattern above
+  // (not a bare \d+\.?\d* — that leaves \.? and \d* both optional and adjacent
+  // over the same digit class, which a crafted filename can use for polynomial
+  // backtracking) rather than reusing exposurePattern itself, since Dwarf's
+  // format has no SeeStar-style `ms` unit to allow for.
   const dwarfRollingStackMatch = filename.match(
-    /^stacked-(\d+)_(.+?)_\d+\.?\d*s\d+_[^_]+_(\d{4})(\d{2})(\d{2})-(\d{6})\d*\.(fits?|png|jpe?g)$/i,
+    /^stacked-(\d+)_(.+?)_\d+(?:\.\d+)?s\d+_[^_]+_(\d{4})(\d{2})(\d{2})-(\d{6})\d*\.(fits?|png|jpe?g)$/i,
   );
   if (dwarfRollingStackMatch) {
     const [, , target, y, mo, d, hms] = dwarfRollingStackMatch;
@@ -203,8 +242,12 @@ export function parseFilename(filename: string): ParsedFilename {
   //
   // "failed_" prefixed variants are identical in structure but are rejected frames;
   // shouldImportFile() drops them before import so they are rarely parsed.
+  // Same (?:\.\d+)? shape as the rolling-stack pattern above, for the same
+  // reason: \d+\.?\d*s\d* left two independently-optional digit runs adjacent
+  // to each other, which is the classic shape a static analyzer (and a
+  // crafted filename) can turn into polynomial-time backtracking.
   const dwarfRawTeleMatch = filename.match(
-    /^(?:failed_)?(.+?)_(\d+\.?\d*s\d*)_([A-Za-z0-9-]+)_(\d{4})(\d{2})(\d{2})-(\d{6})\d*_\d+C\.(fits?|jpe?g|png)$/i,
+    /^(?:failed_)?(.+?)_(\d+(?:\.\d+)?s\d*)_([A-Za-z0-9-]+)_(\d{4})(\d{2})(\d{2})-(\d{6})\d*_\d+C\.(fits?|jpe?g|png)$/i,
   );
   if (dwarfRawTeleMatch) {
     const [, target, , mode, y, mo, d, hms] = dwarfRawTeleMatch;
@@ -455,8 +498,14 @@ export function getObjectFromSubFolder(subFolderName: string): string {
  * - Removes spaces: "IC 1318" -> "IC1318", "M 42" -> "M42"
  */
 export function normalizeCatalogId(folderId: string): string {
+  // `panel` (not `panel\d*`) — the trailing `\s*\d*$` already strips any
+  // number after any suffix word, including "panel". Keeping a second,
+  // independently-optional \d* directly on "panel" as well made the two
+  // adjacent \d* groups ambiguous over the same digits (e.g. "panel12" can
+  // split as panel+"12"+"" or panel+"1"+"2"), which is the shape a crafted
+  // folder name can turn into polynomial-time backtracking.
   return folderId
-    .replace(/[_\s]+(mosai[ck]|mosiac|panel\d*|ha|oiii|sii|sho|hoo|rgb|lrgb|nb|narrowband|broadband|luminance|lum|bicolor|tricolor|hargb|photo|video)\s*\d*$/i, '')
+    .replace(/[_\s]+(mosai[ck]|mosiac|panel|ha|oiii|sii|sho|hoo|rgb|lrgb|nb|narrowband|broadband|luminance|lum|bicolor|tricolor|hargb|photo|video)\s*\d*$/i, '')
     .replace(/\s+/g, '');
 }
 

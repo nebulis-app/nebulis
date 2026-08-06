@@ -87,15 +87,27 @@ interface WikiRow {
 }
 
 function stripWiki(s: string): string {
-  return s
-    .replace(/\[\[File:[^\]]+\]\]/gi, '')
-    .replace(/\[\[[^\]|]+\|([^\]]+)\]\]/g, '$1')
-    .replace(/\[\[([^\]]+)\]\]/g, '$1')
-    .replace(/\{\{[^}]*\}\}/g, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/'{2,}/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .trim();
+  // Run the whole pass repeatedly until it stops changing anything. A single
+  // pass is incomplete sanitization: removing one bracketed/tag construct can
+  // reassemble a new one out of the text on either side of it (e.g.
+  // "[[Fi[[File:x]]le:y]]" only fully resolves after a second pass). This is
+  // build-time-only tooling over Wikipedia markup, but the fix costs nothing
+  // and the output (a plain-text description, never rendered as HTML) is
+  // committed to server/data/sharpless.json for review either way.
+  let prev = s;
+  for (;;) {
+    const next = prev
+      .replace(/\[\[File:[^\]]+\]\]/gi, '')
+      .replace(/\[\[[^\]|]+\|([^\]]+)\]\]/g, '$1')
+      .replace(/\[\[([^\]]+)\]\]/g, '$1')
+      .replace(/\{\{[^}]*\}\}/g, '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/'{2,}/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .trim();
+    if (next === prev) return next;
+    prev = next;
+  }
 }
 
 function findNgcRef(text: string): string | null {

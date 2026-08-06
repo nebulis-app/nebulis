@@ -84,6 +84,19 @@ describe('roleForFile', () => {
   it('recognises thumbnails by the _thn convention', () => {
     expect(roleForFile('DWARF3_M31_2026-07-05_thn.jpg')).toBe('thumbnail');
   });
+
+  it('never calls a non-FITS file a sub-frame', () => {
+    // Dwarf writes a per-frame preview under Thumbnail/ with the same stem as
+    // the raw frame, so the name alone matches the RAW_TELE sub pattern. Both
+    // were recorded as 'sub', which doubled every session's sub-frame count.
+    const stem = 'IC 1396_60s60_Duo-Band_20260704-235645742_34C';
+    expect(roleForFile(`${stem}.fits`)).toBe('sub');
+    expect(roleForFile(`${stem}.jpg`)).toBe('thumbnail');
+    // The directory outranks the filename, but not on extension: a preview in
+    // a _sub folder is still a preview.
+    expect(roleForFile(`${stem}.jpg`, { fromSubFolder: true })).not.toBe('sub');
+    expect(roleForFile('Light_M 16_20.0s_LP_20260604-025129.png', { fromSubFolder: true })).not.toBe('sub');
+  });
 });
 
 describe('sessionDateForRow', () => {

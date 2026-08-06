@@ -49,6 +49,10 @@ export type Colormap = 'gray' | 'heat' | 'cool';
 const BAYER_PATTERNS = new Set(['RGGB', 'BGGR', 'GRBG', 'GBRG']);
 
 export function parseFits(buffer: ArrayBuffer): FitsData {
+  if (buffer.byteLength < 2880) {
+    throw new Error('This FITS file is empty or corrupted and cannot be displayed.');
+  }
+
   const view = new DataView(buffer);
   const header: FitsHeader = {};
   let offset = 0;
@@ -56,6 +60,9 @@ export function parseFits(buffer: ArrayBuffer): FitsData {
   let headerDone = false;
   while (!headerDone) {
     for (let i = 0; i < 36 && !headerDone; i++) {
+      if (offset + 80 > buffer.byteLength) {
+        throw new Error('This FITS file is empty or corrupted and cannot be displayed.');
+      }
       const card = new TextDecoder('ascii').decode(new Uint8Array(buffer, offset, 80));
       offset += 80;
 

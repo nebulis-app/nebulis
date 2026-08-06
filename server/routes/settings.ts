@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
+import { strictRateLimiter } from '../middleware/rateLimit.js';
 import { restartPlannerNightlyScheduler, triggerNightlyMaintenance } from '../lib/plannerNightlyPrefetch.js';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -377,7 +378,7 @@ router.delete('/api-key', requireAdmin, (_req: Request, res: Response) => {
 });
 
 // Reset database — purge all data except settings
-router.delete('/reset-database', requireAdmin, async (req: Request, res: Response) => {
+router.delete('/reset-database', requireAdmin, strictRateLimiter, async (req: Request, res: Response) => {
   const LIBRARY_DIR = getLibraryDir();
   const parsed = ResetDatabaseBodySchema.safeParse(req.body ?? {});
   if (!parsed.success) {

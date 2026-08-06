@@ -305,7 +305,9 @@ export function ImageGalleryPage() {
             className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${
               filterMenuOpen
                 ? isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-100 border-slate-300 text-slate-700'
-                : isDark ? 'border-transparent hover:bg-slate-800' : 'border-transparent hover:bg-slate-100'
+                : isDark
+                  ? 'bg-slate-900 border-slate-800 hover:border-slate-700 hover:text-slate-300'
+                  : 'bg-white border-slate-200 hover:border-slate-300 hover:text-slate-700 shadow-sm'
             }`}
           >
             <Filter className="w-4 h-4" />

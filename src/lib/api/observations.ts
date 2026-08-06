@@ -35,8 +35,19 @@ export interface ObservationDetail extends ObservationSummary {
   weather: import('../../types').SessionWeather | null;
   sessionImage: string | null;
   telescopeId: string | null;
-  /** Observing site this session is tagged to. Null = the default site. */
+  /** Observing site this session is explicitly tagged to. Null means untagged,
+   *  in which case the coordinates come from the capture files, or from the
+   *  default site when the files carry none. */
   siteId: string | null;
+  /** Where `coordinates` came from. 'fits' = the capture files recorded them,
+   *  so the user never chose this location and the UI must not imply they did. */
+  locationSource: 'fits' | 'site';
+  /** Display name for the location. For a file-derived location this names no
+   *  saved site, so it cannot be looked up in the sites list. */
+  locationLabel: string;
+  /** What the capture files recorded, present even when a site tag overrides it,
+   *  so the location can be set back to it. */
+  fileCoordinates: { lat: number; lon: number } | null;
   /** What the telescope recorded about this night, parsed from its own sidecar
    *  (a Dwarf's shotsInfo.json). Null when no sidecar was imported. */
   capture: import('../../types').SessionCaptureSummary | null;

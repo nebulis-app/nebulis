@@ -24,6 +24,7 @@ import {
   type ConnectionType,
 } from '../../lib/api/telescopes';
 import { triggerImport, getImportStatus } from '../../lib/api/library';
+import { deviceNoun } from '../../lib/telescopePresets';
 import { AddTelescopeModal } from './AddTelescopeModal';
 import { ReassignTelescopeModal } from './ReassignTelescopeModal';
 import { TransportEditorModal } from './TransportEditorModal';
@@ -546,13 +547,13 @@ function TransportPills({ telescope, isDark, online }: { telescope: TelescopePro
 
   return (
     <div className="flex items-center gap-1 shrink-0">
-      {netKind && <TransportPill kind={netKind} active={!noActive && isNetActive} pinned={!!netTransport && netTransport.id === pinnedId} offline={!online} isDark={isDark} />}
-      {showLocal && <TransportPill kind="local" active={!noActive && isLocalActive} pinned={localTransport?.id === pinnedId} offline={!online} isDark={isDark} />}
+      {netKind && <TransportPill kind={netKind} active={!noActive && isNetActive} pinned={!!netTransport && netTransport.id === pinnedId} offline={!online} isDark={isDark} noun={deviceNoun(telescope.kind)} />}
+      {showLocal && <TransportPill kind="local" active={!noActive && isLocalActive} pinned={localTransport?.id === pinnedId} offline={!online} isDark={isDark} noun={deviceNoun(telescope.kind)} />}
     </div>
   );
 }
 
-function TransportPill({ kind, active, pinned, offline, isDark }: { kind: ConnectionType; active: boolean; pinned: boolean; offline: boolean; isDark: boolean }) {
+function TransportPill({ kind, active, pinned, offline, isDark, noun }: { kind: ConnectionType; active: boolean; pinned: boolean; offline: boolean; isDark: boolean; noun: string }) {
   const Icon = kind === 'local' ? Usb : Network;
   const label = kind === 'local' ? 'USB' : 'Wi-Fi';
   // Protocol is tooltip-only detail: it is not something the user picks, but
@@ -570,11 +571,11 @@ function TransportPill({ kind, active, pinned, offline, isDark }: { kind: Connec
   // unreachable telescope is still configured, but saying it's "the transport
   // to use" reads as a live connection.
   const title = offline
-    ? `${detail}: configured, but this telescope is not reachable right now`
+    ? `${detail}: configured, but this ${noun} is not reachable right now`
     : pinned
       ? `${detail}: manually pinned as the transport to use`
       : active
-        ? `${detail}: active transport for this telescope right now`
+        ? `${detail}: active transport for this ${noun} right now`
         : `${detail}: configured but not the active transport right now`;
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${tone}`} title={title}>

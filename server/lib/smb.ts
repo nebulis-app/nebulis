@@ -33,7 +33,7 @@ const smbImpl =
   process.platform === 'darwin' ? mac :
   posix;
 
-type AnyProfile = Partial<Pick<TelescopeProfile, 'connectionType' | 'localPath' | 'hostname' | 'shareName' | 'username' | 'password'>> | null | undefined;
+type AnyProfile = Partial<Pick<TelescopeProfile, 'kind' | 'connectionType' | 'localPath' | 'hostname' | 'shareName' | 'username' | 'password'>> | null | undefined;
 
 function isLocal(profile: AnyProfile): boolean {
   return profile?.connectionType === 'local';
@@ -52,7 +52,10 @@ async function preflight(profile: AnyProfile): Promise<void> {
   const { hostname } = loadSettings(profile);
   if (!hostname) return;
   try {
-    await ensureSmbReachable(hostname);
+    // `kind` only picks the noun in the failure message (a telescope and a
+    // plain SMB server fail for different reasons and get different advice).
+    // Callers that build an ad-hoc profile should pass it for that reason.
+    await ensureSmbReachable(hostname, undefined, profile?.kind);
   } catch (err) {
     if (isDebugLoggingEnabled()) {
       debugLog('smb', `Preflight failed: ${hostname} not reachable on port 445 — ${err instanceof Error ? err.message : err}`);

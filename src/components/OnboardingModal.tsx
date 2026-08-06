@@ -12,6 +12,7 @@ import {
 } from '../lib/telescopePresets';
 import { useTheme } from '../hooks/useTheme';
 import { stepReducer, initialStepState } from './onboarding/stepReducer';
+import { hostAddressError } from '../lib/hostAddress';
 import { OnboardingChrome } from './onboarding/OnboardingChrome';
 import { OnboardingSteps } from './onboarding/OnboardingSteps';
 import type { TestStatus } from './onboarding/OnboardingStep2';
@@ -193,7 +194,9 @@ export function OnboardingModal({ onComplete }: { onComplete: () => void }) {
       transitioning={transitioning}
       isDark={isDark}
       subText={subText}
-      step2Disabled={!kind || (isLocalKind ? !localPath.trim() : !hostname.trim())}
+      step2Disabled={!kind || (isLocalKind
+        ? !localPath.trim()
+        : (!hostname.trim() || !!hostAddressError(hostname)))}
       isCreatingUser={createUserMutation.isPending}
       isFinishing={finishMutation.isPending}
       onSkip={handleSkip}

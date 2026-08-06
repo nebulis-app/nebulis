@@ -76,7 +76,8 @@ export const deleteSite = (id: string) =>
   });
 
 /** Retag an already-imported session to a different observing site.
- *  `siteId: null` clears the tag (resolves back to the default site). */
+ *  `siteId: null` clears the tag, so the session goes back to reading its
+ *  location out of the capture files (and only then the default site). */
 export const reassignSessionSite = (objectId: string, date: string, siteId: string | null) =>
   fetchJSON<{ updated: boolean; siteId: string | null }>(
     `/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/site`,

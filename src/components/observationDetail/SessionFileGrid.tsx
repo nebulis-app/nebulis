@@ -129,8 +129,10 @@ export function SessionFileGrid({
                       {file.type === 'fits' ? (
                         <FitsThumbnail url={file.downloadUrl} stretch={1.0} isDark={isDark} />
                       ) : !canPreviewImage(file) ? (
-                        // A linear float TIFF renders pure white, so say what the
-                        // file is instead of showing a blank rectangle.
+                        // Defensive fallback for a format the server has flagged as
+                        // untrustworthy to render (or an older response with no
+                        // thumbUrl at all) — say what the file is instead of
+                        // showing a blank or broken image.
                         <div className={`w-full h-full flex flex-col items-center justify-center gap-1.5 ${
                           isDark ? 'bg-slate-800/60 text-slate-400' : 'bg-slate-100 text-slate-500'
                         }`}>

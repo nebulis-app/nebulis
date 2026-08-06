@@ -60,6 +60,7 @@ export function Gallery() {
   const [wizardFits, setWizardFits] = useState(true);
   const [wizardArchiveAll, setWizardArchiveAll] = useState(false);
   const [wizardTelescopeId, setWizardTelescopeId] = useState<string | null>(null);
+  const [wizardTmpId, setWizardTmpId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>(readStoredSort);
   const [sortOpen, setSortOpen] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
@@ -185,6 +186,11 @@ export function Gallery() {
       // Reset success state after 3 seconds so the checkmark doesn't persist forever
       importResetTimerRef.current = setTimeout(() => importMutation.reset(), 3000);
     },
+    onError: () => {
+      // Refresh in case the failure (e.g. a 409 lock conflict) means an import
+      // is actually running under someone else's request right now.
+      queryClient.invalidateQueries({ queryKey: ['import-status'] });
+    },
   });
 
   const filtered = useMemo(() => {
@@ -294,6 +300,24 @@ export function Gallery() {
         </div>
       )}
 
+      {/* Import failure, either a synchronous rejection (e.g. lock conflict)
+          or a backend-reported error from a run that already finished. A
+          cancelled run is deliberately excluded: the user just did that
+          themselves, so it needs no banner here — it's recorded in Sync
+          History (Backup Status page) as "Cancelled" instead. */}
+      {!isImporting && (importMutation.isError || (importStatus?.error && !importStatus.cancelled)) && (
+        <div className={`flex items-center gap-3 px-5 py-3 rounded-xl border ${
+          isDark ? 'bg-red-500/5 border-red-500/20 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
+        }`}>
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span className="text-sm font-medium">
+            {importMutation.isError
+              ? (importMutation.error instanceof Error ? importMutation.error.message : 'Failed to start import')
+              : importStatus?.error}
+          </span>
+        </div>
+      )}
+
       {/* Search and action buttons */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className={`relative flex-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
@@ -386,7 +410,9 @@ export function Gallery() {
               className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${
                 filterMenuOpen
                   ? isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-100 border-slate-300 text-slate-700'
-                  : isDark ? 'border-transparent hover:bg-slate-800' : 'border-transparent hover:bg-slate-100'
+                  : isDark
+                    ? 'bg-slate-900 border-slate-800 hover:border-slate-700 hover:text-slate-300'
+                    : 'bg-white border-slate-200 hover:border-slate-300 hover:text-slate-700 shadow-sm'
               }`}
             >
               <Filter className="w-4 h-4" />
@@ -614,7 +640,8 @@ export function Gallery() {
               </button>
               <button
                 onClick={() => setShowImportModal(true)}
-                className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-medium text-sm transition border ${
+                disabled={isImporting}
+                className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-medium text-sm transition border disabled:opacity-50 ${
                   isDark
                     ? 'border-slate-700 text-slate-300 hover:bg-slate-800'
                     : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -642,12 +669,13 @@ export function Gallery() {
       {showImportModal && (
         <ImportModal
           onClose={() => setShowImportModal(false)}
-          onReview={(folderPath, includeSubframes, includeFits, telescopeId, archiveAll) => {
+          onReview={(folderPath, includeSubframes, includeFits, telescopeId, archiveAll, tmpId) => {
             setShowImportModal(false);
             setWizardSubframes(includeSubframes);
             setWizardFits(includeFits);
             setWizardArchiveAll(archiveAll);
             setWizardTelescopeId(telescopeId);
+            setWizardTmpId(tmpId);
             setWizardPath(folderPath);
           }}
         />
@@ -661,7 +689,8 @@ export function Gallery() {
           includeFits={wizardFits}
           archiveAll={wizardArchiveAll}
           telescopeId={wizardTelescopeId}
-          onClose={() => setWizardPath(null)}
+          tmpId={wizardTmpId}
+          onClose={() => { setWizardPath(null); setWizardTmpId(null); }}
           onDone={() => queryClient.invalidateQueries({ queryKey: ['library-objects'] })}
         />
       )}

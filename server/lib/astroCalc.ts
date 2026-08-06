@@ -257,8 +257,13 @@ export function visibilityWindow(
   // Still above at end of night
   if (wasAbove && sets === null) sets = nightEnd;
 
-  // Already above threshold for the entire night
-  if (rises === null && maxAlt >= minAlt) rises = nightStart;
+  // NOTE: there is deliberately no "already above threshold for the entire
+  // night" fallback here. The loop above already sets `rises = nightStart`
+  // on its first iteration whenever the object starts above `floor` (which
+  // folds in the horizon profile), so a fallback keyed on `maxAlt >= minAlt`
+  // alone would ignore the horizon profile and report an object that a
+  // horizon profile blocks all night as visible from dusk anyway. Removed
+  // 2026-08 — see the horizonProfile test below for the case this covers.
 
   return { rises, sets, maxAlt, maxAltTime };
 }

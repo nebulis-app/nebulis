@@ -2,7 +2,7 @@
   "name": "nebulis-web",
   "private": true,
   "version": "1.5.1",
-  "buildNumber": 203,
+  "buildNumber": 207,
   "type": "module",
   "packageManager": "pnpm@10.30.3",
   "scripts": {
@@ -40,6 +40,7 @@
     "bonjour-service": "^1.4.2",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.6.1",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
     "leaflet": "^1.9.4",
@@ -51,9 +52,9 @@
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.0",
     "satellite.js": "^7.0.1",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
     "suncalc": "^1.9.0",
-    "tar": "^7.5.17",
+    "tar": "^7.5.22",
     "tz-lookup": "^6.1.25",
     "zod": "^4.4.3"
   },
@@ -97,14 +98,15 @@
     "vite": "^8.1.0",
     "vitest": "^4.1.9"
   },
-  "overrides": {
-    "path-to-regexp": "^8.4.0",
-    "brace-expansion": "^2.0.3",
-    "qs": "^6.15.2"
-  },
   "pnpm": {
     "overrides": {
-      "esbuild": "0.28.1"
+      "esbuild": "0.28.1",
+      "path-to-regexp": "^8.4.0",
+      "qs": "^6.15.2",
+      "js-yaml": ">=4.3.0",
+      "shell-quote": ">=1.9.0",
+      "postcss": ">=8.5.18",
+      "brace-expansion@<1.1.17": ">=1.1.17 <2.0.0"
     },
     "onlyBuiltDependencies": [
       "better-sqlite3",

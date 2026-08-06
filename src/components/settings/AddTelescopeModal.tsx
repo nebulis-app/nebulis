@@ -24,6 +24,7 @@ import {
   type TelescopeKind,
 } from '../../lib/telescopePresets';
 import { shareNameError } from '../../lib/shareName';
+import { hostAddressError } from '../../lib/hostAddress';
 import { getInputClass, getLabelClass, getHelperClass } from './SettingsUI';
 import { Modal } from '../ui/Modal';
 import { FileTypeToggle } from '../ui/FileTypeToggle';
@@ -268,7 +269,11 @@ export function AddTelescopeModal({
   // Only meaningful for SMB: FTP has no share and USB has no host. The server
   // rejects the same values on write, so this is purely to fail fast.
   const shareError = !isLocalKind && !isFtpMode ? shareNameError(shareName) : null;
-  const canSave = !saveBusy && !shareError && (
+  // A USB telescope has no address; every other transport must have a real one.
+  // This catches the host and share pasted together as "10.0.1.5/SeeStar/",
+  // which saved fine and then failed every connection.
+  const hostError = isLocalKind ? null : hostAddressError(hostname);
+  const canSave = !saveBusy && !shareError && !hostError && (
     isLocalKind
       ? localPath.trim().length > 0
       // FTP needs only an address: the Dwarf's server is anonymous and the
@@ -354,6 +359,7 @@ export function AddTelescopeModal({
     && hostname.trim().length > 0
     && (isFtpMode || shareName.trim().length > 0)
     && !shareError
+    && !hostError
     && testStatus !== 'testing';
 
   return (
@@ -532,12 +538,17 @@ export function AddTelescopeModal({
               onChange={e => setHostname(e.target.value)}
               className={inputClass}
               autoFocus={!isEdit}
+              aria-invalid={!!hostError}
             />
-            <p className={helperClass}>
-              {isFtpMode
-                ? preset.shareHelp
-                : 'For reliable connectivity, assign a static IP or DHCP reservation.'}
-            </p>
+            {hostError
+              ? <p className={`text-xs mt-1 ${isDark ? 'text-red-400' : 'text-red-600'}`}>{hostError}</p>
+              : (
+                <p className={helperClass}>
+                  {isFtpMode
+                    ? preset.shareHelp
+                    : 'For reliable connectivity, assign a static IP or DHCP reservation.'}
+                </p>
+              )}
           </div>
 
           {/* Advanced share settings — share name, username, password.

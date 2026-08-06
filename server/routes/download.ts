@@ -14,11 +14,12 @@ import { getProcessedImages, getAllProcessedImagesForObject } from '../lib/libra
 import { listObjectFiles, getObjectLayout } from '../lib/library/libraryLayout.js';
 import { resolverFor } from '../lib/library/libraryFiles.js';
 import { queryString, contentDispositionHeader } from '../lib/queryHelpers.js';
+import { strictRateLimiter } from '../middleware/rateLimit.js';
 
 const router = Router();
 
 // Download an object's files as ZIP (from local library)
-router.get('/objects/:objectId', async (req: Request, res: Response) => {
+router.get('/objects/:objectId', strictRateLimiter, async (req: Request, res: Response) => {
   try {
     // The library may live on a network share; a stale mount would hang the fs
     // calls below and freeze the whole event loop. This route is on the

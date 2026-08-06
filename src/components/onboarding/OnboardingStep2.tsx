@@ -17,6 +17,7 @@ import {
   type TelescopeKind,
 } from '../../lib/telescopePresets';
 import type { ConnectionType } from '../../lib/api/telescopes';
+import { hostAddressError } from '../../lib/hostAddress';
 import { DwarfLocalPathPicker } from '../settings/DwarfLocalPathPicker';
 import { LocalPathPicker } from '../settings/LocalPathPicker';
 
@@ -81,6 +82,10 @@ export function OnboardingStep2({
   onTestConnection,
 }: OnboardingStep2Props) {
   const preset = kind ? TELESCOPE_PRESETS[kind] : null;
+  // Same check the telescope editor and the server apply. Catching it here
+  // means a first-run user who pastes "10.0.1.5/SeeStar/" is told which half
+  // goes where, rather than a connection failure that blames the network.
+  const hostError = isLocalKind ? null : hostAddressError(hostname);
   const isSeestarKind = kind === 'seestar-s50' || kind === 'seestar-s30';
   const isDwarfKind = kind !== '' && isDwarfTelescopeKind(kind);
   const effectiveMode: ConnectionType = transportMode ?? (isLocalKind ? 'local' : 'smb');
@@ -217,10 +222,11 @@ export function OnboardingStep2({
                 onKeyDown={e => e.key === 'Enter' && kind && hostname.trim() && onTestConnection()}
                 className={`${inputClass} flex-1`}
                 disabled={!kind}
+                aria-invalid={!!hostError}
               />
               <button
                 onClick={onTestConnection}
-                disabled={testStatus === 'testing' || !hostname.trim() || !kind}
+                disabled={testStatus === 'testing' || !hostname.trim() || !kind || !!hostError}
                 className={`shrink-0 inline-flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition disabled:opacity-50 ${
                   isDark
                     ? 'bg-teal-500/10 text-teal-400 hover:bg-teal-500/20 border border-teal-500/30'
@@ -239,6 +245,10 @@ export function OnboardingStep2({
                 Test Connection
               </button>
             </div>
+
+            {hostError && (
+              <p className={`text-xs mt-1 ${isDark ? 'text-red-400' : 'text-red-600'}`}>{hostError}</p>
+            )}
 
             {testStatus === 'success' && (
               <div className={`flex items-start gap-3 p-3 rounded-xl mt-2 ${

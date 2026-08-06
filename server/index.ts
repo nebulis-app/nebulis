@@ -15,6 +15,7 @@ import { fileURLToPath } from 'url';
 import { apiEnvelope } from './middleware/apiEnvelope.js';
 import { apiAuth } from './middleware/auth.js';
 import { correlationMiddleware } from './middleware/correlation.js';
+import { apiRateLimiter } from './middleware/rateLimit.js';
 import { telescopeRouter } from './routes/telescope.js';
 import { catalogRouter } from './routes/catalog.js';
 import { settingsRouter } from './routes/settings.js';
@@ -237,6 +238,7 @@ app.use((_req, res, next) => {
 const v1 = express.Router();
 
 v1.use(apiEnvelope);
+v1.use(apiRateLimiter);
 v1.use(apiAuth);
 
 // Health
@@ -354,6 +356,10 @@ legacy.use((_req, res, next) => {
   next();
 });
 legacy.use(apiEnvelope);
+// Same limiter instance as v1 (not a second one): the legacy prefix reaches
+// the same underlying endpoints, so a client alternating between /api/v1/x
+// and /api/x must not get double the effective rate.
+legacy.use(apiRateLimiter);
 legacy.use(apiAuth);
 legacy.use('/auth', authRouter);
 legacy.use('/telescope', telescopeRouter);

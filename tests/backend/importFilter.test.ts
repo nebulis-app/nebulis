@@ -25,6 +25,19 @@ describe('shouldImportFile — sub-frames are FITS only', () => {
     expect(shouldImportFile('Light_M 16_20.0s_LP_20260604-025129.fit', SUBS_ON)).toBe(true);
   });
 
+  it('rejects the Dwarf per-frame preview that shares a stem with the raw frame', () => {
+    // A RAW_TELE session folder holds the frame, and Thumbnail/<same stem>.jpg
+    // beside it. Only the directory tells them apart, and the filter sees just
+    // the name — so the extension has to carry the decision.
+    const stem = 'IC 1396_60s60_Duo-Band_20260704-235645742_34C';
+    expect(shouldImportFile(`${stem}.fits`, SUBS_ON)).toBe(true);
+    expect(shouldImportFile(`${stem}.jpg`, SUBS_ON)).toBe(false);
+    expect(classifyImportFile(`${stem}.jpg`, SUBS_ON)).toEqual({
+      import: false,
+      reason: 'sub-folder-preview',
+    });
+  });
+
   it('rejects all sub-frames when the sub-frame setting is off', () => {
     expect(shouldImportFile('Light_M42_10.0s_IRCUT_20260407-043257.fit', { importSubFrames: false })).toBe(false);
   });

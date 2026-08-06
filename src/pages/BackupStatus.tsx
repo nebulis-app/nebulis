@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -14,6 +14,7 @@ import {
   FolderSync,
   Telescope,
   XCircle,
+  Ban,
   ChevronLeft,
   ChevronRight,
   Info,
@@ -22,7 +23,7 @@ import {
   Usb,
   Network,
 } from 'lucide-react';
-import { getImportStatus, triggerImport, getImportHistory, formatTransport, type ImportHistoryEntry } from '../lib/api/library';
+import { getImportStatus, triggerImport, cancelImport, getImportHistory, formatTransport, type ImportHistoryEntry } from '../lib/api/library';
 import { getAllTelescopeStatus } from '../lib/api/telescopes';
 import { useTheme } from '../hooks/useTheme';
 import { SkippedNotice } from '../components/SkippedNotice';
@@ -96,7 +97,31 @@ export function BackupStatus() {
     },
   });
 
+  // Scoped to the runId of the sync currently shown on this page, so a stray
+  // click can't cancel a different run that raced in between this page's
+  // last poll and the click (e.g. the auto-import scheduler firing).
+  const cancelMutation = useMutation({
+    mutationFn: (runId: string) => cancelImport(runId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['import-status'] });
+    },
+  });
+
   const isRunning = status?.running ?? false;
+
+  // The finished run's history row is written server-side right as `running`
+  // flips back to false, so catching that transition (already visible here
+  // via the 1s status poll while a sync is active) is enough to refresh Sync
+  // History the moment a run ends — no manual page reload needed, and no
+  // polling of the history endpoint itself required.
+  const wasRunningRef = useRef(isRunning);
+  useEffect(() => {
+    if (wasRunningRef.current && !isRunning) {
+      queryClient.invalidateQueries({ queryKey: ['import-history'] });
+    }
+    wasRunningRef.current = isRunning;
+  }, [isRunning, queryClient]);
+
   const isWarming = !!status?.warmingThumbnails;
   const fileProgress = status && status.objectsTotal > 0
     ? Math.min(
@@ -271,6 +296,25 @@ export function BackupStatus() {
                 {formatDuration(elapsed)}
               </div>
             )}
+            {/* Thumbnail warming is a quick, local, best-effort pass over
+                already-downloaded files with no cancellation hook of its own
+                (see pregenerateObjectThumbnails) — cancelling then would sit
+                and do nothing until it finished anyway, so the button is
+                only offered during the actual transfer. */}
+            {!isWarming && status.runId && (
+              <button
+                onClick={() => cancelMutation.mutate(status.runId!)}
+                disabled={cancelMutation.isPending}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition disabled:opacity-50 ${
+                  isDark
+                    ? 'border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                    : 'border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                }`}
+              >
+                <X className="w-3.5 h-3.5" />
+                {cancelMutation.isPending ? 'Cancelling…' : 'Cancel'}
+              </button>
+            )}
           </div>
 
           {/* Main progress bar */}
@@ -338,12 +382,18 @@ export function BackupStatus() {
             heading={total => `${total.toLocaleString()} file${total !== 1 ? 's' : ''} on the telescope are being left out:`}
           />
 
-          {/* Error */}
+          {/* Error / cancellation. A cancellation isn't a failure — it's
+              amber and uses Ban rather than the red AlertTriangle a genuine
+              error gets. */}
           {status.error && (
             <div className={`flex items-start gap-3 px-4 py-3 rounded-xl ${
-              isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'
+              status.cancelled
+                ? (isDark ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-50 text-amber-700')
+                : (isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600')
             }`}>
-              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              {status.cancelled
+                ? <Ban className="w-4 h-4 mt-0.5 shrink-0" />
+                : <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />}
               <p className="text-sm">{status.error}</p>
             </div>
           )}
@@ -360,14 +410,24 @@ export function BackupStatus() {
         }`}>
           {status?.error ? (
             <div className="flex items-start gap-4">
-              <div className={`p-3 rounded-xl ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
-                <XCircle className="w-5 h-5 text-red-500" />
+              <div className={`p-3 rounded-xl ${
+                status.cancelled
+                  ? (isDark ? 'bg-amber-500/10' : 'bg-amber-50')
+                  : (isDark ? 'bg-red-500/10' : 'bg-red-50')
+              }`}>
+                {status.cancelled
+                  ? <Ban className="w-5 h-5 text-amber-500" />
+                  : <XCircle className="w-5 h-5 text-red-500" />}
               </div>
               <div className="flex-1">
                 <h2 className={`font-display font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  Last Sync Failed
+                  {status.cancelled ? 'Last Sync Cancelled' : 'Last Sync Failed'}
                 </h2>
-                <p className={`text-sm mt-1 ${isDark ? 'text-red-400/80' : 'text-red-600/80'}`}>
+                <p className={`text-sm mt-1 ${
+                  status.cancelled
+                    ? (isDark ? 'text-amber-400/80' : 'text-amber-700/80')
+                    : (isDark ? 'text-red-400/80' : 'text-red-600/80')
+                }`}>
                   {status.error}
                 </p>
                 {status.lastRun && (
@@ -541,11 +601,15 @@ function SyncHistory({ isDark }: { isDark: boolean }) {
               }`}
             >
               <div className={`p-1.5 rounded-lg ${
-                entry.error
-                  ? isDark ? 'bg-red-500/10' : 'bg-red-50'
-                  : isDark ? 'bg-emerald-500/10' : 'bg-emerald-50'
+                entry.cancelled
+                  ? isDark ? 'bg-amber-500/10' : 'bg-amber-50'
+                  : entry.error
+                    ? isDark ? 'bg-red-500/10' : 'bg-red-50'
+                    : isDark ? 'bg-emerald-500/10' : 'bg-emerald-50'
               }`}>
-                {entry.error ? (
+                {entry.cancelled ? (
+                  <Ban className="w-3.5 h-3.5 text-amber-500" />
+                ) : entry.error ? (
                   <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
                 ) : (
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
@@ -602,7 +666,9 @@ function SyncHistory({ isDark }: { isDark: boolean }) {
                     </span>
                   )}
                   {entry.error && (
-                    <span className="text-red-500 truncate max-w-[200px]">{entry.error}</span>
+                    <span className={`truncate max-w-[200px] ${entry.cancelled ? 'text-amber-500' : 'text-red-500'}`}>
+                      {entry.error}
+                    </span>
                   )}
                 </div>
               </div>
@@ -617,7 +683,7 @@ function SyncHistory({ isDark }: { isDark: boolean }) {
                   className={`p-1.5 rounded-lg transition ${
                     isDark ? 'hover:bg-slate-700 text-slate-500' : 'hover:bg-slate-200 text-slate-400'
                   }`}
-                  title={entry.error ? 'View error details' : 'View sync details'}
+                  title={entry.cancelled ? 'View cancellation details' : entry.error ? 'View error details' : 'View sync details'}
                 >
                   <Info className="w-4 h-4" />
                 </button>
@@ -663,21 +729,35 @@ function SyncHistory({ isDark }: { isDark: boolean }) {
                   the full host/share can be copied into a bug report. */}
               {filesModal.error && (
                 <div className={`rounded-xl border p-3 ${
-                  isDark ? 'bg-red-500/10 border-red-500/20' : 'bg-red-50 border-red-200'
+                  filesModal.cancelled
+                    ? (isDark ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-50 border-amber-200')
+                    : (isDark ? 'bg-red-500/10 border-red-500/20' : 'bg-red-50 border-red-200')
                 }`}>
                   <div className="flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+                    {filesModal.cancelled
+                      ? <Ban className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+                      : <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />}
                     <div className="min-w-0 space-y-1.5">
-                      <p className={`text-xs font-semibold ${isDark ? 'text-red-300' : 'text-red-700'}`}>
-                        This sync failed
+                      <p className={`text-xs font-semibold ${
+                        filesModal.cancelled
+                          ? (isDark ? 'text-amber-300' : 'text-amber-700')
+                          : (isDark ? 'text-red-300' : 'text-red-700')
+                      }`}>
+                        {filesModal.cancelled ? 'This sync was cancelled' : 'This sync failed'}
                       </p>
                       <p className={`text-xs leading-relaxed break-words select-text ${
-                        isDark ? 'text-red-200/90' : 'text-red-800'
+                        filesModal.cancelled
+                          ? (isDark ? 'text-amber-200/90' : 'text-amber-800')
+                          : (isDark ? 'text-red-200/90' : 'text-red-800')
                       }`}>
                         {filesModal.error}
                       </p>
                       {filesModal.telescopeName && (
-                        <p className={`text-[11px] ${isDark ? 'text-red-300/60' : 'text-red-600/80'}`}>
+                        <p className={`text-[11px] ${
+                          filesModal.cancelled
+                            ? (isDark ? 'text-amber-300/60' : 'text-amber-600/80')
+                            : (isDark ? 'text-red-300/60' : 'text-red-600/80')
+                        }`}>
                           {filesModal.telescopeName}
                           {filesModal.transportKind && ` · ${formatTransport(filesModal.transportKind)}`}
                         </p>

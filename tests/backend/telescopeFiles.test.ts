@@ -119,10 +119,18 @@ describe('parseFilename', () => {
       expect(result.subIndex).toBe(500);
     });
 
-    it('parses sub-frame JPG companion', () => {
+    it('treats a sub-frame JPG companion as the frame preview it is', () => {
+      // A sub-frame is a raw exposure, so it is always FITS. The JPG sharing
+      // the frame's stem is a preview of it, and calling it a sub-frame made
+      // every session count its frames twice.
       const result = parseFilename('sub_00001_M42_10.0s_IRCUT_20241015-205200.jpg');
-      expect(result.type).toBe('sub');
+      expect(result.type).toBe('thumbnail');
+      expect(result.framePreview).toBe(true);
       expect(result.extension).toBe('.jpg');
+      // subIndex goes with it: only a real frame has a place in the sequence.
+      expect(result.subIndex).toBeUndefined();
+      // The raw frame with the same stem is unaffected.
+      expect(parseFilename('sub_00001_M42_10.0s_IRCUT_20241015-205200.fit').type).toBe('sub');
     });
   });
 
@@ -443,5 +451,36 @@ describe('isRealFile', () => {
     expect(isRealFile('readme.txt')).toBe(false);
     expect(isRealFile('data.csv')).toBe(false);
     expect(isRealFile('notes.json')).toBe(false);
+  });
+});
+
+describe('ReDoS resistance', () => {
+  // These filenames come off telescope/SMB/FTP directory listings — treated
+  // as untrusted input throughout this codebase. The Dwarf-specific patterns
+  // in parseFilename used to have two independently-optional digit runs
+  // adjacent to each other (\d+\.?\d* — both \.? and \d* optional, same digit
+  // class), which is the classic shape for polynomial-time backtracking: a
+  // filename engineered to almost-but-not-quite match forces the engine to
+  // try every possible split between the two runs. A single Node process
+  // handles every request, so a multi-second hang here freezes the app for
+  // every user, not just the one importing the crafted name.
+  const withinMs = (fn: () => void, ms: number) => {
+    const start = performance.now();
+    fn();
+    expect(performance.now() - start).toBeLessThan(ms);
+  };
+
+  it('parseFilename resolves quickly on an adversarial Dwarf rolling-stack name', () => {
+    const evil = `stacked-1_${'9'.repeat(40)}_${'1'.repeat(40)}s${'9'.repeat(40)}_mode_NOTADATE`;
+    withinMs(() => parseFilename(`${evil}.fits`), 200);
+  });
+
+  it('parseFilename resolves quickly on an adversarial Dwarf RAW TELE name', () => {
+    const evil = `${'a'.repeat(40)}_${'1'.repeat(40)}s${'9'.repeat(40)}_mode_NOTADATE`;
+    withinMs(() => parseFilename(`${evil}.fits`), 200);
+  });
+
+  it('normalizeCatalogId resolves quickly on an adversarial panel-suffix name', () => {
+    withinMs(() => normalizeCatalogId(`M31_panel${'9'.repeat(60)}x`), 200);
   });
 });

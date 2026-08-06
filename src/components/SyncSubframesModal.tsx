@@ -16,7 +16,7 @@ interface SyncSubframesModalProps {
   onClose: () => void;
 }
 
-type Phase = 'starting' | 'waiting' | 'syncing' | 'done' | 'empty' | 'error';
+type Phase = 'starting' | 'waiting' | 'syncing' | 'done' | 'upToDate' | 'empty' | 'error';
 
 export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }: SyncSubframesModalProps) {
   const { isDark } = useTheme();
@@ -27,6 +27,17 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
   const [confirmingClose, setConfirmingClose] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const completedRef = useRef(false);
+  // StrictMode (dev) mounts, cleans up, and re-mounts the same instance in one
+  // synchronous pass. Without this guard the first invocation's POST claims the
+  // server import lock and its run is orphaned (no runId yet, so the cleanup
+  // can't cancel it), while the second invocation's POST gets a 409 and sits in
+  // 'waiting' for the whole duration of the sync it kicked off itself. Then it
+  // retries, finds every file already downloaded, and reports "Already up to
+  // date". One start per instance fixes it.
+  const startedRef = useRef(false);
+  // Cleanup sets this; the effect re-arms it so a StrictMode cleanup doesn't
+  // abort the run the surviving instance still owns.
+  const cancelledRef = useRef(false);
   // Set only once our own sync is confirmed running (from the first status
   // poll after 'syncing' starts). Null while 'starting' or 'waiting' — in
   // 'waiting' the active run belongs to someone else (e.g. the auto-import
@@ -46,8 +57,6 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
   }
 
   useEffect(() => {
-    let cancelled = false;
-
     async function start() {
       // If another sync is already running, wait for it to finish then retry.
       // This handles the auto-import scheduler firing at the same moment.
@@ -57,7 +66,7 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
           await syncSessionSubFrames(objectIdRef.current, sessionIdRef.current);
           break; // lock acquired, sync started
         } catch (err) {
-          if (cancelled) return;
+          if (cancelledRef.current) return;
           const msg = err instanceof Error ? err.message : '';
           const isLocked = msg.toLowerCase().includes('already in progress');
           if (isLocked && attempt < 20) {
@@ -66,14 +75,14 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
             // Poll until the running sync finishes, then retry
             await new Promise<void>(resolve => {
               const id = setInterval(async () => {
-                if (cancelled) { clearInterval(id); resolve(); return; }
+                if (cancelledRef.current) { clearInterval(id); resolve(); return; }
                 try {
                   const s = await getImportStatus();
                   if (!s.running) { clearInterval(id); resolve(); }
                 } catch { /* network hiccup, keep waiting */ }
               }, 2000);
             });
-            if (cancelled) return;
+            if (cancelledRef.current) return;
             continue;
           }
           setPhase('error');
@@ -82,17 +91,17 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
         }
       }
 
-      if (cancelled) return;
+      if (cancelledRef.current) return;
       setPhase('syncing');
 
       let consecutiveErrors = 0;
 
       pollRef.current = setInterval(async () => {
-        if (cancelled) { stopPolling(); return; }
+        if (cancelledRef.current) { stopPolling(); return; }
         try {
           const s = await getImportStatus();
           consecutiveErrors = 0;
-          if (cancelled) return;
+          if (cancelledRef.current) return;
           setStatus(s);
           if (!ownRunIdRef.current && s.runId) ownRunIdRef.current = s.runId;
           if (!s.running) {
@@ -102,7 +111,12 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
               setPhase('error');
               setErrorMsg(s.error);
             } else if (s.filesDone === 0) {
-              setPhase('empty');
+              // filesDone stays 0 both when nothing was found on the telescope
+              // and when every candidate was already downloaded (toDownload
+              // filters those out before the counter ever moves — see
+              // syncSessionSubFrames in server/lib/library/import.ts).
+              // skippedFiles is what tells those two apart.
+              setPhase(s.skippedFiles > 0 ? 'upToDate' : 'empty');
             } else {
               setPhase('done');
             }
@@ -110,7 +124,7 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
           }
         } catch {
           consecutiveErrors++;
-          if (!cancelled && consecutiveErrors >= 3) {
+          if (!cancelledRef.current && consecutiveErrors >= 3) {
             stopPolling();
             setPhase('error');
             setErrorMsg('Lost connection while checking sync status.');
@@ -119,25 +133,28 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
       }, 1500);
     }
 
-    start();
+    // Re-arm after a StrictMode cleanup, then start at most once per instance.
+    cancelledRef.current = false;
+    if (!startedRef.current) {
+      startedRef.current = true;
+      start();
+    }
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
       stopPolling();
       // Cancel our own in-flight server sync so the lock is released
-      // promptly. This also handles React StrictMode's double-invoke (dev
-      // only), where the first effect claims the lock and the second would
-      // otherwise block. Scoped to ownRunIdRef: while 'starting' or
-      // 'waiting' we don't yet know (or don't own) the active run, and
-      // cancelling without a runId would kill whatever import happens to be
-      // running — e.g. an unrelated auto-import that raced in first.
+      // promptly. Scoped to ownRunIdRef: while 'starting' or 'waiting' we
+      // don't yet know (or don't own) the active run, and cancelling without
+      // a runId would kill whatever import happens to be running, e.g. an
+      // unrelated auto-import that raced in first.
       if (!completedRef.current && ownRunIdRef.current) {
         cancelImport(ownRunIdRef.current).catch(() => {});
       }
     };
   }, []);
 
-  const isFinished = phase === 'done' || phase === 'empty' || phase === 'error';
+  const isFinished = phase === 'done' || phase === 'upToDate' || phase === 'empty' || phase === 'error';
   const isActive = phase === 'starting' || phase === 'waiting' || phase === 'syncing';
 
   function handleClose() {
@@ -185,6 +202,7 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
             progressPct !== null ? `Syncing ${progressPct}%` : 'Syncing sub-frames…'
           )}
           {phase === 'done' && `${status?.filesDone ?? ''} files synced`}
+          {phase === 'upToDate' && 'Already up to date'}
           {phase === 'empty' && 'No new sub-frames'}
           {phase === 'error' && 'Sync error'}
         </span>
@@ -330,6 +348,21 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
             </div>
           )}
 
+          {/* Up to date — sub-frames exist but were all already downloaded */}
+          {phase === 'upToDate' && (
+            <div className="flex items-start gap-3">
+              <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                  Already up to date
+                </p>
+                <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  {status?.skippedFiles ?? 0} sub-frame{(status?.skippedFiles ?? 0) !== 1 ? 's' : ''} for this session {(status?.skippedFiles ?? 0) !== 1 ? 'were' : 'was'} already downloaded. Nothing new to sync.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Empty — no sub-frames on telescope */}
           {phase === 'empty' && (
             <div className="space-y-3">
@@ -340,14 +373,14 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
                     No sub-frames found
                   </p>
                   <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    The telescope has no raw sub-frame files for this session date, or they have already been downloaded.
+                    The telescope has no raw sub-frame files for this session date.
                   </p>
                 </div>
               </div>
               <div className={`rounded-xl p-3 text-xs space-y-1 ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
                 <p>Possible reasons:</p>
                 <ul className="list-disc list-inside space-y-0.5 ml-1">
-                  <li>Sub-frames were already synced previously</li>
+                  <li>Sub-frame saving wasn't enabled on the telescope for this session</li>
                   <li>The telescope's SMB share is not reachable</li>
                   <li>The session folder does not have a <code>_sub</code> directory</li>
                 </ul>

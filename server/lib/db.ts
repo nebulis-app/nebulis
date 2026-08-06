@@ -716,6 +716,26 @@ db.exec(`
     db.prepare('ALTER TABLE librarySessions ADD COLUMN coordsResolved INTEGER NOT NULL DEFAULT 0').run();
   }
 
+  // The coordinates the cached weather was actually fetched at.
+  //
+  // Weather is historical fact about a place, so it goes stale the moment the
+  // session resolves to a different location: retagging it to another site,
+  // editing that site's coordinates, or (the case that motivated this) fixing
+  // the resolver so a session finally reads the location out of its own files.
+  // Recording where each fetch happened lets the backfill notice the mismatch
+  // and re-fetch, instead of every such change needing a hand-written cache
+  // invalidation. NULL on pre-existing rows means "unknown": the backfill
+  // re-fetches those only when the session now resolves from its own files,
+  // since every pre-existing fetch used a site's coordinates and so is wrong by
+  // construction for exactly those sessions. Anything still resolving to a site
+  // is left alone, so upgrading doesn't re-fetch the whole library.
+  if (!lsCols.some(c => c.name === 'weatherLat')) {
+    db.prepare('ALTER TABLE librarySessions ADD COLUMN weatherLat REAL').run();
+  }
+  if (!lsCols.some(c => c.name === 'weatherLon')) {
+    db.prepare('ALTER TABLE librarySessions ADD COLUMN weatherLon REAL').run();
+  }
+
   // Which observing site this session was captured from. NULL means "the
   // default site", which is what every pre-existing session resolves to, so
   // adding the column changes nothing until the user retags something.
@@ -755,6 +775,28 @@ db.exec(`
   if (!loCols.some(c => c.name === 'layout')) {
     db.prepare("ALTER TABLE libraryObjects ADD COLUMN layout TEXT NOT NULL DEFAULT 'flat'").run();
   }
+}
+
+// ─── Sub-frame role correction ──────────────────────────────────────────────
+// A sub-frame is a raw exposure and is always FITS. Rows recorded before
+// parseFilename enforced that could hold a device's per-frame preview under
+// role 'sub' — Dwarf writes `Thumbnail/<same stem>.jpg` beside every RAW_TELE
+// frame, and the filename alone cannot tell the two apart. Those previews were
+// counted as sub-frames everywhere: the session tray, the tab badge, the
+// integration stats.
+//
+// No version flag guards this. The WHERE clause is self-limiting: once the
+// rows are corrected it matches nothing, so re-running it each boot costs one
+// indexed scan and cannot double-apply.
+{
+  db.prepare(`
+    UPDATE libraryFiles
+       SET role = 'thumbnail'
+     WHERE role = 'sub'
+       AND lower(fileName) NOT LIKE '%.fit'
+       AND lower(fileName) NOT LIKE '%.fits'
+       AND lower(fileName) NOT LIKE '%.fts'
+  `).run();
 }
 
 // ─── Device identity + transport unification ────────────────────────────────
@@ -817,6 +859,29 @@ db.exec(`
       );
     }
     db.prepare('UPDATE libraryMeta SET perTelescopeImportBackfilled = 1 WHERE id = 1').run();
+  }
+}
+
+// ─── Invalidate false-negative FITS coordinate caches ───────────────────────
+// The map's resolver used to list an object folder with a flat readdir, so a
+// nested object's files (one level down, inside a session folder) were never
+// found and the session cached as "resolved, no coordinates" — pinning it to
+// the default site even though its headers carried a real SITELAT/SITELONG.
+// Clear those entries so they re-resolve against the fixed walk. Only rows with
+// no cached coordinates are touched; a session that did resolve keeps its value.
+// One-shot, gated by a column, so genuinely coordless sessions are not re-read
+// from disk on every boot.
+{
+  const lmCols = db.prepare<[], { name: string }>('PRAGMA table_info(libraryMeta)').all();
+  if (!lmCols.some(c => c.name === 'nestedFitsCoordsRechecked')) {
+    db.prepare('ALTER TABLE libraryMeta ADD COLUMN nestedFitsCoordsRechecked INTEGER NOT NULL DEFAULT 0').run();
+    const cleared = db
+      .prepare('UPDATE librarySessions SET coordsResolved = 0 WHERE coordsResolved = 1 AND lat IS NULL')
+      .run();
+    if (cleared.changes > 0) {
+      console.log(`[library] Cleared ${cleared.changes} stale FITS-coordinate cache entr(ies) for re-resolution`);
+    }
+    db.prepare('UPDATE libraryMeta SET nestedFitsCoordsRechecked = 1 WHERE id = 1').run();
   }
 }
 
@@ -1138,7 +1203,7 @@ db.exec(`
  * never gets their old location resurrected.
  *
  * Every pre-existing session keeps `siteId = NULL` and therefore resolves to
- * this row (see `siteForSession` in observingSites.ts), so upgrading an install
+ * this row (see sessionLocation.ts), so upgrading an install
  * changes nothing observable.
  *
  * Exported so tests can drive it directly. It lives here rather than in

@@ -15,6 +15,9 @@ node_modules
 # Local Claude Code skills + sandbox config — per-developer tooling state,
 # not project source.
 .claude/
+# Reasonix tool state/config — local-only, never for project source or public sync.
+.reasonix/
+reasonix.toml
 # All build output lives here — generated, never committed. Includes:
 #   releases/web/      built React SPA
 #   releases/mac/      Node server bundle for macOS

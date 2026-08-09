@@ -26,6 +26,7 @@ import { createProfile, updateSettingsData } from '../../server/lib/telescopes';
 import { parseFilename, sessionNightFor } from '../../server/lib/telescopeFiles';
 import { stmts } from '../../server/lib/library/objects';
 import { getLibraryFilesForObject, sessionDateForRow } from '../../server/lib/library/libraryFiles';
+import { ARCHIVE_DIR_NAME, listArchivedFolders } from '../../server/lib/library/archiveFolders';
 
 /**
  * Every file inside an object folder, at any depth, as basenames.
@@ -116,8 +117,8 @@ describe('scan + commit', () => {
       path.join(root, session, '001-DWARF3_M42_2024-10-15_21-05-30-345.fits'),
       fitsBuffer({ OBJECT: 'M42' }),
     );
-    // Calibration frames, restacks, and daytime captures.
-    for (const dir of ['CALI_FRAME', 'DWARF_DARK', 'RESTACKED', 'Normal_Photos', 'Panoramas']) {
+    // Calibration frames, restacks, star trails, and daytime captures.
+    for (const dir of ['CALI_FRAME', 'DWARF_DARK', 'RESTACKED', 'STARTRAILS', 'Normal_Photos', 'Panoramas']) {
       fs.mkdirSync(path.join(root, dir), { recursive: true });
       fs.writeFileSync(path.join(root, dir, 'dark_001.fits'), fitsBuffer({ 'DATE-OBS': '2024-10-15T21:00:00' }));
     }
@@ -132,7 +133,7 @@ describe('scan + commit', () => {
     const result = scanImportFolder(root, settings);
 
     expect(result.objects.map(o => o.folderName)).toEqual(['M42']);
-    for (const name of ['CALI_FRAME', 'DWARF_DARK', 'RESTACKED', 'Normal_Photos', 'Panoramas']) {
+    for (const name of ['CALI_FRAME', 'DWARF_DARK', 'RESTACKED', 'STARTRAILS', 'Normal_Photos', 'Panoramas']) {
       expect(result.objects.map(o => o.folderName)).not.toContain(name);
     }
   });
@@ -144,8 +145,22 @@ describe('scan + commit', () => {
     const skip = result.skipped.find(s => s.reason === 'non-observation-folder');
     expect(skip).toBeDefined();
     // Counted per folder, not per file.
-    expect(skip!.count).toBe(5);
+    expect(skip!.count).toBe(6);
     expect(skip!.label).toMatch(/calibration/i);
+  });
+
+  it('names the excluded folders, not just how many there were', () => {
+    // A count on its own reads as files going missing. The user knows which
+    // folders they pointed us at, so naming them turns a silent exclusion into
+    // an explained decision.
+    const root = makeDwarfVolumeTree();
+    const result = scanImportFolder(root, settings);
+
+    expect(result.excludedFolders).toEqual([
+      'CALI_FRAME', 'DWARF_DARK', 'Normal_Photos', 'Panoramas', 'RESTACKED', 'STARTRAILS',
+    ]);
+    const skip = result.skipped.find(s => s.reason === 'non-observation-folder');
+    expect(result.excludedFolders.length).toBe(skip!.count);
   });
 
   it('commit does not import from an excluded folder even if the plan names it', () => {
@@ -167,6 +182,118 @@ describe('scan + commit', () => {
     }).then(() => {
       expect(fs.existsSync(path.join(LIBRARY_DIR, 'CALI_FRAME'))).toBe(false);
       expect(getLocalSessions('CALI_FRAME')).toEqual([]);
+    });
+  });
+
+  describe('archive mode at the folder level', () => {
+    // classifyImportFile promises archive mode keeps EVERYTHING the device
+    // holds. Folder exclusion ran upstream of every file-level setting, so
+    // "archive everything" silently still dropped calibration frames and
+    // restacks: the product stated something untrue.
+    const archiveOf = (folder: string) =>
+      path.join(LIBRARY_DIR, ARCHIVE_DIR_NAME, folder, 'dark_001.fits');
+
+    it('keeps the excluded folders as files when archive mode is on', async () => {
+      const root = makeDwarfVolumeTree();
+      await commitFolderImport({
+        rootPath: root,
+        importFits: true,
+        archiveAllFiles: true,
+        objects: [{
+          folderName: 'M42', targetObjectId: 'ARCHIVEOBJ', targetFolderName: 'ARCHIVEOBJ',
+          sessionMap: { '2024-10-15': '2024-10-15' },
+        }],
+      });
+
+      for (const folder of ['CALI_FRAME', 'DWARF_DARK', 'RESTACKED', 'STARTRAILS']) {
+        expect(fs.existsSync(archiveOf(folder))).toBe(true);
+      }
+    });
+
+    it('does not turn archived folders into library objects', async () => {
+      // The whole trade: completeness is a claim about bytes on disk, not about
+      // the object model. Object-hood is what would drag in enrichment retries,
+      // trail detection and inflated counts on data that is not an observation.
+      const root = makeDwarfVolumeTree();
+      await commitFolderImport({
+        rootPath: root,
+        importFits: true,
+        archiveAllFiles: true,
+        objects: [{
+          folderName: 'M42', targetObjectId: 'ARCHIVEOBJ', targetFolderName: 'ARCHIVEOBJ',
+          sessionMap: { '2024-10-15': '2024-10-15' },
+        }],
+      });
+
+      for (const folder of ['CALI_FRAME', 'DWARF_DARK', 'RESTACKED', 'STARTRAILS']) {
+        expect(fs.existsSync(path.join(LIBRARY_DIR, folder))).toBe(false);
+        expect(getLocalSessions(folder)).toEqual([]);
+      }
+    });
+
+    it('archives nothing when archive mode is off', async () => {
+      const root = makeDwarfVolumeTree();
+      await commitFolderImport({
+        rootPath: root,
+        importFits: true,
+        objects: [{
+          folderName: 'M42', targetObjectId: 'ARCHIVEOBJ', targetFolderName: 'ARCHIVEOBJ',
+          sessionMap: { '2024-10-15': '2024-10-15' },
+        }],
+      });
+      expect(fs.existsSync(path.join(LIBRARY_DIR, ARCHIVE_DIR_NAME))).toBe(false);
+    });
+
+    it('does not duplicate the archive when the same folder is imported twice', async () => {
+      const root = makeDwarfVolumeTree();
+      const plan = {
+        rootPath: root,
+        importFits: true,
+        archiveAllFiles: true,
+        objects: [{
+          folderName: 'M42', targetObjectId: 'ARCHIVEOBJ', targetFolderName: 'ARCHIVEOBJ',
+          sessionMap: { '2024-10-15': '2024-10-15' },
+        }],
+      };
+      await commitFolderImport(plan);
+      await commitFolderImport(plan);
+
+      const dir = path.join(LIBRARY_DIR, ARCHIVE_DIR_NAME, 'CALI_FRAME');
+      expect(fs.readdirSync(dir)).toEqual(['dark_001.fits']);
+    });
+
+    it('stops reporting the folders as skipped once archive mode is on', () => {
+      // Saying "6 folders that hold no observations will not be imported" while
+      // about to copy all six of them tells the user the opposite of the truth.
+      const root = makeDwarfVolumeTree();
+      const result = scanImportFolder(root, { ...settings, archiveAllFiles: true });
+
+      expect(result.skipped.find(s => s.reason === 'non-observation-folder')).toBeUndefined();
+      // Still named, so the wizard can say they are being archived instead.
+      expect(result.excludedFolders).toContain('CALI_FRAME');
+    });
+
+    it('lists the archive as a plain directory listing', async () => {
+      const root = makeDwarfVolumeTree();
+      await commitFolderImport({
+        rootPath: root,
+        importFits: true,
+        archiveAllFiles: true,
+        objects: [{
+          folderName: 'M42', targetObjectId: 'ARCHIVEOBJ', targetFolderName: 'ARCHIVEOBJ',
+          sessionMap: { '2024-10-15': '2024-10-15' },
+        }],
+      });
+
+      const folders = listArchivedFolders();
+      expect(folders.map(f => f.name)).toEqual([
+        'CALI_FRAME', 'DWARF_DARK', 'Normal_Photos', 'Panoramas', 'RESTACKED', 'STARTRAILS',
+      ]);
+      const cali = folders.find(f => f.name === 'CALI_FRAME')!;
+      expect(cali.fileCount).toBe(1);
+      expect(cali.bytes).toBeGreaterThan(0);
+      // The path is what lets the user point Siril or PixInsight at the frames.
+      expect(cali.path).toBe(path.join(LIBRARY_DIR, ARCHIVE_DIR_NAME, 'CALI_FRAME'));
     });
   });
 

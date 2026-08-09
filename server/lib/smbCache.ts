@@ -8,11 +8,10 @@
  * Cache lives in DATA_DIR/cache/ (Docker volume or local data/).
  * This means the app works even when the Seestar is powered off.
  *
- * NOTE: These functions are only used by:
- *   - GET /seestar/test  (explicit connection test)
- *   - runImport()        (background sync from telescope to local library)
- *
- * All other API routes read from the local library on disk, never SMB.
+ * Real consumers: routes/telescope.ts (`GET /telescope/test`), routes/storage.ts
+ * (the storage dashboard's live SMB summary), and index.ts (`GET /health`'s
+ * telescopeOnline flag). All other API routes read from the local library on
+ * disk, never SMB.
  */
 import fs from 'fs';
 import crypto from 'crypto';
@@ -27,9 +26,11 @@ import { debugLog } from './debugLogger.js';
 import type { TelescopeProfile } from './telescopes.js';
 
 // `connectionType` and `localPath` are part of this even though nothing in
-// this file reads them: smb.ts dispatches on connectionType, so omitting it
-// from the type would let a caller pass a stripped-down object that silently
-// routes a USB or FTP telescope through the SMB backend.
+// this file reads them directly: smb.ts dispatches on connectionType, so
+// omitting it from the type would let a caller pass a stripped-down object
+// that silently routes a USB or FTP telescope through the SMB backend. They
+// also feed `deviceKey` below, which is what keeps two telescopes' cache
+// entries and online/offline state from colliding.
 type ProfileArg =
   | Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password' | 'connectionType' | 'localPath'>
   | null
@@ -41,6 +42,12 @@ const CACHE_DIR = path.join(DATA_DIR, 'cache');
 const DIR_CACHE_DIR = path.join(CACHE_DIR, 'dirs');
 const FILE_CACHE_DIR = path.join(CACHE_DIR, 'files');
 
+// How long a stale entry may still be served as an offline fallback, and how
+// often the sweep reclaims entries nothing has read (or will ever read
+// again, e.g. a removed telescope) since they went stale.
+const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+
 // Ensure cache directories exist
 for (const dir of [CACHE_DIR, DIR_CACHE_DIR, FILE_CACHE_DIR]) {
   try { fs.mkdirSync(dir, { recursive: true }); } catch (err) {
@@ -50,59 +57,125 @@ for (const dir of [CACHE_DIR, DIR_CACHE_DIR, FILE_CACHE_DIR]) {
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-/** Convert an SMB path to a safe, collision-free filesystem path for caching.
- *  The prior implementation collapsed every non-`[A-Za-z0-9._-]` character to
- *  `_`, so `MyWorks/M42` and `MyWorks_M42` produced the same key. Hashing the
- *  raw path keeps keys unique and bounded. */
-function pathToKey(smbPath: string): string {
-  return crypto.createHash('sha1').update(smbPath).digest('hex');
+/** Identity of the device a path belongs to. Two telescopes can report the
+ *  same relative path (e.g. both use the default share layout); without a
+ *  device component in the cache key, one telescope's stale listing/file
+ *  bytes could be served to a different telescope's UI. */
+function deviceKey(profile: ProfileArg): string {
+  if (!profile) return 'default';
+  return `${profile.connectionType}|${profile.hostname ?? ''}|${profile.shareName ?? ''}|${profile.localPath ?? ''}`;
 }
 
-function readDirCache(smbPath: string): Array<{ name: string; type: 'dir' | 'file'; size?: number }> | null {
+/** Convert a device + SMB path to a safe, collision-free filesystem path for
+ *  caching. Hashing (rather than sanitizing) the raw string keeps keys
+ *  unique and bounded regardless of what characters the path contains. */
+function pathToKey(smbPath: string, profile: ProfileArg): string {
+  return crypto.createHash('sha1').update(`${deviceKey(profile)}|${smbPath}`).digest('hex');
+}
+
+function isFresh(cachePath: string): boolean {
   try {
-    const cachePath = path.join(DIR_CACHE_DIR, `${pathToKey(smbPath)}.json`);
-    const data = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
-    return data;
+    return Date.now() - fs.statSync(cachePath).mtimeMs < CACHE_MAX_AGE_MS;
+  } catch {
+    return false;
+  }
+}
+
+function readDirCache(smbPath: string, profile: ProfileArg): Array<{ name: string; type: 'dir' | 'file'; size?: number }> | null {
+  const cachePath = path.join(DIR_CACHE_DIR, `${pathToKey(smbPath, profile)}.json`);
+  if (!isFresh(cachePath)) {
+    try { fs.unlinkSync(cachePath); } catch { /* already gone */ }
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
   } catch {
     return null;
   }
 }
 
-function writeDirCache(smbPath: string, entries: Array<{ name: string; type: 'dir' | 'file'; size?: number }>): void {
+function writeDirCache(smbPath: string, profile: ProfileArg, entries: Array<{ name: string; type: 'dir' | 'file'; size?: number }>): void {
   try {
     fs.mkdirSync(DIR_CACHE_DIR, { recursive: true });
-    const cachePath = path.join(DIR_CACHE_DIR, `${pathToKey(smbPath)}.json`);
+    const cachePath = path.join(DIR_CACHE_DIR, `${pathToKey(smbPath, profile)}.json`);
     fs.writeFileSync(cachePath, JSON.stringify(entries));
   } catch (err) {
     console.warn('SMB dir cache write failed:', smbPath, err instanceof Error ? err.message : err);
   }
 }
 
-function readFileCache(smbPath: string): Buffer | null {
+function readFileCache(smbPath: string, profile: ProfileArg): Buffer | null {
+  const cachePath = path.join(FILE_CACHE_DIR, pathToKey(smbPath, profile));
+  if (!isFresh(cachePath)) {
+    try { fs.unlinkSync(cachePath); } catch { /* already gone */ }
+    return null;
+  }
   try {
-    const cachePath = path.join(FILE_CACHE_DIR, pathToKey(smbPath));
     return fs.readFileSync(cachePath);
   } catch {
     return null;
   }
 }
 
-function writeFileCache(smbPath: string, data: Buffer): void {
+function writeFileCache(smbPath: string, profile: ProfileArg, data: Buffer): void {
   try {
     fs.mkdirSync(FILE_CACHE_DIR, { recursive: true });
-    const cachePath = path.join(FILE_CACHE_DIR, pathToKey(smbPath));
+    const cachePath = path.join(FILE_CACHE_DIR, pathToKey(smbPath, profile));
     fs.writeFileSync(cachePath, data);
   } catch (err) {
     console.warn('SMB file cache write failed:', smbPath, err instanceof Error ? err.message : err);
   }
 }
 
-// ─── Track online/offline state ─────────────────────────────────────
+/** Delete every cache entry older than `CACHE_MAX_AGE_MS`. Lazy eviction on
+ *  read (above) only reclaims entries that are still being queried; this
+ *  sweep reclaims ones that never will be again, e.g. a deleted transport's
+ *  orphaned key. */
+function sweepStaleEntries(): void {
+  for (const dir of [DIR_CACHE_DIR, FILE_CACHE_DIR]) {
+    let names: string[];
+    try { names = fs.readdirSync(dir); } catch { continue; }
+    for (const name of names) {
+      const full = path.join(dir, name);
+      if (!isFresh(full)) {
+        try { fs.unlinkSync(full); } catch { /* already gone */ }
+      }
+    }
+  }
+}
 
-let telescopeOnline = true;
+const sweepTimer = setInterval(sweepStaleEntries, SWEEP_INTERVAL_MS);
+sweepTimer.unref();
 
-export function isTelescopeOnline(): boolean {
-  return telescopeOnline;
+// ─── Track online/offline state, per device ─────────────────────────
+// Keyed by device identity (see `deviceKey`) so one offline telescope no
+// longer marks every other telescope "offline" too.
+
+const deviceOnline = new Map<string, boolean>();
+
+export function isTelescopeOnline(profile?: ProfileArg): boolean {
+  return deviceOnline.get(deviceKey(profile)) ?? true;
+}
+
+/** Drop cached listings/files and known online state for one device, or
+ *  every device when omitted. Call this after transport CRUD (address/share
+ *  edits, deletes) so a corrected hostname doesn't keep serving a prior
+ *  device's cached entries. The on-disk cache is content-addressed by a hash
+ *  of the device identity, so a targeted per-device wipe would need a
+ *  reverse index; a full sweep is simpler and the cache is cheap to rebuild. */
+export function invalidateDeviceCache(profile?: ProfileArg): void {
+  if (profile) {
+    deviceOnline.delete(deviceKey(profile));
+  } else {
+    deviceOnline.clear();
+  }
+  for (const dir of [DIR_CACHE_DIR, FILE_CACHE_DIR]) {
+    let names: string[];
+    try { names = fs.readdirSync(dir); } catch { continue; }
+    for (const name of names) {
+      try { fs.unlinkSync(path.join(dir, name)); } catch { /* already gone */ }
+    }
+  }
 }
 
 // ─── Cached wrappers ────────────────────────────────────────────────
@@ -113,12 +186,12 @@ export async function cachedSmbListDir(
 ): Promise<Array<{ name: string; type: 'dir' | 'file'; size?: number }>> {
   try {
     const entries = await rawSmbListDir(smbPath, profile);
-    writeDirCache(smbPath, entries);
-    telescopeOnline = true;
+    writeDirCache(smbPath, profile, entries);
+    deviceOnline.set(deviceKey(profile), true);
     return entries;
   } catch (err) {
-    telescopeOnline = false;
-    const cached = readDirCache(smbPath);
+    deviceOnline.set(deviceKey(profile), false);
+    const cached = readDirCache(smbPath, profile);
     if (cached) {
       debugLog('smb-cache', `listDir "${smbPath}" live call failed, served ${cached.length} entr${cached.length === 1 ? 'y' : 'ies'} from stale cache — ${err instanceof Error ? err.message : err}`);
       return cached;
@@ -136,13 +209,13 @@ export async function cachedSmbGetFile(
   try {
     const data = await rawSmbGetFile(smbPath, maxBytes, profile);
     if (data.length < 50 * 1024 * 1024) {
-      writeFileCache(smbPath, data);
+      writeFileCache(smbPath, profile, data);
     }
-    telescopeOnline = true;
+    deviceOnline.set(deviceKey(profile), true);
     return data;
   } catch (err) {
-    telescopeOnline = false;
-    const cached = readFileCache(smbPath);
+    deviceOnline.set(deviceKey(profile), false);
+    const cached = readFileCache(smbPath, profile);
     if (cached) {
       let data = cached;
       if (maxBytes && data.length > maxBytes) {

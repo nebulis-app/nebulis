@@ -14,6 +14,7 @@ import {
   Pencil,
   Columns,
   Frame,
+  Sparkles,
 } from 'lucide-react';
 import { getObservationDetail, getObjectInfo } from '../lib/api/observations';
 import {
@@ -34,6 +35,7 @@ import { fetchLocationName } from '../lib/api/catalog';
 import { getNote } from '../lib/api/notes';
 import { formatObjectTitle } from '../lib/dsoSearch';
 import { previewSrcFor, thumbSrcFor, isPoorHeroCandidate } from '../lib/sessionImageSrc';
+import { isRenderableProcessed } from '../lib/processedFormats';
 import { MoveObservationModal } from '../components/MoveObservationModal';
 import { UploadProcessedModal } from '../components/UploadProcessedModal';
 import { DeleteSessionModal } from '../components/DeleteSessionModal';
@@ -183,6 +185,14 @@ export function ObservationDetail() {
   /** Set from the hero's natural dimensions once it loads. Null until then, so
    *  the first paint uses the landscape layout rather than flashing a guess. */
   const [heroIsPortrait, setHeroIsPortrait] = useState<boolean | null>(null);
+  /** A plain `<img>` hero has no reserved space until it loads (no width/height
+   *  metadata is available ahead of time — see noteHeroSize below), so it
+   *  collapses to nothing and then jumps to full height, shoving the tabs and
+   *  file grid down. That jump landing while someone is mid-scroll is what
+   *  reads as the page "jittering." A fixed-size loading placeholder (same
+   *  pattern FitsPreview already uses for FITS heroes) keeps the box a stable
+   *  size throughout, so nothing moves once the image actually finishes. */
+  const [heroImgLoaded, setHeroImgLoaded] = useState(false);
 
   // Note existence (for Session Notes tile indicator)
   const { data: existingNote } = useQuery({
@@ -325,6 +335,26 @@ export function ObservationDetail() {
     ? processedImages.find(img => img.path === observation.sessionImage) ?? null
     : null;
   /**
+   * When nothing has been explicitly crowned, the most recent processed image
+   * (if any) becomes the primary image automatically — a processed result is
+   * almost always what the observer actually wanted shown, and requiring a
+   * manual "set as session image" click every time defeats the point of
+   * uploading one. Restricted to formats a browser can render inline
+   * (jpg/png/tif): an XISF/FITS/PSD/RAW processed upload can't become the hero
+   * even automatically, the same rule the upload picker and file grid already
+   * enforce (see processedFormats.ts). `processedImages` is already sorted
+   * newest-first by the server, so the first renderable match is the most
+   * recent one.
+   *
+   * An explicit crown of any file — raw or processed — always wins over this;
+   * see designatedSessionFile/designatedProcessedImage above, which this only
+   * applies when both come back null.
+   */
+  const autoProcessedImage = !observation?.sessionImage
+    ? processedImages.find(img => isRenderableProcessed(img.filename)) ?? null
+    : null;
+  const effectiveProcessedImage = designatedProcessedImage ?? autoProcessedImage;
+  /**
    * Hero pick, ordered so a cheaply displayable image always beats an expensive
    * one even when the expensive one is the better-classified "stack".
    *
@@ -354,8 +384,8 @@ export function ObservationDetail() {
   // A different hero (crowned image, navigation to another session) may have the
   // opposite orientation, so the measurement has to be retaken rather than left
   // over from the previous frame.
-  const heroKey = designatedProcessedImage?.id ?? heroFile?.path ?? null;
-  useEffect(() => { setHeroIsPortrait(null); }, [heroKey]);
+  const heroKey = effectiveProcessedImage?.id ?? heroFile?.path ?? null;
+  useEffect(() => { setHeroIsPortrait(null); setHeroImgLoaded(false); }, [heroKey]);
 
   const formattedDate = date && date !== 'unknown'
     ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
@@ -560,28 +590,50 @@ if (isLoading) {
           hero's orientation, so a tall Seestar frame does not sit marooned in a
           column sized for a wide Dwarf one. */}
       <div className={`grid grid-cols-1 ${heroSizing.grid} gap-5 items-start transition-[grid-template-columns] duration-200`}>
-        {/* Left: Session image (user-designated or stacked fallback — click to enlarge) */}
-        {designatedProcessedImage ? (
+        {/* Left: Session image (user-designated, else the most recent processed
+            image, else the stacked fallback — click to enlarge) */}
+        {effectiveProcessedImage ? (
           <div className={`rounded-xl border overflow-hidden ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
             <div
               className="cursor-pointer relative group"
               onClick={() => {
-                const idx = processedImages.findIndex(img => img.id === designatedProcessedImage.id);
+                const idx = processedImages.findIndex(img => img.id === effectiveProcessedImage.id);
                 if (idx >= 0) openProcessedGallery(idx);
               }}
             >
+              {!heroImgLoaded && (
+                <div className={`aspect-video w-full flex items-center justify-center ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
+                  <Loader2 className="w-5 h-5 animate-spin text-accent-500/60" />
+                </div>
+              )}
               <img
-                src={designatedProcessedImage.url}
-                alt={designatedProcessedImage.title || designatedProcessedImage.originalName}
-                onLoad={e => noteHeroSize(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
-                className={`block mx-auto w-auto max-w-full ${heroSizing.maxH}`}
+                src={effectiveProcessedImage.url}
+                alt={effectiveProcessedImage.title || effectiveProcessedImage.originalName}
+                onLoad={e => { noteHeroSize(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight); setHeroImgLoaded(true); }}
+                // A failed load (404, network error) never fires onLoad — without
+                // this, the placeholder spinner would spin forever instead of
+                // falling back to the browser's broken-image state.
+                onError={() => setHeroImgLoaded(true)}
+                className={`block mx-auto w-auto max-w-full ${heroSizing.maxH} transition-opacity ${heroImgLoaded ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
               />
-              <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-amber-500/90 text-white text-[11px] font-semibold flex items-center gap-1 shadow">
-                <Crown className="w-3 h-3" />
-                Session Image
-              </div>
+              {/* An explicit crown gets the amber "Session Image" badge; an
+                  automatic pick (nothing crowned, a processed image just
+                  happens to exist) gets a plainer "Processed" badge instead —
+                  it was not the user's deliberate choice, so it should not
+                  look like one, and there is nothing to "reset" below. */}
+              {designatedProcessedImage ? (
+                <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-amber-500/90 text-white text-[11px] font-semibold flex items-center gap-1 shadow">
+                  <Crown className="w-3 h-3" />
+                  Session Image
+                </div>
+              ) : (
+                <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-accent-500/90 text-white text-[11px] font-semibold flex items-center gap-1 shadow">
+                  <Sparkles className="w-3 h-3" />
+                  Processed
+                </div>
+              )}
               <button
-                onClick={e => { e.stopPropagation(); openImageEditor(designatedProcessedImage.url, designatedProcessedImage.title || designatedProcessedImage.originalName, 'processed'); }}
+                onClick={e => { e.stopPropagation(); openImageEditor(effectiveProcessedImage.url, effectiveProcessedImage.title || effectiveProcessedImage.originalName, 'processed'); }}
                 className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60"
                 title="Edit image"
               >
@@ -589,11 +641,18 @@ if (isLoading) {
               </button>
             </div>
             <div className={`px-3 py-1.5 border-t flex items-center justify-between gap-2 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-              <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-500 text-[11px] font-semibold flex items-center gap-1">
-                <Crown className="w-3 h-3" />
-                Session Image
-              </span>
-              {isAdmin && (
+              {designatedProcessedImage ? (
+                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-500 text-[11px] font-semibold flex items-center gap-1">
+                  <Crown className="w-3 h-3" />
+                  Session Image
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-md bg-accent-500/20 text-accent-500 text-[11px] font-semibold flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  Processed
+                </span>
+              )}
+              {designatedProcessedImage && isAdmin && (
                 <button
                   onClick={() => handleSetSessionImage(null)}
                   disabled={settingSessionImage}
@@ -631,12 +690,23 @@ if (isLoading) {
                   maxHeightClass={heroSizing.maxH}
                 />
               ) : (
-                <img
-                  src={previewSrcFor(heroFile)}
-                  alt={displayName}
-                  onLoad={e => noteHeroSize(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
-                  className={`block mx-auto w-auto max-w-full ${heroSizing.maxH}`}
-                />
+                <>
+                  {!heroImgLoaded && (
+                    <div className={`aspect-video w-full flex items-center justify-center ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
+                      <Loader2 className="w-5 h-5 animate-spin text-accent-500/60" />
+                    </div>
+                  )}
+                  <img
+                    src={previewSrcFor(heroFile)}
+                    alt={displayName}
+                    onLoad={e => { noteHeroSize(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight); setHeroImgLoaded(true); }}
+                // A failed load (404, network error) never fires onLoad — without
+                // this, the placeholder spinner would spin forever instead of
+                // falling back to the browser's broken-image state.
+                onError={() => setHeroImgLoaded(true)}
+                    className={`block mx-auto w-auto max-w-full ${heroSizing.maxH} transition-opacity ${heroImgLoaded ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
+                  />
+                </>
               )}
               {/* Crown badge for user-designated session image */}
               {heroIsUserDesignated && (

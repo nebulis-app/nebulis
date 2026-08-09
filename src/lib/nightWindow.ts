@@ -9,22 +9,32 @@
 import SunCalc from 'suncalc';
 
 /**
+ * The hour (local time) the observing-night calendar date rolls over. 07:00
+ * (not noon) because a planner is forward-looking — after dawn, "tonight"
+ * means the coming evening. 07:00 (not 06:00) so midwinter sessions that
+ * image until a late dawn aren't yanked to the next night mid-capture.
+ *
+ * Duplicated (not imported) because this is browser code and the backend's
+ * copy — `OBSERVING_NIGHT_ROLLOVER_HOUR` in server/lib/telescopeFiles.ts —
+ * lives in a server-only module. Also duplicated in NightDate.swift (iOS)
+ * and PlannerTime.kt (Android). A test in tests/backend asserts this copy
+ * matches the backend's; the native clients aren't covered by that test and
+ * need checking by hand if this ever changes.
+ */
+export const NIGHT_ROLLOVER_HOUR = 7;
+
+/**
  * Astronomer's "today" — the calendar date whose evening starts the most
  * relevant upcoming or current dark window.
  *
- * Until 07:00 local, default to yesterday's calendar date: a session running
- * at 02:00 belongs to the prior evening's plan, not the new day. 07:00 (not
- * noon) is the rollover because a planner is forward-looking — after dawn,
- * "tonight" means the coming evening. 07:00 (not 06:00) so midwinter
- * sessions that image until a late dawn aren't yanked to the next night
- * mid-capture. Keep in sync with NightDate.swift in the iOS client,
- * PlannerTime.kt in the Android client, and the default-date anchor in
- * server/routes/planner.ts.
+ * Until the rollover hour local, default to yesterday's calendar date: a
+ * session running at 02:00 belongs to the prior evening's plan, not the new
+ * day.
  */
 export function plannerToday(now: Date = new Date(), timeZone?: string): Date {
   const todayKey = timeZone ? localDateKeyInTimeZone(now, timeZone) : localDateKey(now);
   const hour = timeZone ? localHourInTimeZone(now, timeZone) : now.getHours();
-  const key = hour < 7 ? addDaysToDateKey(todayKey, -1) : todayKey;
+  const key = hour < NIGHT_ROLLOVER_HOUR ? addDaysToDateKey(todayKey, -1) : todayKey;
   return dateFromKey(key);
 }
 
@@ -123,7 +133,7 @@ function localDateKeyInTimeZone(d: Date, timeZone: string): string {
 export function plannerDateKeyForInstant(d: Date, timeZone?: string): string {
   const key = timeZone ? localDateKeyInTimeZone(d, timeZone) : localDateKey(d);
   const hour = timeZone ? localHourInTimeZone(d, timeZone) : d.getHours();
-  return hour < 7 ? addDaysToDateKey(key, -1) : key;
+  return hour < NIGHT_ROLLOVER_HOUR ? addDaysToDateKey(key, -1) : key;
 }
 
 export function dateFromKey(key: string): Date {

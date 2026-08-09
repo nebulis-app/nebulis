@@ -87,6 +87,30 @@ test.describe('Image Gallery', () => {
     }
   });
 
+  // ─── Processed only ───────────────────────────────────────────────────────
+
+  test('processed-only toggle is present', async ({ page }) => {
+    await expect(page.getByRole('button', { name: /processed only/i })).toBeVisible();
+  });
+
+  test('processed-only filters out raw images', async ({ page }) => {
+    const processedBtn = page.getByRole('button', { name: /processed only/i });
+    await processedBtn.click();
+    // Only the processed NGC7000 entry should remain.
+    await expect(page.getByText('North America Nebula')).toBeVisible();
+    await expect(page.getByText('Orion Nebula')).not.toBeVisible();
+    await expect(page.getByText('Andromeda Galaxy')).not.toBeVisible();
+  });
+
+  test('clearing processed-only restores all images', async ({ page }) => {
+    const processedBtn = page.getByRole('button', { name: /processed only/i });
+    await processedBtn.click();
+    await processedBtn.click();
+    await expect(page.getByText('Orion Nebula')).toBeVisible();
+    await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
+    await expect(page.getByText('North America Nebula')).toBeVisible();
+  });
+
   // ─── Sort ─────────────────────────────────────────────────────────────────
 
   test('sort control is present', async ({ page }) => {

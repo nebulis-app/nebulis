@@ -595,6 +595,7 @@ export const MOCK = {
       distanceLy: 1344,
       downloadUrl: '/api/library/file?path=/data/library/M42/2024-03-15/M42_2024-03-15.jpg',
       isFavorite: false,
+      isProcessed: false,
     },
     {
       name: 'M31_2024-02-20.jpg',
@@ -606,6 +607,23 @@ export const MOCK = {
       distanceLy: 2537000,
       downloadUrl: '/api/library/file?path=/data/library/M31/2024-02-20/M31_2024-02-20.jpg',
       isFavorite: true,
+      isProcessed: false,
+    },
+    {
+      // A distinct object from the two raw entries above, deliberately: reusing
+      // an existing objectName here would give getByText('Andromeda Galaxy')
+      // two matches and break every existing strict-mode assertion in
+      // image-gallery.spec.ts that looks for it.
+      name: 'NGC7000_final.jpg',
+      path: 'NGC7000/processed/NGC7000_final.jpg',
+      date: '2024-01-10',
+      objectId: 'NGC7000',
+      objectName: 'North America Nebula',
+      objectType: 'Emission Nebula',
+      distanceLy: 2590,
+      downloadUrl: '/api/library/file?path=NGC7000/processed/NGC7000_final.jpg',
+      isFavorite: false,
+      isProcessed: true,
     },
   ],
 
@@ -691,12 +709,15 @@ export async function mockAllRoutes(page: Page) {
   // it does not collide with the objects routes above.
   await page.route('**/api/library/object-filters', r => r.fulfill(json(ok([
     { id: 'all', label: 'All', matchTypes: [] },
-    { id: 'solar-system', label: 'Solar System', matchTypes: ['Star', 'Planet', 'Natural Satellite', 'Dwarf Planet', 'Asteroid', 'Comet'], matchMode: 'exact' },
+    { id: 'solar-system', label: 'Solar System', matchTypes: ['Planet', 'Natural Satellite', 'Dwarf Planet', 'Asteroid', 'Comet'], matchMode: 'exact' },
+    { id: 'comet', label: 'Comet', matchTypes: ['Comet'], matchMode: 'exact' },
+    { id: 'star', label: 'Star', matchTypes: ['Star', 'Double Star', 'Binary Star', 'Variable Star'], matchMode: 'exact' },
     { id: 'galaxy', label: 'Galaxy', matchTypes: ['Galaxy'] },
     { id: 'nebula', label: 'Nebula', matchTypes: ['Nebula'] },
     { id: 'cluster', label: 'Cluster', matchTypes: ['Cluster'] },
     { id: 'supernova-remnant', label: 'Supernova Remnant', matchTypes: ['Supernova Remnant'] },
     { id: 'planetary-nebula', label: 'Planetary Nebula', matchTypes: ['Planetary Nebula'] },
+    { id: 'unknown', label: 'Unknown', matchTypes: ['Unknown'], matchMode: 'exact' },
   ]))));
 
   // Import

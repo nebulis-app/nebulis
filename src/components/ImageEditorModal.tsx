@@ -654,17 +654,32 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
       name, text: tText, fontSize: tSize, fontFamily: tFont,
       color: tColor, bold: tBold, italic: tItalic, opacity: tOpacity, align: tAlign, angle: tAngle,
     };
+    const previous = presets;
     const updated = [...presets, preset];
     setPresets(updated);
     setSavePresetName('');
     setShowSavePreset(false);
-    await saveWatermarkPresets(updated).catch(() => {/* best-effort */});
+    try {
+      await saveWatermarkPresets(updated);
+    } catch {
+      // Roll back the optimistic update — otherwise the sidebar shows a
+      // preset that was never actually persisted, and it silently vanishes
+      // next time the list reloads from the server.
+      setPresets(previous);
+      setSaveError('Failed to save watermark preset. Try again.');
+    }
   };
 
   const deletePreset = async (id: string) => {
+    const previous = presets;
     const updated = presets.filter(p => p.id !== id);
     setPresets(updated);
-    await saveWatermarkPresets(updated).catch(() => {});
+    try {
+      await saveWatermarkPresets(updated);
+    } catch {
+      setPresets(previous);
+      setSaveError('Failed to delete watermark preset. Try again.');
+    }
   };
 
   // ── Save ──────────────────────────────────────────────────────────────────

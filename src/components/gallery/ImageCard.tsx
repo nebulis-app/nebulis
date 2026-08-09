@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, Images } from 'lucide-react';
+import { Heart, Images, Sparkles } from 'lucide-react';
 import { getLibraryFileThumbnailUrl, type LibraryImage } from '../../lib/api/library';
 
 interface ImageCardProps {
@@ -26,6 +26,14 @@ export function ImageCard({ image, isDark, onOpen, onToggleFavorite }: ImageCard
           <img src={getLibraryFileThumbnailUrl(image.path, 400, 400)} alt={image.name} loading="lazy"
             onError={() => setImgError(true)}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+        )}
+        {image.isProcessed && (
+          <div
+            title="Processed image"
+            className="absolute top-2 left-2 p-1 rounded-full bg-accent-500/90 text-white shadow"
+          >
+            <Sparkles className="w-3 h-3" />
+          </div>
         )}
       </button>
       <button

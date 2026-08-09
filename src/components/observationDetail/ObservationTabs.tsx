@@ -31,7 +31,7 @@ export function ObservationTabs({ active, onChange, counts }: {
     <div
       role="tablist"
       aria-label="Observation sections"
-      className={`flex items-center gap-1 overflow-x-auto border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}
+      className={`flex items-center gap-1 overflow-x-auto no-scrollbar border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}
     >
       {tabs.map(({ id, label, count }) => {
         const isActive = active === id;

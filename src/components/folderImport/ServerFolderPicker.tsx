@@ -73,7 +73,7 @@ export function ServerFolderPicker({ isDark, onChange, suggestedPath }: {
             <Telescope className="w-4 h-4 shrink-0 text-accent-500" />
             Known path for this telescope
           </span>
-          <div className={`text-xs font-mono mt-0.5 truncate ${sub}`}>{suggestedPath}</div>
+          <div className={`text-xs font-mono mt-0.5 truncate ${sub}`} title={suggestedPath}>{suggestedPath}</div>
         </button>
       )}
 
@@ -105,13 +105,13 @@ export function ServerFolderPicker({ isDark, onChange, suggestedPath }: {
                 }`}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <span className={`text-sm font-medium truncate flex items-center gap-2 ${body}`}>
+                  <span className={`text-sm font-medium truncate flex items-center gap-2 ${body}`} title={v.label}>
                     <HardDrive className="w-4 h-4 shrink-0 text-accent-500" />
                     {v.label}
                   </span>
-                  <span className={`text-xs tabular-nums ${sub}`}>{formatBytes(v.freeBytes)} free</span>
+                  <span className={`text-xs tabular-nums shrink-0 ${sub}`}>{formatBytes(v.freeBytes)} free</span>
                 </div>
-                <div className={`text-xs font-mono mt-0.5 truncate ${sub}`}>{v.path}</div>
+                <div className={`text-xs font-mono mt-0.5 truncate ${sub}`} title={v.path}>{v.path}</div>
               </button>
             ))}
             {(volumesData?.volumes ?? []).length === 0 && (
@@ -134,14 +134,17 @@ export function ServerFolderPicker({ isDark, onChange, suggestedPath }: {
                 const parent = browsePath.replace(/[\\/][^\\/]+$/, '');
                 goTo(parent || volume.path);
               }}
-              className={`p-1.5 rounded-lg ${canGoUp ? (isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100') : 'opacity-40'}`}
+              className={`shrink-0 p-1.5 rounded-lg ${canGoUp ? (isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100') : 'opacity-40'}`}
               title="Up one folder"
             >
               <ArrowUp className={`w-4 h-4 ${body}`} />
             </button>
-            <span className={`text-xs font-mono truncate flex-1 ${body}`}>{browsePath}</span>
+            {/* Wraps rather than truncates: this is the folder that will be
+                imported, so it is the one path the user must be able to read in
+                full, however deeply nested the backup tree is. */}
+            <span className={`text-xs font-mono break-all flex-1 ${body}`}>{browsePath}</span>
           </div>
-          <div className={`${isDark ? 'bg-slate-800/40' : 'bg-slate-50'} rounded-xl max-h-40 overflow-y-auto`}>
+          <div className={`${isDark ? 'bg-slate-800/40' : 'bg-slate-50'} rounded-xl max-h-72 overflow-y-auto`}>
             {(browseData?.directories ?? []).map((d: DirectoryEntry) => (
               <button
                 type="button"
@@ -150,7 +153,7 @@ export function ServerFolderPicker({ isDark, onChange, suggestedPath }: {
                 className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm ${body} ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}
               >
                 <FolderOpen className="w-4 h-4 text-accent-500 shrink-0" />
-                <span className="truncate flex-1">{d.name}</span>
+                <span className="truncate flex-1" title={d.name}>{d.name}</span>
                 <ChevronRight className="w-3.5 h-3.5 opacity-40" />
               </button>
             ))}

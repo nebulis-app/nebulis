@@ -38,6 +38,7 @@ export function isContainerFolder(name: string): boolean {
  *   CALI_FRAME    Dwarf 3 / Dwarf Mini calibration frames
  *   DWARF_DARK    Dwarf II dark library
  *   RESTACKED     MegaStack output, one subfolder per stack version
+ *   STARTRAILS    star-trail composites, one output per capture run
  *   Normal_Photos / Panoramas / Burst / Videos
  *                 daytime and terrestrial capture modes
  *
@@ -50,6 +51,7 @@ const NON_OBJECT_FOLDERS = new Set([
   'cali_frame',
   'dwarf_dark',
   'restacked',
+  'startrails',
   'normal_photos',
   'panoramas',
   'burst',

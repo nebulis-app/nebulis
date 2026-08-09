@@ -133,3 +133,42 @@ describe('settings round-trip (temperatureUnit / groupObservingNights)', () => {
     expect(getSettingsData().temperatureUnit).toBe('celsius');
   });
 });
+
+// ─── apiKey sealing round-trip ────────────────────────────────────────────
+// The admin API key used to be stored in appSettings.apiKey as plaintext.
+// getSettingsData()/updateSettingsData() are what routes/settings.ts's
+// masked-preview logic (`current.apiKey.slice(0,8)+'...'`) and its
+// don't-overwrite-with-the-masked-placeholder guard both depend on — if
+// updateSettingsData ever stopped decrypting on read, that guard would
+// silently compare against ciphertext and every unrelated settings save
+// would clobber the real key with the literal masked string.
+describe('settings round-trip (apiKey sealing)', () => {
+  afterEach(() => {
+    updateSettingsData({ apiKey: '' });
+  });
+
+  it('is stored encrypted at rest but reads back as plaintext', () => {
+    updateSettingsData({ apiKey: 'shub_plaintext_round_trip' });
+    expect(getSettingsData().apiKey).toBe('shub_plaintext_round_trip');
+
+    const raw = db.prepare<[], { apiKey: string }>('SELECT apiKey FROM appSettings WHERE id = 1').get();
+    expect(raw?.apiKey).not.toBe('shub_plaintext_round_trip');
+    // secretBox's `<nonce>.<tag>.<ciphertext>` format.
+    expect(raw?.apiKey.split('.')).toHaveLength(3);
+  });
+
+  it('a partial update to an unrelated field does not disturb the key', () => {
+    updateSettingsData({ apiKey: 'shub_survives_unrelated_update' });
+    updateSettingsData({ temperatureUnit: 'celsius' });
+    expect(getSettingsData().apiKey).toBe('shub_survives_unrelated_update');
+    updateSettingsData({ temperatureUnit: 'fahrenheit' });
+  });
+
+  it('clearing the key stores an empty string, not a sealed empty blob', () => {
+    updateSettingsData({ apiKey: 'shub_to_be_cleared' });
+    updateSettingsData({ apiKey: '' });
+    expect(getSettingsData().apiKey).toBe('');
+    const raw = db.prepare<[], { apiKey: string }>('SELECT apiKey FROM appSettings WHERE id = 1').get();
+    expect(raw?.apiKey).toBe('');
+  });
+});

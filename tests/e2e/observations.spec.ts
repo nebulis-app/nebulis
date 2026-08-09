@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import fs from 'fs';
 import { mockAllRoutes, MOCK } from './fixtures/mocks';
 
 test.describe('Observations Calendar', () => {
@@ -163,5 +164,64 @@ test.describe('Observation Detail', () => {
     await expect(page.getByRole('link', { name: /back|observations/i })
       .or(page.locator('a[href="/observations"]'))
     ).toBeVisible();
+  });
+
+});
+
+// Regression test for the hero-image layout-shift fix: it previously had no
+// reserved space before it loaded (no width/height/aspect-ratio available
+// ahead of time), so the hero — and everything below it: tabs, file grid —
+// jumped from ~0 height to full height the instant the image finished
+// loading. That jump landing while someone was mid-scroll read as the page
+// jittering. Fixed by a fixed-size loading placeholder that the real
+// (opacity-toggled) image replaces once it fires `onLoad`, mirroring the
+// pattern FitsPreview already used for FITS heroes.
+//
+// Separate describe block (own beforeEach, no shared `Observation Detail`
+// setup) so the hero's image route can be mocked before the page's single
+// navigation — reusing that block's shared `goto` and reloading afterward
+// to swap the mock hits an unrelated, pre-existing bug where a hard reload
+// mis-resolves the processed-images route to the wrong mock handler and
+// crashes the page (`processedImages.find is not a function`, reproduces
+// even without touching the hero image route at all). Worth a look
+// separately; out of scope here.
+test.describe('Observation Detail hero image', () => {
+  test('reaches full opacity after loading, with no stuck loading placeholder', async ({ page }) => {
+    await mockAllRoutes(page);
+    await page.route('**/api/library/observations/M42/2024-03-15', r =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            ...MOCK.observationDetail,
+            files: MOCK.sessionFiles,
+            stackedFiles: [MOCK.sessionFiles[0]],
+            imageFiles: [MOCK.sessionFiles[1]],
+            subFiles: [MOCK.sessionFiles[2]],
+          },
+        }),
+      }));
+    // The trailing `**` (not `*`) matters: the query string
+    // (`?path=/data/library/...`) contains slashes, which a single `*` won't
+    // span, so the route silently never matches and the request falls
+    // through unmocked.
+    await page.route('**/api/library/file**', r =>
+      r.fulfill({ status: 200, contentType: 'image/jpeg', body: fs.readFileSync('tests/e2e/fixtures/tiny.jpg') }));
+    // Without this, mockAllRoutes' `objects/**` catch-all (registered for
+    // e.g. `/library/objects/M42`) also matches this session's
+    // processed-images request and returns a single object instead of an
+    // array, crashing the page on `processedImages.find`. Pre-existing gap
+    // in the shared fixture, unrelated to the hero image; out of scope here.
+    await page.route('**/api/library/objects/M42/sessions/2024-03-15/processed-images', r =>
+      r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, data: [] }) }));
+
+    await page.goto('/observations/M42/2024-03-15');
+
+    const hero = page.getByAltText(/Orion Nebula/);
+    await expect(hero).toBeVisible();
+    await expect(hero).toHaveClass(/opacity-100/);
+    await expect(hero).not.toHaveClass(/opacity-0/);
   });
 });

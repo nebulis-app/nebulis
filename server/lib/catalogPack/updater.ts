@@ -40,7 +40,22 @@ async function runUpdateCheck(prewarm: PrewarmFn): Promise<void> {
   await checkAndUpdatePacks(prewarm);
 }
 
+// Guards against concurrent invocations of this function itself — distinct
+// from getPrefetchStatus().running below, which only guards against the
+// *prefetch* job. Without this, the 24h timer here and the nightly batch's
+// own direct call (plannerNightlyPrefetch.ts) can overlap (e.g. a server
+// restart that realigns the 24h timer with the nightly 03:00 slot) and both
+// reach installCatalogPacks concurrently, interleaving writes to the same
+// pack file.
+let inFlight: Promise<void> | null = null;
+
 export async function checkAndUpdatePacks(prewarm: PrewarmFn): Promise<void> {
+  if (inFlight) return inFlight;
+  inFlight = runCheckAndUpdatePacks(prewarm).finally(() => { inFlight = null; });
+  return inFlight;
+}
+
+async function runCheckAndUpdatePacks(prewarm: PrewarmFn): Promise<void> {
   const installedStates = getAllPackStates();
   if (installedStates.length === 0) {
     if (!getPrefetchStatus().running) {

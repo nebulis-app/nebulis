@@ -33,6 +33,7 @@ import { deriveFileDate, confidenceForSource, type DerivedDate, type DateSource 
 import { isDwarfSessionFolder, extractTargetFromSessionFolder } from '../walkers/dwarfWalker.js';
 import { getWalkerConfig } from '../walkers/index.js';
 import type { TelescopeKind } from '../telescopes.js';
+import { log } from '../logger.js';
 
 /** A source object discovered under the scan root: one library object built
  *  from one top-level folder (plus its `_sub` companion), or the root's own
@@ -54,8 +55,13 @@ export interface ObjectSource {
 export interface CollectedSources {
   sources: ObjectSource[];
   /** Directory names left out because they hold no observations, so callers can
-   *  tell the user instead of silently returning a shorter list. */
+   *  tell the user instead of silently returning a shorter list. Relative to
+   *  `resolvedRoot`, not to the root the caller passed in. */
   excludedFolders: string[];
+  /** The directory the object level was actually found in: the given root, or
+   *  the vendor base path below it when one was detected. Excluded folders are
+   *  children of *this*, so archive mode needs it to locate them on disk. */
+  resolvedRoot: string;
   /** Set when a known telescope's vendor base path (e.g. "Astronomy" for
    *  Dwarf) was found as a direct child of the given root and the scan
    *  descended into it instead of treating the root's own children as
@@ -125,6 +131,11 @@ export interface ScanResult {
    *  the review screen account for the gap between what the user picked and
    *  what will land, instead of just showing a shorter list. */
   skipped: ScanSkip[];
+  /** Names of the top-level folders left out because they hold no observations
+   *  (CALI_FRAME, RESTACKED, ...). The `non-observation-folder` skip line only
+   *  carries a count, and a count with no names reads as a bug rather than a
+   *  decision: the user knows exactly which folders they pointed us at. */
+  excludedFolders: string[];
   /** True when the file cap was hit and the scan is incomplete. */
   truncated: boolean;
   /** Set when the scan detected the given root was a device volume root and
@@ -229,7 +240,20 @@ export function collectObjectSources(rootPath: string, telescopeKind?: Telescope
     }
   }
 
-  const entries = fs.readdirSync(rootPath, { withFileTypes: true });
+  // Per-object listings below (readRealFileNames) already tolerate a failed
+  // read by treating it as "no files". The root listing can't do that — it
+  // has nothing to fall back to — but it also shouldn't abort the whole
+  // commit over one transient hiccup (a flaky network-mounted share, a
+  // momentary lock on the staged upload dir): commitFolderImport deletes the
+  // staged upload on any failure, so losing that over a blip is expensive
+  // for the user. One immediate retry before propagating the error.
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(rootPath, { withFileTypes: true });
+  } catch (err) {
+    log.warn({ err: err instanceof Error ? err.message : String(err), rootPath }, '[folder-scan] root listing failed, retrying once');
+    entries = fs.readdirSync(rootPath, { withFileTypes: true });
+  }
   // Folders that are not observations (CALI_FRAME, RESTACKED, Panoramas, ...)
   // are pulled out before anything else so they can never become library
   // objects. Excluding them here rather than at either call site is what keeps
@@ -253,7 +277,21 @@ export function collectObjectSources(rootPath: string, telescopeKind?: Telescope
 
   for (const dir of objectDirs) {
     if (isDwarfSessionFolder(dir.name)) {
-      const target = extractTargetFromSessionFolder(dir.name) ?? dir.name;
+      const parsedTarget = extractTargetFromSessionFolder(dir.name);
+      if (!parsedTarget) {
+        // The folder name matched a known Dwarf session-prefix (that's what
+        // isDwarfSessionFolder checked), but the target substring after the
+        // prefix didn't parse — a firmware/naming change should be visible,
+        // not silently produce a garbage-named object from the raw folder
+        // name. Every such folder also gets its own unique "target" (the
+        // full folder name, timestamp included), so same-target sessions
+        // that would normally group together each become a separate object.
+        log.warn(
+          { folder: dir.name },
+          '[folder-scan] Dwarf session folder matched a known prefix but its target name could not be parsed; using the raw folder name',
+        );
+      }
+      const target = parsedTarget ?? dir.name;
       const group = dwarfGroups.get(target) ?? [];
       group.push(path.join(rootPath, dir.name));
       dwarfGroups.set(target, group);
@@ -398,7 +436,7 @@ export function collectObjectSources(rootPath: string, telescopeKind?: Telescope
     if (seen > 1) source.folderName = `${source.folderName} (${seen})`;
   }
 
-  return { sources, excludedFolders, basePathDetected };
+  return { sources, excludedFolders, resolvedRoot: rootPath, basePathDetected };
 }
 
 /** Walk an object's source dirs, gating by import settings and deriving a
@@ -555,7 +593,14 @@ export function scanImportFolder(
   // Counted per folder rather than per file: "3 folders that hold no
   // observations" tells the user more than a raw dark-frame count would, and it
   // avoids walking directories we are going to discard anyway.
-  countSkip(skipTotals, 'non-observation-folder', excludedFolders.length);
+  //
+  // Not counted at all under archive mode: these folders are copied into the
+  // library's archive rather than dropped, so reporting them as skipped would
+  // say the opposite of what is about to happen. The wizard reports the archive
+  // separately, off `excludedFolders`.
+  if (settings.archiveAllFiles !== true) {
+    countSkip(skipTotals, 'non-observation-folder', excludedFolders.length);
+  }
 
   for (const source of sources) {
     const { files, truncated: t, skipped } = walkObjectFiles(source, settings);
@@ -594,5 +639,13 @@ export function scanImportFolder(
     { objects: 0, files: 0, sessions: 0, unsorted: 0, bytes: 0 },
   );
 
-  return { rootPath, objects, totals, skipped: summarizeSkips(skipTotals), truncated, basePathDetected };
+  return {
+    rootPath,
+    objects,
+    totals,
+    skipped: summarizeSkips(skipTotals),
+    excludedFolders,
+    truncated,
+    basePathDetected,
+  };
 }

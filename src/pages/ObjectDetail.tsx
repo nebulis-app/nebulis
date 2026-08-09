@@ -12,6 +12,7 @@ import { CompareSessionsModal } from '../components/CompareSessionsModal';
 import { CombineSubframesModal } from '../components/CombineSubframesModal';
 import { EditObjectModal } from '../components/EditObjectModal';
 import { FramingModal, FRAMING_MOSAIC_ENABLED } from '../components/catalogs/FramingModal';
+import { NewObservationModal } from '../components/NewObservationModal';
 
 export function ObjectDetail() {
   const { objectId } = useParams<{ objectId: string }>();
@@ -23,6 +24,7 @@ export function ObjectDetail() {
   const [deleteObjectConfirm, setDeleteObjectConfirm] = useState(false);
   const [deleteSession, setDeleteSession] = useState<{ objectId: string; date: string } | null>(null);
   const [galleryModalOpen, setGalleryModalOpen] = useState(false);
+  const [newObservationOpen, setNewObservationOpen] = useState(false);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [combineSubframesOpen, setCombineSubframesOpen] = useState(false);
   const [editObjectOpen, setEditObjectOpen] = useState(false);
@@ -487,6 +489,18 @@ export function ObjectDetail() {
         />
       )}
 
+      <NewObservationModal
+        isOpen={newObservationOpen}
+        onClose={() => setNewObservationOpen(false)}
+        objectId={activeObjectId}
+        objectName={catalogEntry?.name || baseObjectId}
+        onSuccess={result => {
+          setNewObservationOpen(false);
+          queryClient.invalidateQueries({ queryKey: ['library-sessions', result.objectId] });
+          navigate(`/observations/${encodeURIComponent(result.objectId)}/${encodeURIComponent(result.date)}`);
+        }}
+      />
+
       {/* Action buttons */}
       <div className="flex flex-wrap gap-3">
         <button
@@ -548,8 +562,8 @@ export function ObjectDetail() {
               </span>
             )}
             {isAdmin && (
-              <Link
-                to={`/observations/new?objectId=${encodeURIComponent(activeObjectId)}&objectName=${encodeURIComponent(catalogEntry?.name || baseObjectId)}`}
+              <button
+                onClick={() => setNewObservationOpen(true)}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
                   isDark
                     ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 border border-accent-500/30'
@@ -558,7 +572,7 @@ export function ObjectDetail() {
               >
                 <PlusCircle className="w-3.5 h-3.5" />
                 Add Observation
-              </Link>
+              </button>
             )}
           </div>
         </div>
@@ -612,9 +626,16 @@ export function ObjectDetail() {
               <h3 className="font-display font-semibold text-lg">Delete Object</h3>
             </div>
             <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              This will permanently delete all local image files for <strong>{objectId}</strong> and prevent
-              them from being re-synced from the telescope. Observation notes will not be deleted. This cannot be undone.
+              This will permanently delete all local image files for <strong>{objectId}</strong>. That
+              part cannot be undone. It also blocks {objectId} from being re-synced from the telescope,
+              but that part can: restore it from Settings, Storage, Trash. Observation notes will not
+              be deleted.
             </p>
+            {deleteObjectMutation.error && (
+              <p className="text-sm text-red-500">
+                {deleteObjectMutation.error instanceof Error ? deleteObjectMutation.error.message : 'Failed to delete object. Try again.'}
+              </p>
+            )}
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setDeleteObjectConfirm(false)}
@@ -653,8 +674,14 @@ export function ObjectDetail() {
               <strong>
                 {new Date(deleteSession.date + 'T12:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
               </strong>
-              {' '}and prevent it from being re-synced from the telescope. This cannot be undone.
+              . That part cannot be undone. It also blocks this observation from being re-synced from
+              the telescope, but that part can: restore it from Settings, Storage, Trash.
             </p>
+            {deleteSessionMutation.error && (
+              <p className="text-sm text-red-500">
+                {deleteSessionMutation.error instanceof Error ? deleteSessionMutation.error.message : 'Failed to delete observation. Try again.'}
+              </p>
+            )}
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setDeleteSession(null)}

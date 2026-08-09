@@ -149,7 +149,11 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
       // a runId would kill whatever import happens to be running, e.g. an
       // unrelated auto-import that raced in first.
       if (!completedRef.current && ownRunIdRef.current) {
-        cancelImport(ownRunIdRef.current).catch(() => {});
+        // The modal is unmounting either way, so there's nowhere left to show
+        // an inline error — but a silently-failed cancel leaves the server
+        // lock held with the user believing they stopped it, so at least log
+        // it. The 6-hour stale-lock watchdog is the eventual backstop.
+        cancelImport(ownRunIdRef.current).catch(err => console.warn('Failed to cancel sub-frame sync:', err));
       }
     };
   }, []);
@@ -160,7 +164,7 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
   function handleClose() {
     stopPolling();
     if (!isFinished && ownRunIdRef.current) {
-      cancelImport(ownRunIdRef.current).catch(() => {});
+      cancelImport(ownRunIdRef.current).catch(err => console.warn('Failed to cancel sub-frame sync:', err));
     }
     onClose();
   }

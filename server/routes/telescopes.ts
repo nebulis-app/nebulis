@@ -17,7 +17,7 @@ import {
 import db from '../lib/db.js';
 import { smbListDir } from '../lib/smb.js';
 import { parseShareName, validateHostAddress } from '../lib/smb.shared.js';
-import { tcpProbe, getSmbOpHealth, SMB_PORT } from '../lib/smbReachability.js';
+import { tcpProbe, getSmbOpHealth, invalidateSmbReachability, SMB_PORT } from '../lib/smbReachability.js';
 import { ftpTestConnection, parseFtpHost } from '../lib/smb.ftp.js';
 import { getWalkerConfig, isDwarfKind } from '../lib/walkers/index.js';
 import { log } from '../lib/logger.js';
@@ -38,8 +38,30 @@ import {
   type TransportKind,
 } from '../lib/telescopeTransports.js';
 import { readIdentity, writeIdentityIfMissing } from '../lib/deviceIdentity.js';
+import { invalidateDeviceCache } from '../lib/smbCache.js';
+import { invalidateFtpCache } from '../lib/smb.ftp.js';
 
 const router = Router();
+
+/** Drop any cached SMB/FTP listings, reachability, and root-detection state
+ *  for a transport after its address/share/kind changes or it's removed.
+ *  Without this, an edited hostname keeps serving the previous device's
+ *  cached entries until they age out on their own. */
+function invalidateTransportCaches(t: Pick<TelescopeTransport, 'kind' | 'hostname' | 'shareName' | 'username' | 'password' | 'localPath'> | undefined | null): void {
+  if (!t) return;
+  invalidateDeviceCache({
+    connectionType: t.kind,
+    hostname: t.hostname,
+    shareName: t.shareName,
+    username: t.username,
+    password: t.password,
+    localPath: t.localPath,
+  });
+  if (t.hostname) {
+    invalidateSmbReachability(t.hostname);
+    invalidateFtpCache(t.hostname);
+  }
+}
 
 const TelescopeKindSchema = z.enum(TELESCOPE_KINDS);
 
@@ -283,6 +305,7 @@ router.post('/:id/transports', requireAdmin, (req: Request, res: Response) => {
     return;
   }
   const transport = addTransport(id, parsed.data);
+  invalidateTransportCaches(transport);
   res.apiSuccess(presentTransport(transport));
 });
 
@@ -316,6 +339,10 @@ router.put('/:id/transports/:tid', requireAdmin, (req: Request, res: Response) =
     res.apiError(404, 'NOT_FOUND', 'Transport not found');
     return;
   }
+  // Invalidate both the prior identity (in case hostname/share/kind changed)
+  // and the new one, so neither keeps serving stale cached entries.
+  invalidateTransportCaches(existing);
+  invalidateTransportCaches(updated);
   res.apiSuccess(presentTransport(updated));
 });
 
@@ -325,7 +352,8 @@ router.delete('/:id/transports/:tid', requireAdmin, (req: Request, res: Response
   const id = String(req.params.id);
   const tid = String(req.params.tid);
   const transports = getTransportsForProfile(id);
-  if (!transports.some(t => t.id === tid)) {
+  const target = transports.find(t => t.id === tid);
+  if (!target) {
     res.apiError(404, 'NOT_FOUND', 'Transport not found');
     return;
   }
@@ -335,6 +363,7 @@ router.delete('/:id/transports/:tid', requireAdmin, (req: Request, res: Response
     return;
   }
   deleteTransport(tid);
+  invalidateTransportCaches(target);
   const profile = getProfileById(id);
   if (profile?.pinnedTransportId === tid) {
     updateProfile(id, { pinnedTransportId: null });

@@ -47,6 +47,7 @@ import {
   FITS_EXTENSIONS,
 } from '../telescopeFiles.js';
 import { isDwarfMasterStack } from './importFilter.js';
+import { isReservedLibraryDir } from './archiveFolders.js';
 
 /** What a file *is*, decided once at import instead of re-guessed per read.
  *
@@ -410,6 +411,7 @@ export function rebuildFromManifests(): number {
   if (!fs.existsSync(libraryDir)) return 0;
   let restored = 0;
   for (const folderName of fs.readdirSync(libraryDir)) {
+    if (isReservedLibraryDir(folderName)) continue;
     const manifestPath = path.join(libraryDir, folderName, MANIFEST_NAME);
     if (!fs.existsSync(manifestPath)) continue;
     let manifest: ManifestShape;

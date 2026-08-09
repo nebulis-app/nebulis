@@ -31,6 +31,30 @@ const FITS_DEFAULTS_BY_KIND: Record<TelescopeKind, { focalLenMm: number; pixelSi
 };
 
 /**
+ * Per-kind imaging field, in degrees, for frames whose header carries no
+ * NAXIS1/NAXIS2 at all (both are otherwise-mandatory FITS keywords, so this
+ * only fires on a malformed/truncated header reached via the identifyOnly
+ * path, which parses just the header rather than the full pixel array).
+ *
+ * Used instead of guessing a pixel count: NAXIS1/2 only exist in this file to
+ * get multiplied by the per-kind plate scale into a FOV in degrees, so with
+ * no real pixel count to multiply, reconstructing one (from an assumed
+ * resolution) and then converting back to degrees compounds two guesses when
+ * one will do. Values mirror FOV_PROFILES in src/lib/telescopeFov.ts (kept as
+ * a separate, server-side copy since server code doesn't import from src/) —
+ * same caveat applies: approximate, verify against the manufacturer spec
+ * sheet before trusting any single value.
+ */
+const FOV_DEFAULTS_BY_KIND: Record<TelescopeKind, { widthDeg: number; heightDeg: number }> = {
+  'seestar-s50': { widthDeg: 1.28, heightDeg: 0.73 },
+  'seestar-s30': { widthDeg: 2.14, heightDeg: 1.22 },
+  'dwarf-3':     { widthDeg: 2.94, heightDeg: 1.65 },
+  'dwarf-2':     { widthDeg: 3.20, heightDeg: 1.80 },
+  'dwarf-mini':  { widthDeg: 2.90, heightDeg: 1.63 },
+  'other':       { widthDeg: 1.28, heightDeg: 0.73 },
+};
+
+/**
  * Resolve telescope-kind defaults for a given file path. Walks the path back
  * to (objectId, sessionDate) → librarySessions.telescopeId → profile.kind.
  * Falls back to seestar-s50 defaults if any step fails — same as before for
@@ -223,15 +247,23 @@ router.post('/detect', requireAdmin, async (req: Request, res: Response) => {
     // that matters for any frame the SeeStar firmware doesn't fully tag,
     // since an S30 (150mm) silently came out 1.67× off otherwise.
     const fitsDefaults = defaultsForFilePath(filePath);
-    const naxis1 = typeof v['NAXIS1'] === 'number' ? v['NAXIS1'] : 1080;
-    const naxis2 = typeof v['NAXIS2'] === 'number' ? v['NAXIS2'] : 1920;
+    const naxis1 = typeof v['NAXIS1'] === 'number' ? v['NAXIS1'] : null;
+    const naxis2 = typeof v['NAXIS2'] === 'number' ? v['NAXIS2'] : null;
     const focalLenMm = typeof v['FOCALLEN'] === 'number' ? v['FOCALLEN'] : fitsDefaults.focalLenMm;
     const pixelSizeXUm = typeof v['XPIXSZ'] === 'number' ? v['XPIXSZ'] : fitsDefaults.pixelSizeUm;
     const pixelSizeYUm = typeof v['YPIXSZ'] === 'number' ? v['YPIXSZ'] : pixelSizeXUm;
-    const arcsecPerPixelX = (pixelSizeXUm / 1000 / focalLenMm) * (180 / Math.PI) * 3600;
-    const arcsecPerPixelY = (pixelSizeYUm / 1000 / focalLenMm) * (180 / Math.PI) * 3600;
-    const fovWidthDeg = (naxis1 * arcsecPerPixelX) / 3600;
-    const fovHeightDeg = (naxis2 * arcsecPerPixelY) / 3600;
+    let fovWidthDeg: number;
+    let fovHeightDeg: number;
+    if (naxis1 != null && naxis2 != null) {
+      const arcsecPerPixelX = (pixelSizeXUm / 1000 / focalLenMm) * (180 / Math.PI) * 3600;
+      const arcsecPerPixelY = (pixelSizeYUm / 1000 / focalLenMm) * (180 / Math.PI) * 3600;
+      fovWidthDeg = (naxis1 * arcsecPerPixelX) / 3600;
+      fovHeightDeg = (naxis2 * arcsecPerPixelY) / 3600;
+    } else {
+      const fov = FOV_DEFAULTS_BY_KIND[fitsDefaults.kind] ?? FOV_DEFAULTS_BY_KIND.other;
+      fovWidthDeg = fov.widthDeg;
+      fovHeightDeg = fov.heightDeg;
+    }
 
     // Try to identify satellites if we have enough metadata
     let candidates: unknown[] = [];

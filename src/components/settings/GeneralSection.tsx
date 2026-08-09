@@ -253,6 +253,18 @@ export function GeneralSection({
           />
         </Row>
 
+        <RowGroup label="Image Gallery" isDark={isDark} />
+        <Row
+          label="Show processed images only"
+          description='The Gallery page opens with the "Processed only" filter already on. You can still turn it off there.'
+          isDark={isDark}
+        >
+          <Toggle
+            checked={form.galleryProcessedOnlyDefault ?? false}
+            onChange={v => setForm(f => ({ ...f, galleryProcessedOnlyDefault: v }))}
+          />
+        </Row>
+
         <RowGroup label="Planetarium mode" isDark={isDark} />
         <Row
           label="Show object information"
@@ -272,6 +284,16 @@ export function GeneralSection({
           <Toggle
             checked={form.slideshowRotateCCW ?? false}
             onChange={v => setForm(f => ({ ...f, slideshowRotateCCW: v }))}
+          />
+        </Row>
+        <Row
+          label="Start with processed images only"
+          description="The slideshow opens with only processed images. You can still switch to All Images while it plays."
+          isDark={isDark}
+        >
+          <Toggle
+            checked={form.planetariumProcessedOnlyDefault ?? false}
+            onChange={v => setForm(f => ({ ...f, planetariumProcessedOnlyDefault: v }))}
           />
         </Row>
       </Sec>

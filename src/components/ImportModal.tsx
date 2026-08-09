@@ -324,13 +324,17 @@ export function ImportModal({ onClose, onReview }: {
 
   const card = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
   const mutedText = isDark ? 'text-slate-500' : 'text-slate-400';
+  // The server folder picker shows filesystem paths, which are long and deeply
+  // nested; 512px truncates every one of them. The upload flow has no such
+  // content, so it keeps the narrower dialog.
+  const modalWidth = source === 'local' ? 'max-w-3xl' : 'max-w-lg';
 
   return (
     <Modal
       isOpen
       onClose={requestClose}
       title="Import to Library"
-      className={`relative w-full max-w-lg max-h-[88vh] flex flex-col rounded-2xl border shadow-2xl ${card}`}
+      className={`relative w-full ${modalWidth} max-h-[88vh] flex flex-col rounded-2xl border shadow-2xl ${card}`}
     >
       {/* Header */}
       <div className={`shrink-0 flex items-center justify-between px-6 py-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>

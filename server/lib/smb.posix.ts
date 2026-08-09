@@ -179,7 +179,10 @@ export async function smbDelete(smbPath: string, profile?: ProfileArg): Promise<
   sanitizePath(smbPath);
   validatePathNoTraversal(smbPath);
 
-  if (!smbPath.startsWith(BASE_PATH)) {
+  // Plain startsWith(BASE_PATH) has no trailing-separator boundary check, so
+  // a sibling folder named e.g. "MyWorks_evil" (or "MyWorksEvil") would also
+  // pass — the prefix matches but the path is not actually inside BASE_PATH.
+  if (smbPath !== BASE_PATH && !smbPath.startsWith(BASE_PATH + '/')) {
     throw new Error('Can only delete files within MyWorks');
   }
 

@@ -24,6 +24,8 @@ import { parseFitsHeader } from '../fitsParser.js';
 import { log } from '../logger.js';
 import { fetchWikipediaSummary } from '../wikipedia.js';
 import { getLibraryObjectFilterTags } from './objectFilters.js';
+import { isEnrichmentCoolingDown } from './enrichmentCooldown.js';
+import { isReservedLibraryDir } from './archiveFolders.js';
 import {
   resolverFor,
   deleteLibraryFileRow,
@@ -166,6 +168,12 @@ const migrationColumns: Array<{ column: string; sql: string }> = [
   { column: 'wikiUrl',            sql: 'ALTER TABLE libraryObjects ADD COLUMN wikiUrl TEXT' },
   { column: 'sizeArcmin',        sql: 'ALTER TABLE libraryObjects ADD COLUMN sizeArcmin TEXT' },
   { column: 'galleryImageUserSet', sql: 'ALTER TABLE libraryObjects ADD COLUMN galleryImageUserSet INTEGER NOT NULL DEFAULT 0' },
+  // Negative cache for catalog enrichment. Without these, "needs enrichment" is
+  // the *absence* of a result, so an object Wikipedia and SIMBAD cannot resolve
+  // matches forever and is re-queried on every server start and every import.
+  // See shouldSkipEnrichment.
+  { column: 'enrichmentAttemptedAt', sql: 'ALTER TABLE libraryObjects ADD COLUMN enrichmentAttemptedAt TEXT' },
+  { column: 'enrichmentAttempts', sql: 'ALTER TABLE libraryObjects ADD COLUMN enrichmentAttempts INTEGER NOT NULL DEFAULT 0' },
 ];
 const sessionMigrations: Array<{ column: string; sql: string }> = [
   { column: 'temperature',  sql: 'ALTER TABLE librarySessions ADD COLUMN temperature REAL' },
@@ -191,6 +199,13 @@ try { db.prepare('SELECT importRunning FROM libraryMeta LIMIT 0').run(); }
 catch { db.prepare('ALTER TABLE libraryMeta ADD COLUMN importRunning INTEGER NOT NULL DEFAULT 0').run(); }
 try { db.prepare('SELECT importStartedAt FROM libraryMeta LIMIT 0').run(); }
 catch { db.prepare('ALTER TABLE libraryMeta ADD COLUMN importStartedAt TEXT').run(); }
+
+// Migration for libraryDeletedSessions: when a session was tombstoned, so the
+// trash view can sort and show it. Rows written before this column existed
+// carry NULL, which the trash view is written to tolerate rather than backfill
+// with a fabricated date.
+try { db.prepare('SELECT deletedAt FROM libraryDeletedSessions LIMIT 0').run(); }
+catch { db.prepare('ALTER TABLE libraryDeletedSessions ADD COLUMN deletedAt TEXT').run(); }
 
 // Ensure importHistory table exists (added after initial schema)
 db.prepare(`CREATE TABLE IF NOT EXISTS importHistory (
@@ -440,6 +455,7 @@ export function repairSpaceDirectories(): void {
 
     for (const entry of fs.readdirSync(LIBRARY_DIR, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
+      if (isReservedLibraryDir(entry.name)) continue;
       const noSpaceName = entry.name.replace(/\s+/g, '');
       if (noSpaceName === entry.name) continue; // no spaces — nothing to do
 
@@ -530,6 +546,7 @@ export function repairAliasDirectories(): void {
     const entries = fs.readdirSync(LIBRARY_DIR, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
+      if (isReservedLibraryDir(entry.name)) continue;
       const canonical = resolveCanonicalId(entry.name);
       if (canonical === entry.name) continue;
 
@@ -639,6 +656,16 @@ export const stmts = {
   markObjectDeleted: db.prepare(
     'UPDATE libraryObjects SET deleted = 1, deletedAt = ? WHERE objectId = ?'
   ),
+  // Un-tombstones an object: re-eligible for sync, and visible again in
+  // getLocalObjects. Does not touch fileCount or folderName — the local files
+  // were already removed at delete time and are not restored by this. See
+  // restoreLocalObject.
+  restoreObject: db.prepare(
+    'UPDATE libraryObjects SET deleted = 0, deletedAt = NULL WHERE objectId = ?'
+  ),
+  getDeletedObjectRows: db.prepare<[], LibraryObjectRow>(
+    'SELECT * FROM libraryObjects WHERE deleted = 1 ORDER BY deletedAt DESC'
+  ),
   updateObjectFileCount: db.prepare(
     'UPDATE libraryObjects SET fileCount = ? WHERE objectId = ?'
   ),
@@ -694,9 +721,25 @@ export const stmts = {
 
   // Deleted session tombstones
   isSessionTombstoned: db.prepare('SELECT 1 FROM libraryDeletedSessions WHERE objectId = ? AND date = ?'),
-  addSessionTombstone: db.prepare('INSERT OR IGNORE INTO libraryDeletedSessions (objectId, date) VALUES (?, ?)'),
+  // deletedAt is IGNOREd on conflict along with the rest of the row, so
+  // reconciliation call sites that re-assert an already-known tombstone from
+  // the JSON index (import.ts) never clobber the original delete time with
+  // "now" — only a genuinely new tombstone gets today's timestamp.
+  addSessionTombstone: db.prepare('INSERT OR IGNORE INTO libraryDeletedSessions (objectId, date, deletedAt) VALUES (?, ?, ?)'),
+  removeSessionTombstone: db.prepare('DELETE FROM libraryDeletedSessions WHERE objectId = ? AND date = ?'),
   getDeletedSessions: db.prepare<[string], { date: string }>('SELECT date FROM libraryDeletedSessions WHERE objectId = ?'),
   getAllDeletedSessions: db.prepare<[], { objectId: string; date: string }>('SELECT objectId, date FROM libraryDeletedSessions'),
+  // Joined with libraryObjects for display (folder/object name) and filtered to
+  // objects that are not themselves fully tombstoned — those already show up
+  // whole in the object trash, and listing their individual sessions too would
+  // be a confusing duplicate of the same restore action.
+  getDeletedSessionRows: db.prepare<[], { objectId: string; date: string; deletedAt: string | null; folderName: string; objectName: string | null }>(
+    `SELECT ds.objectId, ds.date, ds.deletedAt, lo.folderName, lo.objectName
+     FROM libraryDeletedSessions ds
+     JOIN libraryObjects lo ON lo.objectId = ds.objectId
+     WHERE lo.deleted = 0
+     ORDER BY ds.deletedAt DESC`,
+  ),
 
   // Library metadata
   getMeta: db.prepare<[], LibraryMetaRow>('SELECT * FROM libraryMeta WHERE id = 1'),
@@ -789,6 +832,42 @@ export function resolveCatalogMeta(objectId: string): {
   };
 }
 
+/**
+ * Re-resolve an object's catalog columns on `libraryObjects` and write them
+ * back. Call after anything that changes what the catalog says about an object,
+ * which today means a user editing its details (`catalogOverrides`).
+ *
+ * The override merges into `getCatalogEntry` at read time, so object detail
+ * picked a correction up immediately, but the library grid, the type filter
+ * chips and `filterTags` all read the denormalized `libraryObjects` columns and
+ * kept showing the old value until the next import happened to re-resolve them.
+ * That is why correcting a type looked like it did nothing.
+ *
+ * `description` is only written when the catalog actually has one: enrichment
+ * stores the Wikipedia extract in the same column, and an object whose catalog
+ * entry carries no description must not have that blanked.
+ *
+ * Returns false when the id is not in the library (a pure catalog object).
+ */
+export function applyCatalogMetaToLibraryObject(objectId: string): boolean {
+  const exists = db
+    .prepare<[string], { objectId: string }>('SELECT objectId FROM libraryObjects WHERE objectId = ?')
+    .get(objectId);
+  if (!exists) return false;
+
+  const meta = resolveCatalogMeta(objectId);
+  db.prepare(
+    `UPDATE libraryObjects SET catalogId=?, objectName=?, objectType=?, constellation=?,
+     description=COALESCE(?, description), magnitude=?, ra=?, dec=?, distanceLy=?
+     WHERE objectId=?`,
+  ).run(
+    meta.catalogId, meta.objectName, meta.objectType, meta.constellation,
+    meta.description || null, meta.magnitude, meta.ra, meta.dec, meta.distanceLy,
+    objectId,
+  );
+  return true;
+}
+
 // Backfill: populate catalog columns for any existing rows that have NULL catalogId or distanceLy
 {
   const needsBackfill = db
@@ -833,6 +912,27 @@ interface EnrichQueryRow {
   description: string | null;
   wikiUrl: string | null;
   sizeArcmin: string | null;
+  enrichmentAttemptedAt: string | null;
+  enrichmentAttempts: number | null;
+}
+
+let _enrichAttemptStmt: ReturnType<typeof db.prepare> | null = null;
+function getEnrichAttemptStmt() {
+  if (!_enrichAttemptStmt) {
+    _enrichAttemptStmt = db.prepare(
+      `UPDATE libraryObjects SET enrichmentAttemptedAt = ?,
+       enrichmentAttempts = COALESCE(enrichmentAttempts, 0) + 1 WHERE objectId = ?`,
+    );
+  }
+  return _enrichAttemptStmt;
+}
+
+/** Clear the negative cache for one object so the next enrichment call runs a
+ *  fresh lookup. For when the object's identity changed (a corrected name),
+ *  which is the one thing that can turn a permanent miss into a hit. */
+export function resetEnrichmentCooldown(objectId: string): void {
+  db.prepare('UPDATE libraryObjects SET enrichmentAttemptedAt = NULL, enrichmentAttempts = 0 WHERE objectId = ?')
+    .run(objectId);
 }
 
 // Prevents concurrent enrichment calls for the same objectId from firing
@@ -842,8 +942,12 @@ const enrichInFlight = new Set<string>();
 /**
  * Fetch enrichment data from Wikipedia + SIMBAD and store in the DB.
  * Called once during import — results are persisted so pages never need live fetches.
+ *
+ * Objects that came back empty recently are skipped (see ENRICHMENT_RETRY_DAYS).
+ * Pass `{ force: true }` to look up regardless, which is what a user-triggered
+ * retry does.
  */
-export async function enrichObjectData(objectId: string): Promise<void> {
+export async function enrichObjectData(objectId: string, opts: { force?: boolean } = {}): Promise<void> {
   if (enrichInFlight.has(objectId)) {
     log.debug({ objectId }, '[enrich] already in flight, skipping');
     return;
@@ -851,10 +955,22 @@ export async function enrichObjectData(objectId: string): Promise<void> {
 
   // Typed prepared statement — SQL trust boundary enforced by libraryObjects schema.
   const obj = db
-    .prepare<[string], EnrichQueryRow>('SELECT objectName, catalogId, description, wikiUrl, sizeArcmin FROM libraryObjects WHERE objectId = ?')
+    .prepare<[string], EnrichQueryRow>(
+      `SELECT objectName, catalogId, description, wikiUrl, sizeArcmin,
+              enrichmentAttemptedAt, enrichmentAttempts
+       FROM libraryObjects WHERE objectId = ?`,
+    )
     .get(objectId);
   if (!obj) {
     log.debug({ objectId }, '[enrich] not in DB yet, skipping');
+    return;
+  }
+
+  if (!opts.force && isEnrichmentCoolingDown(obj.enrichmentAttemptedAt, obj.enrichmentAttempts)) {
+    log.debug(
+      { objectId, attemptedAt: obj.enrichmentAttemptedAt, attempts: obj.enrichmentAttempts },
+      '[enrich] looked up recently with no result, skipping until the cooldown expires',
+    );
     return;
   }
 
@@ -955,6 +1071,10 @@ export async function enrichObjectData(objectId: string): Promise<void> {
     if (description || wikiUrl || sizeArcmin) {
       getEnrichStmt().run([description, wikiUrl, sizeArcmin, objectId]);
     }
+    // Stamped whether or not anything came back. A hit stops matching the
+    // "missing data" selection on its own, so this only ever matters for a
+    // miss, which is precisely the case that used to repeat forever.
+    getEnrichAttemptStmt().run([new Date().toISOString(), objectId]);
   } finally {
     enrichInFlight.delete(objectId);
   }
@@ -962,11 +1082,16 @@ export async function enrichObjectData(objectId: string): Promise<void> {
 
 // Async backfill: enrich objects missing Wikipedia/SIMBAD data (runs in background after startup)
 {
+  // The cooldown is applied here as well as inside enrichObjectData, so the
+  // count we log is the number of lookups that will actually happen rather than
+  // the number of rows that merely still lack data.
   const needsEnrichment = db
-    .prepare<[], { objectId: string }>(
-      `SELECT objectId FROM libraryObjects WHERE (wikiUrl IS NULL OR sizeArcmin IS NULL OR (description IS NULL AND wikiUrl IS NOT NULL)) AND deleted = 0`,
+    .prepare<[], { objectId: string; enrichmentAttemptedAt: string | null; enrichmentAttempts: number | null }>(
+      `SELECT objectId, enrichmentAttemptedAt, enrichmentAttempts FROM libraryObjects
+       WHERE (wikiUrl IS NULL OR sizeArcmin IS NULL OR (description IS NULL AND wikiUrl IS NOT NULL)) AND deleted = 0`,
     )
-    .all();
+    .all()
+    .filter(row => !isEnrichmentCoolingDown(row.enrichmentAttemptedAt, row.enrichmentAttempts));
 
   if (needsEnrichment.length > 0) {
     console.log(`[library] Enriching ${needsEnrichment.length} objects with Wikipedia/SIMBAD data...`);
@@ -1343,6 +1468,42 @@ export function deleteLocalObject(objectId: string): void {
   if (objDir && fs.existsSync(objDir)) {
     try { fs.rmSync(objDir, { recursive: true, force: true }); } catch { /* ignore */ }
   }
+}
+
+/**
+ * Un-tombstone a deleted object so it becomes eligible for sync again.
+ *
+ * This is the one thing a delete's `deletedAt` timestamp was recorded for and
+ * had no way to use: the local files removed by `deleteLocalObject` are gone
+ * and this does not bring them back, only the next sync from the telescope
+ * does that. What it restores is the *decision*, not the data.
+ *
+ * Returns false when the object does not exist or was not deleted, so the
+ * route can tell "already restored" from "nothing happened".
+ */
+export function restoreLocalObject(objectId: string): boolean {
+  const existing = stmts.getObject.get(objectId);
+  if (!existing || !existing.deleted) return false;
+  stmts.restoreObject.run(objectId);
+  return true;
+}
+
+export interface DeletedObjectSummary {
+  objectId: string;
+  folderName: string;
+  objectName: string | null;
+  deletedAt: string | null;
+}
+
+/** Every currently-tombstoned object, most recently deleted first. Backs the
+ *  Settings trash view. */
+export function listDeletedObjects(): DeletedObjectSummary[] {
+  return stmts.getDeletedObjectRows.all().map(row => ({
+    objectId: row.objectId,
+    folderName: row.folderName,
+    objectName: row.objectName ?? null,
+    deletedAt: row.deletedAt ?? null,
+  }));
 }
 
 // ─── Integration stats (local files only) ────────────────────────────────────

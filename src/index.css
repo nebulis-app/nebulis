@@ -56,6 +56,15 @@
   scrollbar-width: thin;
 }
 
+/* Scrollable strips (e.g. the observation tab row) that must scroll on narrow
+   screens but should not show scrollbar chrome on desktop. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;

@@ -63,9 +63,24 @@ export interface ImportStatus {
   cancelled: boolean;
   startedAt: string | null;
   warmingThumbnails: { done: number; total: number } | null;
+  /** Files this run copied into the library's archive folder, and where it is
+   *  on disk. Only set by a folder import with archive mode on. */
+  archivedFiles?: number;
+  archivePath?: string | null;
 }
 
 export const getLibraryObjects = () => fetchJSON<AstroObject[]>('/library/objects');
+
+/** One non-observation folder archive mode kept but did not model. */
+export interface ArchivedFolder {
+  name: string;
+  fileCount: number;
+  bytes: number;
+  /** Absolute path on the server, so it can be opened in a stacking app. */
+  path: string;
+}
+export const getLibraryArchive = () =>
+  fetchJSON<{ path: string; folders: ArchivedFolder[] }>('/library/archive');
 export interface LibraryObjectFilter {
   id: string;
   label: string;
@@ -174,6 +189,35 @@ export const deleteLibrarySession = (objectId: string, date: string) =>
     `/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}`,
     { method: 'DELETE' }
   );
+
+/** A deleted object still shown in the trash, awaiting restore or a permanent
+ *  cleanup. Local files are already gone; restoring only re-enables sync. */
+export interface DeletedObject {
+  objectId: string;
+  folderName: string;
+  objectName: string | null;
+  deletedAt: string | null;
+}
+export const getDeletedObjects = () => fetchJSON<DeletedObject[]>('/library/objects/deleted');
+export const restoreLibraryObject = (objectId: string) =>
+  fetchJSON<{ restored: boolean; objectId: string }>(
+    `/library/objects/${encodeURIComponent(objectId)}/restore`,
+    { method: 'POST' },
+  );
+
+export interface DeletedSession {
+  objectId: string;
+  folderName: string;
+  objectName: string | null;
+  date: string;
+  deletedAt: string | null;
+}
+export const getDeletedSessions = () => fetchJSON<DeletedSession[]>('/library/objects/deleted-sessions');
+export const restoreLibrarySession = (objectId: string, date: string) =>
+  fetchJSON<{ restored: boolean; objectId: string; date: string }>(
+    `/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/restore`,
+    { method: 'POST' },
+  );
 export const deleteSessionSubFrames = (objectId: string, date: string) =>
   fetchJSON<{ deleted: number; objectId: string; date: string }>(
     `/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/subframes`,
@@ -281,6 +325,9 @@ export interface ImportScanResult {
   totals: { objects: number; files: number; sessions: number; unsorted: number; bytes: number };
   /** Files found but not importable, grouped by why, largest group first. */
   skipped: ImportSkip[];
+  /** Top-level folders left out because they hold no observations, by name, so
+   *  the skip notice can say which ones instead of only how many. */
+  excludedFolders: string[];
   truncated: boolean;
   /** Set when the scan detected the given root was a device volume root and
    *  descended into the telescope's vendor base path (e.g. "Astronomy") to
@@ -805,6 +852,9 @@ export interface LibraryImage {
   distanceLy: number | null;
   downloadUrl: string;
   isFavorite: boolean;
+  /** True for a user-uploaded post-processing result, false for a raw
+   *  telescope file. Drives the Gallery page's "Processed only" filter. */
+  isProcessed: boolean;
 }
 
 /** Paginated response envelope for /library/all-images. */

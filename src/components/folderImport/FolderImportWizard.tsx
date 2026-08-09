@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  X, RotateCw, AlertCircle, CheckCircle2, FolderSearch, ArrowRight, FolderInput,
+  X, RotateCw, AlertCircle, CheckCircle2, FolderSearch, ArrowRight, FolderInput, Archive,
 } from 'lucide-react';
 import {
   scanImportFolder,
@@ -103,6 +103,7 @@ export function FolderImportWizard({
   const [edits, setEdits] = useState<ObjectEdit[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [skipped, setSkipped] = useState<ImportSkip[]>([]);
+  const [excludedFolders, setExcludedFolders] = useState<string[]>([]);
   const [basePathDetected, setBasePathDetected] = useState<string | null>(null);
 
   const card = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
@@ -117,6 +118,7 @@ export function FolderImportWizard({
       setEdits(buildEdits(result));
       setTruncated(result.truncated);
       setSkipped(result.skipped ?? []);
+      setExcludedFolders(result.excludedFolders ?? []);
       setBasePathDetected(result.basePathDetected ?? null);
       setPhase('review');
     },
@@ -291,7 +293,7 @@ export function FolderImportWizard({
                     ? `Nothing here can be imported with your current settings. All ${skippedTotal.toLocaleString()} file${skippedTotal !== 1 ? 's' : ''} were skipped.`
                     : 'No importable files were found in this folder. Check that it contains image or FITS files.'}
                 </p>
-                <SkippedNotice skipped={skipped} isDark={isDark} />
+                <SkippedNotice skipped={skipped} isDark={isDark} excludedFolders={excludedFolders} />
               </div>
             ) : (
               <>
@@ -311,7 +313,20 @@ export function FolderImportWizard({
                     This folder has a very large number of files, so the scan stopped early. Import what's shown, then scan again to pick up the rest.
                   </div>
                 )}
-                <SkippedNotice skipped={skipped} isDark={isDark} />
+                <SkippedNotice skipped={skipped} isDark={isDark} excludedFolders={excludedFolders} />
+                {/* Under archive mode these folders are kept rather than
+                    dropped, so the scan does not report them as skipped and
+                    this says what will happen to them instead. */}
+                {archiveAll && excludedFolders.length > 0 && (
+                  <div className={`flex items-start gap-2 p-3 rounded-xl text-sm ${isDark ? 'bg-slate-800/60 text-slate-300' : 'bg-slate-50 text-slate-600'}`}>
+                    <Archive className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      {excludedFolders.length} folder{excludedFolders.length !== 1 ? 's' : ''} that
+                      hold no observations will be copied to your library's archive rather than
+                      imported as objects: <span className="font-mono">{excludedFolders.join(', ')}</span>
+                    </span>
+                  </div>
+                )}
                 {edits.map((edit, i) => (
                   <ObjectReviewCard key={edit.folderName} edit={edit} onChange={next => updateEdit(i, next)} />
                 ))}
@@ -343,6 +358,8 @@ export function FolderImportWizard({
             objectsTotal={statusQuery.data?.objectsTotal ?? totals.objects}
             error={statusQuery.data?.error ?? null}
             cancelling={cancelRequested}
+            archivedFiles={statusQuery.data?.archivedFiles ?? 0}
+            archivePath={statusQuery.data?.archivePath ?? null}
           />
         )}
       </div>
@@ -402,6 +419,7 @@ export function FolderImportWizard({
 
 function CommitProgress({
   phase, filesTotal, filesDone, objectsDone, objectsTotal, error, cancelling,
+  archivedFiles, archivePath,
 }: {
   phase: Phase;
   filesTotal: number;
@@ -410,6 +428,10 @@ function CommitProgress({
   objectsTotal: number;
   error: string | null;
   cancelling: boolean;
+  /** Files kept from the calibration/restack/daytime folders, which are copied
+   *  as files rather than imported as objects. Zero unless archive mode is on. */
+  archivedFiles: number;
+  archivePath: string | null;
 }) {
   const { isDark } = useTheme();
   const subText = isDark ? 'text-slate-400' : 'text-slate-500';
@@ -432,6 +454,13 @@ function CommitProgress({
         <p className={`text-sm ${subText}`}>
           {filesDone} file{filesDone !== 1 ? 's' : ''} imported into your library across {objectsTotal} object{objectsTotal !== 1 ? 's' : ''}.
         </p>
+        {archivedFiles > 0 && (
+          <p className={`text-sm max-w-md ${subText}`}>
+            {archivedFiles} file{archivedFiles !== 1 ? 's' : ''} from the calibration, restack, and
+            daytime folders were kept as files rather than observations{archivePath ? ', on disk at' : '.'}
+            {archivePath && <span className="font-mono break-all"> {archivePath}</span>}
+          </p>
+        )}
       </div>
     );
   }

@@ -31,6 +31,7 @@ import { Client, type FileInfo } from 'basic-ftp';
 import type { SmbEntry } from './smb.shared.js';
 import type { TelescopeProfile } from './telescopes.js';
 import { debugLog } from './debugLogger.js';
+import { log } from './logger.js';
 import { tcpProbe } from './smbReachability.js';
 
 /** DWARFLAB firmware serves FTP on the standard port. Kept as a constant so
@@ -110,7 +111,13 @@ function assertSafeRemotePath(remotePath: string): void {
   if (remotePath.split('/').some(seg => seg === '..')) {
     throw new Error(`Path traversal rejected: ${remotePath}`);
   }
-  if (/[\r\n\0]/.test(remotePath)) {
+  // Aligned with smb.shared.ts's sanitizePath. basic-ftp sends structured FTP
+  // protocol commands over the control socket, not a shell, so quotes/`;`/
+  // `$`/backtick were never an injection path here the way they are for
+  // smbclient — but there's no reason for FTP's guard to be looser than
+  // every other transport's, and real device filenames never need these
+  // characters.
+  if (/[\x00-\x1f\x7f`$\\";|&\r\n]/.test(remotePath)) {
     throw new Error(`Invalid characters in path: ${remotePath}`);
   }
 }
@@ -300,6 +307,11 @@ async function resolveRemoteRoot(target: FtpTarget, client: Client): Promise<str
     }
   }
   debugLog('ftp', `No Dwarf storage marker found on ${key}; falling back to FTP root`);
+  // Visible at the normal log level, not just debugLog (off by default): a
+  // device that never resolves to a known root is either not actually a
+  // Dwarf or has a storage layout this app doesn't recognize yet — a
+  // firmware/layout change should be noticeable, not silent.
+  log.warn({ target: key }, '[ftp] No Dwarf storage marker found; falling back to bare FTP root');
   rootCache.set(key, { root: '', resolvedAt: Date.now() });
   return '';
 }

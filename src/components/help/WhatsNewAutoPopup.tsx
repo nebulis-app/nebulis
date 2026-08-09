@@ -15,10 +15,11 @@ interface VersionInfo {
 
 /** Release series with a hand-built, screenshot-driven popup instead of the
  *  plain ChangelogModal. Matched on `major.minor`, not the exact version, so
- *  every patch in the series keeps the highlight reel: 1.5.0, 1.5.1, and
- *  1.5.2 all get the 1.5 popup. Patch releases refine the same feature set
- *  the reel is advertising, and a user upgrading straight from 1.4 to 1.5.1
- *  would otherwise never see it at all.
+ *  a user upgrading straight from 1.4 to 1.5.2 still sees the 1.5 reel once,
+ *  the same as someone who landed on 1.5.0 first. The reel shows exactly
+ *  once per series (see useEnhancedModal below) — later patches in the same
+ *  series (1.5.1, 1.5.2, ...) fall back to the plain ChangelogModal so the
+ *  same screenshots don't reappear on every point release.
  *
  *  Add a series here only alongside a matching modal component; everything
  *  else falls back to ChangelogModal automatically. */
@@ -116,7 +117,20 @@ export function WhatsNewAutoPopup() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastSeenQuery.isLoading, versionQuery.data?.version, lastSeenQuery.data?.lastSeenVersion]);
 
-  const useEnhancedModal = ackTarget !== null && ENHANCED_SERIES.has(versionSeries(ackTarget)) && !viewAll;
+  // Series match alone isn't enough to decide "show the reel": the popup
+  // trigger above compares exact versions, so a patch bump within the same
+  // series (1.5.0 -> 1.5.1) also reopens this. Only show the full reel when
+  // the user's last-acknowledged version was in a DIFFERENT series (a real
+  // first-look at 1.5, whether they arrived via 1.5.0 or jumped straight from
+  // 1.4 to 1.5.2). Once any 1.5.x has been acknowledged, later 1.5.x patches
+  // fall through to the plain ChangelogModal below instead of repeating the
+  // screenshot tour on every point release.
+  const seenSeries = versionSeries(lastSeenQuery.data?.lastSeenVersion ?? '');
+  const useEnhancedModal =
+    ackTarget !== null &&
+    ENHANCED_SERIES.has(versionSeries(ackTarget)) &&
+    seenSeries !== versionSeries(ackTarget) &&
+    !viewAll;
 
   return (
     <>

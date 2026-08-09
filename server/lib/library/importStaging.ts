@@ -123,7 +123,16 @@ export interface PurgeResult {
  * manual "clean up" button passes a short one, because the user is looking at
  * the screen and an import that is genuinely running is refused higher up.
  */
-export function purgeImportTmp(minAgeMs: number): PurgeResult {
+/**
+ * `isImportRunning`, when passed, is re-checked on every entry rather than
+ * once up front: an import can claim the lock after this sweep started
+ * (e.g. the boot-time purge racing the first auto-import tick), and this
+ * loop's own `dirSize` walk is slow enough on a large staged upload that the
+ * race window is real. Without it, a purge that starts first could delete
+ * the very session dir a just-started import is reading from or writing
+ * `<dest>.tmp` files into.
+ */
+export function purgeImportTmp(minAgeMs: number, isImportRunning?: () => boolean): PurgeResult {
   const result: PurgeResult = { deleted: 0, errors: 0, bytes: 0, skippedActive: 0 };
   if (!fs.existsSync(IMPORT_TMP_BASE)) return result;
 
@@ -137,6 +146,7 @@ export function purgeImportTmp(minAgeMs: number): PurgeResult {
   const now = Date.now();
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
+    if (isImportRunning?.()) break;
     const dirPath = path.join(IMPORT_TMP_BASE, entry.name);
     try {
       const { mtimeMs } = fs.statSync(dirPath);

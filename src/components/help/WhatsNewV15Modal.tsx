@@ -157,10 +157,12 @@ function Lightbox({ feature, onClose }: { feature: Feature; onClose: () => void 
  * pointing at Settings -> Storage, since the new upload limit and formats
  * mean libraries can grow faster than before.
  *
- * Wired in from WhatsNewAutoPopup only when the acknowledgement target is
- * 1.5.0; every other version keeps using the plain ChangelogModal. "View
- * full release notes" hands off to that same ChangelogModal in full-history
- * mode via onViewAll.
+ * Wired in from WhatsNewAutoPopup the first time a user acknowledges any
+ * 1.5.x version — whether they arrive at exactly 1.5.0 or jump straight from
+ * 1.4 to a later patch. Once acknowledged, later 1.5.x patches fall back to
+ * the plain ChangelogModal instead of repeating this. "View full release
+ * notes" hands off to that same ChangelogModal in full-history mode via
+ * onViewAll.
  */
 export function WhatsNewV15Modal({ isOpen, onClose, onAcknowledge, acknowledging, onViewAll }: Props) {
   const { isDark } = useTheme();

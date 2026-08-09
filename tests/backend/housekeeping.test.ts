@@ -19,7 +19,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 import { purgeStaleImportTmp, purgeJunkFiles, tick } from '../../server/lib/library/housekeeping';
 import { LIBRARY_DIR } from '../../server/lib/paths';
 import { setLibraryMigrating } from '../../server/lib/libraryMaintenance';
-import { claimImportLock, releaseImportLock, getImportStatus, getImportLockStartedAt } from '../../server/lib/library/import';
+import { claimImportLock, releaseImportLock, getImportStatus, getImportLockStartedAt, runImport } from '../../server/lib/library/import';
 import { createProfile } from '../../server/lib/telescopes';
 import { stmts } from '../../server/lib/library/objects';
 
@@ -253,5 +253,50 @@ describe('auto-import watchdog (tick)', () => {
     // force-released or reclaimed it.
     expect(claimImportLock()).toBe(false);
     stmts.setImportRunning.run(0, null);
+  });
+});
+
+describe('import lock ownership (runId)', () => {
+  beforeEach(() => {
+    // A prior test's `claimImportLock()` without a matching release can leave
+    // in-memory `importStatus.running` true even after its own DB-row reset.
+    releaseImportLock();
+    stmts.setImportRunning.run(0, null);
+  });
+
+  it('releaseImportLock is a no-op when the passed runId does not match the current owner', async () => {
+    const profile = createProfile({
+      name: 'Ownership Scope',
+      kind: 'other',
+      connectionType: 'local',
+      localPath: fs.mkdtempSync(path.join(os.tmpdir(), 'ownership-device-')),
+    });
+
+    // Route handlers always claim the lock before dispatching a run.
+    expect(claimImportLock()).toBe(true);
+
+    // runImport runs synchronously up through minting its fresh importStatus
+    // (with a new runId) before its first await, so the freshly-minted id is
+    // already visible the instant this call returns — no need to await it.
+    const runPromise = runImport(undefined, undefined, { telescopeId: profile.id, manual: true });
+    const mintedRunId = getImportStatus().runId;
+    expect(mintedRunId).toBeTruthy();
+    expect(getImportStatus().running).toBe(true);
+
+    // Simulates a run that was force-released as stale by the watchdog and
+    // only now, belatedly, reaches its own release call: it must not be able
+    // to clobber a different run's (here: this run's) lock.
+    releaseImportLock('some-other-runs-id');
+    expect(getImportStatus().running).toBe(true);
+    expect(getImportStatus().runId).toBe(mintedRunId);
+
+    // The real owner releasing still works.
+    releaseImportLock(mintedRunId);
+    expect(getImportStatus().running).toBe(false);
+
+    // Let the (local, empty-dir) import actually finish so it doesn't leak
+    // into a later test — its own finally will call releaseImportLock again
+    // with the same runId, which is a harmless idempotent no-op by then.
+    await runPromise;
   });
 });

@@ -138,6 +138,19 @@ describe('ftpListDir', () => {
       .rejects.toThrow('Invalid characters');
   });
 
+  // The path guard's character set was widened to match smb.shared.ts's
+  // sanitizePath (used by the SMB/smbclient transports) for consistency,
+  // even though basic-ftp sends structured protocol commands rather than a
+  // shell string, so these were never a live injection vector for FTP.
+  it.each(['`backtick`', '$(subshell)', 'semi;colon', 'pipe|char', 'quote"char'])(
+    'rejects the widened SMB-aligned character set: %s',
+    async (segment) => {
+      server = await startFakeFtpServer(dwarf3Tree());
+      await expect(ftpListDir(`Astronomy/${segment}`, profileFor(server)))
+        .rejects.toThrow('Invalid characters');
+    },
+  );
+
   it('throws a clear error when no hostname is configured', async () => {
     await expect(ftpListDir('Astronomy', { hostname: '' })).rejects.toThrow('no hostname configured');
   });

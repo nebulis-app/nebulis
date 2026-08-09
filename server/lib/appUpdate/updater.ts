@@ -76,8 +76,22 @@ export function stopAppUpdateChecker(): void {
   }
 }
 
+// Guards against concurrent invocations of this function itself. It has
+// several independent triggers (the 24h timer, a manual POST
+// /meta/update/check, and a settings change) that can overlap, and unlike
+// checkAndUpdatePacks's tier-versioned tmp dirs, stageWindowsInstaller below
+// downloads to a fixed, non-unique `dest` path — two concurrent downloads
+// would interleave writes to the same file.
+let inFlight: Promise<void> | null = null;
+
 /** Run a check now (also used by POST /meta/update/check). Safe to call anytime. */
 export async function runUpdateCheck(): Promise<void> {
+  if (inFlight) return inFlight;
+  inFlight = runUpdateCheckInner().finally(() => { inFlight = null; });
+  return inFlight;
+}
+
+async function runUpdateCheckInner(): Promise<void> {
   // Keep the periodic loop alive only while auto-update is enabled. A manual
   // check still runs the detection below even when auto-update is off; it just
   // doesn't schedule a follow-up.

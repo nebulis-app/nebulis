@@ -32,7 +32,11 @@ import {
 import { getAllPackStates } from '../lib/catalogPack/state.js';
 import { getById as getDsoById } from '../lib/dsoCatalog.js';
 import { prefetchSkyImage, fetchSkyCutout } from '../lib/skyImage.js';
-import { enrichObjectData } from '../lib/localLibrary.js';
+import {
+  enrichObjectData,
+  applyCatalogMetaToLibraryObject,
+  resetEnrichmentCooldown,
+} from '../lib/localLibrary.js';
 import { DATA_DIR } from '../lib/paths.js';
 import { caldwellToNgcId, CALDWELL_FALLBACK_COORDS } from '../lib/caldwellCatalog.js';
 import { getOverride, saveOverride, deleteOverride, getOverrideRecord } from '../lib/catalogOverrides.js';
@@ -628,14 +632,42 @@ router.put('/:id/override', requireAdmin, (req: Request, res: Response) => {
     distanceLy: asNumber(body.distanceLy),
   };
   const record = saveOverride(id, patch, req.userId ?? null);
+  syncLibraryObjectAfterOverride(id);
   res.apiSuccess(record);
 });
 
 router.delete('/:id/override', requireAdmin, (req: Request, res: Response) => {
   const id = String(req.params.id);
   const removed = deleteOverride(id);
+  syncLibraryObjectAfterOverride(id);
   res.apiSuccess({ removed });
 });
+
+/**
+ * Push a just-changed override down onto the object's denormalized
+ * `libraryObjects` columns.
+ *
+ * Overrides merge into `getCatalogEntry` at read time, so the object detail
+ * page reflected an edit straight away, but the library grid and the object
+ * type filter chips read the stored columns and kept the stale value until an
+ * import happened to re-resolve them. Correcting an object's type therefore
+ * looked like it had done nothing.
+ *
+ * Correcting the identity is also the one event that can turn a permanent
+ * enrichment miss into a hit, so the negative cache is cleared here and a
+ * fresh lookup forced. Best-effort and fire-and-forget: it is a network call,
+ * and the edit itself has already been saved.
+ */
+function syncLibraryObjectAfterOverride(id: string): void {
+  try {
+    if (!applyCatalogMetaToLibraryObject(id)) return;
+    resetEnrichmentCooldown(id);
+    enrichObjectData(id, { force: true }).catch(() => {});
+  } catch {
+    // A failed re-resolve must not fail the edit the user just made. The next
+    // import re-resolves these columns anyway.
+  }
+}
 
 // ─── Catalog credits ────────────────────────────────────────────────────
 // Returns image credit info for a specific object. Reads from credits-{tier}.json

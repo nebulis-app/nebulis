@@ -31,7 +31,9 @@ describe('isNonObjectFolder', () => {
     // These sit next to the observation folders on a Dwarf volume. Treating them
     // as objects created library entries named "CALI_FRAME"/"RESTACKED" and
     // imported darks and flats as light frames of an object by that name.
-    for (const name of ['CALI_FRAME', 'DWARF_DARK', 'RESTACKED']) {
+    // STARTRAILS was missed when the others were added, so it alone kept
+    // producing a junk library object of that name.
+    for (const name of ['CALI_FRAME', 'DWARF_DARK', 'RESTACKED', 'STARTRAILS']) {
       expect(isNonObjectFolder(name)).toBe(true);
       expect(isNonObjectFolder(name.toLowerCase())).toBe(true);
     }

@@ -21,6 +21,7 @@ import { getCatalog, search as searchDso, filterCatalog, getById } from '../lib/
 import { altAz, getNightWindow, visibilityWindow, altitudeCurve, moonPhaseName } from '../lib/astroCalc.js';
 import { addDaysToDateKey, localDateKey, localParts, zonedDateTimeToUtc } from '../lib/timezone.js';
 import { observerTimezoneForCoordinates } from '../lib/observerTimezone.js';
+import { OBSERVING_NIGHT_ROLLOVER_HOUR } from '../lib/telescopeFiles.js';
 import SunCalc from 'suncalc';
 
 const router = Router();
@@ -427,7 +428,7 @@ function parseLocalNoon(yyyymmdd: string, timeZone?: string): Date {
 function defaultNightAnchor(now: Date, timeZone?: string): Date {
   const parts = localParts(now, timeZone);
   const today = localDateKey(now, timeZone);
-  const nightDate = parts.hour >= 7 ? today : addDaysToDateKey(today, -1);
+  const nightDate = parts.hour >= OBSERVING_NIGHT_ROLLOVER_HOUR ? today : addDaysToDateKey(today, -1);
   return parseLocalNoon(nightDate, timeZone);
 }
 

@@ -1,7 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { registerUser, loginUser, verifyToken, getUserById, getUserCount, getAllUsers, deleteUser, updateUserPassword, updateUserRole, updateUserProfile, USER_ROLES } from '../lib/auth.js';
+import { registerUser, loginUser, verifyToken, getUserById, getUserCount, getAllUsers, deleteUser, updateUserPassword, updateUserRole, updateUserProfile, getUserTokenVersion, USER_ROLES } from '../lib/auth.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { isDeviceActive, touchDevice } from '../lib/devicePairing.js';
 
 const router = Router();
 
@@ -159,8 +160,30 @@ router.get('/me', async (req: Request, res: Response) => {
       res.apiError(401, 'NO_TOKEN', 'Authentication required');
       return;
     }
-    const { userId } = verifyToken(token);
-    const user = getUserById(userId);
+    const payload = verifyToken(token);
+    // Mirror middleware/auth.ts's checks: a valid signature alone isn't
+    // enough. A device-scoped token (jti) must belong to a still-active
+    // device; a login token must carry the user's current tokenVersion, so
+    // a revoked device or a token issued before a password change fails
+    // this "is my session still valid?" probe instead of quietly passing it.
+    if (payload.jti) {
+      if (!isDeviceActive(payload.jti)) {
+        res.apiError(401, 'DEVICE_REVOKED', 'This device has been disconnected.');
+        return;
+      }
+      touchDevice(payload.jti);
+    } else {
+      const dbVersion = getUserTokenVersion(payload.userId);
+      if (dbVersion === undefined) {
+        res.apiError(401, 'USER_NOT_FOUND', 'Account no longer exists. Please log in again.');
+        return;
+      }
+      if ((payload.tokenVersion ?? 0) !== dbVersion) {
+        res.apiError(401, 'SESSION_INVALIDATED', 'Session invalidated. Please log in again.');
+        return;
+      }
+    }
+    const user = getUserById(payload.userId);
     if (!user) {
       res.apiError(401, 'USER_NOT_FOUND', 'User no longer exists');
       return;

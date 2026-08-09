@@ -15,7 +15,7 @@ import {
 // server/lib/library/objectFilters.ts (only the ones the tests exercise).
 const GROUPS: LibraryObjectFilter[] = [
   { id: 'all', label: 'All', matchTypes: [] },
-  { id: 'solar-system', label: 'Solar System', matchTypes: ['Star', 'Planet', 'Comet', 'Asteroid'], matchMode: 'exact' },
+  { id: 'solar-system', label: 'Solar System', matchTypes: ['Planet', 'Comet', 'Asteroid'], matchMode: 'exact' },
   { id: 'galaxy', label: 'Galaxy', matchTypes: ['Galaxy'] },
   { id: 'nebula', label: 'Nebula', matchTypes: ['Nebula'] },
 ];

@@ -173,6 +173,8 @@ const appSettingsStmts = {
     planetariumShowInfo = ?,
     galleryImageSource = ?,
     slideshowRotateCCW = ?,
+    galleryProcessedOnlyDefault = ?,
+    planetariumProcessedOnlyDefault = ?,
     preferredCatalog = ?,
     groupObservingNights = ?,
     temperatureUnit = ?,
@@ -192,6 +194,30 @@ const appSettingsStmts = {
   getApiKey: db.prepare<[], { apiKey: string }>('SELECT apiKey FROM appSettings WHERE id = 1'),
   setApiKey: db.prepare('UPDATE appSettings SET apiKey = ? WHERE id = 1'),
 };
+
+/** Decrypt a secretBox-sealed value, tolerating a plaintext value stored
+ *  before encryption was introduced for this field — used as-is, and
+ *  re-sealed the next time this row is saved. Same pattern as
+ *  rowToProfile's password handling below and telescopeTransports.ts's;
+ *  duplicated rather than shared because each call site's fallback/logging
+ *  differs slightly. On a genuine decrypt failure (DATA_KEY mismatch after a
+ *  backup restore) this logs and returns '' rather than throwing — for the
+ *  admin API key, that means auth via X-API-Key stops matching until the
+ *  user regenerates it from Settings, rather than the settings/health routes
+ *  500ing on every read. */
+function decryptTolerant(sealed: string, context: string): string {
+  if (!sealed) return '';
+  try {
+    return decrypt(sealed);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg === 'Invalid encrypted blob: expected 3 dot-separated parts') {
+      return sealed;
+    }
+    console.warn(`[telescopes] Failed to decrypt ${context}: ${msg}`);
+    return '';
+  }
+}
 
 function rowToProfile(row: TelescopeProfileRow): TelescopeProfile {
   const ct: TransportKind = isTransportKind(row.connectionType) ? row.connectionType : 'smb';
@@ -272,6 +298,8 @@ interface AppSettingsRow {
   planetariumShowInfo: number;
   galleryImageSource: string;
   slideshowRotateCCW: number;
+  galleryProcessedOnlyDefault: number;
+  planetariumProcessedOnlyDefault: number;
   preferredCatalog: string; // 'default' | 'caldwell'
   groupObservingNights: number;
   temperatureUnit: string;
@@ -306,7 +334,7 @@ function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
       ? rawMap
       : [];
   return {
-    apiKey: row.apiKey,
+    apiKey: decryptTolerant(row.apiKey, 'admin API key'),
     latitude: row.latitude,
     longitude: row.longitude,
     locationName: row.locationName || '',
@@ -331,6 +359,8 @@ function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
     planetariumShowInfo: Boolean(row.planetariumShowInfo),
     galleryImageSource: row.galleryImageSource || 'sky-survey',
     slideshowRotateCCW: Boolean(row.slideshowRotateCCW),
+    galleryProcessedOnlyDefault: Boolean(row.galleryProcessedOnlyDefault),
+    planetariumProcessedOnlyDefault: Boolean(row.planetariumProcessedOnlyDefault),
     preferredCatalog: row.preferredCatalog === 'caldwell' ? 'caldwell' : 'default',
     // See server/lib/telescopeFiles.ts for what this gates.
     groupObservingNights: Boolean(row.groupObservingNights ?? 1),
@@ -359,8 +389,9 @@ function saveSettingsRow(data: Record<string, unknown>): void {
   const str = (v: unknown, def: string) => typeof v === 'string' ? v : def;
   const num = (v: unknown, def: number) => typeof v === 'number' ? v : def;
   const numOrNull = (v: unknown) => typeof v === 'number' ? v : null;
+  const apiKeyPlain = str(data.apiKey, '');
   appSettingsStmts.update.run(
-    str(data.apiKey, ''),
+    apiKeyPlain ? encrypt(apiKeyPlain) : '',
     numOrNull(data.latitude),
     numOrNull(data.longitude),
     str(data.locationName, ''),
@@ -379,6 +410,8 @@ function saveSettingsRow(data: Record<string, unknown>): void {
     boolToInt(data.planetariumShowInfo, 1),
     str(data.galleryImageSource, 'sky-survey'),
     boolToInt(data.slideshowRotateCCW, 0),
+    boolToInt(data.galleryProcessedOnlyDefault, 0),
+    boolToInt(data.planetariumProcessedOnlyDefault, 0),
     data.preferredCatalog === 'caldwell' ? 'caldwell' : 'default',
     boolToInt(data.groupObservingNights, 1),
     str(data.temperatureUnit, 'fahrenheit'),
@@ -457,7 +490,7 @@ export function getFullSettings(): FullSettings {
   const row = appSettingsStmts.get.get();
   return {
     telescopes: profiles,
-    apiKey: row?.apiKey || '',
+    apiKey: decryptTolerant(row?.apiKey ?? '', 'admin API key'),
   };
 }
 
@@ -757,9 +790,9 @@ export function updateSettingsData(updates: Record<string, unknown>): void {
 
 export function getApiKey(): string {
   const row = appSettingsStmts.getApiKey.get();
-  return row?.apiKey ?? '';
+  return decryptTolerant(row?.apiKey ?? '', 'admin API key');
 }
 
 export function setApiKey(key: string): void {
-  appSettingsStmts.setApiKey.run(key);
+  appSettingsStmts.setApiKey.run(key ? encrypt(key) : '');
 }

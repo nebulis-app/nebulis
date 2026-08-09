@@ -2,7 +2,7 @@ import {
   useCallback, useEffect, useReducer, useRef, useState,
 } from 'react';
 import {
-  Heart, X, ChevronLeft, ChevronRight, Play, Pause, Maximize, Minimize, Volume2, VolumeX,
+  Heart, X, ChevronLeft, ChevronRight, Play, Pause, Maximize, Minimize, Volume2, VolumeX, Sparkles,
 } from 'lucide-react';
 import type { LibraryImage } from '../../lib/api/library';
 import { fisherYates, preload, TOTAL_MS } from './galleryUtils';
@@ -12,6 +12,9 @@ import { KenBurnsSlide } from './KenBurnsSlide';
 interface PlanetariumModeProps {
   initialImages: LibraryImage[];
   favoritesOnly: boolean;
+  /** Initial "processed only" state, from the settings default. Independent
+   *  of favoritesOnly and combinable with it, same as on the Gallery page. */
+  processedOnly: boolean;
   showInfo: boolean;
   rotateCCW: boolean;
   onExit: () => void;
@@ -21,6 +24,7 @@ interface PlanetariumModeProps {
 export function PlanetariumMode({
   initialImages,
   favoritesOnly,
+  processedOnly,
   showInfo,
   rotateCCW,
   onExit,
@@ -30,6 +34,7 @@ export function PlanetariumMode({
   // We manage isFavorite locally via PATCH_FAV dispatches.
   const [images] = useState(initialImages);
   const [favOnly, setFavOnly] = useState(favoritesOnly);
+  const [procOnly, setProcOnly] = useState(processedOnly);
   const [isPlaying, setIsPlaying] = useState(true);
   const [musicOn, setMusicOn] = useState(true);
   const [showUI, setShowUI] = useState(true);
@@ -42,8 +47,10 @@ export function PlanetariumMode({
   playRef.current = isPlaying;
 
   // Build the initial pool synchronously so slots are ready on first render.
-  const buildPool = useCallback((src: LibraryImage[], fav: boolean) => {
-    const filtered = fav ? src.filter(i => i.isFavorite) : src;
+  // fav and proc combine (both apply when both are on) rather than one
+  // replacing the other, same as the Gallery page's own filters.
+  const buildPool = useCallback((src: LibraryImage[], fav: boolean, proc: boolean) => {
+    const filtered = src.filter(i => (!fav || i.isFavorite) && (!proc || i.isProcessed));
     return fisherYates(filtered.length > 0 ? filtered : src);
   }, []);
 
@@ -54,7 +61,7 @@ export function PlanetariumMode({
   });
 
   const [slot, dispatch] = useReducer(slotReducer, undefined, () => {
-    const pool = buildPool(images, favoritesOnly);
+    const pool = buildPool(images, favoritesOnly, processedOnly);
     poolRef.current = pool;
     posRef.current = 0;
     return initSlot(pool);
@@ -72,14 +79,14 @@ export function PlanetariumMode({
     preload(pool[(nextPos + 1) % pool.length].downloadUrl);
   }, []);
 
-  // Rebuild pool when favOnly changes, intentional user action, interruption OK.
+  // Rebuild pool when favOnly or procOnly changes, intentional user action, interruption OK.
   useEffect(() => {
-    const pool = buildPool(images, favOnly);
+    const pool = buildPool(images, favOnly, procOnly);
     poolRef.current = pool;
     posRef.current = 0;
     dispatch({ type: 'RESET', s0: pool[0], s1: pool[Math.min(1, pool.length - 1)] });
     preload(pool[Math.min(2, pool.length - 1)]?.downloadUrl);
-  }, [favOnly, buildPool, images]);
+  }, [favOnly, procOnly, buildPool, images]);
 
   // Preload the 3rd image on first mount (slots already hold 0 and 1).
   useEffect(() => {
@@ -252,7 +259,7 @@ export function PlanetariumMode({
           className="flex-shrink-0 flex flex-col items-center gap-5 px-8 pb-8 pt-20"
           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.72) 0%, transparent 100%)' }}
         >
-          {/* Source pill + music toggle */}
+          {/* Source pill + processed toggle + music toggle */}
           <div className="flex items-center gap-3">
             <div
               className="flex items-center gap-0.5 rounded-full p-1"
@@ -276,6 +283,19 @@ export function PlanetariumMode({
                 Favorites
               </button>
             </div>
+            {/* A separate pill, not a third segment: processed and favorites are
+                independent axes, not one exclusive choice. */}
+            <button
+              onClick={() => setProcOnly(p => !p)}
+              title={procOnly ? 'Showing processed images only' : 'Show processed images only'}
+              className={`flex items-center gap-1.5 px-5 py-1.5 rounded-full text-sm font-medium transition-all ${
+                procOnly ? 'bg-white text-slate-900' : 'text-white/60 hover:text-white'
+              }`}
+              style={{ background: procOnly ? undefined : 'rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)' }}
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${procOnly ? 'text-accent-500' : ''}`} />
+              Processed
+            </button>
             <button
               onClick={() => setMusicOn(p => !p)}
               title={musicOn ? 'Mute music' : 'Unmute music'}

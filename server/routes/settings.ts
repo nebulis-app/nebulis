@@ -68,6 +68,8 @@ const SettingsUpdateBodySchema = z.object({
   planetariumShowInfo: z.boolean().optional(),
   galleryImageSource: z.enum(GALLERY_IMAGE_SOURCES).optional(),
   slideshowRotateCCW: z.boolean().optional(),
+  galleryProcessedOnlyDefault: z.boolean().optional(),
+  planetariumProcessedOnlyDefault: z.boolean().optional(),
   preferredCatalog: z.enum(PREFERRED_CATALOGS).optional(),
   groupObservingNights: z.boolean().optional(),
   temperatureUnit: z.enum(TEMPERATURE_UNITS).optional(),
@@ -125,6 +127,11 @@ const SettingsSchema = z.object({
   planetariumShowInfo: z.boolean(),
   galleryImageSource: z.enum(GALLERY_IMAGE_SOURCES),
   slideshowRotateCCW: z.boolean(),
+  // Initial state of the "Processed only" filter/toggle on the Image Gallery
+  // page and in Planetarium mode. Both stay user-adjustable per session once
+  // opened; this only seeds where they start.
+  galleryProcessedOnlyDefault: z.boolean(),
+  planetariumProcessedOnlyDefault: z.boolean(),
   // Which catalog nomenclature to prefer for new object folder names when an
   // object has both an NGC/IC and a Caldwell designation. See
   // server/lib/catalogAliases.ts for the resolution priority this overrides.
@@ -181,6 +188,8 @@ const defaultSettings: Settings = {
   planetariumShowInfo: true,
   galleryImageSource: 'sky-survey',
   slideshowRotateCCW: false,
+  galleryProcessedOnlyDefault: false,
+  planetariumProcessedOnlyDefault: false,
   preferredCatalog: 'default',
   groupObservingNights: true,
   temperatureUnit: 'fahrenheit',
@@ -197,7 +206,7 @@ const defaultSettings: Settings = {
   nightlyForecastLastRun: null,
 };
 
-const appFields = ['apiKey', 'latitude', 'longitude', 'locationName', 'timezone', 'minAlt', 'horizonProfile', 'visibleSkyMap', 'syncEnabled', 'syncJpg', 'syncFits', 'syncThumbnails', 'syncSubFrames', 'syncVideos', 'autoImportInterval', 'importJpg', 'importFits', 'importThumbnails', 'importSubFrames', 'importVideos', 'archiveAllFiles', 'onboardingCompleted', 'prefetchCatalogAssets', 'planetariumShowInfo', 'galleryImageSource', 'slideshowRotateCCW', 'preferredCatalog', 'groupObservingNights', 'temperatureUnit', 'windSpeedUnit', 'updateChannel', 'autoUpdateEnabled', 'plannerPrefetchEnabled', 'plannerPrefetchTime', 'nightlyCatalogPackCheckEnabled', 'nightlyHousekeepingEnabled', 'nightlyForecastPrefetchEnabled'] as const;
+const appFields = ['apiKey', 'latitude', 'longitude', 'locationName', 'timezone', 'minAlt', 'horizonProfile', 'visibleSkyMap', 'syncEnabled', 'syncJpg', 'syncFits', 'syncThumbnails', 'syncSubFrames', 'syncVideos', 'autoImportInterval', 'importJpg', 'importFits', 'importThumbnails', 'importSubFrames', 'importVideos', 'archiveAllFiles', 'onboardingCompleted', 'prefetchCatalogAssets', 'planetariumShowInfo', 'galleryImageSource', 'slideshowRotateCCW', 'galleryProcessedOnlyDefault', 'planetariumProcessedOnlyDefault', 'preferredCatalog', 'groupObservingNights', 'temperatureUnit', 'windSpeedUnit', 'updateChannel', 'autoUpdateEnabled', 'plannerPrefetchEnabled', 'plannerPrefetchTime', 'nightlyCatalogPackCheckEnabled', 'nightlyHousekeepingEnabled', 'nightlyForecastPrefetchEnabled'] as const;
 
 function loadSettings(): Settings {
   const appData = getSettingsData();

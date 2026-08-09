@@ -1,5 +1,35 @@
-# Changelog
-## 1.5.1 (207) - August 5th, 2026
+`# Changelog
+## 1.5.2 (211) - August 9th, 2026
+### Updated
+- Folder picker: wider, shows more folders at once, no longer cuts off long paths.
+- New Star and Comet filter chips, plus an Unknown chip for objects with no resolved type.
+- Editing an object's type now suggests types already in your library as you type. You can still enter a new one.
+- Deleted objects and observations are listed in Settings -> Storage -> Trash, where you can restore them to re-enable syncing.
+- A processed image now becomes an observation's primary picture automatically (object page, calendar, observation page) instead of requiring manual selection. Applies only to browser-displayable formats (JPG, PNG, TIFF); XISF/FITS/PSD still show the stacked image.
+- Gallery page: processed images now appear alongside raw ones (sparkle badge), with a "Processed only" toggle. Planetarium mode has the same toggle next to Favorites. Settings -> General can default either to on.
+
+### Fixes
+- Stacked images with long file names, most often from DWARF sessions, failed to load in the viewer with "This image could not be loaded."
+- The image viewer's thumbnail strip now shows as many tiles as fit the screen, instead of a fixed count with a "+N" button.
+- Objects typed "Star" were incorrectly filed under the Solar System filter.
+- Editing an object's details didn't update the library grid or type filters until the next import.
+- Objects that Wikipedia and SIMBAD can't resolve were looked up again on every server start and import, forever. Failed lookups now wait before retrying.
+- The server no longer trusts a client-supplied IP header by default, which could bypass rate limiting and login lockout on the common setup with no reverse proxy in front. Opt in with `TRUST_PROXY=1` only if you run one.
+- Two endpoints used for sub-frame download ZIPs skipped login entirely.
+- Telescope online/offline status and cached file listings could bleed between two configured devices when one went offline.
+- A folder import interrupted mid-copy (crash, power loss) could leave a stuck partial file that later imports mistook for a real one.
+- A disk cleanup pass could delete a file an import was still writing, if the two overlapped.
+- A one-off failure listing a telescope's files no longer aborts the whole import; it retries once first.
+- Several actions failed silently with no feedback: deleting an object or observation, archiving/deleting/syncing a telescope, and saving or deleting a watermark preset. They now show an error message.
+- The nightly catalog-pack and app auto-update checks could each run twice at once, risking a corrupted partial download. Both now run at most once at a time.
+- Boot-time library repairs no longer delay the server from accepting connections.
+- The admin API key is now encrypted at rest instead of stored in plain text.
+- `GET /auth/me` now rejects a revoked device token or a token issued before a password change, matching every other authenticated endpoint.
+- Reassigning a telescope's sessions to another one could leave the Gallery showing stale data.
+- USB imports were capped at the same low concurrency tuned for SeeStar's weak SMB server. A locally mounted drive now downloads faster.
+- A Dwarf session folder with an unparseable name silently became a garbage-named library object. It now logs a warning instead.
+
+## 1.5.1 (208) - August 5th, 2026
 ### New
 - Cancel a manual import or an automatic backup while it is running.
 - TIFF images now get thumbnails and previews, so a Dwarf's img_stacked_all.tif appears in the grid instead of only as a download card.
@@ -9,7 +39,7 @@
 - The SMB share name field accepts a folder inside the share, for example "Server/MyWorks". Windows, macOS, and Docker read it the same way.
 - Folder uploads no longer need room for two copies. Each file leaves the temporary area as soon as it lands in your library.
 - Import checks free disk space before it starts and says how much is needed, instead of filling the disk and failing partway through.
-- Settings -> Storage shows how much space unfinished uploads are holding, with a button to free it.
+- Settings -> Storage shows how much space unfinished uploads are holding, with a button to free it (this is temporary for cleanup and will be removed in a future release)
 - The subframes tray fills the row and says how many of the session's frames it is showing, instead of stopping mid-row with a "+N" tile.
 - API endpoints are now rate limited.
 

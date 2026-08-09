@@ -506,6 +506,12 @@ db.exec(`
   if (!cols.some(c => c.name === 'slideshowRotateCCW')) {
     db.prepare('ALTER TABLE appSettings ADD COLUMN slideshowRotateCCW INTEGER NOT NULL DEFAULT 0').run();
   }
+  if (!cols.some(c => c.name === 'galleryProcessedOnlyDefault')) {
+    db.prepare('ALTER TABLE appSettings ADD COLUMN galleryProcessedOnlyDefault INTEGER NOT NULL DEFAULT 0').run();
+  }
+  if (!cols.some(c => c.name === 'planetariumProcessedOnlyDefault')) {
+    db.prepare('ALTER TABLE appSettings ADD COLUMN planetariumProcessedOnlyDefault INTEGER NOT NULL DEFAULT 0').run();
+  }
   if (!cols.some(c => c.name === 'temperatureUnit')) {
     db.prepare("ALTER TABLE appSettings ADD COLUMN temperatureUnit TEXT NOT NULL DEFAULT 'fahrenheit'").run();
   }
@@ -964,6 +970,18 @@ db.exec(`
     if (parts.length !== 3) {
       update.run(encryptSecret(row.password), row.id);
     }
+  }
+}
+
+// ─── Re-encrypt a plaintext admin API key in appSettings ────────────────────
+// The key was stored raw until sealing was added for it. Same detection as
+// the transport/profile password migrations above: not the 3-part secretBox
+// format means it's plaintext (or empty), so seal it in place. Also catches
+// the one-time JSON-blob migration above, which still writes this column raw.
+{
+  const row = db.prepare<[], { apiKey: string }>('SELECT apiKey FROM appSettings WHERE id = 1').get();
+  if (row?.apiKey && row.apiKey.split('.').length !== 3) {
+    db.prepare('UPDATE appSettings SET apiKey = ? WHERE id = 1').run(encryptSecret(row.apiKey));
   }
 }
 

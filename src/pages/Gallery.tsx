@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Search, Telescope, AlertCircle, Filter, Download, RotateCw, CheckCircle2, Upload, PlusCircle, Star, Library, ArrowUpDown, Check } from 'lucide-react';
 import { getLibraryObjects, getLibraryObjectFilters, triggerImport, getImportStatus } from '../lib/api/library';
 import { listTelescopes } from '../lib/api/telescopes';
@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { useFilterChipPrefs } from '../hooks/useFilterChipPrefs';
 import { FilterCustomizeMenu } from '../components/filters/FilterCustomizeMenu';
+import { NewObservationModal } from '../components/NewObservationModal';
 import { buildTypeFilters, matchesFilter, defaultEnabledIds, ALL_FILTER_ID, FAVORITES_FILTER_ID } from '../lib/objectTypeFilters';
 
 type SortKey = 'name-asc' | 'name-desc' | 'session-date-desc' | 'session-date-asc' | 'session-count-desc' | 'import-desc';
@@ -55,6 +56,7 @@ export function Gallery() {
   const [activeFilterId, setActiveFilterId] = useState<string>(ALL_FILTER_ID);
   const [telescopeFilter, setTelescopeFilter] = useState<string>(ALL_TELESCOPES_FILTER);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [newObservationOpen, setNewObservationOpen] = useState(false);
   const [wizardPath, setWizardPath] = useState<string | null>(null);
   const [wizardSubframes, setWizardSubframes] = useState(false);
   const [wizardFits, setWizardFits] = useState(true);
@@ -67,6 +69,7 @@ export function Gallery() {
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const filterMenuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: objects, isLoading, error } = useQuery({
     queryKey: ['library-objects'],
@@ -367,8 +370,8 @@ export function Gallery() {
               <Upload className="w-4 h-4" />
               Upload Files
             </button>
-            <Link
-              to="/observations/new"
+            <button
+              onClick={() => setNewObservationOpen(true)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
                 isDark
                   ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 border border-accent-500/30'
@@ -377,7 +380,7 @@ export function Gallery() {
             >
               <PlusCircle className="w-4 h-4" />
               New Observation
-            </Link>
+            </button>
           </div>
         )}
       </div>
@@ -680,6 +683,16 @@ export function Gallery() {
           }}
         />
       )}
+
+      <NewObservationModal
+        isOpen={newObservationOpen}
+        onClose={() => setNewObservationOpen(false)}
+        onSuccess={result => {
+          setNewObservationOpen(false);
+          queryClient.invalidateQueries({ queryKey: ['library-objects'] });
+          navigate(`/observations/${encodeURIComponent(result.objectId)}/${encodeURIComponent(result.date)}`);
+        }}
+      />
 
       {/* Guided folder-import wizard (scan → review sessions → commit) */}
       {wizardPath && (

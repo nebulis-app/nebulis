@@ -34,6 +34,8 @@ import {
   writeObjectManifest,
 } from './libraryFiles.js';
 import { listObjectFiles, getObjectLayout, setObjectLayout } from './libraryLayout.js';
+import { isReservedLibraryDir } from './archiveFolders.js';
+import { isRenderableProcessedName } from './processed.js';
 import {
   deleteCaptureInfoForSession,
   getCaptureInfoForSession,
@@ -323,7 +325,7 @@ function reconcileStaleSessionDates(objectId: string, files: string[]): void {
         .run(newDate, objectId, row.date);
 
       if (stmts.isSessionTombstoned.get(objectId, row.date)) {
-        stmts.addSessionTombstone.run(objectId, newDate);
+        stmts.addSessionTombstone.run(objectId, newDate, new Date().toISOString());
         db.prepare('DELETE FROM libraryDeletedSessions WHERE objectId = ? AND date = ?')
           .run(objectId, row.date);
       }
@@ -365,6 +367,23 @@ export function getLocalSessions(objectId: string) {
     'SELECT date, COUNT(*) as n FROM sessionProcessedImages WHERE objectId = ? GROUP BY date',
   ).all(objectId)) {
     processedCountByDate.set(r.date, r.n);
+  }
+
+  // The most recent processed image per session, when a browser can render it
+  // inline — a raw XISF/FITS/PSD deliverable can't become a thumbnail even
+  // automatically. This is what lets a processed result auto-win the card
+  // without the user having to crown it by hand; see the thumbnailUrl closure
+  // below for the full priority order.
+  const processedThumbByDate = new Map<string, string>(); // date -> folderName/processed/filename
+  {
+    const folderName = getFolderName(objectId);
+    for (const r of db.prepare<[string], { date: string; filename: string }>(
+      'SELECT date, filename FROM sessionProcessedImages WHERE objectId = ? ORDER BY uploadedAt DESC',
+    ).all(objectId)) {
+      if (processedThumbByDate.has(r.date)) continue; // already have the newest for this date
+      if (!isRenderableProcessedName(r.filename)) continue;
+      processedThumbByDate.set(r.date, `${folderName}/processed/${r.filename}`);
+    }
   }
 
   interface SessionRow {
@@ -453,7 +472,11 @@ export function getLocalSessions(objectId: string) {
     const fname = entry.fileName;
     const parsed = parseFilename(fname);
     const sessionKey = identity.session(entry.relPath);
-    if (!sessionKey) continue; // skip files we can't assign a session date to
+    // Every file imported through this app's own pipeline gets a libraryFiles
+    // row (see recordLibraryFile call sites in import.ts), so this only ever
+    // skips a file with neither a row nor a parseable name — i.e. one dropped
+    // directly into the library folder by hand, outside the app entirely.
+    if (!sessionKey) continue;
     if (deletedSessions.has(sessionKey)) continue;
     if (!sessionMap.has(sessionKey)) {
       sessionMap.set(sessionKey, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false });
@@ -519,16 +542,22 @@ export function getLocalSessions(objectId: string) {
           && (crownedAbs === LIBRARY_DIR || crownedAbs.startsWith(LIBRARY_DIR + path.sep))
           && fs.existsSync(crownedAbs);
         if (crownedExists) return `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(crowned!)}`;
-        const best = stats.thumbnailFile ?? stats.stackedImageFile ?? stats.anyImageFile;
-        if (!best) return `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/thumbnail`;
-        const fullPath = getFolderName(objectId) + '/' + best;
         // Use the thumbnail route for non-JPEG images (PNG/TIF) so sharp
         // converts them to browser-renderable JPEG. Raw 16-bit PNGs from
         // Dwarf stacking output cannot be displayed by browsers via <img>.
-        const isJpeg = /\.(jpg|jpeg)$/i.test(best);
-        return isJpeg
-          ? `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(fullPath)}`
-          : `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(fullPath)}`;
+        const fileUrlFor = (relPath: string) =>
+          /\.(jpg|jpeg)$/i.test(relPath)
+            ? `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(relPath)}`
+            : `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(relPath)}`;
+        // Next: the most recent processed image, ahead of every raw fallback.
+        // A processed result is what the observer actually made of the raw
+        // data, so it is a better "primary image" for the card than a
+        // device-generated preview or an unprocessed stack.
+        const processedThumb = processedThumbByDate.get(date);
+        if (processedThumb) return fileUrlFor(processedThumb);
+        const best = stats.thumbnailFile ?? stats.stackedImageFile ?? stats.anyImageFile;
+        if (!best) return `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/thumbnail`;
+        return fileUrlFor(getFolderName(objectId) + '/' + best);
       })(),
       filesUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/files`,
       weather: weatherMap.get(date) || null,
@@ -668,6 +697,23 @@ export function getLocalObservations() {
     processedCountByKey.set(`${r.objectId}|${r.date}`, r.n);
   }
 
+  // The most recent renderable processed image per session, library-wide in
+  // one pass — same auto-thumbnail priority as getLocalSessions, applied here
+  // so the calendar card matches what the object page and observation page
+  // show for the same session. See that function's comment for why this beats
+  // the raw stacked-file fallback below.
+  const folderNameByObjectId = new Map(objects.map(o => [o.objectId, o.folderName || o.objectId]));
+  const processedThumbByKey = new Map<string, string>(); // "objectId|date" -> folderName/processed/filename
+  for (const r of db.prepare<[], { objectId: string; date: string; filename: string }>(
+    'SELECT objectId, date, filename FROM sessionProcessedImages ORDER BY uploadedAt DESC',
+  ).all()) {
+    const key = `${r.objectId}|${r.date}`;
+    if (processedThumbByKey.has(key)) continue; // already have the newest for this session
+    if (!isRenderableProcessedName(r.filename)) continue;
+    const folderName = folderNameByObjectId.get(r.objectId) ?? r.objectId;
+    processedThumbByKey.set(key, `${folderName}/processed/${r.filename}`);
+  }
+
   const observations: Array<{
     id: string;
     objectId: string;
@@ -789,6 +835,16 @@ export function getLocalObservations() {
         thumbnailUrl: (() => {
           const crowned = sessionImageMap.get(date);
           if (crowned) return `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(crowned)}`;
+          // No explicit crown: the most recent processed image wins next, same
+          // priority as getLocalSessions, so the calendar card agrees with the
+          // object page and the observation page for the same session.
+          const processedThumb = processedThumbByKey.get(`${objectId}|${date}`);
+          if (processedThumb) {
+            const isJpeg = /\.(jpg|jpeg)$/i.test(processedThumb);
+            return isJpeg
+              ? `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(processedThumb)}`
+              : `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(processedThumb)}`;
+          }
           if (session.stackedImageFile) {
             const fullPath = folderName + '/' + session.stackedImageFile;
             const isJpeg = /\.(jpg|jpeg)$/i.test(session.stackedImageFile);
@@ -990,7 +1046,7 @@ export function deleteLocalSession(objectId: string, date: string): void {
       cat.catalogId, cat.objectName, cat.objectType, cat.constellation,
       cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy);
   }
-  stmts.addSessionTombstone.run(objectId, date);
+  stmts.addSessionTombstone.run(objectId, date, new Date().toISOString());
   stmts.removeSession.run(objectId, date);
   // The sidecar that produced this is deleted below, so its parsed record goes
   // with it rather than lingering as a row describing files that are gone.
@@ -1034,6 +1090,49 @@ export function deleteLocalSession(objectId: string, date: string): void {
     stmts.updateObjectFileCount.run(remaining.length, objectId);
   } catch { /* ignore */ }
   writeObjectManifest(objectId, folderName);
+}
+
+/**
+ * Un-tombstone a deleted session so it becomes eligible for sync again.
+ *
+ * Mirrors restoreLocalObject: the local files `deleteLocalSession` removed are
+ * gone, and this does not bring them back. It only clears the block on
+ * re-syncing this date, which is the one thing a tombstone with no restore
+ * path could never undo. Deliberately does not re-add a `librarySessions` row
+ * — there is nothing to show for this date until a sync actually repopulates
+ * it with files.
+ *
+ * Returns false when the date was not tombstoned, so the route can tell
+ * "already restored" from "nothing happened".
+ */
+export function restoreLocalSession(objectId: string, date: string): boolean {
+  if (!stmts.isSessionTombstoned.get(objectId, date)) return false;
+  stmts.removeSessionTombstone.run(objectId, date);
+  return true;
+}
+
+export interface DeletedSessionSummary {
+  objectId: string;
+  folderName: string;
+  objectName: string | null;
+  date: string;
+  deletedAt: string | null;
+}
+
+/**
+ * Every currently-tombstoned session, most recently deleted first, for an
+ * object that is not itself fully deleted (that object's sessions already show
+ * up as one entry in listDeletedObjects — listing them again individually here
+ * would just be a confusing duplicate of the same restore decision).
+ */
+export function listDeletedSessions(): DeletedSessionSummary[] {
+  return stmts.getDeletedSessionRows.all().map(row => ({
+    objectId: row.objectId,
+    folderName: row.folderName,
+    objectName: row.objectName ?? null,
+    date: row.date,
+    deletedAt: row.deletedAt ?? null,
+  }));
 }
 
 /**
@@ -1127,6 +1226,9 @@ export function purgeSubFrameImages(opts: { dryRun?: boolean } = {}): SubFrameIm
   } catch { /* count refresh is best-effort */ }
 
   for (const folderName of fs.readdirSync(LIBRARY_DIR)) {
+    // The archive is not an object and its files are not sub-frame previews to
+    // be purged: it holds exactly the data archive mode promised to keep.
+    if (isReservedLibraryDir(folderName)) continue;
     const objDir = path.join(LIBRARY_DIR, folderName);
     try {
       if (!fs.statSync(objDir).isDirectory()) continue;
@@ -1316,7 +1418,7 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
 
     // Tombstone the source session so it cannot resurface from disk (e.g. if
     // auto-import re-downloads the files from the telescope into the source folder).
-    stmts.addSessionTombstone.run(fromObjectId, date);
+    stmts.addSessionTombstone.run(fromObjectId, date, new Date().toISOString());
 
     // Move note if one exists
     db.prepare('UPDATE notes SET objectId = ? WHERE objectId = ? AND date = ?')

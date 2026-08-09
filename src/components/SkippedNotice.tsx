@@ -6,10 +6,16 @@ import type { ImportSkip } from '../lib/api/library';
  *
  * The rest cannot be fixed by that switch and must not be advertised as if they
  * could: `deleted-session` is a session the user deleted, `date-dropped` is a
- * choice they made in the review step, `non-observation-folder` is calibration
- * and daytime folders excluded by shape, and `undecodable-session-folder` is a
+ * choice they made in the review step, and `undecodable-session-folder` is a
  * folder whose name yielded no target or date. Keep in sync with the archive
  * branch of classifyImportFile in server/lib/library/importFilter.ts.
+ *
+ * `non-observation-folder` is a special case and is deliberately absent. Archive
+ * mode does now keep those folders, but it copies them into the library's
+ * archive rather than importing them, and the count is folders rather than
+ * files, so it cannot be added to a files-and-bytes total. The scan simply
+ * stops reporting them once archive mode is on, and the wizard says what will
+ * happen to them instead.
  */
 const ARCHIVE_RESCUABLE = new Set([
   'processing-artifact',
@@ -50,11 +56,15 @@ export function SkippedNotice({
   skipped,
   isDark,
   heading,
+  excludedFolders,
 }: {
   skipped: ImportSkip[] | null | undefined;
   isDark: boolean;
   /** Override the default lead-in. Use the past tense for a finished run. */
   heading?: (total: number) => string;
+  /** Names behind the `non-observation-folder` count, when the caller has them
+   *  (the folder-import scan does; a finished telescope import does not). */
+  excludedFolders?: string[];
 }) {
   if (!skipped || skipped.length === 0) return null;
   const total = skipped.reduce((n, s) => n + s.count, 0);
@@ -79,6 +89,9 @@ export function SkippedNotice({
                     (a remote listing without sizes, or a history row written
                     before sizes were tallied) rather than "empty". */}
                 {s.bytes ? ` (${formatBytes(s.bytes)})` : ''}
+                {s.reason === 'non-observation-folder' && excludedFolders && excludedFolders.length > 0 && (
+                  <span className="font-mono">: {excludedFolders.join(', ')}</span>
+                )}
               </li>
             ))}
           </ul>

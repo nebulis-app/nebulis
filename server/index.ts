@@ -32,6 +32,7 @@ import { satelliteRouter } from './routes/satellite.js';
 import { libraryRouter } from './routes/library.js';
 import { repairSpaceDirectories, repairAliasDirectories } from './lib/library/objects.js';
 import { backfillLibraryFiles, rebuildFromManifests } from './lib/library/libraryFiles.js';
+import { isLibraryAvailable } from './lib/libraryPath.js';
 import { plannerRouter } from './routes/planner.js';
 import { plannedSessionsRouter } from './routes/plannedSessions.js';
 import { wishlistRouter } from './routes/wishlist.js';
@@ -69,11 +70,17 @@ const app = express();
 const PORT = process.env.PORT || 3002;
 
 // Trust only the immediately upstream proxy (e.g. a Docker gateway or a
-// reverse proxy the operator puts in front of Nebulis).
-// Without this, req.ip always reflects the socket address, which is correct
-// for direct connections but misses the real client IP behind a local proxy.
-// Limiting to 1 hop prevents spoofing via attacker-supplied X-Forwarded-For.
-app.set('trust proxy', 1);
+// reverse proxy the operator puts in front of Nebulis) — and only when the
+// operator confirms one is actually there via TRUST_PROXY=1. Most default
+// deployments (native install, or docker-compose.yml's direct port mapping)
+// have no reverse proxy in front, so req.ip is the real client's socket
+// address; trusting X-Forwarded-For unconditionally would let a direct LAN
+// client spoof any IP and walk straight through the rate limiters and the
+// login lockout in middleware/auth.ts. Limiting to 1 hop (when enabled)
+// prevents spoofing further upstream of that one legitimate proxy.
+if (process.env.TRUST_PROXY === '1') {
+  app.set('trust proxy', 1);
+}
 
 // Read version from the package.json stub written by the build script (same
 // candidate list as meta.ts so the startup log matches what /meta/version returns).
@@ -286,7 +293,7 @@ v1.get('/health', (_req, res) => {
     instanceId: getInstanceId(),
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-    telescopeOnline: isTelescopeOnline(),
+    telescopeOnline: isTelescopeOnline(pickDefaultTarget()),
   });
 });
 
@@ -555,22 +562,35 @@ function onListening(): void {
   console.log(`  Logs dir:      ${LOGS_DIR}`);
   console.log(`  Hostname:      ${getFriendlyHostname() ?? '(none — UDP replies will omit hostname field)'}`);
 
-  repairSpaceDirectories();
-  repairAliasDirectories();
-  // Populate libraryFiles for anything imported before the table existed. Both
-  // calls are idempotent and skip objects that already have rows, so this is a
-  // no-op on every boot after the first. Manifests are tried first: they carry
-  // originalName and any pinned dates, which a disk walk cannot recover.
-  try {
-    const restored = rebuildFromManifests();
-    if (restored > 0) console.log(`[library] Restored ${restored} file record(s) from manifests`);
-    const { objects, files } = backfillLibraryFiles();
-    if (files > 0) console.log(`[library] Recorded ${files} file(s) across ${objects} object(s)`);
-  } catch (err) {
-    // A failed backfill leaves the read paths on their filename fallback,
-    // which is exactly the pre-table behavior. Never fatal at boot.
-    console.warn('[library] libraryFiles backfill failed:', err instanceof Error ? err.message : err);
-  }
+  // Deferred by one tick and gated on isLibraryAvailable(), same reasoning as
+  // the mDNS advertising below: these walk the whole library with synchronous
+  // fs calls (readdirSync/statSync throughout objects.ts and libraryFiles.ts),
+  // which would otherwise block the listen callback — and block it worst of
+  // all against a stale/disconnected network-mounted library, which is
+  // exactly the case isLibraryAvailable() exists to detect before touching
+  // getLibraryDir().
+  void (async () => {
+    if (!(await isLibraryAvailable())) {
+      console.log('[library] Skipping boot-time repair/backfill: library unavailable');
+      return;
+    }
+    repairSpaceDirectories();
+    repairAliasDirectories();
+    // Populate libraryFiles for anything imported before the table existed. Both
+    // calls are idempotent and skip objects that already have rows, so this is a
+    // no-op on every boot after the first. Manifests are tried first: they carry
+    // originalName and any pinned dates, which a disk walk cannot recover.
+    try {
+      const restored = rebuildFromManifests();
+      if (restored > 0) console.log(`[library] Restored ${restored} file record(s) from manifests`);
+      const { objects, files } = backfillLibraryFiles();
+      if (files > 0) console.log(`[library] Recorded ${files} file(s) across ${objects} object(s)`);
+    } catch (err) {
+      // A failed backfill leaves the read paths on their filename fallback,
+      // which is exactly the pre-table behavior. Never fatal at boot.
+      console.warn('[library] libraryFiles backfill failed:', err instanceof Error ? err.message : err);
+    }
+  })();
   startPackUpdateChecker(prewarmThumbnails);
   startAppUpdateChecker();
   startPlannerNightlyScheduler();

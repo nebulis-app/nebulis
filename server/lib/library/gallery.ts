@@ -8,6 +8,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import db from '../db.js';
 import { getLibraryDir } from '../libraryPath.js';
 import { normalizeCatalogId } from '../telescopeFiles.js';
 import { listObjectFiles, getObjectLayout } from './libraryLayout.js';
@@ -18,6 +19,7 @@ import {
   ensureLibraryDir,
   LIBRARY_API_BASE,
 } from './objects.js';
+import { isRenderableProcessedName } from './processed.js';
 import { getImageFavorites } from './favorites.js';
 import { caldwellToNgcId } from '../caldwellCatalog.js';
 import { hubbleImagePath, wikiImagePath, imageCachePath, fovForEntry, findCachedMaster } from '../catalogPrefetch.js';
@@ -37,6 +39,10 @@ export interface LibraryImageEntry {
   distanceLy: number | null;
   downloadUrl: string;
   isFavorite: boolean;
+  /** True for a user-uploaded post-processing result (sessionProcessedImages),
+   *  false for a raw telescope file. Lets the Gallery page offer a "processed
+   *  only" view without a second endpoint. */
+  isProcessed: boolean;
 }
 
 export interface GetAllLibraryImagesOptions {
@@ -103,8 +109,39 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
         objectType: obj.objectType,
         distanceLy: obj.distanceLy ?? null,
         downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(filePath)}`,
+        isProcessed: false,
       });
     }
+  }
+
+  // Processed images (sessionProcessedImages) live under `<folder>/processed/`,
+  // which listObjectFiles deliberately never descends into (it's a reserved
+  // dir — see isReservedObjectDir), so they need their own pass. `/library/file`
+  // resolves any path under LIBRARY_DIR, so the same downloadUrl shape the raw
+  // files use above works unchanged. Not deduped to "one per session" the way
+  // the auto-thumbnail pick in observations.ts is — this is a flat image grid,
+  // so every processed image gets its own card, same as every raw one does.
+  // Restricted to formats a browser can render inline: an XISF/FITS/PSD/RAW
+  // deliverable can't go in an `<img>`, and has nowhere else to show here.
+  const objById = new Map(objects.map(o => [o.objectId, o]));
+  for (const r of db.prepare<[], { objectId: string; date: string; filename: string }>(
+    'SELECT objectId, date, filename FROM sessionProcessedImages',
+  ).all()) {
+    if (!isRenderableProcessedName(r.filename)) continue;
+    const obj = objById.get(r.objectId);
+    if (!obj) continue; // processed row survives a deleted/unknown object; skip rather than fabricate one
+    const filePath = `${obj.folderName}/processed/${r.filename}`;
+    results.push({
+      name: r.filename,
+      path: filePath,
+      date: r.date,
+      objectId: obj.objectId,
+      objectName: obj.objectName || obj.objectId,
+      objectType: obj.objectType,
+      distanceLy: obj.distanceLy ?? null,
+      downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(filePath)}`,
+      isProcessed: true,
+    });
   }
 
   // Sort is independent of favorite state, so we do it once before caching.

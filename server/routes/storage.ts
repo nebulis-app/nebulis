@@ -199,7 +199,7 @@ router.get('/', async (_req: Request, res: Response) => {
 
     const target = pickDefaultTarget();
     res.apiSuccess(
-      { objects: cache.objects, telescopeOnline: isTelescopeOnline(), telescopeKind: target?.kind ?? null },
+      { objects: cache.objects, telescopeOnline: isTelescopeOnline(target), telescopeKind: target?.kind ?? null },
       { summary: cache.summary, cached: true, cacheAge: Math.round(age / 1000), computing: cache.computing }
     );
   } catch (err: unknown) {

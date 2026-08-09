@@ -35,6 +35,7 @@
 import path from 'path';
 import { smbListDir, type SmbEntry } from '../smb.js';
 import { debugLog } from '../debugLogger.js';
+import { log } from '../logger.js';
 import type { TelescopeProfile } from '../telescopes.js';
 import type { WalkerConfig, DiscoveredObject } from './telescopeWalker.js';
 
@@ -175,8 +176,9 @@ export async function listDwarfObjectFiles(
     let entries: SmbEntry[] = [];
     try {
       entries = await smbListDir(folderPath, profile);
-    } catch {
+    } catch (err) {
       debugLog('walker:dwarf', `Failed to list ${folderPath} — skipping`);
+      log.warn({ err: err instanceof Error ? err.message : String(err), folderPath }, '[dwarf-walker] session folder listing failed; skipping');
       continue;
     }
     const fileEntries = entries.filter(e => e.type === 'file');
@@ -213,8 +215,9 @@ export async function listDwarfObjectFiles(
         let subEntries: SmbEntry[] = [];
         try {
           subEntries = await smbListDir(subPath, profile);
-        } catch {
+        } catch (err) {
           debugLog('walker:dwarf', `Failed to list ${subPath} — skipping`);
+          log.warn({ err: err instanceof Error ? err.message : String(err), subPath }, '[dwarf-walker] sub-directory listing failed; skipping');
           continue;
         }
         const inner = subEntries.filter(e => e.type === 'file');

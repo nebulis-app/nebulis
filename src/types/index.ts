@@ -44,6 +44,12 @@ export interface Settings {
   galleryImageSource: 'sky-survey' | 'telescope';
   /** Rotate all images 90° CCW in slideshow / planetarium mode */
   slideshowRotateCCW: boolean;
+  /** Initial state of the "Processed only" filter on the Image Gallery page
+   *  when it loads. The page's own toggle can still be changed per visit. */
+  galleryProcessedOnlyDefault: boolean;
+  /** Initial state of the "Processed only" filter when Planetarium mode
+   *  launches. Its in-slideshow toggle can still be changed per session. */
+  planetariumProcessedOnlyDefault: boolean;
   /** Which catalog nomenclature to prefer for new object folder names when an
    *  object has both an NGC/IC and a Caldwell designation (e.g. "C5" vs
    *  "IC342"). 'default' keeps NGC/IC priority; 'caldwell' prefers Caldwell. */

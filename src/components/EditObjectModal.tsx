@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, RotateCcw } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
@@ -9,6 +9,7 @@ import {
   type CatalogOverrideInput,
   type CatalogOverrideRecord,
 } from '../lib/api/catalog';
+import { getLibraryObjects } from '../lib/api/library';
 import { Modal } from './ui/Modal';
 import { CloseConfirm } from './ui/CloseConfirm';
 
@@ -74,6 +75,26 @@ export function EditObjectModal({ objectId, current, onClose }: EditObjectModalP
   });
   const override: CatalogOverrideRecord | null = info?.override ?? null;
 
+  // Suggestions for the Type field: every distinct type already in the library.
+  // Reuses the library list the gallery already loads, so this is a cache read
+  // in the common case and there is no new endpoint. An empty list just means
+  // no suggestions, never a blocked edit.
+  const { data: libraryObjects } = useQuery({
+    queryKey: ['library-objects'],
+    queryFn: getLibraryObjects,
+    staleTime: 60_000,
+  });
+  const typeSuggestions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const o of libraryObjects ?? []) {
+      const label = o.type?.trim();
+      if (!label || label.toLowerCase() === 'unknown') continue;
+      if (!seen.has(label.toLowerCase())) seen.set(label.toLowerCase(), label);
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+  }, [libraryObjects]);
+  const typeSuggestionsId = `object-type-suggestions-${objectId}`;
+
   // When the override loads, seed the form once. Subsequent edits by the user
   // shouldn't be clobbered by background refetches.
   const [seeded, setSeeded] = useState(false);
@@ -87,6 +108,11 @@ export function EditObjectModal({ objectId, current, onClose }: EditObjectModalP
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['catalog', objectId] });
     queryClient.invalidateQueries({ queryKey: ['catalog-info', objectId] });
+    // The server pushes the edit down onto the object's stored library columns,
+    // which is what the grid and the type filter chips read. Without this the
+    // corrected type only showed up on next load, which reads as the edit not
+    // having taken.
+    queryClient.invalidateQueries({ queryKey: ['library-objects'] });
   };
 
   const save = useMutation({
@@ -201,13 +227,20 @@ export function EditObjectModal({ objectId, current, onClose }: EditObjectModalP
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Type</label>
+              {/* A combo box, not a dropdown: the suggestions are the types
+                  already in your library, but the field stays free text so a
+                  type nothing in the catalogs uses can still be typed in. */}
               <input
                 type="text"
+                list={typeSuggestionsId}
                 value={form.type}
                 onChange={e => set('type', e.target.value)}
                 placeholder={placeholder(current.type)}
                 className={inputClass}
               />
+              <datalist id={typeSuggestionsId}>
+                {typeSuggestions.map(t => <option key={t} value={t} />)}
+              </datalist>
             </div>
             <div>
               <label className={labelClass}>Constellation</label>

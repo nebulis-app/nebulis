@@ -1,7 +1,19 @@
 import { Request, Response, NextFunction } from 'express';
+import { timingSafeEqual } from 'crypto';
 import { verifyToken, getUserCount, getUserTokenVersion } from '../lib/auth.js';
 import { getApiKey } from '../lib/telescopes.js';
 import { isDeviceActive, touchDevice } from '../lib/devicePairing.js';
+
+/** Constant-time string comparison for the API key check below, so a wrong
+ *  guess can't be distinguished from a right one by response timing.
+ *  timingSafeEqual throws on unequal-length buffers rather than returning
+ *  false, so the length check has to come first — an acceptable leak (key
+ *  length, not content) that's how Node's own docs recommend using it. */
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
+}
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   if (req.userRole !== 'admin') {
@@ -71,7 +83,11 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
     req.path.match(/^\/library\/tiff-thumbnail(\?|\/|$)/) ||
     req.path.match(/^\/library\/objects\/[^/]+\/thumbnail(\?|\/|$)/) ||
     req.path.match(/^\/library\/processed-images\//) ||
-    req.path.match(/^\/library\/download\/objects\//) ||
+    // GET only: this bypass exists for the plain <a href> "Download All" link,
+    // which can't send an Authorization header. It must not cover the two
+    // POST routes under the same prefix (subframes / subframe-filters ZIP
+    // jobs) — those do real async work and must go through normal auth.
+    (req.method === 'GET' && req.path.match(/^\/library\/download\/objects\//)) ||
     req.path.match(/^\/library\/download\/tmp\//) ||
     req.path.match(/^\/telescope\/files(\?|\/|$)/) ||
     req.path.match(/^\/telescope\/objects\/[^/]+\/thumbnail(\?|\/|$)/) ||
@@ -127,7 +143,7 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
 
     // Try as API key — API key holders get admin access
     const configuredKey = getApiKey();
-    if (configuredKey && token === configuredKey) {
+    if (configuredKey && safeEqual(token, configuredKey)) {
       req.userRole = 'admin';
       return next();
     }
@@ -138,7 +154,7 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
   const headerKey = typeof rawHeaderKey === 'string' ? rawHeaderKey : undefined;
   if (headerKey) {
     const configuredKey = getApiKey();
-    if (configuredKey && headerKey === configuredKey) {
+    if (configuredKey && safeEqual(headerKey, configuredKey)) {
       req.userRole = 'admin';
       return next();
     }

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { apiAuth } from '../../server/middleware/auth';
 
 // Mock the auth module
@@ -21,6 +21,13 @@ vi.mock('fs', async () => {
   };
 });
 import fs from 'fs';
+// Real (non-mocked) admin-API-key storage. The `setApiKey`/`getApiKey` local
+// helper below mocks `fs` for a `loadApiKey()` that no longer exists —
+// apiKey moved to a DB column (telescopes.ts) at some point and this file's
+// mocks were never updated, so every test using the local helper actually
+// exercises the fresh-install open-access fallback, not the API-key
+// comparison branch. Aliased to avoid colliding with that stale helper.
+import { setApiKey as setRealApiKey, getApiKey as getRealApiKey } from '../../server/lib/telescopes';
 
 const mockedVerifyToken = verifyToken as ReturnType<typeof vi.fn>;
 const mockedGetUserCount = getUserCount as ReturnType<typeof vi.fn>;
@@ -280,8 +287,8 @@ describe('apiAuth bypass-list anchoring', () => {
     setApiKey('configured-key');
   });
 
-  function check(path: string) {
-    const req = mockReq({ path });
+  function check(path: string, method = 'GET') {
+    const req = mockReq({ path, method });
     const res = mockRes();
     const next = vi.fn();
     apiAuth(req, res, next);
@@ -336,6 +343,100 @@ describe('apiAuth bypass-list anchoring', () => {
     '/admin/users',
   ])('does NOT bypass auth for %s', (path) => {
     const { next, res } = check(path);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.apiError).toHaveBeenCalledWith(401, 'AUTH_REQUIRED', expect.stringContaining('Authentication required'));
+  });
+
+  // The /library/download/objects/ bypass exists only for the GET route a
+  // plain <a href> hits. The POST routes under the same prefix (subframe ZIP
+  // jobs) do real async work and previously fell through the method-agnostic
+  // regex with zero auth — pin that they now require it.
+  it.each([
+    '/library/download/objects/M42/subframes',
+    '/library/download/objects/M42/subframe-filters',
+  ])('does NOT bypass auth for POST %s', (path) => {
+    const { next, res } = check(path, 'POST');
+    expect(next).not.toHaveBeenCalled();
+    expect(res.apiError).toHaveBeenCalledWith(401, 'AUTH_REQUIRED', expect.stringContaining('Authentication required'));
+  });
+
+  it('still bypasses auth for GET /library/download/objects/M42', () => {
+    const { next, res } = check('/library/download/objects/M42', 'GET');
+    expect(next).toHaveBeenCalled();
+    expect(res.apiError).not.toHaveBeenCalled();
+  });
+});
+
+// Exercises the real admin-API-key path end to end (DB-backed setApiKey/
+// getApiKey, sealed at rest, compared with timingSafeEqual) rather than the
+// stale fs-mocked `loadApiKey()` helper above, which no longer intercepts
+// anything real and only passes by accident via the fresh-install fallback.
+describe('apiAuth admin API key (real DB-backed storage)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockedVerifyToken.mockImplementation(() => {
+      throw new Error('invalid token');
+    });
+    // Non-fresh-install: without this, a wrong/missing key request with no
+    // other credentials would fall through to the open-access GET bypass
+    // and pass for the wrong reason, exactly like the stale tests above.
+    mockedGetUserCount.mockReturnValue(1);
+  });
+
+  afterEach(() => {
+    setRealApiKey('');
+  });
+
+  it('round-trips a key through the sealed storage unchanged', () => {
+    setRealApiKey('shub_roundtrip_test_key');
+    expect(getRealApiKey()).toBe('shub_roundtrip_test_key');
+  });
+
+  it('accepts the real key in the Bearer header and grants admin', () => {
+    setRealApiKey('shub_bearer_test_key');
+    const req = mockReq({ headers: { authorization: 'Bearer shub_bearer_test_key' } });
+    const res = mockRes();
+    const next = vi.fn();
+
+    apiAuth(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.apiError).not.toHaveBeenCalled();
+    expect(req.userRole).toBe('admin');
+  });
+
+  it('accepts the real key in the X-API-Key header and grants admin', () => {
+    setRealApiKey('shub_header_test_key');
+    const req = mockReq({ headers: { 'x-api-key': 'shub_header_test_key' } });
+    const res = mockRes();
+    const next = vi.fn();
+
+    apiAuth(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.apiError).not.toHaveBeenCalled();
+    expect(req.userRole).toBe('admin');
+  });
+
+  it('rejects a same-length wrong key', () => {
+    setRealApiKey('shub_correct_key_12345');
+    const req = mockReq({ headers: { 'x-api-key': 'shub_wr0ng_key_abcdefg' } });
+    const res = mockRes();
+    const next = vi.fn();
+
+    apiAuth(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.apiError).toHaveBeenCalledWith(401, 'AUTH_REQUIRED', expect.stringContaining('Authentication required'));
+  });
+
+  it('rejects a different-length wrong key without throwing (timingSafeEqual length guard)', () => {
+    setRealApiKey('shub_a_much_longer_configured_key');
+    const req = mockReq({ headers: { 'x-api-key': 'short' } });
+    const res = mockRes();
+    const next = vi.fn();
+
+    expect(() => apiAuth(req, res, next)).not.toThrow();
     expect(next).not.toHaveBeenCalled();
     expect(res.apiError).toHaveBeenCalledWith(401, 'AUTH_REQUIRED', expect.stringContaining('Authentication required'));
   });

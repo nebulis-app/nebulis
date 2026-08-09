@@ -12,6 +12,7 @@
 import SunCalc from 'suncalc';
 import { getActiveSite } from './observingSites.js';
 import { addDaysToDateKey, localDateKey, localParts, zonedDateTimeToUtc } from './timezone.js';
+import { OBSERVING_NIGHT_ROLLOVER_HOUR } from './telescopeFiles.js';
 
 export interface ForecastHour {
   time: string;          // ISO timestamp
@@ -386,7 +387,7 @@ export function parseOpenMeteoHour(value: string, timeZone: string): Date {
 export function defaultNightDate(now: Date, timeZone: string): string {
   const parts = localParts(now, timeZone);
   const today = localDateKey(now, timeZone);
-  return parts.hour >= 7 ? today : addDaysToDateKey(today, -1);
+  return parts.hour >= OBSERVING_NIGHT_ROLLOVER_HOUR ? today : addDaysToDateKey(today, -1);
 }
 
 export function getMoonPhaseName(phase: number): string {

@@ -12,6 +12,7 @@ import { isLibraryMigrating } from '../libraryMaintenance.js';
 import { purgeImportTmp, type PurgeResult } from './importStaging.js';
 import { isRealFile, isSidecarFile } from '../telescopeFiles.js';
 import { MANIFEST_NAME } from './libraryFiles.js';
+import { isReservedLibraryDir } from './archiveFolders.js';
 import {
   getAutoImportProfiles,
   type TelescopeProfile,
@@ -59,6 +60,17 @@ export async function purgeJunkFiles(): Promise<{ deleted: number; errors: numbe
   }
 
   for (const objectDir of objectDirs) {
+    // An import can claim the lock after the running-check at the top of this
+    // function (e.g. boot-time purge racing the first auto-import tick).
+    // Re-check per object dir so a purge already in progress doesn't delete
+    // an in-flight `<dest>.tmp` staging file out from under a just-started
+    // import — REAL_EXTENSIONS has no `.tmp` entry, so isRealFile would flag
+    // it as junk.
+    if (getImportStatus().running) break;
+    // The archive holds whatever the device wrote, including file types
+    // isRealFile has no rule for. That is what archive mode promised to keep,
+    // so this purge must never reach into it.
+    if (isReservedLibraryDir(objectDir)) continue;
     const objPath = path.join(LIBRARY_DIR, objectDir);
     try {
       const stat = await withTimeout(fs.promises.stat(objPath), LIBRARY_IO_TIMEOUT_MS);
@@ -126,7 +138,7 @@ export function purgeStaleImportTmp(): PurgeResult {
   if (getImportStatus().running) {
     return { deleted: 0, errors: 0, bytes: 0, skippedActive: 0 };
   }
-  const result = purgeImportTmp(IMPORT_TMP_MAX_AGE_MS);
+  const result = purgeImportTmp(IMPORT_TMP_MAX_AGE_MS, () => getImportStatus().running);
   if (result.deleted > 0) {
     console.log(
       `[library] Purged ${result.deleted} stale import-tmp dir(s)` +

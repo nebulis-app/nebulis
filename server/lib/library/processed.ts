@@ -17,6 +17,30 @@ import {
 } from './objects.js';
 import { getRunDates } from './processingRuns.js';
 
+// Formats a browser can render in an <img>. These get a thumbnail in the
+// processed-images grid, and are the only ones eligible to become a session's
+// auto-picked primary image (see getLocalSessions / getLocalObservations in
+// observations.ts) — an XISF or 32-bit FITS can't be handed to an <img> tag.
+const RENDERABLE_PROCESSED = /\.(jpg|jpeg|png|tiff?|tif)$/i;
+
+// Formats stored but never rendered: the output of a real processing workflow.
+// A PixInsight or Siril user's deliverable is an XISF or a 32-bit FITS, and
+// refusing those meant Nebulis could not hold the finished work it exists to
+// organize. The grid shows them as a file card with a download button.
+//
+// `.fits` is deliberately included even though telescope FITS arrives via
+// import: a calibrated or integrated stack coming *back* from an external tool
+// is a processed image, and there was previously no way to store one.
+const STORED_PROCESSED = /\.(xisf|fits?|fts|psd|xcf|dng|cr2|cr3|nef|arw)$/i;
+
+export function isRenderableProcessedName(name: string): boolean {
+  return RENDERABLE_PROCESSED.test(name);
+}
+
+export function isStoredOnlyProcessedName(name: string): boolean {
+  return STORED_PROCESSED.test(name);
+}
+
 /** Resolve `<LIBRARY_DIR>/<folder for objectId>[/...extra]`, refusing to
  *  return a path outside LIBRARY_DIR. getFolderName falls back to the raw
  *  objectId on a DB miss, so a crafted objectId with traversal tokens would

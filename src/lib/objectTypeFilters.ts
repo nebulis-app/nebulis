@@ -3,6 +3,9 @@ import type { LibraryObjectFilter } from './api/library';
 /** The two always-present, non-customizable filters. */
 export const ALL_FILTER_ID = 'all';
 export const FAVORITES_FILTER_ID = 'favorites';
+/** Mirrors UNKNOWN_FILTER_ID in server/lib/library/objectFilters.ts. Items with
+ *  no type at all belong to this group as much as ones typed "Unknown" do. */
+export const UNKNOWN_FILTER_ID = 'unknown';
 
 /** A granular filter for one exact object type present in the library. */
 export interface TypeFilter {
@@ -63,7 +66,7 @@ export function buildTypeFilters(
 /** True when a curated group's matchTypes/matchMode covers the given raw type. */
 export function groupMatchesType(group: LibraryObjectFilter, rawType: string | null | undefined): boolean {
   const type = normalize(rawType ?? '');
-  if (!type) return false;
+  if (!type) return group.id === UNKNOWN_FILTER_ID;
   return group.matchMode === 'exact'
     ? group.matchTypes.some(mt => normalize(mt) === type)
     : group.matchTypes.some(mt => new RegExp(`(^|\\b)${escapeRegExp(normalize(mt))}(\\b|$)`).test(type));

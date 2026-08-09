@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useMutationState, useQueryClient } from '@tanstack/react-query';
 import {
-  Star, Images, AlertCircle, Search, Clapperboard, Filter, ArrowUpDown, Check,
+  Star, Images, AlertCircle, Search, Clapperboard, Filter, ArrowUpDown, Check, Sparkles,
 } from 'lucide-react';
 import { getAllLibraryImages, toggleImageFavorite, getLibraryObjectFilters, type LibraryImage } from '../lib/api/library';
 import { getSettings } from '../lib/api/settings';
@@ -59,6 +59,18 @@ export function ImageGalleryPage() {
     queryKey: ['settings'],
     queryFn: getSettings,
   });
+
+  // Independent of activeFilterId: "kind" (processed vs raw) is orthogonal to
+  // object type and to Favorites, so it layers on top of whichever of those is
+  // selected rather than replacing it — a user can ask for processed Galaxies,
+  // or processed Favorites, not just one or the other.
+  //
+  // Starts from the settings default once that query resolves; a click on the
+  // toggle overrides it for the rest of the visit. Derived rather than seeded
+  // via a setState-in-effect once settings arrives — same reasoning as
+  // effectiveFilterId below.
+  const [processedOnlyOverride, setProcessedOnlyOverride] = useState<boolean | null>(null);
+  const processedOnly = processedOnlyOverride ?? settings?.galleryProcessedOnlyDefault ?? false;
 
   const { data: objectFilters = [] } = useQuery({
     queryKey: ['library-object-filters'],
@@ -142,6 +154,7 @@ export function ImageGalleryPage() {
       if (!matchesFilter(effectiveFilterId, { objectType: img.objectType, isFavorite: img.isFavorite }, objectFilters)) {
         return false;
       }
+      if (processedOnly && !img.isProcessed) return false;
       if (q) {
         // Match the catalog designation (objectId, e.g. "M33", "NGC598") as
         // well as the common name and filename, all normalized so "M33",
@@ -166,7 +179,7 @@ export function ImageGalleryPage() {
           return 0;
       }
     });
-  }, [images, effectiveFilterId, objectFilters, search, sortKey]);
+  }, [images, effectiveFilterId, objectFilters, processedOnly, search, sortKey]);
 
   function handleToggleFavorite(img: LibraryImage) {
     favMutation.mutate({ imagePath: img.path, isFavorite: !img.isFavorite });
@@ -201,6 +214,7 @@ export function ImageGalleryPage() {
       <PlanetariumMode
         initialImages={planetariumImages}
         favoritesOnly={false}
+        processedOnly={settings?.planetariumProcessedOnlyDefault ?? false}
         showInfo={settings?.planetariumShowInfo ?? true}
         rotateCCW={settings?.slideshowRotateCCW ?? false}
         onExit={() => setPlanetariumImages(null)}
@@ -338,6 +352,25 @@ export function ImageGalleryPage() {
           <Star className={`w-3.5 h-3.5 ${effectiveFilterId === FAVORITES_FILTER_ID ? 'fill-current' : ''}`} />
           Favorites
         </button>
+        {/* Independent of the type/Favorites radio group above: a checkbox, not
+            a chip in that set, since "processed" is a different axis (kind of
+            image) than object type. */}
+        <button
+          onClick={() => setProcessedOnlyOverride(!processedOnly)}
+          aria-pressed={processedOnly}
+          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+            processedOnly
+              ? isDark
+                ? 'bg-accent-500/15 text-accent-400 border border-accent-500/30'
+                : 'bg-accent-300 text-accent-700 border border-accent-400'
+              : isDark
+                ? 'hover:bg-slate-800 border border-transparent'
+                : 'hover:bg-slate-100 border border-transparent'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          Processed only
+        </button>
         <button
           onClick={() => setActiveFilterId(ALL_FILTER_ID)}
           className={`px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
@@ -375,6 +408,7 @@ export function ImageGalleryPage() {
             : effectiveFilterId !== ALL_FILTER_ID
               ? ` · ${filterLabel(effectiveFilterId, objectFilters, typeFilters)}`
               : ' in library'}
+          {processedOnly ? ' · Processed only' : ''}
         </p>
       )}
 
@@ -405,16 +439,20 @@ export function ImageGalleryPage() {
       ) : (
         <div className={`text-center py-20 space-y-6 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
           <div className={`inline-flex p-6 rounded-full ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
-            {effectiveFilterId === FAVORITES_FILTER_ID ? <Star className="w-12 h-12 opacity-40" /> : <Images className="w-12 h-12 opacity-40" />}
+            {effectiveFilterId === FAVORITES_FILTER_ID ? <Star className="w-12 h-12 opacity-40" />
+              : processedOnly ? <Sparkles className="w-12 h-12 opacity-40" />
+              : <Images className="w-12 h-12 opacity-40" />}
           </div>
           <div className="space-y-2">
             <p className={`text-xl font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
               {effectiveFilterId === FAVORITES_FILTER_ID ? 'No favorited images yet'
+                : processedOnly ? 'No processed images yet'
                 : search || effectiveFilterId !== ALL_FILTER_ID ? 'No images match your filters'
                 : 'No images in library'}
             </p>
             <p className="text-sm max-w-sm mx-auto">
               {effectiveFilterId === FAVORITES_FILTER_ID ? 'Star an image to add it to your favorites.'
+                : processedOnly ? 'Upload a processed image from an observation page to see it here.'
                 : 'Import images from your SeeStar telescope to see them here.'}
             </p>
           </div>

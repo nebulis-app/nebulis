@@ -21,6 +21,7 @@ import { purgeJunkFiles, purgeStaleImportTmp } from './library/housekeeping.js';
 import { refreshForecastCache } from './forecastCache.js';
 import { checkAndUpdatePacks } from './catalogPack/updater.js';
 import { addDaysToDateKey, localDateKey, localParts, zonedDateTimeToUtc } from './timezone.js';
+import { OBSERVING_NIGHT_ROLLOVER_HOUR } from './telescopeFiles.js';
 
 // ─── Scheduler state ──────────────────────────────────────────────────────────
 
@@ -81,11 +82,20 @@ function tick(): void {
   const { hh: targetHH, mm: targetMM } = parseHHMM(timeStr);
   const { hh, mm, dateStr } = localTime(new Date(), tz);
 
-  // Fire if we're within ±1 minute of the target and haven't already run today
+  // Fire if we're within ±1 minute of the target and haven't already run today.
+  // lastRanDate is stamped only after every task has at least been attempted
+  // (see the .finally below), not before the run starts: stamping it eagerly
+  // meant a run that threw partway through was never retried until the next
+  // calendar day, even though most of its tasks never ran. `!isRunning` is
+  // the guard against this same tick firing twice inside the ±1 minute
+  // window while that attempt is still in flight and lastRanDate isn't
+  // stamped yet — runNightlyMaintenance() also no-ops on isRunning, so this
+  // just avoids the redundant call.
   const deltaMin = Math.abs(hh * 60 + mm - (targetHH * 60 + targetMM));
-  if (deltaMin <= 1 && lastRanDate !== dateStr) {
-    lastRanDate = dateStr;
-    triggerNightlyMaintenance();
+  if (deltaMin <= 1 && lastRanDate !== dateStr && !isRunning) {
+    runNightlyMaintenance()
+      .catch(err => console.error('[nightly] Scheduled run failed:', err))
+      .finally(() => { lastRanDate = dateStr; });
   }
 }
 
@@ -114,7 +124,11 @@ async function runNightlyTasks(): Promise<void> {
   }
 
   if (settings.plannerPrefetchEnabled) {
-    await runPlannerNightlyPrefetch();
+    try {
+      await runPlannerNightlyPrefetch();
+    } catch (err) {
+      console.error('[nightly] Planner prefetch failed:', err instanceof Error ? err.message : err);
+    }
   }
 
   if (settings.nightlyHousekeepingEnabled) {
@@ -230,6 +244,6 @@ function localTime(date: Date, tz: string): { hh: number; mm: number; dateStr: s
 function defaultNightAnchor(now: Date, timeZone: string): Date {
   const parts = localParts(now, timeZone);
   const today = localDateKey(now, timeZone);
-  const nightDate = parts.hour >= 7 ? today : addDaysToDateKey(today, -1);
+  const nightDate = parts.hour >= OBSERVING_NIGHT_ROLLOVER_HOUR ? today : addDaysToDateKey(today, -1);
   return zonedDateTimeToUtc(nightDate, { hour: 12 }, timeZone);
 }

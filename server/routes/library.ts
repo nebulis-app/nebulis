@@ -11,7 +11,7 @@ import { strictRateLimiter, burstyRateLimiter } from '../middleware/rateLimit.js
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import archiver from 'archiver';
 import multer from 'multer';
 import { log } from '../lib/logger.js';
@@ -46,6 +46,10 @@ import {
   deleteLocalFile,
   deleteLocalObject,
   deleteLocalSession,
+  restoreLocalObject,
+  restoreLocalSession,
+  listDeletedObjects,
+  listDeletedSessions,
   moveObservation,
   commitFolderImport,
   getFavorites,
@@ -76,6 +80,8 @@ import {
   addProcessedImage,
   deleteProcessedImage,
   getProcessedImageFile,
+  isRenderableProcessedName,
+  isStoredOnlyProcessedName,
   createProcessingRun,
   getProcessingRun,
   getProcessingRunsForObject,
@@ -85,6 +91,7 @@ import {
   resolveObjectImagePath,
   resolveCatalogSourceSentinel,
 } from '../lib/localLibrary.js';
+import { getArchiveDir, listArchivedFolders } from '../lib/library/archiveFolders.js';
 import { stageUploadDestPath } from '../lib/library/uploadPath.js';
 import {
   IMPORT_TMP_BASE,
@@ -635,7 +642,7 @@ router.post('/import/temp-cleanup', requireAdmin, (_req: Request, res: Response)
     res.apiError(409, 'IMPORT_RUNNING', 'An import is running. Wait for it to finish, then clean up.');
     return;
   }
-  const result = purgeImportTmp(MANUAL_PURGE_MIN_AGE_MS);
+  const result = purgeImportTmp(MANUAL_PURGE_MIN_AGE_MS, () => getImportStatus().running);
   log.info(result, '[library] manual import-tmp cleanup');
   res.apiSuccess(result);
 });
@@ -914,6 +921,22 @@ router.get('/object-filters', (_req: Request, res: Response) => {
   res.apiSuccess(LIBRARY_OBJECT_FILTERS);
 });
 
+/**
+ * Folders archive mode kept but did not model: calibration frames, restacks,
+ * daytime captures. A plain directory listing, deliberately: these are bytes in
+ * the library, not objects, and giving them a home in the UI is what makes
+ * archive mode read as an import rather than a silent copy. The absolute path
+ * is returned so the user can point Siril or PixInsight straight at it.
+ */
+router.get('/archive', (_req: Request, res: Response) => {
+  try {
+    res.apiSuccess({ path: getArchiveDir(), folders: listArchivedFolders() });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to list the archive';
+    res.apiError(500, 'ARCHIVE_LIST_FAILED', message);
+  }
+});
+
 router.get('/objects', (req: Request, res: Response) => {
   try {
     const search = typeof req.query.search === 'string' ? req.query.search : '';
@@ -922,6 +945,28 @@ router.get('/objects', (req: Request, res: Response) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to list objects';
     res.apiError(500, 'LIST_FAILED', message);
+  }
+});
+
+/**
+ * The trash: objects and sessions deleted locally but not yet restored or
+ * re-synced. Registered before `/objects/:objectId` below — as literal path
+ * segments in that position they would otherwise be swallowed by it (Express
+ * would try to look up an object literally named "deleted").
+ */
+router.get('/objects/deleted', requireAdmin, (_req: Request, res: Response) => {
+  try {
+    res.apiSuccess(listDeletedObjects());
+  } catch (err) {
+    res.apiError(500, 'LIST_FAILED', err instanceof Error ? err.message : 'Failed to list deleted objects');
+  }
+});
+
+router.get('/objects/deleted-sessions', requireAdmin, (_req: Request, res: Response) => {
+  try {
+    res.apiSuccess(listDeletedSessions());
+  } catch (err) {
+    res.apiError(500, 'LIST_FAILED', err instanceof Error ? err.message : 'Failed to list deleted sessions');
   }
 });
 
@@ -956,6 +1001,18 @@ router.get('/objects/:objectId', (req: Request, res: Response) => {
 
 // ─── Thumbnail ────────────────────────────────────────────────────────────────
 
+/**
+ * Fixed-length disk-cache key. A raw base64url of `path:WxH:mtime` grows with
+ * the path, and a Dwarf's device-folder-plus-filename combination (session
+ * folder name alone can run ~90 chars, doubled once for the raw file and again
+ * for its "stacked-16_..." master) pushes the encoded key past the OS's
+ * 255-byte filename-component limit. sharp's toFile() then fails to open the
+ * temp file with ENAMETOOLONG, which the client sees as a 500 and the `<img>`
+ * renders as broken. A hash is constant-length regardless of input length.
+ */
+function thumbnailCacheKey(input: string): string {
+  return createHash('sha256').update(input).digest('base64url');
+}
 
 router.get('/objects/:objectId/thumbnail', async (req: Request, res: Response) => {
   try {
@@ -978,7 +1035,7 @@ router.get('/objects/:objectId/thumbnail', async (req: Request, res: Response) =
     // master) busts the disk-cached thumbnail. Without mtime, srcPath alone
     // would map to the same .jpg forever even after the source bytes change.
     const mtimeMs = (await withTimeout(fs.promises.stat(srcPath), LIBRARY_IO_TIMEOUT_MS)).mtimeMs;
-    const cacheKey = Buffer.from(`${srcPath}:${w}x${h}:${mtimeMs}`).toString('base64url');
+    const cacheKey = thumbnailCacheKey(`${srcPath}:${w}x${h}:${mtimeMs}`);
     const cachePath = path.join(THUMBNAILS_DIR, `${cacheKey}.jpg`);
 
     if (!fs.existsSync(cachePath)) {
@@ -1091,6 +1148,46 @@ router.delete('/objects/:objectId/sessions/:date', requireAdmin, (req: Request, 
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Delete failed';
     res.apiError(500, 'DELETE_FAILED', message);
+  }
+});
+
+// ─── Restore from the trash ──────────────────────────────────────────────────
+//
+// Restoring is a pure DB flag flip, not a filesystem write into the tree an
+// import walks, so unlike the deletes above it is not refused while an import
+// is running: there is nothing here for a concurrent import to race against.
+// It re-enables sync; it does not bring back the local files a delete already
+// removed, which is exactly the distinction the confirm copy on the delete
+// dialogs now states plainly.
+
+router.post('/objects/:objectId/restore', requireAdmin, (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  try {
+    const restored = restoreLocalObject(objectId);
+    if (!restored) {
+      res.apiError(404, 'NOT_FOUND', `"${objectId}" is not in the trash.`);
+      return;
+    }
+    res.apiSuccess({ restored: true, objectId });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Restore failed';
+    res.apiError(500, 'RESTORE_FAILED', message);
+  }
+});
+
+router.post('/objects/:objectId/sessions/:date/restore', requireAdmin, (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const date = String(req.params.date);
+  try {
+    const restored = restoreLocalSession(objectId, date);
+    if (!restored) {
+      res.apiError(404, 'NOT_FOUND', `The ${date} session of "${objectId}" is not in the trash.`);
+      return;
+    }
+    res.apiSuccess({ restored: true, objectId, date });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Restore failed';
+    res.apiError(500, 'RESTORE_FAILED', message);
   }
 });
 
@@ -1301,7 +1398,7 @@ router.get('/file/thumbnail', burstyRateLimiter, async (req: Request, res: Respo
   try {
     mtimeMs = (await withTimeout(fs.promises.stat(absPath), LIBRARY_IO_TIMEOUT_MS)).mtimeMs;
   } catch { /* fall through with 0; a miss is better than a stale hit */ }
-  const cacheKey = Buffer.from(`${filePath}:${w}x${h}:${mtimeMs}`).toString('base64url');
+  const cacheKey = thumbnailCacheKey(`${filePath}:${w}x${h}:${mtimeMs}`);
   const cachePath = path.join(THUMBNAILS_DIR, `${cacheKey}.jpg`);
 
   try {
@@ -1605,7 +1702,7 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 // Filter query — returns distinct filter names found across sub-frames for the given dates
-router.post('/download/objects/:objectId/subframe-filters', (req: Request, res: Response) => {
+router.post('/download/objects/:objectId/subframe-filters', strictRateLimiter, (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const bodyParsed = z.object({ dates: z.array(z.string()).min(1) }).safeParse(req.body);
   if (!bodyParsed.success) {
@@ -1637,7 +1734,7 @@ router.post('/download/objects/:objectId/subframe-filters', (req: Request, res: 
 });
 
 // Phase 1 — start async ZIP job
-router.post('/download/objects/:objectId/subframes', (req: Request, res: Response) => {
+router.post('/download/objects/:objectId/subframes', strictRateLimiter, (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const bodyParsed = SubframesBodySchema.safeParse(req.body);
   if (!bodyParsed.success) {
@@ -2067,24 +2164,10 @@ router.put('/objects/:objectId/sessions/:date/session-image', requireAdmin, stri
 });
 
 // ─── Processed images (user-uploaded post-processing results) ─────────────────
-
-// Formats a browser can render in an <img>. These get a thumbnail in the
-// processed-images grid.
-const RENDERABLE_PROCESSED = /\.(jpg|jpeg|png|tiff?|tif)$/i;
-
-// Formats stored but never rendered: the output of a real processing workflow.
-// A PixInsight or Siril user's deliverable is an XISF or a 32-bit FITS, and
-// refusing those meant Nebulis could not hold the finished work it exists to
-// organize. The grid shows them as a file card with a download button.
-//
-// `.fits` is deliberately included even though telescope FITS arrives via
-// import: a calibrated or integrated stack coming *back* from an external tool
-// is a processed image, and there was previously no way to store one.
-const STORED_PROCESSED = /\.(xisf|fits?|fts|psd|xcf|dng|cr2|cr3|nef|arw)$/i;
-
-export function isRenderableProcessedName(name: string): boolean {
-  return RENDERABLE_PROCESSED.test(name);
-}
+// isRenderableProcessedName / isStoredOnlyProcessedName live in
+// lib/library/processed.ts (the domain module), imported below via the
+// localLibrary barrel — observations.ts needs the same renderability check for
+// the session auto-thumbnail pick, so the single source of truth moved there.
 
 const processedUpload = multer({
   storage: multer.diskStorage({
@@ -2096,7 +2179,7 @@ const processedUpload = multer({
   // disk rather than memory.
   limits: { fileSize: 2 * 1024 * 1024 * 1024, fieldSize: 1 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    cb(null, RENDERABLE_PROCESSED.test(file.originalname) || STORED_PROCESSED.test(file.originalname));
+    cb(null, isRenderableProcessedName(file.originalname) || isStoredOnlyProcessedName(file.originalname));
   },
 });
 
@@ -2112,7 +2195,7 @@ const editedImageUpload = multer({
     filename: (_req, file, cb) => cb(null, `edited_${randomUUID()}_${path.basename(file.originalname)}`),
   }),
   limits: { fileSize: 300 * 1024 * 1024, fieldSize: 1 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => cb(null, RENDERABLE_PROCESSED.test(file.originalname)),
+  fileFilter: (_req, file, cb) => cb(null, isRenderableProcessedName(file.originalname)),
 });
 
 router.get('/objects/:objectId/sessions/:date/processed-images', (req: Request, res: Response) => {
@@ -2162,6 +2245,10 @@ router.post('/objects/:objectId/sessions/:date/processed-images', requireAdmin, 
 
   try {
     const record = addProcessedImage(objectId, date, file.path, file.originalname, mimeType, title, notes, runId);
+    // A renderable upload can now appear in the all-images gallery walk (see
+    // gallery.ts), which is cached for 15s — without this the new image would
+    // not show up there until the TTL happened to expire.
+    invalidateAllImagesCache();
     res.apiSuccess(record);
   } catch (err) {
     try { fs.unlinkSync(file.path); } catch { /* ignore */ }
@@ -2264,6 +2351,7 @@ router.delete('/objects/:objectId/sessions/:date/processed-images/:id', requireA
     return;
   }
   deleteProcessedImage(id);
+  invalidateAllImagesCache();
   res.apiSuccess({ deleted: true, id });
 });
 

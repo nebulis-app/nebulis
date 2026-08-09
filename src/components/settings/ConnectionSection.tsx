@@ -177,9 +177,16 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
       )}
 
       <div className="p-4 sm:p-5">
-      {archiveMutation.error && (
+      {/* useMutation tracks `.error` whether or not an onError callback is
+          registered, but none of these five mutations rendered it — a
+          failed delete/toggle/archive/unarchive/sync silently did nothing
+          from the user's perspective. One banner covering all five. */}
+      {(deleteMutation.error ?? toggleAutoImportMutation.error ?? archiveMutation.error ?? unarchiveMutation.error ?? syncMutation.error) && (
         <p className="mb-3 text-sm text-red-400">
-          {archiveMutation.error instanceof Error ? archiveMutation.error.message : 'Failed to archive telescope. Try again.'}
+          {(() => {
+            const err = deleteMutation.error ?? toggleAutoImportMutation.error ?? archiveMutation.error ?? unarchiveMutation.error ?? syncMutation.error;
+            return err instanceof Error ? err.message : 'Failed to update telescope. Try again.';
+          })()}
         </p>
       )}
 

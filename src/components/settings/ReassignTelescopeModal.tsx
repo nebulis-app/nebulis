@@ -32,7 +32,12 @@ export function ReassignTelescopeModal({
       setResult(data);
       setErrorMsg(null);
       queryClient.invalidateQueries({ queryKey: ['telescopes'] });
-      queryClient.invalidateQueries({ queryKey: ['objects'] });
+      // ['objects'] is never used as a query key anywhere in the frontend —
+      // invalidating it was a no-op. 'library-objects' is what Gallery.tsx
+      // actually queries; without it, the gallery kept showing sessions
+      // under their old telescope until an unrelated refetch happened to
+      // land.
+      queryClient.invalidateQueries({ queryKey: ['library-objects'] });
       queryClient.invalidateQueries({ queryKey: ['observations'] });
     },
     onError: (e: Error) => setErrorMsg(e.message),

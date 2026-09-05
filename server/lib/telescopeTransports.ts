@@ -268,12 +268,20 @@ function localMountPresent(localPath: string): boolean {
  *
  * Results cached 30s per profileId. The cache is invalidated whenever a
  * transport for the profile is added, updated, or deleted.
+ *
+ * `preloadedTransports` lets a caller that already fetched (and decrypted)
+ * this profile's transports for another purpose in the same request hand
+ * them in, instead of paying a second AES decrypt per transport on a cold
+ * 30s cache.
  */
-export function selectActiveTransport(profileId: string): TelescopeTransport | null {
+export function selectActiveTransport(
+  profileId: string,
+  preloadedTransports?: TelescopeTransport[],
+): TelescopeTransport | null {
   const cached = activeCache.get(profileId);
   if (cached && cached.expiresAt > Date.now()) return cached.transport;
 
-  const transports = getTransportsForProfile(profileId);
+  const transports = preloadedTransports ?? getTransportsForProfile(profileId);
   const orderForSelection = [...transports].sort((a, b) => {
     if (a.priority !== b.priority) return a.priority - b.priority;
     return (b.lastSeenAt ?? 0) - (a.lastSeenAt ?? 0);

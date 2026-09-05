@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, FolderOpen, RotateCw, CheckCircle2, Upload, HardDrive } from 'lucide-react';
 import {
@@ -78,9 +78,13 @@ function stripTopFolder(files: PickedFile[]): PickedFile[] {
   return stripped;
 }
 
+// Coarse client-side pre-filter, mirroring ALLOWED_UPLOAD_EXTS on the server
+// (routes/library.ts). Whether a video actually imports is still decided
+// server-side by classifyImportFile, same as any other file kind.
 const ACCEPTED_EXTS = new Set([
   '.fit', '.fits', '.fts',
   '.jpg', '.jpeg', '.png', '.tif', '.tiff',
+  '.avi', '.mp4', '.mov',
 ]);
 
 type Phase = 'idle' | 'staging' | 'uploading' | 'done';
@@ -122,6 +126,15 @@ export function ImportModal({ onClose, onReview }: {
   // import can read it in place instead of uploading the same bytes.
   const [locatedPath, setLocatedPath] = useState<string | null>(null);
   const locateAbortRef = useRef<AbortController | null>(null);
+
+  // This component has no other useEffect — both aborts above were only ever
+  // wired to the CloseConfirm discard handler, so navigating away mid-upload
+  // (not just an explicit Cancel) left the batch loop streaming in the
+  // background and its resolution firing onReview into a stale closure.
+  useEffect(() => () => {
+    uploadAbortRef.current?.abort();
+    locateAbortRef.current?.abort();
+  }, []);
 
   const { data: telescopes } = useQuery({
     queryKey: ['telescopes'],
@@ -602,6 +615,7 @@ export function ImportModal({ onClose, onReview }: {
             }
             onClose();
           }}
+          isDark={isDark}
         />
       )}
     </Modal>

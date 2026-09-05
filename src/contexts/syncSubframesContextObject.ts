@@ -1,7 +1,10 @@
 import { createContext, useContext } from 'react';
 
 export interface SyncSubframesContextValue {
+  /** Sync sub-frames for a single night. */
   openSync: (objectId: string, sessionId: string) => void;
+  /** Sync sub-frames for every night of an object in one pass. */
+  openObjectSync: (objectId: string) => void;
 }
 
 /**

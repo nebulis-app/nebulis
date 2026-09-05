@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { trailDetector } from '../lib/trailDetector.js';
+import { trailDetector, type TrailDetected } from '../lib/trailDetector.js';
 import { satelliteCatalog } from '../lib/satelliteCatalog.js';
-import { satelliteTracker, type ObservationParams } from '../lib/satelliteTracker.js';
+import { satelliteTracker, normalizeObservationTimestamp, type ObservationParams } from '../lib/satelliteTracker.js';
 import { parseFitsHeader } from '../lib/fitsParser.js';
 import { DATA_DIR } from '../lib/paths.js';
 import { getLibraryDir } from '../lib/libraryPath.js';
@@ -12,6 +12,15 @@ import { getSessionTelescopeId } from '../lib/localLibrary.js';
 import { getProfileById, type TelescopeKind } from '../lib/telescopes.js';
 import { getActiveSite } from '../lib/observingSites.js';
 import { parseFilename, normalizeObjectId, sessionNightFor } from '../lib/telescopeFiles.js';
+import { isRecord } from '../lib/typeGuards.js';
+import {
+  parseRaToDegs,
+  parseDecToDegs,
+  headerNumber,
+  readCdMatrix,
+  imageAngleToSkyPA,
+  sensorRotationFromCd,
+} from '../lib/fitsWcs.js';
 
 /**
  * Per-telescope-kind defaults for FITS keywords that may be missing.
@@ -22,12 +31,25 @@ import { parseFilename, normalizeObjectId, sessionNightFor } from '../lib/telesc
  * legitimate satellites.
  */
 const FITS_DEFAULTS_BY_KIND: Record<TelescopeKind, { focalLenMm: number; pixelSizeUm: number }> = {
-  'seestar-s50': { focalLenMm: 250, pixelSizeUm: 2.9 },
-  'seestar-s30': { focalLenMm: 150, pixelSizeUm: 2.9 },
-  'dwarf-3':     { focalLenMm: 35,  pixelSizeUm: 1.45 },
-  'dwarf-2':     { focalLenMm: 100, pixelSizeUm: 1.45 },
-  'dwarf-mini':  { focalLenMm: 135, pixelSizeUm: 2.9 },
-  'other':       { focalLenMm: 250, pixelSizeUm: 2.9 },
+  'seestar-s50':     { focalLenMm: 250, pixelSizeUm: 2.9 },
+  'seestar-s50-pro': { focalLenMm: 260, pixelSizeUm: 2.9 },
+  'seestar-s30':     { focalLenMm: 150, pixelSizeUm: 2.9 },
+  // S30 Pro: 160mm apochromatic telephoto over a 1/1.2" 3840x2160 sensor
+  // (Sony IMX585, 2.9um pixels). The wide 6mm camera is a framing finder and
+  // never imports as science frames, so only the telephoto optic matters here.
+  'seestar-s30-pro': { focalLenMm: 160, pixelSizeUm: 2.9 },
+  'dwarf-3':         { focalLenMm: 35,  pixelSizeUm: 1.45 },
+  'dwarf-2':         { focalLenMm: 100, pixelSizeUm: 1.45 },
+  'dwarf-mini':      { focalLenMm: 135, pixelSizeUm: 2.9 },
+  // ASIAIR is a controller, not a fixed optic: focal length and pixel size are
+  // whatever telescope and camera the user bolted together, so there is no
+  // correct per-kind value. This barely matters in practice, because ASIAIR
+  // writes real FOCALLEN and XPIXSZ into every frame and this table is only a
+  // fallback for headers that lack them. The placeholder is a common pairing
+  // (a 400mm refractor with an ASI2600-class 3.76um sensor) rather than a
+  // pretend-precise number.
+  'asiair':          { focalLenMm: 400, pixelSizeUm: 3.76 },
+  'other':           { focalLenMm: 250, pixelSizeUm: 2.9 },
 };
 
 /**
@@ -46,12 +68,19 @@ const FITS_DEFAULTS_BY_KIND: Record<TelescopeKind, { focalLenMm: number; pixelSi
  * sheet before trusting any single value.
  */
 const FOV_DEFAULTS_BY_KIND: Record<TelescopeKind, { widthDeg: number; heightDeg: number }> = {
-  'seestar-s50': { widthDeg: 1.28, heightDeg: 0.73 },
-  'seestar-s30': { widthDeg: 2.14, heightDeg: 1.22 },
-  'dwarf-3':     { widthDeg: 2.94, heightDeg: 1.65 },
-  'dwarf-2':     { widthDeg: 3.20, heightDeg: 1.80 },
-  'dwarf-mini':  { widthDeg: 2.90, heightDeg: 1.63 },
-  'other':       { widthDeg: 1.28, heightDeg: 0.73 },
+  'seestar-s50':     { widthDeg: 1.28, heightDeg: 0.73 },
+  'seestar-s50-pro': { widthDeg: 1.23, heightDeg: 0.70 },
+  'seestar-s30':     { widthDeg: 2.14, heightDeg: 1.22 },
+  // 11.14mm x 6.26mm sensor at 160mm: 3.99 x 2.24 deg, 4.6 deg diagonal (matches ZWO's spec).
+  'seestar-s30-pro': { widthDeg: 3.99, heightDeg: 2.24 },
+  'dwarf-3':         { widthDeg: 2.94, heightDeg: 1.65 },
+  'dwarf-2':         { widthDeg: 3.20, heightDeg: 1.80 },
+  'dwarf-mini':      { widthDeg: 2.90, heightDeg: 1.63 },
+  // Derived from the same placeholder rig as FITS_DEFAULTS_BY_KIND above, for
+  // the same reason: an ASIAIR has no inherent field of view. See the note
+  // there before treating this as a real number for any particular setup.
+  'asiair':          { widthDeg: 3.36, heightDeg: 2.25 },
+  'other':           { widthDeg: 1.28, heightDeg: 0.73 },
 };
 
 /**
@@ -61,7 +90,11 @@ const FOV_DEFAULTS_BY_KIND: Record<TelescopeKind, { widthDeg: number; heightDeg:
  * fresh installs and for paths we can't attribute.
  */
 function defaultsForFilePath(filePath: string): { focalLenMm: number; pixelSizeUm: number; kind: TelescopeKind } {
-  const fallback = { ...FITS_DEFAULTS_BY_KIND['seestar-s50'], kind: 'seestar-s50' as TelescopeKind };
+  // Annotated rather than asserted: the annotation checks 'seestar-s50'
+  // against TelescopeKind instead of the assertion widening it, so removing
+  // that kind from the union would be a compile error here.
+  const fallback: { focalLenMm: number; pixelSizeUm: number; kind: TelescopeKind } =
+    { ...FITS_DEFAULTS_BY_KIND['seestar-s50'], kind: 'seestar-s50' };
   try {
     // First path segment is the object folder; the leaf is the FITS filename
     const parts = filePath.split(/[\\/]/).filter(Boolean);
@@ -81,37 +114,29 @@ function defaultsForFilePath(filePath: string): { focalLenMm: number; pixelSizeU
 }
 
 /**
- * Convert a trail angle in image-pixel coordinates (the perpendicular axis
- * angle returned by trailDetector.findTrailAngle) into a sky position angle
- * in degrees east of north. Requires a full WCS CD matrix from the FITS
- * header. Returns null when any element is missing — caller should skip
- * the satelliteTracker motion-direction filter in that case rather than
- * compare frames that don't share an axis.
+ * Number of track samples kept per candidate in the response and the on-disk
+ * cache. The track is drawn as a path, so a few dozen points are visually
+ * indistinguishable from hundreds.
  *
- * The previous code passed the image-pixel angle directly to satelliteTracker,
- * which compares against a sky-PA computed from RA/DEC propagation. Without
- * the WCS rotation, those two angles aren't in the same frame and the
- * 45° tolerance silently rejected genuine candidates whose true sky-PA
- * differed from their image-PA by image flips/rotations alone.
+ * The tracker samples finely enough to catch a sub-degree transit — up to 400
+ * points per candidate — and every point used to be serialized into
+ * satellite-detections.json, which is read, parsed and rewritten in full for
+ * each scanned file. Ten candidates × hundreds of points × hundreds of files
+ * turned a session scan into a multi-hundred-megabyte file rewritten once per
+ * frame.
  */
-function imageAngleToSkyPA(imageAngleDeg: number, v: Record<string, unknown>): number | null {
-  const cd11 = typeof v['CD1_1'] === 'number' ? v['CD1_1'] : null;
-  const cd12 = typeof v['CD1_2'] === 'number' ? v['CD1_2'] : null;
-  const cd21 = typeof v['CD2_1'] === 'number' ? v['CD2_1'] : null;
-  const cd22 = typeof v['CD2_2'] === 'number' ? v['CD2_2'] : null;
-  if (cd11 === null || cd12 === null || cd21 === null || cd22 === null) return null;
+const MAX_TRACK_POINTS = 48;
 
-  const theta = imageAngleDeg * Math.PI / 180;
-  // findTrailAngle's `angleDeg` defines the perpendicular axis;
-  // the trail itself runs along (-sin θ, cos θ) in pixel space.
-  const lineX = -Math.sin(theta);
-  const lineY = Math.cos(theta);
-  // Apply CD matrix (degrees-per-pixel): pixel deltas → sky deltas.
-  // Row 1 is east (RA·cos δ), row 2 is north (DEC).
-  const dEast = cd11 * lineX + cd12 * lineY;
-  const dNorth = cd21 * lineX + cd22 * lineY;
-  const skyPA = Math.atan2(dEast, dNorth) * 180 / Math.PI;
-  return ((skyPA % 360) + 360) % 360;
+/** Uniformly decimate a track to at most MAX_TRACK_POINTS, always keeping the
+ *  first and last sample so the drawn path still spans the real extent. */
+function thinTrack<T>(track: T[]): T[] {
+  if (track.length <= MAX_TRACK_POINTS) return track;
+  const out: T[] = [];
+  const stride = (track.length - 1) / (MAX_TRACK_POINTS - 1);
+  for (let i = 0; i < MAX_TRACK_POINTS; i++) {
+    out.push(track[Math.round(i * stride)]);
+  }
+  return out;
 }
 
 const router = Router();
@@ -124,12 +149,51 @@ const router = Router();
 // caller's delta, and writes atomically.
 const CACHE_FILE = path.join(DATA_DIR, 'satellite-detections.json');
 
+/**
+ * Bump whenever a change to the detector or the tracker would give a different
+ * answer for the same file. Entries stamped with an older version are dropped
+ * on read, so an upgrade cannot leave users looking at results the current
+ * code would never produce — the failure mode the manual "Clear detection
+ * cache" button exists to undo, but only for users who know to press it.
+ *
+ * 2: trail width no longer masked as a star; star-mask padding decoupled from
+ *    sensor resolution; 45/135 dead band on square sensors; angular length
+ *    floor; reported angle is now the trail direction rather than its normal;
+ *    sexagesimal RA/DEC; window-wide satellite search; FOV rotation.
+ * 3: a plain detect() call (identifyOnly: false) no longer runs satellite
+ *    identification automatically — it always used to, so every cached entry
+ *    from before this version may carry `candidates` that were never asked
+ *    for by anything reading them (see the "Identify Satellite" button,
+ *    which never trusted this data and re-fetched fresh anyway). Not a
+ *    different trailDetected/confidence/angle answer, but a different
+ *    response shape for the same file, which the cache-version contract
+ *    treats the same way.
+ * 4: star masking now requires actual elongation (MIN_ELONGATION_RATIO), not
+ *    just linearity + a size floor. A moderately large, moderately bright,
+ *    perfectly ROUND star can clear both of those (linearity ≈ 1.1·r for a
+ *    disk of radius r; a bbox just past the 20px floor needs no exotic
+ *    brightness) despite having zero actual elongation — confirmed on real
+ *    frames where a saturated star (elongation 1.06, i.e. a near-perfect
+ *    circle) was left unmasked and scored a 27% confidence "trail" with an
+ *    endpoint 12px from its center. Files previously reporting a low-
+ *    confidence trail near a bright star may now report none.
+ */
+const CACHE_VERSION = 4;
+const CACHE_VERSION_KEY = '__cacheVersion';
+
 type CachedResult = Record<string, unknown>;
 
 function loadCache(): Record<string, CachedResult> {
   try {
     if (fs.existsSync(CACHE_FILE)) {
-      return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8'));
+      const parsed: unknown = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8'));
+      if (!isRecord(parsed)) return {};
+      if (parsed[CACHE_VERSION_KEY] !== CACHE_VERSION) return {};
+      const out: Record<string, CachedResult> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (k !== CACHE_VERSION_KEY && isRecord(v)) out[k] = v;
+      }
+      return out;
     }
   } catch { /* ignore */ }
   return {};
@@ -139,7 +203,7 @@ let cacheWriteChain: Promise<void> = Promise.resolve();
 
 function writeCacheAtomic(cache: Record<string, CachedResult>): void {
   const tmp = CACHE_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(cache, null, 2));
+  fs.writeFileSync(tmp, JSON.stringify({ [CACHE_VERSION_KEY]: CACHE_VERSION, ...cache }, null, 2));
   fs.renameSync(tmp, CACHE_FILE);
 }
 
@@ -188,7 +252,6 @@ router.post('/detect', requireAdmin, async (req: Request, res: Response) => {
     // which allowed an admin client to coax the server into reading from
     // arbitrary SMB shares (\\evil-server\share\...) and other absolute paths.
     // Restrict to relative library paths only.
-    let fileBuffer: Buffer;
     if (path.isAbsolute(filePath) || filePath.includes('..')) {
       res.apiError(400, 'INVALID_PATH', 'filePath must be a relative library path');
       return;
@@ -198,30 +261,20 @@ router.post('/detect', requireAdmin, async (req: Request, res: Response) => {
       res.apiError(403, 'FORBIDDEN', 'Invalid file path');
       return;
     }
-    fileBuffer = await fs.promises.readFile(localPath);
+    const fileBuffer = await fs.promises.readFile(localPath);
 
-    // Step 1: Detect trail (skip when user only wants identification)
-    // trailResult is hoisted so it is in scope for the response object below
-    let trailResult: ReturnType<typeof trailDetector.detect> | undefined;
-    if (!identifyOnly) {
-      trailResult = trailDetector.detect(fileBuffer);
-      if (!trailResult.trailDetected) {
-        const noTrail = { trailDetected: false as const };
-        updateCache({ [filePath]: noTrail });
-        res.apiSuccess(noTrail);
-        return;
-      }
-    }
-
-    // Step 2: Extract observation metadata from FITS header
-    // SeeStar uses various key names, so check many variants
+    // Step 1: Read the FITS header FIRST.
+    //
+    // Detection used to run before this, but the detector's minimum-trail-length
+    // rule needs the plate scale to be expressed on the sky rather than as a
+    // fraction of whatever sensor took the picture. Parsing the header is
+    // header-only work (no pixel decode), so doing it first costs nothing.
     const header = parseFitsHeader(fileBuffer);
     const v = header.values;
 
     const rawDateObs = v['DATE-OBS'] ?? v['DATE_OBS'] ?? v['DATE'];
     const dateObs = typeof rawDateObs === 'string' ? rawDateObs : undefined;
-    const rawExpTime = v['EXPTIME'] ?? v['EXPOSURE'] ?? v['EXP'];
-    const expTime = typeof rawExpTime === 'number' ? rawExpTime : undefined;
+    const expTime = headerNumber(v, 'EXPTIME', 'EXPOSURE', 'EXP');
     const ra = v['RA'] ?? v['OBJCTRA'] ?? v['CRVAL1'] ?? v['RA_OBJ'];
     const dec = v['DEC'] ?? v['OBJCTDEC'] ?? v['CRVAL2'] ?? v['DEC_OBJ'];
 
@@ -247,22 +300,87 @@ router.post('/detect', requireAdmin, async (req: Request, res: Response) => {
     // that matters for any frame the SeeStar firmware doesn't fully tag,
     // since an S30 (150mm) silently came out 1.67× off otherwise.
     const fitsDefaults = defaultsForFilePath(filePath);
-    const naxis1 = typeof v['NAXIS1'] === 'number' ? v['NAXIS1'] : null;
-    const naxis2 = typeof v['NAXIS2'] === 'number' ? v['NAXIS2'] : null;
-    const focalLenMm = typeof v['FOCALLEN'] === 'number' ? v['FOCALLEN'] : fitsDefaults.focalLenMm;
-    const pixelSizeXUm = typeof v['XPIXSZ'] === 'number' ? v['XPIXSZ'] : fitsDefaults.pixelSizeUm;
-    const pixelSizeYUm = typeof v['YPIXSZ'] === 'number' ? v['YPIXSZ'] : pixelSizeXUm;
+    const naxis1 = headerNumber(v, 'NAXIS1') ?? null;
+    const naxis2 = headerNumber(v, 'NAXIS2') ?? null;
+    const focalLenMm = headerNumber(v, 'FOCALLEN') ?? fitsDefaults.focalLenMm;
+    const pixelSizeXUm = headerNumber(v, 'XPIXSZ') ?? fitsDefaults.pixelSizeUm;
+    const pixelSizeYUm = headerNumber(v, 'YPIXSZ') ?? pixelSizeXUm;
+    // Binning. N.I.N.A. and ASIAIR report XPIXSZ as the SENSOR pixel size and
+    // record the bin factor separately, so a 2×2 binned frame came out with a
+    // FOV half its true size and an over-tight satellite crossing test. Writers
+    // that already fold binning into XPIXSZ (MaxIm DL) also write XBINNING, so
+    // this can overcorrect there; a plate solve, when present, overrides both
+    // below and is the authority.
+    const xBinning = Math.max(1, Math.round(headerNumber(v, 'XBINNING', 'BINX', 'CCDXBIN') ?? 1));
+    const yBinning = Math.max(1, Math.round(headerNumber(v, 'YBINNING', 'BINY', 'CCDYBIN') ?? 1));
+
+    // A plate-solved CD matrix states the true scale directly and needs no
+    // assumptions about focal length, pixel size or binning at all. Prefer it.
+    const cdMatrix = readCdMatrix(v);
+    const cdScaleX = cdMatrix ? Math.hypot(cdMatrix.cd11, cdMatrix.cd21) : null;
+    const cdScaleY = cdMatrix ? Math.hypot(cdMatrix.cd12, cdMatrix.cd22) : null;
+
     let fovWidthDeg: number;
     let fovHeightDeg: number;
+    let degPerPixel: number | undefined;
     if (naxis1 != null && naxis2 != null) {
-      const arcsecPerPixelX = (pixelSizeXUm / 1000 / focalLenMm) * (180 / Math.PI) * 3600;
-      const arcsecPerPixelY = (pixelSizeYUm / 1000 / focalLenMm) * (180 / Math.PI) * 3600;
-      fovWidthDeg = (naxis1 * arcsecPerPixelX) / 3600;
-      fovHeightDeg = (naxis2 * arcsecPerPixelY) / 3600;
+      const degPerPixelX = cdScaleX && cdScaleX > 0
+        ? cdScaleX
+        : ((pixelSizeXUm * xBinning) / 1000 / focalLenMm) * (180 / Math.PI);
+      const degPerPixelY = cdScaleY && cdScaleY > 0
+        ? cdScaleY
+        : ((pixelSizeYUm * yBinning) / 1000 / focalLenMm) * (180 / Math.PI);
+      fovWidthDeg = naxis1 * degPerPixelX;
+      fovHeightDeg = naxis2 * degPerPixelY;
+      degPerPixel = Math.min(degPerPixelX, degPerPixelY);
     } else {
       const fov = FOV_DEFAULTS_BY_KIND[fitsDefaults.kind] ?? FOV_DEFAULTS_BY_KIND.other;
       fovWidthDeg = fov.widthDeg;
       fovHeightDeg = fov.heightDeg;
+    }
+
+    // Step 2: Detect the trail, now that the plate scale is known.
+    // trailResult holds the *positive* half of the detector's discriminated
+    // union only: the no-trail outcome returns immediately below, so everything
+    // after this block reads measurements without re-testing the discriminant,
+    // and `undefined` means exactly one thing (identifyOnly skipped detection).
+    let trailResult: TrailDetected | undefined;
+    if (!identifyOnly) {
+      const detection = trailDetector.detect(fileBuffer, { degreesPerPixel: degPerPixel });
+      if (!detection.trailDetected) {
+        const noTrail = { trailDetected: false as const };
+        updateCache({ [filePath]: noTrail });
+        res.apiSuccess(noTrail);
+        return;
+      }
+
+      // A plain detect() call stops here — pixel-level trail detection only.
+      // Satellite identification (the TLE catalog fetch/match below) is a
+      // separate, explicit, per-file action: the client only ever exposes it
+      // behind the "Identify Satellite" button (identifyOnly: true), never as
+      // part of a bulk scan. This used to fall through into full
+      // identification for every positively-detected frame, which meant a
+      // session scan of a couple hundred sub-frames made that many automatic
+      // celestrak.org round-trips — and the result was thrown away anyway,
+      // since the Identify Satellite button always re-runs identification
+      // fresh rather than trusting whatever a scan happened to fetch earlier.
+      const detectOnlyResult = {
+        trailDetected: true as const,
+        identifyOnly: false,
+        angleDegrees: detection.angleDegrees,
+        lengthPixels: detection.lengthPixels,
+        midpoint: detection.midpoint,
+        endpoints: detection.endpoints,
+        confidence: detection.confidence,
+        profileWidth: detection.profileWidth,
+        exposureStart: dateObs ? normalizeObservationTimestamp(dateObs).toISOString() : undefined,
+        exposureSeconds: expTime ?? undefined,
+        candidates: [] as unknown[],
+        nearMissFallback: false,
+      };
+      updateCache({ [filePath]: detectOnlyResult });
+      res.apiSuccess(detectOnlyResult);
+      return;
     }
 
     // Try to identify satellites if we have enough metadata
@@ -285,8 +403,13 @@ router.post('/detect', requireAdmin, async (req: Request, res: Response) => {
       const latNum = typeof obsLat === 'string' ? parseFloat(obsLat) : typeof obsLat === 'number' ? obsLat : 0;
       const lonNum = typeof obsLon === 'string' ? parseFloat(obsLon) : typeof obsLon === 'number' ? obsLon : 0;
 
-      // Load the TLE catalog closest to the observation date for accurate identification
-      const obsDate = new Date(dateObs.endsWith('Z') ? dateObs : dateObs + 'Z');
+      // Load the TLE catalog closest to the observation date for accurate identification.
+      // DATE-OBS sometimes carries a numeric UTC offset (firmware-dependent) rather
+      // than 'Z' — naively appending 'Z' to that produces an invalid ISO string
+      // ("...+02:00Z") and an Invalid Date, silently poisoning every duringExposure
+      // check below. normalizeObservationTimestamp only appends 'Z' when no
+      // timezone info is already present.
+      const obsDate = normalizeObservationTimestamp(dateObs);
       let tleRecords = await satelliteCatalog.loadCatalogForDate(obsDate);
       if (!tleRecords) {
         // No archive within range — fall back to current catalog but flag it
@@ -305,8 +428,8 @@ router.post('/detect', requireAdmin, async (req: Request, res: Response) => {
       // rejected legitimate candidates. Skipping the filter when WCS is
       // unavailable preserves correctness — the closest-approach scoring
       // still ranks the right satellite first.
-      const trailSkyPA = trailResult?.angleDegrees != null
-        ? imageAngleToSkyPA(trailResult.angleDegrees, v)
+      const trailSkyPA = trailResult?.angleDegrees != null && cdMatrix
+        ? imageAngleToSkyPA(trailResult.angleDegrees, cdMatrix)
         : null;
 
       const identParams: ObservationParams = {
@@ -319,6 +442,10 @@ router.post('/detect', requireAdmin, async (req: Request, res: Response) => {
         fovWidthDeg,
         fovHeightDeg,
         detectedTrailAngle: trailSkyPA ?? undefined,
+        // Orient the FOV rectangle to the sensor. Without a WCS solution we
+        // cannot know the camera angle, so the tracker keeps its historical
+        // "+x points east" assumption.
+        fovRotationDeg: cdMatrix ? sensorRotationFromCd(cdMatrix) : undefined,
       };
       try {
         const result = await satelliteTracker.identifySatelliteTrail(identParams, tleRecords);
@@ -326,6 +453,7 @@ router.post('/detect', requireAdmin, async (req: Request, res: Response) => {
         const expEndMs = expStartMs + expTime * 1000;
         candidates = result.candidates.map(c => ({
           ...c,
+          track: thinTrack(c.track),
           duringExposure:
             new Date(c.crossingTimeUTC).getTime() >= expStartMs &&
             new Date(c.crossingTimeUTC).getTime() <= expEndMs,
@@ -337,8 +465,11 @@ router.post('/detect', requireAdmin, async (req: Request, res: Response) => {
     }
 
     const detectedTrail = trailResult;
+    // Derived from the same normalized instant as obsDate above, not a second
+    // naive 'Z'-append, so a DATE-OBS with a numeric offset reports the
+    // correct UTC instant here too.
     const exposureStartUTC = dateObs
-      ? (dateObs.endsWith('Z') ? dateObs : dateObs + 'Z')
+      ? normalizeObservationTimestamp(dateObs).toISOString()
       : undefined;
     const result = {
       trailDetected: true as const,
@@ -372,11 +503,24 @@ router.post('/detect', requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Read `filePaths` out of an untrusted request body. Returns null when the
+ * field is absent or not an array (the caller answers 400), and otherwise the
+ * string entries only, so a `[1, null]` body can't reach the cache lookup as
+ * if it were a list of paths.
+ */
+function parseFilePathsBody(body: unknown): string[] | null {
+  if (!isRecord(body)) return null;
+  const { filePaths } = body;
+  if (!Array.isArray(filePaths)) return null;
+  return filePaths.filter((entry): entry is string => typeof entry === 'string');
+}
+
 // ─── Get cached results for specific file paths ─────────────────────
 router.post('/results', requireAdmin, (req: Request, res: Response) => {
   try {
-    const { filePaths } = req.body as { filePaths?: string[] };
-    if (!filePaths || !Array.isArray(filePaths)) {
+    const filePaths = parseFilePathsBody(req.body);
+    if (!filePaths) {
       res.apiError(400, 'MISSING_PATHS', 'filePaths array is required');
       return;
     }
@@ -400,6 +544,10 @@ router.get('/catalog/status', async (_req: Request, res: Response) => {
       count: catalog.length,
       lastFetch: satelliteCatalog.getLastFetch()?.toISOString() || null,
       isStale: satelliteCatalog.isUsingStaleFallback(),
+      usingSeed: satelliteCatalog.isUsingSeed(),
+      seedEpoch: satelliteCatalog.getSeedEpoch(),
+      lastError: satelliteCatalog.getLastFetchError(),
+      retryInMinutes: Math.ceil(satelliteCatalog.backoffRemainingMs() / 60000),
       archiveRange: satelliteCatalog.getArchiveRange(),
     });
   } catch (err: unknown) {
@@ -432,27 +580,5 @@ router.delete('/cache', requireAdmin, (_req: Request, res: Response) => {
     res.apiError(500, 'CACHE_ERROR', message);
   }
 });
-
-// ─── Helpers ─────────────────────────────────────────────────────────
-
-function parseRaToDegs(ra: string): number {
-  const m = ra.match(/(\d+)h\s*(\d+)m\s*([\d.]+)s/i);
-  if (m) {
-    const hours = parseFloat(m[1]) + parseFloat(m[2]) / 60 + parseFloat(m[3]) / 3600;
-    return hours * 15;
-  }
-  const num = parseFloat(ra);
-  return isNaN(num) ? 0 : num;
-}
-
-function parseDecToDegs(dec: string): number {
-  const m = dec.match(/([+-]?)(\d+)[°]\s*(\d+)[′']\s*([\d.]+)[″"]/);
-  if (m) {
-    const sign = m[1] === '-' ? -1 : 1;
-    return sign * (parseFloat(m[2]) + parseFloat(m[3]) / 60 + parseFloat(m[4]) / 3600);
-  }
-  const num = parseFloat(dec);
-  return isNaN(num) ? 0 : num;
-}
 
 export { router as satelliteRouter };

@@ -14,6 +14,7 @@ import path from 'path';
 import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { isRecord } from './typeGuards.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -103,6 +104,26 @@ interface WinDisk {
   DriveType?: number;
 }
 
+/**
+ * Convert one entry of the PowerShell payload into a WinDisk, or null when it
+ * is not an object at all. Every field is copied through a type check, so a
+ * FreeSpace that came back as an object (which CIM does for values over
+ * 2^53 on some hosts) becomes null rather than being typed as a number and
+ * reaching Number() as NaN.
+ */
+function toWinDisk(value: unknown): WinDisk | null {
+  if (!isRecord(value)) return null;
+  const sizeLike = (v: unknown): number | string | null =>
+    typeof v === 'number' || typeof v === 'string' ? v : null;
+  return {
+    DeviceID: typeof value.DeviceID === 'string' ? value.DeviceID : undefined,
+    VolumeName: typeof value.VolumeName === 'string' ? value.VolumeName : undefined,
+    FreeSpace: sizeLike(value.FreeSpace),
+    Size: sizeLike(value.Size),
+    DriveType: typeof value.DriveType === 'number' ? value.DriveType : undefined,
+  };
+}
+
 async function listWindows(): Promise<VolumeInfo[]> {
   try {
     const { stdout } = await execFileAsync(
@@ -114,8 +135,14 @@ async function listWindows(): Promise<VolumeInfo[]> {
       ],
       { timeout: 8000 },
     );
+    // ConvertTo-Json emits a bare object for a single disk and an array for
+    // several, so both shapes are normalised here. Each entry is then read
+    // field by field by toWinDisk instead of the whole PowerShell payload
+    // being asserted as WinDisk[].
     const parsed: unknown = JSON.parse(stdout);
-    const disks: WinDisk[] = Array.isArray(parsed) ? parsed : [parsed as WinDisk];
+    const disks: WinDisk[] = (Array.isArray(parsed) ? parsed : [parsed])
+      .map(toWinDisk)
+      .filter((d): d is WinDisk => d !== null);
     // DriveType: 0 unknown, 1 no root dir, 2 removable, 3 fixed, 4 network,
     // 5 optical. Optical/unknown/no-root and recovery partitions are noise.
     const HIDDEN_DRIVE_TYPES = new Set([0, 1, 5]);

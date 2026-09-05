@@ -32,38 +32,38 @@ const DATA_SOURCE_GROUPS: Array<{
   {
     title: 'Astronomy Databases',
     sources: [
-      { name: 'OpenNGC Catalog', description: '3,200+ deep sky objects with coordinates, magnitudes, and types', url: 'https://github.com/mattiaverga/OpenNGC', icon: <BookOpen className="w-4 h-4" />, badge: 'bundled', cache: 'Bundled with app' },
-      { name: 'CDS Sesame', description: 'Resolves object names to RA/Dec via SIMBAD, NED, and VizieR', url: 'https://cdsweb.u-strasbg.fr', icon: <Globe className="w-4 h-4" />, badge: 'free', cache: 'Cached to disk' },
-      { name: 'SIMBAD', description: 'Object properties including size and distance', url: 'https://simbad.cds.unistra.fr', icon: <Database className="w-4 h-4" />, badge: 'free' },
+      { name: 'OpenNGC Catalog', description: 'Coordinates, magnitudes, and types for 3,200+ deep sky objects', url: 'https://github.com/mattiaverga/OpenNGC', icon: <BookOpen className="w-4 h-4" />, badge: 'bundled', cache: 'Bundled with app' },
+      { name: 'CDS Sesame', description: 'Name lookups for objects missing from the bundled catalog', url: 'https://cdsweb.u-strasbg.fr', icon: <Globe className="w-4 h-4" />, badge: 'free', cache: 'Cached to disk' },
+      { name: 'SIMBAD', description: 'Size and distance details for catalog objects', url: 'https://simbad.cds.unistra.fr', icon: <Database className="w-4 h-4" />, badge: 'free' },
     ],
   },
   {
     title: 'Sky Images',
     sources: [
-      { name: 'NASA Hubble Caldwell Catalog', description: 'Hubble Space Telescope imagery and descriptions for 88 Caldwell objects. NASA content is public domain.', url: 'https://science.nasa.gov/mission/hubble/science/explore-the-night-sky/hubble-caldwell-catalog/', icon: <Image className="w-4 h-4" />, badge: 'free', cache: 'Cached to disk' },
-      { name: 'CDS HiPS Sky Survey', description: 'DSS2 color survey images for any RA/Dec coordinate', url: 'https://alasky.cds.unistra.fr', icon: <Image className="w-4 h-4" />, badge: 'free', cache: 'Cached to disk' },
-      { name: 'NASA Image Library', description: 'Fallback images for solar system objects', url: 'https://images.nasa.gov', icon: <Image className="w-4 h-4" />, badge: 'free', cache: 'Cached to disk' },
-      { name: 'Wikipedia', description: 'Object descriptions, summaries, and thumbnails', url: 'https://en.wikipedia.org', icon: <FileText className="w-4 h-4" />, badge: 'free' },
+      { name: 'NASA Hubble Caldwell Catalog', description: 'Hubble images and text for the 88 Caldwell objects', url: 'https://science.nasa.gov/mission/hubble/science/explore-the-night-sky/hubble-caldwell-catalog/', icon: <Image className="w-4 h-4" />, badge: 'free', cache: 'Cached to disk' },
+      { name: 'CDS HiPS Sky Survey', description: 'DSS2 survey images for any coordinate you point at', url: 'https://alasky.cds.unistra.fr', icon: <Image className="w-4 h-4" />, badge: 'free', cache: 'Cached to disk' },
+      { name: 'NASA Image Library', description: 'Backup images for planets, moons, and comets', url: 'https://images.nasa.gov', icon: <Image className="w-4 h-4" />, badge: 'free', cache: 'Cached to disk' },
+      { name: 'Wikipedia', description: 'Plain-language summaries and thumbnails for objects', url: 'https://en.wikipedia.org', icon: <FileText className="w-4 h-4" />, badge: 'free' },
     ],
   },
   {
     title: 'Weather & Forecasting',
     sources: [
-      { name: 'Open-Meteo', description: 'Temperature, humidity, cloud cover, wind, and precipitation', url: 'https://open-meteo.com', icon: <Cloud className="w-4 h-4" />, badge: 'free' },
-      { name: '7Timer', description: 'Astronomical seeing and transparency forecasts', url: 'https://www.7timer.info', icon: <Cloud className="w-4 h-4" />, badge: 'free' },
-      { name: 'SunCalc', description: 'Moon phase, twilight times, and sun/moon positions', icon: <Moon className="w-4 h-4" />, badge: 'bundled' },
+      { name: 'Open-Meteo', description: 'Temperature, humidity, cloud, wind, and rain for your sites', url: 'https://open-meteo.com', icon: <Cloud className="w-4 h-4" />, badge: 'free' },
+      { name: '7Timer', description: 'Seeing and transparency forecasts for imaging nights', url: 'https://www.7timer.info', icon: <Cloud className="w-4 h-4" />, badge: 'free' },
+      { name: 'SunCalc', description: 'Moon phase, twilight, and sun and moon positions for your sites', icon: <Moon className="w-4 h-4" />, badge: 'bundled' },
     ],
   },
   {
     title: 'Satellite Tracking',
     sources: [
-      { name: 'CelesTrak', description: 'TLE orbital elements for 14 satellite groups', url: 'https://celestrak.org', icon: <Satellite className="w-4 h-4" />, badge: 'free', cache: 'Cached 24 hours' },
+      { name: 'CelesTrak', description: 'Orbital elements for active satellites, used in trail checks', url: 'https://celestrak.org', icon: <Satellite className="w-4 h-4" />, badge: 'free', cache: 'Cached 24 hours' },
     ],
   },
   {
     title: 'Maps',
     sources: [
-      { name: 'CartoDB / OpenStreetMap', description: 'Map tiles for the observation location viewer', url: 'https://carto.com', icon: <Map className="w-4 h-4" />, badge: 'free' },
+      { name: 'Esri', description: 'Map tiles for the observation location viewer', url: 'https://www.esri.com', icon: <Map className="w-4 h-4" />, badge: 'free' },
     ],
   },
 ];
@@ -113,7 +113,7 @@ export function DataSourcesSection({ isDark }: { isDark: boolean }) {
             {DATA_SOURCE_GROUPS.map(group => (
               <div key={group.title}>
                 <h3
-                  className={`text-[11px] font-semibold uppercase tracking-wider mb-2 ${
+                  className={`text-[10px] font-semibold uppercase tracking-[0.1em] mb-2 ${
                     isDark ? 'text-slate-500' : 'text-slate-400'
                   }`}
                 >

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   map7TimerSeeing,
   map7TimerTransparency,
@@ -9,8 +9,14 @@ import {
   parseSevenTimerInit,
   parseOpenMeteoHour,
   defaultNightDate,
+  forecastSiteKey,
+  getForecastCacheEntry,
+  setForecastCacheEntry,
+  buildForecast,
+  _clearForecastCache,
   type ForecastHour,
 } from '../../server/lib/forecastCache';
+import { getSettingsData, updateSettingsData } from '../../server/lib/telescopes';
 
 describe('map7TimerSeeing', () => {
   it('maps codes 1-2 to 1 (Excellent)', () => {
@@ -234,6 +240,153 @@ describe('parseOpenMeteoHour', () => {
     expect(parseOpenMeteoHour('2026-06-21', 'UTC').toISOString()).toBe(
       '2026-06-21T00:00:00.000Z',
     );
+  });
+});
+
+describe('per-site forecast cache', () => {
+  beforeEach(() => _clearForecastCache());
+
+  const put = (lat: number, lon: number, tag: string) =>
+    setForecastCacheEntry({ data: { tag }, fetchedAt: Date.now(), lat, lon });
+
+  it('keys by lat/lon rounded to 0.01 degrees', () => {
+    expect(forecastSiteKey(39.7392, -104.9903)).toBe('39.74|-104.99');
+  });
+
+  it('keeps two distinct sites without evicting each other', () => {
+    put(39.74, -104.99, 'denver');
+    put(51.5, -0.12, 'london');
+    expect(getForecastCacheEntry(39.74, -104.99)?.data).toEqual({ tag: 'denver' });
+    expect(getForecastCacheEntry(51.5, -0.12)?.data).toEqual({ tag: 'london' });
+  });
+
+  it('drops the least-recently-used site once a 9th distinct site is stored', () => {
+    for (let i = 0; i < 8; i++) put(i, 0, `site-${i}`);
+    // site-0 is the LRU tail; adding a 9th evicts it, not the newer ones.
+    put(99, 0, 'site-9');
+    expect(getForecastCacheEntry(0, 0)).toBeNull();
+    expect(getForecastCacheEntry(1, 0)?.data).toEqual({ tag: 'site-1' });
+    expect(getForecastCacheEntry(99, 0)?.data).toEqual({ tag: 'site-9' });
+  });
+
+  it('re-storing a site refreshes its recency so it survives eviction', () => {
+    for (let i = 0; i < 8; i++) put(i, 0, `site-${i}`);
+    put(0, 0, 'site-0-again'); // move site-0 to the back
+    put(99, 0, 'site-9');      // now site-1 is the LRU tail
+    expect(getForecastCacheEntry(0, 0)?.data).toEqual({ tag: 'site-0-again' });
+    expect(getForecastCacheEntry(1, 0)).toBeNull();
+  });
+});
+
+describe('buildForecast — display units', () => {
+  const stubWeather = () => {
+    vi.stubGlobal('fetch', async (url: string | URL) => {
+      const u = String(url);
+      if (u.includes('open-meteo')) {
+        return {
+          ok: true,
+          json: async () => ({
+            timezone: 'UTC',
+            hourly: {
+              time: ['2026-01-15T20:00', '2026-01-15T21:00'],
+              cloud_cover: [10, 20],
+              temperature_2m: [-1, 2],
+            },
+          }),
+        } as Response;
+      }
+      // 7Timer
+      return { ok: true, json: async () => ({ init: '2026011512', dataseries: [] }) } as Response;
+    });
+  };
+
+  const originalUnit = getSettingsData().temperatureUnit;
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    updateSettingsData({ temperatureUnit: originalUnit });
+  });
+
+  it('reports the configured temperature unit in the response', async () => {
+    stubWeather();
+    updateSettingsData({ temperatureUnit: 'celsius' });
+    const data = await buildForecast(40, -105) as { units?: { temperature?: string } };
+    expect(data.units?.temperature).toBe('celsius');
+  });
+
+  it('falls back to fahrenheit for an unrecognised setting', async () => {
+    stubWeather();
+    updateSettingsData({ temperatureUnit: 'kelvin' as unknown as string });
+    const data = await buildForecast(40, -105) as { units?: { temperature?: string } };
+    expect(data.units?.temperature).toBe('fahrenheit');
+  });
+});
+
+describe('buildForecast — timezone field is always Intl-parseable', () => {
+  // Open-Meteo is a third-party API: its `timezone` field previously went
+  // straight into the response with no validation. Every downstream client
+  // consumer trusts that field is a real IANA identifier — the Forecast page
+  // crashed the whole page on 2026-09-04 when it wasn't. This locks in the
+  // fix at the source rather than only at each client call site.
+  function stubWeatherWithTimezone(rawTimezone: unknown) {
+    vi.stubGlobal('fetch', async (url: string | URL) => {
+      const u = String(url);
+      if (u.includes('open-meteo')) {
+        return {
+          ok: true,
+          json: async () => ({
+            timezone: rawTimezone,
+            hourly: {
+              time: ['2026-01-15T20:00', '2026-01-15T21:00'],
+              cloud_cover: [10, 20],
+              temperature_2m: [-1, 2],
+            },
+          }),
+        } as Response;
+      }
+      return { ok: true, json: async () => ({ init: '2026011512', dataseries: [] }) } as Response;
+    });
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  function assertParseable(timezone: string) {
+    expect(typeof timezone).toBe('string');
+    expect(timezone.length).toBeGreaterThan(0);
+    // The actual contract: whatever ships in the response must be a value
+    // every client's plain `new Intl.DateTimeFormat('en-US', { timeZone })`
+    // will accept. This is the exact call that crashed on a bad value.
+    expect(() => new Intl.DateTimeFormat('en-US', { timeZone: timezone })).not.toThrow();
+  }
+
+  it('passes through a genuinely valid Open-Meteo timezone unchanged', async () => {
+    stubWeatherWithTimezone('America/Denver');
+    const data = await buildForecast(40, -105) as { timezone?: string };
+    expect(data.timezone).toBe('America/Denver');
+  });
+
+  it('falls back to a real zone when Open-Meteo returns garbage', async () => {
+    stubWeatherWithTimezone('not-a-real-timezone');
+    const data = await buildForecast(40, -105) as { timezone?: string };
+    assertParseable(data.timezone!);
+    expect(data.timezone).not.toBe('not-a-real-timezone');
+  });
+
+  it('falls back to a real zone when Open-Meteo returns an empty string', async () => {
+    stubWeatherWithTimezone('');
+    const data = await buildForecast(40, -105) as { timezone?: string };
+    assertParseable(data.timezone!);
+  });
+
+  it('falls back to a real zone when Open-Meteo omits the field entirely', async () => {
+    stubWeatherWithTimezone(undefined);
+    const data = await buildForecast(40, -105) as { timezone?: string };
+    assertParseable(data.timezone!);
+  });
+
+  it('falls back to a real zone when Open-Meteo returns the wrong type', async () => {
+    stubWeatherWithTimezone(12345);
+    const data = await buildForecast(40, -105) as { timezone?: string };
+    assertParseable(data.timezone!);
   });
 });
 

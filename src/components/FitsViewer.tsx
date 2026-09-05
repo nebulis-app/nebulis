@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ZoomIn, ZoomOut, RotateCw, Contrast, Satellite, Loader2, Clock, Zap, AlertCircle, X, Info, MapPin } from 'lucide-react';
 import { identifySatellites, type SatelliteTrailResult } from '../lib/api/observations';
 import { fetchBinary } from '../lib/api/client';
-import { parseFits, renderFitsToCanvas, type FitsData } from '../lib/fits';
+import { parseFits, renderFitsToCanvas } from '../lib/fits';
 
 interface FitsViewerProps {
   url: string;
@@ -18,6 +19,9 @@ interface FitsViewerProps {
   externalStretch?: number;
   /** Called whenever the fit-to-container zoom is (re)computed. */
   onFitZoomComputed?: (fz: number) => void;
+  /** Pixel dimensions of the decoded frame, once they are known. Lets a caller
+   *  size its own layout to the frame's shape (the lightbox sizes its panel). */
+  onNaturalSize?: (width: number, height: number) => void;
   /** Initial uncontrolled zoom (e.g. 0.32 for 32%). Overridden once the user zooms. */
   initialZoom?: number;
 }
@@ -32,12 +36,11 @@ export function FitsViewer({
   externalZoom,
   externalStretch,
   onFitZoomComputed,
+  onNaturalSize,
   initialZoom,
 }: FitsViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Internal stretch — only used when hideControls=false
   const [internalStretch, setInternalStretch] = useState(0.5);
@@ -51,9 +54,20 @@ export function FitsViewer({
   const [satHelpOpen, setSatHelpOpen] = useState(false);
   const [showLocationPrompt, setShowLocationPrompt] = useState(false);
   const [locationGeoError, setLocationGeoError] = useState<string | null>(null);
-  const initialSatResultRef = useRef(initialSatResult ?? null);
 
-  const [fitsData, setFitsData] = useState<FitsData | null>(null);
+  // Cached by url (same key namespace as FitsThumbnail/FitsPreview) so
+  // navigating away and back to this file — or reopening it in the lightbox
+  // after already having viewed it in the grid — doesn't re-download it.
+  // staleTime: Infinity because the bytes at a given library URL never change.
+  const fitsQuery = useQuery({
+    queryKey: ['fits-binary', url],
+    queryFn: async ({ signal }) => parseFits(await fetchBinary(url, signal)),
+    staleTime: Infinity,
+    retry: false,
+  });
+  const fitsData = fitsQuery.data ?? null;
+  const loading = fitsQuery.isPending;
+  const error = fitsQuery.error instanceof Error ? fitsQuery.error.message : null;
 
   // Internal zoom state — only used when hideControls=false
   const [fitZoom, setFitZoom] = useState<number | null>(null);
@@ -112,6 +126,10 @@ export function FitsViewer({
     }
   }, [filePath]);
 
+  useEffect(() => {
+    if (fitsData) onNaturalSize?.(fitsData.width, fitsData.height);
+  }, [fitsData, onNaturalSize]);
+
   const computeFit = useCallback(() => {
     const el = containerRef.current;
     if (!el || !fitsData) return;
@@ -133,29 +151,17 @@ export function FitsViewer({
     return () => observer.disconnect();
   }, [fitsData, computeFit]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    setSatResult(initialSatResultRef.current);
+  // The satellite-detection UI is per-file, so it resets whenever the
+  // displayed file changes. Render-phase reset (not an effect) so the previous
+  // file's result never shows for a frame after navigating.
+  const [satForUrl, setSatForUrl] = useState(url);
+  if (satForUrl !== url) {
+    setSatForUrl(url);
+    setSatResult(initialSatResult ?? null);
     setSatIdentifyDone(false);
     setSatError(null);
     setSatModalOpen(false);
-
-    fetchBinary(url, controller.signal)
-      .then(buffer => {
-        const parsed = parseFits(buffer);
-        setFitsData(parsed);
-        setLoading(false);
-      })
-      .catch(err => {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        setError(err.message);
-        setLoading(false);
-      });
-
-    return () => { controller.abort(); };
-  }, [url]);
+  }
 
   useEffect(() => {
     if (!fitsData || !canvasRef.current) return;
@@ -281,11 +287,18 @@ export function FitsViewer({
       {/* Canvas */}
       <div
         ref={containerRef}
-        className={`relative overflow-auto rounded-xl border flex items-center justify-center ${
+        // Bordered black card on its own; nothing at all when the caller owns
+        // the surround. In the lightbox the stage is already a black mat, so
+        // the border and fill drew a second rectangle inside it: a wide box
+        // with a hairline edge around a narrow portrait frame, which is not
+        // what the JPG next to it in the same session looks like.
+        className={`relative flex items-center justify-center overflow-auto ${
           hideControls
             ? 'flex-1 min-h-0'
-            : 'min-h-[300px] max-h-[65vh]'
-        } ${isDark ? 'border-slate-800 bg-black' : 'border-slate-200 bg-slate-950'}`}
+            : `min-h-[300px] max-h-[65vh] rounded-xl border ${
+                isDark ? 'border-slate-800 bg-black' : 'border-slate-200 bg-slate-950'
+              }`
+        }`}
       >
         <canvas
           ref={canvasRef}

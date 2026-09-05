@@ -21,15 +21,23 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.error) {
+      // Renders outside ThemeProvider (it wraps the app to catch provider-level
+      // errors too), so it reads the theme class straight off <html> rather
+      // than via useTheme().
+      const isLight = document.documentElement.classList.contains('light');
       return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100 p-8">
+        <div className={`min-h-screen flex items-center justify-center p-8 ${
+          isLight ? 'bg-slate-50 text-slate-800' : 'bg-slate-950 text-slate-100'
+        }`}>
           <div className="max-w-md text-center space-y-4">
             <p className="text-4xl">⚠</p>
             <h1 className="text-xl font-semibold">Something went wrong</h1>
-            <p className="text-sm text-slate-400">
+            <p className={`text-sm ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               An unexpected error occurred. Refresh the page to continue.
             </p>
-            <pre className="text-xs text-left bg-slate-900 rounded-lg p-4 overflow-auto max-h-40 text-rose-400">
+            <pre className={`text-xs text-left rounded-lg p-4 overflow-auto max-h-40 text-rose-500 ${
+              isLight ? 'bg-white border border-slate-200' : 'bg-slate-900'
+            }`}>
               {this.state.error.message}
             </pre>
             <button

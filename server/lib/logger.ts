@@ -20,6 +20,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import util from 'util';
 import { createRequire } from 'module';
 import pino from 'pino';
 import type { DestinationStream } from 'pino';
@@ -139,25 +140,36 @@ export const log = pino(
 // while gaining structure (level + timestamp + requestId). Callers that want
 // real structured fields should import { log } and pass an object.
 
+// %s/%d/%i/%f/%j/%o/%O/%c — the specifiers Node's own console.log formatter
+// substitutes. A caller that writes `console.log('user=%s', name)` expects
+// that substitution; without this check it fell through to the plain
+// join-and-String path below and printed a literal "user=%s name" instead.
+const FORMAT_SPECIFIER = /%[sdifjoOc%]/;
+
+function formatArgs(args: unknown[]): string {
+  if (typeof args[0] === 'string' && FORMAT_SPECIFIER.test(args[0])) {
+    return util.format(...args);
+  }
+  return args
+    .map(a => (typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a)))
+    .join(' ');
+}
+
 function asMessage(args: unknown[]): { msg: string; obj?: Record<string, unknown> } {
   // Surface any Error argument as a structured `err` field so pino's
   // serializer keeps the stack and message. `console.error('prefix:', err)`
   // is the common pattern, so we scan every position, not just args[0].
   const errIdx = args.findIndex(a => a instanceof Error);
-  if (errIdx !== -1) {
-    const err = args[errIdx] as Error;
+  const err = errIdx === -1 ? undefined : args[errIdx];
+  // Re-check with instanceof instead of asserting what findIndex already
+  // matched: the narrowing is then the compiler's, not a promise from us.
+  if (err instanceof Error) {
     const rest = args.filter((_, i) => i !== errIdx);
-    const prefix = rest
-      .map(a => (typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a)))
-      .join(' ')
-      .trim();
+    const prefix = formatArgs(rest).trim();
     const msg = prefix ? `${prefix} ${err.message}` : err.message;
     return { msg, obj: { err } };
   }
-  const msg = args
-    .map(a => (typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a)))
-    .join(' ');
-  return { msg };
+  return { msg: formatArgs(args) };
 }
 
 console.log = (...args: unknown[]) => {

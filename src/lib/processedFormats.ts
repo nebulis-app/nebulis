@@ -16,11 +16,36 @@
  * it is shown.
  */
 
-const RENDERABLE = /\.(jpg|jpeg|png|tiff?|tif)$/i;
+// Extension lists mirroring PROCESSED_FORMATS in server/lib/library/processed.ts.
+// The two sides can't share a source without a monorepo (see CLAUDE.md), so
+// this is the frontend's single source: the RENDERABLE/FITS regexes below and
+// the exported *_EXTENSIONS arrays (used to build the upload `accept`
+// attribute) both derive from these instead of re-listing extensions by hand.
+const RENDERABLE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'tif', 'tiff'] as const;
+const STORED_ONLY_EXTENSIONS = ['xisf', 'fit', 'fits', 'fts', 'psd', 'xcf', 'dng', 'cr2', 'cr3', 'nef', 'arw'] as const;
+const FITS_EXTENSIONS = ['fit', 'fits', 'fts'] as const;
+
+/** For the upload `<input accept>` attribute — every format the server will
+ *  accept for a processed-image upload, renderable or stored-only. */
+export const PROCESSED_UPLOAD_EXTENSIONS = [...RENDERABLE_EXTENSIONS, ...STORED_ONLY_EXTENSIONS].map(ext => `.${ext}`);
+
+const RENDERABLE = new RegExp(`\\.(${RENDERABLE_EXTENSIONS.join('|')})$`, 'i');
+
+// Mirrors the FITS check in server/lib/library/processed.ts and the
+// server/routes/library.ts /fits-thumbnail route.
+const FITS = new RegExp(`\\.(${FITS_EXTENSIONS.join('|')})$`, 'i');
 
 /** True when the file can be shown in an `<img>` and previewed before upload. */
 export function isRenderableProcessed(filename: string): boolean {
   return RENDERABLE.test(filename);
+}
+
+/** True for a FITS processed image — not directly renderable, but eligible
+ *  for the server-rendered `/fits-thumbnail` (see `ProcessedImage.thumbUrl`),
+ *  unlike other stored-only formats (XISF, PSD, RAW) which have no renderer
+ *  and fall back to a plain file-card icon. */
+export function isFitsProcessed(filename: string): boolean {
+  return FITS.test(filename);
 }
 
 /**

@@ -6,18 +6,21 @@
  * choose how many to include, and creates a planned session for each across
  * tonight's dark window.
  *
- * The ranking + scheduling reuses the shared lib/autoPlan engine so it stays
- * consistent with "Plan My Night" on the planner page.
+ * The ranking + scheduling runs server-side (POST /planner/plan) so it stays
+ * consistent with "Plan My Night" on the planner page, and with every other
+ * client.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import SunCalc from 'suncalc';
 import { Sparkles, Moon, ArrowUp, X, Telescope } from 'lucide-react';
 import { formatObjectName } from '../../lib/utils';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
-import { generateNightPlan, type PlanCandidate } from '../../lib/autoPlan';
+import { generateNightPlan } from '../../lib/api/planner';
+import type { PlanCandidate, PlanBlock } from '../../lib/planTypes';
 import { nightWindowFor, formatPlannerDate, plannerToday, localDateKey } from '../../lib/nightWindow';
+import { formatHm } from '../../lib/timeFormat';
 import { createPlannedSession } from '../../lib/api/plannedSessions';
 import type { CatalogProgressObject } from '../../lib/api/catalogs';
 
@@ -106,32 +109,43 @@ export function CatalogPlanModal({
 
   const maxCount = Math.min(8, Math.max(1, candidates.length));
 
-  const blocks = useMemo(() => {
-    if (!planWindow) return [];
-    const n = Math.min(count, maxCount);
-    const windowMinutes = (planWindow.end.getTime() - planWindow.start.getTime()) / 60_000;
-    const slotMinutes = Math.max(15, Math.floor(windowMinutes / Math.max(1, n)));
-    return generateNightPlan({
-      targets: candidates,
-      observerLat,
-      observerLon,
-      windowStart: planWindow.start,
-      windowEnd: planWindow.end,
-      slotMinutes,
-      maxObjects: n,
-      minAlt,
-      moonIllumination: moonPct,
-      visibleSkyMap: null,
-    });
-  }, [planWindow, count, maxCount, candidates, observerLat, observerLon, minAlt, moonPct]);
+  // Deferred so dragging the count slider coalesces into one request when it
+  // settles rather than firing per tick.
+  const deferredCount = useDeferredValue(count);
+  const n = Math.min(deferredCount, maxCount);
+  const candidateIds = candidates.map(c => c.id).join(',');
+  const planKey = planWindow
+    ? [planWindow.start.toISOString(), planWindow.end.toISOString()]
+    : [null, null];
 
-  const fmtTime = (d: Date) =>
-    d.toLocaleTimeString('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-      ...(observerTimezone ? { timeZone: observerTimezone } : {}),
-    });
+  const planQuery = useQuery({
+    queryKey: ['catalog-night-plan', planKey[0], planKey[1], n, candidateIds, observerLat, observerLon, minAlt, moonPct],
+    enabled: !!planWindow && candidates.length > 0,
+    staleTime: 30_000,
+    queryFn: () => {
+      const windowMinutes = (planWindow!.end.getTime() - planWindow!.start.getTime()) / 60_000;
+      const slotMinutes = Math.max(15, Math.floor(windowMinutes / Math.max(1, n)));
+      return generateNightPlan({
+        targets: candidates,
+        observerLat,
+        observerLon,
+        windowStart: planWindow!.start,
+        windowEnd: planWindow!.end,
+        slotMinutes,
+        maxObjects: n,
+        minAlt,
+        moonIllumination: moonPct,
+        visibleSkyMap: null,
+      });
+    },
+  });
+  const blocks = useMemo<PlanBlock[]>(() => planQuery.data ?? [], [planQuery.data]);
+  const blocksLoading = planQuery.isFetching;
+  const blocksError = planQuery.isError;
+
+  // formatHm already guards a bad/unrecognized timeZone rather than
+  // duplicating that try/catch here.
+  const fmtTime = (d: Date) => formatHm(d, observerTimezone);
 
   const nightLabel = night ? formatPlannerDate(night.start) : 'tonight';
 
@@ -227,7 +241,13 @@ export function CatalogPlanModal({
               </section>
 
               {/* Picked objects */}
-              {blocks.length === 0 ? (
+              {blocksLoading ? (
+                <div className={`text-center py-6 text-sm ${subtle}`}>Building plan…</div>
+              ) : blocksError ? (
+                <div className="text-center py-6 text-sm text-red-500">
+                  Couldn't build a plan. Check your connection and try reopening this.
+                </div>
+              ) : blocks.length === 0 ? (
                 <div className={`text-center py-6 text-sm ${subtle}`}>
                   <Moon className="w-7 h-7 mx-auto mb-2 opacity-50" />
                   Nothing in this catalog clears the moon and gets high enough on this night.
@@ -289,7 +309,7 @@ export function CatalogPlanModal({
           </button>
           <button
             onClick={handleCreate}
-            disabled={blocks.length === 0 || creating}
+            disabled={blocks.length === 0 || creating || blocksLoading}
             className="ml-auto px-5 py-2 rounded-lg text-sm font-semibold bg-accent-500 hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed text-white inline-flex items-center gap-2"
           >
             {creating ? 'Creating…' : `Create plan (${blocks.length})`}

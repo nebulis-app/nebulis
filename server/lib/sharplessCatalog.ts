@@ -2,12 +2,14 @@
  * Sharpless HII region catalog — 313 emission nebulae from the 1959 Sharpless catalog.
  *
  * Static data built by scripts/build-sharpless-catalog.ts (run to refresh).
- * Provides ID lookup, cross-references to NGC/Messier, and conversion to
- * CatalogEntry for the lookup chain in server/data/catalog.ts.
+ * Provides ID lookup and conversion to CatalogEntry for the lookup chain in
+ * server/data/catalog.ts. Raw entries (with their NGC/Messier cross-refs)
+ * are also exported for scripting / pack-building — see build-catalog-pack.ts.
  */
 
 import type { CatalogEntry } from './types/catalog.js';
 import sharplessJson from '../data/sharpless.json';
+import { isRecord } from './typeGuards.js';
 
 interface SharplessEntry {
   id: string;
@@ -19,24 +21,50 @@ interface SharplessEntry {
   messierRef: string | null; // e.g. "M8"
 }
 
-const sharplessData = sharplessJson as SharplessEntry[];
+function isSharplessEntry(value: unknown): value is SharplessEntry {
+  if (!isRecord(value)) return false;
+  const nullableString = (v: unknown) => v === null || typeof v === 'string';
+  return (
+    typeof value.id === 'string' &&
+    typeof value.raDeg === 'number' &&
+    typeof value.decDeg === 'number' &&
+    typeof value.sizeArcmin === 'number' &&
+    nullableString(value.commonName) &&
+    nullableString(value.ngcRef) &&
+    nullableString(value.messierRef)
+  );
+}
+
+/**
+ * Validate the generated JSON at load rather than asserting it. 313 entries,
+ * so the check is free, and a bad refresh run from
+ * scripts/build-sharpless-catalog.ts shows up as a startup warning instead of
+ * NaN coordinates reaching the sky map.
+ */
+function parseSharplessJson(data: unknown): SharplessEntry[] {
+  if (!Array.isArray(data)) {
+    throw new Error('[sharpless] sharpless.json: expected top-level array');
+  }
+  const entries = data.filter(isSharplessEntry);
+  if (data.length > 0 && entries.length === 0) {
+    throw new Error('[sharpless] sharpless.json: no entries matched the expected shape');
+  }
+  if (entries.length < data.length) {
+    console.warn(`[sharpless] dropped ${data.length - entries.length} entr(ies) that did not match SharplessEntry`);
+  }
+  return entries;
+}
+
+const sharplessData = parseSharplessJson(sharplessJson);
 
 // Primary key: "SH2-25" (uppercase, no spaces)
 const byId = new Map<string, SharplessEntry>();
-// Cross-ref: "NGC6302" → "Sh2-6", "M8" → "Sh2-25"
-const ngcToSh2 = new Map<string, string>();
-const messierToSh2 = new Map<string, string>();
 
 for (const entry of sharplessData) {
   byId.set(entry.id.toUpperCase().replace(/\s+/g, ''), entry);
-  if (entry.ngcRef)     ngcToSh2.set(entry.ngcRef.toUpperCase(), entry.id);
-  if (entry.messierRef) messierToSh2.set(entry.messierRef.toUpperCase(), entry.id);
 }
 
 console.log(`[sharpless] Loaded ${sharplessData.length} Sharpless entries`);
-
-/** All canonical Sharpless IDs in catalog number order. */
-export const SHARPLESS_IDS: ReadonlySet<string> = new Set(sharplessData.map(e => e.id));
 
 /** Raw entry for scripting / pack-building. */
 export const SHARPLESS_CATALOG: readonly SharplessEntry[] = sharplessData;
@@ -47,16 +75,6 @@ export const SHARPLESS_CATALOG: readonly SharplessEntry[] = sharplessData;
  */
 export function getSharplessEntry(id: string): SharplessEntry | undefined {
   return byId.get(id.toUpperCase().replace(/\s+/g, ''));
-}
-
-/** Returns the Sh2-N ID (e.g. "Sh2-6") for a given NGC/IC catalog ID, or undefined. */
-export function getSharplessByNgc(ngcId: string): string | undefined {
-  return ngcToSh2.get(ngcId.toUpperCase().replace(/\s+/g, ''));
-}
-
-/** Returns the Sh2-N ID for a given Messier ID, or undefined. */
-export function getSharplessByMessier(mId: string): string | undefined {
-  return messierToSh2.get(mId.toUpperCase().replace(/\s+/g, ''));
 }
 
 /**

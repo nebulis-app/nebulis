@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isContainerFolder,
   isNonObjectFolder,
+  stripCaptureModeSuffix,
   targetFromFileName,
   groupByTarget,
   planObjectFolder,
@@ -23,6 +24,21 @@ describe('isContainerFolder', () => {
     expect(isContainerFolder('NGC7000')).toBe(false);
     // Substring, not the container itself.
     expect(isContainerFolder('my_planetary_photo_backup')).toBe(false);
+  });
+});
+
+describe('stripCaptureModeSuffix', () => {
+  it('strips a trailing SeeStar capture-mode suffix, case-insensitively', () => {
+    expect(stripCaptureModeSuffix('Lunar_video')).toBe('Lunar');
+    expect(stripCaptureModeSuffix('Jupiter_Photo')).toBe('Jupiter');
+    expect(stripCaptureModeSuffix('Solar_VIDEO')).toBe('Solar');
+  });
+
+  it('leaves ordinary object folders untouched', () => {
+    expect(stripCaptureModeSuffix('M 31')).toBe('M 31');
+    expect(stripCaptureModeSuffix('NGC7000')).toBe('NGC7000');
+    // Only a trailing suffix, not one mid-name.
+    expect(stripCaptureModeSuffix('video_test_object')).toBe('video_test_object');
   });
 });
 

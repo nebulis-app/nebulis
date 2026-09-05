@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Tv, Check, ArrowRight, Loader2 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/AuthContext';
@@ -23,41 +23,41 @@ export default function LinkDevicePage() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [raw, setRaw] = useState('');
-  const [tvName, setTvName] = useState<string | null>(null);
   const [linked, setLinked] = useState<{ tvName: string } | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [approveError, setApproveError] = useState<string | null>(null);
 
   // Auto-focus the code input on mount.
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  const lookup = useMutation({
-    mutationFn: lookupPairingCode,
-    onSuccess: data => { setTvName(data.tvName); setErrorMessage(null); },
-    onError: (e: Error) => { setTvName(null); setErrorMessage(e.message); },
+  // Live lookup, keyed by the code itself rather than a plain useMutation: a
+  // mutation has no last-write-wins semantics, so retyping a code fast enough
+  // (type, backspace, retype a different one) could previously show a TV name
+  // from a superseded lookup while approving the code actually in the box.
+  // Keying by `raw` gives each code its own cache entry, so `data`/`error`
+  // always describe the code currently in the input, and backing away from a
+  // complete code naturally shows nothing (a disabled query for the shorter
+  // code was never fetched) instead of needing a manual clear.
+  const lookup = useQuery({
+    queryKey: ['pairing-lookup', raw],
+    queryFn: () => lookupPairingCode(raw),
+    enabled: raw.length === CODE_LEN,
+    retry: false,
   });
+  const tvName = lookup.data?.tvName ?? null;
+  const lookupError = lookup.error instanceof Error ? lookup.error.message : null;
+  const errorMessage = approveError ?? lookupError;
 
   const approve = useMutation({
     mutationFn: approvePairingCode,
-    onSuccess: data => { setLinked({ tvName: data.tvName }); setErrorMessage(null); },
-    onError: (e: Error) => setErrorMessage(e.message),
+    onSuccess: data => { setLinked({ tvName: data.tvName }); setApproveError(null); },
+    onError: (e: Error) => setApproveError(e.message),
   });
-
-  // Live lookup: as soon as 8 valid chars are entered, fetch the TV name so
-  // the user sees what they're about to link before they confirm.
-  const { mutate: doLookup } = lookup;
-  useEffect(() => {
-    if (raw.length !== CODE_LEN) {
-      setTvName(null);
-      setErrorMessage(null);
-      return;
-    }
-    doLookup(raw);
-  }, [raw, doLookup]);
 
   function onChange(e: React.ChangeEvent<HTMLInputElement>) {
     const next = normalize(e.target.value);
     if (!ALPHABET.test(next)) return;
     setRaw(next);
+    setApproveError(null);
   }
 
   function onConfirm() {
@@ -147,7 +147,7 @@ export default function LinkDevicePage() {
 
       {/* Status line — animates between idle / lookup / found / error */}
       <div className="mt-5 min-h-[3rem] flex items-center justify-center">
-        {codeReady && lookup.isPending && (
+        {codeReady && lookup.isFetching && (
           <p className={`flex items-center gap-2 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
             <Loader2 className="w-4 h-4 animate-spin" />
             Looking up code…

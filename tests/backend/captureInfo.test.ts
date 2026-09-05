@@ -56,9 +56,15 @@ describe('isCaptureInfoSidecar', () => {
     expect(isCaptureInfoSidecar('SHOTSINFO.JSON')).toBe(true);
   });
 
+  it('recognizes meta.json regardless of case', () => {
+    expect(isCaptureInfoSidecar('meta.json')).toBe(true);
+    expect(isCaptureInfoSidecar('META.JSON')).toBe(true);
+  });
+
   it('does not claim other sidecars it cannot parse', () => {
     expect(isCaptureInfoSidecar('notes.txt')).toBe(false);
     expect(isCaptureInfoSidecar('shotsInfo.txt')).toBe(false);
+    expect(isCaptureInfoSidecar('metadata.json')).toBe(false);
   });
 });
 
@@ -119,6 +125,61 @@ describe('parseCaptureInfo', () => {
   });
 });
 
+describe('parseCaptureInfo — meta.json (the Generic SMB Layout sidecar)', () => {
+  it('reads exposureSec, gain, filter, and frameCount directly', () => {
+    const parsed = parseCaptureInfo(
+      '{"exposureSec":30,"gain":80,"filter":"Duo-Band","frameCount":120}',
+      'meta.json',
+    )!;
+    expect(parsed.exposureSec).toBe(30);
+    expect(parsed.gain).toBe(80);
+    expect(parsed.filter).toBe('Duo-Band');
+    expect(parsed.framesStacked).toBe(120);
+  });
+
+  it('derives a per-frame exposure from integrationSec when exposureSec is not given', () => {
+    // 3600s total over 120 frames = 30s/frame, so the existing
+    // exposureSec * framesStacked total (summarizeSessionCapture) reproduces
+    // the documented integrationSec without a schema change.
+    const parsed = parseCaptureInfo('{"frameCount":120,"integrationSec":3600}', 'meta.json')!;
+    expect(parsed.exposureSec).toBe(30);
+    expect(parsed.framesStacked).toBe(120);
+  });
+
+  it('treats a bare integrationSec (no frameCount) as one frame', () => {
+    const parsed = parseCaptureInfo('{"integrationSec":900}', 'meta.json')!;
+    expect(parsed.exposureSec).toBe(900);
+    expect(parsed.framesStacked).toBe(1);
+  });
+
+  it('prefers an explicit exposureSec over a derived one', () => {
+    const parsed = parseCaptureInfo('{"exposureSec":15,"frameCount":10,"integrationSec":9999}', 'meta.json')!;
+    expect(parsed.exposureSec).toBe(15);
+  });
+
+  it('leaves every field blank for an empty meta.json', () => {
+    expect(parseCaptureInfo('{}', 'meta.json')).toBeNull();
+  });
+
+  it('does not read shotsInfo.json field names (exp/ir/shotsStacked) under the meta.json mapping', () => {
+    // A file literally named meta.json is never confused for a Dwarf sidecar,
+    // even though `gain` happens to be spelled the same in both schemas.
+    const parsed = parseCaptureInfo(REAL_SIDECAR, 'meta.json')!;
+    expect(parsed.exposureSec).toBeNull(); // shotsInfo calls this `exp`
+    expect(parsed.filter).toBeNull(); // shotsInfo calls this `ir`
+    expect(parsed.framesStacked).toBeNull(); // shotsInfo calls this `shotsStacked`
+    expect(parsed.target).toBeNull(); // meta.json has no target field
+    expect(parsed.gain).toBe(60); // `gain` is spelled the same in both schemas
+  });
+
+  it('is picked purely by exact filename, not by extension', () => {
+    // Falls back to the shotsInfo.json mapping for any other .json name,
+    // matching how shotsInfo.json itself is matched by exact name elsewhere.
+    const parsed = parseCaptureInfo('{"exposureSec":30,"frameCount":10}', 'notes.json')!;
+    expect(parsed).toBeNull();
+  });
+});
+
 describe('storage', () => {
   const base = {
     objectId: 'IC1396',
@@ -169,6 +230,20 @@ describe('storage', () => {
     expect(rows).toHaveLength(2);
     expect(rows.map(r => r.exposureSec).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([60, 120]);
     expect(rows.every(r => r.sessionFolder.startsWith('flat:'))).toBe(true);
+  });
+
+  it('ingests a real meta.json written by the Generic SMB Layout import path', () => {
+    const rel = 'M31/2026-04-26_2030/meta.json';
+    fs.mkdirSync(path.dirname(path.join(LIBRARY_DIR, rel)), { recursive: true });
+    fs.writeFileSync(path.join(LIBRARY_DIR, rel), JSON.stringify({
+      exposureSec: 30, gain: 80, filter: 'L', frameCount: 120,
+    }));
+
+    expect(ingestCaptureInfoFile('M31', rel, '2026-04-26_2030', '2026-04-26')).toBe(true);
+
+    const rows = getCaptureInfoForSession('M31', '2026-04-26');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ exposureSec: 30, gain: 80, filter: 'L', framesStacked: 120 });
   });
 
   it('drops a night\'s rows when that session is deleted', () => {

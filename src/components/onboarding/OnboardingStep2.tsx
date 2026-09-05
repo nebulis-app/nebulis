@@ -14,12 +14,15 @@ import {
   TELESCOPE_KINDS,
   toTelescopeKind,
   isDwarfKind as isDwarfTelescopeKind,
+  isSeestarKind as isSeestarTelescopeKind,
+  isAsiairKind as isAsiairTelescopeKind,
   type TelescopeKind,
 } from '../../lib/telescopePresets';
 import type { ConnectionType } from '../../lib/api/telescopes';
 import { hostAddressError } from '../../lib/hostAddress';
-import { DwarfLocalPathPicker } from '../settings/DwarfLocalPathPicker';
-import { LocalPathPicker } from '../settings/LocalPathPicker';
+import { DwarfLocalPathPicker } from '../ui/DwarfLocalPathPicker';
+import { LocalPathPicker } from '../ui/LocalPathPicker';
+import { HelpBlockText } from '../settings/HelpBlockText';
 
 export type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 
@@ -86,8 +89,9 @@ export function OnboardingStep2({
   // means a first-run user who pastes "10.0.1.5/SeeStar/" is told which half
   // goes where, rather than a connection failure that blames the network.
   const hostError = isLocalKind ? null : hostAddressError(hostname);
-  const isSeestarKind = kind === 'seestar-s50' || kind === 'seestar-s30';
+  const isSeestarKind = kind !== '' && isSeestarTelescopeKind(kind);
   const isDwarfKind = kind !== '' && isDwarfTelescopeKind(kind);
+  const isAsiairKind = kind !== '' && isAsiairTelescopeKind(kind);
   const effectiveMode: ConnectionType = transportMode ?? (isLocalKind ? 'local' : 'smb');
   const isFtpMode = effectiveMode === 'ftp';
   /** The network transport this kind offers: FTP for Dwarf, SMB otherwise. */
@@ -141,7 +145,7 @@ export function OnboardingStep2({
 
       {/* Transport selector. The network option is FTP for Dwarf (its only
           network interface) and SMB for Seestar. */}
-      {(isSeestarKind || isDwarfKind) && onTransportModeChange && (
+      {(isSeestarKind || isDwarfKind || isAsiairKind) && onTransportModeChange && (
         <div>
           <label className={labelClass}>Connection</label>
           <div className="grid grid-cols-2 gap-2">
@@ -187,9 +191,9 @@ export function OnboardingStep2({
       )}
 
       {isLocalKind && (
-        isSeestarKind ? (
+        isSeestarKind || isAsiairKind ? (
           <LocalPathPicker
-            kind="seestar"
+            kind={isAsiairKind ? 'asiair' : 'seestar'}
             localPath={localPath}
             setLocalPath={onLocalPathChange}
             inputClass={inputClass}
@@ -284,7 +288,7 @@ export function OnboardingStep2({
                   onChange={e => onSmbShareNameChange(e.target.value)}
                   className={inputClass}
                 />
-                <p className={helperClass}>{preset?.shareHelp}</p>
+                {preset?.shareHelp && <HelpBlockText block={preset.shareHelp} className={helperClass} />}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

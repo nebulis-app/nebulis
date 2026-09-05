@@ -23,6 +23,7 @@ import { SOLAR_SYSTEM_LOOKUP_KEYS } from '../../data/solar-system-catalog.js';
 import { parseFitsHeader } from '../fitsParser.js';
 import { log } from '../logger.js';
 import { fetchWikipediaSummary } from '../wikipedia.js';
+import { getCuratedDescription } from '../curatedDescriptions.js';
 import { getLibraryObjectFilterTags } from './objectFilters.js';
 import { isEnrichmentCoolingDown } from './enrichmentCooldown.js';
 import { isReservedLibraryDir } from './archiveFolders.js';
@@ -33,7 +34,9 @@ import {
   writeObjectManifest,
 } from './libraryFiles.js';
 import { listObjectFiles, getObjectLayout } from './libraryLayout.js';
+import { rekeyLibraryObject } from './libraryRekey.js';
 import { deleteCaptureInfoForObject } from './captureInfo.js';
+import { getStartrailsObjectId, patchStartrailsObjectMeta } from './dwarfStartrails.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -108,10 +111,18 @@ export interface LibraryMetaRow {
   importStartedAt: string | null;
 }
 
+/** 'dwarf-restack' rows come from an auto-imported Dwarf RESTACKED (MegaStack)
+ *  file — see server/lib/library/dwarfRestack.ts. Everything else is a user
+ *  upload. */
+export type ProcessedImageSource = 'user' | 'dwarf-restack';
+
 export interface ProcessedImageRow {
   id: string;
   objectId: string;
-  date: string;
+  /** NULL for an image not tied to any single observing night (currently
+   *  only Dwarf RESTACKED auto-imports — see the table comment above its
+   *  CREATE TABLE). */
+  date: string | null;
   filename: string;
   originalName: string;
   title: string;
@@ -120,6 +131,7 @@ export interface ProcessedImageRow {
   mimeType: string;
   uploadedAt: string;
   runId: string | null;
+  source: ProcessedImageSource;
 }
 
 export interface ImportHistoryRow {
@@ -144,6 +156,11 @@ export interface ImportHistoryRow {
    *  genuine failure, 0 (including rows written before this column existed)
    *  otherwise. */
   cancelled: number;
+  /** JSON-serialized TouchedObject[], or NULL when nothing was tracked (rows
+   *  written before this was added, or a run that added no files). */
+  objectsTouched: string | null;
+  /** JSON-serialized TouchedSession[], same NULL rule as objectsTouched. */
+  sessionsTouched: string | null;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -262,20 +279,38 @@ db.prepare('CREATE INDEX IF NOT EXISTS idx_importHistory_finished ON importHisto
     // "Failed" without guessing from the error text.
     db.prepare('ALTER TABLE importHistory ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0').run();
   }
+  if (!ihCols.some(c => c.name === 'objectsTouched')) {
+    // JSON-serialized TouchedObject[]: which catalog objects this run added
+    // files to, and whether the run created the object. NULL on rows written
+    // before this existed and on runs that added no files, same rule as
+    // `skipped` above.
+    db.prepare('ALTER TABLE importHistory ADD COLUMN objectsTouched TEXT').run();
+  }
+  if (!ihCols.some(c => c.name === 'sessionsTouched')) {
+    // JSON-serialized TouchedSession[]: which observation nights this run
+    // added files to, and whether the run created the night. Same NULL rule.
+    db.prepare('ALTER TABLE importHistory ADD COLUMN sessionsTouched TEXT').run();
+  }
 }
 
-// Ensure sessionProcessedImages table exists (added after initial schema)
+// Ensure sessionProcessedImages table exists (added after initial schema).
+// `date` is nullable: a Dwarf RESTACKED auto-import (see dwarfRestack.ts) is
+// tied to an object but not to any single observing night, and NULL is what
+// lets `getProcessedImages`'s `WHERE date = ?` keep excluding it from every
+// per-session view for free, with no per-caller sentinel to remember.
+// `source` distinguishes that auto-import from a user upload.
 db.prepare(`CREATE TABLE IF NOT EXISTS sessionProcessedImages (
   id           TEXT PRIMARY KEY,
   objectId     TEXT NOT NULL,
-  date         TEXT NOT NULL,
+  date         TEXT,
   filename     TEXT NOT NULL,
   originalName TEXT NOT NULL,
   title        TEXT NOT NULL DEFAULT '',
   notes        TEXT NOT NULL DEFAULT '',
   size         INTEGER NOT NULL DEFAULT 0,
   mimeType     TEXT NOT NULL DEFAULT '',
-  uploadedAt   TEXT NOT NULL
+  uploadedAt   TEXT NOT NULL,
+  source       TEXT NOT NULL DEFAULT 'user'
 )`).run();
 db.prepare('CREATE INDEX IF NOT EXISTS idx_sessionProcessedImages_session ON sessionProcessedImages(objectId, date)').run();
 
@@ -309,9 +344,17 @@ db.prepare(`CREATE TABLE IF NOT EXISTS processingRunSessions (
   }
 }
 {
+  // `date IS NOT NULL`: a Dwarf RESTACKED image (source: 'dwarf-restack') is
+  // deliberately not anchored to a single observing night, and
+  // sessionProcessedImages.date is nullable specifically for it (see the
+  // rebuild below). processingRunSessions.date is NOT NULL — it exists to
+  // record which nights a run combines, and "no nights" isn't a row it can
+  // hold. Leaving these with runId NULL forever is correct, not a gap:
+  // getRunDates(null) already returns null, the state every other read path
+  // treats as "no run" for exactly this case.
   const orphaned = db
     .prepare<[], { objectId: string; date: string }>(
-      'SELECT DISTINCT objectId, date FROM sessionProcessedImages WHERE runId IS NULL',
+      'SELECT DISTINCT objectId, date FROM sessionProcessedImages WHERE runId IS NULL AND date IS NOT NULL',
     )
     .all();
   if (orphaned.length > 0) {
@@ -336,6 +379,42 @@ db.prepare(`CREATE TABLE IF NOT EXISTS processingRunSessions (
   }
 }
 
+// sessionProcessedImages: relax `date` to nullable and add `source`, for
+// databases created before Dwarf RESTACKED auto-import existed. SQLite can't
+// drop a NOT NULL constraint with ALTER TABLE, so this is a one-time rebuild,
+// guarded on the absence of `source` (added in the same rebuild, so its
+// absence is a reliable "old schema" signal — safe to run this block on
+// every boot since it becomes a no-op the moment the rebuild has happened
+// once).
+{
+  const spiCols = db.prepare<[], { name: string }>('PRAGMA table_info(sessionProcessedImages)').all();
+  if (!spiCols.some(c => c.name === 'source')) {
+    db.transaction(() => {
+      db.prepare(`CREATE TABLE sessionProcessedImages_new (
+        id           TEXT PRIMARY KEY,
+        objectId     TEXT NOT NULL,
+        date         TEXT,
+        filename     TEXT NOT NULL,
+        originalName TEXT NOT NULL,
+        title        TEXT NOT NULL DEFAULT '',
+        notes        TEXT NOT NULL DEFAULT '',
+        size         INTEGER NOT NULL DEFAULT 0,
+        mimeType     TEXT NOT NULL DEFAULT '',
+        uploadedAt   TEXT NOT NULL,
+        runId        TEXT,
+        source       TEXT NOT NULL DEFAULT 'user'
+      )`).run();
+      db.prepare(`INSERT INTO sessionProcessedImages_new
+        (id, objectId, date, filename, originalName, title, notes, size, mimeType, uploadedAt, runId, source)
+        SELECT id, objectId, date, filename, originalName, title, notes, size, mimeType, uploadedAt, runId, 'user'
+        FROM sessionProcessedImages`).run();
+      db.prepare('DROP TABLE sessionProcessedImages').run();
+      db.prepare('ALTER TABLE sessionProcessedImages_new RENAME TO sessionProcessedImages').run();
+      db.prepare('CREATE INDEX idx_sessionProcessedImages_session ON sessionProcessedImages(objectId, date)').run();
+    })();
+  }
+}
+
 // Migrate: strip spaces from objectIds ("M 16" → "M16", "IC 1318" → "IC1318")
 {
   const spacedCountRow = db
@@ -353,21 +432,9 @@ db.prepare(`CREATE TABLE IF NOT EXISTS processingRunSessions (
         const normalized = objectId.replace(/ /g, '');
         // Preserve folderName = original spaced name (if it matches objectId, meaning it was never explicitly set)
         db.prepare(`UPDATE libraryObjects SET folderName = ? WHERE objectId = ? AND (folderName = objectId OR folderName IS NULL OR folderName = '')`).run(objectId, objectId);
-        // Update non-PK tables
-        db.prepare(`UPDATE notes SET objectId = ? WHERE objectId = ?`).run(normalized, objectId);
-        db.prepare(`DELETE FROM wishlist WHERE objectId = ?`).run(normalized);
-        db.prepare(`UPDATE wishlist SET objectId = ? WHERE objectId = ?`).run(normalized, objectId);
-        db.prepare(`DELETE FROM favorites WHERE objectId = ?`).run(normalized);
-        db.prepare(`UPDATE favorites SET objectId = ? WHERE objectId = ?`).run(normalized, objectId);
-        // Sessions: compound PK so use INSERT+DELETE
-        db.prepare(`INSERT OR IGNORE INTO librarySessions (objectId, date, siteId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage) SELECT ?, date, siteId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage FROM librarySessions WHERE objectId = ?`).run(normalized, objectId);
-        db.prepare(`DELETE FROM librarySessions WHERE objectId = ?`).run(objectId);
-        db.prepare(`INSERT OR IGNORE INTO libraryDeletedSessions (objectId, date) SELECT ?, date FROM libraryDeletedSessions WHERE objectId = ?`).run(normalized, objectId);
-        db.prepare(`DELETE FROM libraryDeletedSessions WHERE objectId = ?`).run(objectId);
-        db.prepare(`UPDATE sessionProcessedImages SET objectId = ? WHERE objectId = ?`).run(normalized, objectId);
-        // libraryObjects PK: INSERT new row, DELETE old
-        db.prepare(`INSERT OR IGNORE INTO libraryObjects (objectId, folderName, fileCount, lastImport, deleted, deletedAt, galleryImage, catalogId, objectName, objectType, constellation, description, magnitude, ra, dec, distanceLy, wikiUrl, sizeArcmin) SELECT ?, folderName, fileCount, lastImport, deleted, deletedAt, galleryImage, catalogId, objectName, objectType, constellation, description, magnitude, ra, dec, distanceLy, wikiUrl, sizeArcmin FROM libraryObjects WHERE objectId = ?`).run(normalized, objectId);
-        db.prepare(`DELETE FROM libraryObjects WHERE objectId = ?`).run(objectId);
+        // One helper moves the id across every table (incl. libraryFiles) and
+        // carries every libraryObjects column (incl. layout). See libraryRekey.
+        rekeyLibraryObject(objectId, normalized, { skipManifest: true });
       }
     });
     migrateIds();
@@ -388,49 +455,60 @@ db.prepare(`CREATE TABLE IF NOT EXISTS processingRunSessions (
     const migrateAliases = db.transaction(() => {
       for (const { objectId } of aliasRows) {
         const canonical = resolveCanonicalId(objectId);
-        const canonicalExists = db.prepare<[string], { objectId: string }>('SELECT objectId FROM libraryObjects WHERE objectId = ?').get(canonical);
-
-        if (!canonicalExists) {
-          // Simple rename: update objectId, preserve folderName for disk access
-          db.prepare(`UPDATE libraryObjects SET folderName = ? WHERE objectId = ? AND (folderName = objectId OR folderName IS NULL OR folderName = '')`).run(objectId, objectId);
-          db.prepare(`UPDATE notes SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
-          db.prepare(`DELETE FROM wishlist WHERE objectId = ?`).run(canonical);
-          db.prepare(`UPDATE wishlist SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
-          db.prepare(`DELETE FROM favorites WHERE objectId = ?`).run(canonical);
-          db.prepare(`UPDATE favorites SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
-          db.prepare(`INSERT OR IGNORE INTO librarySessions (objectId, date, telescopeId, siteId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage) SELECT ?, date, telescopeId, siteId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage FROM librarySessions WHERE objectId = ?`).run(canonical, objectId);
-          db.prepare(`DELETE FROM librarySessions WHERE objectId = ?`).run(objectId);
-          db.prepare(`INSERT OR IGNORE INTO libraryDeletedSessions (objectId, date) SELECT ?, date FROM libraryDeletedSessions WHERE objectId = ?`).run(canonical, objectId);
-          db.prepare(`DELETE FROM libraryDeletedSessions WHERE objectId = ?`).run(objectId);
-          db.prepare(`UPDATE sessionProcessedImages SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
-          db.prepare(`INSERT OR IGNORE INTO libraryObjects (objectId, folderName, fileCount, lastImport, deleted, deletedAt, galleryImage, catalogId, objectName, objectType, constellation, description, magnitude, ra, dec, distanceLy, wikiUrl, sizeArcmin) SELECT ?, folderName, fileCount, lastImport, deleted, deletedAt, galleryImage, catalogId, objectName, objectType, constellation, description, magnitude, ra, dec, distanceLy, wikiUrl, sizeArcmin FROM libraryObjects WHERE objectId = ?`).run(canonical, objectId);
-          db.prepare(`DELETE FROM libraryObjects WHERE objectId = ?`).run(objectId);
-        } else {
-          // Merge: fold alias sessions into the canonical row, then drop the alias
-          db.prepare(`INSERT OR IGNORE INTO librarySessions (objectId, date, telescopeId, siteId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage) SELECT ?, date, telescopeId, siteId, temperature, cloudCover, humidity, windSpeed, dewPoint, visibility, precipProb, sessionImage FROM librarySessions WHERE objectId = ?`).run(canonical, objectId);
-          db.prepare(`DELETE FROM librarySessions WHERE objectId = ?`).run(objectId);
-          db.prepare(`INSERT OR IGNORE INTO libraryDeletedSessions (objectId, date) SELECT ?, date FROM libraryDeletedSessions WHERE objectId = ?`).run(canonical, objectId);
-          db.prepare(`DELETE FROM libraryDeletedSessions WHERE objectId = ?`).run(objectId);
-          db.prepare(`UPDATE sessionProcessedImages SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
-          db.prepare(`UPDATE notes SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
-          db.prepare(`DELETE FROM wishlist WHERE objectId = ?`).run(canonical);
-          db.prepare(`UPDATE wishlist SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
-          db.prepare(`DELETE FROM favorites WHERE objectId = ?`).run(canonical);
-          db.prepare(`UPDATE favorites SET objectId = ? WHERE objectId = ?`).run(canonical, objectId);
-          // Sum file counts and take the most recent lastImport
-          db.prepare(`
-            UPDATE libraryObjects SET
-              fileCount  = fileCount + (SELECT fileCount FROM libraryObjects WHERE objectId = ?),
-              lastImport = MAX(lastImport, (SELECT lastImport FROM libraryObjects WHERE objectId = ?))
-            WHERE objectId = ?
-          `).run(objectId, objectId, canonical);
-          db.prepare(`DELETE FROM libraryObjects WHERE objectId = ?`).run(objectId);
-        }
+        // Preserve folderName = the original id, so disk access still resolves
+        // (repairAliasDirectories moves the physical files separately).
+        db.prepare(`UPDATE libraryObjects SET folderName = ? WHERE objectId = ? AND (folderName = objectId OR folderName IS NULL OR folderName = '')`).run(objectId, objectId);
+        // One helper moves the id across every table (incl. libraryFiles) and,
+        // on a simple rename, carries every libraryObjects column (incl.
+        // layout); on a merge it folds fileCount/recency into the canonical row.
+        rekeyLibraryObject(objectId, canonical, { skipManifest: true });
       }
     });
     migrateAliases();
     db.pragma('foreign_keys = ON');
     console.log(`[library] catalog alias normalization complete`);
+  }
+}
+
+// Repair: undo objectId corruption from an earlier version of the two
+// migrations above, which used a PREFIX designation match. "M31_mosaic",
+// "NGC2244SatelliteCluster", "VdB126", "C2023A3(Tsuchinshan-ATLAS)" all merely
+// start like a designation, so the whole string was uppercased ("M31_mosaic" →
+// "M31_MOSAIC") and the object was recreated under the mangled id — WITHOUT its
+// `layout` column and WITHOUT moving its `libraryFiles` rows. Every session of
+// an affected (nested) object then read as empty. A related bug accreted "SH2-"
+// prefixes ("SH2-108" → "SH2-2-2-...-108").
+//
+// `folderName` was preserved through every bad migration, and it is the real
+// pre-corruption id, so it is the recovery source. Only rows whose id is
+// provably a normalization artifact of `folderName` are touched; a legitimate
+// fold ("C30" kept as folderName, row id "NGC7331") fails the canonical check
+// and is left alone. Idempotent, and a no-op on a DB that never hit the bug.
+{
+  const collapseUpper = (s: string) => s.toUpperCase().replace(/\s+/g, '');
+  const isSh2Accretion = (id: string, folder: string) =>
+    /^SH2(?:-2)+-\d+$/.test(id) && id.replace(/^SH2(?:-2)+-/, 'SH2-') === folder;
+
+  const candidates = db
+    .prepare<[], { objectId: string; folderName: string }>(
+      'SELECT objectId, folderName FROM libraryObjects WHERE folderName IS NOT NULL AND folderName != objectId',
+    )
+    .all()
+    .filter(({ objectId, folderName }) =>
+      resolveCanonicalId(folderName) === folderName &&
+      (collapseUpper(folderName) === objectId || isSh2Accretion(objectId, folderName)));
+
+  if (candidates.length > 0) {
+    console.log(`[library] Repairing ${candidates.length} object(s) with a corrupted objectId (restoring from folderName)...`);
+    db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+      for (const { objectId, folderName } of candidates) {
+        const mode = rekeyLibraryObject(objectId, folderName);
+        console.log(`[library]   ${objectId} → ${folderName} (${mode})`);
+      }
+    })();
+    db.pragma('foreign_keys = ON');
+    console.log('[library] objectId corruption repair complete');
   }
 }
 
@@ -631,6 +709,39 @@ export const stmts = {
   getObjectByFolderName: db.prepare<[string], { objectId: string; folderName: string }>(
     'SELECT objectId, folderName FROM libraryObjects WHERE folderName = ?',
   ),
+  // Used by getLibraryObjectCoords below — the pre-canonicalization id (e.g. a
+  // Caldwell number) and the canonical id can each match a different stored
+  // row, so both are checked.
+  getObjectCoords: db.prepare<[string, string], { ra: string | null; dec: string | null }>(
+    'SELECT ra, dec FROM libraryObjects WHERE (objectId = ? OR objectId = ?) AND deleted = 0 LIMIT 1',
+  ),
+  // Used by getObjectInfo below — server/routes/catalog.ts's GET /:id/info.
+  getObjectInfo: db.prepare<[string], {
+    objectName: string | null; objectType: string | null; constellation: string | null;
+    magnitude: number | null; description: string | null; ra: string | null; dec: string | null;
+    distanceLy: number | null; wikiUrl: string | null; sizeArcmin: string | null;
+  }>(
+    `SELECT objectName, objectType, constellation, magnitude, description, ra, dec,
+     distanceLy, wikiUrl, sizeArcmin FROM libraryObjects WHERE objectId = ? AND deleted = 0`,
+  ),
+  // Used by getObjectCatalogFallback below — server/routes/catalog.ts's
+  // GET /:id fallback for objects with no static catalog entry.
+  getObjectCatalogFallback: db.prepare<[string], {
+    objectId: string; objectName: string | null; objectType: string | null;
+    constellation: string | null; magnitude: number | null; ra: string | null;
+    dec: string | null; distanceLy: number | null; sizeArcmin: string | null;
+    description: string | null;
+  }>(
+    `SELECT objectId, objectName, objectType, constellation, magnitude, ra, dec, distanceLy, sizeArcmin, description
+     FROM libraryObjects WHERE objectId = ? AND deleted = 0 LIMIT 1`,
+  ),
+  // Used by getLibraryObjectNames below — server/routes/storage.ts's
+  // computeLibraryStats maps disk folder names to their display name.
+  // Selects only these 3 columns (not `getAllObjects`'s `SELECT *`) since
+  // this runs on every library-stats recompute over the whole library.
+  getObjectNames: db.prepare<[], { objectId: string; folderName: string; objectName: string | null }>(
+    'SELECT objectId, folderName, objectName FROM libraryObjects WHERE deleted = 0',
+  ),
   getAllObjects: db.prepare<[], LibraryObjectRow>('SELECT * FROM libraryObjects WHERE deleted = 0'),
   searchObjects: db.prepare<[string, string, string], LibraryObjectRow>(
     `SELECT * FROM libraryObjects WHERE deleted = 0 AND (
@@ -773,7 +884,8 @@ export const stmts = {
   ),
   setSessionImage: db.prepare('UPDATE librarySessions SET sessionImage = ? WHERE objectId = ? AND date = ?'),
 
-  // Processed images (user-uploaded post-processing results)
+  // Processed images (user-uploaded post-processing results, plus Dwarf
+  // RESTACKED auto-imports — see ProcessedImageSource)
   getProcessedImages: db.prepare<[string, string], ProcessedImageRow>(
     'SELECT * FROM sessionProcessedImages WHERE objectId = ? AND date = ? ORDER BY uploadedAt DESC',
   ),
@@ -784,15 +896,30 @@ export const stmts = {
     'SELECT * FROM sessionProcessedImages WHERE id = ?',
   ),
   insertProcessedImage: db.prepare(
-    `INSERT INTO sessionProcessedImages (id, objectId, date, filename, originalName, title, notes, size, mimeType, uploadedAt, runId)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO sessionProcessedImages (id, objectId, date, filename, originalName, title, notes, size, mimeType, uploadedAt, runId, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ),
   deleteProcessedImageRow: db.prepare('DELETE FROM sessionProcessedImages WHERE id = ?'),
+  // Point an existing row at freshly-overwritten file bytes (image editor
+  // "Save" in place). Identity columns (objectId, date, title, notes, runId)
+  // are deliberately left alone.
+  updateProcessedImageFile: db.prepare(
+    `UPDATE sessionProcessedImages
+       SET filename = ?, originalName = ?, size = ?, mimeType = ?, uploadedAt = ?
+     WHERE id = ?`,
+  ),
+  // Dedup guard for a re-synced Dwarf RESTACKED file: same object, same
+  // original filename, same auto-import source. Deliberately not keyed on
+  // date (there isn't one) or size (a legitimately re-processed MegaStack of
+  // the same name should still land once per import run, not accumulate).
+  getRestackedImageByName: db.prepare<[string, string], { id: string }>(
+    `SELECT id FROM sessionProcessedImages WHERE objectId = ? AND originalName = ? AND source = 'dwarf-restack' LIMIT 1`,
+  ),
 
   // Import history
   insertHistory: db.prepare(
-    `INSERT INTO importHistory (startedAt, finishedAt, objectsTotal, filesTotal, newFiles, bytesTotal, bytesNew, error, files, telescopeId, telescopeName, transportKind, skipped, manual, cancelled)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO importHistory (startedAt, finishedAt, objectsTotal, filesTotal, newFiles, bytesTotal, bytesNew, error, files, telescopeId, telescopeName, transportKind, skipped, manual, cancelled, objectsTouched, sessionsTouched)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ),
   // A run is worth surfacing when it actually did something (newFiles > 0),
   // failed (error is always actionable regardless of file count), or the
@@ -809,6 +936,33 @@ export const stmts = {
   getLatestHistory: db.prepare<[], Pick<ImportHistoryRow, 'finishedAt'>>('SELECT finishedAt FROM importHistory ORDER BY finishedAt DESC LIMIT 1'),
 };
 
+/** RA/dec for a library object, checked against both the canonical id and a
+ *  pre-canonicalization id (e.g. an object imported under its Caldwell
+ *  number before canonicalization was added). Used by the catalog routes'
+ *  coordinate-resolution fallback when the DSO catalog itself has no
+ *  RA/dec for the object. */
+export function getLibraryObjectCoords(id: string, rawId: string): { ra: string | null; dec: string | null } | undefined {
+  return stmts.getObjectCoords.get(id, rawId);
+}
+
+/** Enriched object info as stored during import — the library DB is checked
+ *  before the static catalog in GET /catalog/:id/info. */
+export function getObjectInfo(objectId: string) {
+  return stmts.getObjectInfo.get(objectId);
+}
+
+/** Fallback object info for GET /catalog/:id when there is no static catalog
+ *  entry — covers Caldwell/custom objects the user has imported. */
+export function getObjectCatalogFallback(objectId: string) {
+  return stmts.getObjectCatalogFallback.get(objectId);
+}
+
+/** objectId/folderName/objectName for every non-deleted library object, for
+ *  mapping disk folder names to display names (server/routes/storage.ts). */
+export function getLibraryObjectNames() {
+  return stmts.getObjectNames.all();
+}
+
 // ─── Catalog metadata helpers ───────────────────────────────────────────────
 
 /** Resolve catalog metadata for an object ID and persist it to the DB row. */
@@ -819,12 +973,27 @@ export function resolveCatalogMeta(objectId: string): {
 } {
   const normalized = normalizeCatalogId(objectId);
   const entry = getCatalogEntry(normalized) || getCatalogEntry(objectId);
+
+  // getCatalogEntry walks solar system -> catalog-curated.json -> Caldwell
+  // alias -> OpenNGC -> Messier, but never curated-descriptions.json, which is
+  // only read by the /catalog/* routes. An object whose only curated text
+  // lives there (e.g. IC 342's description, keyed "C5") would import with a
+  // blank description and stay blank on offline hubs where the Wikipedia
+  // enrichment never runs. Fall back to that file here so every import call
+  // site inherits the fix from one chokepoint. A user override still wins:
+  // getCatalogEntry merges catalogOverrides above.
+  let description = entry?.description || '';
+  if (!description) {
+    const curated = getCuratedDescription(normalized) || getCuratedDescription(objectId);
+    if (curated) description = curated.extract;
+  }
+
   return {
     catalogId: normalized,
     objectName: entry?.name || objectId,
     objectType: entry?.type || (/^[CP]-\d{4}/i.test(objectId) ? 'Comet' : 'Unknown'),
     constellation: entry?.constellation || 'Unknown',
-    description: entry?.description || '',
+    description,
     magnitude: entry?.magnitude ?? null,
     ra: entry?.ra ?? null,
     dec: entry?.dec ?? null,
@@ -870,11 +1039,22 @@ export function applyCatalogMetaToLibraryObject(objectId: string): boolean {
 
 // Backfill: populate catalog columns for any existing rows that have NULL catalogId or distanceLy
 {
+  // Excludes the synthetic Star Trails object: it has no catalog entry by
+  // design, so catalogId/distanceLy are permanently null for it and it would
+  // otherwise match this query on *every* boot forever, and resolveCatalogMeta
+  // returns the same generic 'Unknown'/empty placeholders for any id it
+  // doesn't recognize -- unconditionally overwriting the curated values
+  // patchStartrailsObjectMeta just applied below, undoing the self-heal on
+  // every single restart. This bit a real deploy: the boot-time self-heal
+  // call ran and its UPDATE visibly took effect when tested standalone, but
+  // moments later this block silently clobbered it back to 'Unknown' before
+  // the object was ever read, because module top-level code runs in file
+  // order and this block used to sit after it.
   const needsBackfill = db
-    .prepare<[], { objectId: string }>(
-      `SELECT objectId FROM libraryObjects WHERE (catalogId IS NULL OR distanceLy IS NULL) AND deleted = 0`,
+    .prepare<[string], { objectId: string }>(
+      `SELECT objectId FROM libraryObjects WHERE (catalogId IS NULL OR distanceLy IS NULL) AND deleted = 0 AND objectId != ?`,
     )
-    .all();
+    .all(getStartrailsObjectId());
 
   if (needsBackfill.length > 0) {
     const update = db.prepare(
@@ -892,6 +1072,56 @@ export function applyCatalogMetaToLibraryObject(objectId: string): boolean {
     console.log(`[library] Backfilled catalog metadata for ${needsBackfill.length} objects`);
   }
 }
+
+// Refresh object names for rows whose stored objectName is still just the bare
+// catalog id. Two ways a row ends up like that: an import done before this
+// codebase resolved common names at all, or an import done before a given
+// catalog entry gained one (IC1795 was a bare "IC1795" until it became the
+// "Fish Head Nebula"). upsertObject's COALESCE never revisits objectName once
+// set, so those rows stay stale. getCatalogEntry already merges the better
+// name at read time on the object-detail page, but the library grid, the type
+// filter chips and the observation lists read this denormalized column.
+// A user override still wins: resolveCatalogMeta resolves through
+// getCatalogEntry, which merges catalogOverrides.
+{
+  const bareNameRows = db
+    .prepare<[string], { objectId: string }>(
+      `SELECT objectId FROM libraryObjects
+       WHERE deleted = 0 AND objectId != ?
+         AND (objectName = objectId
+              OR objectName = catalogId
+              OR REPLACE(objectName, ' ', '') = catalogId)`,
+    )
+    .all(getStartrailsObjectId());
+
+  if (bareNameRows.length > 0) {
+    const update = db.prepare(
+      'UPDATE libraryObjects SET objectName = ? WHERE objectId = ? AND objectName != ?',
+    );
+    let renamed = 0;
+    const run = db.transaction(() => {
+      for (const row of bareNameRows) {
+        const meta = resolveCatalogMeta(row.objectId);
+        renamed += update.run(meta.objectName, row.objectId, meta.objectName).changes;
+      }
+    });
+    run();
+    if (renamed > 0) console.log(`[library] Refreshed catalog names for ${renamed} objects`);
+  }
+}
+
+// Apply the Star Trails object's curated name/type/constellation/description
+// (see patchStartrailsObjectMeta) once per boot, after every other migration
+// above -- in particular after the catalog backfill immediately above, which
+// would otherwise overwrite it right back (see the comment on that block).
+// This used to only get (re)applied when an import run actually touched the
+// object, so a device that hasn't synced since the patch was added -- or a
+// row created before it existed -- could sit stale indefinitely with
+// objectType 'Unknown', which is also what the frontend keys its "hide
+// Plan/Compare/Combine, no constellation" behavior on (see
+// src/lib/dwarfStartrails.ts), so a stale row silently got the full
+// normal-object UI instead. Harmless no-op when the row doesn't exist yet.
+patchStartrailsObjectMeta(getStartrailsObjectId());
 
 // ─── Enrichment: fetch external data and store in DB ────────────────────────
 // Note: enrichStmt is lazily prepared after migrations run.
@@ -1012,6 +1242,11 @@ export async function enrichObjectData(objectId: string, opts: { force?: boolean
       } else if (catId !== searchName) {
         namesToTry.push(catId);
       }
+      // Wikipedia's summary API can't resolve the un-spaced "NGC4274" / "IC342"
+      // form (it errors instead of redirecting to "NGC 4274" / "IC 342"), so
+      // add the spaced article-title variant. Mirrors prefetchObjectWiki.
+      const spacedMatch = catId.match(/^(NGC|IC)(\d+)$/i);
+      if (spacedMatch) namesToTry.push(`${spacedMatch[1].toUpperCase()} ${spacedMatch[2]}`);
     }
 
     for (const name of namesToTry) {
@@ -1032,6 +1267,19 @@ export async function enrichObjectData(objectId: string, opts: { force?: boolean
         }
       } catch {
         log.debug({ objectId, search: name }, '[enrich] Wikipedia fetch failed');
+      }
+    }
+
+    // Fall back to the bundled curated description when the live lookup came
+    // back empty. Wikipedia is tried first because it is longer and stays
+    // current, but an offline hub (or an object Wikipedia's summary API can't
+    // resolve) would otherwise show no description even though we ship one.
+    if (!description && !obj.description) {
+      const curated = getCuratedDescription(obj.catalogId || objectId);
+      if (curated) {
+        description = curated.extract;
+        if (!wikiUrl && !obj.wikiUrl) wikiUrl = curated.wikiUrl;
+        log.debug({ objectId }, '[enrich] used curated description fallback');
       }
     }
   }
@@ -1077,6 +1325,46 @@ export async function enrichObjectData(objectId: string, opts: { force?: boolean
     getEnrichAttemptStmt().run([new Date().toISOString(), objectId]);
   } finally {
     enrichInFlight.delete(objectId);
+  }
+}
+
+// One-time curated-description backfill (no network). resolveCatalogMeta now
+// fills a curated description at import time, but rows imported before a given
+// batch of descriptions was added to the catalog store still carry a blank
+// one. Fill those straight from the store, ignoring the enrichment cooldown
+// since there is no lookup to rate-limit. Gated on a version marker so it runs
+// once; bump CURATED_DESCRIPTION_BACKFILL_VERSION to re-run it after the
+// curated layer grows.
+const CURATED_DESCRIPTION_BACKFILL_VERSION = 1;
+{
+  const marker = db
+    .prepare<[], { curatedDescriptionBackfillVersion: number }>(
+      'SELECT curatedDescriptionBackfillVersion FROM appSettings WHERE id = 1',
+    )
+    .get();
+  const applied = marker?.curatedDescriptionBackfillVersion ?? 0;
+
+  if (applied < CURATED_DESCRIPTION_BACKFILL_VERSION) {
+    const missingDescription = db
+      .prepare<[], { objectId: string; catalogId: string | null }>(
+        `SELECT objectId, catalogId FROM libraryObjects
+         WHERE (description IS NULL OR description = '') AND deleted = 0`,
+      )
+      .all();
+
+    let filled = 0;
+    for (const row of missingDescription) {
+      const curated = getCuratedDescription(row.catalogId || row.objectId);
+      if (!curated) continue;
+      getEnrichStmt().run([curated.extract, curated.wikiUrl, null, row.objectId]);
+      filled++;
+    }
+    db.prepare('UPDATE appSettings SET curatedDescriptionBackfillVersion = ? WHERE id = 1').run(
+      CURATED_DESCRIPTION_BACKFILL_VERSION,
+    );
+    if (filled > 0) {
+      console.log(`[library] Backfilled ${filled} curated object description(s)`);
+    }
   }
 }
 
@@ -1448,22 +1736,30 @@ export async function getLocalFile(relativePath: string): Promise<{ data: Buffer
  * The tombstone prevents any future re-import from the telescope.
  */
 export function deleteLocalObject(objectId: string): void {
-  // Update DB FIRST so a crash mid-delete never leaves the DB referencing removed files
+  // Update DB FIRST so a crash mid-delete never leaves the DB referencing
+  // removed files — and all three statements run in one transaction, so a
+  // crash between them can't leave the object tombstoned while its
+  // libraryFiles/captureInfo rows still linger, or those rows gone while the
+  // object was never actually marked deleted.
   const existing = stmts.getObject.get(objectId);
-  if (existing) {
-    stmts.markObjectDeleted.run(new Date().toISOString(), objectId);
-  } else {
-    const cat = resolveCatalogMeta(objectId);
-    stmts.upsertObject.run(objectId, objectId, 0, new Date().toISOString(), 1, new Date().toISOString(),
-      cat.catalogId, cat.objectName, cat.objectType, cat.constellation,
-      cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy);
-  }
+  const cat = existing ? null : resolveCatalogMeta(objectId);
+  const tombstoneAndPurgeRows = db.transaction(() => {
+    if (existing) {
+      stmts.markObjectDeleted.run(new Date().toISOString(), objectId);
+    } else if (cat) {
+      stmts.upsertObject.run(objectId, objectId, 0, new Date().toISOString(), 1, new Date().toISOString(),
+        cat.catalogId, cat.objectName, cat.objectType, cat.constellation,
+        cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy);
+    }
+    // The per-file rows go with them — the manifest is deleted along with
+    // the directory below, so there is nothing left to rebuild this object
+    // from.
+    deleteLibraryFileRowsForObject(objectId);
+    deleteCaptureInfoForObject(objectId);
+  });
+  tombstoneAndPurgeRows();
 
-  // Now safe to remove files. The per-file rows go with them — the manifest
-  // is deleted along with the directory, so there is nothing left to rebuild
-  // this object from.
-  deleteLibraryFileRowsForObject(objectId);
-  deleteCaptureInfoForObject(objectId);
+  // Now safe to remove files.
   const objDir = resolveContainedObjectDir(objectId);
   if (objDir && fs.existsSync(objDir)) {
     try { fs.rmSync(objDir, { recursive: true, force: true }); } catch { /* ignore */ }
@@ -1611,13 +1907,19 @@ export function deleteLocalFile(relativePath: string): void {
   // still report a night for the file we just unlinked.
   deleteLibraryFileRow(normalized.split(path.sep).join('/'));
   try {
-    // Dot-prefixed entries are Nebulis bookkeeping (.thumbs, the per-file
-    // manifest), never imported files, so they must not inflate fileCount.
-    const remaining = fs.readdirSync(objDir).filter(f => !f.startsWith('.'));
+    // Layout-aware: a nested object's files live one level down in
+    // per-session folders, so a top-level readdir would see directory names
+    // (not files), derive no session from any of them via identity.session,
+    // and the clearSessions/addSession rebuild below would then wipe every
+    // session row for the object after deleting a single file.
+    const layout = getObjectLayout(objectId);
+    const remaining = fs.existsSync(objDir)
+      ? listObjectFiles(objDir, layout).filter(e => isRealFile(e.fileName))
+      : [];
     const identity = resolverFor(objectId);
     const sessionSet = new Set<string>();
-    for (const fname of remaining) {
-      const night = identity.session(fname);
+    for (const entry of remaining) {
+      const night = identity.session(entry.relPath);
       if (night) sessionSet.add(night);
     }
     stmts.updateObjectFileCount.run(remaining.length, objectId);

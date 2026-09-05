@@ -33,6 +33,7 @@ import type { TelescopeProfile } from './telescopes.js';
 import { debugLog } from './debugLogger.js';
 import { log } from './logger.js';
 import { tcpProbe } from './smbReachability.js';
+import { isRecord } from './typeGuards.js';
 
 /** DWARFLAB firmware serves FTP on the standard port. Kept as a constant so
  *  the reachability preflight and the client agree on one value. */
@@ -494,8 +495,11 @@ export function closeAllFtpConnections(): void {
 /** basic-ftp surfaces server replies as errors carrying the numeric FTP code.
  *  550 covers "not found" and "not accessible"; 450 is a transient variant. */
 function isNotFound(err: unknown): boolean {
-  if (err && typeof err === 'object' && 'code' in err) {
-    const code = (err as { code: unknown }).code;
+  if (isRecord(err)) {
+    // `code` is read as unknown and compared to literals, so a basic-ftp
+    // change of shape degrades to the message check below rather than
+    // producing a bogus "not found".
+    const code: unknown = err.code;
     if (code === 550 || code === 450 || code === '550' || code === '450') return true;
   }
   const message = err instanceof Error ? err.message : '';

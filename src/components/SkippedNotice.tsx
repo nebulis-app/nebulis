@@ -1,5 +1,5 @@
-import { AlertCircle } from 'lucide-react';
-import type { ImportSkip } from '../lib/api/library';
+import { AlertCircle, Info, RotateCcw } from 'lucide-react';
+import type { ImportSkip, ImportSkipReason } from '../lib/api/library';
 
 /**
  * Skip reasons that turning on "Archive everything" actually rescues.
@@ -10,24 +10,33 @@ import type { ImportSkip } from '../lib/api/library';
  * folder whose name yielded no target or date. Keep in sync with the archive
  * branch of classifyImportFile in server/lib/library/importFilter.ts.
  *
- * `non-observation-folder` is a special case and is deliberately absent. Archive
- * mode does now keep those folders, but it copies them into the library's
- * archive rather than importing them, and the count is folders rather than
- * files, so it cannot be added to a files-and-bytes total. The scan simply
- * stops reporting them once archive mode is on, and the wizard says what will
- * happen to them instead.
+ * `non-observation-folder` is a special case and is marked `false` here too.
+ * Archive mode does now keep those folders, but it copies them into the
+ * library's archive rather than importing them, and the count is folders
+ * rather than files, so it cannot be added to a files-and-bytes total. The
+ * scan simply stops reporting them once archive mode is on, and the wizard
+ * says what will happen to them instead.
+ *
+ * A `Record` over every `ImportSkipReason`, not a `Set`, so adding a reason to
+ * the union above without adding it here is a compile error rather than a
+ * silent "not rescuable" default.
  */
-const ARCHIVE_RESCUABLE = new Set([
-  'processing-artifact',
-  'failed-frame',
-  'unsupported-type',
-  'sub-frames-disabled',
-  'sub-folder-preview',
-  'thumbnails-disabled',
-  'jpg-disabled',
-  'fits-disabled',
-  'videos-disabled',
-]);
+const ARCHIVE_RESCUABLE: Record<ImportSkipReason, boolean> = {
+  'not-a-real-file': false,
+  'processing-artifact': true,
+  'failed-frame': true,
+  'non-observation-folder': false,
+  'undecodable-session-folder': false,
+  'deleted-session': false,
+  'date-dropped': false,
+  'sub-frames-disabled': true,
+  'sub-folder-preview': true,
+  'thumbnails-disabled': true,
+  'jpg-disabled': true,
+  'fits-disabled': true,
+  'videos-disabled': true,
+  'unsupported-type': true,
+};
 
 /** Compact size for a skip group. Binary units, matching the rest of the app. */
 function formatBytes(bytes: number): string {
@@ -57,6 +66,8 @@ export function SkippedNotice({
   isDark,
   heading,
   excludedFolders,
+  onInspect,
+  onReviewDeletedSessions,
 }: {
   skipped: ImportSkip[] | null | undefined;
   isDark: boolean;
@@ -65,10 +76,16 @@ export function SkippedNotice({
   /** Names behind the `non-observation-folder` count, when the caller has them
    *  (the folder-import scan does; a finished telescope import does not). */
   excludedFolders?: string[];
+  /** Show an info button on each line whose skip carries filenames, opening a
+   *  list of them. Omitted on the folder-import wizard, which has no such view. */
+  onInspect?: (skip: ImportSkip) => void;
+  /** Show a restore button on the "deleted sessions" line. Omitted where there
+   *  is nothing to restore against. */
+  onReviewDeletedSessions?: () => void;
 }) {
   if (!skipped || skipped.length === 0) return null;
   const total = skipped.reduce((n, s) => n + s.count, 0);
-  const rescuable = skipped.filter(s => ARCHIVE_RESCUABLE.has(s.reason));
+  const rescuable = skipped.filter(s => ARCHIVE_RESCUABLE[s.reason]);
   const rescuableBytes = rescuable.reduce((n, s) => n + (s.bytes ?? 0), 0);
   const rescuableCount = rescuable.reduce((n, s) => n + s.count, 0);
   const lead = heading
@@ -82,18 +99,47 @@ export function SkippedNotice({
         <div className="space-y-1">
           <span>{lead}</span>
           <ul className="space-y-0.5">
-            {skipped.map(s => (
-              <li key={s.reason} className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-                {s.count.toLocaleString()} {s.label}
-                {/* Size is omitted when it is 0, which means "not measured"
-                    (a remote listing without sizes, or a history row written
-                    before sizes were tallied) rather than "empty". */}
-                {s.bytes ? ` (${formatBytes(s.bytes)})` : ''}
-                {s.reason === 'non-observation-folder' && excludedFolders && excludedFolders.length > 0 && (
-                  <span className="font-mono">: {excludedFolders.join(', ')}</span>
-                )}
-              </li>
-            ))}
+            {skipped.map(s => {
+              const canRestore = s.reason === 'deleted-session' && !!onReviewDeletedSessions;
+              const canInspect = !canRestore && !!onInspect && (s.samples?.length ?? 0) > 0;
+              return (
+                <li key={s.reason} className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+                  {s.count.toLocaleString()} {s.label}
+                  {/* Size is omitted when it is 0, which means "not measured"
+                      (a remote listing without sizes, or a history row written
+                      before sizes were tallied) rather than "empty". */}
+                  {s.bytes ? ` (${formatBytes(s.bytes)})` : ''}
+                  {s.reason === 'non-observation-folder' && excludedFolders && excludedFolders.length > 0 && (
+                    <span className="font-mono">: {excludedFolders.join(', ')}</span>
+                  )}
+                  {canRestore && (
+                    <button
+                      type="button"
+                      onClick={onReviewDeletedSessions}
+                      className={`ml-1.5 inline-flex items-center gap-1 align-baseline text-xs font-medium transition-colors ${
+                        isDark ? 'text-accent-400 hover:text-accent-300' : 'text-accent-600 hover:text-accent-700'
+                      }`}
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Review
+                    </button>
+                  )}
+                  {canInspect && (
+                    <button
+                      type="button"
+                      onClick={() => onInspect(s)}
+                      aria-label={`Show the ${s.label}`}
+                      title="Show file names"
+                      className={`ml-1 inline-flex translate-y-[1px] items-center transition-colors ${
+                        isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </li>
+              );
+            })}
           </ul>
           {rescuableBytes > 0 && (
             <p className={`pt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>

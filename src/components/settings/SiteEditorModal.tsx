@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MapPin, Search, Loader2, X, CheckCircle2, AlertCircle } from 'lucide-react';
 import { createSite, updateSite, type ObservingSite, type ObservingSiteInput } from '../../lib/api/sites';
 import { fetchLocationInfo, searchLocations, type GeocodeSearchResult } from '../../lib/api/catalog';
@@ -98,6 +98,7 @@ export function SiteEditorModal({
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       onClose(saved.id);
     },
+    retry: false,
   });
 
   return (
@@ -125,6 +126,11 @@ export function SiteEditorModal({
         </div>
 
         <div className="p-5 space-y-4">
+          {mutation.error && (
+            <div className={`p-3 rounded-lg border text-sm ${isDark ? 'bg-red-950/30 border-red-900/50 text-red-200' : 'bg-red-50 border-red-200 text-red-800'}`}>
+              {mutation.error instanceof Error ? mutation.error.message : 'Failed to save site.'}
+            </div>
+          )}
           <div>
             <label className={labelClass}>Name</label>
             <input
@@ -229,12 +235,6 @@ export function SiteEditorModal({
             />
             <p className={helperClass}>The Planner hides targets below this altitude for this site.</p>
           </div>
-
-          {mutation.error && (
-            <p className="text-sm text-red-400">
-              {mutation.error instanceof Error ? mutation.error.message : 'Failed to save site.'}
-            </p>
-          )}
         </div>
 
         <div className={`flex items-center justify-end gap-3 px-5 pb-5`}>
@@ -279,43 +279,54 @@ function SiteLocationSearch({
   const labelClass = getLabelClass(isDark);
   const helperClass = getHelperClass(isDark);
 
-  const [results, setResults] = useState<GeocodeSearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
-  const requestIdRef = useRef(0);
 
   useClickOutside(wrapRef, () => setOpen(false), { closeOnEscape: true });
 
   const displayValue = query ?? savedName;
 
-  useEffect(() => {
-    const q = (query ?? '').trim();
-    const id = ++requestIdRef.current;
-    const handle = setTimeout(async () => {
-      if (q.length < 2) {
-        setResults([]);
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      const found = await searchLocations(q);
-      if (id !== requestIdRef.current) return;
-      setResults(found);
-      setActiveIndex(found.length > 0 ? 0 : -1);
-      setLoading(false);
-      setOpen(true);
-    }, q.length < 2 ? 0 : 300);
-    return () => clearTimeout(handle);
-  }, [query]);
+  // useQuery owns fetching, debounced-key deduplication, and (via the keyed
+  // cache) cancellation of superseded requests — no requestIdRef / cancelled
+  // flag, and no write-after-unmount, because it never sets component state.
+  const searchQuery = useQuery({
+    queryKey: ['location-search', debouncedQuery],
+    queryFn: () => searchLocations(debouncedQuery),
+    enabled: debouncedQuery.trim().length >= 2,
+    staleTime: 5 * 60_000,
+  });
+  const results: GeocodeSearchResult[] = searchQuery.data ?? [];
+  const loading = searchQuery.isFetching;
+
+  // Debounce the input into the query key. Selecting a result sets `query` to
+  // the picked label but leaves `debouncedQuery` alone, so it never searches
+  // for its own label (what the old skipNextSearchRef flag was for).
+  const scheduleSearch = (raw: string) => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    const q = raw.trim();
+    if (q.length < 2) { setDebouncedQuery(''); return; }
+    debounceTimer.current = setTimeout(() => setDebouncedQuery(q), 300);
+  };
+
+  // Reset the keyboard cursor to the first row whenever a fresh result set
+  // arrives (render-phase adjustment keyed on the fetch timestamp).
+  const [seenUpdate, setSeenUpdate] = useState(0);
+  if (searchQuery.dataUpdatedAt !== seenUpdate && searchQuery.dataUpdatedAt !== 0) {
+    setSeenUpdate(searchQuery.dataUpdatedAt);
+    setActiveIndex(results.length > 0 ? 0 : -1);
+    if (results.length > 0) setOpen(true);
+  }
 
   function select(r: GeocodeSearchResult) {
     onSelect(r);
-    setQuery(null);
+    setQuery(r.label);
+    setDebouncedQuery('');
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
     setOpen(false);
-    setResults([]);
     setActiveIndex(-1);
   }
 
@@ -347,7 +358,7 @@ function SiteLocationSearch({
           placeholder="City, state, country…"
           className={`${getInputClass(isDark)} pl-9 pr-9`}
           value={displayValue}
-          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onChange={e => { setQuery(e.target.value); setOpen(true); scheduleSearch(e.target.value); }}
           onFocus={e => { e.currentTarget.select(); if (results.length > 0) setOpen(true); }}
           onKeyDown={onKeyDown}
           role="combobox"

@@ -4,6 +4,11 @@
 import { randomUUID } from 'crypto';
 import db from './db.js';
 
+// Single source of truth for the priority enum. server/routes/wishlist.ts's
+// Zod schemas and openapi.ts's documented enum both derive from this.
+export const WISHLIST_PRIORITIES = ['high', 'medium', 'low'] as const;
+export type WishlistPriority = (typeof WISHLIST_PRIORITIES)[number];
+
 export interface WishlistItem {
   id: string;
   objectId: string;
@@ -12,7 +17,7 @@ export interface WishlistItem {
   constellation: string | null;
   magnitude: number | null;
   majorAxisArcmin: number | null;
-  priority: 'high' | 'medium' | 'low';
+  priority: WishlistPriority;
   notes: string;
   addedAt: string;
 }

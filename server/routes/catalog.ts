@@ -5,11 +5,11 @@ import fs from 'fs';
 import path from 'path';
 import sharp from '../lib/sharp-optional.js';
 import { getCatalogEntry, searchCatalog, getAllCatalogEntries, getAlsoKnownAs } from '../data/catalog.js';
-import db from '../lib/db.js';
 import { parsePagination, paginate } from '../middleware/pagination.js';
 import { raToDegs, decToDegs } from '../lib/astroCalc.js';
 import { queryString } from '../lib/queryHelpers.js';
 import { normalizeCatalogId } from '../lib/telescopeFiles.js';
+import { CATALOG_TIERS } from '../lib/catalogPack/manifest.js';
 import {
   startPrefetch,
   cancelPrefetch,
@@ -27,17 +27,24 @@ import {
   prefetchObjectHubble,
   MASTER_WIDTH,
   MASTER_HEIGHT,
+  isRunnablePrefetchPhase,
+  isCanonicalResizedFilename,
   type ResizeFit,
 } from '../lib/catalogPrefetch.js';
 import { getAllPackStates } from '../lib/catalogPack/state.js';
 import { getById as getDsoById } from '../lib/dsoCatalog.js';
+import { getSharplessEntry } from '../lib/sharplessCatalog.js';
 import { prefetchSkyImage, fetchSkyCutout } from '../lib/skyImage.js';
 import {
   enrichObjectData,
   applyCatalogMetaToLibraryObject,
   resetEnrichmentCooldown,
+  getLibraryObjectCoords,
+  getObjectInfo,
+  getObjectCatalogFallback,
 } from '../lib/localLibrary.js';
 import { DATA_DIR } from '../lib/paths.js';
+import { isRecord, parseJsonRecord } from '../lib/typeGuards.js';
 import { caldwellToNgcId, CALDWELL_FALLBACK_COORDS } from '../lib/caldwellCatalog.js';
 import { getOverride, saveOverride, deleteOverride, getOverrideRecord } from '../lib/catalogOverrides.js';
 import { getCuratedDescription } from '../lib/curatedDescriptions.js';
@@ -106,15 +113,33 @@ router.get('/search', (req: Request, res: Response) => {
 // Keys are removed on completion (or failure) so transient errors retry.
 const inflightResizes = new Map<string, Promise<void>>();
 
-// Resized-cache size cap. Pre-warm fills ~3 sizes × N objects = 3N files for
-// curated prefetch, plus whatever lazy resizes accumulate over time. The cap
-// protects against unbounded growth from clients requesting unusual sizes
-// (debug tools, integration tests, third-party clients). Pruning keeps the
-// most-recently-accessed files. 5000 files × ~50 KB ≈ 250 MB max.
-const RESIZED_CACHE_MAX_FILES = 5000;
+// Resized-cache pruning.
+//
+// The canonical thumbnail sizes (see CANONICAL_THUMBNAIL_SIZES) are a fixed set
+// that every client requests. A resize of a static DSS2/Hubble/Wikipedia master
+// is deterministic and permanently reusable, and its cache key already carries
+// the source segment so it self-busts when the picked master changes. That
+// population is naturally bounded by catalog size (~a few thousand objects ×
+// 4 sizes), so canonical files are NEVER evicted — pruning them only forces a
+// re-resize on the next view, and when the nightly prefetch regenerates them it
+// thrashes the whole cache (the churn that used to freeze the event loop
+// mid-prune and 404 every in-flight /library/file and /fits-thumbnail request).
+//
+// Only NON-canonical sizes grow without bound — a debug tool, integration test,
+// or third-party client asking for an arbitrary W×H that nothing reuses. Those
+// are the only files this pruner touches, capped and evicted oldest-first.
+const NON_CANONICAL_CACHE_MAX_FILES = 1000;
+// A canonical count far past catalog-size × sizes × sources means something is
+// generating garbage names; log it rather than silently deleting real cache.
+const CANONICAL_CACHE_WARN_THRESHOLD = 50_000;
+// Stat/unlink in chunks, yielding to the event loop between each, so a large
+// one-time cleanup never blocks request handling.
+const PRUNE_BATCH = 250;
 let pruneInProgress = false;
 let lastPruneAt = 0;
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000; // throttle to once per hour
+
+const yieldToEventLoop = () => new Promise<void>(resolve => setImmediate(resolve));
 
 async function maybePruneResizedCache(): Promise<void> {
   const now = Date.now();
@@ -125,28 +150,44 @@ async function maybePruneResizedCache(): Promise<void> {
   try {
     const dir = path.join(DATA_DIR, 'sky-cache', 'resized');
     let names: string[];
-    try { names = fs.readdirSync(dir); } catch { return; }
-    if (names.length <= RESIZED_CACHE_MAX_FILES) return;
+    try { names = await fs.promises.readdir(dir); } catch { return; }
 
-    // Read atime (last access) so we evict cold files first. Files with no
-    // atime support fall back to mtime (creation time).
-    const stats = names
-      .map(name => {
+    const disposable = names.filter(n => !isCanonicalResizedFilename(n));
+    if (disposable.length <= NON_CANONICAL_CACHE_MAX_FILES) {
+      const canonicalCount = names.length - disposable.length;
+      if (canonicalCount > CANONICAL_CACHE_WARN_THRESHOLD) {
+        console.warn(
+          `[catalog] resized cache holds ${canonicalCount} canonical thumbnails ` +
+          `(expected well under ${CANONICAL_CACHE_WARN_THRESHOLD}) — possible cache-key bug`,
+        );
+      }
+      return;
+    }
+
+    // atime (last access) evicts cold files first; fall back to mtime where the
+    // filesystem doesn't track atime.
+    const stats: { name: string; atime: number }[] = [];
+    for (let i = 0; i < disposable.length; i += PRUNE_BATCH) {
+      await Promise.all(disposable.slice(i, i + PRUNE_BATCH).map(async name => {
         try {
-          const s = fs.statSync(path.join(dir, name));
-          return { name, atime: s.atimeMs || s.mtimeMs };
-        } catch { return null; }
-      })
-      .filter((s): s is { name: string; atime: number } => s !== null)
-      .sort((a, b) => a.atime - b.atime); // oldest first
+          const s = await fs.promises.stat(path.join(dir, name));
+          stats.push({ name, atime: s.atimeMs || s.mtimeMs });
+        } catch { /* vanished between readdir and stat — nothing to do */ }
+      }));
+      await yieldToEventLoop();
+    }
+    stats.sort((a, b) => a.atime - b.atime); // oldest first
 
-    const toDelete = stats.length - RESIZED_CACHE_MAX_FILES;
+    const victims = stats.slice(0, Math.max(0, stats.length - NON_CANONICAL_CACHE_MAX_FILES));
     let deleted = 0;
-    for (let i = 0; i < toDelete; i++) {
-      try { fs.unlinkSync(path.join(dir, stats[i].name)); deleted++; } catch { /* skip */ }
+    for (let i = 0; i < victims.length; i += PRUNE_BATCH) {
+      await Promise.all(victims.slice(i, i + PRUNE_BATCH).map(async ({ name }) => {
+        try { await fs.promises.unlink(path.join(dir, name)); deleted++; } catch { /* skip */ }
+      }));
+      await yieldToEventLoop();
     }
     if (deleted > 0) {
-      console.log(`[catalog] pruned ${deleted} cold resized thumbnails (cap: ${RESIZED_CACHE_MAX_FILES})`);
+      console.log(`[catalog] pruned ${deleted} non-canonical resized thumbnails (cap: ${NON_CANONICAL_CACHE_MAX_FILES})`);
     }
   } finally {
     pruneInProgress = false;
@@ -261,11 +302,7 @@ router.get('/:id/image', async (req: Request, res: Response) => {
       if (raDegs == null || decDegs == null) {
         // Try original (pre-canonicalization) id in library DB for objects that
         // were imported under their C-number before canonicalization was added.
-        // Typed prepared statement — SQL trust boundary enforced by libraryObjects schema.
-        const libCoordsStmt = db.prepare<[string, string], { ra: string | null; dec: string | null }>(
-          `SELECT ra, dec FROM libraryObjects WHERE (objectId = ? OR objectId = ?) AND deleted = 0 LIMIT 1`,
-        );
-        const libCoords = libCoordsStmt.get(id, rawId);
+        const libCoords = getLibraryObjectCoords(id, rawId);
         if (libCoords?.ra) raDegs = raToDegs(libCoords.ra);
         if (libCoords?.dec) decDegs = decToDegs(libCoords.dec);
       }
@@ -281,9 +318,19 @@ router.get('/:id/image', async (req: Request, res: Response) => {
         decDegs = caldwellFallback.dec;
       }
 
+      // Sharpless emission nebulae are absent from the DSO/OpenNGC catalog.
+      // Fall back to the Sharpless catalog's own coordinates (stored in decimal
+      // degrees) so a cold cache can still fetch a DSS2 master.
+      const sh2Fallback = (raDegs == null || decDegs == null) ? getSharplessEntry(id) : null;
+      if (sh2Fallback) { raDegs = sh2Fallback.raDeg; decDegs = sh2Fallback.decDeg; }
+
       const fov = req.query.fov != null && req.query.fov !== ''
         ? Number(req.query.fov) || 1.0
-        : fovForEntry(dsoEntry?.majorAxisArcmin ?? caldwellFallback?.majorAxisArcmin ?? null);
+        : fovForEntry(
+            dsoEntry?.majorAxisArcmin
+            ?? caldwellFallback?.majorAxisArcmin
+            ?? (sh2Fallback && sh2Fallback.sizeArcmin > 0 ? sh2Fallback.sizeArcmin : null),
+          );
 
       // Interactive request: use a short fetch deadline. The default 60s suits
       // the background prefetch job, but here the browser is holding one of its
@@ -379,11 +426,7 @@ function resolveObjectRaDecDegs(id: string, rawId: string): { ra: number; dec: n
   let decDegs: number | undefined = dsoEntry?.dec;
 
   if (raDegs == null || decDegs == null) {
-    // Typed prepared statement — SQL trust boundary enforced by libraryObjects schema.
-    const libCoordsStmt = db.prepare<[string, string], { ra: string | null; dec: string | null }>(
-      `SELECT ra, dec FROM libraryObjects WHERE (objectId = ? OR objectId = ?) AND deleted = 0 LIMIT 1`,
-    );
-    const libCoords = libCoordsStmt.get(id, rawId);
+    const libCoords = getLibraryObjectCoords(id, rawId);
     if (libCoords?.ra) raDegs = raToDegs(libCoords.ra);
     if (libCoords?.dec) decDegs = decToDegs(libCoords.dec);
   }
@@ -528,18 +571,8 @@ router.post('/:id/prefetch', requireAdmin, async (req: Request, res: Response) =
 router.get('/:id/info', (_req: Request, res: Response) => {
   const id = String(_req.params.id);
 
-  interface LibObjInfoRow {
-    objectName: string | null; objectType: string | null; constellation: string | null;
-    magnitude: number | null; description: string | null; ra: string | null; dec: string | null;
-    distanceLy: number | null; wikiUrl: string | null; sizeArcmin: string | null;
-  }
-  // Typed prepared statement — SQL trust boundary enforced by libraryObjects schema.
-  const libObjInfoStmt = db.prepare<[string], LibObjInfoRow>(
-    `SELECT objectName, objectType, constellation, magnitude, description, ra, dec,
-     distanceLy, wikiUrl, sizeArcmin FROM libraryObjects WHERE objectId = ? AND deleted = 0`,
-  );
   // Try library DB first (pre-enriched during import)
-  const obj = libObjInfoStmt.get(id);
+  const obj = getObjectInfo(id);
 
   // Fall back to static catalog for non-imported objects
   const entry = getCatalogEntry(id);
@@ -611,7 +644,12 @@ router.get('/:id/info', (_req: Request, res: Response) => {
 
 router.put('/:id/override', requireAdmin, (req: Request, res: Response) => {
   const id = String(req.params.id);
-  const body: Record<string, unknown> = (req.body && typeof req.body === 'object') ? req.body : {};
+  // `req.body` is `any` in the Express types. Funnel it through `unknown` and a
+  // real runtime guard so nothing downstream inherits that `any` — and so an
+  // array body (which passes a bare `typeof === 'object'` test) is rejected
+  // rather than read field-by-field as an object with every field undefined.
+  const rawBody: unknown = req.body;
+  const body: Record<string, unknown> = isRecord(rawBody) ? rawBody : {};
 
   const asString = (v: unknown): string | undefined =>
     typeof v === 'string' ? v : undefined;
@@ -675,13 +713,16 @@ function syncLibraryObjectAfterOverride(id: string): void {
 router.get('/credits/:id', (req: Request, res: Response) => {
   const id = normalizeCatalogId(String(req.params.id || ''));
   const creditsDir = path.join(DATA_DIR, 'sky-cache');
-  const tiers = ['messier', 'caldwell', 'popular', 'extended', 'sharpless'] as const;
 
-  for (const tier of tiers) {
+  for (const tier of CATALOG_TIERS) {
     const creditsPath = path.join(creditsDir, `credits-${tier}.json`);
     try {
-      const credits = JSON.parse(fs.readFileSync(creditsPath, 'utf8')) as Record<string, unknown>;
-      if (id in credits) {
+      // credits-*.json is installed from a downloaded catalog pack, so it is
+      // parsed with a guard rather than asserted: a truncated or replaced file
+      // moves on to the next tier instead of `id in credits` throwing on a
+      // non-object.
+      const credits = parseJsonRecord(fs.readFileSync(creditsPath, 'utf8'));
+      if (credits && id in credits) {
         res.apiSuccess(credits[id]);
         return;
       }
@@ -748,7 +789,11 @@ router.get('/prefetch/pack-debug', async (_req: Request, res: Response) => {
   // Step 6: parse index
   let parsedIndex: { tiers: { tier: string; version: string; totalObjects: number; archiveUrl: string; manifestUrl: string; manifestSigUrl: string; archiveSha256: string }[] } | null = null;
   try {
-    parsedIndex = PackIndex.parse(JSON.parse(indexBuf.toString('utf8')));
+    // Annotated `unknown` so JSON.parse's `any` return stops here rather than
+    // flowing into the call as an unchecked argument. PackIndex.parse does the
+    // real validation.
+    const rawIndex: unknown = JSON.parse(indexBuf.toString('utf8'));
+    parsedIndex = PackIndex.parse(rawIndex);
     steps.indexParse = { ok: true, tiers: parsedIndex.tiers.map(t => ({
       tier: t.tier, version: t.version, totalObjects: t.totalObjects, archiveUrl: t.archiveUrl,
     })) };
@@ -790,11 +835,9 @@ router.post('/prefetch/start', requireAdmin, (req: Request, res: Response) => {
   const force = req.query.force === '1' || req.query.force === 'true';
   const packsOnly = req.query.packsOnly === '1' || req.query.packsOnly === 'true';
   const rawPhase = String(req.query.phase || '');
-  // Narrow via literal-union guard so the branch refines the type without a cast.
-  const phase: 'images' | 'wikipedia' | 'caldwell' | undefined =
-    rawPhase === 'images' || rawPhase === 'wikipedia' || rawPhase === 'caldwell'
-      ? rawPhase
-      : undefined;
+  // Narrow via the same guard catalogPrefetch.ts uses internally, so a new
+  // runnable phase added there doesn't silently fall through to "run everything".
+  const phase = isRunnablePrefetchPhase(rawPhase) ? rawPhase : undefined;
   const rawScope = String(req.query.scope || '');
   const scope: 'curated' | 'full' =
     rawScope === 'full' ? 'full' : 'curated';
@@ -836,7 +879,11 @@ const GEOCODE_CACHE_FILE = path.join(SKY_CACHE_DIR, '_geocode_cache.json');
 
 try {
   const raw: unknown = JSON.parse(fs.readFileSync(GEOCODE_CACHE_FILE, 'utf-8'));
-  if (raw !== null && typeof raw === 'object') {
+  // isRecord (not a bare `typeof === 'object'`): narrowing to the plain
+  // `object` type makes Object.entries return `[string, any][]`, which would
+  // hand every `v` below an `any` and make the typeof checks decorative.
+  // Narrowed to Record<string, unknown>, `v` is `unknown` and they're real.
+  if (isRecord(raw)) {
     for (const [k, v] of Object.entries(raw)) {
       if (v === null) geocodeCache.set(k, null);
       else if (typeof v === 'string') geocodeCache.set(k, v);
@@ -863,9 +910,12 @@ async function reverseGeocode(lat: number, lon: number): Promise<string | null> 
     const data: unknown = await resp.json();
     // Narrow the Nominatim response at the boundary — we only need data.address.
     const addr: Record<string, string> = {};
-    if (data !== null && typeof data === 'object' && 'address' in data) {
+    if (isRecord(data) && 'address' in data) {
       const rawAddr: unknown = data.address;
-      if (rawAddr !== null && typeof rawAddr === 'object') {
+      // isRecord again, for the same reason as the cache load above: `object`
+      // would give Object.entries an `any` value type and silently defeat the
+      // `typeof v === 'string'` filter guarding this Nominatim response.
+      if (isRecord(rawAddr)) {
         for (const [k, v] of Object.entries(rawAddr)) {
           if (typeof v === 'string') addr[k] = v;
         }
@@ -941,9 +991,8 @@ async function forwardGeocode(query: string): Promise<ForwardGeocodeResult[]> {
         ? data.results
         : [];
     const results: ForwardGeocodeResult[] = [];
-    for (const r of rawResults) {
-      if (r === null || typeof r !== 'object') continue;
-      const rec = r as Record<string, unknown>;
+    for (const rec of rawResults) {
+      if (!isRecord(rec)) continue;
       const name = typeof rec.name === 'string' ? rec.name : null;
       const latitude = typeof rec.latitude === 'number' ? rec.latitude : null;
       const longitude = typeof rec.longitude === 'number' ? rec.longitude : null;
@@ -1002,19 +1051,8 @@ router.get('/:id', (req: Request, res: Response) => {
     return;
   }
 
-  interface LibObjFallbackRow {
-    objectId: string; objectName: string | null; objectType: string | null;
-    constellation: string | null; magnitude: number | null; ra: string | null;
-    dec: string | null; distanceLy: number | null; sizeArcmin: string | null;
-    description: string | null;
-  }
-  // Typed prepared statement — SQL trust boundary enforced by libraryObjects schema.
-  const libObjFallbackStmt = db.prepare<[string], LibObjFallbackRow>(
-    `SELECT objectId, objectName, objectType, constellation, magnitude, ra, dec, distanceLy, sizeArcmin, description
-     FROM libraryObjects WHERE objectId = ? AND deleted = 0 LIMIT 1`,
-  );
   // Library fallback — any object the user has imported (Caldwell objects, custom objects)
-  const libObj = libObjFallbackStmt.get(id);
+  const libObj = getObjectCatalogFallback(id);
 
   if (libObj) {
     // Parse sizeArcmin display string ("13.5' x 5.2'" or "13.5'") to a number

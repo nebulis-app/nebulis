@@ -44,6 +44,11 @@ const PKG_CANDIDATES = [
 export interface CurrentVersion {
   version: string; // clean semver, e.g. "1.1.0"
   build: number;   // buildNumber, e.g. 91
+  // False when package.json could not be read at all. Callers must not run the
+  // minUpgradableFrom gate in that case: version defaults to "0.0.0", which
+  // would otherwise be treated as "too old for an automatic update" and block
+  // every update on a deployment whose package.json is merely missing.
+  known: boolean;
 }
 
 /** Read the running build's version + build number from package.json. */
@@ -52,11 +57,11 @@ export function getCurrentVersion(): CurrentVersion {
     try {
       const pkg = JSON.parse(fs.readFileSync(p, 'utf8')) as { version?: string; buildNumber?: number };
       if (typeof pkg.version === 'string') {
-        return { version: pkg.version, build: typeof pkg.buildNumber === 'number' ? pkg.buildNumber : 0 };
+        return { version: pkg.version, build: typeof pkg.buildNumber === 'number' ? pkg.buildNumber : 0, known: true };
       }
     } catch { /* try next */ }
   }
-  return { version: '0.0.0', build: 0 };
+  return { version: '0.0.0', build: 0, known: false };
 }
 
 /**

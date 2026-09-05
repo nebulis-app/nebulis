@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Telescope, Satellite, Download, Trash2, ArrowRight } from 'lucide-react';
+import { Satellite, Download, Trash2, ArrowRight } from 'lucide-react';
 import { FitsThumbnail } from '../FitsThumbnail';
 import { useTheme } from '../../hooks/useTheme';
 import type { SessionFile } from '../../types';
@@ -50,7 +50,7 @@ export function SubframesPanel({
   onOpenSync: () => void;
   onScanTrails: () => void;
   onDeleteAllSubframes: () => void;
-  onOpenGallery: (index: number, fileList?: SessionFile[]) => void;
+  onOpenGallery: (index: number, source?: 'files' | 'subframes') => void;
 }) {
   const { isDark } = useTheme();
   const hasSubFrames = subFrames.length > 0;
@@ -76,16 +76,9 @@ export function SubframesPanel({
 
   return (
     <div className={`rounded-2xl border min-w-0 flex flex-col ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
-      <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-        <h2 className={`font-display font-semibold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-          <Telescope className="w-4 h-4 flex-shrink-0 text-teal-500" />
-          Subframes
-          {hasSubFrames && (
-            <span className={`text-xs px-2 py-0.5 rounded-full ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-              {subFrames.length}
-            </span>
-          )}
-        </h2>
+      {/* No title row: the selected tab immediately above already names this
+          panel and carries its count, so the bar is only its controls. */}
+      <div className={`flex items-center justify-end p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
         <div className="flex items-center gap-2">
           {isAdmin && hasSubFrames && subFrames.some(f => f.type === 'fits') && (
             <button
@@ -180,7 +173,7 @@ export function SubframesPanel({
                 return (
                   <button
                     key={file.path}
-                    onClick={() => onOpenGallery(idx, subFrames)}
+                    onClick={() => onOpenGallery(idx, 'subframes')}
                     title={`${file.name} (frame ${idx + 1} of ${subFrames.length})`}
                     className={`aspect-square rounded-lg overflow-hidden border-2 ${
                       isDark ? 'border-slate-700 hover:border-slate-500 bg-slate-800' : 'border-slate-200 hover:border-slate-400 bg-slate-100'
@@ -211,7 +204,7 @@ export function SubframesPanel({
                 : `Showing all ${subFrames.length}`}
             </span>
             <button
-              onClick={() => onOpenGallery(0, subFrames)}
+              onClick={() => onOpenGallery(0, 'subframes')}
               className={`flex items-center gap-1.5 text-xs font-medium transition flex-shrink-0 ${
                 isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'
               }`}

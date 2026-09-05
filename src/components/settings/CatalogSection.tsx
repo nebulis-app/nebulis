@@ -19,7 +19,7 @@ import {
   wipeCatalogCache,
   type PackStateRow,
 } from '../../lib/api/catalog';
-import { getSatelliteCatalogStatus, clearSatelliteCache } from '../../lib/api/observations';
+import { getSatelliteCatalogStatus, clearSatelliteCache, refreshSatelliteCatalog } from '../../lib/api/observations';
 
 export function CatalogSection({
   isDark,
@@ -368,6 +368,7 @@ function formatArchiveDate(dateStr: string | null): string {
 }
 
 function TleCatalogCard({ isDark }: { isDark: boolean }) {
+  const queryClient = useQueryClient();
   const { data: status } = useQuery({
     queryKey: ['satellite-catalog-status'],
     queryFn: getSatelliteCatalogStatus,
@@ -376,7 +377,13 @@ function TleCatalogCard({ isDark }: { isDark: boolean }) {
   const [clearingCache, setClearingCache] = useState(false);
   const [clearResult, setClearResult] = useState<'cleared' | 'error' | null>(null);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (clearTimerRef.current) clearTimeout(clearTimerRef.current); }, []);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<'refreshed' | 'error' | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+  }, []);
 
   async function handleClearCache() {
     setClearingCache(true);
@@ -389,6 +396,25 @@ function TleCatalogCard({ isDark }: { isDark: boolean }) {
     } finally {
       setClearingCache(false);
       clearTimerRef.current = setTimeout(() => setClearResult(null), 4000);
+    }
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    setRefreshResult(null);
+    try {
+      await refreshSatelliteCatalog();
+      setRefreshResult('refreshed');
+      // Refetch status so the count and "Last download" line reflect the fetch.
+      await queryClient.invalidateQueries({ queryKey: ['satellite-catalog-status'] });
+    } catch {
+      setRefreshResult('error');
+      // The status card's error callout (status.lastError) shows the reason
+      // once this refetch lands.
+      await queryClient.invalidateQueries({ queryKey: ['satellite-catalog-status'] });
+    } finally {
+      setRefreshing(false);
+      refreshTimerRef.current = setTimeout(() => setRefreshResult(null), 4000);
     }
   }
 
@@ -435,9 +461,49 @@ function TleCatalogCard({ isDark }: { isDark: boolean }) {
             {status.archiveRange.count === 0 && (
               <span>No historical archive yet. Snapshots are saved daily after each download.</span>
             )}
+            {status.usingSeed && (
+              <span className={isDark ? 'text-amber-400' : 'text-amber-600'}>
+                No download has succeeded on this server yet. Using the bundled snapshot from {formatArchiveDate(status.seedEpoch)}.
+              </span>
+            )}
           </div>
         )}
-        <div className={`flex items-center gap-3 ${status ? 'mt-3' : ''}`}>
+        {status?.lastError && (
+          <div className={`mt-3 flex items-start gap-2 rounded-lg p-2.5 text-[11px] ${
+            isDark ? 'bg-red-500/10 text-red-300' : 'bg-red-50 text-red-700'
+          }`}>
+            <AlertCircle className="w-3.5 h-3.5 mt-px shrink-0" />
+            <div className="flex flex-col gap-1">
+              <span>Last download failed. {status.lastError}</span>
+              {status.retryInMinutes > 0 && (
+                <span className={isDark ? 'text-red-400/80' : 'text-red-600/80'}>
+                  Next automatic attempt in about {status.retryInMinutes < 60
+                    ? `${status.retryInMinutes} min`
+                    : `${Math.round(status.retryInMinutes / 60)} h`}. Trail identification keeps working from the cached catalog.
+                </span>
+              )}
+              {status.lastError.includes('HTTP 403') && (
+                <span className={isDark ? 'text-red-400/80' : 'text-red-600/80'}>
+                  A 403 or repeated timeouts usually means CelesTrak has rate-limited this server's IP address. Fetch less often, or contact CelesTrak to have the IP reviewed.
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+        <div className={`flex items-center gap-3 flex-wrap ${status ? 'mt-3' : ''}`}>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${
+              isDark
+                ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25'
+                : 'bg-accent-50 text-accent-700 hover:bg-accent-100'
+            }`}
+            title="Fetch the latest orbital elements from CelesTrak now"
+          >
+            <RotateCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing…' : 'Refresh now'}
+          </button>
           <button
             onClick={handleClearCache}
             disabled={clearingCache}
@@ -450,6 +516,12 @@ function TleCatalogCard({ isDark }: { isDark: boolean }) {
             <Trash2 className="w-3 h-3" />
             {clearingCache ? 'Clearing…' : 'Clear detection cache'}
           </button>
+          {refreshResult === 'refreshed' && (
+            <span className={`text-xs ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>Catalog refreshed</span>
+          )}
+          {refreshResult === 'error' && (
+            <span className={`text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>Failed to refresh</span>
+          )}
           {clearResult === 'cleared' && (
             <span className={`text-xs ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>Cache cleared</span>
           )}

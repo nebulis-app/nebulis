@@ -221,7 +221,7 @@ function CatalogPicker({
   };
 
   const { data, isFetching } = useQuery({
-    queryKey: ['dso-search', debounced],
+    queryKey: ['dso-search', debounced, 8],
     queryFn: () => searchDsoCatalog(debounced, 8),
     enabled: debounced.length > 0,
     staleTime: 30_000,

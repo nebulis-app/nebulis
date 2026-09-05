@@ -9,6 +9,7 @@ import { randomBytes, randomUUID } from 'crypto';
 import { DATA_DIR } from './paths.js';
 import path from 'path';
 import db from './db.js';
+import { isRecord } from './typeGuards.js';
 
 function loadJwtSecret(): string {
   if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
@@ -30,6 +31,10 @@ const TOKEN_EXPIRY = '30d';
 
 export const USER_ROLES = ['admin', 'viewer'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
+
+function isUserRole(value: unknown): value is UserRole {
+  return typeof value === 'string' && (USER_ROLES as readonly string[]).includes(value);
+}
 
 export interface User {
   id: string;
@@ -124,9 +129,7 @@ export async function loginUser(username: string, password: string): Promise<Aut
 }
 
 function isJwtPayload(value: unknown): value is { userId: string; username: string; role?: string; jti?: string; tokenVersion?: number } {
-  if (value === null || typeof value !== 'object') return false;
-  const v = value as Record<string, unknown>;
-  return typeof v.userId === 'string' && typeof v.username === 'string';
+  return isRecord(value) && typeof value.userId === 'string' && typeof value.username === 'string';
 }
 
 export function verifyToken(token: string): { userId: string; username: string; role: UserRole; jti?: string; tokenVersion?: number } {
@@ -135,7 +138,11 @@ export function verifyToken(token: string): { userId: string; username: string; 
     if (!isJwtPayload(payload)) {
       throw new Error('Token payload missing userId/username');
     }
-    const role: UserRole = payload.role === 'viewer' ? 'viewer' : 'admin';
+    // Fail closed: an unrecognized/missing role claim gets the least-privileged
+    // role, not admin. Every token this server issues (auth.ts:157,213) sets
+    // `role` explicitly from the user row, so this branch only fires for a
+    // malformed or forward-incompatible payload.
+    const role: UserRole = isUserRole(payload.role) ? payload.role : 'viewer';
     return {
       userId: payload.userId,
       username: payload.username,

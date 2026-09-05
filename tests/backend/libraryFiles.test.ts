@@ -366,6 +366,34 @@ describe('manifest', () => {
     fs.writeFileSync(path.join(objDir(), MANIFEST_NAME), '{ not json');
     expect(() => rebuildFromManifests()).not.toThrow();
   });
+
+  // Valid JSON that isn't an object used to reach `manifest.version` and throw
+  // a TypeError, aborting the sweep for every remaining object.
+  it('survives a manifest that parses to a non-object', () => {
+    seedObject();
+    writeFile('stacked.jpg');
+    fs.writeFileSync(path.join(objDir(), MANIFEST_NAME), 'null');
+    expect(rebuildFromManifests()).toBe(0);
+  });
+
+  it('skips manifest entries whose fields are the wrong type', () => {
+    seedObject();
+    writeFile('stacked.jpg');
+    fs.writeFileSync(path.join(objDir(), MANIFEST_NAME), JSON.stringify({
+      version: 1,
+      objectId: OBJECT_ID,
+      updatedAt: new Date().toISOString(),
+      files: [
+        { relPath: 42, fileName: 'stacked.jpg' },            // relPath not a string
+        'not an object',
+        { relPath: `${FOLDER}/stacked.jpg`, fileName: 'stacked.jpg', bytes: 'huge', role: 'bogus' },
+      ],
+    }));
+    expect(rebuildFromManifests()).toBe(1);
+    const row = getLibraryFileRow(`${FOLDER}/stacked.jpg`)!;
+    expect(row.bytes).toBe(0);        // non-numeric bytes degrade to 0
+    expect(row.role).toBe('unknown'); // unrecognised role degrades to unknown
+  });
 });
 
 describe('TEST_DATA_DIR isolation', () => {

@@ -30,12 +30,19 @@ test.describe('Backup Status', () => {
     await expect(page).toHaveURL('/');
   });
 
+  // The name appears on the telescope's own card and again on the history row
+  // it produced, so both of these scope to the card rather than matching the
+  // page and tripping strict mode.
   test('shows telescope name', async ({ page }) => {
-    await expect(page.getByText('Seestar S50')).toBeVisible();
+    await expect(page.getByText('Seestar S50').first()).toBeVisible();
   });
 
   test('shows telescope offline status', async ({ page }) => {
-    await expect(page.getByText(/offline/i)).toBeVisible();
+    await expect(page.getByText(/^offline$/i).first()).toBeVisible();
+  });
+
+  test('shows when the telescope last synced', async ({ page }) => {
+    await expect(page.getByText(/synced|never synced/i).first()).toBeVisible();
   });
 
   test('Sync Now button is present when not running', async ({ page }) => {
@@ -77,8 +84,9 @@ test.describe('Backup Status', () => {
 
   test('shows import history entry', async ({ page }) => {
     await expect(page.getByText('Seestar S50').first()).toBeVisible();
-    // History should show the run date
-    await expect(page.getByText(/march 15|2024-03-15/i).first()).toBeVisible();
+    // The row states when the run finished and what it brought in.
+    await expect(page.getByText(/mar 15/i).first()).toBeVisible();
+    await expect(page.getByText(/18 new files/i)).toBeVisible();
   });
 });
 
@@ -139,6 +147,8 @@ test.describe('Backup Status — error state', () => {
       }));
     await page.goto('/backup');
 
-    await expect(page.getByText(/error|failed|refused/i)).toBeVisible();
+    await expect(page.getByText('Last sync failed')).toBeVisible();
+    // The message itself, in full: the page must not stop at "something failed".
+    await expect(page.getByText('SMB connection refused')).toBeVisible();
   });
 });

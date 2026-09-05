@@ -1,15 +1,24 @@
 /**
- * Right pane of the planner: vertical night timeline.
+ * The night itself: a vertical dusk-to-dawn canvas you drop targets onto.
  *
- * Renders hour ticks across the dark window and lays out scheduled blocks
- * in parallel "lanes" when they overlap. Acts as a single dnd-kit drop target;
- * the page maps the drop's pointer Y to a snapped start time using
- * scheduleGeometry.yToTime.
+ * Four layers sit behind the blocks, each answering a question you would
+ * otherwise have to leave the page for:
+ *
+ *   Twilight   the real sun-angle gradient, so dusk fades rather than switching
+ *   Weather    the hourly forecast rating down the gutter, hour by hour
+ *   Moon       when the moon is above the horizon, and when it rises and sets
+ *   Now        a live line, so the page is usable while you are actually out
+ *
+ * Empty stretches of the dark window are offered as fillable gaps rather than
+ * left as dead space. The canvas is dark in every theme: it is a picture of
+ * the night, like the Sky Forecast hero.
  */
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { useTheme } from '../../hooks/useTheme';
+import { Moon, Plus } from 'lucide-react';
 import { formatObjectName } from '../../lib/utils';
+import { scoreHex, calculateVisibilityScore } from '../../lib/forecastScore';
+import { formatDuration, twilightGradientCss, type Interval, type NightGap, type TwilightMarks } from '../../lib/plannerNight';
 import { ScheduledImagingBlock } from './ScheduledImagingBlock';
 import {
   computePxPerMinute,
@@ -18,24 +27,48 @@ import {
   minutesBetween,
   rangesOverlap,
   SNAP_MINUTES,
+  TIMELINE_GUTTER_PX,
 } from './scheduleGeometry';
 import type { PlannedSession } from '../../lib/api/plannedSessions';
+import type { ForecastHour } from '../../lib/api/planner';
 import type { BlockVisibilityResult } from '../../lib/visibilityCheck';
 import type { MoonProximityResult } from '../../lib/moonProximity';
 
 interface ScheduleTimelineProps {
   nightStart: Date;
   nightEnd: Date;
-  /** Actual dark window boundaries — rendered as dashed markers inside the extended timeline. */
+  /** Actual dark window boundaries, drawn as the deep part of the gradient. */
   darkStart?: Date;
   darkEnd?: Date;
+  /** Sun-angle boundaries used to paint the twilight gradient. */
+  twilight?: TwilightMarks | null;
   sessions: PlannedSession[];
   visibilityById: Map<number, BlockVisibilityResult>;
   moonById: Map<number, MoonProximityResult>;
+  /** Thumbnail URL per session id, so blocks show the object rather than text alone. */
+  thumbnailById?: Map<number, string>;
   /** Provisional Y delta during a body-drag (px), keyed by session id. */
   dragDeltaById: Map<number, number>;
   /** Provisional resize, keyed by session id; positive = bottom edge moved down. */
   resizeDeltaById: Map<number, { edge: 'top' | 'bottom'; deltaMinutes: number }>;
+  /** Hourly weather for this night, drawn down the gutter. Empty when unknown. */
+  forecastHours?: ForecastHour[];
+  moonIllumination?: number;
+  /** Opens the night's full forecast, focused on the hour that was clicked.
+   *  The gutter is the only place the weather is visible on this canvas, so it
+   *  is also the way in to the detail behind it. */
+  onSelectWeatherHour?: (hour: ForecastHour) => void;
+  /** Stretches where the moon is above the horizon. */
+  moonIntervals?: Interval[];
+  /** Empty stretches of the dark window worth offering to fill. */
+  gaps?: NightGap[];
+  onFillGap?: (gap: NightGap) => void;
+  /** Minutes booked inside the dark window, summarised in the header. */
+  plannedMinutes?: number;
+  targetCount?: number;
+  /** The forecast's longest usable run, named in the header rather than
+   *  described in a panel above the canvas it applies to. */
+  bestWindow?: { start: Date; end: Date } | null;
   onDelete: (id: number) => void;
   onResize: (id: number, edge: 'top' | 'bottom', deltaMinutes: number, commit: boolean) => void;
   /** Open the details popup (altitude curve, sky-survey image, blurb) for a block. */
@@ -106,11 +139,36 @@ function assignLanes(sessions: PlannedSession[]): { laneIndex: Map<number, numbe
 }
 
 export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps>(function ScheduleTimeline(
-  { nightStart, nightEnd, darkStart, darkEnd, sessions, visibilityById, moonById, dragDeltaById, resizeDeltaById, onDelete, onResize, onShowDetails, onScaleChange, observerTimezone },
+  {
+    nightStart,
+    nightEnd,
+    darkStart,
+    darkEnd,
+    twilight,
+    sessions,
+    visibilityById,
+    moonById,
+    thumbnailById,
+    dragDeltaById,
+    resizeDeltaById,
+    forecastHours = [],
+    moonIllumination = 0,
+    onSelectWeatherHour,
+    moonIntervals = [],
+    gaps = [],
+    onFillGap,
+    plannedMinutes = 0,
+    targetCount = 0,
+    bestWindow,
+    onDelete,
+    onResize,
+    onShowDetails,
+    onScaleChange,
+    observerTimezone,
+  },
   ref,
 ) {
   const fmtHm = (d: Date) => formatHm(d, observerTimezone);
-  const { isDark } = useTheme();
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: 'schedule' });
 
   const totalMinutes = Math.max(60, minutesBetween(nightStart, nightEnd));
@@ -133,10 +191,19 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
 
   const pxPerMinute = computePxPerMinute(viewportHeight, totalMinutes);
   const totalHeight = totalMinutes * pxPerMinute;
+  const startMs = nightStart.getTime();
+  const totalMs = nightEnd.getTime() - startMs;
+  const yFor = (ms: number) => ((ms - startMs) / 60_000) * pxPerMinute;
 
-  // Pixel offsets for the dark window boundaries within the extended timeline.
-  const darkStartPx = darkStart ? minutesBetween(nightStart, darkStart) * pxPerMinute : null;
-  const darkEndPx = darkEnd ? minutesBetween(nightStart, darkEnd) * pxPerMinute : null;
+  // Live "now" marker. Only meaningful when the clock actually falls inside
+  // this night, so past and future nights render without it. Ticks each
+  // minute, which is as precise as a 10-minute snap grid warrants.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const nowInWindow = nowMs > startMs && nowMs < nightEnd.getTime();
 
   // Keep the page's pointer-to-time math in sync with the rendered scale.
   useEffect(() => {
@@ -146,9 +213,25 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
   const ticks = useMemo(() => hourTicks(nightStart, nightEnd, observerTimezone), [nightStart, nightEnd, observerTimezone]);
   const { laneIndex, laneCount } = useMemo(() => assignLanes(sessions), [sessions]);
 
+  // Hourly weather down the gutter, scored with the same engine the Sky
+  // Forecast uses so an hour can never read "good" on one page and "poor" on
+  // the other. Each band spans its own hour, clipped to the timeline.
+  const weatherBands = useMemo(() => {
+    if (forecastHours.length === 0 || totalMs <= 0) return [];
+    const darkWindow = darkStart && darkEnd ? { start: darkStart.getTime(), end: darkEnd.getTime() } : null;
+    return forecastHours
+      .map(h => {
+        const from = new Date(h.time).getTime();
+        const to = from + 3_600_000;
+        const vis = calculateVisibilityScore(h, moonIllumination, observerTimezone, darkWindow);
+        return { from, to, hour: h, vis };
+      })
+      .filter(b => b.to > startMs && b.from < nightEnd.getTime());
+  }, [forecastHours, moonIllumination, observerTimezone, darkStart, darkEnd, startMs, nightEnd, totalMs]);
+
   // Detect overlap per session for the warning badge. Uses direct pairwise
   // rangesOverlap (strict <) so sessions sharing an exact endpoint are never
-  // flagged — they display the same HH:MM and should butt up against each other.
+  // flagged: they display the same HH:MM and should butt up against each other.
   const overlapById = useMemo(() => {
     const map = new Map<number, boolean>();
     for (let i = 0; i < sessions.length; i++) {
@@ -173,84 +256,152 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
   const combineRefs = (el: HTMLDivElement | null) => {
     setDropRef(el);
     if (typeof ref === 'function') ref(el);
-    else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = el;
+    else if (ref) ref.current = el;
   };
 
+  const background = twilightGradientCss(twilight, startMs, totalMs, 'to bottom');
+  const darkMinutes = darkStart && darkEnd ? Math.max(0, Math.round(minutesBetween(darkStart, darkEnd))) : 0;
+  const darkHours = darkMinutes / 60;
+
   return (
-    <div className={`flex flex-col h-full min-h-0 ${isDark ? 'bg-slate-950/40' : 'bg-slate-50'}`}>
-      <div className={`flex items-center justify-between p-3 border-b ${isDark ? 'border-slate-800 text-slate-200' : 'border-slate-200 text-slate-700'}`}>
-        <div className="text-sm font-medium">Night schedule</div>
-        {darkStart && darkEnd && (
-          <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-            <span className="font-medium">Dark window:</span>{' '}
-            {fmtHm(darkStart)} – {fmtHm(darkEnd)}{' '}
-            ({Math.round((minutesBetween(darkStart, darkEnd) / 60) * 10) / 10}h)
-          </div>
-        )}
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      {/* The header carries what is true of the schedule as a whole: how much
+          of the dark you have booked, and the two windows the canvas below
+          draws. These used to sit in a panel above the page, away from the
+          thing they describe. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-white/10 bg-slate-950/80 px-4 py-2.5 backdrop-blur">
+        <div className="flex items-baseline gap-2.5">
+          <span className="text-sm font-medium text-white">Night schedule</span>
+          {darkMinutes > 0 && (
+            <span className="text-[11px] text-white/45 tabular-nums">
+              <span className="font-medium text-white/75">{formatDuration(plannedMinutes)}</span>
+              {' of '}
+              {formatDuration(darkMinutes)} planned
+              {targetCount > 0 && ` · ${targetCount} target${targetCount === 1 ? '' : 's'}`}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 text-[11px] text-white/45 tabular-nums">
+          {bestWindow && (
+            <span className="hidden md:inline">
+              Clearest {fmtHm(bestWindow.start)} to {fmtHm(bestWindow.end)}
+            </span>
+          )}
+          {darkStart && darkEnd && (
+            <span>
+              Dark {fmtHm(darkStart)} to {fmtHm(darkEnd)} ({Math.round(darkHours * 10) / 10}h)
+            </span>
+          )}
+        </div>
       </div>
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
+
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" style={{ background }}>
         <div
           ref={combineRefs}
-          className={`relative ${isOver ? 'bg-accent-500/5' : ''}`}
+          className={`relative ${isOver ? 'bg-accent-500/[0.07]' : ''}`}
           style={{ height: `${totalHeight}px` }}
           data-testid="schedule-drop-zone"
         >
-          {/* Pre-dark buffer zone */}
-          {darkStartPx != null && darkStartPx > 0 && (
-            <div
-              className="absolute left-0 right-0 pointer-events-none"
-              style={{
-                top: 0,
-                height: `${darkStartPx}px`,
-                background: isDark ? 'rgba(148,163,184,0.05)' : 'rgba(100,116,139,0.07)',
-              }}
-            >
-              <span className={`absolute bottom-1.5 right-2 text-[10px] select-none ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                darkness {darkStart ? fmtHm(darkStart) : ''}
-              </span>
-            </div>
-          )}
-          {darkStartPx != null && (
-            <div
-              className={`absolute left-0 right-0 pointer-events-none border-t border-dashed ${isDark ? 'border-slate-600' : 'border-slate-400'}`}
-              style={{ top: `${darkStartPx}px` }}
-            />
-          )}
+          {/* Weather gutter: one band per forecast hour, in its rating colour. */}
+          {weatherBands.map(b => {
+            const top = Math.max(0, yFor(b.from));
+            const bottom = Math.min(totalHeight, yFor(b.to));
+            if (bottom <= top) return null;
+            return (
+              <button
+                key={b.from}
+                type="button"
+                onClick={onSelectWeatherHour ? () => onSelectWeatherHour(b.hour) : undefined}
+                disabled={!onSelectWeatherHour}
+                aria-label={`Forecast for ${fmtHm(new Date(b.from))}`}
+                className="absolute rounded-full transition hover:scale-x-[2.2] disabled:pointer-events-none"
+                style={{
+                  top: `${top + 1}px`,
+                  height: `${Math.max(2, bottom - top - 2)}px`,
+                  left: `${TIMELINE_GUTTER_PX - 14}px`,
+                  width: '5px',
+                  background: scoreHex(b.vis.score),
+                  opacity: 0.85,
+                }}
+                title={`${fmtHm(new Date(b.from))} · ${b.vis.label} ${b.vis.score} · ${b.hour.cloudCover}% cloud${
+                  onSelectWeatherHour ? '. Click for the full forecast.' : ''
+                }`}
+              />
+            );
+          })}
 
-          {/* Post-dark buffer zone */}
-          {darkEndPx != null && darkEndPx < totalHeight && (
-            <div
-              className="absolute left-0 right-0 pointer-events-none"
-              style={{
-                top: `${darkEndPx}px`,
-                height: `${totalHeight - darkEndPx}px`,
-                background: isDark ? 'rgba(148,163,184,0.05)' : 'rgba(100,116,139,0.07)',
-              }}
-            >
-              <span className={`absolute top-1.5 right-2 text-[10px] select-none ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                dawn {darkEnd ? fmtHm(darkEnd) : ''}
-              </span>
-            </div>
-          )}
-          {darkEndPx != null && (
-            <div
-              className={`absolute left-0 right-0 pointer-events-none border-t border-dashed ${isDark ? 'border-slate-600' : 'border-slate-400'}`}
-              style={{ top: `${darkEndPx}px` }}
-            />
-          )}
+          {/* Moon-up strip down the right edge, with its rise and set marked. */}
+          {moonIntervals.map(m => {
+            const top = Math.max(0, yFor(m.start));
+            const bottom = Math.min(totalHeight, yFor(m.end));
+            if (bottom <= top) return null;
+            return (
+              <div
+                key={`moon-${m.start}`}
+                className="pointer-events-none absolute right-1 rounded-full bg-amber-200/25"
+                style={{ top: `${top}px`, height: `${bottom - top}px`, width: '4px' }}
+              />
+            );
+          })}
+          {moonIntervals.flatMap(m => {
+            const events: { at: number; label: string }[] = [];
+            if (m.start > startMs + 60_000) events.push({ at: m.start, label: 'Moonrise' });
+            if (m.end < nightEnd.getTime() - 60_000) events.push({ at: m.end, label: 'Moonset' });
+            return events.map(e => (
+              <div
+                key={`${e.label}-${e.at}`}
+                className="pointer-events-none absolute right-0 flex items-center gap-1 pr-3"
+                style={{ top: `${yFor(e.at)}px`, transform: 'translateY(-50%)' }}
+              >
+                <span className="rounded-full bg-slate-950/70 px-2 py-0.5 text-[10px] text-amber-200/80 tabular-nums ring-1 ring-inset ring-amber-200/20">
+                  <Moon className="mr-1 inline h-2.5 w-2.5" />
+                  {e.label} {fmtHm(new Date(e.at))}
+                </span>
+              </div>
+            ));
+          })}
 
+          {/* Hour ticks. */}
           {ticks.map((t, i) => {
             const top = minutesBetween(nightStart, t) * pxPerMinute;
             return (
               <div
                 key={i}
-                className={`absolute left-0 right-0 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}
+                className="absolute left-0 right-0 border-t border-white/[0.07]"
                 style={{ top: `${top}px` }}
               >
-                <span className={`absolute -top-2 left-2 text-[10px] px-1 ${isDark ? 'bg-slate-950/40 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
+                <span className="absolute -top-2 left-2 px-1 text-[10px] text-white/40 tabular-nums">
                   {fmtHm(t)}
                 </span>
               </div>
+            );
+          })}
+
+          {/* Empty stretches of the dark window, offered rather than left blank. */}
+          {gaps.map(gap => {
+            const top = yFor(gap.start);
+            const height = yFor(gap.end) - top;
+            if (height < 26) return null;
+            return (
+              <button
+                key={`gap-${gap.start}`}
+                onClick={() => onFillGap?.(gap)}
+                disabled={!onFillGap}
+                className="group absolute flex items-center justify-center rounded-xl border border-dashed border-white/15 text-white/40 transition hover:border-accent-400/60 hover:bg-accent-400/[0.07] hover:text-accent-300 disabled:pointer-events-none"
+                style={{
+                  top: `${top + 3}px`,
+                  height: `${height - 6}px`,
+                  left: `${TIMELINE_GUTTER_PX + 4}px`,
+                  right: '12px',
+                }}
+                title={`Fill ${formatDuration(gap.minutes)} from ${fmtHm(new Date(gap.start))}`}
+              >
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium">
+                  <Plus className="h-3.5 w-3.5" />
+                  {formatDuration(gap.minutes)} free
+                  <span className="hidden opacity-0 transition group-hover:opacity-100 sm:inline">· fill it</span>
+                </span>
+              </button>
             );
           })}
 
@@ -269,6 +420,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
                 key={s.id}
                 session={s}
                 displayName={formatObjectName(s.objectId, s.objectName)}
+                thumbnailUrl={thumbnailById?.get(s.id)}
                 pxPerMinute={pxPerMinute}
                 top={top}
                 height={height}
@@ -290,6 +442,22 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
               />
             );
           })}
+
+          {/* Now. Drawn last so it sits over the blocks it passes through. */}
+          {nowInWindow && (
+            <div
+              className="pointer-events-none absolute left-0 right-0 z-30 flex items-center"
+              style={{ top: `${yFor(nowMs)}px`, transform: 'translateY(-50%)' }}
+            >
+              <span className="h-2 w-2 shrink-0 rounded-full bg-rose-400 shadow-[0_0_10px_2px_rgba(251,113,133,0.6)]" />
+              <span className="h-px flex-1 bg-rose-400/70" />
+              {/* Dark label rather than text-white: the night theme remaps
+                  text-white to red, which would vanish against the rose pill. */}
+              <span className="mr-2 rounded-full bg-rose-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-950">
+                Now
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>

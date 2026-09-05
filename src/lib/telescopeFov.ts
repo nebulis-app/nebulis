@@ -33,7 +33,9 @@ export interface FovProfile {
  */
 export const FOV_PROFILES: FovProfile[] = [
   { id: 'seestar-s50', label: 'ZWO SeeStar S50', widthDeg: 1.28, heightDeg: 0.73, vendor: 'ZWO' },
+  { id: 'seestar-s50-pro', label: 'ZWO SeeStar S50 Pro', widthDeg: 1.23, heightDeg: 0.70, vendor: 'ZWO' },
   { id: 'seestar-s30', label: 'ZWO SeeStar S30', widthDeg: 2.14, heightDeg: 1.22, vendor: 'ZWO' },
+  { id: 'seestar-s30-pro', label: 'ZWO SeeStar S30 Pro', widthDeg: 3.99, heightDeg: 2.24, vendor: 'ZWO' },
   { id: 'dwarf-3', label: 'DwarfLab Dwarf 3', widthDeg: 2.94, heightDeg: 1.65, vendor: 'DwarfLab' },
   { id: 'dwarf-2', label: 'DwarfLab Dwarf II', widthDeg: 3.20, heightDeg: 1.80, vendor: 'DwarfLab' },
   { id: 'dwarf-mini', label: 'DwarfLab Dwarf Mini', widthDeg: 2.90, heightDeg: 1.63, vendor: 'DwarfLab' },
@@ -49,7 +51,12 @@ export const DEFAULT_FOV_PROFILE_ID = 'seestar-s50';
 
 /** Map an owned telescope's `kind` to the matching framing profile id. */
 export function fovProfileIdForKind(kind: TelescopeKind | null | undefined): string {
-  if (!kind || kind === 'other') return DEFAULT_FOV_PROFILE_ID;
+  // 'asiair' is grouped with 'other' rather than given a profile of its own: an
+  // ASIAIR is a controller, not an optic, so its field is whatever telescope
+  // and camera the user attached. There is no per-kind answer to give, and
+  // inventing one would put a confidently wrong rectangle on the sky. Users
+  // with an ASIAIR should pick a profile by hand or enter their own optics.
+  if (!kind || kind === 'other' || kind === 'asiair') return DEFAULT_FOV_PROFILE_ID;
   // The imported kinds share ids with the profile table above.
   return FOV_PROFILES.some(p => p.id === kind) ? kind : DEFAULT_FOV_PROFILE_ID;
 }

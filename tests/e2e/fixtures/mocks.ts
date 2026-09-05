@@ -16,6 +16,74 @@ export function ok<T>(data: T) {
   return { ok: true, data };
 }
 
+// ─── Forecast fixture ─────────────────────────────────────────────────────────
+
+/**
+ * A full `ForecastData` payload anchored to the machine's current date, so the
+ * page's "tonight" filtering always finds hours to draw. Cloud cover is given a
+ * deliberate shape (a clear middle of the night between two cloudy ends) so the
+ * night ribbon has something to render rather than a flat line.
+ */
+function buildForecastMock() {
+  const midnightLocal = new Date();
+  midnightLocal.setHours(0, 0, 0, 0);
+  const base = midnightLocal.getTime();
+  const HOUR = 3600_000;
+  const at = (h: number) => new Date(base + h * HOUR).toISOString();
+  const dateKey = (dayOffset: number) => {
+    const d = new Date(base + dayOffset * 24 * HOUR);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  // Four days of hourly data: tonight plus the two nights in the outlook.
+  const hourly = Array.from({ length: 96 }, (_, i) => {
+    const cloudCover = Math.round(45 + 40 * Math.sin((i - 4) / 3.5));
+    return {
+      time: at(i),
+      cloudCover,
+      cloudCoverLow: Math.max(0, Math.round(cloudCover * 0.55)),
+      cloudCoverMid: Math.max(0, Math.round(cloudCover * 0.70)),
+      cloudCoverHigh: Math.max(0, Math.round(cloudCover * 0.85)),
+      seeing: 2,
+      transparency: 3,
+      humidity: 55 + (i % 7) * 3,
+      temperature: 14 - 4 * Math.cos((i % 24) / 24 * Math.PI * 2),
+      dewPoint: 7,
+      wind: 9,
+      visibility: 24000,
+      precipProb: i % 11 === 0 ? 20 : 0,
+      jetStream: 55,
+      cape: 40,
+    };
+  });
+
+  return {
+    location: { lat: 37.77, lon: -122.42 },
+    timezone: 'America/Los_Angeles',
+    hourly,
+    tonight: {
+      moonIllumination: 50,
+      moonPhase: 'Waxing Gibbous',
+      moonRise: at(20),
+      moonSet: at(30),
+      sunset: at(20),
+      sunrise: at(30),
+      astronomicalTwilightEnd: at(21.75),
+      astronomicalTwilightStart: at(28.25),
+      nauticalTwilightEnd: at(21),
+      nauticalTwilightStart: at(29),
+      darkHours: 6.5,
+      nauticalDarkHours: 8,
+    },
+    nightRatings: [
+      { date: dateKey(0), score: 85, rating: 'Great', avgCloudCover: 10, avgHumidity: 40, avgWind: 8, precipChance: 0 },
+      { date: dateKey(1), score: 62, rating: 'Good', avgCloudCover: 38, avgHumidity: 55, avgWind: 12, precipChance: 10 },
+      { date: dateKey(2), score: 31, rating: 'Poor', avgCloudCover: 78, avgHumidity: 72, avgWind: 20, precipChance: 45 },
+    ],
+    sources: { weather: 'Open-Meteo', seeing: '7Timer' },
+  };
+}
+
 // ─── Mock data ────────────────────────────────────────────────────────────────
 
 export const MOCK = {
@@ -135,6 +203,25 @@ export const MOCK = {
       isFavorite: false,
     },
   ],
+
+  /** Per-night capture summaries for M42, keyed by observing night, as
+   *  GET /library/objects/:id/capture returns them. Only the first night has a
+   *  record: a telescope that writes no sidecar produces nothing, and the object
+   *  page has to render both cases. */
+  objectCapture: {
+    '2024-03-15': {
+      runs: 1,
+      integrationSec: 5400,
+      framesStacked: 90,
+      framesTaken: 120,
+      framesPlanned: 120,
+      exposureSec: 60,
+      gain: 80,
+      filter: 'LP',
+      minTempC: 8,
+      maxTempC: 11,
+    },
+  },
 
   sessions: [
     {
@@ -484,28 +571,31 @@ export const MOCK = {
     dataDir: { path: '/data', size: 734003200, files: 67, sizeFormatted: '700 MB' },
   },
 
-  forecast: {
-    location: { lat: 37.77, lon: -122.42, timezone: 'America/Los_Angeles' },
-    moon: { phase: 0.25, illumination: 0.5, rise: '2024-03-15T20:00:00Z', set: '2024-03-16T06:00:00Z' },
-    tonight: {
-      score: 85,
-      label: 'Great',
-      clouds: 10,
-      seeing: 3,
-      wind: 5,
-      humidity: 40,
-      transparency: 8,
+  // Shape must track `ForecastData` in lib/api/planner.ts. This drifted badly
+  // (it used to carry `moon`/`clouds`/`tonight.score`, none of which the client
+  // reads) and every assertion in forecast.spec.ts was failing against a page
+  // that had crashed on `forecast.nightRatings.map`. Times are built relative
+  // to now so tonight's window always contains hourly data.
+  forecast: buildForecastMock(),
+
+  // Observing sites. `latitude`/`longitude` must be non-null or every
+  // location-gated page falls back to its "Location not set" empty state.
+  sites: [
+    {
+      id: 'site-1',
+      name: 'Backyard',
+      latitude: 37.77,
+      longitude: -122.42,
+      timezone: 'America/Los_Angeles',
+      minAlt: 20,
+      horizonProfile: Array.from({ length: 36 }, () => 0),
+      visibleSkyMap: [],
+      bortleClass: 5,
+      isDefault: true,
+      sortOrder: 0,
+      createdAt: '2024-03-01T00:00:00Z',
     },
-    hourly: Array.from({ length: 12 }, (_, i) => ({
-      time: new Date(Date.now() + i * 3600 * 1000).toISOString(),
-      clouds: 10 + i * 2,
-      seeing: 3,
-      wind: 5,
-      humidity: 40,
-      temperature: 15 - i * 0.5,
-      precipitation: 0,
-    })),
-  },
+  ],
 
   connectionTest: {
     connected: true,
@@ -693,6 +783,11 @@ export async function mockAllRoutes(page: Page) {
   // win (Playwright runs the most recently registered matching handler first).
   // Otherwise the `objects/**` catch-all would intercept the sessions/files
   // endpoints and return a single object instead.
+  // The tour's demo object, planted on start and purged on exit. These mocks
+  // already serve a populated library, so the server would decline to plant
+  // one; `planted: false` is the honest answer for this fixture.
+  await page.route('**/api/library/sample-object', r =>
+    r.fulfill(json(ok({ object: false, location: false }))));
   await page.route('**/api/library/objects', r => r.fulfill(json(ok(MOCK.objects))));
   await page.route('**/api/library/objects/**', r => r.fulfill(json(ok(MOCK.objects[0]))));
   await page.route('**/api/library/objects/*/favorite', r => r.fulfill(json(ok({ objectId: 'M42', isFavorite: true }))));
@@ -701,8 +796,35 @@ export async function mockAllRoutes(page: Page) {
   await page.route('**/api/library/objects/M42/integration', r =>
     r.fulfill(json(ok({ totalExposure: 600, stackedFrames: 120, sessions: 3 }))));
   await page.route('**/api/library/objects/M42/sessions', r => r.fulfill(json(ok(MOCK.sessions))));
+  // Same catch-all hazard as the sessions endpoints above: without this,
+  // `objects/**` answers the object page's capture query with a single object.
+  await page.route('**/api/library/objects/*/capture', r => r.fulfill(json(ok(MOCK.objectCapture))));
+  // File-location panel. Same catch-all hazard: `objects/**` would answer with
+  // a single object and the modal would render garbage.
+  await page.route('**/api/library/objects/*/location*', r =>
+    r.fulfill(json(ok({
+      storage: 'local',
+      libraryRoot: '/srv/nebulis/library',
+      object: { relPath: 'M42', path: '/srv/nebulis/library/M42', exists: true },
+      session: null,
+      variants: [],
+    }))));
   await page.route('**/api/library/objects/M42/sessions/2024-03-15/files', r =>
     r.fulfill(json(ok(MOCK.sessionFiles))));
+  // Processed images, per session and per object. Without these the
+  // `objects/**` catch-all above answers with a single object, and the
+  // observation page throws `processedImages.find is not a function` the
+  // moment that response lands, taking the whole page down mid-test.
+  await page.route('**/api/library/objects/*/sessions/*/processed-images', r =>
+    r.fulfill(json(ok([]))));
+  await page.route('**/api/library/objects/*/processed-images', r =>
+    r.fulfill(json(ok([]))));
+  // Same catch-all hazard again: the object page's admin-only trash-count
+  // queries hit these two, and without a mock `deletedObjectsAll` ends up as
+  // a single MOCK.objects[0] object rather than an array, throwing
+  // `.filter is not a function` and crashing the whole page via ErrorBoundary.
+  await page.route('**/api/library/objects/deleted', r => r.fulfill(json(ok([]))));
+  await page.route('**/api/library/objects/deleted-sessions', r => r.fulfill(json(ok([]))));
 
   // Curated object-type filter groups (drives the top-row filter chips). Mirrors
   // server/lib/library/objectFilters.ts. The path is distinct from `objects` so
@@ -842,6 +964,12 @@ export async function mockAllRoutes(page: Page) {
 
   // Forecast
   await page.route('**/api/forecast**', r => r.fulfill(json(ok(MOCK.forecast))));
+
+  // Observing sites. Without these the Forecast and Planner pages resolve no
+  // coordinates and render the "Location not set" prompt instead of any
+  // content. Register least to most specific (see the telescopes note below).
+  await page.route('**/api/sites', r => r.fulfill(json(ok(MOCK.sites))));
+  await page.route('**/api/sites/active', r => r.fulfill(json(ok(MOCK.sites[0]))));
 
   // Telescopes. Playwright checks routes in reverse registration order (the
   // most recently added handler that matches wins), so register from least to

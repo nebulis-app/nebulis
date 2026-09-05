@@ -54,6 +54,13 @@ describe('dsoCatalog', () => {
     it('returns undefined for unknown id', () => {
       expect(getById('NOTREAL999')).toBeUndefined();
     });
+
+    it('resolves IC1318 via curated fallback (missing from OpenNGC)', () => {
+      const entry = getById('IC1318');
+      expect(entry).toBeDefined();
+      expect(entry!.id).toBe('IC1318');
+      expect(entry!.name).toBe('Sadr Region');
+    });
   });
 
   describe('search', () => {
@@ -71,6 +78,28 @@ describe('dsoCatalog', () => {
     it('respects limit parameter', () => {
       const results = search('galaxy', 3);
       expect(results.length).toBeLessThanOrEqual(3);
+    });
+
+    it('finds IC1318 (Sadr Region) via curated fallback', () => {
+      // IC1318 is the star Gamma Cygni in OpenNGC, so the Seestar filter
+      // drops it; only the curated catalog carries it as the Sadr Region.
+      const results = search('IC1318');
+      const entry = results.find(r => r.id === 'IC1318');
+      expect(entry).toBeDefined();
+      expect(entry!.name).toBe('Sadr Region');
+      expect(entry!.type).toBe('Emission Nebula');
+      expect(entry!.constellation).toBe('Cygnus');
+      // Sexagesimal curated coords must convert to decimal hours/degrees.
+      expect(entry!.ra).toBeCloseTo(20 + 22 / 60, 5);
+      expect(entry!.dec).toBeCloseTo(40 + 19 / 60, 5);
+    });
+
+    it('finds curated-only objects by common name too', () => {
+      expect(search('sadr').some(r => r.id === 'IC1318')).toBe(true);
+      expect(search('horsehead').some(r => r.id === 'B33')).toBe(true);
+      // The Spindle Galaxy is canonically NGC5866; "M102" is a disputed alias
+      // that now folds into that one record.
+      expect(search('spindle galaxy').some(r => r.id === 'NGC5866' || r.id === 'M102')).toBe(true);
     });
   });
 

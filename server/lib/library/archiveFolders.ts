@@ -27,25 +27,168 @@ import fs from 'fs';
 import path from 'path';
 import { isHiddenOrSystemFile } from '../telescopeFiles.js';
 import { getLibraryDir } from '../libraryPath.js';
+import { ILLEGAL_FS_CHARS } from './importNaming.js';
+import { isNonObjectFolder } from './objectDiscovery.js';
 
 /**
  * Reserved directory at the library root holding archived non-observation
  * folders. The leading underscore keeps it visually distinct from object
  * folders; `isReservedLibraryDir` is what actually keeps the library's
- * root-level sweeps out of it, since several of them would otherwise treat it
- * as an object directory and one (`purgeSubFramePreviews`) would delete files
- * out of it.
+ * root-level sweeps from treating it as an object directory.
  */
 export const ARCHIVE_DIR_NAME = '_archive';
+
+/** Legacy (pre-telescope-scoping) archived folders that predate an assigned
+ *  telescope, and the migration target for the flat layout every archive
+ *  directory used to have (see migrateLegacyFlatArchiveOnce below). Also
+ *  what a folder-import run with no telescope assigned still writes into
+ *  today — that case has nothing to scope by, so it keeps this fixed home
+ *  rather than inventing a fake id. */
+export const ARCHIVE_UNSCOPED_DIR = '_unscoped';
+
+/** Shared, library-root home for Dwarf MegaStack restacks that never matched
+ *  a library object — unlike CALI_FRAME/DWARF_DARK, deliberately NOT nested
+ *  under ARCHIVE_DIR_NAME or scoped per telescope. These are real images
+ *  (or their sidecars — shotsInfo.json, the thumbnail preview), not
+ *  calibration bytes, and a user going looking for them by hand shouldn't
+ *  have to know which opaque telescope-id folder to open first. Every
+ *  restack subfolder name already carries a millisecond timestamp, so two
+ *  different telescopes colliding on the same relative path is not a
+ *  realistic concern — and resolveArchiveDestination's same-size-skip /
+ *  different-size-suffix rule still catches a genuine clash regardless. */
+export const RESTACKED_ROOT_DIR_NAME = 'RESTACKED';
 
 /** True for a library-root directory that is bookkeeping rather than an object.
  *  Every sweep over the library root must consult this. */
 export function isReservedLibraryDir(name: string): boolean {
-  return name === ARCHIVE_DIR_NAME;
+  return name === ARCHIVE_DIR_NAME || name === RESTACKED_ROOT_DIR_NAME;
 }
 
-export function getArchiveDir(): string {
-  return path.join(getLibraryDir(), ARCHIVE_DIR_NAME);
+/** Library-root folder Dwarf restack leftovers land in. No telescope scoping
+ *  and no migration side effect — callers that need existing telescope-scoped
+ *  restack data folded in here first call migrateRestackedToSharedRootOnce(). */
+export function getRestackArchiveDir(): string {
+  return path.join(getLibraryDir(), RESTACKED_ROOT_DIR_NAME);
+}
+
+/** Directory-name-safe form of a telescope id. Telescope ids are
+ *  server-generated UUIDs, so this never actually strips anything in
+ *  practice — it exists so a malformed/foreign id can never be used to
+ *  escape the archive root. */
+function sanitizeArchiveScope(telescopeId: string): string {
+  return telescopeId.replace(ILLEGAL_FS_CHARS, '_').replace(/\.\./g, '_').trim() || ARCHIVE_UNSCOPED_DIR;
+}
+
+/** Archive root for one telescope's calibration/restack/etc bytes, or the
+ *  shared unscoped root when no telescope is known (a folder-import run with
+ *  no telescope assigned). Scoping exists because two Dwarf units can have
+ *  distinct CALI_FRAME/DWARF_DARK files — without it, a second telescope's
+ *  calibration frames would silently dedupe or clash against the first's by
+ *  filename+size. */
+export function getArchiveDir(telescopeId?: string | null): string {
+  migrateLegacyFlatArchiveOnce();
+  const scope = telescopeId ? sanitizeArchiveScope(telescopeId) : ARCHIVE_UNSCOPED_DIR;
+  return path.join(getLibraryDir(), ARCHIVE_DIR_NAME, scope);
+}
+
+/**
+ * One-time migration from the original flat archive layout
+ * (`_archive/CALI_FRAME/...`) to the telescope-scoped one
+ * (`_archive/<telescopeId>/CALI_FRAME/...`). A pre-existing flat archive has
+ * no telescope recorded against it, so its contents move into the shared
+ * `_unscoped` bucket rather than being guessed into a specific telescope's —
+ * same non-destructive philosophy as the rest of this module: preserve the
+ * bytes, don't invent an association the data doesn't support.
+ *
+ * Runs lazily (from getArchiveDir, so every read and write path is covered)
+ * rather than at module load, since it touches the filesystem and
+ * getLibraryDir() depends on settings that may not be ready yet at import
+ * time. Guarded by a module-level flag so it costs one readdir per process,
+ * not per call.
+ */
+let legacyArchiveMigrationDone = false;
+function migrateLegacyFlatArchiveOnce(): void {
+  if (legacyArchiveMigrationDone) return;
+  legacyArchiveMigrationDone = true;
+  const archiveRoot = path.join(getLibraryDir(), ARCHIVE_DIR_NAME);
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(archiveRoot, { withFileTypes: true });
+  } catch {
+    return; // no archive yet — nothing to migrate
+  }
+  // Only folders whose name is a known non-observation folder (CALI_FRAME,
+  // RESTACKED, ...) are legacy flat-layout data. Anything else under
+  // _archive/ (including a telescope-id-named directory from a run that
+  // already scoped correctly, and _unscoped itself) is left alone.
+  const legacyFolders = entries.filter(e => e.isDirectory() && isNonObjectFolder(e.name));
+  if (legacyFolders.length === 0) return;
+  const unscopedDir = path.join(archiveRoot, ARCHIVE_UNSCOPED_DIR);
+  try {
+    fs.mkdirSync(unscopedDir, { recursive: true });
+    for (const folder of legacyFolders) {
+      const from = path.join(archiveRoot, folder.name);
+      const to = path.join(unscopedDir, folder.name);
+      if (fs.existsSync(to)) continue; // already migrated on a prior boot that crashed mid-way
+      fs.renameSync(from, to);
+    }
+  } catch {
+    // Same-volume rename should never fail, but if it does, leave the flat
+    // layout in place rather than losing anything — getArchiveDir still
+    // works, just without the migration; the next boot tries again.
+  }
+}
+
+let restackMigrationDone = false;
+
+/**
+ * One-time migration of existing telescope-scoped RESTACKED archive data
+ * (`_archive/<scope>/RESTACKED/...`, from before restacks got a shared root)
+ * into the new shared `RESTACKED/` folder at the library root.
+ *
+ * Async, unlike migrateLegacyFlatArchiveOnce above: merging content from
+ * potentially several different telescope scopes into one shared folder is
+ * exactly the situation resolveArchiveDestination's same-size-skip /
+ * different-size-suffix rule exists for, not a bare exists-check. Reuses
+ * copyToArchive itself rather than re-implementing that rule here.
+ *
+ * Runs lazily from the RESTACKED archive pass (not from getRestackArchiveDir
+ * itself, so a caller that only wants the path is never forced through this),
+ * guarded by a module flag so it costs one directory walk per process.
+ */
+export async function migrateRestackedToSharedRootOnce(): Promise<void> {
+  if (restackMigrationDone) return;
+  restackMigrationDone = true;
+  const archiveRoot = path.join(getLibraryDir(), ARCHIVE_DIR_NAME);
+  let scopeEntries: fs.Dirent[];
+  try {
+    scopeEntries = fs.readdirSync(archiveRoot, { withFileTypes: true });
+  } catch {
+    return; // no archive yet — nothing to migrate
+  }
+  for (const scope of scopeEntries) {
+    if (!scope.isDirectory()) continue;
+    const scopeDir = path.join(archiveRoot, scope.name);
+    // relPath comes back prefixed "RESTACKED/...", which is already the
+    // right shape to land under the library root directly.
+    const candidates = collectArchiveCandidates(scopeDir, [RESTACKED_ROOT_DIR_NAME]);
+    if (candidates.length === 0) continue;
+    try {
+      const result = await copyToArchive(candidates, getLibraryDir(), { deleteSourceAfterCopy: true });
+      // copyToArchive already deletes each source file once IT lands
+      // (deleteSourceAfterCopy), so a failed file is simply left behind in
+      // scopeDir. Removing the whole directory tree here regardless would
+      // take that still-present file with it. Only safe to remove once
+      // nothing failed — a partial run leaves the leftovers for the next
+      // boot's migration pass to retry, same as the outer catch below.
+      if (result.failed === 0) {
+        fs.rmSync(path.join(scopeDir, RESTACKED_ROOT_DIR_NAME), { recursive: true, force: true });
+      }
+    } catch {
+      // Leave whatever didn't move in place rather than losing anything —
+      // the next boot's migration pass tries again for what's left.
+    }
+  }
 }
 
 /** Same bounds the object walk uses, so a symlink loop or a pathological tree
@@ -121,6 +264,30 @@ export interface ArchiveCopyResult {
 }
 
 /**
+ * Decide where one candidate file lands inside an archive directory,
+ * applying the re-run-safe dedup rule: a destination that already exists at
+ * the same size is treated as the same file (caller skips copying it), and a
+ * same-name file of a *different* size is a genuine clash (two telescopes'
+ * calibration frames sharing a naming scheme) that gets a numeric suffix
+ * rather than being overwritten. Shared by the local-fs copy below and
+ * remoteArchive.ts's transport-based equivalent, so a live sync and a
+ * folder-import wizard run treat a repeat exactly the same way.
+ */
+export async function resolveArchiveDestination(
+  archiveDir: string,
+  relPath: string,
+  size: number,
+): Promise<{ destPath: string; alreadyPresent: boolean }> {
+  const destPath = path.join(archiveDir, ...relPath.split('/'));
+  await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+  const existing = await statOrNull(destPath);
+  if (existing?.isFile() && existing.size === size) {
+    return { destPath, alreadyPresent: true };
+  }
+  return { destPath: existing ? uniquePath(destPath) : destPath, alreadyPresent: false };
+}
+
+/**
  * Copy candidates into the archive directory.
  *
  * Re-running an import must not duplicate the archive, so a destination that
@@ -135,6 +302,7 @@ export interface ArchiveCopyResult {
  */
 export async function copyToArchive(
   candidates: readonly ArchiveCandidate[],
+  archiveDir: string,
   opts: {
     shouldCancel?: () => boolean;
     onFile?: (bytes: number) => void;
@@ -148,14 +316,11 @@ export async function copyToArchive(
   const result: ArchiveCopyResult = { copied: 0, alreadyPresent: 0, failed: 0, bytesCopied: 0 };
   if (candidates.length === 0) return result;
 
-  const archiveDir = getArchiveDir();
   for (const candidate of candidates) {
     if (opts.shouldCancel?.()) break;
-    const destPath = path.join(archiveDir, ...candidate.relPath.split('/'));
     try {
-      await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
-      const existing = await statOrNull(destPath);
-      if (existing?.isFile() && existing.size === candidate.size) {
+      const { destPath, alreadyPresent } = await resolveArchiveDestination(archiveDir, candidate.relPath, candidate.size);
+      if (alreadyPresent) {
         result.alreadyPresent++;
         if (opts.deleteSourceAfterCopy) {
           try { await fs.promises.unlink(candidate.absPath); } catch { /* swept later */ }
@@ -163,8 +328,7 @@ export async function copyToArchive(
         opts.onFile?.(candidate.size);
         continue;
       }
-      const finalPath = existing ? uniquePath(destPath) : destPath;
-      await fs.promises.copyFile(candidate.absPath, finalPath);
+      await fs.promises.copyFile(candidate.absPath, destPath);
       result.copied++;
       result.bytesCopied += candidate.size;
       if (opts.deleteSourceAfterCopy) {
@@ -206,10 +370,11 @@ export interface ArchivedFolder {
   path: string;
 }
 
-/** What is currently in the archive, as a plain directory listing. This needs
- *  no object model and no database: that is the point of it. */
-export function listArchivedFolders(): ArchivedFolder[] {
-  const archiveDir = getArchiveDir();
+/** What is currently in one telescope's archive scope, as a plain directory
+ *  listing. This needs no object model and no database: that is the point of
+ *  it. Omit telescopeId for the shared unscoped bucket. */
+export function listArchivedFolders(telescopeId?: string | null): ArchivedFolder[] {
+  const archiveDir = getArchiveDir(telescopeId);
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(archiveDir, { withFileTypes: true });
@@ -225,6 +390,23 @@ export function listArchivedFolders(): ArchivedFolder[] {
     out.push({ name: ent.name, fileCount, bytes, path: dir });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Every scope (telescope id, or null for the shared unscoped bucket) that
+ *  currently has archived data, so a caller can find out what exists without
+ *  probing every telescope individually. */
+export function listArchiveScopes(): Array<string | null> {
+  migrateLegacyFlatArchiveOnce();
+  const archiveRoot = path.join(getLibraryDir(), ARCHIVE_DIR_NAME);
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(archiveRoot, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+    .map(e => (e.name === ARCHIVE_UNSCOPED_DIR ? null : e.name));
 }
 
 function measureTree(dir: string, depth: number): { fileCount: number; bytes: number } {

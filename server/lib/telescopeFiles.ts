@@ -38,6 +38,7 @@
  *   shouldImportFile() filters them before they reach parseFilename in most paths.
  */
 import { getSettingsData } from './telescopes.js';
+import { addDaysToDateKey, localDateKey, localParts, zonedDateTimeToUtc } from './timezone.js';
 
 export interface ParsedFilename {
   type: 'stacked' | 'sub' | 'thumbnail' | 'video' | 'other';
@@ -168,6 +169,52 @@ function parseFilenameFormat(filename: string): ParsedFilename {
     };
   }
 
+  // ZWO ASIAIR frames. BEST-EFFORT, UNVERIFIED — built from ZWO's transfer
+  // guide and community tooling, not from a device (see walkers/asiairWalker.ts).
+  //   Light_M42_10.0s_Bin1_S_gain360_20240320-203324_-10.0C_0001.fit
+  //   Light_M42_240.0s_Bin1_ISO1600_20230212-195555_0001.FIT   (no temperature, ISO gain)
+  //   Dark_60s_Bin1_20250723-13073265_0018.fit                  (no target, no filter/gain)
+  //   Flat_1.0ms_Bin1_S_gain100_20240320-233122_-10.5C_0001.fit
+  //
+  // `_Bin<n>_` is the discriminator: no SeeStar or Dwarf name carries it, and
+  // every ASIAIR name does. Everything else is optional because firmware
+  // versions differ in which fields they emit, so the pattern locates the
+  // timestamp positionally rather than demanding a full field list. This sits
+  // ahead of the SeeStar Light_* rule below: that rule cannot currently match
+  // an ASIAIR name (it requires the timestamp to end the stem, and ASIAIR
+  // appends temperature and a sequence number), but the two share a prefix and
+  // ordering them explicitly keeps a later widening of either one honest.
+  //
+  // The middle chunk between Bin and the timestamp holds the filter and the
+  // gain in either order-of-presence, so it is captured whole and split below
+  // rather than guessed at with alternation.
+  const asiairMatch = withoutCopySuffix.match(
+    /^(Light|Dark|Flat|Bias)_(?:(.+?)_)?(\d+(?:\.\d+)?m?s)_Bin\d+((?:_[A-Za-z0-9+-]+)*?)_(\d{8})-(\d{6})\d*(?:_[^_]*C)?(?:_(\d+))?\.[^.]+$/i,
+  );
+  if (asiairMatch) {
+    const [, frameType, target, exposure, middle, datePart, timePart, seq] = asiairMatch;
+    // gain360 / ISO1600 are the exposure settings, not a filter. Whatever else
+    // sits in there is the filter name (L, R, G, B, Ha, S, O, Duo-Band...).
+    const filter = middle
+      .split('_')
+      .filter(Boolean)
+      .find(token => !/^(?:gain\d+|ISO\d+)$/i.test(token));
+    return {
+      type: 'sub',
+      // ASIAIR writes calibration frames with no target token. They are
+      // archived rather than imported (see import.ts's calibration pass), so
+      // naming them after the frame type is only ever a display fallback.
+      target: target ?? frameType,
+      subIndex: seq ? parseInt(seq, 10) : undefined,
+      exposure,
+      filter,
+      timestamp: `${datePart}-${timePart}`,
+      date: `${datePart.slice(0, 4)}-${datePart.slice(4, 6)}-${datePart.slice(6, 8)}`,
+      extension: ext,
+      isThumbnail: false,
+    };
+  }
+
   // Try Light-frame pattern: Light_<id>_<exposure>_<filter>_<timestamp>
   // e.g. Light_10P_10.0s_IRCUT_20260407-043257.fit
   // Target is lazy (.+?) not \w+ because real object names carry spaces
@@ -205,6 +252,30 @@ function parseFilenameFormat(filename: string): ParsedFilename {
       date: `${y}-${mo}-${d}`,
       extension: ext,
       isThumbnail,
+    };
+  }
+
+  // Solar/lunar/planetary video export pattern — same date-first shape as the
+  // photo export above, with an optional `-timelapse` marker and a video
+  // extension. SeeStar writes these into a `<target>_video` folder:
+  //   2026-08-27-202843-Lunar-timelapse.mp4
+  //   2026-08-27-202843-Solar.mp4
+  // Without this branch the name reaches the fallback below undated, and an
+  // undated file attaches to no observation (see getLocalObservations). The
+  // `-timelapse` suffix is stripped from the target so it groups with the
+  // object's stills; the file itself is never renamed.
+  const dateFirstVideoMatch = filename.match(
+    /^(\d{4})-(\d{2})-(\d{2})-(\d{6})-(.+?)(-timelapse)?\.(?:mp4|mov|avi)$/i
+  );
+  if (dateFirstVideoMatch) {
+    const [, y, mo, d, hms, target] = dateFirstVideoMatch;
+    return {
+      type: 'video',
+      target,
+      timestamp: `${y}${mo}${d}-${hms}`,
+      date: `${y}-${mo}-${d}`,
+      extension: ext,
+      isThumbnail: false,
     };
   }
 
@@ -274,8 +345,9 @@ function parseFilenameFormat(filename: string): ParsedFilename {
     // start with "Stacked_" and are caught above, so anything reaching here is a
     // raw individual exposure from older firmware or non-standard naming.
     const isFits = ext === '.fit' || ext === '.fits' || ext === '.fts';
+    const isVideo = ext === '.avi' || ext === '.mp4' || ext === '.mov';
     return {
-      type: ext === '.avi' ? 'video' : isThumbnail ? 'thumbnail' : isFits ? 'sub' : 'other',
+      type: isVideo ? 'video' : isThumbnail ? 'thumbnail' : isFits ? 'sub' : 'other',
       target,
       timestamp: ts,
       date: `${datePart.slice(0, 4)}-${datePart.slice(4, 6)}-${datePart.slice(6, 8)}`,
@@ -376,6 +448,28 @@ export function getSessionKey(parsed: ParsedFilename): string {
  * in sync with nightWindow.ts, NightDate.swift, and server/routes/planner.ts.
  */
 export const OBSERVING_NIGHT_ROLLOVER_HOUR = 7;
+
+/**
+ * The observing-night date key (`YYYY-MM-DD`, site-local) that `now` belongs to.
+ * Before the rollover hour a caller is still mid-session on the night that began
+ * the previous evening, so the key rolls back one day. Single home for the rule
+ * shared by the forecast hero, the nightly planner prefetch, and the planner
+ * route's "tonight" anchor.
+ */
+export function observingNightDateKey(now: Date, timeZone?: string | null): string {
+  const parts = localParts(now, timeZone);
+  const today = localDateKey(now, timeZone);
+  return parts.hour >= OBSERVING_NIGHT_ROLLOVER_HOUR ? today : addDaysToDateKey(today, -1);
+}
+
+/**
+ * Local-noon UTC instant of the observing night `now` belongs to. Noon is a
+ * safe anchor for downstream dark-window math: it is never near a DST boundary
+ * and always lands on the intended calendar day.
+ */
+export function observingNightAnchor(now: Date, timeZone?: string | null): Date {
+  return zonedDateTimeToUtc(observingNightDateKey(now, timeZone), { hour: 12 }, timeZone);
+}
 
 /**
  * Whether the observing-night rollover is turned on (Settings > General >
@@ -516,7 +610,10 @@ export function normalizeObjectId(folderName: string): string {
   return folderName.replace(/\s+/g, '');
 }
 
-export function getFileCategory(name: string): 'image' | 'fits' | 'video' | 'thumbnail' | 'other' {
+export const FILE_CATEGORIES = ['image', 'fits', 'video', 'thumbnail', 'other'] as const;
+export type FileCategory = (typeof FILE_CATEGORIES)[number];
+
+export function getFileCategory(name: string): FileCategory {
   const lower = name.toLowerCase();
   if (lower.includes('_thn.')) return 'thumbnail';
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png') || lower.endsWith('.tif') || lower.endsWith('.tiff')) return 'image';
@@ -526,6 +623,26 @@ export function getFileCategory(name: string): 'image' | 'fits' | 'video' | 'thu
 }
 
 const REAL_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.tif', '.tiff', '.fit', '.fits', '.fts', '.avi', '.mp4', '.mov']);
+
+// Single source of truth for extension -> Content-Type. Previously duplicated
+// (and drifted — one copy missed .fts, another missed .fts and .mov) across
+// routes/library.ts, routes/telescope.ts, and lib/library/dwarfRestack.ts.
+const MIME_BY_EXTENSION: Record<string, string> = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.tif': 'image/tiff', '.tiff': 'image/tiff',
+  '.fit': 'application/fits', '.fits': 'application/fits', '.fts': 'application/fits',
+  '.xisf': 'application/x-xisf',
+  '.avi': 'video/x-msvideo', '.mp4': 'video/mp4', '.mov': 'video/quicktime',
+};
+
+/** Takes either a bare filename or an extension-with-dot (e.g. from
+ *  path.extname) — both resolve the same way since the lookup is keyed on
+ *  whatever follows the last '.'. */
+export function mimeTypeForExtension(name: string): string {
+  const dot = name.lastIndexOf('.');
+  if (dot < 0) return 'application/octet-stream';
+  return MIME_BY_EXTENSION[name.slice(dot).toLowerCase()] ?? 'application/octet-stream';
+}
 
 /**
  * Returns true only for real image/data files.

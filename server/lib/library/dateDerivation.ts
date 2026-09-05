@@ -156,9 +156,20 @@ function matchDateInText(text: string): string | null {
 }
 
 function isPlausibleDate(y: string, mo: string, d: string): boolean {
+  const year = Number(y);
   const month = Number(mo);
   const day = Number(d);
-  return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  // Reject impossible calendar dates (2024-02-30, 2024-11-31) so a malformed
+  // folder segment can't become a real session key and get baked into the
+  // canonical filename by importNaming.ts. Round-trip through Date: if the
+  // components don't survive, the date wasn't real.
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  return (
+    probe.getUTCFullYear() === year &&
+    probe.getUTCMonth() === month - 1 &&
+    probe.getUTCDate() === day
+  );
 }
 
 /** Local-time date + time from a file's modified timestamp. Always succeeds. */

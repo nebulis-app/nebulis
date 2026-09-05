@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, Images, Sparkles } from 'lucide-react';
 import { getLibraryFileThumbnailUrl, type LibraryImage } from '../../lib/api/library';
@@ -6,18 +6,21 @@ import { getLibraryFileThumbnailUrl, type LibraryImage } from '../../lib/api/lib
 interface ImageCardProps {
   image: LibraryImage;
   isDark: boolean;
-  onOpen: () => void;
+  /** Takes the image, not a bound callback, so the page can pass one stable
+   *  handler for every card — a fresh arrow per card would re-render the
+   *  whole (unpaginated, potentially thousand-image) grid on every render. */
+  onOpen: (image: LibraryImage) => void;
   onToggleFavorite: (img: LibraryImage) => void;
 }
 
-export function ImageCard({ image, isDark, onOpen, onToggleFavorite }: ImageCardProps) {
+export const ImageCard = memo(function ImageCard({ image, isDark, onOpen, onToggleFavorite }: ImageCardProps) {
   const [imgError, setImgError] = useState(false);
   return (
     <div className={`group relative overflow-hidden rounded-xl border transition-all ${
-      isDark ? 'bg-slate-900 border-slate-800 hover:border-slate-600'
-             : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm hover:shadow-md'
+      isDark ? 'bg-slate-900 border-slate-800 hover:border-accent-400'
+             : 'bg-white border-slate-200 hover:border-accent-400 shadow-sm hover:shadow-md'
     }`}>
-      <button onClick={onOpen} className="relative block w-full aspect-square overflow-hidden cursor-zoom-in">
+      <button onClick={() => onOpen(image)} className="relative block w-full aspect-square overflow-hidden cursor-zoom-in">
         {imgError ? (
           <div className={`w-full h-full flex items-center justify-center ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
             <Images className={`w-10 h-10 opacity-30 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
@@ -62,4 +65,4 @@ export function ImageCard({ image, isDark, onOpen, onToggleFavorite }: ImageCard
       </Link>
     </div>
   );
-}
+});

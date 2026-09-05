@@ -25,6 +25,24 @@ export function isContainerFolder(name: string): boolean {
 }
 
 /**
+ * Strip a trailing SeeStar capture-mode suffix from an object folder name.
+ *
+ *   "Lunar_video" -> "Lunar"    "Jupiter_Photo" -> "Jupiter"
+ *
+ * SeeStar writes a separate `<target>_video` (and, on older firmware,
+ * `<target>_Photo`) folder for the same target depending on capture mode. Those
+ * are one object to the user, so discovery collapses them the same way it maps
+ * `Lunar` -> `Moon` or `M 31` -> `M31`. This renames the folder-to-object
+ * mapping only; the files inside keep their names and land flat in the object
+ * folder like every other SeeStar capture. `normalizeCatalogId` already strips
+ * the same `photo|video` tokens for catalog lookup, so this only aligns the
+ * discovery step with a rule the rest of the pipeline already applies.
+ */
+export function stripCaptureModeSuffix(folderName: string): string {
+  return folderName.replace(/_(photo|video)$/i, '');
+}
+
+/**
  * Folders that sit alongside the observation folders on a Dwarf volume (and so
  * in any replicated copy of one) but are not observations of a target.
  *
@@ -41,6 +59,10 @@ export function isContainerFolder(name: string): boolean {
  *   STARTRAILS    star-trail composites, one output per capture run
  *   Normal_Photos / Panoramas / Burst / Videos
  *                 daytime and terrestrial capture modes
+ *   Dark / Flat / Bias
+ *                 ASIAIR calibration, which carries no target at all
+ *   Preview / Snapshot / log
+ *                 ASIAIR working output and device logs
  *
  * These are excluded from *object discovery* only, and the scan reports them so
  * the user is told rather than left to notice a shorter list. Calibration frames
@@ -56,6 +78,14 @@ const NON_OBJECT_FOLDERS = new Set([
   'panoramas',
   'burst',
   'videos',
+  // ASIAIR. `live` is deliberately absent: Live/<Target> holds real stacked
+  // output and is discovered as an object like any other target folder.
+  'dark',
+  'flat',
+  'bias',
+  'preview',
+  'snapshot',
+  'log',
 ]);
 
 export function isNonObjectFolder(name: string): boolean {

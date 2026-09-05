@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChangelogModal } from '../ChangelogModal';
-import { WhatsNewV15Modal } from './WhatsNewV15Modal';
+import { ENHANCED_WHATS_NEW, versionSeries } from './whatsNewRegistry';
 import { MobileAppsPromoModal } from './MobileAppsPromoModal';
 import { shouldShowMobilePromo } from '../../lib/mobilePromo';
 import { getLastSeenVersion, setLastSeenVersion } from '../../lib/api/auth';
 import { fetchJSON } from '../../lib/api/client';
+import { useWhatsNewGate } from '../../contexts/WhatsNewGateContext';
 
 interface VersionInfo {
   version: string;
@@ -13,27 +14,15 @@ interface VersionInfo {
   build: number;
 }
 
-/** Release series with a hand-built, screenshot-driven popup instead of the
- *  plain ChangelogModal. Matched on `major.minor`, not the exact version, so
- *  a user upgrading straight from 1.4 to 1.5.2 still sees the 1.5 reel once,
- *  the same as someone who landed on 1.5.0 first. The reel shows exactly
- *  once per series (see useEnhancedModal below) — later patches in the same
- *  series (1.5.1, 1.5.2, ...) fall back to the plain ChangelogModal so the
- *  same screenshots don't reappear on every point release.
- *
- *  Add a series here only alongside a matching modal component; everything
- *  else falls back to ChangelogModal automatically. */
-const ENHANCED_SERIES = new Set(['1.5']);
-
-/** "1.5.1" to "1.5". Anything unparseable is returned whole, which simply
- *  fails to match a series and falls back to ChangelogModal. */
-function versionSeries(version: string): string {
-  const match = /^(\d+)\.(\d+)/.exec(version);
-  return match ? `${match[1]}.${match[2]}` : version;
-}
-
 /**
  * First-login What's New popup.
+ *
+ * The screenshot-driven reels (vs. the plain ChangelogModal) are registered in
+ * whatsNewRegistry, matched on `major.minor`: a user upgrading straight from
+ * 1.4 to 1.5.2 still sees the 1.5 reel once, the same as someone who landed on
+ * 1.5.0 first. The reel shows exactly once per series (see useEnhancedModal
+ * below) — later patches in the same series fall back to the plain
+ * ChangelogModal so the screenshots don't reappear on every point release.
  *
  * Compares the user's last-acknowledged app version (server-side, per user)
  * to the running version. When they differ — including a patch bump like
@@ -50,9 +39,14 @@ function versionSeries(version: string): string {
  * Designed to be mounted once at the app shell level (Layout). Renders
  * nothing visually until the comparison succeeds — fail-silent on either
  * fetch is fine, the popup is a soft notification.
+ *
+ * Also owns the WhatsNewGateContext "settled" flag: TourProvider.autoStart
+ * waits on it so the guided tour never auto-launches on top of this popup
+ * on a fresh install. See WhatsNewGateContext for why.
  */
 export function WhatsNewAutoPopup() {
   const queryClient = useQueryClient();
+  const { markSettled } = useWhatsNewGate();
   const [open, setOpen] = useState(false);
   const [viewAll, setViewAll] = useState(false);
   const [showPromo, setShowPromo] = useState(false);
@@ -93,6 +87,24 @@ export function WhatsNewAutoPopup() {
     }
   }, [versionQuery.data?.version, lastSeenQuery.data?.lastSeenVersion, lastSeenQuery.isLoading]);
 
+  // Settle the tour gate once we know whether a popup was ever going to show
+  // for this version. This must decide exactly ONCE, not re-run on every
+  // change to lastSeenQuery: acknowledging the reel (onAcknowledge below)
+  // persists lastSeenVersion and invalidates that query mid-chain, so `seen`
+  // catches up to `current` while the popup is still open (now showing the
+  // full changelog instead of the reel). A dependency-driven re-check would
+  // read that as "nothing to show" and release the gate under the still-open
+  // modal — which is the exact bug this gate exists to prevent.
+  const decidedNeedRef = useRef(false);
+  useEffect(() => {
+    if (decidedNeedRef.current) return;
+    const current = versionQuery.data?.version;
+    if (!current || lastSeenQuery.isLoading) return;
+    decidedNeedRef.current = true;
+    const seen = lastSeenQuery.data?.lastSeenVersion ?? null;
+    if (seen === current) markSettled();
+  }, [versionQuery.data?.version, lastSeenQuery.data?.lastSeenVersion, lastSeenQuery.isLoading, markSettled]);
+
   // Watch for the changelog closing so we can chain the promo.
   const prevOpenRef = useRef(false);
   useEffect(() => {
@@ -112,9 +124,9 @@ export function WhatsNewAutoPopup() {
     if (!shouldShowMobilePromo()) return;
     const timer = setTimeout(() => setShowPromo(true), 1200);
     return () => clearTimeout(timer);
-  // Run once when both queries settle. Intentionally not re-running on
-  // shouldShowMobilePromo since it reads storage synchronously on each render.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // shouldShowMobilePromo is a module function reading storage synchronously,
+    // so the linter doesn't require it as a dep — the effect runs once the two
+    // queries settle.
   }, [lastSeenQuery.isLoading, versionQuery.data?.version, lastSeenQuery.data?.lastSeenVersion]);
 
   // Series match alone isn't enough to decide "show the reel": the popup
@@ -126,19 +138,20 @@ export function WhatsNewAutoPopup() {
   // fall through to the plain ChangelogModal below instead of repeating the
   // screenshot tour on every point release.
   const seenSeries = versionSeries(lastSeenQuery.data?.lastSeenVersion ?? '');
+  const EnhancedModal = ackTarget ? ENHANCED_WHATS_NEW[versionSeries(ackTarget)] : undefined;
   const useEnhancedModal =
     ackTarget !== null &&
-    ENHANCED_SERIES.has(versionSeries(ackTarget)) &&
+    EnhancedModal !== undefined &&
     seenSeries !== versionSeries(ackTarget) &&
     !viewAll;
 
   return (
     <>
       {open && ackTarget && (
-        useEnhancedModal ? (
-          <WhatsNewV15Modal
+        useEnhancedModal && EnhancedModal ? (
+          <EnhancedModal
             isOpen={open}
-            onClose={() => { setOpen(false); setViewAll(false); }}
+            onClose={() => { setOpen(false); setViewAll(false); markSettled(); }}
             // "Got it" persists the dismissal, then chains straight into the
             // full changelog rather than closing — the highlight reel is a
             // teaser, not the whole story.
@@ -149,11 +162,11 @@ export function WhatsNewAutoPopup() {
         ) : (
           <ChangelogModal
             isOpen={open}
-            onClose={() => { setOpen(false); setViewAll(false); }}
+            onClose={() => { setOpen(false); setViewAll(false); markSettled(); }}
             // Terminal step of the chain (reached either directly, for
             // pre-1.5 versions, or after the enhanced popup above) — "Got it"
             // here actually closes things out.
-            onAcknowledge={() => { acknowledge.mutate(ackTarget); setOpen(false); setViewAll(false); }}
+            onAcknowledge={() => { acknowledge.mutate(ackTarget); setOpen(false); setViewAll(false); markSettled(); }}
             acknowledging={acknowledge.isPending}
             onlyVersion={viewAll ? undefined : ackTarget}
             onViewAll={viewAll ? undefined : () => setViewAll(true)}

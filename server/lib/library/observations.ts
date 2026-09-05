@@ -17,13 +17,15 @@ import {
   isSidecarFile,
   sessionNightFor,
   rolloverDateUnconditional,
+  type FileCategory,
 } from '../telescopeFiles.js';
 import { getNote } from '../notes.js';
+import { openMeteoHourly } from '../openMeteo.js';
+import { FITS_THUMBNAIL_PIPELINE_VERSION } from '../fitsThumbnail.js';
 import {
   stmts,
   getFolderName,
   resolveCatalogMeta,
-  loadIndex,
   LIBRARY_API_BASE,
 } from './objects.js';
 import {
@@ -32,10 +34,15 @@ import {
   getLibraryFileRow,
   moveLibraryFileRow,
   writeObjectManifest,
+  dominantTelescopeForSession,
+  dominantTelescopeByDate,
+  getLibraryFilesForObject,
+  countLibraryFilesForObject,
+  sessionDateForRow,
 } from './libraryFiles.js';
 import { listObjectFiles, getObjectLayout, setObjectLayout } from './libraryLayout.js';
-import { isReservedLibraryDir } from './archiveFolders.js';
 import { isRenderableProcessedName } from './processed.js';
+import { isDwarfInternalArtifact } from './importFilter.js';
 import {
   deleteCaptureInfoForSession,
   getCaptureInfoForSession,
@@ -60,78 +67,72 @@ export type { SessionWeather };
  * after the user switches which site the planner points at. It may be a
  * transient site carrying coordinates the capture files recorded.
  */
+/**
+ * Indices of the hourly samples that fall in the observing-night window
+ * (20:00 through 03:59 local). Open-Meteo is queried with `timezone=auto`, so
+ * each `hourly.time[i]` is a naive local timestamp at the site itself: read the
+ * hour lexically from the string. `new Date(t).getHours()` would reinterpret
+ * that naive value in the server's timezone, so a server in UTC scoring a
+ * session in America/Denver would average the wrong 8 hours.
+ *
+ * Falls back to every hour when nothing lands in the window (e.g. a polar
+ * day where the API returned an unexpected slice).
+ */
+export function nightHourIndices(times: string[]): number[] {
+  const inWindow = times
+    .map((t, i) => {
+      const hh = Number(t.split('T')[1]?.slice(0, 2));
+      return { hour: Number.isFinite(hh) ? hh : -1, i };
+    })
+    .filter(({ hour }) => hour >= 20 || (hour >= 0 && hour <= 3))
+    .map(({ i }) => i);
+  return inWindow.length > 0 ? inWindow : times.map((_, i) => i);
+}
+
+const WEATHER_VARS = [
+  'cloud_cover', 'relative_humidity_2m', 'temperature_2m', 'dew_point_2m',
+  'wind_speed_10m', 'visibility', 'precipitation_probability',
+] as const;
+
+/**
+ * Average one variable's samples over the observing-night hours, rounded to one
+ * decimal. Null when the window has no non-null samples.
+ */
+function avgOverNight(samples: Array<number | null> | undefined, nightIndices: number[]): number | null {
+  if (!samples || samples.length === 0) return null;
+  const vals = nightIndices.map(i => samples[i]).filter((v): v is number => v != null);
+  if (vals.length === 0) return null;
+  return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
+}
+
 async function fetchSessionWeather(date: string, site: ObservingSite): Promise<SessionWeather | null> {
   const lat = site.latitude;
   const lon = site.longitude;
   if (lat == null || lon == null) return null;
 
-  // Open-Meteo archive API covers past dates; forecast API covers recent/future
-  const dateObj = new Date(date + 'T12:00:00Z');
-  const now = new Date();
-  const daysDiff = (now.getTime() - dateObj.getTime()) / 86400000;
-
-  const params = [
-    `latitude=${lat}`,
-    `longitude=${lon}`,
-    `start_date=${date}`,
-    `end_date=${date}`,
-    'hourly=cloud_cover,relative_humidity_2m,temperature_2m,dew_point_2m,wind_speed_10m,visibility,precipitation_probability',
-    'timezone=auto',
-  ].join('&');
-
-  // Use archive API for dates > 5 days old, forecast API for recent
-  const base = daysDiff > 5
-    ? 'https://archive-api.open-meteo.com/v1/archive'
-    : 'https://api.open-meteo.com/v1/forecast';
+  // Archive API covers past dates, forecast API covers recent ones (< ~5 days).
+  const daysDiff = (Date.now() - new Date(date + 'T12:00:00Z').getTime()) / 86_400_000;
 
   try {
-    const res = await fetch(`${base}?${params}`, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return null;
-    // Narrow the Open-Meteo payload at the boundary. Each `hourly.<field>` is
-    // expected to be an array of numbers parallel to `hourly.time`.
-    const raw: unknown = await res.json();
-    if (raw === null || typeof raw !== 'object' || !('hourly' in raw)) return null;
-    const hourly = raw.hourly;
-    if (hourly === null || typeof hourly !== 'object') return null;
+    const data = await openMeteoHourly(lat, lon, {
+      vars: [...WEATHER_VARS],
+      startDate: date,
+      endDate: date,
+      archive: daysDiff > 5,
+    });
+    if (!data || data.time.length === 0) return null;
 
-    // Safely pluck a property from an unknown object — returns `unknown` so
-    // callers have to narrow it themselves. No cast needed at the access site.
-    const pluck = (obj: object, key: string): unknown =>
-      key in obj ? (obj as Record<string, unknown>)[key] : undefined;
-
-    const readStringArray = (v: unknown): string[] =>
-      Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : [];
-    const readNumberArray = (v: unknown): Array<number | null> =>
-      Array.isArray(v) ? v.map(n => typeof n === 'number' ? n : null) : [];
-
-    const times = readStringArray(pluck(hourly, 'time'));
-    if (times.length === 0) return null;
-
-    // Average over nighttime hours (8 PM – 4 AM local, indices 20-23 and 0-3)
-    let nightIndices = times
-      .map((t, i) => ({ hour: new Date(t).getHours(), i }))
-      .filter(({ hour }) => hour >= 20 || hour <= 3)
-      .map(({ i }) => i);
-
-    if (nightIndices.length === 0) {
-      // Fallback: use all hours
-      nightIndices = times.map((_, i) => i);
-    }
-
-    const avg = (arr: Array<number | null>) => {
-      if (arr.length === 0) return null;
-      const vals = nightIndices.map(i => arr[i]).filter((v): v is number => v != null);
-      return vals.length > 0 ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
-    };
+    const night = nightHourIndices(data.time);
+    const avg = (v: (typeof WEATHER_VARS)[number]) => avgOverNight(data.series[v], night);
 
     return {
-      temperature: avg(readNumberArray(pluck(hourly, 'temperature_2m'))),
-      cloudCover: avg(readNumberArray(pluck(hourly, 'cloud_cover'))),
-      humidity: avg(readNumberArray(pluck(hourly, 'relative_humidity_2m'))),
-      windSpeed: avg(readNumberArray(pluck(hourly, 'wind_speed_10m'))),
-      dewPoint: avg(readNumberArray(pluck(hourly, 'dew_point_2m'))),
-      visibility: avg(readNumberArray(pluck(hourly, 'visibility'))),
-      precipProb: avg(readNumberArray(pluck(hourly, 'precipitation_probability'))),
+      temperature: avg('temperature_2m'),
+      cloudCover: avg('cloud_cover'),
+      humidity: avg('relative_humidity_2m'),
+      windSpeed: avg('wind_speed_10m'),
+      dewPoint: avg('dew_point_2m'),
+      visibility: avg('visibility'),
+      precipProb: avg('precipitation_probability'),
     };
   } catch {
     return null;
@@ -139,25 +140,96 @@ async function fetchSessionWeather(date: string, site: ObservingSite): Promise<S
 }
 
 /**
- * Fetch and store historical weather for all sessions of an object that
- * don't have weather data yet. Called during import and on startup.
+ * Fetch and store weather for one session, if it is missing or was fetched at a
+ * different location than the session now resolves to. The single primitive
+ * every other backfill path is built from (FC-4: this and the plural version
+ * were byte-identical bodies).
+ */
+async function backfillOneSession(objectId: string, date: string): Promise<void> {
+  if (date === 'unknown') return;
+  const row = stmts.getSession.get(objectId, date);
+  if (!row) return;
+  const location = sessionLocation(objectId, date);
+  if (row.temperature != null && !weatherIsStale(row, location)) return;
+  const weather = await fetchSessionWeather(date, location.site);
+  if (weather) {
+    stmts.setSessionWeather.run(
+      weather.temperature, weather.cloudCover, weather.humidity,
+      weather.windSpeed, weather.dewPoint, weather.visibility, weather.precipProb,
+      location.lat, location.lon,
+      objectId, date,
+    );
+  }
+}
+
+// ─── Bounded, deduped weather-backfill queue ────────────────────────────────
+// FC-3: the per-import backfill used to run N sequential 10 s-timeout fetches
+// inside the import-completion loop — a 25-night object on a slow archive API
+// blocked the thumbnail pre-warm and the final status flip for minutes. The
+// boot-time backfill did the same across the whole library. Both now feed one
+// queue, drained a few at a time, off every critical path.
+
+const WEATHER_CONCURRENCY = 3;
+const weatherQueue: Array<{ objectId: string; date: string }> = [];
+const weatherQueued = new Set<string>();
+let weatherDraining = false;
+
+async function drainWeatherQueue(): Promise<void> {
+  if (weatherDraining) return;
+  weatherDraining = true;
+  try {
+    await Promise.all(Array.from({ length: WEATHER_CONCURRENCY }, async () => {
+      for (;;) {
+        const job = weatherQueue.shift();
+        if (!job) return;
+        try {
+          await backfillOneSession(job.objectId, job.date);
+        } catch (err) {
+          console.warn(`[weather] backfill ${job.objectId} ${job.date} failed:`, err instanceof Error ? err.message : err);
+        } finally {
+          weatherQueued.delete(`${job.objectId}|${job.date}`);
+        }
+      }
+    }));
+  } finally {
+    weatherDraining = false;
+    if (weatherQueue.length > 0) void drainWeatherQueue();
+  }
+}
+
+/**
+ * Queue every stale/missing session of an object for a background weather
+ * fetch. Fire-and-forget: returns immediately, deduped by object+date so the
+ * boot backfill and a concurrent import don't fetch the same session twice.
+ */
+export function enqueueSessionWeatherBackfill(objectId: string): void {
+  for (const row of stmts.getSessions.all(objectId)) {
+    if (row.date === 'unknown') continue;
+    const key = `${objectId}|${row.date}`;
+    if (weatherQueued.has(key)) continue;
+    weatherQueued.add(key);
+    weatherQueue.push({ objectId, date: row.date });
+  }
+  void drainWeatherQueue();
+}
+
+/**
+ * Fetch and store historical weather for all sessions of an object that don't
+ * have it yet, awaited to completion. Kept for callers that need the write to
+ * have happened before they return; the import paths use
+ * `enqueueSessionWeatherBackfill` instead.
  */
 export async function backfillSessionWeather(objectId: string): Promise<void> {
-  const rows = stmts.getSessions.all(objectId);
-  for (const row of rows) {
-    if (row.date === 'unknown') continue;
-    const location = sessionLocation(objectId, row.date);
-    if (row.temperature != null && !weatherIsStale(row, location)) continue;
-    const weather = await fetchSessionWeather(row.date, location.site);
-    if (weather) {
-      stmts.setSessionWeather.run(
-        weather.temperature, weather.cloudCover, weather.humidity,
-        weather.windSpeed, weather.dewPoint, weather.visibility, weather.precipProb,
-        location.lat, location.lon,
-        objectId, row.date
-      );
+  const dates = stmts.getSessions.all(objectId).map(r => r.date).filter(d => d !== 'unknown');
+  const queue = dates.slice();
+  await Promise.all(Array.from({ length: WEATHER_CONCURRENCY }, async () => {
+    for (;;) {
+      const date = queue.shift();
+      if (date === undefined) return;
+      try { await backfillOneSession(objectId, date); }
+      catch (err) { console.warn(`[weather] backfill ${objectId} ${date} failed:`, err instanceof Error ? err.message : err); }
     }
-  }
+  }));
 }
 
 /**
@@ -198,19 +270,7 @@ function weatherIsStale(
  * re-fetched weather and the card never blanks out.
  */
 export async function backfillSingleSessionWeather(objectId: string, date: string): Promise<void> {
-  const row = stmts.getSession.get(objectId, date);
-  if (!row) return;
-  const location = sessionLocation(objectId, date);
-  if (row.temperature != null && !weatherIsStale(row, location)) return;
-  const weather = await fetchSessionWeather(date, location.site);
-  if (weather) {
-    stmts.setSessionWeather.run(
-      weather.temperature, weather.cloudCover, weather.humidity,
-      weather.windSpeed, weather.dewPoint, weather.visibility, weather.precipProb,
-      location.lat, location.lon,
-      objectId, date
-    );
-  }
+  await backfillOneSession(objectId, date);
 }
 
 // Schedule one-time startup backfill for sessions missing weather
@@ -221,16 +281,14 @@ export async function backfillSingleSessionWeather(objectId: string, date: strin
   );
   const missingCnt = missingCountStmt.get('unknown')?.cnt ?? 0;
   if (missingCnt > 0) {
-    console.log(`[library] Backfilling weather for ${missingCnt} sessions...`);
-    setTimeout(async () => {
+    console.log(`[library] Queueing weather backfill for ${missingCnt} sessions...`);
+    setTimeout(() => {
       const distinctObjsStmt = db.prepare<[], { objectId: string }>(
         `SELECT DISTINCT objectId FROM librarySessions WHERE temperature IS NULL AND date != 'unknown'`,
       );
-      const rows = distinctObjsStmt.all();
-      for (const row of rows) {
-        try { await backfillSessionWeather(row.objectId); } catch { /* best-effort */ }
-      }
-      console.log('[library] Weather backfill complete');
+      // Feeds the same deduped queue an import uses, so the two can't both
+      // hammer the API for one session.
+      for (const row of distinctObjsStmt.all()) enqueueSessionWeatherBackfill(row.objectId);
     }, 5000);
   }
 }
@@ -334,13 +392,87 @@ function reconcileStaleSessionDates(objectId: string, files: string[]): void {
   }
 }
 
+/**
+ * Self-heal `librarySessions.telescopeId` against the per-file table.
+ *
+ * The session row holds one telescope id, written first-write-wins; the files
+ * carry the id of the import that actually wrote each one. When a night's files
+ * unanimously point at a different telescope than the row (a legacy mis-stamp,
+ * or a NULL row historically claimed by the boot backfill), correct the row so
+ * every surface agrees, not just the ones that consult the file table.
+ *
+ * Only acts on unanimous nights — a night that genuinely mixes two scopes is
+ * left alone, and the read path reports its dominant telescope without a write.
+ * Runs inline with reconcileStaleSessionDates; best-effort.
+ *
+ * Called on every session-list/detail read (see call sites), so it is gated
+ * on the object's file count: a full rescan is only worth its cost right
+ * after new files land, not on every subsequent page view of unchanged data.
+ */
+const reconciledFileCounts = new Map<string, number>();
+
+function reconcileSessionTelescopesFromFiles(objectId: string): void {
+  const fileCount = countLibraryFilesForObject(objectId);
+  if (reconciledFileCounts.get(objectId) === fileCount) return;
+
+  const rows = stmts.getSessions.all(objectId);
+  if (rows.length === 0) {
+    reconciledFileCounts.set(objectId, fileCount);
+    return;
+  }
+
+  // date -> set of telescope ids seen across that night's attributed files
+  const idsByDate = new Map<string, Set<string>>();
+  for (const f of getLibraryFilesForObject(objectId)) {
+    if (!f.telescopeId) continue;
+    const d = sessionDateForRow(f);
+    if (!d) continue;
+    let set = idsByDate.get(d);
+    if (!set) { set = new Set(); idsByDate.set(d, set); }
+    set.add(f.telescopeId);
+  }
+
+  let fixed = 0;
+  for (const row of rows) {
+    const ids = idsByDate.get(row.date);
+    if (!ids || ids.size !== 1) continue; // no attributed files, or a mixed night
+    const [only] = ids;
+    if (only === row.telescopeId) continue;
+    db.prepare('UPDATE librarySessions SET telescopeId = ? WHERE objectId = ? AND date = ?')
+      .run(only, objectId, row.date);
+    fixed++;
+  }
+
+  if (fixed > 0) {
+    const top = db
+      .prepare<[string], { telescopeId: string }>(
+        `SELECT telescopeId, COUNT(*) as n FROM librarySessions
+           WHERE objectId = ? AND telescopeId IS NOT NULL
+           GROUP BY telescopeId ORDER BY n DESC LIMIT 1`,
+      )
+      .get(objectId);
+    if (top?.telescopeId) stmts.setObjectPrimaryTelescope.run(top.telescopeId, objectId);
+    console.log(`[library] Corrected telescope attribution on ${fixed} session(s) for ${objectId} from the file table`);
+  }
+
+  reconciledFileCounts.set(objectId, fileCount);
+}
+
 export function getLocalSessions(objectId: string) {
   const LIBRARY_DIR = getLibraryDir();
-  const objDir = path.join(LIBRARY_DIR, getFolderName(objectId));
+  // getFolderName falls back to the raw objectId on a DB miss, so a crafted
+  // objectId with traversal tokens must not reach existsSync/readdirSync
+  // below — that would be a filesystem enumeration oracle outside the
+  // library. Treated the same as "object dir doesn't exist" further down.
+  const objDirCandidate = path.resolve(LIBRARY_DIR, getFolderName(objectId));
+  const objDir = objDirCandidate === LIBRARY_DIR || objDirCandidate.startsWith(LIBRARY_DIR + path.sep)
+    ? objDirCandidate
+    : null;
 
-  if (fs.existsSync(objDir)) {
+  if (objDir && fs.existsSync(objDir)) {
     const filesForReconcile = fs.readdirSync(objDir).filter(f => isRealFile(f) && !f.startsWith('sky_') && !f.startsWith('gallery_'));
     try { reconcileStaleSessionDates(objectId, filesForReconcile); } catch { /* best-effort */ }
+    try { reconcileSessionTelescopesFromFiles(objectId); } catch { /* best-effort */ }
   }
 
   const sessionMap = new Map<string, {
@@ -351,6 +483,7 @@ export function getLocalSessions(objectId: string) {
     fitsCount: number;
     subFrameCount: number;
     imageCount: number;
+    videoCount: number;
     thumbnailFile: string | null;   // _thn.jpg
     stackedImageFile: string | null; // Stacked_*.jpg (non-thumbnail)
     anyImageFile: string | null;     // any other .jpg/.png fallback
@@ -363,9 +496,12 @@ export function getLocalSessions(objectId: string) {
   // Processed-image counts per session date (separate `sessionProcessedImages`
   // table; these files live under `<folder>/processed/`, not the object root).
   const processedCountByDate = new Map<string, number>();
-  for (const r of db.prepare<[string], { date: string; n: number }>(
+  for (const r of db.prepare<[string], { date: string | null; n: number }>(
     'SELECT date, COUNT(*) as n FROM sessionProcessedImages WHERE objectId = ? GROUP BY date',
   ).all(objectId)) {
+    // NULL-date rows are Dwarf RESTACKED auto-imports (see dwarfRestack.ts) —
+    // not tied to any session, so they never belong in a per-date count.
+    if (r.date === null) continue;
     processedCountByDate.set(r.date, r.n);
   }
 
@@ -377,9 +513,10 @@ export function getLocalSessions(objectId: string) {
   const processedThumbByDate = new Map<string, string>(); // date -> folderName/processed/filename
   {
     const folderName = getFolderName(objectId);
-    for (const r of db.prepare<[string], { date: string; filename: string }>(
+    for (const r of db.prepare<[string], { date: string | null; filename: string }>(
       'SELECT date, filename FROM sessionProcessedImages WHERE objectId = ? ORDER BY uploadedAt DESC',
     ).all(objectId)) {
+      if (r.date === null) continue; // Dwarf RESTACKED auto-import — no session to thumbnail
       if (processedThumbByDate.has(r.date)) continue; // already have the newest for this date
       if (!isRenderableProcessedName(r.filename)) continue;
       processedThumbByDate.set(r.date, `${folderName}/processed/${r.filename}`);
@@ -407,8 +544,11 @@ export function getLocalSessions(objectId: string) {
     stmts.getDeletedSessions.all(objectId).map(r => r.date),
   );
   const weatherMap = new Map<string, SessionWeather>();
+  // Per-file attribution is ground truth; the session row's telescopeId is the
+  // fallback for a night whose files carry no id.
+  const telescopeByFiles = dominantTelescopeByDate(objectId);
   const telescopeIdByDate = new Map<string, string | null>(
-    sessionRows.map(r => [r.date, r.telescopeId]),
+    sessionRows.map(r => [r.date, telescopeByFiles.get(r.date) ?? r.telescopeId]),
   );
   // User-crowned per-session preview: { date → relative library path }.
   // When set, this wins over auto-picked thumbnail/stacked/anyImage below
@@ -422,7 +562,7 @@ export function getLocalSessions(objectId: string) {
   for (const r of sessionRows) {
     if (r.date === 'unknown') continue; // stale rows from old imports — skip
     if (!deletedSessions.has(r.date) && !sessionMap.has(r.date)) {
-      sessionMap.set(r.date, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false });
+      sessionMap.set(r.date, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, videoCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false });
     }
     if (r.temperature != null) {
       weatherMap.set(r.date, {
@@ -437,7 +577,7 @@ export function getLocalSessions(objectId: string) {
     }
   }
 
-  if (!fs.existsSync(objDir)) {
+  if (!objDir || !fs.existsSync(objDir)) {
     return Array.from(sessionMap.entries())
       .sort(([a], [b]) => b.localeCompare(a))
       .map(([date, stats]) => ({
@@ -449,6 +589,7 @@ export function getLocalSessions(objectId: string) {
         fitsCount: stats.fitsCount,
         subFrameCount: stats.subFrameCount,
         imageCount: stats.imageCount,
+        videoCount: stats.videoCount,
         processedCount: processedCountByDate.get(date) ?? 0,
         thumbnailUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/thumbnail`,
         filesUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/files`,
@@ -478,10 +619,14 @@ export function getLocalSessions(objectId: string) {
     // directly into the library folder by hand, outside the app entirely.
     if (!sessionKey) continue;
     if (deletedSessions.has(sessionKey)) continue;
-    if (!sessionMap.has(sessionKey)) {
-      sessionMap.set(sessionKey, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false });
+    // Get-or-create rather than has()/set()/get(): the third lookup is what
+    // used to need a non-null assertion to tell the compiler the entry the
+    // line above inserted is really there.
+    let s = sessionMap.get(sessionKey);
+    if (!s) {
+      s = { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, videoCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false };
+      sessionMap.set(sessionKey, s);
     }
-    const s = sessionMap.get(sessionKey)!;
     s.fileCount++;
     // Keyed on the object-relative path: in a nested object every session has
     // its own `stacked.jpg`, so a basename key would merge distinct stacks.
@@ -489,8 +634,9 @@ export function getLocalSessions(objectId: string) {
     // The preview fields hold object-relative paths because they are turned
     // into `<folderName>/<relPath>` URLs below.
     if (parsed.isThumbnail && !s.thumbnailFile) s.thumbnailFile = entry.relPath;
-    const isViewableImage = parsed.extension === '.jpg' || parsed.extension === '.jpeg'
-      || parsed.extension === '.png' || parsed.extension === '.tif' || parsed.extension === '.tiff';
+    const isViewableImage = (parsed.extension === '.jpg' || parsed.extension === '.jpeg'
+      || parsed.extension === '.png' || parsed.extension === '.tif' || parsed.extension === '.tiff')
+      && !isDwarfInternalArtifact(fname);
     // A JPEG can be served straight to the client; anything else has to be
     // converted by sharp on the way out. That matters for the pick, not just the
     // URL: featuring a Dwarf's ~100 MB float `img_stacked_all.tif` means a 100 MB
@@ -512,6 +658,7 @@ export function getLocalSessions(objectId: string) {
     const cat = getFileCategory(fname);
     if (cat === 'fits') s.fitsCount++;
     if (cat === 'image') s.imageCount++;
+    if (cat === 'video') s.videoCount++;
   }
 
   return Array.from(sessionMap.entries())
@@ -525,6 +672,7 @@ export function getLocalSessions(objectId: string) {
       fitsCount: stats.fitsCount,
       subFrameCount: stats.subFrameCount,
       imageCount: stats.imageCount,
+      videoCount: stats.videoCount,
       processedCount: processedCountByDate.get(date) ?? 0,
       thumbnailUrl: (() => {
         // User-crowned session image wins over the auto-picked file so the
@@ -537,11 +685,16 @@ export function getLocalSessions(objectId: string) {
         // string with no path validation at write time — resolve+contain here
         // rather than a bare path.join, so a crafted value can't be used as a
         // file-existence oracle against paths outside LIBRARY_DIR.
-        const crownedAbs = crowned ? path.resolve(LIBRARY_DIR, crowned) : null;
-        const crownedExists = crownedAbs
-          && (crownedAbs === LIBRARY_DIR || crownedAbs.startsWith(LIBRARY_DIR + path.sep))
-          && fs.existsSync(crownedAbs);
-        if (crownedExists) return `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(crowned!)}`;
+        // Nested inside `if (crowned)` so the URL below is built from a value
+        // the compiler has already seen proven present, rather than from a
+        // separate boolean that only implies it.
+        if (crowned) {
+          const crownedAbs = path.resolve(LIBRARY_DIR, crowned);
+          const contained = crownedAbs === LIBRARY_DIR || crownedAbs.startsWith(LIBRARY_DIR + path.sep);
+          if (contained && fs.existsSync(crownedAbs)) {
+            return `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(crowned)}`;
+          }
+        }
         // Use the thumbnail route for non-JPEG images (PNG/TIF) so sharp
         // converts them to browser-renderable JPEG. Raw 16-bit PNGs from
         // Dwarf stacking output cannot be displayed by browsers via <img>.
@@ -580,7 +733,10 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
   return listObjectFiles(objDir, getObjectLayout(objectId))
     .filter(e => isRealFile(e.fileName)
       && !e.fileName.startsWith('sky_')
-      && !e.fileName.startsWith('gallery_'))
+      && !e.fileName.startsWith('gallery_')
+      // Dwarf plate-solve / stack-count working images: kept on disk under
+      // Archive mode but never a photo, so no client should list them.
+      && !isDwarfInternalArtifact(e.fileName))
     .filter(entry => {
       if (!sessionDate) return true;
       return identity.session(entry.relPath) === sessionDate;
@@ -590,14 +746,7 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
       const parsed = parseFilename(fname);
       const fullPath = path.join(objDir, entry.relPath);
       const stat = fs.statSync(fullPath);
-      const category = getFileCategory(fname);
-      // `getFileCategory` and `parsed.type` come back as wider string types
-      // (from helpers in telescopeFiles). Runtime values are always within the
-      // literal unions below, so we narrow via a guard + fallback instead of
-      // asserting through. SQL/helper trust boundary.
-      const knownType: 'image' | 'fits' | 'video' | 'thumbnail' | 'other' =
-        category === 'image' || category === 'fits' || category === 'video' || category === 'thumbnail'
-          ? category : 'other';
+      const knownType: FileCategory = getFileCategory(fname);
       // Prefer the recorded role, falling back to the filename parse. The two
       // can legitimately disagree: the Dwarf master stack is a `.tif` that
       // parseFilename types as 'other' but which is genuinely a stack, and a
@@ -630,7 +779,17 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
         /** False when no rendering of this file can be trusted, so clients must
          *  show a download card rather than an `<img>`. */
         previewable: true,
-        downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(libPath)}`,
+        // `&v=<mtime>` busts the browser's hour-long cache of /library/file
+        // after the image editor overwrites a stacked JPEG in place. The route
+        // ignores the param.
+        downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(libPath)}&v=${Math.round(stat.mtimeMs)}`,
+        // Videos get an inline, range-capable stream URL for a `<video>` tag.
+        // `/library/file` above stays the download path. MP4/MOV play in a
+        // browser and on the native clients; AVI does not, so the client keys
+        // off the extension and shows a download instead for `.avi`.
+        videoUrl: knownType === 'video'
+          ? `${LIBRARY_API_BASE}/video?path=${encodeURIComponent(libPath)}&v=${Math.round(stat.mtimeMs)}`
+          : undefined,
         // FITS files get a server-rendered JPEG (colorized MTF autostretch) so
         // clients never decode the raw FITS just to preview it. TIFF gets the
         // same treatment via /tiff-thumbnail: a Dwarf's `img_stacked_all.tif`
@@ -643,7 +802,7 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
         // rendered yet. `previewUrl` is a larger 1024px tier for full-screen
         // viewing.
         thumbUrl: knownType === 'fits'
-          ? `${LIBRARY_API_BASE}/fits-thumbnail?path=${encodeURIComponent(libPath)}`
+          ? `${LIBRARY_API_BASE}/fits-thumbnail?v=${FITS_THUMBNAIL_PIPELINE_VERSION}&path=${encodeURIComponent(libPath)}`
           : isTiff
             ? `${LIBRARY_API_BASE}/tiff-thumbnail?path=${encodeURIComponent(libPath)}`
             // PNG needs a server-side conversion too: a 16-bit PNG from Dwarf
@@ -652,7 +811,7 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
               ? `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(libPath)}`
               : undefined,
         previewUrl: knownType === 'fits'
-          ? `${LIBRARY_API_BASE}/fits-thumbnail?size=preview&path=${encodeURIComponent(libPath)}`
+          ? `${LIBRARY_API_BASE}/fits-thumbnail?v=${FITS_THUMBNAIL_PIPELINE_VERSION}&size=preview&path=${encodeURIComponent(libPath)}`
           : isTiff
             ? `${LIBRARY_API_BASE}/tiff-thumbnail?size=preview&path=${encodeURIComponent(libPath)}`
             : needsRasterConversion
@@ -691,9 +850,10 @@ export function getLocalObservations() {
 
   // Processed-image counts for every session in one pass, keyed `objectId|date`.
   const processedCountByKey = new Map<string, number>();
-  for (const r of db.prepare<[], { objectId: string; date: string; n: number }>(
+  for (const r of db.prepare<[], { objectId: string; date: string | null; n: number }>(
     'SELECT objectId, date, COUNT(*) as n FROM sessionProcessedImages GROUP BY objectId, date',
   ).all()) {
+    if (r.date === null) continue; // Dwarf RESTACKED auto-import — not tied to a session
     processedCountByKey.set(`${r.objectId}|${r.date}`, r.n);
   }
 
@@ -704,9 +864,10 @@ export function getLocalObservations() {
   // the raw stacked-file fallback below.
   const folderNameByObjectId = new Map(objects.map(o => [o.objectId, o.folderName || o.objectId]));
   const processedThumbByKey = new Map<string, string>(); // "objectId|date" -> folderName/processed/filename
-  for (const r of db.prepare<[], { objectId: string; date: string; filename: string }>(
+  for (const r of db.prepare<[], { objectId: string; date: string | null; filename: string }>(
     'SELECT objectId, date, filename FROM sessionProcessedImages ORDER BY uploadedAt DESC',
   ).all()) {
+    if (r.date === null) continue; // Dwarf RESTACKED auto-import — not tied to a session
     const key = `${r.objectId}|${r.date}`;
     if (processedThumbByKey.has(key)) continue; // already have the newest for this session
     if (!isRenderableProcessedName(r.filename)) continue;
@@ -748,6 +909,7 @@ export function getLocalObservations() {
     const identity = resolverFor(objectId);
     // reconcileStaleSessionDates parses bare filenames, so it takes basenames.
     try { reconcileStaleSessionDates(objectId, entries.map(e => e.fileName)); } catch { /* best-effort */ }
+    try { reconcileSessionTelescopesFromFiles(objectId); } catch { /* best-effort */ }
     const sessionRows = stmts.getSessions.all(objectId);
     const sessions = sessionRows.map(r => r.date);
     // User-crowned per-session preview wins over the object-level thumbnail.
@@ -755,8 +917,11 @@ export function getLocalObservations() {
     for (const r of sessionRows) {
       if (r.sessionImage) sessionImageMap.set(r.date, r.sessionImage);
     }
+    // Per-file attribution is ground truth; the session row's telescopeId is
+    // the fallback for a night whose files carry no id.
+    const telescopeByFiles = dominantTelescopeByDate(objectId);
     const telescopeIdByDate = new Map<string, string | null>(
-      sessionRows.map(r => [r.date, r.telescopeId]),
+      sessionRows.map(r => [r.date, telescopeByFiles.get(r.date) ?? r.telescopeId]),
     );
 
     // Group files by session date
@@ -788,10 +953,13 @@ export function getLocalObservations() {
       if (parsed.isThumbnail) continue;
       const date = identity.session(entry.relPath);
       if (!date) continue; // skip files we can't assign a session date to
-      if (!sessionMap.has(date)) {
-        sessionMap.set(date, { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null, stackedImageIsCheap: false });
+      // Get-or-create, so the entry is in hand from the branch that made it
+      // instead of being re-fetched and asserted non-null.
+      let s = sessionMap.get(date);
+      if (!s) {
+        s = { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null, stackedImageIsCheap: false };
+        sessionMap.set(date, s);
       }
-      const s = sessionMap.get(date)!;
       s.fileCount++;
       if (parsed.timestamp) s.timestamps.push(parsed.timestamp);
       // Keyed on the object-relative path: every nested session has its own
@@ -800,7 +968,8 @@ export function getLocalObservations() {
       if (parsed.type === 'sub') s.subFrameCount++;
       const ext = parsed.extension?.toLowerCase();
       if (ext === '.fit' || ext === '.fits') s.fitsCount++;
-      const isViewableImage = ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.tif' || ext === '.tiff';
+      const isViewableImage = (ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.tif' || ext === '.tiff')
+        && !isDwarfInternalArtifact(fname);
       // Cheap-first, same reasoning as getLocalSessions: a costly pick means a
       // ~100 MB sharp decode per calendar card on a thumbnail-cache miss.
       const isCheapImage = ext === '.jpg' || ext === '.jpeg';
@@ -896,7 +1065,10 @@ export function getObservationLocations(): ObservationLocation[] {
     const loc = sessionLocation(objectId, date);
     const { lat, lon } = loc;
     if (lat === null || lon === null) continue; // no location for this session
-    const source = loc.source === 'fits' ? 'fits' as const : 'settings' as const;
+    // Annotated instead of `as const`-ing each arm: the declared type is what
+    // ObservationLocation.source already says, so the literals check against
+    // it rather than being asserted into it.
+    const source: ObservationLocation['source'] = loc.source === 'fits' ? 'fits' : 'settings';
 
     out.push({
       objectId,
@@ -914,6 +1086,9 @@ export function getObservationLocations(): ObservationLocation[] {
 }
 
 export function getLocalObservationDetail(objectId: string, date: string) {
+  // Heal a stale session→telescope stamp against the per-file table before
+  // reading anything off the row (see reconcileSessionTelescopesFromFiles).
+  try { reconcileSessionTelescopesFromFiles(objectId); } catch { /* best-effort */ }
   const obj = stmts.getObject.get(objectId);
   const files = getLocalFiles(objectId, date);
 
@@ -1008,6 +1183,10 @@ export function getLocalObservationDetail(objectId: string, date: string) {
       return weather;
     })(),
     telescopeId: (() => {
+      // Per-file attribution is ground truth — the session row's single
+      // telescopeId goes stale on a mixed night or a legacy mis-stamp.
+      const fromFiles = dominantTelescopeForSession(objectId, date);
+      if (fromFiles) return fromFiles;
       const row = stmts.getSession.get(objectId, date);
       return row?.telescopeId ?? obj?.primaryTelescopeId ?? null;
     })(),
@@ -1163,117 +1342,6 @@ export function deleteSessionSubFrames(objectId: string, date: string): { delete
   } catch { /* ignore */ }
   writeObjectManifest(objectId, folderName);
   return { deleted };
-}
-
-/**
- * Matches frame-named preview images that should never live in the library:
- *   Light_<anything>.jpg/jpeg/png  — SeeStar per-frame preview
- *   sub_<N>_<anything>.jpg/jpeg/png — alternate naming scheme
- * Stacked images are always named Stacked_* or DSO_Stacked_*, never Light_*,
- * so there is no risk of catching a legitimate image with this pattern.
- * Strips macOS copy suffixes (" copy", " copy N") before matching.
- */
-const SUBFRAME_PREVIEW_RE = /^(?:Light|sub_\d+)_.+\.(?:jpe?g|png)$/i;
-
-function isSubFramePreview(filename: string): boolean {
-  const stripped = filename.replace(/ copy(?: \d+)?(\.[^.]+)$/, '$1');
-  return SUBFRAME_PREVIEW_RE.test(stripped);
-}
-
-/** Per-object breakdown of matched preview files, for the review modal. */
-export interface SubFramePreviewGroup {
-  folder: string;
-  /** True number of matches in this folder (may exceed files.length). */
-  count: number;
-  /** Up to FILES_PER_GROUP_CAP example file names (no folder prefix). */
-  files: string[];
-}
-
-export interface SubFrameImagePurgeResult {
-  scannedObjects: number;
-  /** Files matched (frame-named JPG/PNG previews). Equals `deleted` unless dryRun. */
-  matched: number;
-  deleted: number;
-  errors: number;
-  /** Matched files grouped by object folder, for a review-before-delete list. */
-  groups: SubFramePreviewGroup[];
-}
-
-/** Cap on example file names listed per folder in the review breakdown. */
-const FILES_PER_GROUP_CAP = 200;
-
-/**
- * Library-wide cleanup for frame-named image previews (e.g. `Light_*.jpg`) that
- * older imports copied into object folders before sub-frame import was made
- * FITS-only. Deletes only files that parse as a sub-frame AND carry an image
- * extension — raw `.fit`/`.fits` sub-frames and stacked JPGs are never touched.
- *
- * Pass `dryRun: true` to count without deleting. File counts are refreshed for
- * every affected object so library listings stay accurate.
- */
-export function purgeSubFrameImages(opts: { dryRun?: boolean } = {}): SubFrameImagePurgeResult {
-  const LIBRARY_DIR = getLibraryDir();
-  const result: SubFrameImagePurgeResult = { scannedObjects: 0, matched: 0, deleted: 0, errors: 0, groups: [] };
-  if (!fs.existsSync(LIBRARY_DIR)) return result;
-
-  // folderName -> objectId, so we can refresh the stored file count after
-  // deletes. Best-effort: the purge still runs if the index can't be loaded.
-  const folderToObjectId = new Map<string, string>();
-  try {
-    for (const [objectId, meta] of Object.entries(loadIndex().objects)) {
-      folderToObjectId.set(meta.folderName, objectId);
-    }
-  } catch { /* count refresh is best-effort */ }
-
-  for (const folderName of fs.readdirSync(LIBRARY_DIR)) {
-    // The archive is not an object and its files are not sub-frame previews to
-    // be purged: it holds exactly the data archive mode promised to keep.
-    if (isReservedLibraryDir(folderName)) continue;
-    const objDir = path.join(LIBRARY_DIR, folderName);
-    try {
-      if (!fs.statSync(objDir).isDirectory()) continue;
-    } catch { continue; }
-    result.scannedObjects++;
-
-    let removedHere = 0;
-    let matchedHere = 0;
-    const groupFiles: string[] = [];
-    // Layout-aware: frame-named previews land inside session directories for a
-    // nested object, and this purge would otherwise never find them.
-    const objectIdForDir = folderToObjectId.get(folderName);
-    const entries = listObjectFiles(objDir, objectIdForDir ? getObjectLayout(objectIdForDir) : 'flat');
-    for (const entry of entries) {
-      if (!isRealFile(entry.fileName)) continue;
-      if (!isSubFramePreview(entry.fileName)) continue;
-      result.matched++;
-      matchedHere++;
-      if (groupFiles.length < FILES_PER_GROUP_CAP) groupFiles.push(entry.relPath);
-      if (!opts.dryRun) {
-        try {
-          fs.unlinkSync(path.join(objDir, entry.relPath));
-          deleteLibraryFileRow(`${folderName}/${entry.relPath}`);
-          result.deleted++; removedHere++;
-        } catch { result.errors++; }
-      }
-    }
-
-    if (matchedHere > 0) {
-      result.groups.push({ folder: folderName, count: matchedHere, files: groupFiles });
-    }
-
-    if (removedHere > 0) {
-      const objectId = folderToObjectId.get(folderName);
-      if (objectId) {
-        try {
-          const remaining = listObjectFiles(objDir, getObjectLayout(objectId))
-            .filter(e => isRealFile(e.fileName)).length;
-          stmts.updateObjectFileCount.run(remaining, objectId);
-        } catch { /* ignore */ }
-      }
-    }
-  }
-
-  return result;
 }
 
 /**
@@ -1459,7 +1527,11 @@ export function moveObservation(fromObjectId: string, date: string, toObjectId: 
       if (night) toSessionSet.add(night);
     }
     // Snapshot any manual (DB-only) sessions on the target before clearing
-    const existingTargetSessions = stmts.getSessions.all(toObjectId) as { date: string }[];
+    // No cast: getSessions is already declared as db.prepare<[string],
+    // LibrarySessionRow>, so `.all()` returns rows that carry `date`. The old
+    // `as { date: string }[]` re-stated a narrower shape the statement had
+    // already proven, which is exactly the kind of claim that goes stale.
+    const existingTargetSessions = stmts.getSessions.all(toObjectId);
     const manualDates = existingTargetSessions
       .map(s => s.date)
       .filter(d => !toSessionSet.has(d));

@@ -114,24 +114,51 @@ export interface SatelliteTrailResult {
   nearMissFallback?: boolean;
   tleArchiveUnavailable?: boolean;
 }
-export const detectSatelliteTrail = (filePath: string, skipCache = false, overrideLat?: number, overrideLon?: number) =>
+export const detectSatelliteTrail = (
+  filePath: string,
+  skipCache = false,
+  overrideLat?: number,
+  overrideLon?: number,
+  signal?: AbortSignal,
+) =>
   fetchJSON<SatelliteTrailResult>('/satellite/detect', {
     method: 'POST',
     body: JSON.stringify({ filePath, skipCache, overrideLat, overrideLon }),
+    signal,
   });
 
-export const identifySatellites = (filePath: string, overrideLat?: number, overrideLon?: number) =>
+export const identifySatellites = (
+  filePath: string,
+  overrideLat?: number,
+  overrideLon?: number,
+  signal?: AbortSignal,
+) =>
   fetchJSON<SatelliteTrailResult>('/satellite/detect', {
     method: 'POST',
     body: JSON.stringify({ filePath, identifyOnly: true, overrideLat, overrideLon }),
+    signal,
   });
 export const clearSatelliteCache = () =>
   fetchJSON<{ cleared: boolean; count?: number }>('/satellite/cache', { method: 'DELETE' });
+
+export const refreshSatelliteCatalog = () =>
+  fetchJSON<{ count: number; refreshed: boolean }>('/satellite/catalog/refresh', { method: 'POST' });
 
 interface TleCatalogStatus {
   count: number;
   lastFetch: string | null;
   isStale: boolean;
+  /** True when the in-memory catalog is the bundled seed snapshot, because no
+   *  fetch has ever succeeded on this machine and there is no cache on disk. */
+  usingSeed: boolean;
+  /** Epoch of the bundled seed (YYYY-MM-DD), shown when usingSeed is true. */
+  seedEpoch: string;
+  /** Reason the last live fetch failed (CelesTrak block notice, or a connect
+   *  timeout string when the IP is firewalled). Null when the last fetch was OK. */
+  lastError: string | null;
+  /** Minutes until the next automatic fetch attempt, while backing off from a
+   *  failure. 0 when a fetch is allowed now. */
+  retryInMinutes: number;
   archiveRange: { oldest: string | null; newest: string | null; count: number };
 }
 

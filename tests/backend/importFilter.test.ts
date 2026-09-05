@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { shouldImportFile, classifyImportFile } from '../../server/lib/library/importFilter.js';
+import {
+  shouldImportFile,
+  classifyImportFile,
+  isDwarfInternalArtifact,
+  isDwarfMasterStack,
+} from '../../server/lib/library/importFilter.js';
 
 const SUBS_ON = { importSubFrames: true, importFits: true, importJpg: true, importThumbnails: true };
 
@@ -119,6 +124,18 @@ describe('archive mode (archiveAllFiles)', () => {
   it('keeps the master stack either way, since that was always a bug', () => {
     expect(classifyImportFile('img_stacked_all.tif', off)).toEqual({ import: true });
     expect(classifyImportFile('img_stacked_all.tif', on)).toEqual({ import: true });
+  });
+
+  it('flags the plate-solve / stack-count working images as internal artifacts', () => {
+    // These are archived (kept on disk) but no client should list them as photos.
+    expect(isDwarfInternalArtifact('img_reference.png')).toBe(true);
+    expect(isDwarfInternalArtifact('img_stacked_counter.png')).toBe(true);
+    expect(isDwarfInternalArtifact('IMG_Reference.PNG')).toBe(true);
+    // The master stack and a user's own file are not artifacts.
+    expect(isDwarfInternalArtifact('img_stacked_all.tif')).toBe(false);
+    expect(isDwarfMasterStack('img_stacked_all.tif')).toBe(true);
+    expect(isDwarfInternalArtifact('M31_reference_shot.png')).toBe(false);
+    expect(isDwarfInternalArtifact('stacked.jpg')).toBe(false);
   });
 
   it('keeps sidecars either way', () => {

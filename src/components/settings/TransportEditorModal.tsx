@@ -7,11 +7,12 @@ import {
   updateProfileTransport,
   deleteProfileTransport,
   testTelescopeConnection,
+  MASKED_PASSWORD,
   type TelescopeProfile,
   type TelescopeTransport,
   type ConnectionType,
 } from '../../lib/api/telescopes';
-import { isDwarfKind } from '../../lib/telescopePresets';
+import { isAsiairKind, isDwarfKind } from '../../lib/telescopePresets';
 import { shareNameError } from '../../lib/shareName';
 import { hostAddressError } from '../../lib/hostAddress';
 import { getInputClass, getLabelClass, getHelperClass } from './SettingsUI';
@@ -63,6 +64,7 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
   const labelClass = getLabelClass(isDark);
   const helperClass = getHelperClass(isDark);
   const isDwarf = isDwarfKind(profile.kind);
+  const isAsiair = isAsiairKind(profile.kind);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -97,7 +99,14 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
   });
 
   const transports = profile.transports ?? [];
-  const availableKinds: ConnectionType[] = isDwarf ? ['ftp', 'local'] : ['smb', 'ftp', 'local'];
+  // Dwarf runs no SMB share; ASIAIR runs no FTP server. Both are enforced
+  // server-side too (server/routes/telescopes.ts), so this only saves the user
+  // from picking an option that would be rejected on save.
+  const availableKinds: ConnectionType[] = isDwarf
+    ? ['ftp', 'local']
+    : isAsiair
+      ? ['smb', 'local']
+      : ['smb', 'ftp', 'local'];
 
   function startAdd() {
     setForm(blankForm(availableKinds[0]));
@@ -132,6 +141,9 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
         username: form.username.trim(),
         password: form.password,
         connectionType: form.kind,
+        // Editing a saved transport: let the server use the stored password
+        // when the field still holds the mask.
+        ...(editingId ? { profileId: profile.id, transportId: editingId } : {}),
       });
       if (result.connected) {
         setTestStatus('success');
@@ -201,7 +213,7 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
             }`}
           >
             <PinOff className="w-3.5 h-3.5" />
-            Using a manual pin — switch back to automatic selection
+            Using a manual pin. Switch back to automatic selection
           </button>
         )}
 
@@ -270,6 +282,7 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
                     labelClass={labelClass}
                     availableKinds={availableKinds}
                     kindLocked
+                    isEditing
                     onTest={canTest ? handleTest : undefined}
                     testStatus={testStatus}
                     testMessage={testMessage}
@@ -296,6 +309,7 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
               labelClass={labelClass}
               availableKinds={availableKinds}
               kindLocked={false}
+              isEditing={false}
               onTest={canTest ? handleTest : undefined}
               testStatus={testStatus}
               testMessage={testMessage}
@@ -335,7 +349,7 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
 }
 
 function TransportForm({
-  form, setForm, isDark, inputClass, labelClass, availableKinds, kindLocked,
+  form, setForm, isDark, inputClass, labelClass, availableKinds, kindLocked, isEditing,
   onTest, testStatus, testMessage, error, onCancel, onSubmit, canSubmit, submitting, submitLabel,
 }: {
   form: FormState;
@@ -345,6 +359,7 @@ function TransportForm({
   labelClass: string;
   availableKinds: ConnectionType[];
   kindLocked: boolean;
+  isEditing: boolean;
   onTest?: () => void;
   testStatus: 'idle' | 'testing' | 'success' | 'error';
   testMessage: string;
@@ -367,7 +382,13 @@ function TransportForm({
           <label className={labelClass}>Type</label>
           <select
             value={form.kind}
-            onChange={e => setForm({ ...blankForm(e.target.value as ConnectionType) })}
+            onChange={e => {
+              // The options are built from availableKinds, so a value outside
+              // that list means the DOM and the model have drifted. Ignore it
+              // rather than assert it into the union.
+              const kind = availableKinds.find(k => k === e.target.value);
+              if (kind) setForm({ ...blankForm(kind) });
+            }}
             className={inputClass}
           >
             {availableKinds.map(k => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
@@ -436,6 +457,11 @@ function TransportForm({
                 onChange={e => setForm({ ...form, password: e.target.value })}
                 className={inputClass}
               />
+              {isEditing && form.password === MASKED_PASSWORD && (
+                <p className={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Leave as is to keep the saved password. Test connection uses it too.
+                </p>
+              )}
             </div>
           </div>
         </>

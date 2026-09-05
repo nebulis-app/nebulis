@@ -37,6 +37,29 @@ const MAX_ZOOM = 16;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/** The fields we need off Safari's non-standard GestureEvent. */
+interface GestureEventFields {
+  /** Cumulative pinch scale since `gesturestart`, not a per-event delta. */
+  scale: number;
+  clientX: number;
+  clientY: number;
+}
+
+/**
+ * Safari's `GestureEvent` has no TypeScript DOM lib definition, so the listener
+ * only ever sees a base `Event`. Read the three fields we need through runtime
+ * checks rather than asserting the shape: on any browser that ever dispatches a
+ * `gesturechange` without them, this returns null and the pinch is ignored
+ * instead of multiplying zoom by `undefined` and blanking the image.
+ */
+function parseGestureEvent(e: Event): GestureEventFields | null {
+  if (!('scale' in e) || !('clientX' in e) || !('clientY' in e)) return null;
+  const { scale, clientX, clientY } = e;
+  if (typeof scale !== 'number' || typeof clientX !== 'number' || typeof clientY !== 'number') return null;
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  return { scale, clientX, clientY };
+}
+
 export function useZoomPan(
   /** Changing this resets zoom and pan (used to reset on navigation). */
   resetKey: unknown,
@@ -163,6 +186,50 @@ export function useZoomPan(
     node.addEventListener('wheel', onWheel, { passive: false });
     return () => node.removeEventListener('wheel', onWheel);
   }, [node, zoomBy]);
+
+  /**
+   * Safari's trackpad pinch, which the wheel handler above never sees.
+   *
+   * Chrome and Firefox report a trackpad pinch as a `wheel` event with
+   * `ctrlKey` set, which is what the handler above intercepts. Safari does not
+   * do that; it dispatches its own non-standard `gesturestart` /
+   * `gesturechange` events instead, and does not fall back to `wheel` either.
+   * Left unhandled, a Safari user pinching over the picture zoomed the whole
+   * page instead, which is the bug this exists to close.
+   *
+   * `gesturechange.scale` is cumulative from the gesture's start, not a delta,
+   * so the zoom at `gesturestart` has to be kept and multiplied by it each
+   * change rather than compounded. It is kept in a ref rather than a variable
+   * closed over by this effect: `zoomTo` (an effect dependency) gets a new
+   * identity on every zoom change, so the effect re-subscribes on every single
+   * `gesturechange`. A plain variable would be reinitialised to the
+   * already-updated zoom on each of those, throwing away the gesture's real
+   * starting point and compounding `scale` against the wrong base — the same
+   * reason the touch-pinch code below keeps its baseline in `pinchRef`.
+   */
+  const gestureStartZoomRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!node) return;
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      gestureStartZoomRef.current = zoom;
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      const g = parseGestureEvent(e);
+      if (!g) return;
+      zoomTo((gestureStartZoomRef.current ?? zoom) * g.scale, g);
+    };
+    const onGestureEnd = () => { gestureStartZoomRef.current = null; };
+    node.addEventListener('gesturestart', onGestureStart);
+    node.addEventListener('gesturechange', onGestureChange);
+    node.addEventListener('gestureend', onGestureEnd);
+    return () => {
+      node.removeEventListener('gesturestart', onGestureStart);
+      node.removeEventListener('gesturechange', onGestureChange);
+      node.removeEventListener('gestureend', onGestureEnd);
+    };
+  }, [node, zoom, zoomTo]);
 
   // Pointer panning. Move and release are bound to the document so a fast drag
   // that leaves the pane does not strand the gesture in a pressed state.

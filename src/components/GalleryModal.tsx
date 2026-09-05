@@ -4,12 +4,13 @@ import {
   Loader2, Download, Trash2, FileImage, Image, Pencil, Contrast, Star, Share2,
 } from 'lucide-react';
 import { deleteLibraryFile } from '../lib/api/library';
-import { useTheme } from '../hooks/useTheme';
 import { FitsViewer } from './FitsViewer';
 import { FitsThumbnail } from './FitsThumbnail';
 import { ConfirmModal } from './ConfirmModal';
 import type { SessionFile, ProcessedImage } from '../types';
 import { previewSrcFor, thumbSrcFor, canPreviewImage } from '../lib/sessionImageSrc';
+import { isRenderableProcessed, isFitsProcessed } from '../lib/processedFormats';
+import type { OverwriteTarget } from './ImageEditorModal';
 import { LightboxFrame, LightboxPane } from './lightbox/LightboxFrame';
 import { LightboxImage } from './lightbox/LightboxImage';
 import { useZoomPan } from './lightbox/useZoomPan';
@@ -18,6 +19,7 @@ import { useLightboxKeys } from './lightbox/useLightboxKeys';
 import { useAdjacentPreload } from './lightbox/useAdjacentPreload';
 import { shareImage, shareOutcomeMessage } from './lightbox/shareImage';
 import { sessionFileMeta, processedImageMeta } from './lightbox/itemMeta';
+import { LB_ICON_BTN, LB_TEXT_BTN, LB_DANGER_BTN } from './lightbox/chrome';
 import type { ThumbEntry } from './lightbox/LightboxThumbStrip';
 
 export type GalleryItem =
@@ -32,7 +34,7 @@ interface Props {
   date: string;
   isAdmin: boolean;
   onClose: () => void;
-  onEditImage: (url: string, name: string, kind: 'telescope' | 'processed') => void;
+  onEditImage: (url: string, name: string, kind: 'telescope' | 'processed', overwriteTarget?: OverwriteTarget) => void;
   onHeaderFileClick: (file: SessionFile) => void;
   onSetAsGallery: (img: ProcessedImage) => void;
   onDeleteProcessed: (id: string) => void;
@@ -40,11 +42,21 @@ interface Props {
   deletingProcessedId: string | null;
   /** Object display name, used to give the header a real title. */
   objectName?: string;
+  /** Hides the Edit action. For a caller with no working onEditImage handler
+   *  (e.g. an object-level aggregate view spanning many/no sessions, where
+   *  "edit and save back into session X" doesn't have a single X to target)
+   *  rather than wiring a handler that would silently do nothing. */
+  hideEditButton?: boolean;
 }
 
-/** `<img>` src for an item, or null when the format cannot be rendered. */
+/** `<img>` src for an item, or null when the format cannot be rendered.
+ *  A processed image can be a FITS restack or a stored-only deliverable
+ *  (XISF, PSD, RAW) same as a raw session file can — those get routed to
+ *  the FITS viewer or the "no preview" card below instead of an `<img>`. */
 function displaySrc(item: GalleryItem): string | null {
-  if (item.kind === 'processed') return item.img.url;
+  if (item.kind === 'processed') {
+    return isRenderableProcessed(item.img.originalName) ? item.img.url : null;
+  }
   if (item.file.type === 'fits') return null;
   if (!canPreviewImage(item.file)) return null;
   return previewSrcFor(item.file);
@@ -65,8 +77,8 @@ export function GalleryModal({
   settingGalleryId,
   deletingProcessedId,
   objectName,
+  hideEditButton,
 }: Props) {
-  const { isDark } = useTheme();
   const queryClient = useQueryClient();
 
   // Snapshot of `items` taken on open, so deletions can be reflected without
@@ -75,6 +87,9 @@ export function GalleryModal({
   const [index, setIndex] = useState(0);
   const [pendingDelete, setPendingDelete] = useState<GalleryItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Synchronous re-entry guard for confirmDelete: two clicks in one tick land
+  // before the `deleting` state commits, but a ref updates immediately.
+  const deletingRef = useRef(false);
   const [sharing, setSharing] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -100,13 +115,33 @@ export function GalleryModal({
   }
 
   const item = localItems[index];
-  const isFile = item?.kind === 'file';
-  const isFits = isFile && item.file.type === 'fits';
-  const noPreview = isFile && !isFits && !canPreviewImage(item.file);
+  const isFits = item
+    ? item.kind === 'file' ? item.file.type === 'fits' : isFitsProcessed(item.img.originalName)
+    : false;
+  const noPreview = item
+    ? item.kind === 'file'
+      ? !isFits && !canPreviewImage(item.file)
+      : !isFits && !isRenderableProcessed(item.img.originalName)
+    : false;
 
   const zp = useZoomPan(index);
   const fits = useFitsZoomControls();
   const imageZoom = useMemo(() => zoomControlsFromPan(zp), [zp]);
+
+  /**
+   * Shape of the decoded FITS frame, so the panel can size itself to a raw
+   * frame the same way it does to a JPG.
+   *
+   * Without this, stepping from a stack to the sub-frame it came from snapped
+   * the whole viewer from portrait-width to full width, even though both
+   * frames came off the same sensor and are the same shape. Not cleared on
+   * navigation: `LightboxFrame` holds the last known shape until a new one
+   * arrives, and clearing here would reintroduce the snap it prevents.
+   */
+  const [fitsAspect, setFitsAspect] = useState<number | null>(null);
+  const noteFitsSize = useCallback((w: number, h: number) => {
+    setFitsAspect(h > 0 ? w / h : null);
+  }, []);
 
   // Reset the FITS controls when moving between frames, the same way the image
   // engine resets itself. Done during render so a new frame is never drawn for
@@ -174,8 +209,14 @@ export function GalleryModal({
   }, [index, localItems.length, onClose]);
 
   const confirmDelete = useCallback(async () => {
+    // Re-entry guard: the confirm dialog stays mounted through the request, so a
+    // double-click otherwise fires two DELETEs and runs removeCurrent() twice,
+    // splicing by a stale index and evicting the neighbouring (still-present)
+    // frame from the strip.
+    if (deletingRef.current) return;
     const target = pendingDelete;
     if (!target) return;
+    deletingRef.current = true;
     setDeleting(true);
     try {
       if (target.kind === 'file') {
@@ -194,6 +235,7 @@ export function GalleryModal({
       flash(err instanceof Error ? err.message : 'Delete failed');
       setPendingDelete(null);
     } finally {
+      deletingRef.current = false;
       setDeleting(false);
     }
   }, [pendingDelete, queryClient, objectId, date, onDeleteProcessed, removeCurrent, flash]);
@@ -220,10 +262,21 @@ export function GalleryModal({
 
   const thumbs = useMemo<ThumbEntry[]>(() => localItems.map(entry => {
     if (entry.kind === 'processed') {
+      const img = entry.img;
+      const renderable = isRenderableProcessed(img.originalName);
+      const fits = !renderable && isFitsProcessed(img.originalName);
       return {
-        key: entry.img.id,
-        label: entry.img.title || entry.img.originalName,
-        content: <img src={entry.img.url} alt="" className="w-full h-full object-cover" loading="lazy" />,
+        key: img.id,
+        label: img.title || img.originalName,
+        content: renderable ? (
+          <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+        ) : fits ? (
+          <FitsThumbnail url={img.url} thumbUrl={img.thumbUrl ?? undefined} stretch={1.0} isDark />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-white/[0.06] text-white/40">
+            <FileImage className="h-5 w-5" />
+          </div>
+        ),
       };
     }
     const f = entry.file;
@@ -237,22 +290,18 @@ export function GalleryModal({
       key: f.path,
       label: f.name,
       content: thumbIsFits ? (
-        <FitsThumbnail url={thumbSrcFor(f)} thumbUrl={f.thumbUrl} stretch={1.0} isDark={isDark} />
+        <FitsThumbnail url={thumbSrcFor(f)} thumbUrl={f.thumbUrl} stretch={1.0} isDark />
       ) : unrenderable ? (
-        <div className={`w-full h-full flex items-center justify-center ${isDark ? 'bg-slate-800/60 text-slate-500' : 'bg-slate-100 text-slate-400'}`}>
-          <FileImage className="w-5 h-5" />
+        <div className="flex h-full w-full items-center justify-center bg-white/[0.06] text-white/40">
+          <FileImage className="h-5 w-5" />
         </div>
       ) : (
         <img src={thumbSrcFor(f)} alt="" className="w-full h-full object-cover" loading="lazy" />
       ),
     };
-  }), [localItems, isDark]);
+  }), [localItems]);
 
   if (!isOpen || !item) return null;
-
-  const iconBtn = `p-2 rounded-lg transition disabled:opacity-40 ${
-    isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'
-  }`;
 
   // Edit and Share both need a decodable image in hand: Edit feeds the file
   // into a canvas, Share fetches it as a blob. A TIFF or 16-bit PNG can be
@@ -261,42 +310,45 @@ export function GalleryModal({
 
   const actions = (
     <>
-      {isFits && (
+      {/* No header source exists for a processed FITS restack (only raw
+          session files have one), so this stays file-only. */}
+      {isFits && item.kind === 'file' && (
         <button
           type="button"
           onClick={() => onHeaderFileClick(item.file)}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
-            isDark ? 'hover:bg-slate-800 text-teal-400' : 'hover:bg-slate-100 text-teal-600'
-          }`}
+          className={`${LB_TEXT_BTN} text-teal-300 hover:text-teal-200`}
         >
           FITS Header
         </button>
       )}
 
-      {isAdmin && shareable && !isFits && (
+      {isAdmin && shareable && !isFits && !hideEditButton && (
         <button
           type="button"
           onClick={() => onEditImage(
             item.kind === 'file' ? item.file.downloadUrl : item.img.url,
             fileName,
             item.kind === 'file' ? 'telescope' : 'processed',
+            item.kind === 'file'
+              ? (/\.jpe?g$/i.test(item.file.name) ? { kind: 'telescope', path: item.file.path } : undefined)
+              : { kind: 'processed', id: item.img.id },
           )}
           title="Edit image"
           aria-label="Edit image"
-          className={iconBtn}
+          className={LB_ICON_BTN}
         >
-          <Pencil className="w-4 h-4" />
+          <Pencil className="h-4 w-4" />
         </button>
       )}
 
       {shareable && (
-        <button type="button" onClick={handleShare} disabled={sharing} title="Share" aria-label="Share" className={iconBtn}>
-          {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+        <button type="button" onClick={handleShare} disabled={sharing} title="Share" aria-label="Share" className={LB_ICON_BTN}>
+          {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
         </button>
       )}
 
-      <a href={downloadUrl} download={fileName} title="Download (D)" aria-label="Download" className={iconBtn}>
-        <Download className="w-4 h-4" />
+      <a href={downloadUrl} download={fileName} title="Download (D)" aria-label="Download" className={LB_ICON_BTN}>
+        <Download className="h-4 w-4" />
       </a>
 
       {isAdmin && item.kind === 'processed' && (
@@ -306,11 +358,11 @@ export function GalleryModal({
           disabled={!!settingGalleryId}
           title="Set as gallery image"
           aria-label="Set as gallery image"
-          className={iconBtn}
+          className={LB_ICON_BTN}
         >
           {settingGalleryId === item.img.id
-            ? <Loader2 className="w-4 h-4 animate-spin" />
-            : <Star className="w-4 h-4" />}
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : <Star className="h-4 w-4" />}
         </button>
       )}
 
@@ -321,21 +373,20 @@ export function GalleryModal({
           disabled={busyDelete}
           title="Delete"
           aria-label="Delete"
-          className={`p-2 rounded-lg transition disabled:opacity-40 text-red-400 hover:text-red-500 ${
-            isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100'
-          }`}
+          className={LB_DANGER_BTN}
         >
-          {busyDelete ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+          {busyDelete ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
         </button>
       )}
-
-      <div className={`w-px h-5 mx-1 flex-shrink-0 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
     </>
   );
 
   const stretchControl = isFits ? (
-    <>
-      <Contrast className={`w-4 h-4 flex-shrink-0 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+    // h-8 matches the buttons in the neighbouring groups, so a range input
+    // (which has no intrinsic height to speak of) does not make its pill
+    // shorter than every other pill in the row.
+    <div className="flex h-8 items-center gap-2 px-2">
+      <Contrast className="h-4 w-4 flex-shrink-0 text-white/50" />
       <input
         type="range" min="0" max="1" step="0.01" value={fits.stretch}
         onChange={e => fits.setStretch(parseFloat(e.target.value))}
@@ -343,8 +394,7 @@ export function GalleryModal({
         title="Stretch"
         aria-label="Stretch"
       />
-      <div className={`w-px h-5 mx-1 flex-shrink-0 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
-    </>
+    </div>
   ) : null;
 
   return (
@@ -352,11 +402,10 @@ export function GalleryModal({
       <LightboxFrame
         isOpen
         onClose={onClose}
-        isDark={isDark}
         dialogTitle={`Image viewer: ${meta.title}`}
         titleIcon={isFits
-          ? <FileImage className="w-5 h-5 text-teal-500 flex-shrink-0" />
-          : <Image className="w-5 h-5 text-accent-500 flex-shrink-0" />}
+          ? <FileImage className="h-4.5 w-4.5 flex-shrink-0 text-teal-300" />
+          : <Image className="h-4.5 w-4.5 flex-shrink-0 text-accent-400" />}
         title={meta.title}
         subtitle={meta.detail}
         index={index}
@@ -370,40 +419,48 @@ export function GalleryModal({
         thumbs={thumbs}
         swipeDisabled={isFits ? !fits.controls.isFit : !zp.isFit}
         status={status}
+        // The thumbnail, not `src`: blurring a 4000px stacked frame to nothing
+        // is work the GPU does not need to do, and the tile is already cached.
+        ambientSrc={noPreview || isFits
+          ? null
+          : item.kind === 'file' ? thumbSrcFor(item.file) : item.img.url}
+        contentAspect={isFits ? fitsAspect : (zp.natural ? zp.natural.w / zp.natural.h : null)}
       >
         {noPreview ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <FileImage className={`w-12 h-12 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
-            <div className="text-center">
-              <p className={`text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                No preview for this format
-              </p>
-              <p className={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+            <FileImage className="h-12 w-12 text-white/20" />
+            <div className="space-y-1 text-center">
+              <p className="text-sm font-medium text-white/80">No preview for this format</p>
+              <p className="text-xs text-white/45">
                 {fileName} is stored in full and can be downloaded.
               </p>
             </div>
             <a
               href={downloadUrl}
               download={fileName}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium ${
-                isDark ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
+              className="inline-flex items-center gap-2 rounded-full bg-white/[0.07] px-4 py-2 text-sm
+                font-medium text-white/85 ring-1 ring-inset ring-white/15 backdrop-blur-md transition
+                hover:bg-white/15 hover:text-white"
             >
-              <Download className="w-4 h-4" />
+              <Download className="h-4 w-4" />
               Download
             </a>
           </div>
         ) : isFits ? (
           <div className="absolute inset-2 sm:inset-4 flex flex-col">
             <FitsViewer
-              url={item.file.downloadUrl}
-              isDark={isDark}
-              filePath={item.file.path}
-              fileType={item.file.fileType}
+              url={item.kind === 'file' ? item.file.downloadUrl : item.img.url}
+              // The stage is night-side in every theme, so the FITS canvas and
+              // its loading state are told the same, rather than following the
+              // page's theme and flashing a light panel inside a black frame.
+              isDark
+              filePath={item.kind === 'file' ? item.file.path : item.img.path}
+              fileType={item.kind === 'file' ? item.file.fileType : undefined}
               hideControls
               externalZoom={fits.zoom}
               externalStretch={fits.stretch}
               onFitZoomComputed={fits.setFitZoom}
+              onNaturalSize={noteFitsSize}
             />
           </div>
         ) : (
@@ -419,7 +476,6 @@ export function GalleryModal({
                 thumbSrc={item.kind === 'file' ? thumbSrcFor(item.file) : undefined}
                 alt={meta.title}
                 zp={zp}
-                isDark={isDark}
               />
             )}
           </LightboxPane>
@@ -435,6 +491,7 @@ export function GalleryModal({
               : 'This will permanently delete the processed image. This cannot be undone.'
           }
           confirmLabel={deleting ? 'Deleting...' : 'Delete'}
+          pending={deleting}
           onCancel={() => setPendingDelete(null)}
           onConfirm={confirmDelete}
         />

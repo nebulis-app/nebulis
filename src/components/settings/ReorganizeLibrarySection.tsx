@@ -17,6 +17,7 @@ export function ReorganizeLibrarySection({ isDark }: { isDark: boolean }) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
 
   const { data, refetch } = useQuery({
     queryKey: ['library-renest'],
@@ -31,6 +32,8 @@ export function ReorganizeLibrarySection({ isDark }: { isDark: boolean }) {
   const summary = status?.summary;
 
   const run = async () => {
+    if (starting || running) return;
+    setStarting(true);
     setError(null);
     setConfirming(false);
     try {
@@ -42,6 +45,8 @@ export function ReorganizeLibrarySection({ isDark }: { isDark: boolean }) {
       await queryClient.invalidateQueries({ queryKey: ['gallery'] });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Reorganize failed');
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -138,9 +143,10 @@ export function ReorganizeLibrarySection({ isDark }: { isDark: boolean }) {
               <>
                 <button
                   onClick={run}
+                  disabled={starting || running}
                   className={`${btnBase} bg-accent-500 hover:bg-accent-600 text-white`}
                 >
-                  Yes, reorganize
+                  {starting ? 'Starting…' : 'Yes, reorganize'}
                 </button>
                 <button
                   onClick={() => setConfirming(false)}

@@ -1,4 +1,4 @@
-import type { AstroObject, Session, ProcessedImage } from '../../types';
+import type { AstroObject, Session, ProcessedImage, SessionCaptureSummary } from '../../types';
 export type { ProcessedImage };
 import { fetchJSON, authHeaders, BASE } from './client';
 import type { ConnectionType as TransportKind } from './telescopes';
@@ -12,18 +12,46 @@ interface FitsHeaderData {
 }
 
 
+/** Mirrors ImportSkipReason in server/lib/library/importFilter.ts — kept as an
+ *  explicit union (not `string`) so a reason renamed or added server-side is a
+ *  compile error here instead of a silently-unhandled string. There's no
+ *  shared module across the server/client boundary yet (see
+ *  church-audit/church-crusade.md finding W23), so this list must be updated
+ *  by hand alongside the server's. */
+export type ImportSkipReason =
+  | 'not-a-real-file'
+  | 'processing-artifact'
+  | 'failed-frame'
+  | 'non-observation-folder'
+  | 'undecodable-session-folder'
+  | 'deleted-session'
+  | 'date-dropped'
+  | 'sub-frames-disabled'
+  | 'sub-folder-preview'
+  | 'thumbnails-disabled'
+  | 'jpg-disabled'
+  | 'fits-disabled'
+  | 'videos-disabled'
+  | 'unsupported-type';
+
 /** One reason files were left out of an import, and how many. `label` is
  *  server-authored and reads as "<count> <label>". Produced identically by the
  *  folder-import scan, the folder-import commit, and the telescope import, so
  *  one renderer covers all three. */
 export interface ImportSkip {
-  reason: string;
+  reason: ImportSkipReason;
   label: string;
   count: number;
-  /** Total size of the group. 0 means the size was not measured (a remote
-   *  listing without sizes, or a history row from before this field existed),
-   *  which the UI renders the same as absent rather than as "0 B". */
+  /** Total size of the group. Always present on the wire (parseSkipped
+   *  normalizes it), but optional here so a hand-built ImportSkip in a test
+   *  doesn't need to fill in a field it isn't testing. */
   bytes?: number;
+  /** Up to 200 of the skipped filenames, so the UI can list which files a
+   *  reason covers. Always present on the wire (parseSkipped normalizes it to
+   *  `[]`); optional here for the same reason as `bytes` above. Absent
+   *  semantically only for `deleted-session` (which routes to the restore
+   *  view instead). `count > samples.length` means the list was truncated. */
+  samples?: string[];
 }
 
 export interface ImportStatus {
@@ -67,9 +95,29 @@ export interface ImportStatus {
    *  on disk. Only set by a folder import with archive mode on. */
   archivedFiles?: number;
   archivePath?: string | null;
+  /** Same idea, for RESTACKED files that never matched a library object —
+   *  a separate count/path since these land in the shared RESTACKED/ folder
+   *  at the library root, not the telescope-scoped archive above. */
+  restackArchivedFiles?: number;
+  restackArchivePath?: string | null;
 }
 
 export const getLibraryObjects = () => fetchJSON<AstroObject[]>('/library/objects');
+
+/** The product tour's demo object. Planted when the tour starts so the tour
+ *  has something real to walk through on an install with an empty library,
+ *  and removed when it ends — it is a stage prop, never left behind. Both are
+ *  no-ops when the library already holds real objects. */
+export interface TourDemoState {
+  /** The demo library object was planted / removed. */
+  object: boolean;
+  /** Coordinates were filled in on the observing site / handed back. */
+  location: boolean;
+}
+export const plantTourSampleObject = () =>
+  fetchJSON<TourDemoState>('/library/sample-object', { method: 'POST' });
+export const purgeTourSampleObject = () =>
+  fetchJSON<TourDemoState>('/library/sample-object', { method: 'DELETE' });
 
 /** One non-observation folder archive mode kept but did not model. */
 export interface ArchivedFolder {
@@ -79,8 +127,17 @@ export interface ArchivedFolder {
   /** Absolute path on the server, so it can be opened in a stacking app. */
   path: string;
 }
-export const getLibraryArchive = () =>
-  fetchJSON<{ path: string; folders: ArchivedFolder[] }>('/library/archive');
+/** Omit telescopeId for the shared unscoped bucket (a folder-import run with
+ *  no telescope assigned, or pre-scoping data — see archiveFolders.ts). */
+export const getLibraryArchive = (telescopeId?: string) =>
+  fetchJSON<{ path: string; folders: ArchivedFolder[] }>(
+    telescopeId ? `/library/archive?telescopeId=${encodeURIComponent(telescopeId)}` : '/library/archive',
+  );
+
+/** Every scope (telescope id, or null for the shared unscoped bucket) that
+ *  currently has archived data. */
+export const getArchiveScopes = () =>
+  fetchJSON<Array<string | null>>('/library/archive/scopes');
 export interface LibraryObjectFilter {
   id: string;
   label: string;
@@ -143,6 +200,22 @@ export const cancelImport = (runId?: string) => fetchJSON<{ cancelled: boolean }
   body: JSON.stringify(runId ? { runId } : {}),
 });
 
+/** A catalog object touched by one sync run: at least one new file landed in
+ *  it, with a flag for whether the run created the object outright. */
+export interface TouchedObject {
+  objectId: string;
+  name: string;
+  isNew: boolean;
+}
+
+/** An observation night (object + date) touched by one sync run. */
+export interface TouchedSession {
+  objectId: string;
+  objectName: string;
+  date: string;
+  isNew: boolean;
+}
+
 export interface ImportHistoryEntry {
   id: number;
   startedAt: string;
@@ -167,6 +240,12 @@ export interface ImportHistoryEntry {
   /** What the run left behind and why. Null on rows recorded before this was
    *  tracked, and on runs that skipped nothing. */
   skipped: ImportSkip[] | null;
+  /** Objects that got new files this run. Null on rows recorded before this
+   *  was tracked, and on runs that added no files. */
+  objectsTouched: TouchedObject[] | null;
+  /** Observation nights that got new files this run. Same null rule as
+   *  objectsTouched. */
+  sessionsTouched: TouchedSession[] | null;
 }
 export const getImportHistory = (limit = 10, offset = 0) =>
   fetchJSON<{ entries: ImportHistoryEntry[]; total: number }>(`/library/import/history?limit=${limit}&offset=${offset}`);
@@ -175,6 +254,17 @@ export const getLibrarySessions = (objectId: string, opts?: { includeVariants?: 
   fetchJSON<Session[]>(
     `/library/objects/${encodeURIComponent(objectId)}/sessions${opts?.includeVariants ? '?includeVariants=true' : ''}`
   );
+/**
+ * What the telescope recorded for each night of one object, keyed by observing
+ * night. Backed by the device's own sidecar, so a night is absent when nothing
+ * was recorded: render that as unknown, never as zero. Telescopes that write no
+ * sidecar (currently anything but a Dwarf) return an empty object.
+ */
+export const getObjectCapture = (objectId: string) =>
+  fetchJSON<Record<string, SessionCaptureSummary>>(
+    `/library/objects/${encodeURIComponent(objectId)}/capture`,
+  );
+
 export const getLibraryFitsHeaders = (path: string) =>
   fetchJSON<FitsHeaderData>(`/library/headers?path=${encodeURIComponent(path)}`);
 export const deleteLibraryFile = (path: string) =>
@@ -230,31 +320,6 @@ export const moveObservation = (objectId: string, date: string, toObjectId: stri
     { method: 'POST', body: JSON.stringify({ toObjectId }) }
   );
 
-interface SubFramePreviewGroup {
-  folder: string;
-  count: number;
-  files: string[];
-}
-
-export interface SubFramePreviewPurgeResult {
-  scannedObjects: number;
-  matched: number;
-  deleted: number;
-  errors: number;
-  groups: SubFramePreviewGroup[];
-}
-
-/**
- * Remove frame-named preview JPGs (e.g. Light_*.jpg) that older imports copied
- * into the library. `dryRun` counts without deleting. Raw .fit sub-frames and
- * stacked JPGs are never affected.
- */
-export const purgeSubFramePreviews = (dryRun: boolean) =>
-  fetchJSON<SubFramePreviewPurgeResult>(
-    '/library/maintenance/purge-subframe-previews',
-    { method: 'POST', body: JSON.stringify({ dryRun }) }
-  );
-
 export async function createManualObservation(params: {
   objectName: string;
   date: string;
@@ -287,6 +352,13 @@ export const toggleFavorite = (objectId: string, isFavorite: boolean) =>
 export const syncSessionSubFrames = (objectId: string, date: string) =>
   fetchJSON<{ started: boolean; objectId: string; date: string }>(
     `/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/sync-subframes`,
+    { method: 'POST' }
+  );
+
+/** Sync raw sub-frames for every session of the object in one pass. */
+export const syncObjectSubFrames = (objectId: string) =>
+  fetchJSON<{ started: boolean; objectId: string }>(
+    `/library/objects/${encodeURIComponent(objectId)}/sync-subframes`,
     { method: 'POST' }
   );
 
@@ -414,7 +486,7 @@ function parseProcessedImage(value: unknown): ProcessedImage {
   return {
     id: reqStr('id'),
     objectId: reqStr('objectId'),
-    date: reqStr('date'),
+    date: typeof v.date === 'string' ? v.date : null,
     filename: reqStr('filename'),
     originalName: reqStr('originalName'),
     title: reqStr('title'),
@@ -424,8 +496,10 @@ function parseProcessedImage(value: unknown): ProcessedImage {
     uploadedAt: reqStr('uploadedAt'),
     url: reqStr('url'),
     path: reqStr('path'),
+    thumbUrl: typeof v.thumbUrl === 'string' ? v.thumbUrl : null,
     runId: typeof v.runId === 'string' ? v.runId : null,
     runDates: Array.isArray(v.runDates) ? v.runDates.filter((d): d is string => typeof d === 'string') : null,
+    source: v.source === 'dwarf-restack' ? 'dwarf-restack' : 'user',
   };
 }
 
@@ -734,9 +808,62 @@ export async function uploadProcessedImage(
   return parseProcessedImage(body?.data ?? body);
 }
 
+/** Overwrite an existing processed image's file in place, keeping its id,
+ *  title, notes and session date. Backs the image editor's "Save" (vs
+ *  `uploadProcessedImage`, which is "Save as new version"). */
+export async function overwriteProcessedImage(
+  objectId: string,
+  id: string,
+  file: File,
+): Promise<ProcessedImage> {
+  const formData = new FormData();
+  formData.append('image', file, file.name);
+  const res = await fetch(
+    `${BASE}/library/objects/${encodeURIComponent(objectId)}/processed-images/${encodeURIComponent(id)}`,
+    { method: 'PUT', headers: authHeaders(), body: formData },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error?.message || body?.error || res.statusText);
+  }
+  const body = await res.json();
+  return parseProcessedImage(body?.data ?? body);
+}
+
+/** Object-scoped processed-image upload, no session date. The image is filed
+ *  against the object itself (date NULL) and appears in the aggregate
+ *  Processed Images section, not under any one observation. Metadata is not
+ *  collected on this path — just the file. */
+export async function uploadObjectProcessedImage(
+  objectId: string,
+  file: File,
+): Promise<ProcessedImage> {
+  const formData = new FormData();
+  formData.append('image', file, file.name);
+  const res = await fetch(
+    `${BASE}/library/objects/${encodeURIComponent(objectId)}/processed-images`,
+    { method: 'POST', headers: authHeaders(), body: formData },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error?.message || body?.error || res.statusText);
+  }
+  const body = await res.json();
+  return parseProcessedImage(body?.data ?? body);
+}
+
 export const deleteProcessedImage = (objectId: string, date: string, id: string) =>
   fetchJSON<{ deleted: boolean; id: string }>(
     `/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/processed-images/${id}`,
+    { method: 'DELETE' }
+  );
+
+/** Object-scoped delete, no session date — for the aggregate "Processed"
+ *  section, which mixes images from many dates (and Dwarf RESTACKED imports
+ *  with no date at all) in one list. */
+export const deleteObjectProcessedImage = (objectId: string, id: string) =>
+  fetchJSON<{ deleted: boolean; id: string }>(
+    `/library/objects/${encodeURIComponent(objectId)}/processed-images/${id}`,
     { method: 'DELETE' }
   );
 
@@ -787,9 +914,14 @@ export async function uploadLibraryFile(
   objectId: string,
   date: string,
   file: File,
+  /** When set, overwrite this exact library-relative file (image editor
+   *  "Save") instead of writing a new "…E.jpg" variant ("Save as new
+   *  version"). */
+  overwritePath?: string,
 ): Promise<{ objectId: string; date: string; filename: string }> {
   const formData = new FormData();
   formData.append('image', file, file.name);
+  if (overwritePath) formData.append('overwritePath', overwritePath);
   const res = await fetch(
     `${BASE}/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/library-files`,
     { method: 'POST', headers: authHeaders(), body: formData }
@@ -802,30 +934,57 @@ export async function uploadLibraryFile(
   return (body.data ?? body) as { objectId: string; date: string; filename: string };
 }
 
-// Download URL — streams a ZIP of locally-imported library files (no SMB)
-export const getDownloadUrl = (objectId: string, opts?: { fileType?: string; date?: string; includeVariants?: boolean }) => {
-  const params = new URLSearchParams();
-  if (opts?.fileType) params.set('fileType', opts.fileType);
-  if (opts?.date) params.set('date', opts.date);
-  if (opts?.includeVariants) params.set('includeVariants', 'true');
-  return `${BASE}/library/download/objects/${encodeURIComponent(objectId)}?${params.toString()}`;
-};
-
-// ── Async subframe ZIP (3-phase: start → poll → fetch tmp) ──
-export const getSubframeFilters = (objectId: string, dates: string[]) =>
-  fetchJSON<{ filters: string[] }>(
-    `/library/download/objects/${encodeURIComponent(objectId)}/subframe-filters`,
-    { method: 'POST', body: JSON.stringify({ dates }) },
+// Whole-object ZIP download (locally-imported files, no SMB).
+//
+// The ZIP route needs a credential the browser can attach to a plain
+// `<a download>` navigation, which cannot carry an Authorization header. So this
+// makes an authenticated call to mint a short-lived signed URL; the caller then
+// points an <a> at `url` and clicks it. The token in `url` expires in minutes.
+export const requestObjectDownloadUrl = (
+  objectId: string,
+  opts?: { fileType?: string; date?: string; includeVariants?: boolean },
+) =>
+  fetchJSON<{ url: string; expiresInMs: number }>(
+    `/library/download/objects/${encodeURIComponent(objectId)}/link`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        ...(opts?.fileType ? { fileType: opts.fileType } : {}),
+        ...(opts?.date ? { date: opts.date } : {}),
+        ...(opts?.includeVariants ? { includeVariants: true } : {}),
+      }),
+    },
   );
 
-export const startSubframesArchive = (objectId: string, dates: string[], filters?: string[]) =>
+// ── Async subframe ZIP (3-phase: start → poll → fetch tmp) ──
+export const getSubframeFilters = (objectId: string, dates: string[], includeVariants?: boolean) =>
+  fetchJSON<{ filters: string[] }>(
+    `/library/download/objects/${encodeURIComponent(objectId)}/subframe-filters`,
+    { method: 'POST', body: JSON.stringify({ dates, ...(includeVariants ? { includeVariants: true } : {}) }) },
+  );
+
+export const startSubframesArchive = (
+  objectId: string,
+  dates: string[],
+  filters?: string[],
+  includeVariants?: boolean,
+  sirilLayout?: boolean,
+) =>
   fetchJSON<{ jobId: string; filesTotal: number }>(
     `/library/download/objects/${encodeURIComponent(objectId)}/subframes`,
-    { method: 'POST', body: JSON.stringify({ dates, ...(filters ? { filters } : {}) }) },
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        dates,
+        ...(filters ? { filters } : {}),
+        ...(includeVariants ? { includeVariants: true } : {}),
+        ...(sirilLayout ? { sirilLayout: true } : {}),
+      }),
+    },
   );
 
 export interface SubframesArchiveStatus {
-  status: 'running' | 'done' | 'error';
+  status: 'running' | 'done' | 'error' | 'cancelled';
   filesTotal: number;
   filesDone: number;
   elapsedMs: number;
@@ -837,6 +996,12 @@ export interface SubframesArchiveStatus {
 
 export const getSubframesArchiveStatus = (jobId: string) =>
   fetchJSON<SubframesArchiveStatus>(`/library/download/status/${encodeURIComponent(jobId)}`);
+
+/** Stop an in-flight ZIP build server-side. Idempotent; safe to call after it finished. */
+export const cancelSubframesArchive = (jobId: string) =>
+  fetchJSON<{ cancelled: boolean }>(`/library/download/status/${encodeURIComponent(jobId)}/cancel`, {
+    method: 'POST',
+  });
 
 export const getSubframesArchiveTmpUrl = (token: string) =>
   `${BASE}/library/download/tmp/${encodeURIComponent(token)}`;
@@ -882,4 +1047,27 @@ export const toggleImageFavorite = (imagePath: string, isFavorite: boolean) =>
   fetchJSON<{ imagePath: string; isFavorite: boolean }>(
     '/library/images/favorite',
     { method: isFavorite ? 'POST' : 'DELETE', body: JSON.stringify({ imagePath }) }
+  );
+
+// ─── File location ("where do these files live") ─────────────────────────────
+
+export interface DiskLocation {
+  relPath: string;
+  path: string;
+  exists: boolean;
+}
+
+export interface ObjectLocation {
+  storage: 'local' | 'network';
+  libraryRoot: string;
+  object: DiskLocation;
+  session: DiskLocation | null;
+  /** Other objects in the same variant family (Mosaic/Hα/...). Only populated
+   *  for the object-level view (no date). */
+  variants: Array<DiskLocation & { objectId: string; label: string }>;
+}
+
+export const getObjectLocation = (objectId: string, date?: string) =>
+  fetchJSON<ObjectLocation>(
+    `/library/objects/${encodeURIComponent(objectId)}/location${date ? `?date=${encodeURIComponent(date)}` : ''}`,
   );

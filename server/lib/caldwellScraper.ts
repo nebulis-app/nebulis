@@ -75,13 +75,29 @@ export async function fetchCaldwellEntry(
 
     const html = await res.text();
 
-    // Image URL — find first NASA CDN webp in any img src or srcset.
-    // The WordPress CDN strips ?w= from the stored URL; we add our own.
-    const imgMatch = html.match(
+    // og:image is NASA's own canonical pick for the page. Scanning the page
+    // body for the first NASA CDN webp is fragile: some pages embed an
+    // unrelated object's image in a "related content" widget before their
+    // own image appears later in the markup (confirmed on the Messier
+    // catalog's twin scraper — see messierScraper.ts), and the first-match
+    // regex would silently pick that up instead. Only the science.nasa.gov
+    // WordPress CDN honors the ?w= resize query param; assets.science.nasa.gov
+    // renditions (used for some objects) must be requested as-is.
+    const ogImageMatch =
+      html.match(/<meta\s[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) ??
+      html.match(/<meta\s[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
+    const fallbackWebpMatch = html.match(
       /(https:\/\/science\.nasa\.gov\/wp-content\/uploads\/\d{4}\/\d{2}\/[^\s"'?]+\.webp)/,
     );
-    if (!imgMatch) return null;
-    const imageUrl = `${imgMatch[1]}?w=${IMAGE_WIDTH}`;
+
+    let imageUrl: string | null = null;
+    if (ogImageMatch) {
+      const url = ogImageMatch[1];
+      imageUrl = url.includes('science.nasa.gov/wp-content/uploads/') ? `${url}?w=${IMAGE_WIDTH}` : url;
+    } else if (fallbackWebpMatch) {
+      imageUrl = `${fallbackWebpMatch[1]}?w=${IMAGE_WIDTH}`;
+    }
+    if (!imageUrl) return null;
 
     const description = extractDescription(html, num);
     const catalogId = extractCatalogId(html, num);

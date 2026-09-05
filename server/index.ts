@@ -20,7 +20,6 @@ import { telescopeRouter } from './routes/telescope.js';
 import { catalogRouter } from './routes/catalog.js';
 import { settingsRouter } from './routes/settings.js';
 import { openapiRouter } from './routes/openapi.js';
-import { downloadRouter } from './routes/download.js';
 import { storageRouter } from './routes/storage.js';
 import { notesRouter } from './routes/notes.js';
 import { telescopesRouter } from './routes/telescopes.js';
@@ -32,7 +31,9 @@ import { satelliteRouter } from './routes/satellite.js';
 import { libraryRouter } from './routes/library.js';
 import { repairSpaceDirectories, repairAliasDirectories } from './lib/library/objects.js';
 import { backfillLibraryFiles, rebuildFromManifests } from './lib/library/libraryFiles.js';
+import { reconcileLayoutFromDisk } from './lib/library/libraryLayout.js';
 import { isLibraryAvailable } from './lib/libraryPath.js';
+import { purgeSampleObject } from './lib/library/sampleLibrary.js';
 import { plannerRouter } from './routes/planner.js';
 import { plannedSessionsRouter } from './routes/plannedSessions.js';
 import { wishlistRouter } from './routes/wishlist.js';
@@ -42,6 +43,7 @@ import { pairRouter } from './routes/pair.js';
 import { devicesRouter } from './routes/devices.js';
 import { metaRouter } from './routes/meta.js';
 import { catalogsRouter } from './routes/catalogs.js';
+import { systemLogRouter } from './routes/systemLog.js';
 import { startPackUpdateChecker } from './lib/catalogPack/updater.js';
 import { startPlannerNightlyScheduler } from './lib/plannerNightlyPrefetch.js';
 import { startForecastRefresh } from './lib/forecastCache.js';
@@ -51,11 +53,13 @@ import { satelliteCatalog } from './lib/satelliteCatalog.js';
 import { DATA_DIR, LOGS_DIR } from './lib/paths.js';
 import { getInstanceId } from './lib/instanceId.js';
 import { getLanIP } from './lib/lanAddress.js';
+import { isRecord, parseJsonRecord } from './lib/typeGuards.js';
 import { scheduleAutoImport, purgeJunkFiles, purgeStaleImportTmp, scheduleImportTmpCleanup } from './lib/localLibrary.js';
 import { isTelescopeOnline } from './lib/smbCache.js';
 import { pickDefaultTarget } from './lib/telescopes.js';
 import { runMigration } from './lib/migrate.js';
-import db from './lib/db.js';
+import db, { startupBackupOutcome } from './lib/db.js';
+import { logEvent } from './lib/systemLog.js';
 import fs from 'fs';
 import dgram from 'dgram';
 import { spawn } from 'child_process';
@@ -93,8 +97,11 @@ function readAppVersion(): string {
   ];
   for (const p of candidates) {
     try {
-      const pkg = JSON.parse(fs.readFileSync(p, 'utf8')) as { version?: string; buildNumber?: number };
-      if (typeof pkg.version === 'string') {
+      // A package.json on disk is untrusted input as far as the compiler is
+      // concerned: parse it into a record with a real guard, then read each
+      // field behind its own typeof check.
+      const pkg = parseJsonRecord(fs.readFileSync(p, 'utf8'));
+      if (pkg && typeof pkg.version === 'string') {
         const build = typeof pkg.buildNumber === 'number' ? ` (${pkg.buildNumber})` : '';
         return pkg.version + build;
       }
@@ -103,6 +110,31 @@ function readAppVersion(): string {
   return '?';
 }
 const APP_VERSION = readAppVersion();
+
+// Record the pre-upgrade database snapshot taken during db.ts init (before the
+// schema migrations ran). Done here, not in dbBackup.ts, because the system log
+// needs its table to exist first.
+if (startupBackupOutcome.status === 'created') {
+  const { backup, previousVersion, pruned } = startupBackupOutcome;
+  logEvent({
+    category: 'system',
+    event: 'db_backup_created',
+    message:
+      `Saved a database backup before upgrading from ${previousVersion ?? 'an earlier version'} ` +
+      `to ${APP_VERSION}: ${backup.name}.`,
+    metadata: { backupName: backup.name, sizeBytes: backup.sizeBytes, previousVersion, pruned },
+  });
+} else if (startupBackupOutcome.status === 'failed') {
+  logEvent({
+    category: 'system',
+    event: 'db_backup_failed',
+    level: 'error',
+    message:
+      `Could not save a database backup before applying version ${APP_VERSION}: ` +
+      `${startupBackupOutcome.error}. Check free disk space. The server started normally.`,
+    metadata: { error: startupBackupOutcome.error, previousVersion: startupBackupOutcome.previousVersion },
+  });
+}
 
 // --- Global middleware ---
 
@@ -329,7 +361,6 @@ v1.use('/catalog', catalogRouter);
 v1.use('/settings', settingsRouter);
 
 // Feature routes
-v1.use('/download', downloadRouter);
 v1.use('/storage', storageRouter);
 v1.use('/notes', notesRouter);
 v1.use('/telescopes', telescopesRouter);
@@ -348,6 +379,7 @@ v1.use('/pair', pairRouter);
 v1.use('/devices', devicesRouter);
 v1.use('/meta', metaRouter);
 v1.use('/catalogs', catalogsRouter);
+v1.use('/system-log', systemLogRouter);
 
 // Mount v1
 app.use('/api/v1', v1);
@@ -376,7 +408,6 @@ legacy.use('/notes', notesRouter);
 legacy.use('/storage', storageRouter);
 legacy.use('/telescopes', telescopesRouter);
 legacy.use('/sites', sitesRouter);
-legacy.use('/download', downloadRouter);
 legacy.use('/forecast', forecastRouter);
 legacy.use('/observations', observationsRouter);
 legacy.use('/satellite', satelliteRouter);
@@ -391,13 +422,17 @@ legacy.use('/pair', pairRouter);
 legacy.use('/devices', devicesRouter);
 legacy.use('/catalogs', catalogsRouter);
 legacy.use('/meta', metaRouter);
+legacy.use('/system-log', systemLogRouter);
 app.use('/api', legacy);
 
 // --- Serve static frontend in production ---
 // When running as a pkg-bundled exe, the frontend dist/ lives beside the exe
 // on disk rather than embedded in the snapshot. Fall back to the standard
 // relative path for Docker / direct `node` invocations.
-const distPath = (process as NodeJS.Process & { pkg?: unknown }).pkg
+// `pkg` is injected on `process` by the @yao-pkg/pkg runtime. The `in` check
+// narrows without a cast or a global type augmentation, matching how
+// server/lib/pkg-disk-paths.ts detects the same thing.
+const distPath = 'pkg' in process
   ? path.resolve(path.dirname(process.execPath), 'dist')
   : path.resolve(__dirname, '..', 'dist');
 app.use(express.static(distPath, {
@@ -430,13 +465,75 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+/**
+ * Pull an HTTP status off a thrown value. Express, http-errors, and several
+ * libraries in the dependency tree each hang the code off a different property
+ * (`status` vs `statusCode`), and none of that is described by `unknown`, so
+ * every read goes through isRecord + a `typeof`/range check. Returns null when
+ * the thrown value carries no usable status, letting the caller default to 500.
+ */
+function readErrorStatus(err: unknown): number | null {
+  if (!isRecord(err)) return null;
+  for (const key of ['status', 'statusCode'] as const) {
+    const value = err[key];
+    if (typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599) {
+      return value;
+    }
+  }
+  return null;
+}
+
+/**
+ * True when `value` is the bonjour-service constructor. `bonjour-service`
+ * ships both CJS and ESM entry points, so depending on how the module is
+ * resolved the imported binding is either the class itself or a namespace
+ * object holding it on `.default`. The check is structural on the prototype
+ * (the methods the class actually declares) rather than an assertion that the
+ * `.default` property is whatever we hope it is.
+ */
+function isBonjourConstructor(value: unknown): value is typeof Bonjour {
+  if (typeof value !== 'function') return false;
+  // Reflect.get keeps this an `unknown` read; `Function['prototype']` is typed
+  // `any`, which would silently disable the checks below.
+  const proto: unknown = Reflect.get(value, 'prototype');
+  return isRecord(proto)
+    && typeof proto.publish === 'function'
+    && typeof proto.destroy === 'function';
+}
+
+/** The bonjour-service class, whichever of the two interop shapes we got. */
+function resolveBonjourConstructor(): typeof Bonjour {
+  if ('default' in Bonjour && isBonjourConstructor(Bonjour.default)) return Bonjour.default;
+  return Bonjour;
+}
+
+/**
+ * Turn `key=value` mDNS TXT strings into the record bonjour-service wants.
+ * Splitting on the first `=` only (rather than `split('=')` plus a tuple
+ * assertion) also keeps values that themselves contain `=` intact, and drops
+ * malformed entries instead of publishing an `undefined` value.
+ */
+function parseTxtRecords(records: readonly string[]): Record<string, string> {
+  const txt: Record<string, string> = {};
+  for (const record of records) {
+    const separator = record.indexOf('=');
+    if (separator <= 0) continue;
+    txt[record.slice(0, separator)] = record.slice(separator + 1);
+  }
+  return txt;
+}
+
 // Global error handler — must be registered after all routes and have exactly
 // four parameters so Express recognises it as an error handler, not middleware.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   // Multer errors are client mistakes (oversized file, too many files, etc.) — not server errors.
   if (err instanceof Error && err.name === 'MulterError') {
-    const code = (err as Error & { code?: string }).code ?? 'UPLOAD_ERROR';
+    // Multer hangs a string `code` off its Error subclass, which the Error type
+    // does not describe. Read it through an `in` + typeof check so a MulterError
+    // shape change degrades to the generic code instead of typing `undefined`
+    // as string and looking it up in `messages` below.
+    const code = 'code' in err && typeof err.code === 'string' ? err.code : 'UPLOAD_ERROR';
     const status = code === 'LIMIT_FILE_SIZE' ? 413 : 400;
     const messages: Record<string, string> = {
       LIMIT_FILE_SIZE:   'File is too large for this upload endpoint.',
@@ -449,9 +546,11 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
     if (!res.headersSent) res.apiError(status, code, messages[code] ?? err.message);
     return;
   }
-  const status = (err as { status?: number; statusCode?: number })?.status
-    ?? (err as { status?: number; statusCode?: number })?.statusCode
-    ?? 500;
+  // `err` is `unknown`: Express hands the error middleware whatever was
+  // thrown. Read `status`/`statusCode` through a real runtime check so a
+  // thrown string, or an object whose `status` is `"404"`, can't smuggle a
+  // non-number into the response code.
+  const status = readErrorStatus(err) ?? 500;
   log.error({
     err,
     method: req.method,
@@ -480,14 +579,6 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
 // --- UDP Discovery Beacon ---
 
 const DISCOVERY_PORT = 47890;
-
-function isPrivateIP(ip: string): boolean {
-  const parts = ip.split('.').map(Number);
-  if (parts.length !== 4) return false;
-  const [a, b] = parts;
-  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
-}
-
 
 // The client derives the server's IP from the source address of the UDP response —
 // Docker's NAT rewrites the source to the host's LAN IP, so discovery works correctly
@@ -519,11 +610,10 @@ function startUDPResponder(httpPort: number): void {
 
   socket.on('message', (msg, rinfo) => {
     try {
-      let parsed: unknown;
-      try { parsed = JSON.parse(msg.toString()); } catch { return; }
-      if (typeof parsed !== 'object' || parsed === null) return;
-      const req = parsed as Record<string, unknown>;
-      if (req.service !== 'nebulis') return;
+      // Anything on the LAN can send this socket arbitrary bytes, so the
+      // payload is narrowed with a real guard before a field is read.
+      const req = parseJsonRecord(msg.toString());
+      if (!req || req.service !== 'nebulis') return;
 
       const ip = process.env.ADVERTISED_HOST || getLanIP();
       const url = ip ? `http://${ip}:${httpPort}` : null;
@@ -576,6 +666,15 @@ function onListening(): void {
     }
     repairSpaceDirectories();
     repairAliasDirectories();
+    // Fix objects whose stored layout fell out of sync with the disk (a boot
+    // migration that rekeyed an objectId used to drop the `layout` column,
+    // leaving a nested object marked flat so every session read as empty).
+    try {
+      const relayered = reconcileLayoutFromDisk();
+      if (relayered > 0) console.log(`[library] Reconciled layout for ${relayered} object(s) from on-disk structure`);
+    } catch (err) {
+      console.warn('[library] layout reconcile failed:', err instanceof Error ? err.message : err);
+    }
     // Populate libraryFiles for anything imported before the table existed. Both
     // calls are idempotent and skip objects that already have rows, so this is a
     // no-op on every boot after the first. Manifests are tried first: they carry
@@ -636,14 +735,13 @@ function onListening(): void {
       console.log(`  mDNS:          _nebulis._tcp → http://${hostname}:${PORT}`);
     } else {
       // Non-macOS (Windows, Linux, Docker): use the pure-JS bonjour-service package.
-      const bonjourMod = Bonjour as typeof Bonjour & { default?: typeof Bonjour };
-      const BonjourClass: typeof Bonjour = bonjourMod.default ?? Bonjour;
+      const BonjourClass = resolveBonjourConstructor();
       const bonjour = new BonjourClass();
       bonjour.publish({
         name: 'Nebulis',
         type: 'nebulis',
         port: Number(PORT),
-        txt: Object.fromEntries(txtRecords.map(r => r.split('=') as [string, string])),
+        txt: parseTxtRecords(txtRecords),
       });
       console.log(`  mDNS:          _nebulis._tcp → http://${hostname}:${PORT}`);
     }
@@ -680,19 +778,37 @@ function configureServerTimeouts(srv: import('http').Server): void {
 
 const activeServers: import('http').Server[] = [];
 
-const server = app.listen(Number(PORT), '::', onListening);
-configureServerTimeouts(server);
-activeServers.push(server);
-server.once('error', (err: NodeJS.ErrnoException) => {
-  if (err.code === 'EAFNOSUPPORT' || err.code === 'EADDRNOTAVAIL' || err.code === 'ENOTSUP') {
-    console.warn(`  IPv6 dual-stack bind failed (${err.code}) — falling back to IPv4-only 0.0.0.0`);
-    const fallback = app.listen(Number(PORT), '0.0.0.0', onListening);
-    configureServerTimeouts(fallback);
-    activeServers.push(fallback);
-  } else {
-    throw err;
-  }
-});
+// Clear the tour's demo object before the port opens, then start listening.
+//
+// The sample object exists only while the product tour is running: the tour
+// plants it on start and purges it on exit. A tour abandoned by closing the
+// browser never fires that exit, so the object would be left sitting in the
+// user's library — which is exactly what it must never do. A boot is proof no
+// tour is in flight, so this is where that gets cleaned up. It only ever
+// removes an object this app planted and recorded in appSettings, and it is a
+// no-op (one indexed read) when there is nothing planted.
+//
+// Wrapped in an async function rather than a top-level await so the CommonJS
+// bundle produced for the native installer builds stays valid.
+async function startListening(): Promise<void> {
+  purgeSampleObject();
+
+  const server = app.listen(Number(PORT), '::', onListening);
+  configureServerTimeouts(server);
+  activeServers.push(server);
+  server.once('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EAFNOSUPPORT' || err.code === 'EADDRNOTAVAIL' || err.code === 'ENOTSUP') {
+      console.warn(`  IPv6 dual-stack bind failed (${err.code}) — falling back to IPv4-only 0.0.0.0`);
+      const fallback = app.listen(Number(PORT), '0.0.0.0', onListening);
+      configureServerTimeouts(fallback);
+      activeServers.push(fallback);
+    } else {
+      throw err;
+    }
+  });
+}
+
+void startListening();
 
 // --- Graceful shutdown ---
 // launchd (macOS) and NSSM (Windows) stop the service with a signal and only

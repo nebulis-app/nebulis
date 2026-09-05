@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { BASE_PATH, sanitizePath, validatePathNoTraversal } from '../../server/lib/smb';
+import { extractSmbReason, scrubSmbArgs } from '../../server/lib/smb.posix';
 
 describe('SMB path validation', () => {
   describe('sanitizePath', () => {
@@ -83,6 +84,57 @@ describe('SMB path validation', () => {
       // Some traversals normalize down to a path that still contains '..'
       expect(() => validatePathNoTraversal('a/../../b')).toThrow('Path traversal');
     });
+  });
+});
+
+describe('extractSmbReason', () => {
+  // execFile rejections from smbclient: the NT_STATUS / connect diagnostics land
+  // on stdout, not stderr, so classifying stderr alone (the old behaviour)
+  // returned "Connection failed" for almost everything.
+  const smbErr = (over: { stdout?: string; stderr?: string; message?: string; code?: string }) =>
+    Object.assign(new Error(over.message ?? 'Command failed: smbclient //h/s -U root%hunter2 -c ...'), over);
+
+  it('reads NT_STATUS off stdout', () => {
+    expect(extractSmbReason(smbErr({ stdout: 'session setup failed: NT_STATUS_LOGON_FAILURE\n' })))
+      .toBe('NT_STATUS_LOGON_FAILURE');
+  });
+
+  it('classifies a bad share name from stdout', () => {
+    expect(extractSmbReason(smbErr({ stdout: 'tree connect failed: NT_STATUS_BAD_NETWORK_NAME' })))
+      .toBe('NT_STATUS_BAD_NETWORK_NAME');
+  });
+
+  it('classifies a plain session-setup failure with no NT_STATUS token', () => {
+    expect(extractSmbReason(smbErr({ stdout: 'session setup failed: (auth error)' })))
+      .toBe('Authentication failed');
+  });
+
+  it('detects a missing smbclient binary', () => {
+    expect(extractSmbReason(smbErr({ code: 'ENOENT', message: 'spawn smbclient ENOENT' })))
+      .toBe('smbclient is not installed on the server');
+  });
+
+  it('detects protocol negotiation failure', () => {
+    expect(extractSmbReason(smbErr({ stdout: 'protocol negotiation failed: NT_STATUS_CONNECTION_RESET' })))
+      .toBe('NT_STATUS_CONNECTION_RESET');
+  });
+
+  it('still falls back to Connection failed when nothing is recognisable', () => {
+    expect(extractSmbReason(smbErr({ stdout: '', stderr: '' }))).toBe('Connection failed');
+  });
+
+  it('never leaks the password from the command line', () => {
+    const reason = extractSmbReason(smbErr({ stderr: 'do_connect: -U root%hunter2 failed' }));
+    expect(reason).not.toContain('hunter2');
+  });
+});
+
+describe('scrubSmbArgs', () => {
+  it('masks -U user%password', () => {
+    expect(scrubSmbArgs('smbclient //h/s -U root%hunter2 -c ls')).not.toContain('hunter2');
+  });
+  it('masks -U user with no inline password', () => {
+    expect(scrubSmbArgs('smbclient //h/s -U administrator -c ls')).toContain('-U ***');
   });
 });
 

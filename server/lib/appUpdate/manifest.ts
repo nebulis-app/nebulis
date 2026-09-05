@@ -11,6 +11,12 @@ import { z } from 'zod';
 export const UPDATE_CHANNELS = ['stable', 'beta'] as const;
 export type UpdateChannel = (typeof UPDATE_CHANNELS)[number];
 
+/** Narrows a DB column / request body value to the union. See
+ *  isPreferredCatalog in types/appSettings.ts for why this takes `unknown`. */
+export function isUpdateChannel(value: unknown): value is UpdateChannel {
+  return typeof value === 'string' && (UPDATE_CHANNELS as readonly string[]).includes(value);
+}
+
 const Artifact = z.object({
   url:    z.string().url(),
   sha256: z.string().length(64),
@@ -24,6 +30,11 @@ const LatestRelease = z.object({
   // (forces a fresh download instead — guards against unsafe long jumps).
   minUpgradableFrom: z.string().min(1),
   mandatory:         z.boolean(),
+  // Kill switch: when true the server suppresses this release entirely (no
+  // banner, no staging, no apply). Lets a bad push be pulled back for clients
+  // that have not updated yet without waiting on a follow-up build. Optional so
+  // older manifests (and the generator's default output) stay valid.
+  yanked:            z.boolean().optional(),
   notesUrl:          z.string().url(),
   // Keyed by platform: 'win-x64' | 'mac-arm64' | 'mac-x64'. A channel may omit
   // platforms it has no build for.

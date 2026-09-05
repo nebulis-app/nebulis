@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { HardDrive, Trash2, Calendar, Image, AlertCircle, ArrowUpDown, Server, FolderOpen } from 'lucide-react';
+import { Trash2, Calendar, Image, AlertCircle, ArrowUpDown, FolderOpen } from 'lucide-react';
 import { getStorageStats, getSystemStorage, getLibraryStorage } from '../lib/api/storage';
 import { useTheme } from '../hooks/useTheme';
 import { formatBytes } from '../lib/utils';
+import { Sec } from './settings/SettingsUI';
+import { isSeestarKind, toTelescopeKind } from '../lib/telescopePresets';
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '--';
@@ -54,7 +56,7 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
   const objects = data?.objects ?? [];
   const telescopeOnline = data?.telescopeOnline ?? false;
   const telescopeKind = data?.telescopeKind ?? null;
-  const isSeestar = telescopeKind === 'seestar-s50' || telescopeKind === 'seestar-s30';
+  const isSeestar = telescopeKind !== null && isSeestarKind(toTelescopeKind(telescopeKind));
 
   const totalSize = useMemo(() => objects.reduce((sum, o) => sum + o.totalSize, 0), [objects]);
   const totalFiles = useMemo(() => objects.reduce((sum, o) => sum + o.fileCount, 0), [objects]);
@@ -71,6 +73,12 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
         case 'subFrameCount': cmp = a.subFrameCount - b.subFrameCount; break;
         case 'oldestFile':    cmp = (a.oldestFile ?? '').localeCompare(b.oldestFile ?? ''); break;
         case 'newestFile':    cmp = (a.newestFile ?? '').localeCompare(b.newestFile ?? ''); break;
+        default: {
+          // Compile-time exhaustiveness: a new SortKey has to be sorted here,
+          // rather than silently comparing every row as equal.
+          const _exhaustive: never = sortKey;
+          void _exhaustive;
+        }
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });
@@ -85,6 +93,10 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
         case 'name':      cmp = a.name.localeCompare(b.name); break;
         case 'size':      cmp = a.size - b.size; break;
         case 'fileCount': cmp = a.fileCount - b.fileCount; break;
+        default: {
+          const _exhaustive: never = libSortKey;
+          void _exhaustive;
+        }
       }
       return libSortDir === 'asc' ? cmp : -cmp;
     });
@@ -108,7 +120,7 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
   const libTotalPages = Math.ceil(libSorted.length / PAGE_SIZE);
   const libPaginated = libSorted.slice(libPage * PAGE_SIZE, (libPage + 1) * PAGE_SIZE);
 
-  const cardClass = `rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`;
+  const cardClass = `rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`;
   const tileClass = `p-4 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`;
   const tileLabel = `text-xs font-medium uppercase tracking-wider mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`;
   const tileValue = `text-xl font-bold font-display ${isDark ? 'text-white' : 'text-slate-900'}`;
@@ -223,7 +235,15 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
   }
 
   return (
-    <div className="space-y-8">
+    // Fragment, not a div: when embedded, this sits right after
+    // LibraryLocationSection's own Sec(s) as a sibling (StorageLocationSection
+    // composes them with no wrapping element of its own). A div here would
+    // make "Local Server" the first *DOM* child of a new parent, so its
+    // `first:mt-0` would fire even though it isn't the first section on the
+    // page — collapsing the gap after Library location. No space-y either:
+    // every section below is a `Sec` (SettingsUI.tsx), which already carries
+    // its own `mt-10 first:mt-0` for card-to-card spacing.
+    <>
       {/* Hero header — suppressed when embedded inside the Settings → Storage tab,
           which already renders its own page heading from the active-tab metadata. */}
       {!embedded && (
@@ -238,24 +258,20 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
       )}
 
       {/* ── Local Server Storage ──────────────────────────────────── */}
-      <div className={cardClass + ' p-6 space-y-5'}>
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className={`p-2.5 rounded-xl ${isDark ? 'bg-teal-500/10' : 'bg-teal-50'}`}>
-            <Server className="w-5 h-5 text-teal-500" />
-          </div>
-          <div className="flex-1">
-            <h2 className={`font-display text-lg font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>Local Server</h2>
-            <p className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Host machine running this dashboard</p>
-          </div>
+      <Sec
+        title="Local Server"
+        description="Host machine running this dashboard."
+        isDark={isDark}
+        actions={
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
             isDark ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700'
           }`}>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             Online
           </span>
-        </div>
-
+        }
+      >
+      <div className="p-5 space-y-5">
         {systemStorage ? (
           <>
             {/* Disk usage bar */}
@@ -331,7 +347,7 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
 
         {/* Library objects table */}
         {libSorted.length > 0 && (
-          <div className={`-mx-6 -mb-6 mt-2 overflow-hidden rounded-b-2xl border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+          <div className={`-mx-5 -mb-5 mt-2 overflow-hidden rounded-b-2xl border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -384,29 +400,27 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
           </div>
         )}
       </div>
+      </Sec>
 
       {/* ── Library Drive ─────────────────────────────────────────────
           Shown only when the library has been moved to a separate drive.
           The Local Server card above covers the boot volume; this reports the
           external drive the library now lives on. */}
       {systemStorage?.libraryDisk && (
-        <div className={cardClass + ' p-6 space-y-5'}>
-          <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-xl ${isDark ? 'bg-blue-500/10' : 'bg-blue-50'}`}>
-              <HardDrive className="w-5 h-5 text-blue-500" />
-            </div>
-            <div className="flex-1">
-              <h2 className={`font-display text-lg font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>Library Drive</h2>
-              <p className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>External drive holding your relocated library</p>
-            </div>
+        <Sec
+          title="Library Drive"
+          description="External drive holding your relocated library."
+          isDark={isDark}
+          actions={
             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
               isDark ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700'
             }`}>
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
               Connected
             </span>
-          </div>
-
+          }
+        >
+        <div className="p-5 space-y-5">
           {/* Disk usage bar */}
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
@@ -463,20 +477,16 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
             </div>
           </div>
         </div>
+        </Sec>
       )}
 
       {/* ── SeeStar Storage ────────────────────────────────────────── */}
       {isSeestar && (
-      <div className={cardClass + ' p-6 space-y-5'}>
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className={`p-2.5 rounded-xl ${isDark ? 'bg-accent-500/10' : 'bg-accent-50'}`}>
-            <HardDrive className="w-5 h-5 text-accent-500" />
-          </div>
-          <div className="flex-1">
-            <h2 className={`font-display text-lg font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>SeeStar Telescope</h2>
-            <p className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Objects on the telescope's SD card / internal share</p>
-          </div>
+      <Sec
+        title="SeeStar Telescope"
+        description="Objects on the telescope's SD card / internal share."
+        isDark={isDark}
+        actions={
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
             telescopeOnline
               ? isDark ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700'
@@ -485,8 +495,9 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
             <span className={`w-1.5 h-1.5 rounded-full ${telescopeOnline ? 'bg-emerald-500' : 'bg-slate-400'}`} />
             {telescopeOnline ? 'Online' : 'Offline'}
           </span>
-        </div>
-
+        }
+      >
+      <div className="p-5 space-y-5">
         {telescopeOnline ? (
           <>
             {/* Stat tiles */}
@@ -507,7 +518,7 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
 
             {/* Per-object detail table */}
             {sorted.length > 0 && (
-              <div className={`-mx-6 -mb-6 mt-2 overflow-hidden rounded-b-2xl border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+              <div className={`-mx-5 -mb-5 mt-2 overflow-hidden rounded-b-2xl border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -578,7 +589,8 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
           </>
         ) : null}
       </div>
+      </Sec>
       )}
-    </div>
+    </>
   );
 }

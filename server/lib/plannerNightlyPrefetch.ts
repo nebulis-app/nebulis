@@ -18,10 +18,11 @@ import { getActiveSite } from './observingSites.js';
 import { findCachedMaster, prewarmThumbnails } from './catalogPrefetch.js';
 import { prefetchSkyImage } from './skyImage.js';
 import { purgeJunkFiles, purgeStaleImportTmp } from './library/housekeeping.js';
+import { pruneSystemLog } from './systemLog.js';
 import { refreshForecastCache } from './forecastCache.js';
 import { checkAndUpdatePacks } from './catalogPack/updater.js';
-import { addDaysToDateKey, localDateKey, localParts, zonedDateTimeToUtc } from './timezone.js';
-import { OBSERVING_NIGHT_ROLLOVER_HOUR } from './telescopeFiles.js';
+import { localDateKey, localParts } from './timezone.js';
+import { observingNightAnchor } from './telescopeFiles.js';
 
 // ─── Scheduler state ──────────────────────────────────────────────────────────
 
@@ -44,8 +45,8 @@ export function stopPlannerNightlyScheduler(): void {
   }
 }
 
-// Called by the settings route when plannerPrefetchEnabled or
-// plannerPrefetchTime changes so the next tick picks up the new config.
+// Called by the settings route when the maintenance config (master toggle or
+// run time) changes so the next tick picks up the new config.
 export function restartPlannerNightlyScheduler(): void {
   startPlannerNightlyScheduler();
 }
@@ -54,10 +55,9 @@ export function isNightlyMaintenanceRunning(): boolean {
   return isRunning;
 }
 
-// Run the nightly batch immediately (the "Run now" button). Respects each
-// task's enabled toggle, just like the scheduled run. Returns false if a run
-// is already in progress. Runs in the background; last-run timestamps update
-// as each task finishes.
+// Run the nightly batch immediately (the "Run now" button). Runs every task,
+// just like the scheduled run. Returns false if a run is already in progress.
+// Runs in the background; last-run timestamps update as each task finishes.
 export function triggerNightlyMaintenance(): boolean {
   if (isRunning) return false;
   runNightlyMaintenance().catch(err =>
@@ -67,32 +67,47 @@ export function triggerNightlyMaintenance(): boolean {
 
 // ─── Scheduler tick ───────────────────────────────────────────────────────────
 
+/**
+ * Whether the nightly batch is due: it has not run on today's local date and
+ * the local clock has reached the configured target time.
+ *
+ * This replaced a `±1 minute` window that silently skipped the whole batch for
+ * the day if the process was asleep or GC-paused across the two minutes it was
+ * open (laptop lid, container throttle). "Have we run since the target time
+ * today" catches up whenever the process wakes.
+ *
+ * `lastRanDate` is stamped only after every task has at least been attempted
+ * (not before the run starts): stamping it eagerly meant a run that threw
+ * partway through was never retried until the next calendar day.
+ */
+export function isNightlyBatchDue(
+  now: Date,
+  targetTime: string,
+  timeZone: string,
+  lastRanDate: string | null,
+): boolean {
+  const { hh: targetHH, mm: targetMM } = parseHHMM(targetTime);
+  const { hh, mm, dateStr } = localTime(now, timeZone);
+  return lastRanDate !== dateStr && (hh * 60 + mm) >= (targetHH * 60 + targetMM);
+}
+
 function tick(): void {
   const settings = getSettingsData();
-  const anyEnabled =
-    settings.plannerPrefetchEnabled ||
-    settings.nightlyCatalogPackCheckEnabled ||
-    settings.nightlyHousekeepingEnabled ||
-    settings.nightlyForecastPrefetchEnabled;
-  if (!anyEnabled) return;
+  // Single master switch gates the whole nightly batch. The per-task flags
+  // (plannerPrefetchEnabled, nightlyCatalogPackCheckEnabled, etc.) are kept in
+  // the schema for backward compatibility but no longer consulted — when the
+  // master is on, every task runs.
+  if (!settings.nightlyMaintenanceEnabled) return;
 
   const timeStr = (settings.plannerPrefetchTime as string | undefined) ?? '03:00';
   const tz = (settings.timezone as string | undefined) || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const now = new Date();
 
-  const { hh: targetHH, mm: targetMM } = parseHHMM(timeStr);
-  const { hh, mm, dateStr } = localTime(new Date(), tz);
-
-  // Fire if we're within ±1 minute of the target and haven't already run today.
-  // lastRanDate is stamped only after every task has at least been attempted
-  // (see the .finally below), not before the run starts: stamping it eagerly
-  // meant a run that threw partway through was never retried until the next
-  // calendar day, even though most of its tasks never ran. `!isRunning` is
-  // the guard against this same tick firing twice inside the ±1 minute
-  // window while that attempt is still in flight and lastRanDate isn't
-  // stamped yet — runNightlyMaintenance() also no-ops on isRunning, so this
-  // just avoids the redundant call.
-  const deltaMin = Math.abs(hh * 60 + mm - (targetHH * 60 + targetMM));
-  if (deltaMin <= 1 && lastRanDate !== dateStr && !isRunning) {
+  // `!isRunning` guards against this tick firing twice while an attempt is
+  // still in flight and lastRanDate isn't stamped yet — runNightlyMaintenance()
+  // also no-ops on isRunning, so this just avoids the redundant call.
+  if (isNightlyBatchDue(now, timeStr, tz, lastRanDate) && !isRunning) {
+    const { dateStr } = localTime(now, tz);
     runNightlyMaintenance()
       .catch(err => console.error('[nightly] Scheduled run failed:', err))
       .finally(() => { lastRanDate = dateStr; });
@@ -112,44 +127,38 @@ async function runNightlyMaintenance(): Promise<void> {
 }
 
 async function runNightlyTasks(): Promise<void> {
-  const settings = getSettingsData();
+  // Every task runs when the batch fires — the per-task flags are no longer
+  // consulted. Each is wrapped so one failure can't stop the rest.
 
-  if (settings.nightlyCatalogPackCheckEnabled) {
-    try {
-      await checkAndUpdatePacks(prewarmThumbnails);
-      console.log('[nightly] Catalog pack check complete');
-    } catch (err) {
-      console.error('[nightly] Catalog pack check failed:', err instanceof Error ? err.message : err);
-    }
+  try {
+    await checkAndUpdatePacks(prewarmThumbnails);
+    console.log('[nightly] Catalog pack check complete');
+  } catch (err) {
+    console.error('[nightly] Catalog pack check failed:', err instanceof Error ? err.message : err);
   }
 
-  if (settings.plannerPrefetchEnabled) {
-    try {
-      await runPlannerNightlyPrefetch();
-    } catch (err) {
-      console.error('[nightly] Planner prefetch failed:', err instanceof Error ? err.message : err);
-    }
+  try {
+    await runPlannerNightlyPrefetch();
+  } catch (err) {
+    console.error('[nightly] Planner prefetch failed:', err instanceof Error ? err.message : err);
   }
 
-  if (settings.nightlyHousekeepingEnabled) {
-    try {
-      await purgeJunkFiles();
-      purgeStaleImportTmp();
-      updateSettingsData({ nightlyHousekeepingLastRun: Date.now() });
-      console.log('[nightly] Library housekeeping complete');
-    } catch (err) {
-      console.error('[nightly] Housekeeping failed:', err instanceof Error ? err.message : err);
-    }
+  try {
+    await purgeJunkFiles();
+    purgeStaleImportTmp();
+    pruneSystemLog();
+    updateSettingsData({ nightlyHousekeepingLastRun: Date.now() });
+    console.log('[nightly] Library housekeeping complete');
+  } catch (err) {
+    console.error('[nightly] Housekeeping failed:', err instanceof Error ? err.message : err);
   }
 
-  if (settings.nightlyForecastPrefetchEnabled) {
-    try {
-      await refreshForecastCache();
-      updateSettingsData({ nightlyForecastLastRun: Date.now() });
-      console.log('[nightly] Forecast pre-warm complete');
-    } catch (err) {
-      console.error('[nightly] Forecast pre-warm failed:', err instanceof Error ? err.message : err);
-    }
+  try {
+    await refreshForecastCache();
+    updateSettingsData({ nightlyForecastLastRun: Date.now() });
+    console.log('[nightly] Forecast pre-warm complete');
+  } catch (err) {
+    console.error('[nightly] Forecast pre-warm failed:', err instanceof Error ? err.message : err);
   }
 }
 
@@ -174,7 +183,7 @@ export async function runPlannerNightlyPrefetch(): Promise<void> {
   const tz = site.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const now = new Date();
-  const anchor = defaultNightAnchor(now, tz);
+  const anchor = observingNightAnchor(now, tz);
   const night = getNightWindow(anchor, lat, lon);
   const nightStart = night.nightStart ?? night.nauticalDusk;
   const nightEnd = night.nightEnd ?? night.nauticalDawn;
@@ -241,9 +250,3 @@ function localTime(date: Date, tz: string): { hh: number; mm: number; dateStr: s
   };
 }
 
-function defaultNightAnchor(now: Date, timeZone: string): Date {
-  const parts = localParts(now, timeZone);
-  const today = localDateKey(now, timeZone);
-  const nightDate = parts.hour >= OBSERVING_NIGHT_ROLLOVER_HOUR ? today : addDaysToDateKey(today, -1);
-  return zonedDateTimeToUtc(nightDate, { hour: 12 }, timeZone);
-}

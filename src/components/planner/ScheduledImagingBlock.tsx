@@ -4,23 +4,36 @@
  * Body: @dnd-kit draggable for repositioning.
  * Top / bottom edges: native pointer-based resize handles (axis-locked Y).
  *
- * The parent owns time math — this component reports edits via onResize / onMove
- * (called with provisional minute offsets) and onCommit when the user releases.
+ * The parent owns time math. This component reports edits via onResize (called
+ * with provisional minute offsets, then again on release to commit).
+ *
+ * Blocks sit on the dark night canvas in every theme, so their styling is
+ * night-side and does not branch on the app theme. The left stripe stays the
+ * traffic-light system: green fully visible, amber partial or low, red blocked
+ * or below the horizon.
  */
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import { GripVertical, Info, Moon, X } from 'lucide-react';
-import { formatHm, SNAP_MINUTES } from './scheduleGeometry';
+import { AlertTriangle, ArrowUp, GripVertical, Info, Moon, X } from 'lucide-react';
+import { formatHm, SNAP_MINUTES, TIMELINE_GUTTER_PX } from './scheduleGeometry';
 import type { PlannedSession } from '../../lib/api/plannedSessions';
 import type { VisibilityVerdict } from '../../lib/visibilityCheck';
 import type { MoonVerdict } from '../../lib/moonProximity';
+import type { BlockDragData } from './dragData';
 
 const MIN_IMAGING_ALT = 20;
+
+/** Below this the block only has room for its name and times. */
+const COMPACT_HEIGHT = 74;
+/** Below this even the thumbnail is dropped. */
+const TINY_HEIGHT = 44;
 
 interface ScheduledImagingBlockProps {
   session: PlannedSession;
   /** Formatted display name, e.g. "M81 - Bode's Galaxy". Falls back to session.objectName. */
   displayName?: string;
+  /** Catalog thumbnail for the object, when one is known. */
+  thumbnailUrl?: string;
   /** Runtime timeline scale; resize handles convert drag pixels to minutes with it. */
   pxPerMinute: number;
   top: number;
@@ -51,6 +64,7 @@ interface ScheduledImagingBlockProps {
 export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
   session,
   displayName,
+  thumbnailUrl,
   pxPerMinute,
   top,
   height,
@@ -72,13 +86,11 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
 }: ScheduledImagingBlockProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `block:${session.id}`,
-    data: { kind: 'block', sessionId: session.id },
+    data: { kind: 'block', sessionId: session.id } satisfies BlockDragData,
     disabled: isSaving,
   });
 
-  // Reserve a left gutter for the hour-tick labels so blocks never cover the
-  // time axis. Lanes are packed into the area to the right of the gutter.
-  const GUTTER_PX = 48;
+  // Lanes are packed into the area to the right of the timeline gutter.
   const widthPct = 100 / laneCount;
   const leftPct = laneIndex * widthPct;
   const leftFrac = leftPct / 100;   // column's start as a fraction of full width
@@ -88,13 +100,34 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
   const belowHorizon = verdict === 'all' && minAlt != null && minAlt < 0;
   const lowInSky = verdict === 'all' && minAlt != null && minAlt >= 0 && minAlt < MIN_IMAGING_ALT;
 
-  const stripeColor =
-    verdict === 'none' || belowHorizon ? 'bg-red-500'
-    : verdict === 'partial' || lowInSky ? 'bg-amber-500'
-    : 'bg-emerald-500';
+  const bad = verdict === 'none' || belowHorizon || moonVerdict === 'warning';
+  const warn = !bad && (verdict === 'partial' || lowInSky || moonVerdict === 'caution' || hasOverlap);
+
+  const stripeColor = bad ? 'bg-red-500' : warn ? 'bg-amber-500' : 'bg-emerald-500';
+  const edgeGlow = bad
+    ? 'rgba(239,68,68,0.35)'
+    : warn
+      ? 'rgba(245,158,11,0.32)'
+      : 'rgba(16,185,129,0.28)';
 
   const start = new Date(session.startTime);
   const end = new Date(session.endTime);
+  const compact = height < COMPACT_HEIGHT;
+  const tiny = height < TINY_HEIGHT;
+
+  // One line of warning text, worst first. Below the compact threshold there is
+  // no room for it and the tooltip carries the detail instead.
+  const warning = belowHorizon
+    ? 'Sets below the horizon during this block'
+    : verdict === 'none' || verdict === 'partial'
+      ? verdictReason
+      : moonVerdict !== 'ok'
+        ? moonReason
+        : lowInSky && minAlt != null
+          ? `Low in the sky, down to ${Math.round(minAlt)}°`
+          : hasOverlap
+            ? 'Overlaps another block'
+            : '';
 
   return (
     <div
@@ -102,79 +135,99 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
       style={{
         top: `${top + dragDeltaY}px`,
         height: `${height}px`,
-        left: `calc(${leftPct}% + ${GUTTER_PX * (1 - leftFrac) + 4}px)`,
-        width: `calc(${widthPct}% - ${GUTTER_PX * laneFrac + 8}px)`,
+        left: `calc(${leftPct}% + ${TIMELINE_GUTTER_PX * (1 - leftFrac) + 4}px)`,
+        width: `calc(${widthPct}% - ${TIMELINE_GUTTER_PX * laneFrac + 14}px)`,
+        boxShadow: isDragging
+          ? `0 18px 40px -18px rgba(0,0,0,0.9), inset 0 0 0 1px ${edgeGlow}`
+          : `0 8px 22px -16px rgba(0,0,0,0.9), inset 0 0 0 1px ${edgeGlow}`,
       }}
-      className={`absolute rounded-lg border shadow-sm overflow-hidden select-none transition-shadow ${
-        isDragging ? 'opacity-70 shadow-xl ring-2 ring-accent-400' : ''
-      } ${isSaving ? 'opacity-60' : ''} bg-slate-800/95 border-slate-600 text-slate-100`}
+      className={`group absolute select-none overflow-hidden rounded-xl bg-slate-900/85 text-slate-100 backdrop-blur-sm transition-shadow ${
+        isDragging ? 'z-20 opacity-80 ring-2 ring-accent-400' : ''
+      } ${isSaving ? 'opacity-60' : ''}`}
     >
-      <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${stripeColor}`} />
+      <div className={`absolute bottom-0 left-0 top-0 w-1.5 ${stripeColor}`} />
 
       <ResizeHandle edge="top" pxPerMinute={pxPerMinute} onResize={(d, commit) => onResize(session.id, 'top', d, commit)} disabled={isSaving} />
 
       <div
         {...(isSaving ? {} : listeners)}
         {...(isSaving ? {} : attributes)}
-        className={`absolute inset-0 pl-3 pr-7 py-1.5 ${isSaving ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} flex flex-col justify-start gap-0.5`}
+        className={`absolute inset-0 flex gap-2.5 py-1.5 pl-3 pr-7 ${
+          isSaving ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
+        }`}
         title={[verdictReason, moonReason].filter(Boolean).join(' · ') || undefined}
       >
-        <div className="flex items-center gap-1.5 min-w-0">
-          <GripVertical className="w-3 h-3 opacity-50 shrink-0" />
-          <span className="font-medium text-sm truncate">{displayName ?? session.objectName}</span>
-          {isSaving && <span className="text-[10px] opacity-60 shrink-0">Saving...</span>}
-          {!isSaving && moonVerdict !== 'ok' && (
-            <Moon
-              className={`w-3 h-3 shrink-0 ${moonVerdict === 'warning' ? 'text-red-400' : 'text-amber-400'}`}
-              aria-label="Moon interference warning"
-            />
+        {thumbnailUrl && !tiny && (
+          <img
+            src={thumbnailUrl}
+            alt=""
+            loading="lazy"
+            draggable={false}
+            className="mt-0.5 h-10 w-10 shrink-0 rounded-lg object-cover ring-1 ring-inset ring-white/15"
+          />
+        )}
+
+        <div className="flex min-w-0 flex-1 flex-col justify-start gap-0.5">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <GripVertical className="h-3 w-3 shrink-0 opacity-40" />
+            <span className="truncate text-sm font-semibold">{displayName ?? session.objectName}</span>
+            {isSaving && <span className="shrink-0 text-[10px] opacity-60">Saving...</span>}
+          </div>
+
+          <div className="text-[11px] text-white/60 tabular-nums">
+            {formatHm(start, observerTimezone)} to {formatHm(end, observerTimezone)}
+          </div>
+
+          {!compact && (
+            <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+              {minAlt != null && maxAlt != null && (
+                <Chip tone={belowHorizon ? 'bad' : lowInSky ? 'warn' : 'ok'}>
+                  <ArrowUp className="h-2.5 w-2.5" />
+                  {Math.round(minAlt)}° to {Math.round(maxAlt)}°
+                </Chip>
+              )}
+              {moonVerdict !== 'ok' && (
+                <Chip tone={moonVerdict === 'warning' ? 'bad' : 'warn'}>
+                  <Moon className="h-2.5 w-2.5" />
+                  Moon
+                </Chip>
+              )}
+              {hasOverlap && (
+                <Chip tone="warn">
+                  <AlertTriangle className="h-2.5 w-2.5" />
+                  Overlap
+                </Chip>
+              )}
+            </div>
+          )}
+
+          {!compact && !isSaving && warning && (
+            <div className={`truncate text-[10.5px] ${bad ? 'text-red-300' : 'text-amber-300'}`}>
+              {warning}
+            </div>
           )}
         </div>
-        <div className="text-[11px] opacity-80">
-          {formatHm(start, observerTimezone)} - {formatHm(end, observerTimezone)}
-          {hasOverlap && <span className="ml-2 text-amber-400">overlap</span>}
-        </div>
-        {minAlt != null && maxAlt != null && (
-          <div className="text-[10px] opacity-75">
-            alt {Math.round(minAlt)}° – {Math.round(maxAlt)}°
-          </div>
-        )}
-        {!isSaving && verdict !== 'all' && verdictReason && (
-          <div className={`text-[10px] truncate ${verdict === 'none' ? 'text-red-300' : 'text-amber-300'}`}>
-            {verdictReason}
-          </div>
-        )}
-        {!isSaving && (belowHorizon || lowInSky) && (
-          <div className={`text-[10px] truncate ${belowHorizon ? 'text-red-300' : 'text-amber-300'}`}>
-            {belowHorizon ? 'Sets below horizon during session' : `Low in sky (min ${Math.round(minAlt!)}°)`}
-          </div>
-        )}
-        {!isSaving && moonVerdict !== 'ok' && moonReason && (
-          <div className={`text-[10px] truncate ${moonVerdict === 'warning' ? 'text-red-300' : 'text-amber-300'}`}>
-            {moonReason}
-          </div>
-        )}
       </div>
 
       {!isSaving && (
-        <div className="absolute right-1 top-1 flex items-center gap-0.5 z-10">
+        <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 opacity-70 transition group-hover:opacity-100">
           <button
             onClick={(e) => { e.stopPropagation(); onShowDetails(session); }}
             onPointerDown={(e) => e.stopPropagation()}
-            className="w-5 h-5 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 transition"
+            className="flex h-5 w-5 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/20"
             aria-label="Show object details"
             title="Show details"
           >
-            <Info className="w-3 h-3" />
+            <Info className="h-3 w-3" />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
             onPointerDown={(e) => e.stopPropagation()}
-            className="w-5 h-5 rounded hover:bg-white/10 flex items-center justify-center"
+            className="flex h-5 w-5 items-center justify-center rounded-full transition hover:bg-white/20"
             aria-label="Remove scheduled block"
             title="Remove"
           >
-            <X className="w-3 h-3" />
+            <X className="h-3 w-3" />
           </button>
         </div>
       )}
@@ -183,6 +236,20 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
     </div>
   );
 });
+
+function Chip({ tone, children }: { tone: 'ok' | 'warn' | 'bad'; children: React.ReactNode }) {
+  const cls =
+    tone === 'bad'
+      ? 'bg-red-500/15 text-red-300 ring-red-400/25'
+      : tone === 'warn'
+        ? 'bg-amber-500/15 text-amber-300 ring-amber-400/25'
+        : 'bg-white/[0.07] text-white/65 ring-white/10';
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium tabular-nums ring-1 ring-inset ${cls}`}>
+      {children}
+    </span>
+  );
+}
 
 interface ResizeHandleProps {
   edge: 'top' | 'bottom';
@@ -203,7 +270,10 @@ function ResizeHandle({ edge, pxPerMinute, onResize, disabled }: ResizeHandlePro
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    (e.target as Element).setPointerCapture(e.pointerId);
+    // Pointer capture only exists on Elements. In practice the target is
+    // always the handle div, but narrow rather than assert so a non-Element
+    // target degrades to "drag without capture" instead of throwing.
+    if (e.target instanceof Element) e.target.setPointerCapture(e.pointerId);
     startYRef.current = e.clientY;
     lastSnappedRef.current = 0;
     setActive(true);
@@ -243,7 +313,9 @@ function ResizeHandle({ edge, pxPerMinute, onResize, disabled }: ResizeHandlePro
 
   return (
     <div
-      className={`absolute left-0 right-0 cursor-ns-resize z-20 ${edge === 'top' ? 'top-0' : 'bottom-0'} h-1.5 ${active ? 'bg-accent-500/40' : 'hover:bg-accent-500/30'}`}
+      className={`absolute left-0 right-0 z-20 cursor-ns-resize ${edge === 'top' ? 'top-0' : 'bottom-0'} h-2 ${
+        active ? 'bg-accent-400/50' : 'hover:bg-accent-400/30'
+      }`}
       onPointerDown={handlePointerDown}
       aria-label={`Resize ${edge}`}
     />

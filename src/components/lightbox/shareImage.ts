@@ -60,6 +60,15 @@ export function shareOutcomeMessage(outcome: ShareOutcome): string | null {
     case 'copied-image': return 'Image copied to clipboard';
     case 'copied-link': return 'Link copied. It only works on this network.';
     case 'failed': return 'Could not share this image';
-    default: return null;
+    // The OS share sheet already gave its own feedback, and a cancel needs no
+    // comment. Listed rather than left to the default so a new outcome has to
+    // decide for itself whether it says anything.
+    case 'shared': return null;
+    case 'cancelled': return null;
+    default: {
+      const _exhaustive: never = outcome;
+      void _exhaustive;
+      return null;
+    }
   }
 }

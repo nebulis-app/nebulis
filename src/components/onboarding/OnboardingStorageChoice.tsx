@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { HardDrive, Pencil } from 'lucide-react';
 import { getLibraryLocation } from '../../lib/api/storage';
-import { ChangeLocationModal } from '../settings/LibraryLocationSection';
+import { ChangeLocationModal } from '../ui/ChangeLocationModal';
 
 /**
  * Compact storage-location chooser for onboarding. The library is empty at

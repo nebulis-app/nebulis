@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import * as satellite from 'satellite.js';
 import {
   satelliteTracker,
   normalizeObservationTimestamp,
+  type ObservationParams,
 } from '../../server/lib/satelliteTracker';
+import type { TLERecord } from '../../server/lib/satelliteCatalog';
 
 describe('normalizeObservationTimestamp', () => {
   // Regression coverage for the CDT bug: new Date("...no Z...") is parsed as
@@ -58,7 +61,10 @@ describe('filterVisibleSatellites — invalid timestamp short-circuit', () => {
       fovWidthDeg: 1,
       fovHeightDeg: 1,
     });
-    expect(result).toEqual({ candidates: [], nearMisses: [] });
+    expect(result.candidates).toEqual([]);
+    expect(result.nearMisses).toEqual([]);
+    // Nothing was evaluated, so every rejection reason is still zero.
+    expect(Object.values(result.rejections).every(n => n === 0)).toBe(true);
   });
 });
 
@@ -185,5 +191,241 @@ describe('isIlluminated', () => {
 
   it('is in shadow directly antisolar (180 degrees), deep in the umbra', () => {
     expect(satelliteTracker.isIlluminated(atPhaseAngle(180), sunPos)).toBe(false);
+  });
+});
+
+// ─── Field-of-view and exposure-length regressions ───────────────────
+//
+// The identification pipeline was tuned around a ~0.7 deg field and a ~10 s
+// sub. Each block below covers a way that assumption broke for other rigs.
+
+describe('fovOffsets / satelliteCrossesFOV — sensor rotation', () => {
+  // Before rotation existed the test compared fovWidthDeg against the RA offset
+  // and fovHeightDeg against the DEC offset, i.e. it assumed the sensor's +x
+  // axis points east. Every rotator, every manually clocked camera and every
+  // alt-az field-rotation offset therefore tested a rectangle turned off the
+  // frame's real footprint, worst at high aspect ratios.
+  const centreRA = 100, centreDEC = 20;
+  // A tall narrow frame makes the orientation unmistakable.
+  const fovW = 0.2, fovH = 0.8;
+
+  it('defaults to +x pointing east, matching the pre-rotation behaviour', () => {
+    const withDefault = satelliteTracker.satelliteCrossesFOV(centreRA, centreDEC + 0.3, centreRA, centreDEC, fovW, fovH);
+    const withEast = satelliteTracker.satelliteCrossesFOV(centreRA, centreDEC + 0.3, centreRA, centreDEC, fovW, fovH, 90);
+    expect(withDefault).toBe(withEast);
+  });
+
+  it('puts the long axis north-south when +x points east', () => {
+    // 0.3 deg north is inside the 0.8 deg dimension.
+    expect(satelliteTracker.satelliteCrossesFOV(centreRA, centreDEC + 0.3, centreRA, centreDEC, fovW, fovH, 90)).toBe(true);
+  });
+
+  it('puts the long axis east-west when +x points north', () => {
+    // Same probe, camera turned a quarter turn: now outside the 0.2 deg dimension.
+    expect(satelliteTracker.satelliteCrossesFOV(centreRA, centreDEC + 0.3, centreRA, centreDEC, fovW, fovH, 0)).toBe(false);
+  });
+
+  it('projects a point onto the sensor axes', () => {
+    // +x east: north maps to -v, east maps to +u.
+    const { u, v } = satelliteTracker.fovOffsets(centreRA, centreDEC + 0.5, centreRA, centreDEC, 90);
+    expect(u).toBeCloseTo(0, 9);
+    expect(v).toBeCloseTo(-0.5, 9);
+  });
+
+  it('still applies cos(dec) foreshortening under rotation', () => {
+    const nearPole = 80;
+    const { u } = satelliteTracker.fovOffsets(centreRA + 1, nearPole, centreRA, nearPole, 90);
+    expect(u).toBeCloseTo(Math.cos(nearPole * Math.PI / 180), 6);
+  });
+});
+
+describe('segmentCrossesFOV', () => {
+  // Point sampling alone misses a transit shorter than one sampling step —
+  // ~29% of otherwise-detectable trails on a 0.24 deg field. Clipping the
+  // segment between consecutive samples makes the question exact.
+  const centreRA = 100, centreDEC = 20, fov = 0.1;
+
+  it('is true for a segment whose endpoints are both outside', () => {
+    const a = { ra: centreRA - 1, dec: centreDEC };
+    const b = { ra: centreRA + 1, dec: centreDEC };
+    expect(satelliteTracker.satelliteCrossesFOV(a.ra, a.dec, centreRA, centreDEC, fov, fov)).toBe(false);
+    expect(satelliteTracker.satelliteCrossesFOV(b.ra, b.dec, centreRA, centreDEC, fov, fov)).toBe(false);
+    expect(satelliteTracker.segmentCrossesFOV(a, b, centreRA, centreDEC, fov, fov)).toBe(true);
+  });
+
+  it('is false for a segment that passes wide of the frame', () => {
+    const a = { ra: centreRA - 1, dec: centreDEC + 5 };
+    const b = { ra: centreRA + 1, dec: centreDEC + 5 };
+    expect(satelliteTracker.segmentCrossesFOV(a, b, centreRA, centreDEC, fov, fov)).toBe(false);
+  });
+
+  it('is true when an endpoint is inside', () => {
+    const a = { ra: centreRA, dec: centreDEC };
+    const b = { ra: centreRA + 1, dec: centreDEC };
+    expect(satelliteTracker.segmentCrossesFOV(a, b, centreRA, centreDEC, fov, fov)).toBe(true);
+  });
+
+  it('is false for a zero-length segment outside the frame', () => {
+    const a = { ra: centreRA + 5, dec: centreDEC };
+    expect(satelliteTracker.segmentCrossesFOV(a, a, centreRA, centreDEC, fov, fov)).toBe(false);
+  });
+
+  it('follows the sensor rotation like the point test does', () => {
+    // A north-south segment offset 0.25 deg EAST of centre, against a tall
+    // 0.2 x 0.8 deg frame. The offset is wider than the short half-dimension
+    // (0.1) but inside the long one (0.4), so which axis points east decides
+    // the answer. A segment through the centre would cross at any rotation and
+    // prove nothing.
+    const eastOffsetRA = 0.25 / Math.cos(centreDEC * Math.PI / 180);
+    const a = { ra: centreRA + eastOffsetRA, dec: centreDEC - 0.3 };
+    const b = { ra: centreRA + eastOffsetRA, dec: centreDEC + 0.3 };
+    // +x north: the 0.8 deg dimension runs east-west and swallows the offset.
+    expect(satelliteTracker.segmentCrossesFOV(a, b, centreRA, centreDEC, 0.2, 0.8, 0)).toBe(true);
+    // +x east: the offset is outside the 0.2 deg dimension at every point.
+    expect(satelliteTracker.segmentCrossesFOV(a, b, centreRA, centreDEC, 0.2, 0.8, 90)).toBe(false);
+  });
+});
+
+describe('filterVisibleSatellites — exposure length and field size', () => {
+  // A real ISS element set and a real pass, so the orbital mechanics under
+  // these assertions are not synthetic.
+  const REC: TLERecord = {
+    name: 'ISS (ZARYA)',
+    noradId: 25544,
+    line1: '1 25544U 98067A   24170.51782528  .00016717  00000-0  30167-3 0  9998',
+    line2: '2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.49640970 40000',
+  };
+  const LAT = 32.8, LON = -96.8;
+  const satrec = satellite.twoline2satrec(REC.line1, REC.line2);
+  const observerGd = {
+    longitude: satellite.degreesToRadians(LON),
+    latitude: satellite.degreesToRadians(LAT),
+    height: 0,
+  };
+
+  /** Topocentric RA/DEC of the ISS at `when`, as the tracker computes it. */
+  function topo(when: Date): { ra: number; dec: number } {
+    const pv = satellite.propagate(satrec, when) as { position?: satellite.EciVec3<number> };
+    if (!pv?.position) throw new Error('propagation failed');
+    return satelliteTracker.eciToTopoRaDec(pv.position, satellite.gstime(when), observerGd);
+  }
+
+  /** A moment when this ISS pass is well up and sunlit, so horizon and shadow
+   *  filters are not what any of these tests are measuring. */
+  const passTime = (() => {
+    for (let m = 0; m < 6000; m++) {
+      const d = new Date(Date.UTC(2024, 5, 18, 0, 0, 0) + m * 60000);
+      const pv = satellite.propagate(satrec, d) as { position?: satellite.EciVec3<number> };
+      if (!pv?.position) continue;
+      const look = satellite.ecfToLookAngles(observerGd, satellite.eciToEcf(pv.position, satellite.gstime(d)));
+      if (look.elevation > 1.0 && satelliteTracker.isIlluminated(pv.position, satelliteTracker.getSunPositionECI(d))) {
+        return d;
+      }
+    }
+    throw new Error('no usable ISS pass found in the search range');
+  })();
+
+  function paramsFor(overrides: Partial<ObservationParams> & { exposureSeconds: number; timestamp: string }): ObservationParams {
+    const centre = topo(passTime);
+    return {
+      observerLat: LAT,
+      observerLon: LON,
+      imageCenterRA: centre.ra,
+      imageCenterDEC: centre.dec,
+      fovWidthDeg: 1.28,
+      fovHeightDeg: 0.73,
+      ...overrides,
+    };
+  }
+
+  // The pre-filter used to run once, at the shutter opening, against a radius
+  // capped at 15 deg. At ~1.2 deg/s only crossings within +-12.5 s of the
+  // opening could start inside that radius, so a 60 s sub searched ~21% of its
+  // own window and a 300 s sub ~4%. Conventional rigs shoot 120-600 s subs.
+  it.each([10, 30, 60, 120, 300, 600])(
+    'finds a satellite crossing 80%% of the way through a %i second exposure',
+    (exposureSeconds) => {
+      const crossOffset = exposureSeconds * 0.8;
+      const shutterOpen = new Date(passTime.getTime() - crossOffset * 1000);
+      const { candidates, rejections } = satelliteTracker.filterVisibleSatellites(
+        [REC],
+        paramsFor({ exposureSeconds, timestamp: shutterOpen.toISOString() }),
+      );
+      expect(candidates.length, `rejected as ${JSON.stringify(rejections)}`).toBe(1);
+      expect(candidates[0].noradId).toBe(25544);
+    },
+  );
+
+  // Endpoint-to-endpoint velocity is a chord across a curved path, so it
+  // understates the rate more the longer the window: the same pass measured
+  // 0.89 deg/s over 10 s but 0.21 deg/s over 600 s, dropping under the
+  // 0.3 deg/s "slow" gate and rejecting the correct satellite outright.
+  it.each([10, 60, 300, 600])(
+    'reports a realistic angular velocity over a %i second exposure',
+    (exposureSeconds) => {
+      const shutterOpen = new Date(passTime.getTime() - exposureSeconds * 0.5 * 1000);
+      const { candidates } = satelliteTracker.filterVisibleSatellites(
+        [REC],
+        paramsFor({ exposureSeconds, timestamp: shutterOpen.toISOString() }),
+      );
+      expect(candidates.length).toBe(1);
+      // The true instantaneous rate for this pass is ~0.85 deg/s.
+      expect(candidates[0].velocityDegPerSec).toBeGreaterThan(0.6);
+      expect(candidates[0].velocityDegPerSec).toBeLessThan(1.5);
+    },
+  );
+
+  // A field whose half-diagonal exceeds 15 deg (any lens under ~50 mm on
+  // APS-C) had the old cap sitting INSIDE the frame, so satellites visibly in
+  // the picture were rejected as 'distance'.
+  it('finds a satellite 12 degrees off-axis inside a wide-field frame', () => {
+    const centre = topo(passTime);
+    const { candidates } = satelliteTracker.filterVisibleSatellites([REC], paramsFor({
+      exposureSeconds: 10,
+      timestamp: new Date(passTime.getTime() - 5000).toISOString(),
+      imageCenterRA: centre.ra + 12 / Math.cos(centre.dec * Math.PI / 180),
+      imageCenterDEC: centre.dec,
+      fovWidthDeg: 40,
+      fovHeightDeg: 27,
+    }));
+    expect(candidates.length).toBe(1);
+  });
+
+  it('still rejects that satellite when the frame is genuinely too narrow to contain it', () => {
+    const centre = topo(passTime);
+    const { candidates } = satelliteTracker.filterVisibleSatellites([REC], paramsFor({
+      exposureSeconds: 10,
+      timestamp: new Date(passTime.getTime() - 5000).toISOString(),
+      imageCenterRA: centre.ra + 12 / Math.cos(centre.dec * Math.PI / 180),
+      imageCenterDEC: centre.dec,
+    }));
+    expect(candidates.length).toBe(0);
+  });
+
+  // The fixed 0.2 s step encoded the Seestar field ("LEO moves ~1 deg/s and
+  // FOV is ~0.7 deg wide"). On a 0.24 deg field a transit lasts ~0.2 s, so
+  // point sampling missed it outright depending on the shutter phase.
+  it.each([1.28, 0.55, 0.24, 0.17, 0.08])(
+    'finds a transit across a %s degree field at every shutter phase',
+    (fov) => {
+      for (const phase of [0, 0.037, 0.081, 0.123, 0.171]) {
+        const { candidates } = satelliteTracker.filterVisibleSatellites([REC], paramsFor({
+          exposureSeconds: 10,
+          timestamp: new Date(passTime.getTime() - 5000 + phase * 1000).toISOString(),
+          fovWidthDeg: fov,
+          fovHeightDeg: fov,
+        }));
+        expect(candidates.length, `missed at shutter phase ${phase}`).toBe(1);
+      }
+    },
+  );
+
+  it('caps the track it returns rather than growing it with the exposure', () => {
+    const { candidates } = satelliteTracker.filterVisibleSatellites([REC], paramsFor({
+      exposureSeconds: 600,
+      timestamp: new Date(passTime.getTime() - 300000).toISOString(),
+    }));
+    expect(candidates.length).toBe(1);
+    expect(candidates[0].track.length).toBeLessThanOrEqual(500);
   });
 });

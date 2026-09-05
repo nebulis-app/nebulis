@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { computeAltitudeCurve, buildTonightWindow } from '../lib/altaz';
+import { formatHm } from '../lib/timeFormat';
 
 interface AltitudeChartProps {
   /** RA in decimal hours */
@@ -177,7 +178,7 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, timeZone, isDark, onS
   const headerAlt = activePoint ? Math.round(activePoint.alt) : 0;
   const headerDir = activePoint ? azToCompass(activePoint.az) : '';
   const headerLabel = hover
-    ? hover.time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(timeZone ? { timeZone } : {}) })
+    ? formatHm(hover.time, timeZone)
     : currentPoint
       ? 'Current Altitude'
       : '';

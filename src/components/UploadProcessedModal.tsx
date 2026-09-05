@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sparkles, X, ImagePlus, AlertTriangle, Loader2, Layers, CheckSquare, Square } from 'lucide-react';
 import { uploadProcessedImage, createProcessingRun, getLibrarySessions } from '../lib/api/library';
 import { consumeCombinedSessions } from '../lib/lastCombinedSessions';
-import { canPreviewLocally, processedFormatLabel } from '../lib/processedFormats';
+import { canPreviewLocally, processedFormatLabel, PROCESSED_UPLOAD_EXTENSIONS } from '../lib/processedFormats';
 import { useTheme } from '../hooks/useTheme';
 
 interface Props {
@@ -207,7 +207,7 @@ export function UploadProcessedModal({ isOpen, onClose, objectId, date, initialF
           <input
             ref={fileInputRef}
             type="file"
-            accept=".jpg,.jpeg,.png,.tif,.tiff,.xisf,.fit,.fits,.fts,.psd,.xcf,.dng,.cr2,.cr3,.nef,.arw"
+            accept={PROCESSED_UPLOAD_EXTENSIONS.join(',')}
             className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (f) handleSelectFile(f); }}
           />

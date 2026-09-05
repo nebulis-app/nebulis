@@ -1,5 +1,6 @@
 export * from './objects.js';
 export * from './observations.js';
+export * from './objectLocation.js';
 export * from './import.js';
 export * from './folderScan.js';
 export * from './gallery.js';

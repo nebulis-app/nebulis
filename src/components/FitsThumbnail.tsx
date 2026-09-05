@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, memo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { RotateCw, AlertCircle } from 'lucide-react';
 import { parseFits, renderFitsThumbnail, type Colormap } from '../lib/fits';
 import { fetchBinary } from '../lib/api/client';
@@ -29,8 +30,7 @@ export const FitsThumbnail = memo(function FitsThumbnail({
   // All hooks must be declared before any conditional return (Rules of Hooks).
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
-  const [error, setError] = useState<string | null>(null);
+  const [inView, setInView] = useState(false);
   // The server thumbnail can 404/500 for an unparseable FITS. When that
   // happens, fall through to the client-side render path below instead of
   // showing a broken image.
@@ -48,7 +48,7 @@ export const FitsThumbnail = memo(function FitsThumbnail({
       (entries) => {
         if (entries[0].isIntersecting) {
           observer.disconnect();
-          setState('loading');
+          setInView(true);
         }
       },
       { rootMargin: '200px' } // pre-load slightly before visible
@@ -57,35 +57,36 @@ export const FitsThumbnail = memo(function FitsThumbnail({
     return () => observer.disconnect();
   }, [useServerThumb]);
 
-  // Fetch + render when state becomes 'loading'
+  // Fetch + parse the raw FITS binary once in view, cached by url so
+  // navigating back to this frame (or a second thumbnail of the same
+  // sub-frame elsewhere on the page) reuses it instead of downloading a
+  // multi-megabyte file again. staleTime: Infinity because the bytes at a
+  // given library URL never change.
+  const fitsQuery = useQuery({
+    queryKey: ['fits-binary', url],
+    queryFn: async ({ signal }) => parseFits(await fetchBinary(url, signal)),
+    enabled: !useServerThumb && inView,
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  // Colormap/stretch are a display parameter of the same pixel data, not a
+  // reason to re-fetch — this just redraws the canvas from whatever is
+  // already cached above.
   useEffect(() => {
-    if (useServerThumb || state !== 'loading') return;
-    const controller = new AbortController();
+    const fits = fitsQuery.data;
+    if (!fits || !canvasRef.current) return;
+    renderFitsThumbnail(canvasRef.current, fits, stretch, colormap, maxDim, window.devicePixelRatio || 1);
+  }, [fitsQuery.data, stretch, colormap, maxDim]);
 
-    fetchBinary(url, controller.signal)
-      .then(buffer => {
-        const fits = parseFits(buffer);
-        if (canvasRef.current) {
-          renderFitsThumbnail(canvasRef.current, fits, stretch, colormap, maxDim, window.devicePixelRatio || 1);
-        }
-        setState('done');
-      })
-      .catch(err => {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        setError(err.message);
-        setState('error');
-      });
-
-    return () => { controller.abort(); };
-  }, [useServerThumb, state, url, stretch, colormap, maxDim]);
-
-  // Re-fetch when colormap/stretch changes, but only if already loaded — don't
-  // bypass IntersectionObserver on mount (which would cause all thumbnails to
-  // start fetching simultaneously, exhausting the browser's connection limit).
-  useEffect(() => {
-    if (useServerThumb) return;
-    setState(s => (s === 'idle' ? 'idle' : 'loading'));
-  }, [useServerThumb, colormap, stretch]);
+  const state: 'idle' | 'loading' | 'done' | 'error' = !inView
+    ? 'idle'
+    : fitsQuery.isError
+      ? 'error'
+      : fitsQuery.data
+        ? 'done'
+        : 'loading';
+  const error = fitsQuery.error instanceof Error ? fitsQuery.error.message : null;
 
   // Fast path: server has already rendered a small JPEG — no need to download
   // the full FITS file or do any client-side pixel work. On load failure, mark
@@ -105,7 +106,13 @@ export const FitsThumbnail = memo(function FitsThumbnail({
   return (
     <div
       ref={containerRef}
-      className="w-full h-full flex items-center justify-center overflow-hidden"
+      // `relative` is load-bearing, not decoration. Until the canvas renders it
+      // carries `opacity-0 absolute`, and without a positioned ancestor here it
+      // resolves against whatever ancestor happens to be positioned, stretching
+      // an invisible click target across that region. A tile whose FITS is
+      // still loading (or failed) then swallowed clicks on unrelated controls,
+      // including the section tabs.
+      className="relative w-full h-full flex items-center justify-center overflow-hidden"
     >
       {state === 'idle' && (
         <div className={`w-full h-full ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`} />

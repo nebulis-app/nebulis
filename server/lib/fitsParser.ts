@@ -23,7 +23,12 @@ export function parseFitsHeader(buffer: Buffer): FitsHeader {
   const values: Record<string, string | number | boolean> = {};
   let offset = 0;
 
-  while (offset < buffer.length) {
+  // `offset + 80 > buffer.length` used to `break` the inner loop without
+  // advancing `offset`, and the outer `while (offset < buffer.length)` was
+  // still true — so any header with no END card whose length is not a multiple
+  // of 80 (a truncated download, a half-copied SMB file) spun forever and hung
+  // the request thread. Bail out of BOTH loops on a short tail instead.
+  while (offset + 80 <= buffer.length) {
     for (let i = 0; i < 36; i++) {
       if (offset + 80 > buffer.length) break;
 

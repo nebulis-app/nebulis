@@ -30,4 +30,15 @@ describe('curatedDescriptions', () => {
   it('returns null for an unknown id rather than throwing', () => {
     expect(getCuratedDescription('NOT_A_REAL_OBJECT')).toBeNull();
   });
+
+  it('resolves a Caldwell object keyed by C-number when asked by its canonical id', () => {
+    // IC342's curated text is stored under "C5" only — there is no "IC342" key.
+    // The /info route asks by the canonical id "IC342", so the lookup must
+    // follow the alias.
+    const byCanonical = getCuratedDescription('IC342');
+    expect(byCanonical, 'expected curated entry for IC342 via C5 alias').not.toBeNull();
+    expect(byCanonical!.extract).toMatch(/IC ?342/);
+    // Asking by the C-number directly still works.
+    expect(getCuratedDescription('C5')).toEqual(byCanonical);
+  });
 });

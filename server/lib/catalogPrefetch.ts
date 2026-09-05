@@ -35,7 +35,8 @@ import { getSharplessEntry } from './sharplessCatalog.js';
 import { SOLAR_SYSTEM_CATALOG } from '../data/solar-system-catalog.js';
 import { installCatalogPacks } from './catalogPack/install.js';
 import { clearPackState } from './catalogPack/state.js';
-import type { CatalogTier } from './catalogPack/manifest.js';
+import { CATALOG_TIERS, type CatalogTier } from './catalogPack/manifest.js';
+import type { CatalogDescriptionStatus } from './types/catalog.js';
 
 const IMAGE_CONCURRENCY = 3;
 const WIKI_CONCURRENCY = 5;
@@ -56,12 +57,30 @@ export const MASTER_HEIGHT = 1280;
  *   - src/lib/catalogImage.ts (CATALOG_IMAGE_WIDTH / HEIGHT)
  *   - seestar-apple/NebulisIOS/Services/APIClient.swift (skySurveyThumbnail*)
  */
-const CANONICAL_THUMBNAIL_SIZES: ReadonlyArray<{ w: number; h: number; fit: ResizeFit }> = [
+export const CANONICAL_THUMBNAIL_SIZES: ReadonlyArray<{ w: number; h: number; fit: ResizeFit }> = [
   { w: 384,  h: 384,  fit: 'inside' },  // Web — square library / preview tiles
   { w: 600,  h: 400,  fit: 'inside' },  // iOS — 3:2 grid tiles, planner sheets
   { w: 800,  h: 520,  fit: 'inside' },  // tvOS — 400×260pt @2x library tiles
   { w: 1920, h: 1080, fit: 'cover'  },  // tvOS — 16:9 full-screen, center-cropped from 3:2 master
 ];
+
+/**
+ * True when a file in `sky-cache/resized/` is one of the canonical sizes above.
+ *
+ * The filename format is `<ID>[_<source>]_<W>x<H>[_cover].jpg` (see
+ * `resizedImagePath`), so the size + fit live in the trailing token regardless
+ * of what the id or source segment contains. Used by the cache pruner: canonical
+ * thumbnails are deterministic, permanently reusable, and bounded by catalog
+ * size, so they are never evicted; only arbitrary-size resizes are.
+ */
+export function isCanonicalResizedFilename(name: string): boolean {
+  const m = /_(\d+)x(\d+)(_cover)?\.jpg$/i.exec(name);
+  if (!m) return false;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  const fit: ResizeFit = m[3] ? 'cover' : 'inside';
+  return CANONICAL_THUMBNAIL_SIZES.some(s => s.w === w && s.h === h && s.fit === fit);
+}
 
 /**
  * Generate every canonical thumbnail for a master that's already on disk.
@@ -150,7 +169,19 @@ const setStatusStmt = db.prepare(
 );
 
 function isPrefetchPhase(v: string): v is PrefetchPhase {
-  return (PREFETCH_PHASES as readonly string[]).includes(v);
+  // `.some()` with an equality test avoids widening the const tuple, which is
+  // what `.includes()` would need an assertion for.
+  return PREFETCH_PHASES.some(phase => phase === v);
+}
+
+// The subset of PREFETCH_PHASES that can be requested as a single standalone
+// phase (via ?phase= on the prefetch/start route) rather than being an
+// internal pipeline stage like 'pack', 'done', 'cancelled', or 'error'.
+export const RUNNABLE_PREFETCH_PHASES = ['images', 'wikipedia', 'caldwell'] as const;
+export type RunnablePrefetchPhase = (typeof RUNNABLE_PREFETCH_PHASES)[number];
+
+export function isRunnablePrefetchPhase(v: string): v is RunnablePrefetchPhase {
+  return RUNNABLE_PREFETCH_PHASES.some(phase => phase === v);
 }
 
 function rowToStatus(row: PrefetchStatusRow): PrefetchStatus {
@@ -229,7 +260,7 @@ export interface CatalogCacheRow {
   objectId: string;
   extract: string;
   wikiUrl: string;
-  status: 'ok' | 'not_found' | 'error';
+  status: CatalogDescriptionStatus;
 }
 
 // Case-insensitive lookup, preferring 'ok' rows so a stale 'not_found' written
@@ -757,7 +788,7 @@ export interface StartOptions {
   /** Wipe the Wikipedia cache before starting. Images are left alone. */
   force?: boolean;
   /** Run only a single phase instead of the full three-phase job. */
-  phase?: 'images' | 'wikipedia' | 'caldwell';
+  phase?: RunnablePrefetchPhase;
   /** What subset of the catalog to fetch. Defaults to `curated`. */
   scope?: PrefetchScope;
   /** Run Phase 0 (catalog packs) only. No Wikipedia, NASA, or DSS2 requests. */
@@ -829,7 +860,7 @@ function getLibraryObjectIds(): Set<string> {
 
 async function runJob(
   signal: AbortSignal,
-  singlePhase?: 'images' | 'wikipedia' | 'caldwell',
+  singlePhase?: RunnablePrefetchPhase,
   scope: PrefetchScope = 'curated',
   packsOnly = false,
 ): Promise<void> {
@@ -870,9 +901,10 @@ async function runJob(
   // below become gap-fillers (they already skip cached objects). On failure
   // the pack error is logged and we fall through to the full live scrape.
   if (!singlePhase) {
+    // 'curated' deliberately skips 'extended' — a smaller, hand-picked scope.
     const tiersForScope: CatalogTier[] = scope === 'curated'
       ? ['messier', 'caldwell', 'popular', 'sharpless']
-      : ['messier', 'caldwell', 'popular', 'extended', 'sharpless'];
+      : [...CATALOG_TIERS];
 
     saveStatus({ ...getPrefetchStatus(), phase: 'pack', processed: 0, total: tiersForScope.length, errors: 0 });
 

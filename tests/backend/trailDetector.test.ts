@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   trailDetector,
   FWHM_HARD_REJECT_PX,
@@ -6,7 +6,24 @@ import {
   FILL_FRACTION_MIN,
   CONTIGUOUS_RUN_FRACTION_OF_DIAGONAL,
   GAP_TOLERANCE_FRACTION_OF_DIAGONAL,
+  LINEARITY_MAX_WIDTH_PX,
+  LONG_COMPONENT_FRACTION,
+  MIN_TRAIL_ANGULAR_DEG,
+  MIN_BIN_COVERAGE,
+  MAX_MASK_COVERAGE,
+  STAR_PAD_MIN_PX,
+  STAR_PAD_MAX_PX,
 } from '../../server/lib/trailDetector';
+
+// This file's synthetic-image tests run the full detector pipeline against
+// frames up to 6248x6248px, which is genuinely heavy numeric work. Locally
+// (10-core Apple Silicon) the slowest of them takes ~1.7s, comfortably under
+// Vitest's 5000ms default — but CI (GitHub's shared 2-core ubuntu-latest
+// runner, plus `--coverage` instrumentation on top) is slow enough to push
+// several of them past that ceiling, failing tests whose logic is unchanged.
+// 20s is a wide margin over any observed local time while still catching a
+// genuine hang or infinite loop.
+vi.setConfig({ testTimeout: 20_000 });
 
 /**
  * Synthetic-fixture tests for the satellite trail detector.
@@ -186,10 +203,11 @@ describe('trailDetector.detect', () => {
     const buf = buildFitsBuffer(w, h, pixels);
 
     const result = trailDetector.detect(buf);
-    expect(result.trailDetected).toBe(true);
+    // Throw rather than `expect(...).toBe(true)`: the result is a discriminated
+    // union, so this both fails the test and narrows `result` to the detected
+    // variant, making the measurement fields below non-optional.
+    if (!result.trailDetected) throw new Error('expected a trail to be detected');
     // FWHM hard-reject threshold from docs/trail-detection.md: must be ≤ 12 px.
-    // `toBeLessThanOrEqual` would throw on undefined, so the `.toBeDefined`
-    // pre-check is redundant.
     expect(result.profileWidth).toBeLessThanOrEqual(FWHM_HARD_REJECT_PX);
     // Trail length must clear the 10%-of-diagonal floor.
     const diag = Math.sqrt(w * w + h * h);
@@ -252,5 +270,236 @@ describe('documented detector thresholds (lock-in)', () => {
     expect(FILL_FRACTION_MIN).toBe(0.40);
     expect(CONTIGUOUS_RUN_FRACTION_OF_DIAGONAL).toBe(0.03);
     expect(GAP_TOLERANCE_FRACTION_OF_DIAGONAL).toBe(0.06);
+  });
+});
+
+// ─── Scale-dependence regressions ────────────────────────────────────
+//
+// Everything below covers a way the detector's behaviour used to depend on
+// which telescope took the picture rather than on what was in it. Each block
+// names the failure it locks out.
+
+/**
+ * Gaussian-profile scene generator, used in place of the single-pixel
+ * `stampLine` above: the bugs in this section are all about a trail's WIDTH
+ * and a star field's DENSITY, neither of which a 1 px line can express.
+ */
+function makeScene(
+  w: number,
+  h: number,
+  opts: {
+    nStars?: number;
+    starPeak?: number;
+    trailAmp?: number;
+    trailFraction?: number;
+    trailFwhm?: number;
+    trailAngleDeg?: number;
+    noise?: number;
+  } = {},
+): Float64Array {
+  const {
+    nStars = 0, starPeak = 400, trailAmp = 300, trailFraction = 1,
+    trailFwhm = 3, trailAngleDeg = 20, noise = 30,
+  } = opts;
+
+  // Deterministic LCG — same seed every run so a failure is reproducible.
+  let s = 12345 >>> 0;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return (s & 0xffffff) / 0xffffff; };
+
+  const arr = new Float64Array(w * h);
+  for (let i = 0; i < arr.length; i++) arr[i] = 1000 + (rnd() - 0.5) * 2 * noise;
+
+  const starSigma = 1.2;
+  for (let n = 0; n < nStars; n++) {
+    const cx = Math.round(rnd() * w), cy = Math.round(rnd() * h);
+    // A spread of brightnesses, weighted faint, like a real field.
+    const peak = starPeak * (0.2 + rnd() * rnd() * 3);
+    for (let dy = -5; dy <= 5; dy++) {
+      for (let dx = -5; dx <= 5; dx++) {
+        const x = cx + dx, y = cy + dy;
+        if (x < 0 || x >= w || y < 0 || y >= h) continue;
+        arr[y * w + x] += peak * Math.exp(-(dx * dx + dy * dy) / (2 * starSigma * starSigma));
+      }
+    }
+  }
+
+  const diag = Math.sqrt(w * w + h * h);
+  const len = trailFraction * diag;
+  const th = trailAngleDeg * Math.PI / 180;
+  const dx = Math.cos(th), dy = Math.sin(th);
+  const sigma = trailFwhm / 2.3548;
+  const half = Math.ceil(sigma * 3);
+  const steps = Math.ceil(len * 3);
+  for (let t = 0; t <= steps; t++) {
+    const u = (t / steps - 0.5) * len;
+    const px = w / 2 + u * dx, py = h / 2 + u * dy;
+    for (let o = -half; o <= half; o++) {
+      const x = Math.round(px - o * dy), y = Math.round(py + o * dx);
+      if (x < 0 || x >= w || y < 0 || y >= h) continue;
+      // /3 because neighbouring steps overlap; keeps the peak near trailAmp.
+      arr[y * w + x] += (trailAmp * Math.exp(-(o * o) / (2 * sigma * sigma))) / 3;
+    }
+  }
+  return arr;
+}
+
+describe('trail width independence (star mask must not swallow thick trails)', () => {
+  // `linearity` is pixelCount / bboxDiagonal, which for a line reads out as its
+  // WIDTH. The old cutoff of 2.5 therefore declared every trail wider than
+  // 2.5 working px a "compact source" and masked its bounding box — the whole
+  // frame, for a full-frame diagonal. Bright passes (ISS, flares) and small
+  // sensors at long focal length were hit hardest, because they downsample
+  // least and so have the widest trails in working pixels.
+  const widths = [2, 3, 4, 6, 8, 12, 20, 32];
+
+  it.each(widths)('detects a %i px wide trail on a 2048x2048 frame', (fwhm) => {
+    const pixels = makeScene(2048, 2048, { nStars: 200, trailFwhm: fwhm });
+    const result = trailDetector.detect(buildFitsBuffer(2048, 2048, pixels));
+    expect(result.trailDetected).toBe(true);
+  });
+
+  it.each(widths.slice(0, 7))('detects a %i px wide trail on a 1080x1920 SeeStar frame', (fwhm) => {
+    const pixels = makeScene(1080, 1920, { nStars: 100, trailFwhm: fwhm });
+    const result = trailDetector.detect(buildFitsBuffer(1080, 1920, pixels));
+    expect(result.trailDetected).toBe(true);
+  });
+
+  it('keeps the width cutoff above any plausible trail width', () => {
+    // Guards the constant itself: 2.5 was below the width of a routine bright
+    // trail, which is what made the bug possible.
+    expect(LINEARITY_MAX_WIDTH_PX).toBeGreaterThanOrEqual(8);
+  });
+
+  it('never masks a component already long enough to be a trail', () => {
+    // The escape hatch that makes the width cutoff safe: half the minimum trail
+    // length, so a trail split in two by a star crossing still protects both
+    // halves.
+    expect(LONG_COMPONENT_FRACTION).toBeCloseTo(MIN_LENGTH_FRACTION_OF_DIAGONAL / 2, 10);
+  });
+});
+
+describe('sensor resolution independence (star-mask padding)', () => {
+  // Padding used to be `maxIntensity / sigma`, a ratio that grows with the
+  // downsample factor because box-filtering suppresses noise faster than star
+  // peaks. On a 61 MP frame every star saturated the 12 px cap and claimed a
+  // ~25x25 working block: the same 300-star sky masked 0.4% of a 1 MP frame
+  // and 26% of a 39 MP one, and a rich field masked 99% and detected nothing.
+  const sensors: Array<[number, number]> = [[1024, 1024], [3008, 3008], [6248, 6248]];
+
+  for (const [w, h] of sensors) {
+    for (const nStars of [300, 1500, 6000]) {
+      it(`detects a full-frame trail on ${w}x${h} under ${nStars} stars`, () => {
+        const pixels = makeScene(w, h, { nStars });
+        const result = trailDetector.detect(buildFitsBuffer(w, h, pixels));
+        expect(result.trailDetected).toBe(true);
+      });
+    }
+  }
+
+  it('bounds the padding so it cannot scale with the downsample factor', () => {
+    expect(STAR_PAD_MIN_PX).toBeGreaterThanOrEqual(1);
+    expect(STAR_PAD_MAX_PX).toBeLessThanOrEqual(8);
+    expect(STAR_PAD_MAX_PX).toBeGreaterThan(STAR_PAD_MIN_PX);
+  });
+
+  it('declares a mask-coverage ceiling that leaves sky to search', () => {
+    expect(MAX_MASK_COVERAGE).toBeGreaterThan(0);
+    expect(MAX_MASK_COVERAGE).toBeLessThan(0.6);
+  });
+});
+
+describe('square sensors have no 45/135 degree dead band', () => {
+  // On a SQUARE frame the projection axis at exactly 45/135 lands on the image
+  // diagonal, the end bins degenerate to a single corner pixel, and the count
+  // normalization amplified that corner into a peak that outranked the trail.
+  // Rectangular frames were unaffected (no integer angle hits their diagonal),
+  // which is why this went unnoticed. 3008x3008 is the ASI533, a common camera.
+  it.each([44.5, 45, 45.5, 134.5, 135, 135.5])(
+    'detects a trail at %s degrees on a 3008x3008 frame',
+    (angle) => {
+      const pixels = makeScene(3008, 3008, { nStars: 200, trailAngleDeg: angle });
+      const result = trailDetector.detect(buildFitsBuffer(3008, 3008, pixels));
+      expect(result.trailDetected).toBe(true);
+    },
+  );
+
+  it('discards projection bins too sparse to measure', () => {
+    expect(MIN_BIN_COVERAGE).toBeGreaterThan(0);
+    expect(MIN_BIN_COVERAGE).toBeLessThan(1);
+  });
+});
+
+describe('minimum trail length is angular when the plate scale is known', () => {
+  // 10% of the diagonal is scale-free, but a trail's length is not: it is
+  // (angular rate x exposure) degrees whatever optics took the frame. On a
+  // ~63 deg camera-lens field that floor demanded a 6.3 deg streak, which no
+  // single sub produces, so real trails were discarded as "too short".
+  const w = 4000, h = 2100;
+  const wideFieldDegPerPixel = 63 / Math.sqrt(w * w + h * h);
+
+  it('rejects a short streak on a wide field when no plate scale is supplied', () => {
+    const pixels = makeScene(w, h, { nStars: 400, trailFraction: 0.02 });
+    expect(trailDetector.detect(buildFitsBuffer(w, h, pixels)).trailDetected).toBe(false);
+  });
+
+  it('accepts the same streak once the plate scale shows it is a real angle', () => {
+    const pixels = makeScene(w, h, { nStars: 400, trailFraction: 0.02 });
+    // 2% of a 63 deg diagonal is 1.26 deg on the sky: about 1.5 s of LEO motion.
+    const result = trailDetector.detect(buildFitsBuffer(w, h, pixels), {
+      degreesPerPixel: wideFieldDegPerPixel,
+    });
+    expect(result.trailDetected).toBe(true);
+  });
+
+  it('does not loosen the floor on a narrow field', () => {
+    // A plate scale must only ever make the detector MORE sensitive on wide
+    // fields, never looser on the narrow ones the 10% rule was tuned for.
+    const sw = 256, sh = 256;
+    const narrowDegPerPixel = 0.73 / Math.sqrt(sw * sw + sh * sh);
+    const pixels = blankImage(sw, sh, 100);
+    addNoise(pixels, 5);
+    const diag = Math.sqrt(sw * sw + sh * sh);
+    const targetLen = diag * 0.09; // below the 10% floor, as in the test above
+    const dx = Math.round((targetLen / 2) * Math.SQRT1_2);
+    const dy = Math.round((targetLen / 2) * Math.SQRT1_2);
+    stampLine(pixels, sw, sh, sw / 2 - dx, sh / 2 - dy, sw / 2 + dx, sh / 2 + dy, 5000);
+    const buf = buildFitsBuffer(sw, sh, pixels);
+    expect(trailDetector.detect(buf).trailDetected).toBe(false);
+    expect(trailDetector.detect(buf, { degreesPerPixel: narrowDegPerPixel }).trailDetected).toBe(false);
+  });
+
+  it('ignores a nonsensical plate scale rather than trusting it', () => {
+    const pixels = makeScene(w, h, { nStars: 400, trailFraction: 0.02 });
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const result = trailDetector.detect(buildFitsBuffer(w, h, pixels), { degreesPerPixel: bad });
+      expect(result.trailDetected).toBe(false);
+    }
+  });
+
+  it('declares an angular floor short enough that no real pass is excluded', () => {
+    // A satellite covers 0.3-1.2 deg/s, so this is well under one second of motion.
+    expect(MIN_TRAIL_ANGULAR_DEG).toBeGreaterThan(0);
+    expect(MIN_TRAIL_ANGULAR_DEG).toBeLessThanOrEqual(0.5);
+  });
+});
+
+describe('reported angle is the trail direction, not its normal', () => {
+  // The projection search parameterises a trail by its NORMAL, and that number
+  // was returned verbatim — so the API field and the UI's "N deg angle" were
+  // both 90 deg off from the streak on screen (a horizontal trail read 90).
+  it.each([0, 20, 45, 90, 135, 160])('reports %i degrees for a trail drawn at that angle', (angle) => {
+    const pixels = makeScene(1024, 1536, { nStars: 100, trailAngleDeg: angle });
+    const result = trailDetector.detect(buildFitsBuffer(1024, 1536, pixels));
+    if (!result.trailDetected) throw new Error(`expected a trail at ${angle} degrees`);
+    // The 1-degree angle search grid is the only tolerance needed here.
+    expect(Math.abs(result.angleDegrees - angle)).toBeLessThanOrEqual(1);
+  });
+
+  it('reports an orientation in [0, 180)', () => {
+    const pixels = makeScene(1024, 1536, { nStars: 100, trailAngleDeg: 170 });
+    const result = trailDetector.detect(buildFitsBuffer(1024, 1536, pixels));
+    if (!result.trailDetected) throw new Error('expected a trail');
+    expect(result.angleDegrees).toBeGreaterThanOrEqual(0);
+    expect(result.angleDegrees).toBeLessThan(180);
   });
 });

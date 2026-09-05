@@ -59,33 +59,24 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes 
     object.galleryImageVersion ?? object.galleryImage,
   );
 
-  // Optimistically patch the cached library list instead of invalidating it.
-  // Invalidation forced a full re-fetch of every object (a DB read plus a stat
-  // per object server-side) just to flip one boolean. Here we update the one
-  // entry in place and roll back only if the request fails — no refetch, and
-  // the Favorites filter still reacts because object.isFavorite changes.
+  // Unifying Lens, not a Cache Hack: no setQueryData, no rollback. `mutationKey`
+  // is shared by every ObjectCard instance, so Gallery.tsx's useMutationState
+  // can overlay every in-flight toggle (including this card's own) onto the
+  // 'library-objects' list for the Favorites filter, while this card derives
+  // its own optimistic heart icon directly from favMutation below. When the
+  // mutation settles, invalidation makes object.isFavorite authoritative again
+  // for both — no local state to go stale, and no unconfirmed write can ever
+  // masquerade as server truth.
   const favMutation = useMutation({
-    mutationFn: (next: boolean) => toggleFavorite(object.id, next),
-    onMutate: async (next: boolean) => {
-      await queryClient.cancelQueries({ queryKey: ['library-objects'] });
-      const previous = queryClient.getQueryData<AstroObject[]>(['library-objects']);
-      queryClient.setQueryData<AstroObject[]>(['library-objects'], old =>
-        old?.map(o => (o.id === object.id ? { ...o, isFavorite: next } : o)),
-      );
-      return { previous };
-    },
-    onError: (_err, _next, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(['library-objects'], context.previous);
-      }
+    mutationKey: ['toggle-object-favorite'],
+    mutationFn: ({ next }: { objectId: string; next: boolean }) => toggleFavorite(object.id, next),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['library-objects'] });
     },
   });
 
-  // Derive optimistic favorite state from the in-flight mutation's target value.
-  // When the mutation settles and the query re-fetches, object.isFavorite becomes
-  // authoritative again — no local state to go stale.
   const favorited = favMutation.isPending
-    ? (favMutation.variables ?? object.isFavorite ?? false)
+    ? (favMutation.variables?.next ?? object.isFavorite ?? false)
     : (object.isFavorite ?? false);
 
   // Telescopes arrive as a prop from the parent's `['telescopes']` query.
@@ -104,8 +95,8 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes 
       to={`/object/${encodeURIComponent(object.id)}`}
       className={`group card-hover block rounded-2xl overflow-hidden border transition-all ${
         isDark
-          ? 'bg-slate-900 border-slate-800 hover:border-slate-700'
-          : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm hover:shadow-md'
+          ? 'bg-slate-900 border-slate-800 hover:border-accent-400'
+          : 'bg-white border-slate-200 hover:border-accent-400 shadow-sm hover:shadow-md'
       }`}
     >
       {/* Preview area with sky image */}
@@ -171,7 +162,7 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes 
 
         {/* Favorite heart button — hidden until hover, always visible when favorited */}
         <button
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); favMutation.mutate(!favorited); }}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); favMutation.mutate({ objectId: object.id, next: !favorited }); }}
           className={`absolute top-2 right-2 z-10 p-1.5 rounded-full bg-black/30 backdrop-blur-sm hover:bg-black/50 transition-all ${
             favorited ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}

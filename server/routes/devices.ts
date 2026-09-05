@@ -45,7 +45,7 @@ router.delete('/admin/:id', (req: Request, res: Response) => {
     return;
   }
   const id = typeof req.params.id === 'string' ? req.params.id : '';
-  const ok = adminRevokeDevice(id);
+  const ok = adminRevokeDevice(id, { userId: req.userId, username: req.username, ip: req.ip ?? req.socket.remoteAddress });
   if (!ok) {
     res.apiError(404, 'DEVICE_NOT_FOUND', 'No matching device to revoke.');
     return;

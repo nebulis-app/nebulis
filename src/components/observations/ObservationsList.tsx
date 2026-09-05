@@ -120,9 +120,7 @@ export function ObservationsList({
 
   if (observations.length === 0) {
     return (
-      <div className={`rounded-2xl border px-6 py-16 text-center ${
-        isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'
-      }`}>
+      <div className="px-6 py-16 text-center">
         <p className={`font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>No observations yet</p>
         <p className={`text-sm mt-1 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
           Import from a telescope or add one manually to see it here.
@@ -132,9 +130,8 @@ export function ObservationsList({
   }
 
   return (
-    <div className={`rounded-2xl border overflow-hidden ${
-      isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'
-    }`}>
+    // The page wraps this (and the toolbar above it) in one bordered card.
+    <div className="overflow-hidden">
       {/* Wide tables scroll inside their own container rather than pushing the page sideways. */}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">

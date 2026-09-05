@@ -78,9 +78,59 @@ html {
 }
 
 /* ─── Light theme ─────────────────────────────────────────────── */
+/* Tailwind v4 compiles utilities like bg-slate-400 or text-slate-400 to
+   `background-color: var(--color-slate-400)`, so redefining the token here
+   re-styles every utility class at once instead of touching the ~2,800
+   isDark call sites
+   across the app. Steps 600-900 are unchanged (already dark enough to read
+   on a light surface); only the light-facing 50-500 steps and the
+   interactive accent steps move. Ratios below are WCAG contrast; "vs card"
+   is against the new --color-white, "vs canvas" is against slate-50 for text
+   that sits directly on the page background with no card behind it.
+
+   - slate-50  (page canvas): 0.92 -> 0.81 luminance
+   - slate-100 (inset/chip):  card/inset separation 1.18 -> 1.26
+   - slate-200 (borders):     border/card separation 1.41 -> 1.60
+   - slate-300 (disabled):    2.65 vs card (was 1.93) - still decorative only
+   - slate-400 (muted text):  3.15 -> 5.23 vs card, 4.53 vs canvas, both pass AA
+   - slate-500 (secondary):   5.46 -> 7.09 vs card
+   - accent-400/500/600:      white-on-fill goes from 1.67/2.15/3.19 to
+     3.19/5.02/7.09, so buttons/badges pass AA instead of failing it. */
+.light {
+  --color-white:     #f7f9fc;
+  --color-slate-50:  #e4e9f1;
+  --color-slate-100: #d8e0ec;
+  --color-slate-200: #bcc8da;
+  --color-slate-300: #8a9cb6;
+  --color-slate-400: #546a8a;
+  --color-slate-500: #435671;
+
+  --color-accent-400: #d97706;
+  --color-accent-500: #b45309;
+  --color-accent-600: #92400e;
+}
 .light body {
   background-color: var(--color-slate-50);
   color: var(--color-slate-800);
+}
+
+/* Page banners (Library/Gallery/Observations/Planner/Settings/Backup/Catalogs
+   and the object/session detail heroes) carry NASA astrophotography, which
+   needs a black background to read — they stay `bg-slate-950` in every theme
+   on purpose, see each component's own docstring. In light mode that made
+   them read as a rectangle that got left the wrong color rather than a
+   deliberate dark "window". A visible ring plus a warmer, closer shadow (vs.
+   the pure-black one every other theme uses) frames it as intentional
+   instead. Lives here rather than as each component's inline boxShadow so
+   nine near-identical copies don't drift; components just add `.hero-panel`
+   alongside their own `bg-slate-950 rounded-3xl`. */
+.hero-panel {
+  box-shadow: 0 24px 60px -34px rgba(0, 0, 0, 0.9);
+}
+.light .hero-panel {
+  box-shadow:
+    0 20px 45px -28px rgba(15, 23, 42, 0.45),
+    0 0 0 1px rgba(15, 23, 42, 0.08);
 }
 
 /* ─── Dark theme ──────────────────────────────────────────────── */
@@ -90,6 +140,100 @@ html {
 .dark body {
   background-color: var(--color-slate-950);
   color: var(--color-slate-200);
+}
+
+/* ─── Dark theme: optional nebula backdrop ────────────────────────
+   Opt-in from Settings → Appearance, offered only while the Dark theme
+   is active. A deep-sky wash behind the whole app, weighted to the left
+   and right edges: the page content covers the centre, so the nebulae
+   and stars are concentrated in the side gutters where they read, with
+   only a thin wash left across the middle.
+
+   Everything sits on fixed pseudo-elements at z-index -1, painting over
+   the opaque `.dark body` fill. `.nebula-backdrop` is set on <html> by
+   useTheme, and the app shell (Layout) drops its own slate-950 fill in
+   this mode so the backdrop shows through the gutters, the nav, and the
+   gaps between cards. No animation — it reads as calm depth, not motion.
+
+   `::before` is the Hubble Carina frame, mirrored into both edges and
+   masked out of the centre. `::after` is the nebula clouds and starfield,
+   centred in each side gutter. */
+.dark.nebula-backdrop body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  /* Two copies of the frame at viewport height, one flush to each edge.
+     The horizontal mask keeps the outer ~16% at full strength, fades
+     through the mid gutter, and is gone across the centre third. */
+  background-image:
+    url('./assets/heroes/carina-landscape.webp'),
+    url('./assets/heroes/carina-landscape.webp');
+  background-repeat: no-repeat, no-repeat;
+  background-position: left center, right center;
+  background-size: auto 115%, auto 115%;
+  opacity: 0.22;
+  filter: saturate(0.68) contrast(0.92) brightness(0.82);
+  -webkit-mask-image:
+    linear-gradient(to right, #000 0%, #000 15%, rgba(0,0,0,0.4) 30%, rgba(0,0,0,0) 46%, rgba(0,0,0,0) 54%, rgba(0,0,0,0.4) 70%, #000 85%, #000 100%),
+    linear-gradient(to bottom, #000 0%, rgba(0,0,0,0.7) 55%, rgba(0,0,0,0.28) 100%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, #000 0%, #000 15%, rgba(0,0,0,0.4) 30%, rgba(0,0,0,0) 46%, rgba(0,0,0,0) 54%, rgba(0,0,0,0.4) 70%, #000 85%, #000 100%),
+    linear-gradient(to bottom, #000 0%, rgba(0,0,0,0.7) 55%, rgba(0,0,0,0.28) 100%);
+  mask-composite: intersect;
+}
+
+.dark.nebula-backdrop body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-image:
+    /* Nebula clouds down the left gutter */
+    radial-gradient(ellipse 34% 66% at 2% 22%, rgba(99,102,241,0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 30% 52% at 0% 74%, rgba(45,212,191,0.17) 0%, transparent 62%),
+    radial-gradient(ellipse 22% 38% at 9% 48%, rgba(236,72,153,0.13) 0%, transparent 60%),
+    /* Nebula clouds down the right gutter */
+    radial-gradient(ellipse 34% 64% at 98% 14%, rgba(245,158,11,0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 32% 56% at 100% 72%, rgba(139,92,246,0.20) 0%, transparent 60%),
+    radial-gradient(ellipse 22% 36% at 91% 46%, rgba(59,130,246,0.13) 0%, transparent 58%),
+    /* Broad top glow + thin centre wash so the sides don't read as detached */
+    radial-gradient(ellipse 90% 40% at 50% 0%, rgba(120,90,220,0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 70% 46% at 50% 46%, rgba(88,48,168,0.035) 0%, transparent 74%),
+    /* Starfield — anchors + field down both edges, sparse centre */
+    radial-gradient(2px 2px at 4% 12%, rgba(255,255,255,0.58), transparent),
+    radial-gradient(1.5px 1.5px at 8% 30%, rgba(200,218,255,0.47), transparent),
+    radial-gradient(2px 2px at 2% 46%, rgba(255,255,255,0.5), transparent),
+    radial-gradient(1.5px 1.5px at 10% 60%, rgba(255,255,255,0.42), transparent),
+    radial-gradient(2px 2px at 5% 74%, rgba(255,255,255,0.54), transparent),
+    radial-gradient(1.5px 1.5px at 9% 88%, rgba(255,255,255,0.38), transparent),
+    radial-gradient(1.5px 1.5px at 14% 20%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1.5px 1.5px at 13% 68%, rgba(200,218,255,0.35), transparent),
+    radial-gradient(1.5px 1.5px at 17% 40%, rgba(255,255,255,0.43), transparent),
+    radial-gradient(1.5px 1.5px at 19% 82%, rgba(255,255,255,0.35), transparent),
+    radial-gradient(1px 1px at 22% 30%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1px 1px at 24% 58%, rgba(255,255,255,0.26), transparent),
+    radial-gradient(2px 2px at 96% 10%, rgba(255,255,255,0.58), transparent),
+    radial-gradient(1.5px 1.5px at 92% 26%, rgba(255,255,255,0.45), transparent),
+    radial-gradient(2px 2px at 98% 42%, rgba(200,218,255,0.5), transparent),
+    radial-gradient(1.5px 1.5px at 90% 56%, rgba(255,255,255,0.42), transparent),
+    radial-gradient(2px 2px at 95% 72%, rgba(255,255,255,0.54), transparent),
+    radial-gradient(1.5px 1.5px at 91% 87%, rgba(255,255,255,0.38), transparent),
+    radial-gradient(1.5px 1.5px at 86% 16%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1.5px 1.5px at 87% 64%, rgba(200,218,255,0.35), transparent),
+    radial-gradient(1.5px 1.5px at 83% 38%, rgba(255,255,255,0.43), transparent),
+    radial-gradient(1.5px 1.5px at 81% 78%, rgba(255,255,255,0.35), transparent),
+    radial-gradient(1px 1px at 78% 28%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1px 1px at 76% 60%, rgba(255,255,255,0.26), transparent),
+    radial-gradient(1px 1px at 36% 14%, rgba(255,255,255,0.22), transparent),
+    radial-gradient(1px 1px at 46% 66%, rgba(255,255,255,0.19), transparent),
+    radial-gradient(1px 1px at 58% 22%, rgba(255,255,255,0.22), transparent),
+    radial-gradient(1px 1px at 64% 84%, rgba(255,255,255,0.17), transparent),
+    radial-gradient(1px 1px at 52% 44%, rgba(255,255,255,0.15), transparent);
 }
 
 /* ─── Space theme ─────────────────────────────────────────────── */
@@ -129,7 +273,11 @@ html {
 .space .hover\:bg-accent-600:hover { background-color: #7c3aed; }
 .space .shadow-accent-500\/20 { --tw-shadow-color: rgba(139, 92, 246, 0.2); }
 .space .ring-accent-500\/40 { --tw-ring-color: rgba(139, 92, 246, 0.4); }
+/* Selection ring on the lightbox's active thumbnail. */
+.space .ring-accent-400 { --tw-ring-color: #a78bfa; }
 .space .border-accent-500\/30 { border-color: rgba(139, 92, 246, 0.3); }
+/* Hover border on object/image tiles (ObjectCard, ImageCard). */
+.space .hover\:border-accent-400:hover { border-color: #a78bfa; }
 
 /* ── Star field + nebula clouds ── */
 .space body::before {
@@ -357,14 +505,20 @@ html.space::before {
 /* Safari 15 / macOS 12: backdrop-filter composites against browser chrome at the
    viewport top instead of the page background, making the nav appear lighter.
    Default to opaque; restore glass for Safari 16+, Chrome 105+, Firefox 110+
-   (all of which support container query units and fixed the compositing bug). */
-.dark nav {
+   (all of which support container query units and fixed the compositing bug).
+
+   Scoped to `.app-nav` (the one bar in Layout.tsx), not every `nav`. A bare
+   `nav` selector with `!important` painted the navbar's own background behind
+   any other landmark that used the element: the changelog's version rail, and
+   the observation breadcrumb, which came out as a lighter slab across the
+   hero. */
+.dark nav.app-nav {
   background-color: #0a0e17 !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
 @supports (width: 1cqw) {
-  .dark nav {
+  .dark nav.app-nav {
     background-color: rgba(10, 14, 23, 0.8) !important;
     backdrop-filter: blur(24px) !important;
     -webkit-backdrop-filter: blur(24px) !important;
@@ -372,7 +526,7 @@ html.space::before {
 }
 
 /* Space theme nav: glass with blur and purple border glow */
-.space nav {
+.space nav.app-nav {
   background: rgba(10, 8, 24, 0.86) !important;
   backdrop-filter: blur(22px) !important;
   -webkit-backdrop-filter: blur(22px) !important;
@@ -413,7 +567,13 @@ html.space::before {
 .night .hover\:bg-accent-600:hover { background-color: #6b1515; }
 .night .shadow-accent-500\/20 { --tw-shadow-color: rgba(139, 26, 26, 0.2); }
 .night .ring-accent-500\/40 { --tw-ring-color: rgba(139, 26, 26, 0.4); }
+/* Selection ring on the lightbox's active thumbnail. Without this the strip
+   keeps a gold ring in red-light mode, which is the one thing that mode is
+   there to prevent. */
+.night .ring-accent-400 { --tw-ring-color: #aa2222; }
 .night .border-accent-500\/30 { border-color: rgba(139, 26, 26, 0.3); }
+/* Hover border on object/image tiles (ObjectCard, ImageCard). */
+.night .hover\:border-accent-400:hover { border-color: #cc3333; }
 /* Teal accents also go red */
 .night .text-teal-400 { color: #993030; }
 .night .text-teal-500 { color: #882222; }
@@ -425,7 +585,7 @@ html.space::before {
 .night .bg-slate-100 { background-color: #0a0000; }
 
 /* Night mode nav */
-.night nav {
+.night nav.app-nav {
   background: rgba(0, 0, 0, 0.95) !important;
   border-color: #2a0808 !important;
 }
@@ -481,6 +641,14 @@ html.space::before {
 .img-placeholder {
   background: linear-gradient(135deg, var(--color-slate-800) 0%, var(--color-slate-700) 100%);
   animation: pulse 2s ease-in-out infinite;
+}
+/* Callers used to try `isDark ? '' : 'bg-gradient-to-br from-slate-100 to-slate-200'`
+   alongside this class, but Tailwind utilities live in @layer utilities, which
+   plain (unlayered) rules always beat regardless of source order - so the dark
+   gradient above was winning in light mode too. Override it here instead, the
+   same way .night/.space already override other classes for their theme. */
+.light .img-placeholder {
+  background: linear-gradient(135deg, var(--color-slate-100) 0%, var(--color-slate-200) 100%);
 }
 
 @keyframes pulse {

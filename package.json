@@ -1,8 +1,8 @@
 {
   "name": "nebulis-web",
   "private": true,
-  "version": "1.5.2",
-  "buildNumber": 211,
+  "version": "2.0.0",
+  "buildNumber": 248,
   "type": "module",
   "packageManager": "pnpm@10.30.3",
   "scripts": {
@@ -21,6 +21,9 @@
     "preview": "vite preview",
     "update-catalog": "node scripts/download-catalog.mjs",
     "sharpless:refresh": "npx tsx scripts/build-sharpless-catalog.ts",
+    "catalog:populate": "npx tsx scripts/populate-curated-layer.ts",
+    "catalog:distances": "npx tsx scripts/build-client-distances.ts",
+    "catalog:distances:check": "npx tsx scripts/build-client-distances.ts --check",
     "typecheck:server": "tsc --noEmit -p server/tsconfig.json",
     "docker:build": "docker compose -f docker/docker-compose.yml build",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d --force-recreate",
@@ -50,12 +53,13 @@
     "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-router-dom": "^7.18.0",
+    "react-router-dom": "^7.18.2",
     "satellite.js": "^7.0.1",
     "sharp": "^0.35.3",
     "suncalc": "^1.9.0",
     "tar": "^7.5.22",
     "tz-lookup": "^6.1.25",
+    "undici": "^7.29.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -102,11 +106,14 @@
     "overrides": {
       "esbuild": "0.28.1",
       "path-to-regexp": "^8.4.0",
-      "qs": "^6.15.2",
+      "qs": "^6.16.0",
       "js-yaml": ">=4.3.0",
       "shell-quote": ">=1.9.0",
       "postcss": ">=8.5.18",
-      "brace-expansion@<1.1.17": ">=1.1.17 <2.0.0"
+      "brace-expansion@<1.1.17": ">=1.1.17 <2.0.0",
+      "browserslist": "^4.28.7",
+      "nanoid": "^3.3.18",
+      "undici": "^7.29.0"
     },
     "onlyBuiltDependencies": [
       "better-sqlite3",

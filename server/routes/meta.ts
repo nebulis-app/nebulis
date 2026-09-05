@@ -7,6 +7,7 @@ import { getUpdateStatus, requestApply } from '../lib/appUpdate/state.js';
 import { runUpdateCheck, isAutoUpdateEnabled } from '../lib/appUpdate/updater.js';
 import { isDesktopBuild } from '../lib/appUpdate/platform.js';
 import { getCurrentVersion } from '../lib/appUpdate/platform.js';
+import { logEvent } from '../lib/systemLog.js';
 
 const router = Router();
 
@@ -166,7 +167,7 @@ router.post('/update/check', requireAdmin, async (_req: Request, res: Response) 
 
 // Apply the staged update. Writes the marker the native helper (Windows tray /
 // macOS menubar app) consumes to perform the privileged install + restart.
-router.post('/update/apply', requireAdmin, (_req: Request, res: Response) => {
+router.post('/update/apply', requireAdmin, (req: Request, res: Response) => {
   const s = getUpdateStatus();
   if (!s.updateAvailable) {
     res.apiError(409, 'NO_UPDATE', 'No update is available to apply.');
@@ -180,6 +181,16 @@ router.post('/update/apply', requireAdmin, (_req: Request, res: Response) => {
     res.apiError(409, 'APPLY_FAILED', 'Could not queue the update for install.');
     return;
   }
+  logEvent({
+    category: 'system',
+    event: 'update_applied',
+    level: 'warning',
+    message: `Applied update to version ${s.latestVersion}.`,
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+    metadata: { version: s.latestVersion },
+  });
   res.apiSuccess({ applyRequested: true, version: s.latestVersion });
 });
 

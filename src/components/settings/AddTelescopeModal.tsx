@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, RotateCw, HelpCircle, Telescope as TelescopeIcon, Check, Wifi, WifiOff, Usb, Network, Settings2, ChevronDown } from 'lucide-react';
+import { HelpBlockText } from './HelpBlockText';
 import {
   createTelescope,
   updateTelescope,
@@ -11,8 +12,8 @@ import {
   type DetectedDrive,
   type ConnectionType,
 } from '../../lib/api/telescopes';
-import { DwarfLocalPathPicker } from './DwarfLocalPathPicker';
-import { LocalPathPicker } from './LocalPathPicker';
+import { DwarfLocalPathPicker } from '../ui/DwarfLocalPathPicker';
+import { LocalPathPicker } from '../ui/LocalPathPicker';
 import {
   TELESCOPE_PRESETS,
   TELESCOPE_KINDS,
@@ -21,6 +22,8 @@ import {
   modelToKind,
   toTelescopeKind,
   isDwarfKind as isDwarfTelescopeKind,
+  isSeestarKind as isSeestarTelescopeKind,
+  isAsiairKind as isAsiairTelescopeKind,
   type TelescopeKind,
 } from '../../lib/telescopePresets';
 import { shareNameError } from '../../lib/shareName';
@@ -72,7 +75,13 @@ export function AddTelescopeModal({
   const [importJpg, setImportJpg] = useState(existing?.importJpg ?? true);
   const [importFits, setImportFits] = useState(existing?.importFits ?? true);
   const [importThumbnails, setImportThumbnails] = useState(existing?.importThumbnails ?? false);
-  const [importSubFrames, setImportSubFrames] = useState(existing?.importSubFrames ?? false);
+  // ASIAIR writes no stacked result unless the user ran Live mode, so its
+  // entire output is light frames, which are sub-frames. Left off, a correctly
+  // configured ASIAIR would import nothing at all. Mirrors the server-side
+  // default in createProfile (server/lib/telescopes.ts).
+  const [importSubFrames, setImportSubFrames] = useState(
+    existing?.importSubFrames ?? initialKind === 'asiair',
+  );
   const [archiveAllFiles, setArchiveAllFiles] = useState(existing?.archiveAllFiles ?? false);
   const [importVideos, setImportVideos] = useState(existing?.importVideos ?? false);
   // Toggle for the hidden `.nebulis.dat` device-tracking file. On by default
@@ -84,10 +93,12 @@ export function AddTelescopeModal({
   // Seestar can pick between a network transport and USB.
   const [localPath, setLocalPath] = useState(existing?.localPath ?? '');
   const isDwarfKind = isDwarfTelescopeKind(kind);
-  const isSeestarKind = kind === 'seestar-s50' || kind === 'seestar-s30';
+  const isSeestarKind = isSeestarTelescopeKind(kind);
+  const isAsiairKind = isAsiairTelescopeKind(kind);
   // Transport mode picks which set of inputs to render and which connection
   // type to save on the profile. Dwarf gets FTP (its only network interface)
-  // or USB; everything else gets SMB or USB. Edits seed from the saved value.
+  // or USB; everything else, ASIAIR included, gets SMB or USB. Edits seed from
+  // the saved value.
   const [transportMode, setTransportMode] = useState<ConnectionType>(() => {
     if (existing) return existing.connectionType;
     return isDwarfKind ? 'ftp' : 'smb';
@@ -137,9 +148,13 @@ export function AddTelescopeModal({
     // Both keep USB as the alternative, which the user picks explicitly.
     if (!isEdit && isDwarfTelescopeKind(kindMemo)) {
       setTransportMode('ftp');
-    } else if (!isEdit && (kindMemo === 'seestar-s50' || kindMemo === 'seestar-s30')) {
+    } else if (!isEdit && (isSeestarTelescopeKind(kindMemo) || isAsiairTelescopeKind(kindMemo))) {
       setTransportMode('smb');
     }
+    // Follow the sub-frame default for the newly picked kind, for the reason
+    // spelled out where the state is declared: ASIAIR needs it on to import
+    // anything, every other kind is better off with it left alone.
+    if (!isEdit) setImportSubFrames(isAsiairTelescopeKind(kindMemo));
     // "other" needs a custom share configured, so surface the advanced
     // section automatically. Switching to a known preset re-collapses it.
     if (kindMemo === 'other') setAdvancedShareOpen(true);
@@ -414,6 +429,15 @@ export function AddTelescopeModal({
               ))}
             </select>
             <p className={helperClass}>Picks sensible connection defaults and badge color for your model.</p>
+            {preset.beta && (
+              <div className={`mt-2 rounded-lg px-3 py-2 text-xs ${
+                isDark ? 'bg-amber-500/10 border border-amber-500/30 text-amber-200' : 'bg-amber-50 border border-amber-300 text-amber-900'
+              }`}>
+                <span className="font-semibold">Beta support.</span>{' '}
+                Built from published folder layouts rather than tested against the hardware.
+                Import should work, but check the first run before deleting anything from the device.
+              </div>
+            )}
           </div>
 
           {/* Friendly name (optional) */}
@@ -461,7 +485,7 @@ export function AddTelescopeModal({
               convention so it skips the selector. The network option differs
               per vendor: Seestar publishes an SMB share, Dwarf runs an FTP
               server and no SMB at all. */}
-          {(isSeestarKind || isDwarfKind) && (
+          {(isSeestarKind || isDwarfKind || isAsiairKind) && (
             <div>
               <label className={labelClass}>Connection</label>
               <div className="grid grid-cols-2 gap-2">
@@ -493,7 +517,9 @@ export function AddTelescopeModal({
               <p className={helperClass}>
                 {isDwarfKind
                   ? 'Wi-Fi pulls files off the telescope over FTP, with no cable. USB is faster but needs the telescope plugged into this computer.'
-                  : 'Wi-Fi reads files over the LAN. USB is faster and works without a network, when the eMMC is mounted as an external drive.'}
+                  : isAsiairKind
+                    ? 'Wi-Fi reads the ASIAIR share over the LAN. USB is faster: plug the ASIAIR stick or its microSD card into this computer.'
+                    : 'Wi-Fi reads files over the LAN. USB is faster and works without a network, when the eMMC is mounted as an external drive.'}
               </p>
             </div>
           )}
@@ -526,6 +552,21 @@ export function AddTelescopeModal({
             />
           )}
 
+          {/* Local-path picker for ASIAIR removable storage */}
+          {isAsiairKind && transportMode === 'local' && (
+            <LocalPathPicker
+              kind="asiair"
+              localPath={localPath}
+              setLocalPath={setLocalPath}
+              onDriveSelected={d => setPickedDrive(d)}
+              inputClass={inputClass}
+              labelClass={labelClass}
+              helperClass={helperClass}
+              isDark={isDark}
+              autoFocus={!isEdit}
+            />
+          )}
+
           {/* Hostname / IP + share + credentials (SMB only) */}
           {!isLocalKind && (
           <>
@@ -543,11 +584,9 @@ export function AddTelescopeModal({
             {hostError
               ? <p className={`text-xs mt-1 ${isDark ? 'text-red-400' : 'text-red-600'}`}>{hostError}</p>
               : (
-                <p className={helperClass}>
-                  {isFtpMode
-                    ? preset.shareHelp
-                    : 'For reliable connectivity, assign a static IP or DHCP reservation.'}
-                </p>
+                isFtpMode && preset.addressHelp
+                  ? <HelpBlockText block={preset.addressHelp} className={helperClass} />
+                  : <p className={helperClass}>For reliable connectivity, assign a static IP or DHCP reservation.</p>
               )}
           </div>
 
@@ -595,7 +634,7 @@ export function AddTelescopeModal({
                     />
                     {shareError
                       ? <p className={`text-xs mt-1 ${isDark ? 'text-red-400' : 'text-red-600'}`}>{shareError}</p>
-                      : <p className={helperClass}>{preset.shareHelp}</p>}
+                      : preset.shareHelp && <HelpBlockText block={preset.shareHelp} className={helperClass} />}
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-4">

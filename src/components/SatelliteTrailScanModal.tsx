@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   X, Minus, Satellite, Loader2, Trash2, AlertTriangle,
-  CheckCircle2, ChevronLeft, ChevronRight, RotateCw, MapPin,
+  CheckCircle2, ChevronLeft, ChevronRight, RotateCw,
 } from 'lucide-react';
 import { detectSatelliteTrail, type SatelliteTrailResult } from '../lib/api/observations';
 import { deleteLibraryFile } from '../lib/api/library';
@@ -27,13 +27,20 @@ interface TrailCard {
   deleted: boolean;
 }
 
-const CONCURRENCY = 2;
+// Detection is synchronous CPU work on the server's main Node thread. Sending
+// multiple requests at once does not make them run in parallel, it just queues
+// extra work that is harder to cancel and makes the app feel frozen longer.
+const CONCURRENCY = 1;
 
 function formatDuration(ms: number): string {
   if (ms < 5000) return '< 5 s';
   if (ms < 60000) return `~${Math.round(ms / 1000)} s`;
   const m = Math.round(ms / 60000);
   return `~${m} min`;
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError';
 }
 
 export function SatelliteTrailScanModal({ isOpen, onClose, files, onFilesDeleted, isDark }: Props) {
@@ -47,18 +54,15 @@ export function SatelliteTrailScanModal({ isOpen, onClose, files, onFilesDeleted
   const [confirmingClose, setConfirmingClose] = useState(false);
   const cancelRef = useRef(false);
   const startTimeRef = useRef<number>(0);
+  const abortControllersRef = useRef<Set<AbortController>>(new Set());
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const [showLocationPrompt, setShowLocationPrompt] = useState(false);
-  const [locationGeoError, setLocationGeoError] = useState<string | null>(null);
-  // Gate that pauses both worker slots until the user resolves the location prompt.
-  // First slot to hit locationRequired creates the promise; subsequent slots await
-  // the same promise. Resolves with coords on "Share", null on "Cancel".
-  const locationGateRef = useRef<Promise<{ lat: number; lon: number } | null> | null>(null);
-  const locationResolveRef = useRef<((v: { lat: number; lon: number } | null) => void) | null>(null);
-  const overrideCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
+  const [activeFileName, setActiveFileName] = useState<string | null>(null);
 
   const fitsFiles = files.filter(f => f.type === 'fits');
   const visibleCards = trailCards.filter(c => !c.deleted);
+  // Clamp on read — raw selectedIndex may point past the end after deletions,
+  // but every consumer goes through currentIndex so it never matters (this is
+  // why there's no corrective setState-in-effect keeping the two in sync).
   const currentIndex = Math.min(selectedIndex, Math.max(0, visibleCards.length - 1));
   const currentCard = visibleCards[currentIndex] ?? null;
 
@@ -71,19 +75,19 @@ export function SatelliteTrailScanModal({ isOpen, onClose, files, onFilesDeleted
       setErrorCount(0);
       setSelectedIndex(0);
       setMinimized(false);
-      setShowLocationPrompt(false);
-      setLocationGeoError(null);
       cancelRef.current = false;
-      locationGateRef.current = null;
-      locationResolveRef.current = null;
-      overrideCoordsRef.current = null;
     }
+    // cancelRef was previously only set from the in-modal Cancel/discard
+    // buttons — closing via nav, browser back, or a parent unmount left the
+    // scan queue's worker slots running server-side detection (a full
+    // Radon-projection FITS parse per subframe) with nowhere for the result
+    // to land.
+    return () => {
+      cancelRef.current = true;
+      abortControllersRef.current.forEach(controller => controller.abort());
+      abortControllersRef.current.clear();
+    };
   }, [isOpen]);
-
-  // Keep selectedIndex in bounds when cards are deleted
-  useEffect(() => {
-    setSelectedIndex(i => Math.min(i, Math.max(0, visibleCards.length - 1)));
-  }, [visibleCards.length]);
 
   // Scroll selected thumbnail into view
   useEffect(() => {
@@ -107,70 +111,51 @@ export function SatelliteTrailScanModal({ isOpen, onClose, files, onFilesDeleted
 
   const startScan = useCallback(async (force = false) => {
     cancelRef.current = false;
-    locationGateRef.current = null;
-    locationResolveRef.current = null;
-    overrideCoordsRef.current = null;
+    abortControllersRef.current.forEach(controller => controller.abort());
+    abortControllersRef.current.clear();
     startTimeRef.current = Date.now();
     setPhase('scanning');
     setTrailCards([]);
     setCompletedCount(0);
     setErrorCount(0);
     setSelectedIndex(0);
-    setShowLocationPrompt(false);
-    setLocationGeoError(null);
+    setActiveFileName(null);
 
     const queue = [...fitsFiles];
     let completed = 0;
     let errors = 0;
 
-    // Returns a promise that all slots await when location is needed.
-    // The first slot to call this creates the promise and shows the prompt;
-    // subsequent calls return the same already-pending promise.
-    const requestLocationGate = (): Promise<{ lat: number; lon: number } | null> => {
-      if (!locationGateRef.current) {
-        locationGateRef.current = new Promise(resolve => {
-          locationResolveRef.current = resolve;
-        });
-        setShowLocationPrompt(true);
-      }
-      return locationGateRef.current;
-    };
-
+    // Pixel-level trail detection only — no observer location needed, no
+    // network call. Identifying which satellite made a trail is a separate,
+    // explicit, per-file step (the "Identify Satellite" button in FitsViewer),
+    // not something a bulk scan does automatically for every frame it flags.
     const runSlot = async () => {
       while (queue.length > 0 && !cancelRef.current) {
         const file = queue.shift()!;
+        setActiveFileName(file.name);
+        const controller = new AbortController();
+        abortControllersRef.current.add(controller);
         try {
-          const coords = overrideCoordsRef.current;
-          const result = await detectSatelliteTrail(file.path, force, coords?.lat, coords?.lon);
-
-          if (result.locationRequired && !overrideCoordsRef.current) {
-            // Pause this slot (and any other that hits the same gate) until
-            // the user provides their location or cancels.
-            const resolved = await requestLocationGate();
-            if (!resolved) {
-              // User cancelled — abort the entire scan.
-              cancelRef.current = true;
-              break;
-            }
-            // Retry this file with the now-available coordinates.
-            const retry = await detectSatelliteTrail(file.path, true, resolved.lat, resolved.lon);
-            if (retry.trailDetected) {
-              setTrailCards(prev => [...prev, { file, result: retry, deleted: false }]);
-            }
-          } else if (result.trailDetected) {
+          const result = await detectSatelliteTrail(file.path, force, undefined, undefined, controller.signal);
+          if (cancelRef.current) return;
+          if (result.trailDetected) {
             setTrailCards(prev => [...prev, { file, result, deleted: false }]);
           }
-        } catch {
+        } catch (err) {
+          if (isAbortError(err) || cancelRef.current) return;
           errors++;
           setErrorCount(errors);
+        } finally {
+          abortControllersRef.current.delete(controller);
         }
+        if (cancelRef.current) return;
         completed++;
         setCompletedCount(completed);
       }
     };
 
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, fitsFiles.length) }, runSlot));
-    setShowLocationPrompt(false);
+    setActiveFileName(null);
     if (!cancelRef.current) setPhase('done');
   }, [fitsFiles]);
 
@@ -245,6 +230,13 @@ export function SatelliteTrailScanModal({ isOpen, onClose, files, onFilesDeleted
     else onClose();
   };
 
+  const cancelScan = () => {
+    cancelRef.current = true;
+    abortControllersRef.current.forEach(controller => controller.abort());
+    abortControllersRef.current.clear();
+    setActiveFileName(null);
+  };
+
   // ── Full modal — mirrors the ObservationDetail gallery layout exactly ──────
   return (
     <Modal
@@ -280,7 +272,7 @@ export function SatelliteTrailScanModal({ isOpen, onClose, files, onFilesDeleted
                   </span>
                   <span className={`text-xs block ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                     {phase === 'ready'    && `${fitsFiles.length} FITS frame${fitsFiles.length !== 1 ? 's' : ''} ready to scan`}
-                    {phase === 'scanning' && `Scanning ${fitsFiles.length} frames…`}
+                    {phase === 'scanning' && (activeFileName ? `Scanning ${activeFileName}` : `Scanning ${fitsFiles.length} frames…`)}
                     {phase === 'done'     && `${fitsFiles.length} frames analyzed. No trails detected.`}
                   </span>
                 </>
@@ -372,72 +364,11 @@ export function SatelliteTrailScanModal({ isOpen, onClose, files, onFilesDeleted
               {errorCount > 0 && <span className={`ml-1 ${isDark ? 'text-red-400' : 'text-red-500'}`}>· {errorCount} err</span>}
             </span>
             <button
-              onClick={() => { cancelRef.current = true; }}
+              onClick={cancelScan}
               className={`text-xs flex-shrink-0 transition ${isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}`}
             >
               Cancel
             </button>
-          </div>
-        )}
-
-        {/* ── Location prompt — pauses scan until user shares or cancels ─────── */}
-        {showLocationPrompt && (
-          <div className={`flex-shrink-0 flex flex-col items-center justify-center gap-4 px-6 py-8 border-b ${
-            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-          }`}>
-            <div className={`flex items-center justify-center w-12 h-12 rounded-full ${
-              isDark ? 'bg-amber-500/15' : 'bg-amber-50'
-            }`}>
-              <MapPin className="w-6 h-6 text-amber-500" />
-            </div>
-            <div className="text-center space-y-1.5 max-w-sm">
-              <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                Location needed to identify satellites
-              </p>
-              <p className={`text-xs leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Your subframes don't include observer coordinates, and no location is saved in Settings.
-                Share your location now, or set it in Settings to avoid this prompt in future.
-              </p>
-              {locationGeoError && (
-                <p className="text-xs text-red-500">{locationGeoError}</p>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={async () => {
-                  setLocationGeoError(null);
-                  try {
-                    const position = await new Promise<GeolocationPosition>((resolve, reject) =>
-                      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
-                    );
-                    const coords = { lat: position.coords.latitude, lon: position.coords.longitude };
-                    overrideCoordsRef.current = coords;
-                    locationResolveRef.current?.(coords);
-                    locationGateRef.current = null;
-                    locationResolveRef.current = null;
-                    setShowLocationPrompt(false);
-                  } catch {
-                    setLocationGeoError('Could not get your location. Check browser permissions or set it in Settings.');
-                  }
-                }}
-                className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 transition"
-              >
-                Share location
-              </button>
-              <button
-                onClick={() => {
-                  locationResolveRef.current?.(null);
-                  locationGateRef.current = null;
-                  locationResolveRef.current = null;
-                  setShowLocationPrompt(false);
-                }}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
-                  isDark ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                Cancel scan
-              </button>
-            </div>
           </div>
         )}
 
@@ -520,7 +451,7 @@ export function SatelliteTrailScanModal({ isOpen, onClose, files, onFilesDeleted
                       : isDark ? 'border-slate-800 hover:border-slate-600' : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <FitsThumbnail url={card.file.downloadUrl} stretch={1.0} isDark={isDark} />
+                  <FitsThumbnail url={card.file.downloadUrl} thumbUrl={card.file.thumbUrl} stretch={1.0} isDark={isDark} />
                 </button>
               ))}
               {phase === 'scanning' && (
@@ -553,8 +484,10 @@ export function SatelliteTrailScanModal({ isOpen, onClose, files, onFilesDeleted
         {confirmingClose && (
           <CloseConfirm
             message="Stop the scan and close?"
+            cancelLabel="Keep scanning"
             onCancel={() => setConfirmingClose(false)}
-            onDiscard={() => { setConfirmingClose(false); cancelRef.current = true; onClose(); }}
+            onDiscard={() => { setConfirmingClose(false); cancelScan(); onClose(); }}
+            isDark={isDark}
           />
         )}
 

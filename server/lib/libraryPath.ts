@@ -40,6 +40,7 @@ import {
   disconnectNetworkLibrary,
   invalidateNetworkLibraryReachability,
 } from './libraryNetwork.js';
+import { parseJsonRecord } from './typeGuards.js';
 
 export const MARKER_FILENAME = '.nebulis-library.json';
 
@@ -142,7 +143,10 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     const timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
     promise.then(
       value => { clearTimeout(timer); resolve(value); },
-      err => { clearTimeout(timer); reject(err); },
+      // `: unknown` — the lib signature types this rejection reason as `any`,
+      // so without the annotation `err` is an implicit any. It is only passed
+      // straight through to reject(), which takes unknown.
+      (err: unknown) => { clearTimeout(timer); reject(err); },
     );
   });
 }
@@ -153,17 +157,36 @@ const NETWORK_STAT_TIMEOUT_MS = 5_000;
  *  this module. Same bound as the network-availability check above. */
 export const LIBRARY_IO_TIMEOUT_MS = NETWORK_STAT_TIMEOUT_MS;
 
+/**
+ * Build a LibraryMarker out of marker-file text, or null if the file isn't a
+ * marker we recognise.
+ *
+ * This is the check that decides whether a directory is OUR library, and the
+ * file it reads lives on removable media or a network share that any other
+ * machine can write. So every field is copied through a type check rather than
+ * the whole parsed blob being asserted: a marker carrying `libraryId: 42`
+ * would previously have satisfied the `'libraryId' in parsed` test at the type
+ * level and flowed into an id comparison as a non-string.
+ */
+function parseMarker(text: string): LibraryMarker | null {
+  const parsed = parseJsonRecord(text);
+  if (!parsed) return null;
+  const { libraryId, createdAt, appVersion, note } = parsed;
+  if (typeof libraryId !== 'string' || libraryId.length === 0) return null;
+  return {
+    libraryId,
+    createdAt: typeof createdAt === 'string' ? createdAt : undefined,
+    appVersion: typeof appVersion === 'string' ? appVersion : undefined,
+    note: typeof note === 'string' ? note : undefined,
+  };
+}
+
 /** Async, timeout-bounded equivalent of readMarker() for the network-share
  *  path, where a stale mount can otherwise hang the read indefinitely. */
 async function readMarkerAsync(dir: string, timeoutMs: number): Promise<LibraryMarker | null> {
   try {
     const raw = await withTimeout(fs.promises.readFile(path.join(dir, MARKER_FILENAME), 'utf8'), timeoutMs);
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && 'libraryId' in parsed) {
-      const id = (parsed as { libraryId: unknown }).libraryId;
-      if (typeof id === 'string' && id.length > 0) return parsed as LibraryMarker;
-    }
-    return null;
+    return parseMarker(raw);
   } catch {
     return null;
   }
@@ -211,10 +234,12 @@ export function getLibraryId(): string {
 function readAppVersion(): string {
   // Best-effort; the marker is informational only.
   try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(DATA_DIR, '..', 'package.json'), 'utf8')) as {
-      version?: string;
-    };
-    return pkg.version ?? '';
+    // parseJsonRecord + a typeof check rather than `JSON.parse(...) as
+    // { version?: string }`: JSON.parse returns `any`, so that assertion was a
+    // claim about a file on disk that nothing verified. A package.json holding
+    // `"version": 3` would have flowed a number out of a `string` return.
+    const pkg = parseJsonRecord(fs.readFileSync(path.join(DATA_DIR, '..', 'package.json'), 'utf8'));
+    return typeof pkg?.version === 'string' ? pkg.version : '';
   } catch {
     return '';
   }
@@ -223,13 +248,7 @@ function readAppVersion(): string {
 /** Read and parse the marker at a directory, or null if absent/invalid. */
 export function readMarker(dir: string): LibraryMarker | null {
   try {
-    const raw = fs.readFileSync(path.join(dir, MARKER_FILENAME), 'utf8');
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && 'libraryId' in parsed) {
-      const id = (parsed as { libraryId: unknown }).libraryId;
-      if (typeof id === 'string' && id.length > 0) return parsed as LibraryMarker;
-    }
-    return null;
+    return parseMarker(fs.readFileSync(path.join(dir, MARKER_FILENAME), 'utf8'));
   } catch {
     return null;
   }

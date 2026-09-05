@@ -61,11 +61,30 @@ export async function fetchMessierEntry(
 
     const html = await res.text();
 
-    const imgMatch = html.match(
+    // og:image is NASA's own canonical pick for the page and is what the
+    // fix targets: scanning the page body for the first .webp is fragile
+    // because some pages embed an unrelated object's image (e.g. Messier
+    // 48's page renders the Crab Nebula's .webp in a "related" widget
+    // before M48's own image appears later in the markup — that's a .jpg,
+    // not .webp, on top of it), which the old first-match regex silently
+    // picked up instead. Only the science.nasa.gov WordPress CDN honors the
+    // ?w= resize query param; assets.science.nasa.gov renditions (used for
+    // some objects) must be requested as-is.
+    const ogImageMatch =
+      html.match(/<meta\s[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) ??
+      html.match(/<meta\s[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
+    const fallbackWebpMatch = html.match(
       /(https:\/\/science\.nasa\.gov\/wp-content\/uploads\/\d{4}\/\d{2}\/[^\s"'?]+\.webp)/,
     );
-    if (!imgMatch) return null;
-    const imageUrl = `${imgMatch[1]}?w=${IMAGE_WIDTH}`;
+
+    let imageUrl: string | null = null;
+    if (ogImageMatch) {
+      const url = ogImageMatch[1];
+      imageUrl = url.includes('science.nasa.gov/wp-content/uploads/') ? `${url}?w=${IMAGE_WIDTH}` : url;
+    } else if (fallbackWebpMatch) {
+      imageUrl = `${fallbackWebpMatch[1]}?w=${IMAGE_WIDTH}`;
+    }
+    if (!imageUrl) return null;
 
     const description = extractDescription(html, num);
     const catalogId = `M${num}`;

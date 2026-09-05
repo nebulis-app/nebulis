@@ -5,7 +5,7 @@ import {
   Heart, X, ChevronLeft, ChevronRight, Play, Pause, Maximize, Minimize, Volume2, VolumeX, Sparkles,
 } from 'lucide-react';
 import type { LibraryImage } from '../../lib/api/library';
-import { fisherYates, preload, TOTAL_MS } from './galleryUtils';
+import { fisherYates, preload, slideImageUrl, TOTAL_MS } from './galleryUtils';
 import { slotReducer, type SlotState } from './galleryReducer';
 import { KenBurnsSlide } from './KenBurnsSlide';
 
@@ -76,7 +76,7 @@ export function PlanetariumMode({
     const next = pool[nextPos];
     dispatch({ type: 'ADVANCE', next });
     // Warm the cache for the image after that
-    preload(pool[(nextPos + 1) % pool.length].downloadUrl);
+    preload(slideImageUrl(pool[(nextPos + 1) % pool.length].path));
   }, []);
 
   // Rebuild pool when favOnly or procOnly changes, intentional user action, interruption OK.
@@ -85,13 +85,14 @@ export function PlanetariumMode({
     poolRef.current = pool;
     posRef.current = 0;
     dispatch({ type: 'RESET', s0: pool[0], s1: pool[Math.min(1, pool.length - 1)] });
-    preload(pool[Math.min(2, pool.length - 1)]?.downloadUrl);
+    const upcoming = pool[Math.min(2, pool.length - 1)];
+    if (upcoming) preload(slideImageUrl(upcoming.path));
   }, [favOnly, procOnly, buildPool, images]);
 
   // Preload the 3rd image on first mount (slots already hold 0 and 1).
   useEffect(() => {
     const pool = poolRef.current;
-    if (pool.length > 2) preload(pool[2].downloadUrl);
+    if (pool.length > 2) preload(slideImageUrl(pool[2].path));
   }, []);
 
   // Auto-advance timer, only depends on `isPlaying` (advance is stable).

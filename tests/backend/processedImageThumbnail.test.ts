@@ -49,7 +49,7 @@ function seedProcessedImage(
 ): void {
   seq++;
   stmts.insertProcessedImage.run(
-    `proc_test_${seq}`, objectId, date, filename, filename, '', '', 100, 'image/jpeg', uploadedAt, null,
+    `proc_test_${seq}`, objectId, date, filename, filename, '', '', 100, 'image/jpeg', uploadedAt, null, 'user',
   );
 }
 

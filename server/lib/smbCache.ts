@@ -208,13 +208,20 @@ export async function cachedSmbGetFile(
 ): Promise<Buffer> {
   try {
     const data = await rawSmbGetFile(smbPath, maxBytes, profile);
-    if (data.length < 50 * 1024 * 1024) {
+    // Every backend returns a maxBytes-capped read as a truncated buffer, not
+    // the whole file. Caching that under the same key as a full read would
+    // let a later uncapped request that fails live fall back to serving the
+    // truncated bytes as if they were the complete file. Only a full read is
+    // safe to remember as "the file".
+    if (maxBytes === undefined && data.length < 50 * 1024 * 1024) {
       writeFileCache(smbPath, profile, data);
     }
     deviceOnline.set(deviceKey(profile), true);
     return data;
   } catch (err) {
     deviceOnline.set(deviceKey(profile), false);
+    // The cache only ever holds full reads (see above), so a capped request
+    // can safely subarray it down to maxBytes for its offline fallback.
     const cached = readFileCache(smbPath, profile);
     if (cached) {
       let data = cached;

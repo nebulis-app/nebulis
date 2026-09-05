@@ -98,5 +98,20 @@ describe('catalog data', () => {
       const r2 = searchCatalog('ORION');
       expect(r1.length).toBe(r2.length);
     });
+
+    it('finds an object by any of its designations, ranked first', () => {
+      // IC342 = Caldwell 5. None of these strings appear in its catalog text.
+      for (const q of ['C5', 'Caldwell 5', 'c 5']) {
+        expect(searchCatalog(q)[0]?.id, `"${q}" should rank IC342 first`).toBe('IC342');
+      }
+      // Messier <-> NGC, spaced and unspaced.
+      for (const q of ['NGC6611', 'Messier 16', 'M 16']) {
+        expect(searchCatalog(q)[0]?.id, `"${q}" should rank M16 first`).toBe('M16');
+      }
+      // Sharpless verbal form.
+      expect(searchCatalog('sharpless 155')[0]?.id).toBe('Sh2-155');
+      // Zero-padded NGC.
+      expect(searchCatalog('NGC0224')[0]?.id).toBe('M31');
+    });
   });
 });

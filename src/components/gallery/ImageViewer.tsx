@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Download, Image, Heart, Share2, Loader2 } from 'lucide-react';
 import { getLibraryFileThumbnailUrl, type LibraryImage } from '../../lib/api/library';
 import { LightboxFrame, LightboxPane } from '../lightbox/LightboxFrame';
@@ -8,6 +9,7 @@ import { zoomControlsFromPan } from '../lightbox/zoomControls';
 import { useLightboxKeys } from '../lightbox/useLightboxKeys';
 import { useAdjacentPreload } from '../lightbox/useAdjacentPreload';
 import { shareImage, shareOutcomeMessage } from '../lightbox/shareImage';
+import { LB_ICON_BTN } from '../lightbox/chrome';
 import type { ThumbEntry } from '../lightbox/LightboxThumbStrip';
 
 interface ImageViewerProps {
@@ -15,7 +17,6 @@ interface ImageViewerProps {
   initialIndex: number;
   onClose: () => void;
   onToggleFavorite: (img: LibraryImage) => void;
-  isDark: boolean;
 }
 
 /**
@@ -28,7 +29,7 @@ interface ImageViewerProps {
  * accessible dialog.
  */
 export function ImageViewer({
-  images, initialIndex, onClose, onToggleFavorite, isDark,
+  images, initialIndex, onClose, onToggleFavorite,
 }: ImageViewerProps) {
   const [index, setIndex] = useState(initialIndex);
   const [sharing, setSharing] = useState(false);
@@ -105,10 +106,6 @@ export function ImageViewer({
 
   if (!image) return null;
 
-  const iconBtn = `p-2 rounded-lg transition disabled:opacity-40 ${
-    isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'
-  }`;
-
   const actions = (
     <>
       <button
@@ -117,21 +114,16 @@ export function ImageViewer({
         title={image.isFavorite ? 'Remove from favorites (L)' : 'Add to favorites (L)'}
         aria-label={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
         aria-pressed={image.isFavorite}
-        className={`p-2 rounded-lg transition ${
-          image.isFavorite
-            ? 'text-rose-400 hover:text-rose-500'
-            : isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
-        }`}
+        className={`${LB_ICON_BTN} ${image.isFavorite ? 'text-rose-400 hover:text-rose-300' : ''}`}
       >
-        <Heart className={`w-4 h-4 ${image.isFavorite ? 'fill-current' : ''}`} />
+        <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
       </button>
-      <button type="button" onClick={handleShare} disabled={sharing} title="Share" aria-label="Share" className={iconBtn}>
-        {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+      <button type="button" onClick={handleShare} disabled={sharing} title="Share" aria-label="Share" className={LB_ICON_BTN}>
+        {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
       </button>
-      <a href={image.downloadUrl} download={image.name} title="Download (D)" aria-label="Download" className={iconBtn}>
-        <Download className="w-4 h-4" />
+      <a href={image.downloadUrl} download={image.name} title="Download (D)" aria-label="Download" className={LB_ICON_BTN}>
+        <Download className="h-4 w-4" />
       </a>
-      <div className={`w-px h-5 mx-1 flex-shrink-0 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
     </>
   );
 
@@ -141,14 +133,24 @@ export function ImageViewer({
     image.name,
   ].filter(Boolean).join(' · ');
 
+  const displayName = image.objectName || image.name;
+  const title = image.objectId ? (
+    <Link
+      to={`/object/${encodeURIComponent(image.objectId)}`}
+      title={`Go to ${displayName}`}
+      className="transition-colors hover:text-accent-400 hover:underline underline-offset-2"
+    >
+      {displayName}
+    </Link>
+  ) : displayName;
+
   return (
     <LightboxFrame
       isOpen
       onClose={onClose}
-      isDark={isDark}
-      dialogTitle={`Image viewer: ${image.objectName || image.name}`}
-      titleIcon={<Image className="w-5 h-5 text-accent-500 flex-shrink-0" />}
-      title={image.objectName || image.name}
+      dialogTitle={`Image viewer: ${displayName}`}
+      titleIcon={<Image className="h-4.5 w-4.5 flex-shrink-0 text-accent-400" />}
+      title={title}
       subtitle={subtitle}
       index={index}
       count={images.length}
@@ -160,6 +162,8 @@ export function ImageViewer({
       thumbs={thumbs}
       swipeDisabled={!zp.isFit}
       status={status}
+      ambientSrc={getLibraryFileThumbnailUrl(image.path, 400, 400)}
+      contentAspect={zp.natural ? zp.natural.w / zp.natural.h : null}
     >
       <LightboxPane
         zpRef={zp.containerRef}
@@ -172,7 +176,6 @@ export function ImageViewer({
           thumbSrc={getLibraryFileThumbnailUrl(image.path, 400, 400)}
           alt={image.objectName || image.name}
           zp={zp}
-          isDark={isDark}
         />
       </LightboxPane>
     </LightboxFrame>

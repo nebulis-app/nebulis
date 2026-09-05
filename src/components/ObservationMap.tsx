@@ -29,14 +29,33 @@ export function ObservationMap({ lat, lon, isDark }: ObservationMapProps) {
       scrollWheelZoom: false,
     });
 
+    // Esri's Canvas Gray Base tiles: free, no API key, no rate-limit signup.
+    // (CARTO's old basemaps.cartocdn.com CDN now requires a paid API key and
+    // serves a watermarked "API KEY REQUIRED" tile without one.) The base
+    // layer's native tiles stop at zoom 16; maxNativeZoom lets Leaflet
+    // upscale those tiles for deeper zoom instead of showing blank squares.
     const tileUrl = isDark
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+      ? 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
+      : 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
 
     L.tileLayer(tileUrl, {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
-      subdomains: 'abcd',
+      attribution: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; Esri, DeLorme, NAVTEQ',
       maxZoom: 19,
+      maxNativeZoom: 16,
+    }).addTo(map);
+
+    // Esri ships place/road labels as a separate transparent-PNG layer on
+    // top of the gray base — without this the map has no city names on it.
+    const referenceUrl = isDark
+      ? 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}'
+      : 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}';
+
+    // No pane override needed: Leaflet stacks tile layers within the shared
+    // tilePane in insertion order, so adding this after the base layer is
+    // enough to put labels on top of it.
+    L.tileLayer(referenceUrl, {
+      maxZoom: 19,
+      maxNativeZoom: 16,
     }).addTo(map);
 
     // Custom marker icon

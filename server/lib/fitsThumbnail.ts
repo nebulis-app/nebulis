@@ -5,6 +5,12 @@ import { computeAutoStretch, applyStretch } from './mtfStretch.js';
 
 // Bumped when the rendering pipeline changes so stale thumbnails regenerate.
 // v2: color (RGB cubes + debayered CFA mosaics) with MTF autostretch.
+// v3: autostretch statistics are computed from a blurred copy of each channel
+//     (smoothForStats) instead of the raw superpixel-debayered plane. The raw
+//     R/B channels keep one un-averaged CFA sample per 2x2 block, which
+//     inflated the MAD estimate enough to collapse the shadow-clip point to 0
+//     and leave Bayer-mosaic thumbnails looking washed out next to the
+//     full-resolution viewer's bilinear-smoothed stats.
 //
 // Two size tiers share the same pipeline:
 //   - 'thumb'   256px, for grid/list previews (generated eagerly on import).
@@ -12,9 +18,16 @@ import { computeAutoStretch, applyStretch } from './mtfStretch.js';
 //     the multi-MB FITS to a phone. Generated lazily on first request.
 export type FitsThumbnailTier = 'thumb' | 'preview';
 
+// Exposed so route handlers can put it in the URL's query string. The
+// `/fits-thumbnail` route is served with a long-lived `Cache-Control`, so a
+// pipeline change that doesn't also change the *request URL* never reaches a
+// client that already has the old image cached — it'll keep serving the
+// stale render indefinitely regardless of what regenerates on disk.
+export const FITS_THUMBNAIL_PIPELINE_VERSION = 'v3';
+
 const TIERS: Record<FitsThumbnailTier, { size: number; suffix: string }> = {
-  thumb: { size: 256, suffix: '.v2.jpg' },
-  preview: { size: 1024, suffix: '.preview.v2.jpg' },
+  thumb: { size: 256, suffix: `.${FITS_THUMBNAIL_PIPELINE_VERSION}.jpg` },
+  preview: { size: 1024, suffix: `.preview.${FITS_THUMBNAIL_PIPELINE_VERSION}.jpg` },
 };
 
 /** Thumbnail path for a FITS file (in the `.thumbs/` dir next to it). */
@@ -46,12 +59,12 @@ export async function generateFitsThumbnail(
   fs.mkdirSync(path.dirname(thumbPath), { recursive: true });
 
   const nodeBuffer = fs.readFileSync(fitsPath);
-  // Node.js Buffer may share its underlying ArrayBuffer with an offset — slice
-  // to get a clean, offset-free ArrayBuffer before handing to DataView.
-  const ab = nodeBuffer.buffer.slice(
-    nodeBuffer.byteOffset,
-    nodeBuffer.byteOffset + nodeBuffer.byteLength,
-  ) as ArrayBuffer;
+  // Node.js Buffer may share its underlying ArrayBuffer with an offset, so copy
+  // the bytes out to get a clean, offset-free ArrayBuffer before handing it to
+  // DataView. Copying through Uint8Array (rather than `buffer.slice(...)`)
+  // gives a genuine `ArrayBuffer` back: `Buffer.buffer` is typed
+  // `ArrayBufferLike`, which is what the assertion here used to paper over.
+  const ab = new Uint8Array(nodeBuffer).buffer;
 
   const parsed = parseFitsPixels(ab);
   if (parsed.width === 0 || parsed.height === 0 || parsed.imageData.length === 0) {
@@ -201,6 +214,40 @@ function debayerSuperpixel(mosaic: Float32Array, width: number, height: number, 
 
 // ─── Render to a square RGB Buffer ────────────────────────────────────────────
 
+/**
+ * 3x3 box blur, edge-clamped. Used only to derive autostretch statistics, never
+ * to render pixels.
+ *
+ * The superpixel debayer above keeps exactly one raw, un-averaged CFA sample
+ * per 2x2 block for the R and B channels (only G gets a 2-tap average). That
+ * raw noise inflates the MAD estimate in computeAutoStretch enough that the
+ * shadow-clip point collapses to 0 — the background noise floor never gets
+ * crushed to black, and the thumbnail reads as flat and washed out. The
+ * full-resolution viewer (src/lib/fits.ts) doesn't hit this: its bilinear
+ * debayer interpolates every pixel from 2-4 neighbors, which is inherently
+ * smoother. Blurring a copy purely for statistics — while still stretching
+ * the original, unsmoothed plane per-pixel — gives the thumbnail the same
+ * stable black point without softening the rendered image.
+ */
+function smoothForStats(plane: Float32Array, width: number, height: number): Float32Array {
+  const out = new Float32Array(plane.length);
+  const at = (x: number, y: number): number => {
+    const cx = x < 0 ? 0 : x >= width ? width - 1 : x;
+    const cy = y < 0 ? 0 : y >= height ? height - 1 : y;
+    return plane[cy * width + cx];
+  };
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let sum = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) sum += at(x + dx, y + dy);
+      }
+      out[y * width + x] = sum / 9;
+    }
+  }
+  return out;
+}
+
 function renderToRgbBuffer(parsed: FitsPixels, size: number): Buffer {
   // Pick the color source: cube planes, debayered mosaic, or mono.
   const planes = parsed.rgb
@@ -225,9 +272,9 @@ function renderToRgbBuffer(parsed: FitsPixels, size: number): Buffer {
   const rgb = Buffer.alloc(size * size * 3, 0); // black background
 
   if (planes) {
-    const pr = computeAutoStretch(planes.r);
-    const pg = computeAutoStretch(planes.g);
-    const pb = computeAutoStretch(planes.b);
+    const pr = computeAutoStretch(smoothForStats(planes.r, planes.width, planes.height));
+    const pg = computeAutoStretch(smoothForStats(planes.g, planes.width, planes.height));
+    const pb = computeAutoStretch(smoothForStats(planes.b, planes.width, planes.height));
     for (let y = 0; y < dstH; y++) {
       const srcY = Math.min(srcH - 1, Math.floor(y / scale));
       const rowBase = (flip ? srcH - 1 - srcY : srcY) * srcW;
@@ -240,7 +287,7 @@ function renderToRgbBuffer(parsed: FitsPixels, size: number): Buffer {
       }
     }
   } else {
-    const p = computeAutoStretch(parsed.imageData);
+    const p = computeAutoStretch(smoothForStats(parsed.imageData, parsed.width, parsed.height));
     for (let y = 0; y < dstH; y++) {
       const srcY = Math.min(srcH - 1, Math.floor(y / scale));
       const rowBase = (flip ? srcH - 1 - srcY : srcY) * srcW;

@@ -7,17 +7,13 @@
  */
 import fs from 'fs/promises';
 import path from 'path';
-import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import {
-  BASE_PATH,
   type SmbEntry,
   type SmbProfile,
-  sanitizePath,
-  validatePathNoTraversal,
-  loadSettings,
   parseShareName,
+  withSmbGuards,
 } from './smb.shared.js';
 import type { TelescopeProfile } from './telescopes.js';
 
@@ -69,14 +65,7 @@ async function mountIfNeeded(settings: Settings): Promise<void> {
 }
 
 export async function smbListDir(smbPath: string, profile?: ProfileArg): Promise<SmbEntry[]> {
-  const settings = loadSettings(profile);
-  if (!settings.hostname) {
-    throw new Error('No SeeStar hostname configured. Please configure it in Settings.');
-  }
-
-  sanitizePath(smbPath);
-  validatePathNoTraversal(smbPath);
-
+  return withSmbGuards(smbPath, profile, async (settings) => {
   await mountIfNeeded(settings);
   const uncPath = toUncPath(settings, smbPath);
 
@@ -100,17 +89,11 @@ export async function smbListDir(smbPath: string, profile?: ProfileArg): Promise
     const message = err instanceof Error ? err.message : 'Unknown error';
     throw new Error(`SMB connection failed: ${message}`);
   }
+  });
 }
 
 export async function smbGetFile(smbPath: string, maxBytes?: number, profile?: ProfileArg): Promise<Buffer> {
-  const settings = loadSettings(profile);
-  if (!settings.hostname) {
-    throw new Error('No SeeStar hostname configured');
-  }
-
-  sanitizePath(smbPath);
-  validatePathNoTraversal(smbPath);
-
+  return withSmbGuards(smbPath, profile, async (settings) => {
   await mountIfNeeded(settings);
   const uncPath = toUncPath(settings, smbPath);
 
@@ -124,17 +107,11 @@ export async function smbGetFile(smbPath: string, maxBytes?: number, profile?: P
     const message = err instanceof Error ? err.message : 'Unknown error';
     throw new Error(`Failed to get file: ${message}`);
   }
+  });
 }
 
 export async function smbPutFile(smbPath: string, data: Buffer, profile?: ProfileArg): Promise<void> {
-  const settings = loadSettings(profile);
-  if (!settings.hostname) {
-    throw new Error('No SeeStar hostname configured');
-  }
-
-  sanitizePath(smbPath);
-  validatePathNoTraversal(smbPath);
-
+  return withSmbGuards(smbPath, profile, async (settings) => {
   await mountIfNeeded(settings);
   const uncPath = toUncPath(settings, smbPath);
 
@@ -144,24 +121,11 @@ export async function smbPutFile(smbPath: string, data: Buffer, profile?: Profil
     const message = err instanceof Error ? err.message : 'Unknown error';
     throw new Error(`Failed to write file: ${message}`);
   }
+  });
 }
 
 export async function smbDelete(smbPath: string, profile?: ProfileArg): Promise<void> {
-  const settings = loadSettings(profile);
-  if (!settings.hostname) {
-    throw new Error('No SeeStar hostname configured');
-  }
-
-  sanitizePath(smbPath);
-  validatePathNoTraversal(smbPath);
-
-  // Plain startsWith(BASE_PATH) has no trailing-separator boundary check, so
-  // a sibling folder named e.g. "MyWorks_evil" (or "MyWorksEvil") would also
-  // pass — the prefix matches but the path is not actually inside BASE_PATH.
-  if (smbPath !== BASE_PATH && !smbPath.startsWith(BASE_PATH + '/')) {
-    throw new Error('Can only delete files within MyWorks');
-  }
-
+  return withSmbGuards(smbPath, profile, async (settings) => {
   await mountIfNeeded(settings);
   const uncPath = toUncPath(settings, smbPath);
 
@@ -171,4 +135,5 @@ export async function smbDelete(smbPath: string, profile?: ProfileArg): Promise<
     const message = err instanceof Error ? err.message : 'Unknown error';
     throw new Error(`Failed to delete file: ${message}`);
   }
+  }, { requireInsideBasePath: true });
 }

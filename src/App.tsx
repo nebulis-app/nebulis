@@ -1,11 +1,14 @@
-import { Suspense, lazy, useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ThemeProvider } from './hooks/useTheme';
 import { NavVisibilityProvider } from './hooks/useNavVisibility';
 import { Layout } from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OnboardingModal } from './components/OnboardingModal';
+import { TourProvider } from './components/tour/TourProvider';
+import { TourOverlay } from './components/tour/TourOverlay';
+import { WhatsNewGateProvider, useWhatsNewGate } from './contexts/WhatsNewGateContext';
 
 // Route pages are code-split: each loads on first navigation rather than in the
 // initial bundle. This keeps the first paint (the Library landing page) from
@@ -43,6 +46,21 @@ function RouteFallback() {
       <div className="w-6 h-6 rounded-full border-2 border-accent-500/30 border-t-accent-500 animate-spin" />
     </div>
   );
+}
+
+/** React Router's client-side navigation never touches native scroll
+ *  restoration, so the browser leaves scrollY wherever it was on the previous
+ *  page. Clicking an observation from partway down an object page's
+ *  observations list landed on the observation page at that same offset
+ *  instead of its top. Keyed on pathname only, not search, so filter/tab
+ *  changes that only touch query params don't reset scroll underneath the
+ *  user. */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [pathname]);
+  return null;
 }
 
 function AppInner() {
@@ -102,31 +120,48 @@ function AppInner() {
   }
 
   return (
-    <Layout>
-      <SyncSubframesProvider>
-      <Suspense fallback={<RouteFallback />}>
-      <Routes>
-        <Route path="/" element={<Gallery />} />
-        <Route path="/observations" element={<ObservationsCalendar />} />
-        <Route path="/observations/new" element={<NewObservationPage />} />
-        <Route path="/observations/:objectId/:date" element={<ObservationDetail />} />
-        <Route path="/object/:objectId" element={<ObjectDetail />} />
-        <Route path="/object/:objectId/compare" element={<CompareView />} />
-        <Route path="/storage" element={<StorageDashboard />} />
-        <Route path="/forecast" element={<ForecastPage />} />
-        <Route path="/planner" element={<PlannerPage />} />
-        <Route path="/catalogs" element={<CatalogsHub />} />
-        <Route path="/catalogs/:catalog" element={<CatalogBoard />} />
-        <Route path="/wishlist" element={<Navigate to="/planner?tab=wishlist" replace />} />
-        <Route path="/backup" element={<BackupStatus />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/image-gallery" element={<ImageGalleryPage />} />
-        <Route path="/help" element={<HelpPage />} />
-        <Route path="/link" element={<LinkDevicePage />} />
-      </Routes>
-      </Suspense>
-      </SyncSubframesProvider>
-    </Layout>
+    <WhatsNewGateProvider>
+      <AppShell onboardingDismissed={onboardingDismissed} />
+    </WhatsNewGateProvider>
+  );
+}
+
+/** Split out of AppInner so it can read the What's New gate via context
+ *  (the provider has to sit above it in the tree). See WhatsNewGateContext
+ *  for why the tour must not auto-start before that gate settles. */
+function AppShell({ onboardingDismissed }: { onboardingDismissed: boolean }) {
+  const { settled: whatsNewSettled } = useWhatsNewGate();
+
+  return (
+    <TourProvider autoStart={onboardingDismissed && whatsNewSettled}>
+      <Layout>
+        <ScrollToTop />
+        <SyncSubframesProvider>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/" element={<Gallery />} />
+              <Route path="/observations" element={<ObservationsCalendar />} />
+              <Route path="/observations/new" element={<NewObservationPage />} />
+              <Route path="/observations/:objectId/:date" element={<ObservationDetail />} />
+              <Route path="/object/:objectId" element={<ObjectDetail />} />
+              <Route path="/object/:objectId/compare" element={<CompareView />} />
+              <Route path="/storage" element={<StorageDashboard />} />
+              <Route path="/forecast" element={<ForecastPage />} />
+              <Route path="/planner" element={<PlannerPage />} />
+              <Route path="/catalogs" element={<CatalogsHub />} />
+              <Route path="/catalogs/:catalog" element={<CatalogBoard />} />
+              <Route path="/wishlist" element={<Navigate to="/planner?tab=wishlist" replace />} />
+              <Route path="/backup" element={<BackupStatus />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/image-gallery" element={<ImageGalleryPage />} />
+              <Route path="/help" element={<HelpPage />} />
+              <Route path="/link" element={<LinkDevicePage />} />
+            </Routes>
+          </Suspense>
+        </SyncSubframesProvider>
+      </Layout>
+      <TourOverlay />
+    </TourProvider>
   );
 }
 

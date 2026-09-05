@@ -67,7 +67,10 @@ async function openViewer(page: Page) {
   await page.goto('/observations/M42/2024-03-15');
 
   // Open the viewer by clicking the stacked image tile.
-  const tile = page.locator('img[src*="NGC1432"]').first();
+  // Not `img[src*="NGC1432"]` alone: the session hero draws a blurred, decorative
+  // copy of the same frame behind the whole panel, and it comes first in the DOM,
+  // so a bare src match resolves to something that is not clickable.
+  const tile = page.locator('img[src*="NGC1432"]:not([aria-hidden="true"])').first();
   await tile.waitFor({ state: 'visible', timeout: 10_000 });
   await tile.click();
 

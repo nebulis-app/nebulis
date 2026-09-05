@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { SyncSubframesModal } from '../components/SyncSubframesModal';
 import { SyncSubframesContext, type SyncSubframesContextValue } from './syncSubframesContextObject';
 
-interface SyncArgs { objectId: string; sessionId: string; }
+interface SyncArgs { objectId: string; sessionId: string | null; }
 
 export function SyncSubframesProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
@@ -18,15 +18,30 @@ export function SyncSubframesProvider({ children }: { children: React.ReactNode 
     setArgs(next);
   }, []);
 
+  const openObjectSync = useCallback((objectId: string) => {
+    const next = { objectId, sessionId: null };
+    argsRef.current = next;
+    setArgs(next);
+  }, []);
+
   const handleComplete = useCallback(() => {
     const current = argsRef.current;
     if (!current) return;
-    queryClient.invalidateQueries({ queryKey: ['observation', current.objectId, current.sessionId] });
-    queryClient.invalidateQueries({ queryKey: ['observation-files', current.objectId, current.sessionId] });
+    if (current.sessionId) {
+      queryClient.invalidateQueries({ queryKey: ['observation', current.objectId, current.sessionId] });
+      queryClient.invalidateQueries({ queryKey: ['observation-files', current.objectId, current.sessionId] });
+    } else {
+      // Object-wide sync touched every night — drop the whole family's caches.
+      queryClient.invalidateQueries({ queryKey: ['observation', current.objectId] });
+      queryClient.invalidateQueries({ queryKey: ['observation-files', current.objectId] });
+    }
     queryClient.invalidateQueries({ queryKey: ['library-sessions', current.objectId] });
   }, [queryClient]);
 
-  const contextValue = useMemo<SyncSubframesContextValue>(() => ({ openSync }), [openSync]);
+  const contextValue = useMemo<SyncSubframesContextValue>(
+    () => ({ openSync, openObjectSync }),
+    [openSync, openObjectSync],
+  );
 
   return (
     <SyncSubframesContext.Provider value={contextValue}>

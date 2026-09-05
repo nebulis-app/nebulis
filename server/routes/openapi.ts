@@ -2,6 +2,14 @@ import { Router, Request, Response } from 'express';
 import { TELESCOPE_KINDS } from '../lib/types/telescopeKind.js';
 import { TRANSPORT_KINDS } from '../lib/telescopeTransports.js';
 import { UPDATE_CHANNELS } from '../lib/appUpdate/manifest.js';
+import {
+  GALLERY_IMAGE_SOURCES,
+  PREFERRED_CATALOGS,
+  TEMPERATURE_UNITS,
+  WIND_SPEED_UNITS,
+} from '../lib/types/appSettings.js';
+import { WISHLIST_PRIORITIES } from '../lib/wishlist.js';
+import { FILE_CATEGORIES } from '../lib/telescopeFiles.js';
 import { SKY_MAP_AZ_SLICES, SKY_MAP_BANDS, SKY_MAP_CELLS } from '../lib/skyMapConfig.js';
 
 const router = Router();
@@ -114,7 +122,7 @@ const spec = {
         properties: {
           name:        strEx('sub_001.fit'),
           size:        { type: 'integer', example: 4915200 },
-          type:        { type: 'string', enum: ['image', 'fits', 'video', 'thumbnail', 'other'] },
+          type:        { type: 'string', enum: [...FILE_CATEGORIES] },
           path:        { type: 'string' },
           downloadUrl: { type: 'string' },
         },
@@ -193,7 +201,7 @@ const spec = {
           constellation:   nullable(strEx('Andromeda')),
           magnitude:       nullable({ type: 'number', example: 3.4 }),
           majorAxisArcmin: nullable({ type: 'number', example: 192.4 }),
-          priority:        { type: 'string', enum: ['high', 'medium', 'low'], default: 'medium' },
+          priority:        { type: 'string', enum: [...WISHLIST_PRIORITIES], default: 'medium' },
           notes:           { type: 'string', default: '' },
           addedAt:         isoDate,
         },
@@ -358,12 +366,12 @@ const spec = {
           onboardingCompleted: { type: 'boolean' },
           prefetchCatalogAssets: { type: 'boolean', description: 'Toggles the bulk background prefetch job that warms catalog imagery/descriptions in the cache' },
           planetariumShowInfo: { type: 'boolean' },
-          galleryImageSource: { type: 'string', enum: ['sky-survey', 'telescope'], description: 'Default image shown on library cards when no custom image is set' },
+          galleryImageSource: { type: 'string', enum: [...GALLERY_IMAGE_SOURCES], description: 'Default image shown on library cards when no custom image is set' },
           slideshowRotateCCW: { type: 'boolean', description: 'Rotate all images 90° CCW in slideshow / planetarium mode' },
-          preferredCatalog: { type: 'string', enum: ['default', 'caldwell'], description: 'Preferred nomenclature for new object folder names when an object has both an NGC/IC and a Caldwell designation' },
+          preferredCatalog: { type: 'string', enum: [...PREFERRED_CATALOGS], description: 'Preferred nomenclature for new object folder names when an object has both an NGC/IC and a Caldwell designation' },
           groupObservingNights: { type: 'boolean', description: 'Whether a session crossing local midnight groups as one observing night or splits at the calendar date' },
-          temperatureUnit: { type: 'string', enum: ['celsius', 'fahrenheit'] },
-          windSpeedUnit:   { type: 'string', enum: ['mph', 'kmh'] },
+          temperatureUnit: { type: 'string', enum: [...TEMPERATURE_UNITS] },
+          windSpeedUnit:   { type: 'string', enum: [...WIND_SPEED_UNITS] },
           updateChannel:   { type: 'string', enum: [...UPDATE_CHANNELS], description: 'Desktop auto-update channel' },
           autoUpdateEnabled: { type: 'boolean', description: 'Whether the updater checks and pre-downloads automatically' },
           plannerPrefetchEnabled: { type: 'boolean', description: 'Nightly maintenance: pre-warm planner thumbnails for tonight’s visible objects' },
@@ -372,6 +380,7 @@ const spec = {
           nightlyCatalogPackCheckEnabled: { type: 'boolean', description: 'Nightly maintenance: check for and apply catalog pack updates' },
           nightlyHousekeepingEnabled: { type: 'boolean', description: 'Nightly maintenance: purge junk files and stale import temp data' },
           nightlyForecastPrefetchEnabled: { type: 'boolean', description: 'Nightly maintenance: pre-warm the weather/seeing forecast cache' },
+          nightlyMaintenanceEnabled: { type: 'boolean', description: 'Master switch for the whole nightly maintenance batch' },
           nightlyHousekeepingLastRun: nullable({ type: 'integer', description: 'Unix ms of the last run, read-only' }),
           nightlyForecastLastRun: nullable({ type: 'integer', description: 'Unix ms of the last run, read-only' }),
         },
@@ -539,7 +548,7 @@ const spec = {
         parameters: [
           { $ref: '#/components/parameters/objectId' },
           { name: 'sessionId', in: 'path', required: true, schema: { type: 'string' } },
-          { name: 'fileType', in: 'query', schema: { type: 'string', enum: ['image', 'fits', 'video', 'thumbnail', 'other'] } },
+          { name: 'fileType', in: 'query', schema: { type: 'string', enum: [...FILE_CATEGORIES] } },
           { $ref: '#/components/parameters/page' },
           { $ref: '#/components/parameters/limit' },
         ],
@@ -624,6 +633,21 @@ const spec = {
           { $ref: '#/components/parameters/format' },
         ],
         responses: { 200: { description: 'File binary or base64 JSON' } },
+      },
+    },
+    '/library/video': {
+      get: {
+        summary: 'Stream a local video file (inline, byte-range)',
+        tags: ['Library (Local)'],
+        description: 'Range-capable stream for a library `.mp4` / `.mov` / `.avi`, served `Content-Disposition: inline` so a `<video>` element or a native AVPlayer/ExoPlayer can play it. Use `/library/file` to download instead.',
+        parameters: [
+          { name: 'path', in: 'query', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          200: { description: 'Full video stream' },
+          206: { description: 'Partial content (range request)' },
+          415: { description: 'Not a supported video extension' },
+        },
       },
     },
     '/library/import': {
@@ -761,7 +785,7 @@ const spec = {
                 required: ['objectId'],
                 properties: {
                   objectId: strEx('M81'),
-                  priority: { type: 'string', enum: ['high', 'medium', 'low'], default: 'medium' },
+                  priority: { type: 'string', enum: [...WISHLIST_PRIORITIES], default: 'medium' },
                   notes:    { type: 'string' },
                 },
               },
@@ -785,7 +809,7 @@ const spec = {
               schema: {
                 type: 'object',
                 properties: {
-                  priority: { type: 'string', enum: ['high', 'medium', 'low'] },
+                  priority: { type: 'string', enum: [...WISHLIST_PRIORITIES] },
                   notes:    { type: 'string' },
                 },
               },

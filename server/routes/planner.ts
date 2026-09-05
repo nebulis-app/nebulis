@@ -9,6 +9,17 @@
  * GET /api/v1/planner/curve/:objectId
  *   Returns altitude curve data for a specific object tonight.
  *
+ * POST /api/v1/planner/plan
+ *   Runs the "Plan My Night" auto-scheduler server-side and returns a
+ *   sequence of scheduled blocks. This is the single canonical
+ *   implementation shared by every client (web, iOS, and eventually
+ *   Android) so a plan can never disagree across platforms.
+ *
+ * POST /api/v1/planner/verdict
+ *   Batch moon-proximity + sky-visibility verdicts for already-placed or
+ *   candidate blocks, used for live feedback while a user drags/resizes a
+ *   block on a schedule timeline.
+ *
  * GET /api/v1/dso
  *   Browse / search the full DSO catalog.
  */
@@ -22,6 +33,10 @@ import { altAz, getNightWindow, visibilityWindow, altitudeCurve, moonPhaseName }
 import { addDaysToDateKey, localDateKey, localParts, zonedDateTimeToUtc } from '../lib/timezone.js';
 import { observerTimezoneForCoordinates } from '../lib/observerTimezone.js';
 import { OBSERVING_NIGHT_ROLLOVER_HOUR } from '../lib/telescopeFiles.js';
+import { generateNightPlan, type PlanCandidate, AUTO_PLAN_FOCUSES } from '../lib/autoPlan.js';
+import { checkMoonProximity } from '../lib/moonProximity.js';
+import { checkBlockVisibility, type VisibleSkyMap } from '../lib/visibilityCheck.js';
+import { computeBestTonightScore } from '../lib/bestTonightScore.js';
 import SunCalc from 'suncalc';
 
 const router = Router();
@@ -281,9 +296,20 @@ router.get('/tonight', async (req: Request, res: Response) => {
   // Sort by max altitude descending (best targets first)
   targets.sort((a, b) => b.maxAlt - a.maxAlt);
 
+  // Composite "Best Tonight" ranking (altitude/duration/magnitude/transit/size),
+  // additive to every target so clients can offer a "Best Tonight" sort
+  // without a second round trip. nightStart/nightEnd fall back to the wider
+  // sunset-sunrise timeline on nights with no true dark window.
+  const scoreWindowStart = darkWindow?.nightStart ?? timelineWindow.start;
+  const scoreWindowEnd = darkWindow?.nightEnd ?? timelineWindow.end;
+  const targetsWithScore = targets.map(t => ({
+    ...t,
+    bestTonightScore: computeBestTonightScore(t, scoreWindowStart, scoreWindowEnd).total,
+  }));
+
   const payload = {
     locationSet: true,
-    targets,
+    targets: targetsWithScore,
     totalVisible: targets.length,
     nightStart: nightStart?.toISOString() ?? null,
     nightEnd: nightEnd?.toISOString() ?? null,
@@ -359,6 +385,163 @@ router.get('/curve/:objectId', async (req: Request, res: Response) => {
   const curve = altitudeCurve(entry.ra, entry.dec, lat, lon, nightStart, nightEnd, 15);
 
   res.apiSuccess({ entry, curve, nightStart: nightStart.toISOString(), nightEnd: nightEnd.toISOString() });
+});
+
+const PlanCandidateSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.string(),
+  ra: z.number(),
+  dec: z.number(),
+  // .nullable().optional() rather than just .nullable(): Swift's JSONEncoder
+  // omits nil optional properties entirely instead of sending an explicit
+  // null, so an iOS request with e.g. no magnitude has the key missing, not
+  // set to null. Web always sends the key with an explicit null. Both must
+  // validate.
+  magnitude: z.number().nullable().optional().transform(v => v ?? null),
+  majorAxisArcmin: z.number().nullable().optional().transform(v => v ?? null),
+  constellation: z.string().nullable().optional().transform(v => v ?? null),
+  commonNames: z.array(z.string()),
+  isAlreadyImaged: z.boolean(),
+});
+
+const AutoPlanBodySchema = z.object({
+  targets: z.array(PlanCandidateSchema).min(1),
+  observerLat: z.number().min(-90).max(90),
+  observerLon: z.number().min(-180).max(180),
+  windowStart: z.string().datetime(),
+  windowEnd: z.string().datetime(),
+  slotMinutes: z.number().positive(),
+  maxObjects: z.number().int().positive(),
+  minAlt: z.number(),
+  moonIllumination: z.number().min(0).max(100),
+  // Not `.length(SKY_MAP_CELLS)`: a site with no mask configured yet sends an
+  // empty array (iOS's `skyMap` computed property returns [] rather than nil
+  // in that case), and visibilityCheck.ts's isEmptyMap() already treats any
+  // array whose length isn't SKY_MAP_CELLS as "no restriction" downstream —
+  // rejecting it here would just be a stricter, redundant gate that fights
+  // the client conventions instead of matching what the code actually does.
+  visibleSkyMap: z.array(z.boolean()).max(1000).nullable().optional(),
+  focus: z.enum(AUTO_PLAN_FOCUSES).optional(),
+  unimagedOnly: z.boolean().optional(),
+  jitter: z.number().optional(),
+});
+
+// POST /api/v1/planner/plan — run the canonical auto-scheduler server-side.
+// Body mirrors AutoPlanParams; both existing callers (the planner page's
+// "Plan My Night" and a single catalog's "Plan Tonight") already hold the
+// full candidate list client-side, so this endpoint just executes the
+// algorithm rather than re-deriving the pool from the DSO catalog itself.
+router.post('/plan', (req: Request, res: Response) => {
+  const parsed = AutoPlanBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
+    return;
+  }
+  const body = parsed.data;
+  const windowStart = new Date(body.windowStart);
+  const windowEnd = new Date(body.windowEnd);
+  if (windowEnd.getTime() <= windowStart.getTime()) {
+    res.apiError(422, 'VALIDATION_ERROR', 'windowEnd must be after windowStart');
+    return;
+  }
+
+  const blocks = generateNightPlan({
+    targets: body.targets as PlanCandidate[],
+    observerLat: body.observerLat,
+    observerLon: body.observerLon,
+    windowStart,
+    windowEnd,
+    slotMinutes: body.slotMinutes,
+    maxObjects: body.maxObjects,
+    minAlt: body.minAlt,
+    moonIllumination: body.moonIllumination,
+    visibleSkyMap: (body.visibleSkyMap ?? null) as VisibleSkyMap | null,
+    focus: body.focus,
+    unimagedOnly: body.unimagedOnly,
+    jitter: body.jitter,
+  });
+
+  res.apiSuccess(
+    blocks.map(b => ({
+      target: b.target,
+      start: b.start.toISOString(),
+      end: b.end.toISOString(),
+      meanAlt: Math.round(b.meanAlt * 10) / 10,
+      moonSeparation: Number.isFinite(b.moonSeparation) ? Math.round(b.moonSeparation * 10) / 10 : null,
+      moonVerdict: b.moonVerdict,
+    })),
+  );
+});
+
+const VerdictItemSchema = z.object({
+  id: z.string(),
+  ra: z.number(),
+  dec: z.number(),
+  start: z.string().datetime(),
+  end: z.string().datetime(),
+});
+
+const VerdictBodySchema = z.object({
+  items: z.array(VerdictItemSchema).min(1).max(200),
+  observerLat: z.number().min(-90).max(90),
+  observerLon: z.number().min(-180).max(180),
+  moonIllumination: z.number().min(0).max(100),
+  // Not `.length(SKY_MAP_CELLS)`: a site with no mask configured yet sends an
+  // empty array (iOS's `skyMap` computed property returns [] rather than nil
+  // in that case), and visibilityCheck.ts's isEmptyMap() already treats any
+  // array whose length isn't SKY_MAP_CELLS as "no restriction" downstream —
+  // rejecting it here would just be a stricter, redundant gate that fights
+  // the client conventions instead of matching what the code actually does.
+  visibleSkyMap: z.array(z.boolean()).max(1000).nullable().optional(),
+  /** Observer's IANA timezone, for the reason string's time-of-day. */
+  timeZone: z.string().optional(),
+});
+
+// POST /api/v1/planner/verdict — batch moon-proximity + sky-visibility check
+// for placed blocks. Used for live feedback while a user drags/resizes a
+// block on a schedule timeline, so the timeline never disagrees with what
+// the auto-scheduler itself would say about the same block.
+router.post('/verdict', (req: Request, res: Response) => {
+  const parsed = VerdictBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
+    return;
+  }
+  const body = parsed.data;
+  const skyMap = (body.visibleSkyMap ?? null) as VisibleSkyMap | null;
+
+  // Response shapes mirror the client's existing BlockVisibilityResult /
+  // MoonProximityResult interfaces field-for-field (dates as ISO strings) so
+  // callers can drop these straight into the same UI that used to compute
+  // them locally, with no shape changes downstream.
+  const results = body.items.map(item => {
+    const start = new Date(item.start);
+    const end = new Date(item.end);
+    const moon = checkMoonProximity(item.ra, item.dec, body.observerLat, body.observerLon, start, end, body.moonIllumination, 5, body.timeZone);
+    const visibility = checkBlockVisibility(item.ra, item.dec, body.observerLat, body.observerLon, start, end, skyMap, 5, body.timeZone);
+    return {
+      id: item.id,
+      moon: {
+        verdict: moon.verdict,
+        minSeparation: moon.minSeparation,
+        threshold: Math.round(moon.threshold * 10) / 10,
+        worstAt: moon.worstAt?.toISOString() ?? null,
+        moonAltAtWorst: Math.round(moon.moonAltAtWorst * 10) / 10,
+        reason: moon.reason,
+      },
+      visibility: {
+        verdict: visibility.verdict,
+        fractionVisible: Math.round(visibility.fractionVisible * 100) / 100,
+        firstBlockedAt: visibility.firstBlockedAt?.toISOString() ?? null,
+        reason: visibility.reason,
+        minAlt: Math.round(visibility.minAlt * 10) / 10,
+        maxAlt: Math.round(visibility.maxAlt * 10) / 10,
+      },
+    };
+  });
+
+  res.apiSuccess(results);
 });
 
 // GET /api/v1/dso — browse / search the full DSO catalog

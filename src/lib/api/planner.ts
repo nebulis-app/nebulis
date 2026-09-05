@@ -1,4 +1,8 @@
 import { fetchJSON } from './client';
+import type { AutoPlanFocus, PlanBlock, PlanCandidate } from '../planTypes';
+import type { VisibleSkyMap } from '../visibilityCheck';
+import type { BlockVisibilityResult } from '../visibilityCheck';
+import type { MoonProximityResult } from '../moonProximity';
 
 // Forecast
 export interface ForecastHour {
@@ -80,6 +84,10 @@ export interface PlannerTarget {
   isInWishlist: boolean;
   isAlreadyImaged: boolean;
   libraryObjectId: string | null;
+  /** Composite "Best Tonight" ranking (0-1: altitude/duration/magnitude/
+   *  transit/size), computed server-side so every client ranks the same way.
+   *  Absent on older servers. */
+  bestTonightScore?: number;
 }
 
 interface PlannerResponse {
@@ -136,3 +144,128 @@ export const getPlannerTargets = (opts?: {
 
 export const searchDsoCatalog = (q: string, limit = 20) =>
   fetchJSON<{ results: DsoEntry[]; total: number }>(`/dso?q=${encodeURIComponent(q)}&limit=${limit}`);
+
+// Auto-plan ("Plan My Night") — the scheduling algorithm runs server-side so
+// every client (web, iOS, and eventually Android) produces the same plan for
+// the same inputs. See server/lib/autoPlan.ts for the canonical algorithm.
+
+export interface AutoPlanRequest {
+  targets: PlanCandidate[];
+  observerLat: number;
+  observerLon: number;
+  windowStart: Date;
+  windowEnd: Date;
+  slotMinutes: number;
+  maxObjects: number;
+  minAlt: number;
+  moonIllumination: number;
+  visibleSkyMap: VisibleSkyMap | null;
+  focus?: AutoPlanFocus;
+  unimagedOnly?: boolean;
+  jitter?: number;
+}
+
+interface WirePlanBlock {
+  target: PlanCandidate;
+  start: string;
+  end: string;
+  meanAlt: number;
+  moonSeparation: number | null;
+  moonVerdict: PlanBlock['moonVerdict'];
+}
+
+export async function generateNightPlan(req: AutoPlanRequest): Promise<PlanBlock[]> {
+  const wire = await fetchJSON<WirePlanBlock[]>('/planner/plan', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...req,
+      windowStart: req.windowStart.toISOString(),
+      windowEnd: req.windowEnd.toISOString(),
+    }),
+  });
+  return wire.map(b => ({
+    ...b,
+    start: new Date(b.start),
+    end: new Date(b.end),
+    // JSON has no Infinity; the server sends null for "moon down the whole
+    // block", which is exactly what Infinity has always meant here.
+    moonSeparation: b.moonSeparation ?? Infinity,
+  }));
+}
+
+// Batch moon-proximity + sky-visibility verdicts for placed blocks. Used for
+// live feedback while a user drags/resizes a block on the schedule timeline.
+
+export interface VerdictRequestItem {
+  id: string;
+  ra: number;
+  dec: number;
+  start: Date;
+  end: Date;
+}
+
+interface WireBlockVerdict {
+  id: string;
+  moon: {
+    verdict: MoonProximityResult['verdict'];
+    minSeparation: number | null;
+    threshold: number;
+    worstAt: string | null;
+    moonAltAtWorst: number;
+    reason: string;
+  };
+  visibility: {
+    verdict: BlockVisibilityResult['verdict'];
+    fractionVisible: number;
+    firstBlockedAt: string | null;
+    reason: string;
+    minAlt: number;
+    maxAlt: number;
+  };
+}
+
+export interface BlockVerdict {
+  id: string;
+  moon: MoonProximityResult;
+  visibility: BlockVisibilityResult;
+}
+
+export async function getBlockVerdicts(
+  items: VerdictRequestItem[],
+  observerLat: number,
+  observerLon: number,
+  moonIllumination: number,
+  visibleSkyMap: VisibleSkyMap | null,
+  timeZone?: string,
+): Promise<BlockVerdict[]> {
+  const wire = await fetchJSON<WireBlockVerdict[]>('/planner/verdict', {
+    method: 'POST',
+    body: JSON.stringify({
+      items: items.map(i => ({ id: i.id, ra: i.ra, dec: i.dec, start: i.start.toISOString(), end: i.end.toISOString() })),
+      observerLat,
+      observerLon,
+      moonIllumination,
+      visibleSkyMap,
+      timeZone,
+    }),
+  });
+  return wire.map(v => ({
+    id: v.id,
+    moon: {
+      verdict: v.moon.verdict,
+      minSeparation: v.moon.minSeparation ?? Infinity,
+      threshold: v.moon.threshold,
+      worstAt: v.moon.worstAt ? new Date(v.moon.worstAt) : null,
+      moonAltAtWorst: v.moon.moonAltAtWorst,
+      reason: v.moon.reason,
+    },
+    visibility: {
+      verdict: v.visibility.verdict,
+      fractionVisible: v.visibility.fractionVisible,
+      firstBlockedAt: v.visibility.firstBlockedAt ? new Date(v.visibility.firstBlockedAt) : null,
+      reason: v.visibility.reason,
+      minAlt: v.visibility.minAlt,
+      maxAlt: v.visibility.maxAlt,
+    },
+  }));
+}

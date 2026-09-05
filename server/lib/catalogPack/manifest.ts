@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { CATALOG_DESCRIPTION_STATUSES } from '../types/catalog.js';
 
 export const CATALOG_TIERS = ['messier', 'caldwell', 'popular', 'extended', 'sharpless'] as const;
 export type CatalogTier = (typeof CATALOG_TIERS)[number];
@@ -64,7 +65,9 @@ const DescriptionEntry = z.object({
   extract:   z.string(),
   sourceUrl: z.string(),
   source:    z.string(),
-  status:    z.enum(['ok', 'not_found', 'error']),
+  // Derived from the catalogCache status union: install.ts writes this value
+  // straight into the catalogCache.status column, so the two cannot diverge.
+  status:    z.enum(CATALOG_DESCRIPTION_STATUSES),
 });
 
 export const PackDescriptions = z.record(z.string(), DescriptionEntry);

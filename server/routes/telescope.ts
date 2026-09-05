@@ -13,6 +13,7 @@ import {
   isSubFolder,
   getFileCategory,
   sessionNightFor,
+  mimeTypeForExtension,
 } from '../lib/telescopeFiles.js';
 import { cachedSmbListDir, BASE_PATH } from '../lib/smbCache.js';
 import { pickDefaultTarget } from '../lib/telescopes.js';
@@ -24,6 +25,7 @@ import {
   getLocalThumbnail,
   deleteLocalFile,
   getObjectFolderName,
+  resolveContainedObjectDir,
 } from '../lib/localLibrary.js';
 import { listObjectFiles, getObjectLayout } from '../lib/library/libraryLayout.js';
 import { resolverFor } from '../lib/library/libraryFiles.js';
@@ -88,7 +90,14 @@ router.get('/objects/:objectId', (req: Request, res: Response) => {
     const LIBRARY_DIR = getLibraryDir();
     const objectId = String(req.params.objectId);
     const folderName = getObjectFolderName(objectId);
-    const objDir = path.join(LIBRARY_DIR, folderName);
+    // getObjectFolderName falls back to the raw objectId on a DB miss, so a
+    // crafted objectId with traversal tokens would otherwise escape
+    // LIBRARY_DIR. Mirror the guard used in download.ts/library.ts.
+    const objDir = resolveContainedObjectDir(objectId);
+    if (!objDir) {
+      res.apiError(400, 'INVALID_OBJECT_ID', 'Object id resolves outside the library');
+      return;
+    }
 
     if (!fs.existsSync(objDir)) {
       res.apiError(404, 'NOT_FOUND', 'Object not found in local library. Run a sync to import it.');
@@ -122,10 +131,13 @@ router.get('/objects/:objectId', (req: Request, res: Response) => {
 
     const stackedCount = files.filter(e => identity.role(e.relPath) === 'stacked').length;
 
-    // Check for local sub folder
+    // Check for local sub folder. resolveContainedObjectDir only covers the
+    // exact folder name, so the `_sub`/`_subs` suffix variant is re-checked
+    // here the same way.
     let subFrameCount = 0;
     for (const suffix of ['_sub', '_subs']) {
-      const subDir = path.join(LIBRARY_DIR, `${folderName}${suffix}`);
+      const subDir = path.resolve(LIBRARY_DIR, `${folderName}${suffix}`);
+      if (subDir !== LIBRARY_DIR && !subDir.startsWith(LIBRARY_DIR + path.sep)) continue;
       if (fs.existsSync(subDir)) {
         subFrameCount = fs.readdirSync(subDir).filter(f => isRealFile(f) && !f.toLowerCase().includes('_thn.')).length;
         break;
@@ -263,11 +275,20 @@ router.get('/objects/:objectId/subs', (req: Request, res: Response) => {
     const fileTypeFilter = queryString(req.query.fileType);
     const sessionDate = queryString(req.query.date);
 
+    // getObjectFolderName falls back to the raw objectId on a DB miss, so a
+    // crafted objectId with traversal tokens must be rejected before any
+    // filesystem call, not just contained by luck.
+    if (!resolveContainedObjectDir(objectId)) {
+      res.apiError(400, 'INVALID_OBJECT_ID', 'Object id resolves outside the library');
+      return;
+    }
+
     // Find the local sub folder
     const subFolderName = getObjectFolderName(objectId);
     let subDir: string | null = null;
     for (const suffix of ['_sub', '_subs']) {
-      const candidate = path.join(LIBRARY_DIR, `${subFolderName}${suffix}`);
+      const candidate = path.resolve(LIBRARY_DIR, `${subFolderName}${suffix}`);
+      if (candidate !== LIBRARY_DIR && !candidate.startsWith(LIBRARY_DIR + path.sep)) continue;
       if (fs.existsSync(candidate)) { subDir = candidate; break; }
     }
 
@@ -286,7 +307,7 @@ router.get('/objects/:objectId/subs', (req: Request, res: Response) => {
         return {
           name: fname,
           size: stat.size,
-          type: category as 'image' | 'fits' | 'video' | 'thumbnail' | 'other',
+          type: category,
           fileType: parsed.type as 'stacked' | 'sub' | 'thumbnail' | 'video' | 'other',
           subIndex: parsed.subIndex || null,
           path: `${objectId}/${fname}`,
@@ -359,12 +380,12 @@ router.get('/files', async (req: Request, res: Response) => {
     if (wantsBase64) {
       res.apiSuccess({
         base64: data.toString('base64'),
-        mimeType: getMimeType(ext),
+        mimeType: mimeTypeForExtension(ext),
         filename: path.basename(filePath),
         size: data.length,
       });
     } else {
-      res.set('Content-Type', getMimeType(ext));
+      res.set('Content-Type', mimeTypeForExtension(ext));
       res.set('Cache-Control', 'public, max-age=3600');
       res.set('Content-Disposition', contentDispositionHeader('inline', path.basename(filePath)));
       res.send(data);
@@ -417,7 +438,7 @@ router.get('/file', (req: Request, res: Response) => {
     return;
   }
   const ext = path.extname(filePath).toLowerCase();
-  res.set('Content-Type', getMimeType(ext));
+  res.set('Content-Type', mimeTypeForExtension(ext));
   res.set('Cache-Control', 'public, max-age=3600');
   res.sendFile(localPath);
 });
@@ -438,16 +459,5 @@ router.delete('/file', requireAdmin, (req: Request, res: Response) => {
   }
 });
 
-function getMimeType(ext: string): string {
-  switch (ext) {
-    case '.jpg': case '.jpeg': return 'image/jpeg';
-    case '.png': return 'image/png';
-    case '.fit': case '.fits': return 'application/fits';
-    case '.tif': case '.tiff': return 'image/tiff';
-    case '.avi': return 'video/x-msvideo';
-    case '.mp4': return 'video/mp4';
-    default: return 'application/octet-stream';
-  }
-}
 
 export { router as telescopeRouter };

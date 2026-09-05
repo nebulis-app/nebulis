@@ -299,6 +299,7 @@ export function SessionNotesModal({ objectId, date, onClose }: SessionNotesModal
               message="Discard unsaved notes?"
               onCancel={() => setConfirmingClose(false)}
               onDiscard={() => { setConfirmingClose(false); onClose(); }}
+              isDark={isDark}
             />
           )}
       </Modal>

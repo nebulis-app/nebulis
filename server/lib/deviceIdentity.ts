@@ -17,6 +17,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { smbGetFile, smbPutFile } from './smb.js';
+import { parseJsonRecord } from './typeGuards.js';
 import type { TelescopeTransport, TransportKind } from './telescopeTransports.js';
 
 export interface DeviceIdentity {
@@ -80,14 +81,10 @@ function transportToProfile(t: TelescopeTransport): {
 }
 
 function parseIdentity(buf: Buffer): DeviceIdentity | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(buf.toString('utf8'));
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== 'object') return null;
-  const r = parsed as Record<string, unknown>;
+  // The file comes off the telescope's own storage, so it is untrusted input:
+  // parseJsonRecord covers both bad JSON and valid-JSON-that-isn't-an-object.
+  const r = parseJsonRecord(buf.toString('utf8'));
+  if (!r) return null;
   if (typeof r.deviceId !== 'string' || r.deviceId.length === 0) return null;
   if (typeof r.createdAt !== 'string') return null;
   return {

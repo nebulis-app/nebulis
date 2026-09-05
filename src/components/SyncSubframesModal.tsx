@@ -3,14 +3,15 @@ import {
   X, Minus, Download, CheckCircle, AlertCircle, Layers,
   WifiOff, RotateCw,
 } from 'lucide-react';
-import { syncSessionSubFrames, getImportStatus, cancelImport, formatTransportSuffix, type ImportStatus } from '../lib/api/library';
+import { syncSessionSubFrames, syncObjectSubFrames, getImportStatus, cancelImport, formatTransportSuffix, type ImportStatus } from '../lib/api/library';
 import { useTheme } from '../hooks/useTheme';
 import { Modal } from './ui/Modal';
 import { CloseConfirm } from './ui/CloseConfirm';
 
 interface SyncSubframesModalProps {
   objectId: string;
-  sessionId: string;
+  /** A single night's date, or null to sync every night of the object. */
+  sessionId: string | null;
   /** Called when the modal closes after a completed sync, so the parent can refetch. */
   onComplete: () => void;
   onClose: () => void;
@@ -63,7 +64,9 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
       let attempt = 0;
       while (true) {
         try {
-          await syncSessionSubFrames(objectIdRef.current, sessionIdRef.current);
+          const sid = sessionIdRef.current;
+          if (sid) await syncSessionSubFrames(objectIdRef.current, sid);
+          else await syncObjectSubFrames(objectIdRef.current);
           break; // lock acquired, sync started
         } catch (err) {
           if (cancelledRef.current) return;
@@ -72,17 +75,32 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
           if (isLocked && attempt < 20) {
             attempt++;
             setPhase('waiting');
-            // Poll until the running sync finishes, then retry
-            await new Promise<void>(resolve => {
-              const id = setInterval(async () => {
-                if (cancelledRef.current) { clearInterval(id); resolve(); return; }
+            // Poll until the running sync finishes, then retry. Self-rescheduling
+            // setTimeout (not setInterval) so a slow getImportStatus can't stack
+            // concurrent requests on the already-busy server, and a bail after 5
+            // consecutive failures so an unreachable server surfaces an error
+            // instead of waiting forever.
+            const finished = await new Promise<boolean>(resolve => {
+              let waitErrors = 0;
+              const tick = async () => {
+                if (cancelledRef.current) { resolve(false); return; }
                 try {
                   const s = await getImportStatus();
-                  if (!s.running) { clearInterval(id); resolve(); }
-                } catch { /* network hiccup, keep waiting */ }
-              }, 2000);
+                  waitErrors = 0;
+                  if (!s.running) { resolve(true); return; }
+                } catch {
+                  if (++waitErrors >= 5) { resolve(false); return; }
+                }
+                if (!cancelledRef.current) setTimeout(tick, 2000);
+              };
+              setTimeout(tick, 2000);
             });
             if (cancelledRef.current) return;
+            if (!finished) {
+              setPhase('error');
+              setErrorMsg('Lost connection while waiting for the running sync to finish.');
+              return;
+            }
             continue;
           }
           setPhase('error');
@@ -276,7 +294,7 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
                   Connecting to telescope…
                 </p>
                 <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Requesting sub-frames for {sessionId}
+                  {sessionId ? `Requesting sub-frames for ${sessionId}` : 'Requesting sub-frames for every night'}
                 </p>
               </div>
             </div>
@@ -361,7 +379,7 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
                   Already up to date
                 </p>
                 <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                  {status?.skippedFiles ?? 0} sub-frame{(status?.skippedFiles ?? 0) !== 1 ? 's' : ''} for this session {(status?.skippedFiles ?? 0) !== 1 ? 'were' : 'was'} already downloaded. Nothing new to sync.
+                  {status?.skippedFiles ?? 0} sub-frame{(status?.skippedFiles ?? 0) !== 1 ? 's' : ''} for {sessionId ? 'this session' : 'this object'} {(status?.skippedFiles ?? 0) !== 1 ? 'were' : 'was'} already downloaded. Nothing new to sync.
                 </p>
               </div>
             </div>
@@ -377,16 +395,18 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
                     No sub-frames found
                   </p>
                   <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    The telescope has no raw sub-frame files for this session date.
+                    {sessionId
+                      ? 'The telescope has no raw sub-frame files for this session date.'
+                      : 'The telescope has no raw sub-frame files for any night of this object.'}
                   </p>
                 </div>
               </div>
               <div className={`rounded-xl p-3 text-xs space-y-1 ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
                 <p>Possible reasons:</p>
                 <ul className="list-disc list-inside space-y-0.5 ml-1">
-                  <li>Sub-frame saving wasn't enabled on the telescope for this session</li>
+                  <li>Sub-frame saving wasn't enabled on the telescope for {sessionId ? 'this session' : 'these sessions'}</li>
                   <li>The telescope's SMB share is not reachable</li>
-                  <li>The session folder does not have a <code>_sub</code> directory</li>
+                  <li>The {sessionId ? 'session' : 'capture'} folder does not have a <code>_sub</code> directory</li>
                 </ul>
               </div>
             </div>
@@ -435,8 +455,10 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
         {confirmingClose && (
           <CloseConfirm
             message="Stop the sub-frame sync and close?"
+            cancelLabel="Keep syncing"
             onCancel={() => setConfirmingClose(false)}
             onDiscard={() => { setConfirmingClose(false); handleClose(); }}
+            isDark={isDark}
           />
         )}
     </Modal>

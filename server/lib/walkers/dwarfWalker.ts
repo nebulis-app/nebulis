@@ -38,9 +38,17 @@ import { debugLog } from '../debugLogger.js';
 import { log } from '../logger.js';
 import type { TelescopeProfile } from '../telescopes.js';
 import type { WalkerConfig, DiscoveredObject } from './telescopeWalker.js';
-
 /** Dwarf places everything under an "Astronomy" subfolder of the storage root. */
 export const DWARF_BASE_PATH = 'Astronomy';
+
+/** Dwarf device facts, not library facts — a device folder name and the
+ *  synthetic library object name it maps to. Live here (not in
+ *  library/dwarfStartrails.ts, which re-exports them) so a low-level device
+ *  walker doesn't have to depend upward on the library/persistence cluster
+ *  just to know a folder name. See church-audit/church-crusade.md finding
+ *  W16. */
+export const STARTRAILS_FOLDER = 'STARTRAILS';
+export const STARTRAILS_TARGET_NAME = 'DWARF Star Trails';
 
 /** Folder-name prefixes that identify a Dwarf session folder (subframes inside). */
 const SESSION_PREFIXES = ['DWARF3_RAW_', 'DWARF_RAW_'];
@@ -150,6 +158,34 @@ export async function discoverDwarfObjects(profile: TelescopeProfile): Promise<D
     // reads it back via listDwarfObjectFiles below.
     _dwarfSessionFolders: folders,
   }));
+
+  // STARTRAILS: not itself a Dwarf session folder (no target, identified only
+  // by when it was captured), but each immediate subfolder is one capture.
+  // Fold them into one synthetic object exactly like two nights of
+  // DWARF3_RAW_M42_... already fold into one real target above — same
+  // mechanism, just seeded from a different directory. Isolated in its own
+  // try/catch so a missing/unreadable STARTRAILS folder (most Dwarfs won't
+  // have one on any given sync) can never affect ordinary object discovery.
+  try {
+    const startrailsDir = allDirs.find(e => e.name.toUpperCase() === STARTRAILS_FOLDER);
+    if (startrailsDir) {
+      const startrailsPath = path.posix.join(DWARF_BASE_PATH, startrailsDir.name);
+      const captureEntries = await smbListDir(startrailsPath, profile);
+      const captures = captureEntries.filter(e => e.type === 'dir' && !e.name.startsWith('.'));
+      if (captures.length > 0) {
+        debugLog('walker:dwarf', `STARTRAILS: ${captures.length} capture folder(s) found`);
+        result.push({
+          folderName: STARTRAILS_TARGET_NAME,
+          subFolderName: null,
+          _dwarfSessionFolders: captures.map(e => e.name),
+          _dwarfSessionBase: startrailsPath,
+        });
+      }
+    }
+  } catch (err) {
+    debugLog('walker:dwarf', `STARTRAILS folder not present or unreadable — skipping (${err instanceof Error ? err.message : String(err)})`);
+  }
+
   debugLog('walker:dwarf', `${result.length} distinct target(s) discovered: ${result.map(o => o.folderName).join(', ') || '(none)'}`);
   return result;
 }
@@ -157,6 +193,11 @@ export async function discoverDwarfObjects(profile: TelescopeProfile): Promise<D
 /** DiscoveredObject augmented with the actual Dwarf session folder names. */
 export interface DwarfDiscoveredObject extends DiscoveredObject {
   _dwarfSessionFolders?: string[];
+  /** Base path _dwarfSessionFolders entries are joined against. Defaults to
+   *  DWARF_BASE_PATH when unset. Set for the synthetic Star Trails object
+   *  (see discoverDwarfObjects below), whose "sessions" are capture folders
+   *  under Astronomy/STARTRAILS/ rather than directly under Astronomy/. */
+  _dwarfSessionBase?: string;
 }
 
 /** List FITS / JPG files across every session folder for one target. */
@@ -166,13 +207,14 @@ export async function listDwarfObjectFiles(
   opts: { includeSubDirs?: boolean } = {},
 ): Promise<{ files: SmbEntry[]; subFiles: SmbEntry[] }> {
   const sessionFolders = object._dwarfSessionFolders ?? [];
+  const sessionBase = object._dwarfSessionBase ?? DWARF_BASE_PATH;
   debugLog('walker:dwarf', `Listing files for target "${object.folderName}" across ${sessionFolders.length} session folder(s): ${sessionFolders.join(', ')}`);
 
   const files: SmbEntry[] = [];
   const subFiles: SmbEntry[] = [];
 
   for (const folder of sessionFolders) {
-    const folderPath = path.posix.join(DWARF_BASE_PATH, folder);
+    const folderPath = path.posix.join(sessionBase, folder);
     let entries: SmbEntry[] = [];
     try {
       entries = await smbListDir(folderPath, profile);
@@ -235,8 +277,9 @@ export async function listDwarfObjectFiles(
   return { files, subFiles };
 }
 
-export function buildDwarfFilePath(fileName: string): string {
+export function buildDwarfFilePath(fileName: string, base: string = DWARF_BASE_PATH): string {
   // fileName comes back as "<sessionFolder>/<file>" from listDwarfObjectFiles.
-  // Just prepend the Astronomy base path.
-  return path.posix.join(DWARF_BASE_PATH, fileName);
+  // Just prepend the base path (Astronomy/ for an ordinary object, or
+  // Astronomy/STARTRAILS/ for the synthetic Star Trails object).
+  return path.posix.join(base, fileName);
 }

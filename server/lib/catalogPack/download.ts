@@ -91,9 +91,15 @@ export async function downloadToFile(
   }
 }
 
+// These resources (index.json, manifest.json, .sig) are always well under this.
+// The cap stops a hostile or broken CDN from making the server buffer an
+// unbounded body before the signature check ever runs.
+const SMALL_FETCH_MAX_BYTES = 1024 * 1024; // 1 MiB
+
 /**
  * Fetch a small JSON resource (index.json, manifest.json) with a timeout.
- * Does not do range-resume — these files are always small (<100 KB).
+ * Does not do range-resume — these files are always small (<100 KB). Rejects a
+ * response larger than SMALL_FETCH_MAX_BYTES, by declared length or actual.
  */
 export async function fetchJson(url: string, signal: AbortSignal): Promise<Buffer> {
   const timeoutCtrl = new AbortController();
@@ -105,7 +111,28 @@ export async function fetchJson(url: string, signal: AbortSignal): Promise<Buffe
       headers: { 'User-Agent': USER_AGENT },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
-    return Buffer.from(await res.arrayBuffer());
+
+    const declared = parseInt(res.headers.get('content-length') ?? '', 10);
+    if (Number.isFinite(declared) && declared > SMALL_FETCH_MAX_BYTES) {
+      throw new Error(`Response for ${url} is ${declared} bytes — over the ${SMALL_FETCH_MAX_BYTES}-byte limit for a small resource`);
+    }
+
+    if (!res.body) return Buffer.from(await res.arrayBuffer());
+
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    const reader = res.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+      if (total > SMALL_FETCH_MAX_BYTES) {
+        void reader.cancel();
+        throw new Error(`Response for ${url} exceeded the ${SMALL_FETCH_MAX_BYTES}-byte limit for a small resource`);
+      }
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks);
   } finally {
     clearTimeout(timeout);
   }

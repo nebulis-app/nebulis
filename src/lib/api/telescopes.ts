@@ -2,6 +2,11 @@ import type { TelescopeKind } from '../telescopePresets';
 export type { TelescopeKind };
 import { fetchJSON } from './client';
 
+/** The string the API returns in place of a stored password. The UI shows it in
+ *  the password field and sends it back unchanged when the user does not retype
+ *  the password; the server reads it as "keep the stored value". */
+export const MASKED_PASSWORD = '••••••••';
+
 interface TelescopeStatus {
   configured: boolean;
   hostname: string;
@@ -33,7 +38,8 @@ export const getAllTelescopeStatus = () =>
 /** SMB = LAN share (SeeStar). Local = filesystem path (USB mount).
  *  FTP = anonymous FTP over Wi-Fi, the only network interface a Dwarf has.
  *  Keep in sync with TRANSPORT_KINDS in server/lib/telescopeTransports.ts. */
-export type ConnectionType = 'smb' | 'local' | 'ftp';
+export const CONNECTION_TYPES = ['smb', 'local', 'ftp'] as const;
+export type ConnectionType = (typeof CONNECTION_TYPES)[number];
 
 export interface TelescopeProfile {
   id: string;
@@ -107,6 +113,10 @@ export interface DetectedDrive {
   volumeName: string;
   looksLikeSeestar: boolean;
   looksLikeDwarf: boolean;
+  looksLikeAsiair: boolean;
+  /** Set when the ASIAIR tree sits under an `ASIAir/` folder rather than at the
+   *  volume root, so a local transport can be pointed at the right directory. */
+  asiairSubPath?: string;
   detectedDwarfModel?: 'dwarf-2' | 'dwarf-3' | 'dwarf-mini';
   alreadyKnownDeviceId: string | null;
   alreadyKnownProfileId: string | null;
@@ -116,7 +126,7 @@ export interface DetectedDrive {
 interface DwarfMount {
   path: string;
   label: string;
-  detectedModel?: 'dwarf-2' | 'dwarf-3';
+  detectedModel?: DetectedDrive['detectedDwarfModel'];
 }
 
 /** Detected Dwarf USB volumes currently mounted on the server host. */
@@ -214,6 +224,11 @@ export const testTelescopeConnection = (
     username: string;
     password: string;
     connectionType?: ConnectionType;
+    /** When editing a saved transport, pass both ids so the server can fall
+     *  back to the stored password if the field still holds the "••••••••"
+     *  mask. Omit for the brand-new / pre-save case. */
+    profileId?: string;
+    transportId?: string;
   },
 ) =>
   fetchJSON<{ connected: boolean; objectCount?: number; error?: string; remoteRoot?: string }>(

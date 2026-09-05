@@ -1,5 +1,5 @@
 /**
- * Extended DSO catalog — 285 objects from the Herschel 400 list that are
+ * Extended DSO catalog — 354 objects from the Herschel 400 list that are
  * NOT already covered by Messier, Caldwell, or the popular tier.
  *
  * Selection criteria:
@@ -9,14 +9,28 @@
  *   - Excludes all Messier, Caldwell, and Popular-tier objects
  *   - Validated against openngc.json — all IDs are confirmed present
  *
- * Breakdown: 165 galaxies, 104 clusters (open + globular), 16 nebulae/PN
+ * Breakdown: 203 galaxies, 126 clusters (open + globular), 25 nebulae/PN
  *
  * IDs are normalized: uppercase, no whitespace — matching how the prefetch
  * job and `<ID>_master.jpg` filenames are formed.
+ *
+ * 2026-08-10: added 69 objects (below, each marked "added") found missing
+ * from this set despite meeting the selection criteria above — e.g. Centaurus
+ * A, the Antennae Galaxies, the Double Cluster, and the Cat's Eye and Saturn
+ * Nebulae. Without a tier entry these fell back to the live per-request DSS2
+ * cold-fetch path in the /:id/image route (no bundled Hubble image, and no
+ * cached DSS2 plate until first viewed) instead of shipping pre-fetched in
+ * the pack. NGC2527, NGC3190, and NGC3912 are "duplicate observation" NGC
+ * numbers — OpenNGC treats them as the same physical object as NGC2520,
+ * NGC3189, and NGC3899 respectively and only resolves via the commonNames
+ * fallback added to dsoCatalog.ts/catalog.ts alongside this. NGC6885
+ * (= Caldwell 37) is NOT included: it has no entry anywhere in openngc.json
+ * (not even as a commonNames alias), so there's no RA/Dec to fetch an image
+ * against — a data gap, not something this list can paper over.
  */
 
 export const EXTENDED_DSO_IDS: ReadonlySet<string> = new Set([
-  // ── Galaxies (165) ─────────────────────────────────────────────────────
+  // ── Galaxies (203) ─────────────────────────────────────────────────────
   'NGC278',   // Cassiopeia (mag 10.8)
   'NGC404',   // Andromeda (mag 10.6)
   'NGC524',   // Pisces (mag 10.3)
@@ -183,6 +197,46 @@ export const EXTENDED_DSO_IDS: ReadonlySet<string> = new Set([
   'NGC7723',  // Aquarius (mag 11.2)
   'NGC7727',  // Aquarius (mag 10.6)
 
+  // — added 2026-08-10 (38) —
+  'NGC157',   // Cetus (mag 13.11)
+  'NGC185',   // Cassiopeia (mag 9.2)
+  'NGC247',   // Cetus (mag 9.21)
+  'NGC253',   // Sculptor Galaxy — Sculptor (mag 11.11)
+  'NGC891',   // Andromeda (mag 10.01)
+  'NGC2403',  // Camelopardalis (mag 8.43)
+  'NGC2775',  // Cancer (mag 10.24)
+  'NGC2782',  // Lynx (mag 12.36)
+  'NGC3115',  // Spindle Galaxy — Sextans (mag 9.09)
+  'NGC3190',  // Leo (mag 11.05) — duplicate observation of NGC3189
+  'NGC3226',  // Leo (mag 12.95)
+  'NGC3395',  // Leo Minor (mag 12.06)
+  'NGC3504',  // Leo Minor (mag 12.18)
+  'NGC3619',  // Ursa Major (mag 12.53)
+  'NGC3626',  // Leo (mag 10.98)
+  'NGC3912',  // Leo (mag 13.16) — duplicate observation of NGC3899
+  'NGC4038',  // Antennae Galaxies — Corvus (mag 10.2)
+  'NGC4039',  // Antennae Galaxies — Corvus (mag 11.04)
+  'NGC4085',  // Ursa Major (mag 12.37)
+  'NGC4143',  // Canes Venatici (mag 12.08)
+  'NGC4346',  // Canes Venatici (mag 12.14)
+  'NGC4449',  // Canes Venatici (mag 9.64)
+  'NGC4536',  // Virgo (mag 10.48)
+  'NGC4559',  // Coma Berenices (mag 9.92)
+  'NGC4565',  // Needle Galaxy — Coma Berenices (mag 10.86)
+  'NGC4631',  // Whale Galaxy — Canes Venatici (mag 9.24)
+  'NGC4656',  // Hockey Stick Galaxy pair — Canes Venatici
+  'NGC4697',  // Virgo (mag 9.37)
+  'NGC5005',  // Canes Venatici (mag 10.71)
+  'NGC5128',  // Centaurus A — Centaurus (mag 7.22)
+  'NGC5248',  // Bootes (mag 9.97)
+  'NGC5273',  // Canes Venatici (mag 12.16)
+  'NGC5676',  // Bootes (mag 11.22)
+  'NGC6217',  // Ursa Minor (mag 12.82)
+  'NGC6946',  // Fireworks Galaxy — Cygnus (mag 9.05)
+  'NGC7331',  // Pegasus (mag 9.41)
+  'NGC7479',  // Pegasus (mag 11.09)
+  'NGC7814',  // Pegasus (mag 10.6)
+
   // ── Star clusters (104) ────────────────────────────────────────────────
   'NGC129',   // Cassiopeia (mag 6.5)
   'NGC136',   // Cassiopeia
@@ -289,6 +343,30 @@ export const EXTENDED_DSO_IDS: ReadonlySet<string> = new Set([
   'NGC7686',  // Andromeda (mag 5.6)
   'NGC7789',  // Caroline's Rose — Cassiopeia (mag 6.7)
 
+  // — added 2026-08-10 (22) —
+  'NGC457',   // ET Cluster — Cassiopeia (mag 6.4)
+  'NGC559',   // Cassiopeia (mag 9.5)
+  'NGC663',   // Cassiopeia (mag 7.1)
+  'NGC752',   // Andromeda (mag 5.7)
+  'NGC869',   // Double Cluster (h Per) — Perseus (mag 3.7)
+  'NGC2244',  // Rosette Cluster — Monoceros
+  'NGC2360',  // Caroline's Cluster — Canis Major (mag 7.2)
+  'NGC2362',  // Canis Major (mag 4.1)
+  'NGC2419',  // globular — Lynx (mag 10.05)
+  'NGC2506',  // Monoceros (mag 7.6)
+  'NGC2527',  // Puppis (mag 6.5) — duplicate observation of NGC2520
+  'NGC5694',  // globular — Hydra (mag 10.89)
+  'NGC6144',  // globular — Scorpius (mag 9.63)
+  'NGC6520',  // Sagittarius (mag 7.6)
+  'NGC6583',  // Sagittarius (mag 10.0)
+  'NGC6624',  // globular — Sagittarius
+  'NGC6755',  // Aquila (mag 7.5)
+  'NGC6756',  // Aquila (mag 10.6)
+  'NGC6934',  // globular — Delphinus (mag 9.75)
+  'NGC7006',  // globular — Delphinus (mag 10.46)
+  'NGC7243',  // Lacerta (mag 6.4)
+  'NGC7790',  // Cassiopeia (mag 8.5)
+
   // ── Nebulae / Planetary nebulae / Other (16) ───────────────────────────
   'NGC1501',  // planetary — Camelopardalis (mag 11.5)
   'NGC1788',  // reflection nebula — Orion (mag 5.8)
@@ -306,4 +384,15 @@ export const EXTENDED_DSO_IDS: ReadonlySet<string> = new Set([
   'NGC6790',  // planetary — Aquila (mag 10.5)
   'NGC7008',  // planetary — Cygnus (mag 10.7)
   'NGC7026',  // planetary — Cygnus (mag 10.9)
+
+  // — added 2026-08-10 (9) —
+  'NGC40',    // Bow-Tie Nebula, planetary — Cepheus (mag 11.89)
+  'NGC246',   // Skull Nebula, planetary — Cetus (mag 8.0)
+  'NGC2185',  // reflection nebula — Monoceros (mag 12.9)
+  'NGC2392',  // Eskimo Nebula, planetary — Gemini (mag 9.61)
+  'NGC3242',  // Jupiter's Ghost, planetary — Hydra (mag 7.7)
+  'NGC6543',  // Cat's Eye Nebula, planetary — Draco (mag 9.01)
+  'NGC6826',  // Blinking Planetary — Cygnus (mag 9.44)
+  'NGC7009',  // Saturn Nebula, planetary — Aquarius (mag 8.0)
+  'NGC7662',  // Copeland's Blue Snowball, planetary — Andromeda (mag 8.3)
 ]);

@@ -6,14 +6,18 @@
  *   2. Preview — the generated plan with thumbnails, peak altitude, and moon
  *      status. Shuffle for a different take, then drop it onto the timeline.
  *
- * The actual scoring lives in lib/autoPlan.ts. This component only collects the
- * knobs, renders the result, and hands finished blocks back to the planner.
+ * The actual scoring runs server-side (POST /planner/plan, see
+ * server/lib/autoPlan.ts) so this matches what every other client produces
+ * for the same inputs. This component only collects the knobs, renders the
+ * result, and hands finished blocks back to the planner.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { Sparkles, Moon, ArrowUp, X, Shuffle, Clock, Hash, Telescope } from 'lucide-react';
+import { formatHm } from '../../lib/timeFormat';
 import { formatObjectName } from '../../lib/utils';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
-import { generateNightPlan, type AutoPlanFocus, type PlanBlock } from '../../lib/autoPlan';
+import { generateNightPlan } from '../../lib/api/planner';
+import type { AutoPlanFocus, PlanBlock } from '../../lib/planTypes';
 import type { PlannerTarget } from '../../lib/api/planner';
 import type { VisibleSkyMap } from '../../lib/visibilityCheck';
 
@@ -31,6 +35,9 @@ interface AutoPlanModalProps {
   observerTimezone?: string;
   /** "Tonight" or a formatted date, for the headline and confirm button. */
   nightLabel: string;
+  /** Whether "clear existing blocks first" starts ticked. Off when filling a
+   *  single gap, since the point there is to keep what is already scheduled. */
+  defaultClearFirst?: boolean;
   isDark: boolean;
   /** Apply the plan: optionally clear the night first, then create blocks. */
   onApply: (blocks: PlanBlock[], clearFirst: boolean) => Promise<void> | void;
@@ -78,6 +85,7 @@ export function AutoPlanModal({
   visibleSkyMap,
   observerTimezone,
   nightLabel,
+  defaultClearFirst = true,
   isDark,
   onApply,
   onClose,
@@ -97,9 +105,12 @@ export function AutoPlanModal({
   const [objectCount, setObjectCount] = useState(4);
   const [focus, setFocus] = useState<AutoPlanFocus>('all');
   const [unimagedOnly, setUnimagedOnly] = useState(false);
-  const [clearFirst, setClearFirst] = useState(true);
+  const [clearFirst, setClearFirst] = useState(defaultClearFirst);
   const [blocks, setBlocks] = useState<PlanBlock[]>([]);
   const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [building, setBuilding] = useState(false);
+  const [buildError, setBuildError] = useState<string | null>(null);
 
   const build = useCallback(
     (jitter: number) => {
@@ -135,32 +146,50 @@ export function AutoPlanModal({
     [startMs, endMs, splitMode, minutesPerObject, objectCount, focus, unimagedOnly, targets, observerLat, observerLon, minAlt, moonIllumination, visibleSkyMap],
   );
 
-  const handleBuild = useCallback(() => {
-    setBlocks(build(0));
-    setStep('preview');
+  const handleBuild = useCallback(async () => {
+    setBuilding(true);
+    setBuildError(null);
+    try {
+      setBlocks(await build(0));
+      setStep('preview');
+    } catch (err) {
+      setBuildError(err instanceof Error ? err.message : 'Could not build a plan');
+    } finally {
+      setBuilding(false);
+    }
   }, [build]);
 
-  const handleShuffle = useCallback(() => {
-    setBlocks(build(8));
+  const handleShuffle = useCallback(async () => {
+    setBuilding(true);
+    setBuildError(null);
+    try {
+      setBlocks(await build(8));
+    } catch (err) {
+      setBuildError(err instanceof Error ? err.message : 'Could not build a plan');
+    } finally {
+      setBuilding(false);
+    }
   }, [build]);
 
   const handleApply = useCallback(async () => {
     setApplying(true);
+    setApplyError(null);
     try {
       await onApply(blocks, clearFirst);
       onClose();
+    } catch (err) {
+      // Without this a failed apply (a dropped request part-way through the
+      // create loop) closed nothing and said nothing — a half-applied plan
+      // looked done.
+      setApplyError(err instanceof Error ? err.message : 'Could not apply the plan. Some blocks may not have been added.');
     } finally {
       setApplying(false);
     }
   }, [blocks, clearFirst, onApply, onClose]);
 
-  const fmtTime = (d: Date) =>
-    d.toLocaleTimeString('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-      ...(observerTimezone ? { timeZone: observerTimezone } : {}),
-    });
+  // formatHm already guards a bad/unrecognized timeZone (see its own
+  // comment) rather than duplicating that try/catch here.
+  const fmtTime = (d: Date) => formatHm(d, observerTimezone);
 
   // :00 / :30 grid, labeled in the observer's local time, reaching 2 hours
   // before dusk and after dawn so twilight imaging can be scheduled.
@@ -213,8 +242,8 @@ export function AutoPlanModal({
           </h2>
           <p className={`text-sm mt-1 ${subtle}`}>
             {step === 'setup'
-              ? `Fresh targets for ${nightLabel.toLowerCase()}, picked for height and clear of the moon.`
-              : `${blocks.length} target${blocks.length === 1 ? '' : 's'} lined up for ${nightLabel.toLowerCase()}.`}
+              ? `Fresh targets for ${nightLabel}, picked for height and clear of the moon.`
+              : `${blocks.length} target${blocks.length === 1 ? '' : 's'} lined up for ${nightLabel}.`}
           </p>
         </div>
 
@@ -342,6 +371,7 @@ export function AutoPlanModal({
                 />
                 <span>Only include targets I haven't imaged yet</span>
               </label>
+              {buildError && <p className="text-xs text-red-500">{buildError}</p>}
             </>
           ) : (
             <>
@@ -408,12 +438,16 @@ export function AutoPlanModal({
                     onChange={(e) => setClearFirst(e.target.checked)}
                     className="accent-amber-500"
                   />
-                  <span className={subtle}>Clear existing blocks for this night first</span>
+                  <span className={subtle}>Replace tonight's existing plan</span>
                 </label>
               )}
             </>
           )}
         </div>
+
+        {applyError && (
+          <p className="px-6 pb-2 -mt-1 text-xs text-red-500">{applyError}</p>
+        )}
 
         {/* Footer */}
         <div className={`px-6 py-4 border-t flex items-center gap-2 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
@@ -427,10 +461,11 @@ export function AutoPlanModal({
               </button>
               <button
                 onClick={handleBuild}
-                className="ml-auto px-5 py-2 rounded-lg text-sm font-semibold bg-accent-500 hover:bg-accent-600 text-white inline-flex items-center gap-2"
+                disabled={building}
+                className="ml-auto px-5 py-2 rounded-lg text-sm font-semibold bg-accent-500 hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed text-white inline-flex items-center gap-2"
               >
                 <Sparkles className="w-4 h-4" />
-                Build my plan
+                {building ? 'Building…' : 'Build my plan'}
               </button>
             </>
           ) : (
@@ -444,7 +479,8 @@ export function AutoPlanModal({
               {blocks.length > 0 && (
                 <button
                   onClick={handleShuffle}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-2 ${chipIdle}`}
+                  disabled={building}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${chipIdle}`}
                 >
                   <Shuffle className="w-4 h-4" />
                   Shuffle
@@ -452,7 +488,7 @@ export function AutoPlanModal({
               )}
               <button
                 onClick={handleApply}
-                disabled={blocks.length === 0 || applying}
+                disabled={blocks.length === 0 || applying || building}
                 className="ml-auto px-5 py-2 rounded-lg text-sm font-semibold bg-accent-500 hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed text-white inline-flex items-center gap-2"
               >
                 {applying ? 'Adding…' : `Add to ${nightLabel}`}

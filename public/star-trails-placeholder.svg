@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 960" width="960" height="960">
+  <defs>
+    <radialGradient id="sky" cx="50%" cy="32%" r="85%">
+      <stop offset="0%" stop-color="#1e2a4a"/>
+      <stop offset="55%" stop-color="#111a33"/>
+      <stop offset="100%" stop-color="#0a0f1f"/>
+    </radialGradient>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a0e1a"/>
+      <stop offset="100%" stop-color="#05070d"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="960" height="960" fill="url(#sky)"/>
+
+  <!-- Star trail arcs, concentric around a fixed celestial-pole point -->
+  <g fill="none" stroke="#fbbf24" stroke-linecap="round">
+    <path d="M 200 60 A 350 350 0 0 1 700 660" stroke-width="2" opacity="0.55"/>
+    <path d="M 140 140 A 430 430 0 0 1 780 620" stroke-width="1.6" opacity="0.4"/>
+    <path d="M 90 260 A 520 520 0 0 1 830 520" stroke-width="1.4" opacity="0.3"/>
+    <path d="M 340 30 A 260 260 0 0 1 630 640" stroke-width="2.2" opacity="0.6"/>
+    <path d="M 460 20 A 190 190 0 0 1 590 610" stroke-width="1.8" opacity="0.5"/>
+    <path d="M 60 380 A 600 600 0 0 1 860 400" stroke-width="1.2" opacity="0.22"/>
+    <path d="M 250 100 A 380 380 0 0 1 750 560" stroke-width="1.5" opacity="0.35"/>
+  </g>
+
+  <!-- Scattered static stars -->
+  <g fill="#f8fafc">
+    <circle cx="120" cy="500" r="1.6" opacity="0.8"/>
+    <circle cx="800" cy="180" r="1.8" opacity="0.7"/>
+    <circle cx="880" cy="440" r="1.3" opacity="0.6"/>
+    <circle cx="60" cy="220" r="1.4" opacity="0.6"/>
+    <circle cx="640" cy="90" r="1.2" opacity="0.7"/>
+    <circle cx="900" cy="620" r="1.5" opacity="0.5"/>
+    <circle cx="380" cy="700" r="1.3" opacity="0.55"/>
+  </g>
+
+  <!-- Horizon silhouette -->
+  <path d="M 0 760 L 130 745 L 260 762 L 400 730 L 540 758 L 700 738 L 820 760 L 960 748 L 960 960 L 0 960 Z" fill="url(#ground)"/>
+
+  <!-- Simple tripod/scope silhouette -->
+  <g fill="#05070d">
+    <circle cx="470" cy="700" r="26"/>
+    <rect x="450" y="660" width="46" height="46" rx="8"/>
+    <path d="M 470 706 L 430 780 M 470 706 L 470 786 M 470 706 L 510 780" stroke="#05070d" stroke-width="8" stroke-linecap="round"/>
+  </g>
+</svg>

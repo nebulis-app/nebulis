@@ -141,11 +141,14 @@ export function ConnectDeviceModal({ isDark, onClose }: { isDark: boolean; onClo
                     {expired && (
                       <button
                         type="button"
-                        onClick={() => generate.mutate()}
-                        className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-700"
+                        onClick={() => { if (!generate.isPending) generate.mutate(); }}
+                        disabled={generate.isPending}
+                        className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-700 disabled:opacity-60"
                       >
-                        <RefreshCw className="w-7 h-7" />
-                        <span className="text-sm font-medium">Code expired. Tap to refresh.</span>
+                        <RefreshCw className={`w-7 h-7 ${generate.isPending ? 'animate-spin' : ''}`} />
+                        <span className="text-sm font-medium">
+                          {generate.isPending ? 'Refreshing…' : 'Code expired. Tap to refresh.'}
+                        </span>
                       </button>
                     )}
                   </>

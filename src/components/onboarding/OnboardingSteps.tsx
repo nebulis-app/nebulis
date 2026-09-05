@@ -150,5 +150,12 @@ export function OnboardingSteps(p: OnboardingStepsProps) {
           subText={p.subText}
         />
       );
+    default: {
+      // A fifth step must render something; without this it would silently
+      // render nothing at all.
+      const _exhaustive: never = p.step;
+      void _exhaustive;
+      return null;
+    }
   }
 }

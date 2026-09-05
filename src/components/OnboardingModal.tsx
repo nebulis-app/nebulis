@@ -123,6 +123,11 @@ export function OnboardingModal({ onComplete }: { onComplete: () => void }) {
   }, [transitioning]);
 
   function handleStep1Next() {
+    // The step-1 inputs fire this on Enter and aren't disabled while pending,
+    // so without this guard holding Enter creates several admin accounts on the
+    // "no users yet" path and the last token to land (not the first account)
+    // wins.
+    if (createUserMutation.isPending) return;
     setUserError('');
     if (!username.trim()) return setUserError('Username is required');
     if (username.trim().length < 3) return setUserError('Username must be at least 3 characters');
@@ -174,7 +179,8 @@ export function OnboardingModal({ onComplete }: { onComplete: () => void }) {
       // IP: the placeholder (see the address input) hints at it, but the user
       // must type it themselves so a wrong/stale address is never silently
       // submitted.
-      // Default Dwarf to FTP (its only network interface) and Seestar to SMB.
+      // Default Dwarf to FTP (its only network interface); Seestar and ASIAIR
+      // both publish an SMB share, so everything else defaults to SMB.
       if (isDwarfTelescopeKind(newKind)) setTransportMode('ftp');
       else setTransportMode('smb');
     } else {

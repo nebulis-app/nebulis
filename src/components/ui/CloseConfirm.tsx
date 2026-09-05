@@ -9,12 +9,21 @@
  */
 export function CloseConfirm({
   message,
+  cancelLabel = 'Keep editing',
   onCancel,
   onDiscard,
+  isDark = true,
 }: {
   message: string;
+  /** Label for the cancel button. Defaults to "Keep editing" for form-style
+   * callers; pass something like "Keep syncing" when the modal is closing
+   * an in-progress operation rather than discarding edits. */
+  cancelLabel?: string;
   onCancel: () => void;
   onDiscard: () => void;
+  /** Every current caller passes its own `useTheme().isDark`; defaults to the
+   * dark styling that shipped originally in case a future caller forgets. */
+  isDark?: boolean;
 }) {
   return (
     <div
@@ -23,16 +32,20 @@ export function CloseConfirm({
       aria-label="Confirm close"
       onClick={e => e.stopPropagation()}
     >
-      <div className="bg-slate-900 text-slate-100 border-t border-slate-700 px-5 py-3 flex items-center justify-between gap-4 shadow-2xl">
+      <div className={`border-t px-5 py-3 flex items-center justify-between gap-4 shadow-2xl ${
+        isDark ? 'bg-slate-900 text-slate-100 border-slate-700' : 'bg-white text-slate-800 border-slate-200'
+      }`}>
         <p className="text-sm font-medium">{message}</p>
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={onCancel}
             autoFocus
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 transition"
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+              isDark ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'
+            }`}
           >
-            Keep editing
+            {cancelLabel}
           </button>
           <button
             type="button"

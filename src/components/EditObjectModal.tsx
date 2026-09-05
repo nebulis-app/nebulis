@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, RotateCcw } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
@@ -96,14 +96,17 @@ export function EditObjectModal({ objectId, current, onClose }: EditObjectModalP
   const typeSuggestionsId = `object-type-suggestions-${objectId}`;
 
   // When the override loads, seed the form once. Subsequent edits by the user
-  // shouldn't be clobbered by background refetches.
+  // shouldn't be clobbered by background refetches. A render-phase set rather
+  // than a useEffect: this only ever needs to run once per mount (this modal
+  // is remounted per objectId by its caller), and setting state directly
+  // during render is the documented alternative to an effect that exists
+  // solely to copy query data into local state — same pattern Settings.tsx
+  // uses for its own first-load form sync.
   const [seeded, setSeeded] = useState(false);
-  useEffect(() => {
-    if (info && !seeded) {
-      setForm(initialState(info.override ?? null));
-      setSeeded(true);
-    }
-  }, [info, seeded]);
+  if (info && !seeded) {
+    setForm(initialState(info.override ?? null));
+    setSeeded(true);
+  }
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['catalog', objectId] });
@@ -360,6 +363,7 @@ export function EditObjectModal({ objectId, current, onClose }: EditObjectModalP
           message="Discard unsaved edits?"
           onCancel={() => setConfirmingClose(false)}
           onDiscard={() => { setConfirmingClose(false); onClose(); }}
+          isDark={isDark}
         />
       )}
     </Modal>

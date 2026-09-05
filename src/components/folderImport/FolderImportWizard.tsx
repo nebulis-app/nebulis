@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   X, RotateCw, AlertCircle, CheckCircle2, FolderSearch, ArrowRight, FolderInput, Archive,
@@ -105,6 +105,17 @@ export function FolderImportWizard({
   const [skipped, setSkipped] = useState<ImportSkip[]>([]);
   const [excludedFolders, setExcludedFolders] = useState<string[]>([]);
   const [basePathDetected, setBasePathDetected] = useState<string | null>(null);
+  // Set on unmount so the commit-wait loop below never calls commitFolderImport
+  // after the user has closed this wizard. Without this, closing during the
+  // 'waiting' phase (another import holds the lock) let the loop keep polling
+  // invisibly, then commit a plan the user already discarded — against a
+  // staging dir handleClose had already deleted via discardImportTempSession.
+  // Same pattern as SyncSubframesModal's cancelledRef.
+  const cancelledRef = useRef(false);
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => { cancelledRef.current = true; };
+  }, []);
 
   const card = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
   const subText = isDark ? 'text-slate-400' : 'text-slate-500';
@@ -138,6 +149,7 @@ export function FolderImportWizard({
     mutationFn: async (plan: ImportCommitPlan) => {
       let attempt = 0;
       while (true) {
+        if (cancelledRef.current) throw new Error('Import cancelled');
         try {
           return await commitFolderImport(plan);
         } catch (err) {
@@ -146,14 +158,26 @@ export function FolderImportWizard({
           if (!isLocked || attempt >= 20) throw err;
           attempt++;
           setPhase('waiting');
-          await new Promise<void>(resolve => {
-            const id = setInterval(async () => {
+          // Self-rescheduling poll (not setInterval) so a slow status call
+          // doesn't stack requests, with a bail after 5 straight failures so
+          // an unreachable server throws instead of hanging in 'waiting'.
+          const finished = await new Promise<boolean>(resolve => {
+            let waitErrors = 0;
+            const tick = async () => {
+              if (cancelledRef.current) { resolve(false); return; }
               try {
                 const s = await getImportStatus();
-                if (!s.running) { clearInterval(id); resolve(); }
-              } catch { /* network hiccup, keep waiting */ }
-            }, 2000);
+                waitErrors = 0;
+                if (!s.running) { resolve(true); return; }
+              } catch {
+                if (++waitErrors >= 5) { resolve(false); return; }
+              }
+              if (!cancelledRef.current) setTimeout(tick, 2000);
+            };
+            setTimeout(tick, 2000);
           });
+          if (cancelledRef.current) throw new Error('Import cancelled');
+          if (!finished) throw new Error('Lost connection while waiting for the running import to finish.');
         }
       }
     },
@@ -360,6 +384,8 @@ export function FolderImportWizard({
             cancelling={cancelRequested}
             archivedFiles={statusQuery.data?.archivedFiles ?? 0}
             archivePath={statusQuery.data?.archivePath ?? null}
+            restackArchivedFiles={statusQuery.data?.restackArchivedFiles ?? 0}
+            restackArchivePath={statusQuery.data?.restackArchivePath ?? null}
           />
         )}
       </div>
@@ -419,7 +445,7 @@ export function FolderImportWizard({
 
 function CommitProgress({
   phase, filesTotal, filesDone, objectsDone, objectsTotal, error, cancelling,
-  archivedFiles, archivePath,
+  archivedFiles, archivePath, restackArchivedFiles, restackArchivePath,
 }: {
   phase: Phase;
   filesTotal: number;
@@ -428,10 +454,16 @@ function CommitProgress({
   objectsTotal: number;
   error: string | null;
   cancelling: boolean;
-  /** Files kept from the calibration/restack/daytime folders, which are copied
-   *  as files rather than imported as objects. Zero unless archive mode is on. */
+  /** Files kept from the calibration/daytime folders, which are copied as
+   *  files rather than imported as objects. Zero unless archive mode is on. */
   archivedFiles: number;
   archivePath: string | null;
+  /** Same idea, for RESTACKED files that never matched a library object —
+   *  a separate location (the shared RESTACKED/ folder, not the telescope
+   *  archive), so it gets its own line rather than being folded into the
+   *  message above. Can be non-zero even with archive mode off. */
+  restackArchivedFiles: number;
+  restackArchivePath: string | null;
 }) {
   const { isDark } = useTheme();
   const subText = isDark ? 'text-slate-400' : 'text-slate-500';
@@ -456,9 +488,17 @@ function CommitProgress({
         </p>
         {archivedFiles > 0 && (
           <p className={`text-sm max-w-md ${subText}`}>
-            {archivedFiles} file{archivedFiles !== 1 ? 's' : ''} from the calibration, restack, and
-            daytime folders were kept as files rather than observations{archivePath ? ', on disk at' : '.'}
+            {archivedFiles} file{archivedFiles !== 1 ? 's' : ''} from the calibration and daytime
+            folders were kept as files rather than observations{archivePath ? ', on disk at' : '.'}
             {archivePath && <span className="font-mono break-all"> {archivePath}</span>}
+          </p>
+        )}
+        {restackArchivedFiles > 0 && (
+          <p className={`text-sm max-w-md ${subText}`}>
+            {restackArchivedFiles} restacked file{restackArchivedFiles !== 1 ? 's' : ''} had no
+            matching object and {restackArchivedFiles !== 1 ? 'were kept as files' : 'was kept as a file'}
+            {restackArchivePath ? ', on disk at' : '.'}
+            {restackArchivePath && <span className="font-mono break-all"> {restackArchivePath}</span>}
           </p>
         )}
       </div>

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import crypto from 'node:crypto';
-import { compareVersions } from '../../server/lib/appUpdate/platform';
+import { compareVersions, getCurrentVersion } from '../../server/lib/appUpdate/platform';
 import { AppUpdateIndex } from '../../server/lib/appUpdate/manifest';
 import { verifyAppManifestSignature } from '../../server/lib/appUpdate/verify';
 import { verifyWithKey, signManifest } from '../../server/lib/catalogPack/verify';
@@ -54,14 +54,49 @@ describe('appUpdate/manifest schema', () => {
     const bad = { ...valid, channel: 'nightly' };
     expect(() => AppUpdateIndex.parse(bad)).toThrow();
   });
+
+  it('accepts an optional yanked flag and defaults it absent', () => {
+    expect(AppUpdateIndex.parse(valid).latest.yanked).toBeUndefined();
+    const yanked = structuredClone(valid);
+    yanked.latest.yanked = true;
+    expect(AppUpdateIndex.parse(yanked).latest.yanked).toBe(true);
+  });
+
+  it('accepts the additive legacy platform artifact keys', () => {
+    const withLegacy = structuredClone(valid);
+    withLegacy.latest.artifacts['mac-arm64-legacy'] = {
+      url: 'https://downloads.nebulis.app/latest/nebulis-1.2.0-mac12-arm64.dmg',
+      sha256: 'b'.repeat(64),
+      bytes: 999,
+    };
+    expect(() => AppUpdateIndex.parse(withLegacy)).not.toThrow();
+  });
+});
+
+describe('appUpdate/platform getCurrentVersion', () => {
+  it('reports a known version from the repo package.json', () => {
+    const v = getCurrentVersion();
+    expect(v.known).toBe(true);
+    expect(v.version).toMatch(/^\d+\.\d+\.\d+$/);
+  });
 });
 
 describe('appUpdate/verify', () => {
-  it('rejects the manifest while the trusted key is still the placeholder', () => {
-    // The committed trustedKey.ts is a placeholder until gen-app-key.mjs runs;
-    // an unsigned/forged manifest must never verify against it.
+  it('rejects a forged/short signature against the committed trusted key', () => {
+    // trustedKey.ts now holds a real Ed25519 key. A junk signature must still
+    // never verify (a too-short buffer makes crypto.verify throw → false).
     const data = Buffer.from('{"latest":{"version":"9.9.9"}}', 'utf8');
     expect(verifyAppManifestSignature(data, 'AAAA')).toBe(false);
+  });
+
+  it('rejects a well-formed signature made with the wrong key', () => {
+    const { privateKey } = crypto.generateKeyPairSync('ed25519', {
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+    const data = Buffer.from('{"latest":{"version":"9.9.9"}}', 'utf8');
+    const sig = signManifest(data, privateKey);
+    expect(verifyAppManifestSignature(data, sig)).toBe(false);
   });
 
   it('verifies a genuine Ed25519 signature and rejects tampering (build↔server roundtrip)', () => {

@@ -9,11 +9,12 @@
 import { Router, Request, Response } from 'express';
 import { getLocalObjects } from '../lib/library/objects.js';
 import { getCatalogEntry } from '../data/catalog.js';
-import { normalizeCatalogId } from '../lib/telescopeFiles.js';
 import { prewarmThumbnails, findCachedMaster, startPrefetch, getPrefetchStatus } from '../lib/catalogPrefetch.js';
 import { resolveCanonicalId } from '../lib/catalogAliases.js';
 import { HERSCHEL400_IDS } from '../lib/herschel400Catalog.js';
+import { SHARPLESS_CATALOG } from '../lib/sharplessCatalog.js';
 import { raToHours, decToDegs } from '../lib/astroCalc.js';
+import { computeBestImagingWindow, isUpTonight } from '../lib/bestImagingWindow.js';
 
 const router = Router();
 
@@ -46,6 +47,13 @@ const CATALOG_CONFIGS: Record<string, CatalogDef> = {
     label: 'Herschel 400',
     buildIds(): string[] {
       return [...HERSCHEL400_IDS];
+    },
+  },
+  sharpless: {
+    label: 'Sharpless',
+    buildIds(): string[] {
+      // Sharpless catalog order is the Sh2-N numbering itself.
+      return SHARPLESS_CATALOG.map(e => e.id);
     },
   },
 };
@@ -90,6 +98,31 @@ function loadLibraryMap(): Map<string, { objectId: string; sessionCount: number 
 
 // ── Route ────────────────────────────────────────────────────────────────────
 
+/**
+ * GET /api/v1/catalogs/best-window?ra=&dec=&lat=&lon=&minAlt=
+ *
+ * The 12-month "best imaging window" the web client computes in-browser with
+ * SunCalc, served for clients that have no sun-position math (iOS, Android).
+ * `ra` is decimal hours, `dec`/`lat`/`lon` decimal degrees.
+ */
+router.get('/best-window', (req: Request, res: Response) => {
+  const ra = Number(req.query.ra);
+  const dec = Number(req.query.dec);
+  const lat = Number(req.query.lat);
+  const lon = Number(req.query.lon);
+  const minAlt = req.query.minAlt != null ? Number(req.query.minAlt) : 20;
+
+  if (![ra, dec, lat, lon, minAlt].every(Number.isFinite)) {
+    res.apiError(400, 'BAD_REQUEST', 'ra, dec, lat and lon are required numbers');
+    return;
+  }
+
+  const window = computeBestImagingWindow(ra, dec, lat, lon, minAlt);
+  const upTonight = isUpTonight(ra, dec, lat, lon);
+
+  res.apiSuccess({ ...window, upTonight });
+});
+
 router.get('/:catalog/progress', (req: Request, res: Response) => {
   const catalogKey = String(req.params.catalog).toLowerCase();
   const def = CATALOG_CONFIGS[catalogKey];
@@ -113,16 +146,24 @@ router.get('/:catalog/progress', (req: Request, res: Response) => {
 
   const objects = ids.map((rawId) => {
     const key = rawId.toUpperCase().replace(/\s+/g, '');
-    const entry = getCatalogEntry(key);
+    const canonKey = resolveCanonicalId(key);
 
-    // Parse the catalog number from the ID string (M-number for Messier, C-number for Caldwell)
-    const numMatch = rawId.match(/^[MC](\d+)$/i);
+    // Sharpless entries carry no constellation or magnitude of their own, so
+    // when an object cross-references a Messier/NGC/IC target, prefer that
+    // richer entry and fall back to the bare Sharpless record otherwise.
+    let entry = getCatalogEntry(key);
+    if (catalogKey === 'sharpless' && canonKey !== key) {
+      entry = getCatalogEntry(canonKey) ?? entry;
+    }
+
+    // Parse the catalog number from the ID string (M-number for Messier,
+    // C-number for Caldwell, Sh2-N for Sharpless).
+    const numMatch = rawId.match(/^(?:M|C|SH2-)(\d+)$/i);
     const catalogNum = numMatch ? parseInt(numMatch[1], 10) : null;
 
     const type = entry?.type ?? 'Unknown';
     const cls = classifyType(type);
 
-    const canonKey = resolveCanonicalId(key);
     const libEntry = libraryMap.get(key) ?? libraryMap.get(canonKey);
     const isImaged = libEntry != null;
 

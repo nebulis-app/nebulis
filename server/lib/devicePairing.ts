@@ -12,6 +12,7 @@
 import { randomBytes, randomUUID } from 'crypto';
 import db from './db.js';
 import { generateDeviceToken, getUserById, type UserRole } from './auth.js';
+import { logEvent } from './systemLog.js';
 
 const PAIRING_TTL_MS = 10 * 60 * 1000;       // 10 minutes
 export const POLL_INTERVAL_SEC = 5;
@@ -71,6 +72,9 @@ const stmts = {
   ),
   revokeDeviceById: db.prepare(
     'UPDATE connectedDevices SET revokedAt = ? WHERE id = ? AND revokedAt IS NULL'
+  ),
+  revokeAllForUser: db.prepare(
+    'UPDATE connectedDevices SET revokedAt = ? WHERE userId = ? AND revokedAt IS NULL'
   ),
   touchDevice: db.prepare('UPDATE connectedDevices SET lastSeenAt = ? WHERE id = ?'),
   renameDevice: db.prepare('UPDATE connectedDevices SET name = ? WHERE id = ? AND userId = ?'),
@@ -257,6 +261,14 @@ export function pollPairing(deviceCode: string): PollResult {
   const now = Date.now();
   stmts.insertDevice.run(deviceId, user.id, row.tvName, now, now);
   const token = generateDeviceToken(user, deviceId);
+  logEvent({
+    category: 'device',
+    event: 'paired',
+    message: `Paired device "${row.tvName}" to "${user.username}".`,
+    userId: user.id,
+    username: user.username,
+    metadata: { deviceId, deviceName: row.tvName },
+  });
 
   return {
     status: 'approved',
@@ -288,7 +300,19 @@ export function listDevicesForUser(userId: string): ConnectedDevice[] {
 }
 
 export function revokeDeviceForUser(userId: string, deviceId: string): boolean {
+  const device = stmts.getDevice.get(deviceId);
   const result = stmts.revokeDevice.run(Date.now(), deviceId, userId);
+  if (result.changes > 0 && device) {
+    const user = getUserById(userId);
+    logEvent({
+      category: 'device',
+      event: 'revoked',
+      message: `Revoked device "${device.name}".`,
+      userId,
+      username: user?.username ?? null,
+      metadata: { deviceId, deviceName: device.name },
+    });
+  }
   return result.changes > 0;
 }
 
@@ -296,9 +320,46 @@ export function revokeDeviceForUser(userId: string, deviceId: string): boolean {
  * Admin-only: revoke any device regardless of owner. The route handler is
  * responsible for gating this on `req.userRole === 'admin'`.
  */
-export function adminRevokeDevice(deviceId: string): boolean {
+export function adminRevokeDevice(deviceId: string, actor?: { userId?: string; username?: string; ip?: string }): boolean {
+  const device = stmts.getDevice.get(deviceId);
   const result = stmts.revokeDeviceById.run(Date.now(), deviceId);
+  if (result.changes > 0 && device) {
+    logEvent({
+      category: 'device',
+      event: 'revoked',
+      level: 'warning',
+      message: `Revoked device "${device.name}" (admin action).`,
+      userId: actor?.userId ?? null,
+      username: actor?.username ?? null,
+      ip: actor?.ip ?? null,
+      metadata: { deviceId, deviceName: device.name, ownerUserId: device.userId },
+    });
+  }
   return result.changes > 0;
+}
+
+/**
+ * Revoke every active device belonging to a user in one statement — used when
+ * the user is deleted or their password is changed, so a paired TV/phone
+ * can't keep authenticating as that account. The auth middleware already
+ * rejects a device token whose owning user is gone (independent of this),
+ * but a deleted user's device rows are otherwise orphaned indefinitely, and
+ * a password change is a standard "log out everywhere" signal that should
+ * cover device sessions too.
+ */
+export function revokeAllDevicesForUser(userId: string, reason: 'user_deleted' | 'password_changed'): number {
+  const result = stmts.revokeAllForUser.run(Date.now(), userId);
+  if (result.changes > 0) {
+    logEvent({
+      category: 'device',
+      event: 'revoked',
+      level: 'warning',
+      message: `Revoked ${result.changes} device(s) for user (${reason}).`,
+      userId,
+      metadata: { count: result.changes, reason },
+    });
+  }
+  return result.changes;
 }
 
 export interface ConnectedDeviceWithOwner extends ConnectedDevice {

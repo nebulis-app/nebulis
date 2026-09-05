@@ -6,7 +6,15 @@
 import { randomUUID } from 'crypto';
 import db from './db.js';
 import { SKY_MAP_BANDS, SKY_MAP_CELLS } from './skyMapConfig.js';
-import { type TelescopeKind, TELESCOPE_KINDS } from './types/telescopeKind.js';
+import {
+  type TelescopeKind,
+  isTelescopeKind,
+  isAsiairKind,
+  isDwarfKind,
+  isSeestarKind,
+  COLOR_BY_KIND,
+  kindFromModel,
+} from './types/telescopeKind.js';
 import { encrypt, decrypt } from './crypto/secretBox.js';
 import {
   addTransport,
@@ -16,6 +24,8 @@ import {
   isTransportKind,
   type TransportKind,
 } from './telescopeTransports.js';
+import { isUpdateChannel } from './appUpdate/manifest.js';
+import { isPreferredCatalog } from './types/appSettings.js';
 
 export type { TelescopeKind, TransportKind };
 
@@ -103,28 +113,8 @@ interface TelescopeProfileRow {
   pinnedTransportId: string | null;
 }
 
-const COLOR_BY_KIND: Record<TelescopeKind, string> = {
-  'seestar-s50': '#3b82f6',
-  'seestar-s30': '#10b981',
-  'dwarf-3':     '#f59e0b',
-  'dwarf-2':     '#ef4444',
-  'dwarf-mini':  '#f97316',
-  'other':       '#8b5cf6',
-};
-
 function asKind(value: string | undefined | null): TelescopeKind {
-  return TELESCOPE_KINDS.includes(value as TelescopeKind) ? (value as TelescopeKind) : 'other';
-}
-
-function kindFromModel(model: string): TelescopeKind {
-  switch (model) {
-    case 'SeeStar S50': return 'seestar-s50';
-    case 'SeeStar S30': return 'seestar-s30';
-    case 'Dwarf 3':     return 'dwarf-3';
-    case 'Dwarf II':    return 'dwarf-2';
-    case 'Dwarf Mini':  return 'dwarf-mini';
-    default:            return 'other';
-  }
+  return value != null && isTelescopeKind(value) ? value : 'other';
 }
 
 // Typed prepared statements — row shapes enforced by telescopeProfiles schema
@@ -189,9 +179,9 @@ const appSettingsStmts = {
     nightlyHousekeepingEnabled = ?,
     nightlyForecastPrefetchEnabled = ?,
     nightlyHousekeepingLastRun = ?,
-    nightlyForecastLastRun = ?
+    nightlyForecastLastRun = ?,
+    nightlyMaintenanceEnabled = ?
     WHERE id = 1`),
-  getApiKey: db.prepare<[], { apiKey: string }>('SELECT apiKey FROM appSettings WHERE id = 1'),
   setApiKey: db.prepare('UPDATE appSettings SET apiKey = ? WHERE id = 1'),
 };
 
@@ -315,6 +305,7 @@ interface AppSettingsRow {
   nightlyForecastPrefetchEnabled: number;
   nightlyHousekeepingLastRun: number | null;
   nightlyForecastLastRun: number | null;
+  nightlyMaintenanceEnabled: number;
 }
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -361,7 +352,7 @@ function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
     slideshowRotateCCW: Boolean(row.slideshowRotateCCW),
     galleryProcessedOnlyDefault: Boolean(row.galleryProcessedOnlyDefault),
     planetariumProcessedOnlyDefault: Boolean(row.planetariumProcessedOnlyDefault),
-    preferredCatalog: row.preferredCatalog === 'caldwell' ? 'caldwell' : 'default',
+    preferredCatalog: isPreferredCatalog(row.preferredCatalog) ? row.preferredCatalog : 'default',
     // See server/lib/telescopeFiles.ts for what this gates.
     groupObservingNights: Boolean(row.groupObservingNights ?? 1),
     temperatureUnit: row.temperatureUnit || 'fahrenheit',
@@ -370,7 +361,7 @@ function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
     // Advertised so native clients can gate the finer-grid editor; clients that
     // ignore it keep working at their built-in resolution.
     skyMapBands: SKY_MAP_BANDS,
-    updateChannel: row.updateChannel === 'beta' ? 'beta' : 'stable',
+    updateChannel: isUpdateChannel(row.updateChannel) ? row.updateChannel : 'stable',
     autoUpdateEnabled: Boolean(row.autoUpdateEnabled),
     plannerPrefetchEnabled: Boolean(row.plannerPrefetchEnabled ?? 1),
     plannerPrefetchTime: row.plannerPrefetchTime || '03:00',
@@ -380,6 +371,7 @@ function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
     nightlyForecastPrefetchEnabled: Boolean(row.nightlyForecastPrefetchEnabled ?? 1),
     nightlyHousekeepingLastRun: row.nightlyHousekeepingLastRun ?? null,
     nightlyForecastLastRun: row.nightlyForecastLastRun ?? null,
+    nightlyMaintenanceEnabled: Boolean(row.nightlyMaintenanceEnabled ?? 1),
   };
 }
 
@@ -412,7 +404,7 @@ function saveSettingsRow(data: Record<string, unknown>): void {
     boolToInt(data.slideshowRotateCCW, 0),
     boolToInt(data.galleryProcessedOnlyDefault, 0),
     boolToInt(data.planetariumProcessedOnlyDefault, 0),
-    data.preferredCatalog === 'caldwell' ? 'caldwell' : 'default',
+    isPreferredCatalog(data.preferredCatalog) ? data.preferredCatalog : 'default',
     boolToInt(data.groupObservingNights, 1),
     str(data.temperatureUnit, 'fahrenheit'),
     str(data.windSpeedUnit, 'mph'),
@@ -421,7 +413,7 @@ function saveSettingsRow(data: Record<string, unknown>): void {
         ? data.visibleSkyMap.map(v => v === true)
         : [],
     ),
-    data.updateChannel === 'beta' ? 'beta' : 'stable',
+    isUpdateChannel(data.updateChannel) ? data.updateChannel : 'stable',
     boolToInt(data.autoUpdateEnabled, 0),
     boolToInt(data.plannerPrefetchEnabled, 1),
     str(data.plannerPrefetchTime, '03:00'),
@@ -431,7 +423,9 @@ function saveSettingsRow(data: Record<string, unknown>): void {
     boolToInt(data.nightlyForecastPrefetchEnabled, 1),
     numOrNull(data.nightlyHousekeepingLastRun),
     numOrNull(data.nightlyForecastLastRun),
+    boolToInt(data.nightlyMaintenanceEnabled, 1),
   );
+  settingsCache = null;
 }
 
 export function getAllProfiles(): TelescopeProfile[] {
@@ -502,8 +496,15 @@ export function createProfile(data: Partial<TelescopeProfile>): TelescopeProfile
   // expose (no SMB share at all) and works without a cable. USB mass storage
   // is still available as a second transport the user can add. Everything else
   // stays on SMB.
-  const isDwarfKind = kind === 'dwarf-2' || kind === 'dwarf-3' || kind === 'dwarf-mini';
-  const defaultConnectionType: TransportKind = isDwarfKind ? 'ftp' : 'smb';
+  const isDwarf = isDwarfKind(kind);
+  const defaultConnectionType: TransportKind = isDwarf ? 'ftp' : 'smb';
+  // ASIAIR writes no stacked result unless the user ran Live mode, so a
+  // device's entire output is light frames, which Nebulis classifies as
+  // sub-frames because that is what they are. importSubFrames defaults off
+  // everywhere else, and leaving it off here would make a correctly configured
+  // ASIAIR import exactly zero files. This is the one kind where the default
+  // has to flip for the device to do anything at all.
+  const isAsiair = isAsiairKind(kind);
   const profile: TelescopeProfile = {
     id: randomUUID(),
     name: data.name || `SeeStar ${count + 1}`,
@@ -514,7 +515,7 @@ export function createProfile(data: Partial<TelescopeProfile>): TelescopeProfile
     // documented anonymous login is 'anonymous' (smb.ftp.ts's toTarget()
     // falls back to 'Anonymous' regardless, but firmware accepts any
     // username, so this is filled in explicitly rather than left blank).
-    username: data.username || (isDwarfKind ? 'anonymous' : 'guest'),
+    username: data.username || (isDwarf ? 'anonymous' : 'guest'),
     password: data.password || '',
     createdAt: new Date().toISOString(),
     kind,
@@ -529,7 +530,7 @@ export function createProfile(data: Partial<TelescopeProfile>): TelescopeProfile
     importJpg: data.importJpg ?? true,
     importFits: data.importFits ?? true,
     importThumbnails: data.importThumbnails ?? false,
-    importSubFrames: data.importSubFrames ?? false,
+    importSubFrames: data.importSubFrames ?? isAsiair,
     importVideos: data.importVideos ?? false,
     trackDeviceIdentity: data.trackDeviceIdentity ?? true,
     pinnedTransportId: null,
@@ -730,7 +731,7 @@ export function getProfileByDeviceId(deviceId: string): TelescopeProfile | null 
 export function pickDefaultTarget(): TelescopeProfile | null {
   const profiles = getActiveProfiles();
   if (profiles.length === 0) return null;
-  const seestar = profiles.find(p => p.kind === 'seestar-s50' || p.kind === 'seestar-s30');
+  const seestar = profiles.find(p => isSeestarKind(p.kind));
   const base = seestar ?? profiles[0];
   const t = selectActiveTransport(base.id);
   if (!t) return base;
@@ -773,12 +774,22 @@ export function bulkReassignTelescope(fromId: string, toId: string): BulkReassig
 
 // ─── App Settings helpers (columnar SQL) ────────────────────────────────────
 
+// rowToSettings does a JSON.parse per JSON column and an AES-GCM decrypt of
+// apiKey, so re-running it on every getSettingsData() call is expensive for
+// callers that only want one cheap field (groupObservingNights, checked once
+// per libraryFiles row by observingNightDate). The row only ever changes
+// through saveSettingsRow/setApiKey below, so cache the parsed object and
+// invalidate there instead of re-deriving it on every read.
+let settingsCache: Record<string, unknown> | null = null;
+
 export function getSettingsData(): Record<string, unknown> {
+  if (settingsCache) return settingsCache;
   const row = appSettingsStmts.get.get();
   // The appSettings table is seeded with a singleton INSERT OR IGNORE at
   // db.ts load time, so a missing row here signals a schema bug worth crashing on.
   if (!row) throw new Error('[telescopes] appSettings row missing');
-  return rowToSettings(row);
+  settingsCache = rowToSettings(row);
+  return settingsCache;
 }
 
 export function updateSettingsData(updates: Record<string, unknown>): void {
@@ -788,11 +799,30 @@ export function updateSettingsData(updates: Record<string, unknown>): void {
   saveSettingsRow({ ...current, ...updates });
 }
 
+// Same `appSettings.apiKey` column getSettingsData() already reads and
+// caches — reuse it instead of a second uncached DB read + AES decrypt.
+// This is on the auth middleware's X-API-Key fallback path, so it used to
+// pay a decrypt on every request without one.
 export function getApiKey(): string {
-  const row = appSettingsStmts.getApiKey.get();
-  return decryptTolerant(row?.apiKey ?? '', 'admin API key');
+  const { apiKey } = getSettingsData();
+  return typeof apiKey === 'string' ? apiKey : '';
 }
 
 export function setApiKey(key: string): void {
   appSettingsStmts.setApiKey.run(key ? encrypt(key) : '');
+  settingsCache = null;
+}
+
+// Cached query — `librarySessions.telescopeId` was added in Phase 1.
+const sessionCountStmt = db.prepare<[], { telescopeId: string; n: number }>(
+  `SELECT telescopeId, COUNT(*) as n FROM librarySessions
+     WHERE telescopeId IS NOT NULL GROUP BY telescopeId`,
+);
+
+/** Session count per telescope, for the telescope list response
+ *  (server/routes/telescopes.ts). */
+export function sessionCountsByTelescope(): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const row of sessionCountStmt.all()) counts.set(row.telescopeId, row.n);
+  return counts;
 }

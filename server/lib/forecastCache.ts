@@ -11,8 +11,10 @@
 
 import SunCalc from 'suncalc';
 import { getActiveSite } from './observingSites.js';
-import { addDaysToDateKey, localDateKey, localParts, zonedDateTimeToUtc } from './timezone.js';
-import { OBSERVING_NIGHT_ROLLOVER_HOUR } from './telescopeFiles.js';
+import { getSettingsData } from './telescopes.js';
+import { addDaysToDateKey, localDateKey, timeZoneOrLocal, zonedDateTimeToUtc } from './timezone.js';
+import { observingNightDateKey } from './telescopeFiles.js';
+import { TEMPERATURE_UNITS, WIND_SPEED_UNITS } from './types/appSettings.js';
 
 export interface ForecastHour {
   time: string;          // ISO timestamp
@@ -47,26 +49,85 @@ export interface AstroConditions {
   nauticalDarkHours: number;         // Hours of nautical dark (fallback for high-lat summers)
 }
 
-interface ForecastCacheEntry {
+export interface ForecastCacheEntry {
   data: unknown;
   fetchedAt: number;
   lat: number;
   lon: number;
+  /** Last time a `/forecast` request was served for (or forced) this site.
+   *  The background refresh only keeps sites requested in the last 24 h warm,
+   *  so a one-off lookup for a place the user was travelling doesn't get
+   *  re-fetched hourly forever. */
+  lastRequestedAt: number;
 }
 
 // ─── Server-side forecast cache ────────────────────────────────
-// Refreshes automatically every hour using the user's saved location.
-// The API endpoint serves cached data instantly; ?refresh=1 forces a re-fetch.
+// A small per-site LRU. The forecast APIs are grid-cell resolution, so the key
+// rounds lat/lon to ~0.01° (about a kilometre). Any multi-site user (or iOS +
+// web hitting different siteIds) would otherwise thrash a single global slot
+// and re-run buildForecast — two external APIs with 10 s timeouts — on almost
+// every request. The API endpoint serves a fresh entry instantly; ?refresh=1
+// forces a re-fetch unless the entry is only minutes old.
 
-let forecastCache: ForecastCacheEntry | null = null;
 export const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+/** ?refresh=1 is ignored while the cached entry is at least this fresh, so a
+ *  client looping refresh can't drive unbounded upstream fetches. */
+export const REFRESH_MIN_AGE_MS = 10 * 60 * 1000; // 10 minutes
+const CACHE_MAX_ENTRIES = 8;
+const REQUEST_RETENTION_MS = 24 * 60 * 60 * 1000;
 
-export function getForecastCache(): ForecastCacheEntry | null {
-  return forecastCache;
+// Insertion order is the LRU order: the least-recently-used key sits at the
+// front. Reads and writes move their key to the back.
+const forecastCacheByKey = new Map<string, ForecastCacheEntry>();
+
+export function forecastSiteKey(lat: number, lon: number): string {
+  return `${lat.toFixed(2)}|${lon.toFixed(2)}`;
 }
 
-export function setForecastCache(entry: ForecastCacheEntry): void {
-  forecastCache = entry;
+function touch(key: string, entry: ForecastCacheEntry): void {
+  forecastCacheByKey.delete(key);
+  forecastCacheByKey.set(key, entry);
+}
+
+/** Cached entry for a site, or null. Does not affect LRU recency — call
+ *  `markForecastRequested` for that on the serve path. */
+export function getForecastCacheEntry(lat: number, lon: number): ForecastCacheEntry | null {
+  return forecastCacheByKey.get(forecastSiteKey(lat, lon)) ?? null;
+}
+
+export function setForecastCacheEntry(entry: {
+  data: unknown; fetchedAt: number; lat: number; lon: number; lastRequestedAt?: number;
+}): void {
+  const key = forecastSiteKey(entry.lat, entry.lon);
+  const prior = forecastCacheByKey.get(key);
+  touch(key, {
+    data: entry.data,
+    fetchedAt: entry.fetchedAt,
+    lat: entry.lat,
+    lon: entry.lon,
+    lastRequestedAt: entry.lastRequestedAt ?? prior?.lastRequestedAt ?? entry.fetchedAt,
+  });
+  while (forecastCacheByKey.size > CACHE_MAX_ENTRIES) {
+    const lru = forecastCacheByKey.keys().next().value;
+    if (lru === undefined) break;
+    forecastCacheByKey.delete(lru);
+  }
+}
+
+/** Record that a client asked for this site now: refreshes its LRU recency and
+ *  its 24 h refresh-retention window. */
+export function markForecastRequested(lat: number, lon: number): void {
+  const key = forecastSiteKey(lat, lon);
+  const entry = forecastCacheByKey.get(key);
+  if (entry) {
+    entry.lastRequestedAt = Date.now();
+    touch(key, entry);
+  }
+}
+
+/** Test/diagnostic hook. */
+export function _clearForecastCache(): void {
+  forecastCacheByKey.clear();
 }
 
 // ─── 7Timer astronomy forecast ──────────────────────────────────
@@ -80,7 +141,7 @@ async function fetch7Timer(lat: number, lon: number) {
 
 // ─── Open-Meteo weather forecast ────────────────────────────────
 
-async function fetchOpenMeteo(lat: number, lon: number) {
+async function fetchOpenMeteoOnce(lat: number, lon: number) {
   const params = [
     `latitude=${lat}`,
     `longitude=${lon}`,
@@ -94,6 +155,26 @@ async function fetchOpenMeteo(lat: number, lon: number) {
   const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
   if (!res.ok) throw new Error(`Open-Meteo API error: ${res.status}`);
   return res.json();
+}
+
+/**
+ * Open-Meteo is the primary weather source: if it fails, every hourly-derived
+ * section of the forecast is blank and the clients show "forecast unavailable".
+ * A single quick retry absorbs the common transient failures (a cold-start DNS
+ * miss, a brief 5xx/429, a network blip right after the server wakes from
+ * sleep) that were otherwise poisoning the cache for a full hour.
+ */
+async function fetchOpenMeteo(lat: number, lon: number) {
+  try {
+    return await fetchOpenMeteoOnce(lat, lon);
+  } catch (first) {
+    await new Promise(r => setTimeout(r, 800));
+    try {
+      return await fetchOpenMeteoOnce(lat, lon);
+    } catch {
+      throw first;
+    }
+  }
 }
 
 // ─── Map 7Timer seeing codes ────────────────────────────────────
@@ -206,10 +287,18 @@ export async function buildForecast(lat: number, lon: number) {
 
   const openMeteo = openMeteoData.status === 'fulfilled' ? openMeteoData.value : null;
   const sevenTimer = sevenTimerData.status === 'fulfilled' ? sevenTimerData.value : null;
-  const forecastTimezone =
-    (openMeteo?.timezone as string | undefined) ||
-    getActiveSite().timezone ||
-    Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // timeZoneOrLocal validates against Intl.DateTimeFormat and falls back to
+  // the machine's own zone on anything it rejects. Every other use of a
+  // timezone string in this file already goes through localDateKey/
+  // zonedDateTimeToUtc, which call it internally — but this raw value is
+  // also serialized straight into the API response below as `timezone`,
+  // bypassing that check entirely. Open-Meteo is a third-party API: an
+  // unrecognized or malformed identifier for some coordinate (a polar or
+  // oceanic point, an API-side quirk) reached the client unvalidated and
+  // crashed the Forecast page's own unguarded Intl.DateTimeFormat call.
+  const forecastTimezone = timeZoneOrLocal(
+    (openMeteo?.timezone as string | undefined) || getActiveSite().timezone,
+  );
 
   // Build hourly forecast from Open-Meteo (primary)
   const hours: ForecastHour[] = [];
@@ -311,10 +400,18 @@ export async function buildForecast(lat: number, lon: number) {
     nauticalDarkHours: Math.round(nauticalDarkHours * 10) / 10,
   };
 
-  // Rate each night (next 3 nights)
+  // Rate each night (next 3 nights). Base the date keys on the actual sunset,
+  // not tonightDate: before the 7am observing-night rollover `tonightDate` is
+  // still yesterday's calendar day, while the sun/twilight times above have
+  // already rolled forward to tonight (SunCalc.getTimes returns the sunset
+  // after solar noon of the anchor day). Keying the ratings off tonightDate
+  // then labels tonight's rating with yesterday's date, so a client that drops
+  // "the first night" as tonight leaves the real tonight in its outlook list,
+  // duplicated with the hero.
+  const ratingsBaseDate = sunset ? localDateKey(sunset, forecastTimezone) : tonightDate;
   const nightRatings = [];
   for (let d = 0; d < 3; d++) {
-    const ratingDate = addDaysToDateKey(tonightDate, d);
+    const ratingDate = addDaysToDateKey(ratingsBaseDate, d);
     const nightDate = zonedDateTimeToUtc(ratingDate, { hour: 22 }, forecastTimezone);
 
     const nightHours = hours.filter(h => {
@@ -328,9 +425,22 @@ export async function buildForecast(lat: number, lon: number) {
     nightRatings.push({ date: ratingDate, ...rateNightConditions(nightHours) });
   }
 
+  // Display units the clients should format temperature/wind in. Open-Meteo is
+  // always fetched in metric; the number in `hourly[].temperature` stays °C and
+  // `wind` stays km/h, the client converts. Served here so iOS/Android don't
+  // each need a separate settings round-trip just to pick °F vs °C.
+  const settings = getSettingsData();
+  const temperatureUnit = (TEMPERATURE_UNITS as readonly string[]).includes(String(settings.temperatureUnit))
+    ? (settings.temperatureUnit as string)
+    : 'fahrenheit';
+  const windUnit = (WIND_SPEED_UNITS as readonly string[]).includes(String(settings.windSpeedUnit))
+    ? (settings.windSpeedUnit as string)
+    : 'mph';
+
   return {
     location: { lat, lon },
     timezone: forecastTimezone,
+    units: { temperature: temperatureUnit, wind: windUnit },
     hourly: hours,
     tonight: astro,
     nightRatings,
@@ -341,20 +451,53 @@ export async function buildForecast(lat: number, lon: number) {
   };
 }
 
+/**
+ * A forecast is only worth caching or serving if it actually carries hourly
+ * weather data. An empty `hourly` array (equivalently, a null weather source)
+ * means `buildForecast` ran while Open-Meteo was unreachable, so every
+ * hourly-derived section downstream would be blank. Caching one of these used
+ * to pin the "forecast unavailable" state for a full hour and block `?refresh=1`
+ * recovery for the first ten minutes.
+ */
+export function isUsableForecast(data: unknown): boolean {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as { hourly?: unknown; sources?: { weather?: unknown } | null };
+  return Array.isArray(d.hourly) && d.hourly.length > 0 && d.sources?.weather != null;
+}
+
 // ─── Background refresh ─────────────────────────────────────────
 
 export async function refreshForecastCache(): Promise<void> {
-  const site = getActiveSite();
-  const lat = site.latitude;
-  const lon = site.longitude;
-  if (lat == null || lon == null) return;
+  // Always keep the active site warm even if nobody has hit /forecast yet this
+  // process, plus every other site requested in the last 24 h.
+  const targets = new Map<string, { lat: number; lon: number }>();
+  const active = getActiveSite();
+  if (active.latitude != null && active.longitude != null) {
+    targets.set(forecastSiteKey(active.latitude, active.longitude), { lat: active.latitude, lon: active.longitude });
+  }
+  const cutoff = Date.now() - REQUEST_RETENTION_MS;
+  for (const entry of forecastCacheByKey.values()) {
+    if (entry.lastRequestedAt >= cutoff) {
+      targets.set(forecastSiteKey(entry.lat, entry.lon), { lat: entry.lat, lon: entry.lon });
+    }
+  }
 
-  try {
-    const data = await buildForecast(lat, lon);
-    forecastCache = { data, fetchedAt: Date.now(), lat, lon };
-    console.log('[forecast] Cache refreshed');
-  } catch (err) {
-    console.error('[forecast] Background refresh failed:', err instanceof Error ? err.message : err);
+  for (const { lat, lon } of targets.values()) {
+    try {
+      const data = await buildForecast(lat, lon);
+      if (!isUsableForecast(data)) {
+        // Never overwrite a good entry (or seed a bad one) with an empty
+        // forecast. The 5-s-after-boot refresh often runs before the network
+        // is ready; caching its empty result is what made this "keep
+        // happening" for an hour at a time.
+        console.warn(`[forecast] Skipped caching empty forecast for ${forecastSiteKey(lat, lon)} (upstream weather unavailable)`);
+        continue;
+      }
+      setForecastCacheEntry({ data, fetchedAt: Date.now(), lat, lon });
+      console.log(`[forecast] Cache refreshed for ${forecastSiteKey(lat, lon)}`);
+    } catch (err) {
+      console.error('[forecast] Background refresh failed:', err instanceof Error ? err.message : err);
+    }
   }
 }
 
@@ -384,10 +527,9 @@ export function parseOpenMeteoHour(value: string, timeZone: string): Date {
   return zonedDateTimeToUtc(datePart, { hour, minute, second }, timeZone);
 }
 
+/** Forecast-domain alias for the shared observing-night rule. */
 export function defaultNightDate(now: Date, timeZone: string): string {
-  const parts = localParts(now, timeZone);
-  const today = localDateKey(now, timeZone);
-  return parts.hour >= OBSERVING_NIGHT_ROLLOVER_HOUR ? today : addDaysToDateKey(today, -1);
+  return observingNightDateKey(now, timeZone);
 }
 
 export function getMoonPhaseName(phase: number): string {

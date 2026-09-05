@@ -1,5 +1,5 @@
 import type { Settings } from '../../types';
-import { fetchJSON, BASE, authHeaders } from './client';
+import { fetchJSON, BASE, authHeaders, errorMessage } from './client';
 
 export const getSettings = () => fetchJSON<Settings>('/settings');
 export const updateSettings = (settings: Partial<Settings>) =>
@@ -36,9 +36,8 @@ export const disableDebugLogging = () =>
 export async function downloadDebugLog(): Promise<void> {
   const res = await fetch(`${BASE}/settings/debug-logging/download`, { headers: authHeaders() });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-    const msg = (body?.error as { message?: string } | string | undefined);
-    throw new Error(typeof msg === 'object' ? msg?.message : msg ?? res.statusText);
+    const body: unknown = await res.json().catch(() => ({}));
+    throw new Error(errorMessage(body, res.statusText));
   }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

@@ -11,6 +11,13 @@ export const SNAP_MINUTES = 10;
 export const DEFAULT_BLOCK_MINUTES = 90;
 export const MIN_BLOCK_MINUTES = 15;
 
+/**
+ * Left gutter reserved for the hour labels and the hourly weather bands.
+ * Blocks are laid out to the right of it so they never cover the time axis.
+ * Shared by the timeline and the blocks it positions, which must agree.
+ */
+export const TIMELINE_GUTTER_PX = 58;
+
 // The timeline scale (pixels per minute) is computed at runtime so the night
 // fills the available pane height instead of always rendering at a fixed
 // 80px/hour. The floor keeps very long nights readable on short screens

@@ -6,6 +6,7 @@ import {
   getSubframeFilters,
   startSubframesArchive,
   getSubframesArchiveStatus,
+  cancelSubframesArchive,
   type SubframesArchiveStatus,
 } from '../lib/api/library';
 import { useTheme } from '../hooks/useTheme';
@@ -55,12 +56,26 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [jobStatus, setSubframesArchiveStatus] = useState<SubframesArchiveStatus | null>(null);
   const [selectedFilters, setSelectedFilters] = useState<Set<string>>(new Set());
+  const [sirilLayout, setSirilLayout] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cancelledRef = useRef(false);
+  // The in-flight ZIP job id, so cancel / unmount can stop the server-side
+  // build (not just the poll). Cleared once the job reaches a terminal state.
+  const jobIdRef = useRef<string | null>(null);
+  // Guards against request pile-up: if the server is slow (e.g. mid zip of a
+  // large archive) and one status check takes longer than the 500ms interval,
+  // every tick would otherwise stack another concurrent request against the
+  // machine already busy doing the zip.
+  const pollInFlightRef = useRef(false);
 
+  // A mosaic/Ha/etc. variant's sub-frames live under that variant's own
+  // object id, not the base object's, so this must pull sessions across the
+  // whole variant family — same as what the object page's Observations grid
+  // shows — or a mosaic-only target (all subs under `<name>_Mosaic`) looks
+  // like it has nothing to combine.
   const { data: sessions, isLoading } = useQuery({
-    queryKey: ['library-sessions', objectId],
-    queryFn: () => getLibrarySessions(objectId),
+    queryKey: ['library-sessions', objectId, 'includeVariants'],
+    queryFn: () => getLibrarySessions(objectId, { includeVariants: true }),
   });
 
   const sessionsWithSubs = (sessions ?? []).filter(s => s.subFrameCount > 0);
@@ -69,7 +84,7 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
 
   const { data: filtersData, isFetching: filtersLoading } = useQuery({
     queryKey: ['subframe-filters', objectId, selectedDates.join(',')],
-    queryFn: () => getSubframeFilters(objectId, selectedDates),
+    queryFn: () => getSubframeFilters(objectId, selectedDates, true),
     enabled: selectedDates.length > 0,
     staleTime: 30_000,
   });
@@ -83,10 +98,15 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
     }
   }, [availableFilters.join(',')]);
 
-  // Stop polling on unmount
+  // Stop polling AND the server-side build on unmount — otherwise the ZIP of
+  // tens of GB keeps being written to the tmp dir after the modal is gone.
   useEffect(() => () => {
     cancelledRef.current = true;
     if (pollRef.current) clearInterval(pollRef.current);
+    if (jobIdRef.current) {
+      void cancelSubframesArchive(jobIdRef.current).catch(() => {});
+      jobIdRef.current = null;
+    }
   }, []);
 
   function toggleAll() {
@@ -133,11 +153,17 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
   function handleCancel() {
     cancelledRef.current = true;
     stopPolling();
+    if (jobIdRef.current) {
+      void cancelSubframesArchive(jobIdRef.current).catch(() => {});
+      jobIdRef.current = null;
+    }
     setPhase('select');
     setSubframesArchiveStatus(null);
   }
 
   async function pollStatus(jobId: string) {
+    if (pollInFlightRef.current) return;
+    pollInFlightRef.current = true;
     try {
       const status = await getSubframesArchiveStatus(jobId);
       if (cancelledRef.current) return;
@@ -146,6 +172,7 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
 
       if (status.status === 'done') {
         stopPolling();
+        jobIdRef.current = null;
         setZipSize(status.size ?? 0);
         setPhase('done');
         // Hand these nights to UploadProcessedModal so bringing the external
@@ -154,26 +181,34 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
         const a = document.createElement('a');
         a.href = `/api/library/download/tmp/${status.token}`;
         a.click();
-      } else if (status.status === 'error') {
+      } else if (status.status === 'error' || status.status === 'cancelled') {
         stopPolling();
-        setError(status.error ?? 'Archive failed');
+        jobIdRef.current = null;
+        if (status.status === 'error') setError(status.error ?? 'Archive failed');
         setPhase('select');
         setSubframesArchiveStatus(null);
       }
     } catch {
       // network hiccup — keep polling
+    } finally {
+      pollInFlightRef.current = false;
     }
   }
 
   async function startArchive(filters?: string[]) {
     cancelledRef.current = false;
+    pollInFlightRef.current = false;
     setPhase('preparing');
     setError(null);
     setSubframesArchiveStatus(null);
 
     try {
-      const { jobId, filesTotal } = await startSubframesArchive(objectId, Array.from(selected), filters);
-      if (cancelledRef.current) return;
+      const { jobId, filesTotal } = await startSubframesArchive(objectId, Array.from(selected), filters, true, sirilLayout);
+      if (cancelledRef.current) {
+        void cancelSubframesArchive(jobId).catch(() => {});
+        return;
+      }
+      jobIdRef.current = jobId;
 
       setSubframesArchiveStatus({ status: 'running', filesTotal, filesDone: 0, elapsedMs: 0 });
       pollRef.current = setInterval(() => pollStatus(jobId), 500);
@@ -440,6 +475,30 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
           </div>
         )}
 
+        {/* Siril layout option — session select phase */}
+        {phase === 'select' && sessionsWithSubs.length > 0 && (
+          <div className={`px-5 pt-3 pb-1 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+            <button
+              onClick={() => setSirilLayout(v => !v)}
+              className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-xl text-sm text-left transition ${
+                sirilLayout
+                  ? isDark ? 'bg-accent-500/10 text-slate-100' : 'bg-accent-300 text-accent-700'
+                  : isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700'
+              }`}
+            >
+              {sirilLayout
+                ? <CheckSquare className="w-4 h-4 text-accent-500 shrink-0 mt-0.5" />
+                : <Square className={`w-4 h-4 shrink-0 mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />}
+              <span className="flex-1">
+                <span className="block font-medium">Combine into a single lights folder for Siril</span>
+                <span className={`block text-xs mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Puts every subframe in <span className="font-mono">{objectId}/lights/</span> instead of keeping the per-session folders.
+                </span>
+              </span>
+            </button>
+          </div>
+        )}
+
         {/* Footer — session select phase */}
         {phase === 'select' && (
           <div className={`px-5 py-4 border-t flex items-center justify-between gap-3 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
@@ -512,6 +571,7 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
             message="Discard your session selection?"
             onCancel={() => setConfirmingClose(false)}
             onDiscard={() => { setConfirmingClose(false); onClose(); }}
+            isDark={isDark}
           />
         )}
     </Modal>

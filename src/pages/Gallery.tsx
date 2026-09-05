@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useMemo, useEffect, useRef, useDeferredValue } from 'react';
+import { useQuery, useMutation, useMutationState, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Search, Telescope, AlertCircle, Filter, Download, RotateCw, CheckCircle2, Upload, PlusCircle, Star, Library, ArrowUpDown, Check } from 'lucide-react';
+import { Search, Telescope, AlertCircle, Filter, Download, RotateCw, Upload, PlusCircle, Star, ArrowUpDown, Check, ChevronDown } from 'lucide-react';
 import { getLibraryObjects, getLibraryObjectFilters, triggerImport, getImportStatus } from '../lib/api/library';
 import { listTelescopes } from '../lib/api/telescopes';
 import { ObjectCard } from '../components/ObjectCard';
+import { LibraryHero } from '../components/library/LibraryHero';
 import { ImportModal } from '../components/ImportModal';
 import { FolderImportWizard } from '../components/folderImport/FolderImportWizard';
 import { useTheme } from '../hooks/useTheme';
@@ -13,7 +14,9 @@ import { useClickOutside } from '../hooks/useClickOutside';
 import { useFilterChipPrefs } from '../hooks/useFilterChipPrefs';
 import { FilterCustomizeMenu } from '../components/filters/FilterCustomizeMenu';
 import { NewObservationModal } from '../components/NewObservationModal';
+import { TourAnchor } from '../components/tour/TourAnchor';
 import { buildTypeFilters, matchesFilter, defaultEnabledIds, ALL_FILTER_ID, FAVORITES_FILTER_ID } from '../lib/objectTypeFilters';
+import { isOptionValue } from '../lib/typeGuards';
 
 type SortKey = 'name-asc' | 'name-desc' | 'session-date-desc' | 'session-date-asc' | 'session-count-desc' | 'import-desc';
 
@@ -31,7 +34,7 @@ const SORT_STORAGE_KEY = 'nebulis-library-sort';
 function readStoredSort(): SortKey {
   try {
     const v = localStorage.getItem(SORT_STORAGE_KEY);
-    if (v && SORT_OPTIONS.some(o => o.value === v)) return v as SortKey;
+    if (v !== null && isOptionValue(SORT_OPTIONS, v)) return v;
   } catch { /* ignore */ }
   return 'name-asc';
 }
@@ -50,7 +53,10 @@ const CATALOG_FAMILIES: { name: string; prefix: string; test: (id: string) => bo
 
 export function Gallery() {
   const { isDark, isNight, isSpace } = useTheme();
-  const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-accent-500';
+  // The hero is night-side in every theme (a picture of the sky), so it takes
+  // the bright accent hex directly rather than the light-mode-darkened token,
+  // matching the Observations, Planner and Catalog banners.
+  const accent = isNight ? '#f87171' : isSpace ? '#a78bfa' : '#fbbf24';
   const { isAdmin } = useAuth();
   const [search, setSearch] = useState('');
   const [activeFilterId, setActiveFilterId] = useState<string>(ALL_FILTER_ID);
@@ -68,6 +74,8 @@ export function Gallery() {
   const sortRef = useRef<HTMLDivElement>(null);
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const filterMenuRef = useRef<HTMLDivElement>(null);
+  const [telescopeMenuOpen, setTelescopeMenuOpen] = useState(false);
+  const telescopeMenuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -85,13 +93,29 @@ export function Gallery() {
     queryFn: getLibraryObjectFilters,
   });
 
+  // Unifying Lens: overlay every in-flight favorite toggle (from any
+  // ObjectCard — they share this mutationKey) onto the server list, so the
+  // Favorites chip reacts immediately without either card writing into the
+  // shared query cache. No setQueryData, no rollback; the overlay disappears
+  // on its own once each mutation settles and 'library-objects' re-fetches.
+  const pendingFavorites = useMutationState<{ objectId: string; next: boolean }>({
+    filters: { mutationKey: ['toggle-object-favorite'], status: 'pending' },
+    select: m => m.state.variables as { objectId: string; next: boolean },
+  });
+  const objectsWithPendingFavorites = useMemo(() => {
+    if (!objects) return objects;
+    if (pendingFavorites.length === 0) return objects;
+    const overlay = new Map(pendingFavorites.map(p => [p.objectId, p.next]));
+    return objects.map(o => (overlay.has(o.id) ? { ...o, isFavorite: overlay.get(o.id)! } : o));
+  }, [objects, pendingFavorites]);
+
   // Granular filters for every distinct object type in the library, with
   // counts. Excludes any type whose label already matches a curated group
   // (e.g. exact "Galaxy" vs the "Galaxy" group) to avoid two identically
   // labeled chips.
   const typeFilters = useMemo(
-    () => buildTypeFilters((objects ?? []).map(o => o.type), objectFilters),
-    [objects, objectFilters],
+    () => buildTypeFilters((objectsWithPendingFavorites ?? []).map(o => o.type), objectFilters),
+    [objectsWithPendingFavorites, objectFilters],
   );
   const defaultIds = useMemo(() => defaultEnabledIds(objectFilters), [objectFilters]);
   const { enabledIds, toggle: toggleChip, clearAll: clearAllChips } = useFilterChipPrefs(defaultIds);
@@ -129,25 +153,31 @@ export function Gallery() {
     enabled: filterMenuOpen,
     closeOnEscape: true,
   });
+  useClickOutside(telescopeMenuRef, () => setTelescopeMenuOpen(false), {
+    enabled: telescopeMenuOpen,
+    closeOnEscape: true,
+  });
 
   const { data: telescopes = [] } = useQuery({
     queryKey: ['telescopes'],
     queryFn: listTelescopes,
   });
   const showTelescopeUI = telescopes.length >= 2;
-  // Reset the filter if the selected scope is deleted; otherwise the library
-  // shows zero results until the user manually clicks "All scopes".
-  useEffect(() => {
-    if (telescopeFilter === ALL_TELESCOPES_FILTER) return;
-    if (!telescopes.some(t => t.id === telescopeFilter)) {
-      setTelescopeFilter(ALL_TELESCOPES_FILTER);
-    }
-  }, [telescopes, telescopeFilter]);
+  // If the selected scope was deleted, fall back to "All" during render rather
+  // than via a corrective setState-in-effect (which flashed one frame of an
+  // empty library). Same approach as effectiveFilterId above.
+  const effectiveTelescopeFilter =
+    telescopeFilter === ALL_TELESCOPES_FILTER || telescopes.some(t => t.id === telescopeFilter)
+      ? telescopeFilter
+      : ALL_TELESCOPES_FILTER;
 
   useEffect(() => {
     if (!sortOpen) return;
     function handleClick(e: MouseEvent) {
-      if (sortRef.current && !sortRef.current.contains(e.target as Node)) {
+      // `target` is `EventTarget | null`; only a Node can be "inside" the menu.
+      const target = e.target;
+      if (!(target instanceof Node)) return;
+      if (sortRef.current && !sortRef.current.contains(target)) {
         setSortOpen(false);
       }
     }
@@ -163,7 +193,7 @@ export function Gallery() {
 
 
 
-  const { data: importStatus, isLoading: statusLoading } = useQuery({
+  const { data: importStatus } = useQuery({
     queryKey: ['import-status'],
     queryFn: getImportStatus,
     refetchInterval: (query) => {
@@ -196,8 +226,10 @@ export function Gallery() {
     },
   });
 
+  // Deferred so typing stays responsive while the object list re-filters + re-sorts.
+  const deferredSearch = useDeferredValue(search);
   const filtered = useMemo(() => {
-    const s = search.toLowerCase().trim();
+    const s = deferredSearch.toLowerCase().trim();
     // "messier 81" → "m81", "caldwell 20" → "c20", "sharpless 298" → "sh2-298"
     const numbered = s.match(/^(messier|caldwell|sharpless)\s*(\d+)$/);
     const effectiveTerm = numbered
@@ -208,12 +240,12 @@ export function Gallery() {
       ? CATALOG_FAMILIES.find(f => f.name.startsWith(s))
       : undefined;
 
-    const list = objects?.filter(obj => {
+    const list = objectsWithPendingFavorites?.filter(obj => {
       const matchesFamily = family
         ? [obj.catalogId, ...(obj.aliases ?? [])].some(id => family.test(id))
         : false;
       const matchesSearch =
-        !search ||
+        !s ||
         matchesFamily ||
         obj.name.toLowerCase().includes(effectiveTerm) ||
         obj.catalogId.toLowerCase().includes(effectiveTerm) ||
@@ -227,8 +259,8 @@ export function Gallery() {
       );
 
       const matchesTelescope =
-        telescopeFilter === ALL_TELESCOPES_FILTER ||
-        (obj.telescopeIds?.includes(telescopeFilter) ?? false);
+        effectiveTelescopeFilter === ALL_TELESCOPES_FILTER ||
+        (obj.telescopeIds?.includes(effectiveTelescopeFilter) ?? false);
 
       return matchesSearch && matchesType && matchesTelescope;
     });
@@ -249,59 +281,35 @@ export function Gallery() {
           return (b.sessionCount ?? 0) - (a.sessionCount ?? 0);
         case 'import-desc':
           return (b.lastImport ?? '').localeCompare(a.lastImport ?? '');
-        default:
+        default: {
+          // Every SORT_OPTIONS entry must define an order here. Unreachable at
+          // runtime (readStoredSort narrows), so it keeps the neutral compare.
+          const _exhaustive: never = sortKey;
+          void _exhaustive;
           return 0;
+        }
       }
     });
-  }, [objects, search, effectiveFilterId, telescopeFilter, objectFilters, sortKey]);
+  }, [objectsWithPendingFavorites, deferredSearch, effectiveFilterId, effectiveTelescopeFilter, objectFilters, sortKey]);
+
+  // The hero describes the whole library, so it ignores the search box and the
+  // type chips. It does honor the telescope facet (a persistent lens on the
+  // collection), and says so via filteredLabel when one is active.
+  const heroObjects = useMemo(() => {
+    if (effectiveTelescopeFilter === ALL_TELESCOPES_FILTER) return objectsWithPendingFavorites ?? [];
+    return (objectsWithPendingFavorites ?? []).filter(o => o.telescopeIds?.includes(effectiveTelescopeFilter) ?? false);
+  }, [objectsWithPendingFavorites, effectiveTelescopeFilter]);
+  const heroFilteredLabel =
+    effectiveTelescopeFilter === ALL_TELESCOPES_FILTER
+      ? null
+      : telescopes.find(t => t.id === effectiveTelescopeFilter)?.name ?? null;
 
   const isImporting = importStatus?.running ?? false;
-  const importProgress = importStatus && importStatus.objectsTotal > 0
-    ? Math.round((importStatus.objectsDone / importStatus.objectsTotal) * 100)
-    : null;
 
   return (
-    <div className="space-y-8">
-      {/* Hero header */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-        <div>
-          <h1 className={`font-display text-3xl font-bold tracking-tight flex items-center gap-3 ${
-            isDark ? 'text-white' : 'text-slate-900'
-          }`}>
-            <Library className={`w-7 h-7 ${accentText}`} />
-            Library
-          </h1>
-        </div>
-      </div>
-
-      {/* Import status bar */}
-      {isImporting && (
-        <div className={`flex items-center gap-4 px-5 py-3 rounded-xl border ${
-          isDark ? 'bg-accent-500/5 border-accent-500/20 text-accent-400' : 'bg-accent-100 border-accent-300 text-accent-700'
-        }`}>
-          <RotateCw className="w-4 h-4 animate-spin shrink-0" />
-          <div className="flex-1 min-w-0">
-            <span className="text-sm font-medium">
-              {importStatus?.currentObject
-                ? `Importing ${importStatus.currentObject}${importStatus.telescopeName ? ` from ${importStatus.telescopeName}` : ''}`
-                : importStatus?.telescopeName
-                  ? `Importing from ${importStatus.telescopeName}`
-                  : 'Importing from telescope'}
-            </span>
-            {importProgress !== null && (
-              <span className={`ml-3 text-xs ${isDark ? 'text-accent-500/70' : 'text-accent-600/70'}`}>
-                {importStatus?.objectsDone}/{importStatus?.objectsTotal} objects &bull; {importStatus?.filesDone}/{importStatus?.filesTotal} files
-              </span>
-            )}
-          </div>
-          <div className={`w-32 h-1.5 rounded-full ${isDark ? 'bg-slate-700' : 'bg-accent-200'}`}>
-            <div
-              className="h-full rounded-full bg-accent-500 transition-all duration-500"
-              style={{ width: `${importProgress ?? 0}%` }}
-            />
-          </div>
-        </div>
-      )}
+    <div className="space-y-6">
+      <TourAnchor id="library" className="block space-y-6">
+        <LibraryHero objects={heroObjects} accent={accent} filteredLabel={heroFilteredLabel} />
 
       {/* Import failure, either a synchronous rejection (e.g. lock conflict)
           or a backend-reported error from a run that already finished. A
@@ -322,7 +330,7 @@ export function Gallery() {
       )}
 
       {/* Search and action buttons */}
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex flex-col sm:flex-row gap-3">
         <div className={`relative flex-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
           <Search className={`absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${
             isDark ? 'text-slate-500' : 'text-slate-400'
@@ -332,39 +340,26 @@ export function Gallery() {
             placeholder="Search objects, constellations..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className={`w-full pl-11 pr-4 py-3 rounded-xl border text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40 ${
+            className={`w-full pl-11 pr-4 py-2.5 rounded-full text-sm ring-1 ring-inset transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50 ${
               isDark
-                ? 'bg-slate-900 border-slate-800 placeholder-slate-600 focus:border-accent-500/50'
-                : 'bg-white border-slate-200 placeholder-slate-400 focus:border-accent-400'
+                ? 'bg-slate-900/70 ring-slate-700/60 placeholder-slate-600'
+                : 'bg-white ring-slate-200 placeholder-slate-400'
             }`}
           />
         </div>
 
-        {/* Import buttons — admin only */}
+        {/* Import buttons — admin only. Triggering a sync moved to the
+            telescope indicator's dropdown in the nav (one place for it,
+            reachable from every page), so only file-based import actions
+            live here now. */}
         {!isImporting && isAdmin && (
           <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={() => importMutation.mutate()}
-              disabled={importMutation.isPending || statusLoading}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                isDark
-                  ? 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-                  : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200 shadow-sm'
-              }`}
-            >
-              {importMutation.isSuccess ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-              ) : (
-                <Download className="w-4 h-4" />
-              )}
-              {importsAllScopes ? `From all ${enabledTelescopes.length} telescopes` : 'From Telescope'}
-            </button>
-            <button
               onClick={() => setShowImportModal(true)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium whitespace-nowrap ring-1 ring-inset transition-colors ${
                 isDark
-                  ? 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-                  : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200 shadow-sm'
+                  ? 'bg-slate-900/70 text-slate-200 ring-slate-700/60 hover:bg-slate-800'
+                  : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-100'
               }`}
             >
               <Upload className="w-4 h-4" />
@@ -372,10 +367,10 @@ export function Gallery() {
             </button>
             <button
               onClick={() => setNewObservationOpen(true)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
                 isDark
-                  ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 border border-accent-500/30'
-                  : 'bg-accent-300 text-accent-700 hover:bg-accent-400 border border-accent-400'
+                  ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 ring-1 ring-inset ring-accent-500/30'
+                  : 'bg-accent-500 text-white hover:bg-accent-600'
               }`}
             >
               <PlusCircle className="w-4 h-4" />
@@ -410,12 +405,12 @@ export function Gallery() {
               aria-haspopup="menu"
               aria-expanded={filterMenuOpen}
               title="Customize filters"
-              className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${
+              className={`flex items-center justify-center w-8 h-8 rounded-full ring-1 ring-inset transition-colors ${
                 filterMenuOpen
-                  ? isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-100 border-slate-300 text-slate-700'
+                  ? isDark ? 'bg-slate-800 ring-slate-600 text-slate-200' : 'bg-slate-100 ring-slate-300 text-slate-700'
                   : isDark
-                    ? 'bg-slate-900 border-slate-800 hover:border-slate-700 hover:text-slate-300'
-                    : 'bg-white border-slate-200 hover:border-slate-300 hover:text-slate-700 shadow-sm'
+                    ? 'bg-slate-900/70 ring-slate-700/60 hover:bg-slate-800 hover:text-slate-300'
+                    : 'bg-white ring-slate-200 hover:bg-slate-100 hover:text-slate-700'
               }`}
             >
               <Filter className="w-4 h-4" />
@@ -434,14 +429,14 @@ export function Gallery() {
           {/* Favorites filter — special case that checks isFavorite */}
           <button
             onClick={() => setActiveFilterId(effectiveFilterId === FAVORITES_FILTER_ID ? ALL_FILTER_ID : FAVORITES_FILTER_ID)}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
               effectiveFilterId === FAVORITES_FILTER_ID
                 ? isDark
-                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                  : 'bg-amber-100 text-amber-700 border border-amber-300'
+                  ? 'bg-amber-500/15 text-amber-400 ring-1 ring-inset ring-amber-500/30'
+                  : 'bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-300'
                 : isDark
-                  ? 'hover:bg-slate-800 border border-transparent'
-                  : 'hover:bg-slate-100 border border-transparent'
+                  ? 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-100'
+                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
             }`}
           >
             <Star className={`w-3.5 h-3.5 ${effectiveFilterId === FAVORITES_FILTER_ID ? 'fill-current' : ''}`} />
@@ -449,14 +444,14 @@ export function Gallery() {
           </button>
           <button
             onClick={() => setActiveFilterId(ALL_FILTER_ID)}
-            className={`px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+            className={`px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
               effectiveFilterId === ALL_FILTER_ID
                 ? isDark
-                  ? 'bg-accent-500/15 text-accent-400 border border-accent-500/30'
-                  : 'bg-accent-300 text-accent-700 border border-accent-400'
+                  ? 'bg-accent-500/15 text-accent-400 ring-1 ring-inset ring-accent-500/30'
+                  : 'bg-accent-500 text-white'
                 : isDark
-                  ? 'hover:bg-slate-800 border border-transparent'
-                  : 'hover:bg-slate-100 border border-transparent'
+                  ? 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-100'
+                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
             }`}
           >
             All
@@ -465,14 +460,14 @@ export function Gallery() {
             <button
               key={chip.id}
               onClick={() => setActiveFilterId(chip.id)}
-              className={`px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+              className={`px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                 effectiveFilterId === chip.id
                   ? isDark
-                    ? 'bg-accent-500/15 text-accent-400 border border-accent-500/30'
-                    : 'bg-accent-300 text-accent-700 border border-accent-400'
+                    ? 'bg-accent-500/15 text-accent-400 ring-1 ring-inset ring-accent-500/30'
+                    : 'bg-accent-500 text-white'
                   : isDark
-                    ? 'hover:bg-slate-800 border border-transparent'
-                    : 'hover:bg-slate-100 border border-transparent'
+                    ? 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-100'
+                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
                 }`}
             >
               {chip.label}
@@ -480,52 +475,95 @@ export function Gallery() {
           ))}
         </div>
         {/* Telescope facet — only when more than one telescope is configured.
-            A sibling flex item, not part of the chip row above, so it stays
-            anchored in its own corner regardless of how many rows the chips
-            wrap to. */}
-        {showTelescopeUI && (
-          <div className={`flex items-center gap-1.5 shrink-0 pl-2 border-l ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-            <button
-              onClick={() => setTelescopeFilter(ALL_TELESCOPES_FILTER)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all border ${
-                telescopeFilter === ALL_TELESCOPES_FILTER
-                  ? isDark
-                    ? 'bg-accent-500/15 text-accent-400 border-accent-500/30'
-                    : 'bg-accent-300 text-accent-700 border-accent-400'
-                  : isDark
-                    ? 'hover:bg-slate-800 border-transparent'
-                    : 'hover:bg-slate-100 border-transparent'
-              }`}
-            >
-              All scopes
-            </button>
-            {telescopes.map(t => {
-              const selected = telescopeFilter === t.id;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setTelescopeFilter(t.id)}
-                  title={t.name}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all border ${
-                    selected
-                      ? isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-100 border-slate-300 text-slate-900'
-                      : isDark
-                        ? 'hover:bg-slate-800 border-transparent'
-                        : 'hover:bg-slate-100 border-transparent'
-                  }`}
-                >
+            A single dropdown trigger rather than one chip per scope, so
+            adding telescopes doesn't keep growing this row; a sibling flex
+            item (not part of the chip row above) so it stays anchored in its
+            own corner regardless of how many rows the chips wrap to. */}
+        {showTelescopeUI && (() => {
+          const selectedTelescope = effectiveTelescopeFilter === ALL_TELESCOPES_FILTER
+            ? null
+            : telescopes.find(t => t.id === effectiveTelescopeFilter) ?? null;
+          return (
+            <div ref={telescopeMenuRef} className="relative shrink-0">
+              <button
+                onClick={() => setTelescopeMenuOpen(o => !o)}
+                aria-haspopup="menu"
+                aria-expanded={telescopeMenuOpen}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap ring-1 ring-inset transition-colors ${
+                  selectedTelescope
+                    ? isDark
+                      ? 'bg-accent-500/15 text-accent-400 ring-accent-500/30'
+                      : 'bg-accent-500 text-white ring-accent-500'
+                    : isDark
+                      ? 'bg-slate-900/70 ring-slate-700/60 text-slate-300 hover:bg-slate-800'
+                      : 'bg-white ring-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {selectedTelescope ? (
                   <span
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: t.color }}
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: selectedTelescope.color }}
                     aria-hidden="true"
                   />
-                  <span className="truncate max-w-[8rem]">{t.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
+                ) : (
+                  <Telescope className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span className="truncate max-w-[9rem]">
+                  {selectedTelescope ? selectedTelescope.name : 'All scopes'}
+                </span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 shrink-0 transition-transform ${telescopeMenuOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+              {telescopeMenuOpen && (
+                <div className={`absolute right-0 top-full mt-1.5 z-20 w-56 rounded-2xl border shadow-lg overflow-hidden ${
+                  isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+                }`}>
+                  <button
+                    onClick={() => { setTelescopeFilter(ALL_TELESCOPES_FILTER); setTelescopeMenuOpen(false); }}
+                    className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm text-left transition-colors ${
+                      effectiveTelescopeFilter === ALL_TELESCOPES_FILTER
+                        ? isDark ? 'bg-slate-800 text-white' : 'bg-slate-50 text-slate-900'
+                        : isDark ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Telescope className="w-3.5 h-3.5 shrink-0" />
+                      All scopes
+                    </span>
+                    {effectiveTelescopeFilter === ALL_TELESCOPES_FILTER && <Check className="w-3.5 h-3.5 shrink-0" />}
+                  </button>
+                  {telescopes.map(t => {
+                    const selected = effectiveTelescopeFilter === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => { setTelescopeFilter(t.id); setTelescopeMenuOpen(false); }}
+                        className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm text-left transition-colors ${
+                          selected
+                            ? isDark ? 'bg-slate-800 text-white' : 'bg-slate-50 text-slate-900'
+                            : isDark ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{ backgroundColor: t.color }}
+                            aria-hidden="true"
+                          />
+                          <span className="truncate">{t.name}</span>
+                        </span>
+                        {selected && <Check className="w-3.5 h-3.5 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
+      </TourAnchor>
 
       {/* Content */}
       {isLoading ? (
@@ -537,7 +575,7 @@ export function Gallery() {
                 isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
               }`}
             >
-              <div className={`h-48 img-placeholder ${isDark ? '' : 'bg-gradient-to-br from-slate-100 to-slate-200'}`} />
+              <div className="h-48 img-placeholder" />
               <div className="p-5 space-y-3">
                 <div className={`h-5 rounded w-3/4 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`} />
                 <div className={`h-4 rounded w-1/2 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`} />
@@ -566,17 +604,17 @@ export function Gallery() {
             <div ref={sortRef} className="relative">
               <button
                 onClick={() => setSortOpen(o => !o)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all border ${
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium ring-1 ring-inset transition-colors ${
                   isDark
-                    ? 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
-                    : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                    ? 'bg-slate-900/70 ring-slate-700/60 text-slate-300 hover:bg-slate-800'
+                    : 'bg-white ring-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <ArrowUpDown className="w-3.5 h-3.5" />
                 {SORT_OPTIONS.find(o => o.value === sortKey)?.label}
               </button>
               {sortOpen && (
-                <div className={`absolute right-0 top-full mt-1.5 z-20 w-52 rounded-xl border shadow-lg overflow-hidden ${
+                <div className={`absolute right-0 top-full mt-1.5 z-20 w-52 rounded-2xl border shadow-lg overflow-hidden ${
                   isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
                 }`}>
                   {SORT_OPTIONS.map(opt => (

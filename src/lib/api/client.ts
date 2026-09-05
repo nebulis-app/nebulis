@@ -25,12 +25,12 @@ function isEnvelope(v: unknown): v is ApiEnvelope<unknown> {
   return typeof v === 'object' && v !== null && 'ok' in v && 'data' in v;
 }
 
-function errorMessage(v: unknown, fallback: string): string {
+export function errorMessage(v: unknown, fallback: string): string {
   if (typeof v !== 'object' || v === null || !('error' in v)) return fallback;
-  const error = (v as { error: unknown }).error;
+  const { error } = v;
   if (typeof error === 'string') return error;
   if (typeof error === 'object' && error !== null && 'message' in error) {
-    const message = (error as { message: unknown }).message;
+    const { message } = error;
     if (typeof message === 'string') return message;
   }
   return fallback;
@@ -46,12 +46,26 @@ export async function fetchJSON<T>(url: string, options?: RequestInit): Promise<
       clearAuthToken();
       window.dispatchEvent(new CustomEvent('nebulis:auth-cleared'));
     }
+    // A write the UI offered came back forbidden: our cached role is stale or
+    // was never confirmed. Let AuthContext re-check so the offending controls
+    // disappear instead of failing again on the next click.
+    if (res.status === 403) {
+      window.dispatchEvent(new CustomEvent('nebulis:forbidden'));
+    }
     const body: unknown = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(errorMessage(body, res.statusText));
   }
   const body: unknown = await res.json();
-  // Unwrap API envelope if present: { ok, data, meta }
-  return (isEnvelope(body) ? body.data : body) as T;
+  // Unwrap API envelope if present: { ok, data, meta }.
+  //
+  // Trust boundary — T is a caller-supplied description of a server response;
+  // nothing at runtime knows what T is, so no guard can be written here. The
+  // envelope itself IS proven (isEnvelope above); only the payload inside is
+  // taken on trust, and it comes from our own API whose response shapes are
+  // Zod-validated server-side. Callers that handle genuinely untrusted or
+  // optional data should narrow again at the call site.
+  const payload: unknown = isEnvelope(body) ? body.data : body;
+  return payload as T;
 }
 
 export async function fetchBinary(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {

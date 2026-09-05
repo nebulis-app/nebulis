@@ -1,19 +1,19 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { useSwipeDownToClose } from '../../hooks/useSwipeDownToClose';
 import { LightboxThumbStrip, type ThumbEntry } from './LightboxThumbStrip';
+import { LB_GROUP, LB_ICON_BTN, LB_TEXT_BTN, LB_ACTIVE, LB_CLOSE_BTN } from './chrome';
 import type { ZoomControls } from './zoomControls';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  isDark: boolean;
   /** Accessible dialog name. */
   dialogTitle: string;
 
   titleIcon?: ReactNode;
-  title: string;
+  title: ReactNode;
   subtitle?: ReactNode;
 
   index: number;
@@ -33,8 +33,44 @@ interface Props {
   swipeDisabled?: boolean;
   /** Transient message shown over the pane (share results, and similar). */
   status?: string | null;
+  /**
+   * Small already-loaded version of the current item, thrown far out of focus
+   * behind the whole panel. A frame of the Veil should not sit on a flat slab
+   * of grey, and a portrait stack leaves a lot of panel either side of itself.
+   * A thumbnail is the right source: it is in cache from the grid behind the
+   * viewer, and it is about to be blurred to nothing anyway.
+   */
+  ambientSrc?: string | null;
+  /**
+   * Width / height of the item being shown, once it is known.
+   *
+   * The panel is sized to the picture rather than to the screen. Every Seestar
+   * stack is portrait, and in a fixed 1400px panel that left the frame as a
+   * column down the middle with two thirds of the viewer as bare black either
+   * side of it, the title stranded in one far corner and the toolbar in the
+   * other. See the width calculation below for why this cannot feed back into
+   * the fit zoom.
+   */
+  contentAspect?: number | null;
 
   children: ReactNode;
+}
+
+/**
+ * How wide the panel is allowed to be for a picture of a given aspect ratio.
+ *
+ * `95dvh * aspect` is the width the frame would need if the stage were the full
+ * height of the panel. The stage is shorter than that (the header and the rail
+ * take their cut), so the pane always ends up wider than the fitted picture,
+ * which is what keeps this out of a feedback loop: the fit zoom for a portrait
+ * frame is decided by the pane's height, and narrowing the panel never touches
+ * it. A landscape frame is capped by the 88rem ceiling long before the width
+ * could bind. The 54rem floor is the point below which the header's own
+ * controls would start to crowd the title.
+ */
+function panelMaxWidth(aspect: number | null | undefined): string | undefined {
+  if (!aspect || !Number.isFinite(aspect) || aspect <= 0) return undefined;
+  return `min(88rem, max(54rem, calc(95dvh * ${aspect.toFixed(3)} + 8rem)))`;
 }
 
 /**
@@ -45,13 +81,18 @@ interface Props {
  * Both viewers previously reimplemented all of this separately and had drifted
  * apart, so a fix in one never reached the other. Content-specific behaviour
  * (FITS rendering, per-item actions) stays with the caller through slots.
+ *
+ * The surface is night-side in every theme (see `./chrome`), so nothing in here
+ * takes an `isDark`. The old viewer was a white card in light mode, which put a
+ * sheet of paper around an astrophoto and blew out the eye's adaptation the
+ * moment you opened a frame.
  */
 export function LightboxFrame({
-  isOpen, onClose, isDark, dialogTitle,
+  isOpen, onClose, dialogTitle,
   titleIcon, title, subtitle,
   index, count, onPrev, onNext, onSelectIndex,
   zoom, extraControls, actions,
-  thumbs, swipeDisabled, status, children,
+  thumbs, swipeDisabled, status, ambientSrc, contentAspect, children,
 }: Props) {
   const { handlers: swipe, dy, dragging } = useSwipeDownToClose(onClose, { disabled: swipeDisabled });
 
@@ -73,12 +114,19 @@ export function LightboxFrame({
   }
   const showHint = isOpen && count > 1 && !hintDismissed;
 
-  if (!isOpen) return null;
+  /**
+   * The last shape we were told about, kept until a new one arrives.
+   *
+   * A frame's dimensions are only known once it has decoded, so on every
+   * navigation the live value is null for a moment. Sizing off that directly
+   * made the panel snap out to full width and back on each step through a
+   * session, which is far more distracting than the mat it was there to
+   * remove. Frames from one session are all the same shape anyway.
+   */
+  const [stickyAspect, setStickyAspect] = useState(contentAspect ?? null);
+  if (contentAspect && contentAspect !== stickyAspect) setStickyAspect(contentAspect);
 
-  const iconBtn = `p-2 rounded-lg transition disabled:opacity-30 ${
-    isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'
-  }`;
-  const divider = `w-px h-5 mx-1 flex-shrink-0 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`;
+  if (!isOpen) return null;
 
   return (
     <Modal
@@ -86,75 +134,110 @@ export function LightboxFrame({
       onClose={onClose}
       title={dialogTitle}
       focusOnOpen="dialog"
-      backdropStyle={{ backgroundColor: `rgba(0,0,0,${0.9 * Math.max(0, 1 - dy / 400)})` }}
+      backdropStyle={{ backgroundColor: `rgba(0,0,0,${0.92 * Math.max(0, 1 - dy / 400)})` }}
       backdropClassName=" "
-      className={`w-full max-w-6xl h-[95dvh] max-h-full flex flex-col rounded-2xl touch-pan-y overscroll-contain ${
-        isDark ? 'bg-slate-900' : 'bg-white'
-      }`}
+      className="w-full max-w-[88rem] h-[95dvh] max-h-full flex flex-col rounded-3xl bg-slate-950
+        hero-panel overflow-hidden touch-pan-y overscroll-contain
+        transition-[max-width] duration-300 ease-out"
+      style={{ maxWidth: panelMaxWidth(stickyAspect) }}
     >
       <div
         {...swipe}
-        className="flex flex-col h-full min-h-0"
+        className="relative flex h-full min-h-0 flex-col"
         style={{
           transform: dy ? `translateY(${dy}px)` : undefined,
           transition: dragging ? 'none' : 'transform 200ms ease-out',
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
+        {/* Ambient. Scaled well past the panel so the blur's own soft edge is
+            cropped away rather than feathering to transparent inside it, the
+            same treatment SessionHero gives its frame. */}
+        {ambientSrc && (
+          <img
+            key={ambientSrc}
+            src={ambientSrc}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 h-full w-full scale-[1.6] object-cover
+              blur-[80px] saturate-150 opacity-40 transition-opacity duration-500"
+          />
+        )}
+        <div className="pointer-events-none absolute inset-0 bg-slate-950/70" />
+        <div
+          className="pointer-events-none absolute inset-0 rounded-3xl"
+          style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10)' }}
+        />
+
         {/* Header. Stacks on narrow screens: the toolbar carries up to a dozen
-            controls and cannot share a single row with the title on a phone. */}
-        <div className={`flex-shrink-0 flex flex-col gap-2 p-3 sm:p-4 sm:flex-row sm:items-center sm:justify-between border-b ${
-          isDark ? 'border-slate-800' : 'border-slate-200'
-        }`}>
-          <div className="flex items-center gap-3 min-w-0 sm:mr-3">
-            {titleIcon}
+            controls and cannot share a single row with the title on a phone.
+            No rule underneath it, unlike the old card: the scrim behind the
+            text is what separates it from the picture, so the panel reads as
+            one dark surface rather than three boxes stacked up. */}
+        <div className="relative z-10 flex flex-shrink-0 flex-col gap-2.5 bg-gradient-to-b from-black/50 to-transparent
+          px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            {titleIcon && (
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl
+                bg-white/[0.06] ring-1 ring-inset ring-white/10">
+                {titleIcon}
+              </div>
+            )}
             <div className="min-w-0">
-              <span className={`font-medium text-sm truncate block ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+              <span
+                className="font-display block truncate text-[15px] font-semibold tracking-tight text-white"
+                title={typeof title === 'string' ? title : undefined}
+              >
                 {title}
               </span>
               {subtitle && (
-                <span className={`text-xs truncate block ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                // The detail line ends in the filename, which is the first
+                // thing to be truncated once the panel sizes itself to the
+                // picture. Hovering gives it back rather than losing it.
+                <span
+                  className="mt-0.5 block truncate text-[11.5px] text-white/45"
+                  title={typeof subtitle === 'string' ? subtitle : undefined}
+                >
                   {subtitle}
                 </span>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-1 flex-shrink-0 overflow-x-auto -mx-1 px-1 sm:overflow-visible sm:mx-0 sm:px-0">
+          {/* Close sits outside the scrolling group row. On a phone the tools
+              overflow and scroll sideways, and the one control that gets you
+              out of the viewer must never be the one that scrolled away. */}
+          <div className="flex items-center gap-2">
+          <div className="-mx-1 flex min-w-0 items-center gap-2 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0">
+            {/* Position only. Moving between frames happens on the picture's own
+                edges (see below), where the pointer already is, so the header no
+                longer carries a second pair of chevrons. */}
             {count > 1 && (
-              <>
-                <button type="button" onClick={onPrev} disabled={index <= 0} aria-label="Previous image" className={iconBtn}>
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <span className={`text-sm font-medium tabular-nums px-1 whitespace-nowrap ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                  {index + 1} / {count}
-                </span>
-                <button type="button" onClick={onNext} disabled={index >= count - 1} aria-label="Next image" className={iconBtn}>
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-                <div className={divider} />
-              </>
+              <span className="inline-flex h-9 flex-shrink-0 items-center gap-1 rounded-full bg-white/[0.06] px-3
+                text-[12px] font-medium tabular-nums text-white/70 ring-1 ring-inset ring-white/10 backdrop-blur-md">
+                {index + 1}
+                <span className="text-white/25">/</span>
+                {count}
+              </span>
             )}
 
             {zoom && (
-              <>
-                <button type="button" onClick={zoom.zoomOut} disabled={!zoom.canZoomOut} title="Zoom out (−)" aria-label="Zoom out" className={iconBtn}>
-                  <ZoomOut className="w-4 h-4" />
+              <div className={LB_GROUP}>
+                <button type="button" onClick={zoom.zoomOut} disabled={!zoom.canZoomOut}
+                  title="Zoom out (−)" aria-label="Zoom out" className={LB_ICON_BTN}>
+                  <ZoomOut className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
                   onClick={zoom.setFit}
                   title="Fit to window (F)"
-                  className={`px-2 py-1 rounded text-xs font-medium tabular-nums min-w-[3.25rem] text-center transition ${
-                    zoom.isFit
-                      ? isDark ? 'text-accent-400 bg-accent-500/10' : 'text-accent-700 bg-accent-300'
-                      : isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
-                  }`}
+                  className={`${LB_TEXT_BTN} min-w-[3.25rem] tabular-nums ${zoom.isFit ? LB_ACTIVE : ''}`}
                 >
                   {zoom.isFit ? 'Fit' : `${zoom.zoomPercent}%`}
                 </button>
-                <button type="button" onClick={zoom.zoomIn} disabled={!zoom.canZoomIn} title="Zoom in (+)" aria-label="Zoom in" className={iconBtn}>
-                  <ZoomIn className="w-4 h-4" />
+                <button type="button" onClick={zoom.zoomIn} disabled={!zoom.canZoomIn}
+                  title="Zoom in (+)" aria-label="Zoom in" className={LB_ICON_BTN}>
+                  <ZoomIn className="h-4 w-4" />
                 </button>
                 {/* True 1:1. The single most useful zoom for judging star shape
                     and noise, and previously unreachable. */}
@@ -163,47 +246,57 @@ export function LightboxFrame({
                   onClick={zoom.setActualSize}
                   title="Actual size, 1 image pixel per screen pixel (1)"
                   aria-label="Actual size"
-                  className={`px-2 py-1 rounded text-xs font-medium transition ${
-                    !zoom.isFit && zoom.zoomPercent === 100
-                      ? isDark ? 'text-accent-400 bg-accent-500/10' : 'text-accent-700 bg-accent-300'
-                      : isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
-                  }`}
+                  className={`${LB_TEXT_BTN} ${!zoom.isFit && zoom.zoomPercent === 100 ? LB_ACTIVE : ''}`}
                 >
                   1:1
                 </button>
-                <div className={divider} />
-              </>
+              </div>
             )}
 
-            {extraControls}
-            {actions}
+            {extraControls && <div className={LB_GROUP}>{extraControls}</div>}
+            {actions && <div className={LB_GROUP}>{actions}</div>}
+          </div>
 
-            <button type="button" onClick={onClose} aria-label="Close viewer"
-              className={`p-2 rounded-lg transition ${isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`}>
-              <X className="w-5 h-5" />
-            </button>
+          <button type="button" onClick={onClose} aria-label="Close viewer" className={LB_CLOSE_BTN}>
+            <X className="h-4.5 w-4.5" />
+          </button>
           </div>
         </div>
 
         {/* Content pane. The inner element is the one measured by the zoom
             engine, so its box is exactly the visible area with no padding to
             account for. */}
-        <div className="relative flex-1 min-h-0">
+        <div className="relative z-10 min-h-0 flex-1">
           {children}
 
+          {count > 1 && (
+            <>
+              <EdgeNav side="left" onClick={onPrev} disabled={index <= 0} />
+              <EdgeNav side="right" onClick={onNext} disabled={index >= count - 1} />
+            </>
+          )}
+
           {status && (
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none" role="status">
-              <span className="px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-sm text-white text-xs">
+            <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2" role="status">
+              <span className="rounded-full bg-black/75 px-3.5 py-1.5 text-xs text-white/90
+                ring-1 ring-inset ring-white/15 backdrop-blur-md">
                 {status}
               </span>
             </div>
           )}
 
           {showHint && !status && (
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none">
-              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm text-white/80 text-xs">
-                <Maximize2 className="w-3 h-3" />
-                Arrow keys to navigate, F to fit, 1 for actual size
+            // Keyboard-only advice, so it is not shown at phone widths: there
+            // is no keyboard to nudge anyone towards, and wrapped onto three
+            // lines it covered the bottom of the frame.
+            <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 hidden -translate-x-1/2 sm:block">
+              <span className="flex items-center gap-2 whitespace-nowrap rounded-full bg-black/55 px-3 py-1.5 text-[11px]
+                text-white/70 ring-1 ring-inset ring-white/10 backdrop-blur-md">
+                <Key>←</Key><Key>→</Key> to browse
+                <span className="text-white/20">·</span>
+                <Key>F</Key> fit
+                <span className="text-white/20">·</span>
+                <Key>1</Key> actual size
               </span>
             </div>
           )}
@@ -214,11 +307,51 @@ export function LightboxFrame({
             entries={thumbs}
             index={index}
             onSelect={onSelectIndex}
-            isDark={isDark}
           />
         )}
       </div>
     </Modal>
+  );
+}
+
+/** One key in the first-run hint. */
+function Key({ children }: { children: ReactNode }) {
+  return (
+    <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-sans text-[10px] font-medium text-white/85">
+      {children}
+    </kbd>
+  );
+}
+
+/**
+ * Navigation on the picture's own edge.
+ *
+ * The chevrons used to sit in the header beside the counter, which put the
+ * two most-used controls in the viewer as far from the picture as the layout
+ * allowed. Here they land where the pointer already is, and they disappear
+ * rather than grey out at the ends of the list, so the frame is never framed
+ * by two dead buttons.
+ */
+function EdgeNav({ side, onClick, disabled }: {
+  side: 'left' | 'right';
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  const Icon = side === 'left' ? ChevronLeft : ChevronRight;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={side === 'left' ? 'Previous image' : 'Next image'}
+      className={`absolute top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full
+        bg-black/40 text-white/70 opacity-70 ring-1 ring-inset ring-white/15 backdrop-blur-md outline-none
+        transition hover:bg-black/70 hover:text-white hover:opacity-100 focus-visible:opacity-100
+        focus-visible:ring-2 focus-visible:ring-white/60 disabled:pointer-events-none disabled:opacity-0
+        sm:h-11 sm:w-11 ${side === 'left' ? 'left-1.5 sm:left-3' : 'right-1.5 sm:right-3'}`}
+    >
+      <Icon className="h-5 w-5" />
+    </button>
   );
 }
 
@@ -238,7 +371,7 @@ export function LightboxPane({
       ref={zpRef}
       {...handlers}
       data-lightbox-pane=""
-      className="absolute inset-2 sm:inset-4 flex items-center justify-center overflow-hidden touch-none"
+      className="absolute inset-2 flex touch-none items-center justify-center overflow-hidden sm:inset-4"
       style={{ cursor: canPan ? (isPanning ? 'grabbing' : 'grab') : undefined }}
     >
       {children}

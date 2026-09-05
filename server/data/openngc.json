@@ -2764,7 +2764,7 @@
     "dec": -19.76222222222222,
     "magnitude": null,
     "majorAxisArcmin": 15,
-    "commonNames": []
+    "commonNames": ["Twiddlebug Nebula"]
   },
   {
     "id": "IC1284",
@@ -20416,7 +20416,7 @@
     "dec": 50.461666666666666,
     "magnitude": 11.8,
     "majorAxisArcmin": 3,
-    "commonNames": []
+    "commonNames": ["Tribble Nebulae"]
   },
   {
     "id": "NGC1625",
@@ -22766,7 +22766,7 @@
     "dec": -4.731777777777778,
     "magnitude": 7,
     "majorAxisArcmin": 5,
-    "commonNames": []
+    "commonNames": ["Running Man Nebula"]
   },
   {
     "id": "NGC1974",
@@ -50216,7 +50216,9 @@
     "magnitude": 10.37,
     "majorAxisArcmin": 11.3,
     "commonNames": [
-      "NGC5906"
+      "NGC5906",
+      "Splinter Galaxy",
+      "Knife Edge Galaxy"
     ]
   },
   {
@@ -60155,7 +60157,7 @@
   {
     "id": "NGC7479",
     "ngcName": "NGC7479",
-    "name": "NGC7479",
+    "name": "Superman Galaxy",
     "type": "Galaxy",
     "typeCode": "G",
     "constellation": "Pegasus",
@@ -60165,7 +60167,8 @@
     "magnitude": 11.09,
     "majorAxisArcmin": 3.65,
     "commonNames": [
-      "Superman Galaxy"
+      "Superman Galaxy",
+      "Propeller Galaxy"
     ]
   },
   {

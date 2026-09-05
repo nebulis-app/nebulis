@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
+import { Info } from 'lucide-react';
+import { useClickOutside } from '../../hooks/useClickOutside';
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /* Existing primitives — kept identical in shape so other sections still work. */
@@ -100,7 +102,13 @@ export function Sec({
 }
 
 /** A single setting row inside a `<Sec>`. Label + helper on the left, control on the right.
- *  Rows stack with a thin divider between them. Last row in a Sec doesn't get a divider. */
+ *  Rows stack with a thin divider between them. Last row in a Sec doesn't get a divider.
+ *
+ *  `description`, when given, no longer prints inline — a whole page of rows each
+ *  carrying a full sentence underneath is what made these lists read as a "wall".
+ *  Instead it sits behind a small (i) next to the label: hover to preview, click to
+ *  pin it open (so it still works on touch, and a click will win over the row's own
+ *  height not growing/shifting other rows on hover). */
 export function Row({
   label,
   description,
@@ -114,23 +122,67 @@ export function Row({
 }) {
   return (
     <div
-      className={`grid grid-cols-1 md:grid-cols-[minmax(220px,1fr)_minmax(0,1.4fr)] gap-4 md:gap-8 px-5 py-5 border-b last:border-b-0 ${
+      // The control column used to be WIDER than the text column (1.4fr vs
+      // 1fr) even though a Toggle is 42px and right-aligned into empty space,
+      // while the label+description column — genuinely prose — was starving
+      // for room and wrapping to 2-3 lines regardless of how tightly the
+      // description text itself was written. Flipped so text gets the space
+      // controls don't need.
+      className={`grid grid-cols-1 md:grid-cols-[minmax(220px,2fr)_minmax(0,1fr)] gap-4 md:gap-8 px-5 py-3.5 border-b last:border-b-0 ${
         isDark ? 'border-slate-800/70' : 'border-slate-100'
       }`}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 flex items-center gap-1.5">
         <div className={`text-[13px] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
           {label}
         </div>
-        {description && (
-          <p className={`text-[12px] mt-1 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-            {description}
-          </p>
-        )}
+        {description && <InfoTooltip text={description} isDark={isDark} />}
       </div>
       <div className="min-w-0 flex items-center justify-start md:justify-end">
         {children}
       </div>
+    </div>
+  );
+}
+
+/** The (i) affordance `Row` uses for its description. Hover previews it;
+ *  click pins it open (closes on click-outside or Escape) so it works the
+ *  same on touch as it does with a mouse. */
+function InfoTooltip({ text, isDark }: { text: string; isDark: boolean }) {
+  const [hovering, setHovering] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, () => setPinned(false), { enabled: pinned, closeOnEscape: true });
+
+  const open = hovering || pinned;
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        aria-label={`More info: ${text}`}
+        aria-expanded={open}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        onFocus={() => setHovering(true)}
+        onBlur={() => setHovering(false)}
+        onClick={() => setPinned(p => !p)}
+        className={`flex items-center justify-center w-4 h-4 rounded-full transition-colors ${
+          isDark ? 'text-slate-600 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'
+        }`}
+      >
+        <Info className="w-3.5 h-3.5" />
+      </button>
+      {open && (
+        <div
+          role="tooltip"
+          className={`absolute left-0 top-full mt-1.5 z-20 w-64 rounded-lg border px-3 py-2 text-[12px] leading-relaxed shadow-lg ${
+            isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-600'
+          }`}
+        >
+          {text}
+        </div>
+      )}
     </div>
   );
 }

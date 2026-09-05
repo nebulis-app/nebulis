@@ -73,6 +73,8 @@ export interface Settings {
   nightlyCatalogPackCheckEnabled: boolean;
   nightlyHousekeepingEnabled: boolean;
   nightlyForecastPrefetchEnabled: boolean;
+  /** Master switch for the whole nightly maintenance batch. */
+  nightlyMaintenanceEnabled: boolean;
   nightlyHousekeepingLastRun: number | null;
   nightlyForecastLastRun: number | null;
 }
@@ -157,6 +159,8 @@ export interface Session {
   fitsCount: number;
   subFrameCount: number;
   imageCount: number;
+  /** Video captures (mp4/mov/avi). Absent on responses from an older server. */
+  videoCount?: number;
   processedCount: number;
   thumbnailUrl: string;
   filesUrl: string;
@@ -199,13 +203,19 @@ export interface SessionFile {
   thumbUrl?: string;
   /** Larger (1024px) server-rendered JPEG for full-screen preview (FITS only). */
   previewUrl?: string;
+  /** Inline, byte-range stream URL for a `<video>` tag. Present only for
+   *  `type === 'video'`. MP4/MOV play in a browser; AVI does not, so callers
+   *  fall back to `downloadUrl` when the name ends in `.avi`. */
+  videoUrl?: string;
   subIndex?: number | null;
 }
 
 export interface ProcessedImage {
   id: string;
   objectId: string;
-  date: string;
+  /** Null for an image not tied to any single observing night (currently
+   *  only Dwarf RESTACKED auto-imports — see `source`). */
+  date: string | null;
   filename: string;
   originalName: string;
   title: string;
@@ -216,8 +226,15 @@ export interface ProcessedImage {
   url: string;
   /** Relative library path (folderName/processed/filename) — safe to pass to /library/file. */
   path: string;
+  /** Server-rendered thumbnail for a FITS processed image; null for anything
+   *  else (renderable formats need no separate thumbnail, and other
+   *  stored-only formats like XISF have no renderer). */
+  thumbUrl: string | null;
   runId: string | null;
   /** Session dates the run covers, when this image combines more than one
    *  night. Null for ordinary single-session images. */
   runDates: string[] | null;
+  /** 'dwarf-restack' for an auto-imported Dwarf RESTACKED file; 'user' for
+   *  everything else. */
+  source: 'user' | 'dwarf-restack';
 }

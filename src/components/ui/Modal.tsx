@@ -32,6 +32,10 @@ interface ModalProps {
   focusOnOpen?: 'first' | 'dialog';
   /** Extra classes for the backdrop element. */
   backdropClassName?: string;
+  /** Inline style for the dialog panel. The lightbox uses it to size itself to
+   *  the picture it is showing, which is a computed width Tailwind cannot
+   *  generate a class for. */
+  style?: React.CSSProperties;
 }
 
 /**
@@ -51,6 +55,7 @@ export function Modal({
   className,
   backdropStyle,
   backdropClassName,
+  style,
   focusOnOpen = 'first',
 }: ModalProps) {
   const labelId = useId();
@@ -78,13 +83,20 @@ export function Modal({
     };
   }, [isOpen, focusOnOpen]);
 
-  // Body scroll lock.
+  // Body scroll lock. Lock both <body> and <html>: which element owns the
+  // viewport scrollbar varies, and a tall modal with its own scroll area
+  // otherwise chains wheel/touch scrolling through to whichever one is left
+  // unlocked.
   useEffect(() => {
     if (!isOpen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const { body, documentElement: html } = document;
+    const previousBody = body.style.overflow;
+    const previousHtml = html.style.overflow;
+    body.style.overflow = 'hidden';
+    html.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = previous;
+      body.style.overflow = previousBody;
+      html.style.overflow = previousHtml;
     };
   }, [isOpen]);
 
@@ -102,7 +114,7 @@ export function Modal({
     // If the focused element belongs to a nested dialog (e.g. ConfirmModal
     // opened from inside another modal), let that inner modal handle its own
     // Tab logic — don't yank focus back into this outer dialog.
-    const active = document.activeElement as HTMLElement | null;
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (active && active !== dialog && !dialog.contains(active)) return;
 
     const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE))
@@ -151,6 +163,7 @@ export function Modal({
         aria-labelledby={labelId}
         tabIndex={-1}
         className={`relative z-10 outline-none ${className ?? ''}`}
+        style={style}
       >
         <h2 id={labelId} className="sr-only">{title}</h2>
         {children}

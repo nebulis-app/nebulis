@@ -71,4 +71,46 @@ describe('timezone helpers', () => {
     expect(night.nauticalDawn).toBeNull();
     expect(resolvePlannerDarkWindow(night)).toBeNull();
   });
+
+  // CODE_AUDIT.md Finding 24: zonedDateTimeToUtc's fixed-point iteration
+  // seeds the wall-clock parts as if they were UTC, then corrects by
+  // whatever the offset error is. For a wall time inside a DST
+  // spring-forward gap (no UTC instant maps to it), the offset error never
+  // resolves to zero — the loop bounced between the pre- and post-transition
+  // guesses and returned whichever one it happened to land on after 4
+  // iterations, which for '2026-03-08T02:30' local New York time was
+  // 2026-03-08T06:30:00.000Z: 01:30 EST, a full hour off from what was asked
+  // for and not even inside the requested gap.
+  describe('DST spring-forward gap', () => {
+    it('clamps a target inside the gap to the exact instant the clock springs forward', () => {
+      // America/New_York: 2026-03-08, 02:00 -> 03:00 local, at 07:00:00.000Z.
+      const expected = '2026-03-08T07:00:00.000Z';
+      expect(zonedDateTimeToUtc('2026-03-08', { hour: 2, minute: 0, second: 0 }, 'America/New_York').toISOString()).toBe(expected);
+      expect(zonedDateTimeToUtc('2026-03-08', { hour: 2, minute: 30, second: 0 }, 'America/New_York').toISOString()).toBe(expected);
+      expect(zonedDateTimeToUtc('2026-03-08', { hour: 2, minute: 59, second: 59 }, 'America/New_York').toISOString()).toBe(expected);
+    });
+
+    it('leaves times just outside the gap on either side untouched', () => {
+      expect(zonedDateTimeToUtc('2026-03-08', { hour: 1, minute: 59, second: 59 }, 'America/New_York').toISOString())
+        .toBe('2026-03-08T06:59:59.000Z');
+      expect(zonedDateTimeToUtc('2026-03-08', { hour: 3, minute: 0, second: 0 }, 'America/New_York').toISOString())
+        .toBe('2026-03-08T07:00:00.000Z');
+    });
+
+    it('resolves a gap in a different timezone with a different transition rule (Europe/Berlin)', () => {
+      // Europe/Berlin: 2026-03-29, 02:00 -> 03:00 CET/CEST local, at 01:00:00.000Z.
+      expect(zonedDateTimeToUtc('2026-03-29', { hour: 2, minute: 30 }, 'Europe/Berlin').toISOString())
+        .toBe('2026-03-29T01:00:00.000Z');
+    });
+  });
+
+  // The fall-back (ambiguous) side isn't broken the same way — some instant's
+  // wall clock genuinely equals the target, so the iteration always
+  // converges — but which of the two matching instants it lands on was
+  // previously undocumented. Pinned here so it stays deterministic.
+  it('resolves an ambiguous (fall-back) local time to the earlier, still-DST occurrence', () => {
+    // America/New_York: 2026-11-01, 01:00 occurs twice (EDT then EST).
+    expect(zonedDateTimeToUtc('2026-11-01', { hour: 1, minute: 30 }, 'America/New_York').toISOString())
+      .toBe('2026-11-01T05:30:00.000Z'); // 01:30 EDT (-4), the earlier occurrence
+  });
 });

@@ -48,7 +48,7 @@ describe('skip tally', () => {
     countSkip(tally, 'not-a-real-file', 40);
     countSkip(tally, 'jpg-disabled', 2);
     expect(summarizeSkips(tally)).toEqual([
-      { reason: 'jpg-disabled', label: expect.any(String), count: 2, bytes: expect.any(Number) },
+      { reason: 'jpg-disabled', label: expect.any(String), count: 2, bytes: expect.any(Number), samples: expect.any(Array) },
     ]);
   });
 

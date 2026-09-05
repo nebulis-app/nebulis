@@ -59,6 +59,21 @@ export const SKIP_LABELS: Record<ImportSkipReason, string> = {
   'unsupported-type': 'files of a type Nebulis cannot import',
 };
 
+/**
+ * Narrow a string (a DB column, a value from an older build) to a known skip
+ * reason. Keyed off SKIP_LABELS so a new reason only has to be added in one
+ * place, and so `reason in SKIP_LABELS` proves the union membership instead of
+ * a matching `as ImportSkipReason` assertion elsewhere.
+ */
+export function isImportSkipReason(value: string): value is ImportSkipReason {
+  return Object.prototype.hasOwnProperty.call(SKIP_LABELS, value);
+}
+
+/** How many filenames a tally keeps per reason. The user only wants a handful to
+ *  scan, and the whole list is persisted into a history row, so the sample is
+ *  capped: past this the count keeps climbing but no more names are stored. */
+export const SKIP_SAMPLE_CAP = 200;
+
 /** One reason files were left out of an import, and how many. `label` is the
  *  wording to show the user; the whole thing reads as "<count> <label>". */
 export interface ImportSkipSummary {
@@ -70,27 +85,49 @@ export interface ImportSkipSummary {
    *  history rows written before this field existed have none. The UI shows a
    *  size only when this is above zero, so the two cases render the same. */
   bytes: number;
+  /** Up to SKIP_SAMPLE_CAP of the skipped filenames, so the UI can show which
+   *  files a reason covers. Empty on old history rows and for reasons whose
+   *  callers pass no names (deleted-session routes to the restore view instead).
+   *  `count > samples.length` means the list was truncated. */
+  samples: string[];
 }
 
 /** Running per-run tally. Every import path accumulates into one of these and
  *  hands it to `summarizeSkips` for display, so the wizard and the telescope
  *  import report the same reasons in the same words. */
-export type SkipTally = Map<ImportSkipReason, { count: number; bytes: number }>;
+export type SkipTally = Map<ImportSkipReason, { count: number; bytes: number; samples: string[] }>;
 
 /**
- * Add `n` files (and optionally their total size) to a tally.
+ * Add `n` files (and optionally their total size and names) to a tally.
  *
  * Hidden/system junk (.DS_Store, AppleDouble sidecars) is deliberately never
  * counted: the user does not think of it as their files, so reporting it would
  * only add noise to the one thing this summary exists to explain. Enforced here
  * rather than at each call site so no path can start reporting it by accident.
+ *
+ * `samples` are the filenames behind this batch, when the caller has them. Only
+ * the first SKIP_SAMPLE_CAP across the whole run are retained; the count is
+ * unaffected.
  */
-export function countSkip(tally: SkipTally, reason: ImportSkipReason, n = 1, bytes = 0): void {
+export function countSkip(
+  tally: SkipTally,
+  reason: ImportSkipReason,
+  n = 1,
+  bytes = 0,
+  samples?: readonly string[],
+): void {
   if (reason === 'not-a-real-file' || n <= 0) return;
-  const prev = tally.get(reason);
+  const prev = tally.get(reason) ?? { count: 0, bytes: 0, samples: [] };
+  if (samples && samples.length > 0 && prev.samples.length < SKIP_SAMPLE_CAP) {
+    for (const name of samples) {
+      if (prev.samples.length >= SKIP_SAMPLE_CAP) break;
+      prev.samples.push(name);
+    }
+  }
   tally.set(reason, {
-    count: (prev?.count ?? 0) + n,
-    bytes: (prev?.bytes ?? 0) + Math.max(0, bytes),
+    count: prev.count + n,
+    bytes: prev.bytes + Math.max(0, bytes),
+    samples: prev.samples,
   });
 }
 
@@ -98,7 +135,7 @@ export function countSkip(tally: SkipTally, reason: ImportSkipReason, n = 1, byt
 export function summarizeSkips(tally: SkipTally): ImportSkipSummary[] {
   return Array.from(tally.entries())
     .filter(([, v]) => v.count > 0)
-    .map(([reason, v]) => ({ reason, label: SKIP_LABELS[reason], count: v.count, bytes: v.bytes }))
+    .map(([reason, v]) => ({ reason, label: SKIP_LABELS[reason], count: v.count, bytes: v.bytes, samples: v.samples }))
     .sort((a, b) => b.count - a.count);
 }
 
@@ -121,6 +158,15 @@ export interface ClassifyOptions {
  *  filename that merely contains the phrase. */
 export function isDwarfMasterStack(filename: string): boolean {
   return /^img_stacked_all\.[a-z0-9]+$/i.test(filename);
+}
+
+/** Dwarf working images that are not photographs: `img_reference.png` is the
+ *  plate-solve alignment frame and `img_stacked_counter.png` is a per-pixel
+ *  stack-count map. Both are near-black on screen. Import already drops them
+ *  unless Archive mode is on (see classifyImportFile below); this predicate lets
+ *  the client-facing file lists hide them even when they were archived. */
+export function isDwarfInternalArtifact(filename: string): boolean {
+  return /^img_(reference|stacked_counter)\.[a-z0-9]+$/i.test(filename);
 }
 
 const KEEP: ImportDecision = { import: true };

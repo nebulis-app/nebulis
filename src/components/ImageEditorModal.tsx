@@ -1,11 +1,12 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   X, Type, Crop, SlidersHorizontal, MousePointer,
   AlignLeft, AlignCenter, AlignRight,
-  Check, RotateCcw, Save, Trash2, Loader2, Pencil,
+  Check, RotateCcw, RotateCw, Save, Trash2, Loader2, Pencil,
   FlipHorizontal2, FlipVertical2, BookmarkCheck, Plus,
 } from 'lucide-react';
-import { uploadProcessedImage, uploadLibraryFile } from '../lib/api/library';
+import { uploadProcessedImage, uploadLibraryFile, overwriteProcessedImage } from '../lib/api/library';
 import { getWatermarkPresets, saveWatermarkPresets, type WatermarkPreset } from '../lib/api/auth';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -38,7 +39,18 @@ interface Adjustments {
   saturation: number;
 }
 
+/** Clockwise rotation applied to the image, in degrees. */
+type Rotation = 0 | 90 | 180 | 270;
+
 type Tool = 'select' | 'text' | 'crop' | 'adjust';
+
+/**
+ * Identifies the exact file being edited so "Save" can overwrite it in place.
+ * When absent, only "Save as new version" is offered.
+ */
+export type OverwriteTarget =
+  | { kind: 'processed'; id: string }
+  | { kind: 'telescope'; path: string };
 
 interface Props {
   imageUrl: string;
@@ -48,6 +60,8 @@ interface Props {
   isDark: boolean;
   /** Where the saved result lands: 'telescope' → library folder, 'processed' → processed images. */
   sourceKind: 'telescope' | 'processed';
+  /** When set, enables a "Save" button that overwrites this file in place. */
+  overwriteTarget?: OverwriteTarget;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -67,6 +81,51 @@ const HANDLE_SIZE = 8; // px for crop handle squares
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
 function clamp(v: number, lo = 0, hi = 1) { return Math.max(lo, Math.min(hi, v)); }
+
+/**
+ * Map a normalized crop rect expressed in the ROTATED (on-screen) image space
+ * back to the original image's normalized space, so it can be used as a
+ * `drawImage` source rectangle. The crop tool always works in the space the
+ * user sees, which is the rotated one.
+ */
+function cropToSourceRect(crop: CropRect, rotation: Rotation): CropRect {
+  const { x1, y1, x2, y2 } = crop;
+  switch (rotation) {
+    case 90:  return { x1: y1,     y1: 1 - x2, x2: y2,     y2: 1 - x1 };
+    case 180: return { x1: 1 - x2, y1: 1 - y2, x2: 1 - x1, y2: 1 - y1 };
+    case 270: return { x1: 1 - y2, y1: x1,     x2: 1 - y1, y2: x2 };
+    default:  return { x1, y1, x2, y2 };
+  }
+}
+
+/**
+ * Set up `ctx` so a subsequent `drawImage` into a `destW`×`destH` rect lands
+ * on `canvasW`×`canvasH` rotated clockwise by `rotation` and optionally
+ * flipped. Returns the dest rect to draw into (swapped for 90°/270°). The
+ * caller is responsible for `ctx.save()` / `ctx.restore()`.
+ */
+function applyImageTransform(
+  ctx: CanvasRenderingContext2D,
+  canvasW: number,
+  canvasH: number,
+  rotation: Rotation,
+  flipH: boolean,
+  flipV: boolean,
+): { destW: number; destH: number } {
+  if (rotation === 90)  { ctx.translate(canvasW, 0);       ctx.rotate(Math.PI / 2); }
+  else if (rotation === 180) { ctx.translate(canvasW, canvasH); ctx.rotate(Math.PI); }
+  else if (rotation === 270) { ctx.translate(0, canvasH);       ctx.rotate(-Math.PI / 2); }
+
+  const rot90 = rotation === 90 || rotation === 270;
+  const destW = rot90 ? canvasH : canvasW;
+  const destH = rot90 ? canvasW : canvasH;
+
+  if (flipH || flipV) {
+    ctx.translate(flipH ? destW : 0, flipV ? destH : 0);
+    ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+  }
+  return { destW, destH };
+}
 
 function applyPixelAdjustments(
   data: Uint8ClampedArray,
@@ -112,7 +171,7 @@ function eventToCanvasPx(e: React.MouseEvent<HTMLCanvasElement>): { x: number; y
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, sourceKind, onClose, onSaved }: Props) {
+export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, sourceKind, overwriteTarget, onClose, onSaved }: Props) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef       = useRef<HTMLImageElement | null>(null);
@@ -153,6 +212,7 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
   const [adj, setAdj] = useState<Adjustments>({ brightness: 0, contrast: 0, saturation: 0 });
   const [flipH, setFlipH] = useState(false);
   const [flipV, setFlipV] = useState(false);
+  const [rotation, setRotation] = useState<Rotation>(0);
 
   // Text drag
   const isDragging   = useRef(false);
@@ -160,21 +220,40 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
   const dragOffset   = useRef({ dx: 0, dy: 0 });
 
   // Save
-  const [saving,    setSaving]    = useState(false);
-  const [saveTitle, setSaveTitle] = useState('');
+  const [savingMode, setSavingMode] = useState<'new' | 'overwrite' | null>(null);
+  const saving = savingMode !== null;
+  const defaultSaveTitle = `${imageName.replace(/\.[^.]+$/, '')} (edited)`;
+  const [saveTitle, setSaveTitle] = useState(defaultSaveTitle);
   const [saveError, setSaveError] = useState('');
+  // Reset the (user-editable) save title if the image being edited changes.
+  // Render-phase adjustment instead of an effect, so no extra render.
+  const [titleSeed, setTitleSeed] = useState(imageName);
+  if (imageName !== titleSeed) {
+    setTitleSeed(imageName);
+    setSaveTitle(defaultSaveTitle);
+  }
 
-  // Watermark presets
-  const [presets,        setPresets]        = useState<WatermarkPreset[]>([]);
-  const [presetsLoading, setPresetsLoading] = useState(false);
+  // Watermark presets. Local `presetsOverride` carries an optimistic edit
+  // (add/delete) until it either fails (revert) or succeeds (cleared, so the
+  // next render reads the freshly-invalidated query — no useEffect syncing
+  // query data into local state, and no unconfirmed write can outlive its
+  // mutation the way a cache-hack setQueryData could).
+  const queryClient = useQueryClient();
+  const {
+    data: serverPresets = [],
+    isLoading: presetsLoading,
+    isError: presetsQueryError,
+  } = useQuery({
+    queryKey: ['watermark-presets'],
+    queryFn: getWatermarkPresets,
+    staleTime: 5 * 60_000,
+  });
+  const [presetsOverride, setPresetsOverride] = useState<WatermarkPreset[] | null>(null);
+  const presets = presetsOverride ?? serverPresets;
   const [savePresetName, setSavePresetName] = useState('');
   const [showSavePreset, setShowSavePreset] = useState(false);
 
   // ── Init ─────────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    setSaveTitle(`${imageName.replace(/\.[^.]+$/, '')} (edited)`);
-  }, [imageName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,15 +264,6 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
     return () => { cancelled = true; img.onload = null; img.onerror = null; };
   }, [imageUrl]);
 
-  useEffect(() => {
-    let cancelled = false;
-    setPresetsLoading(true);
-    getWatermarkPresets()
-      .then(p => { if (!cancelled) setPresets(p); })
-      .catch(() => {/* ignore if endpoint not available */})
-      .finally(() => { if (!cancelled) setPresetsLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   // ── Canvas sizing ─────────────────────────────────────────────────────────
 
@@ -204,15 +274,26 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
     if (!canvas || !img || !container) return;
 
     const { clientWidth: cw, clientHeight: ch } = container;
-    const aspect = img.naturalWidth / img.naturalHeight;
+    // The canvas matches what the user will actually get: the image rotated,
+    // then cropped in that rotated view. Both steps feed the aspect ratio so
+    // the preview never stretches.
+    const rot90 = rotation === 90 || rotation === 270;
+    const baseW = rot90 ? img.naturalHeight : img.naturalWidth;
+    const baseH = rot90 ? img.naturalWidth : img.naturalHeight;
+    const cropW = appliedCrop ? (appliedCrop.x2 - appliedCrop.x1) : 1;
+    const cropH = appliedCrop ? (appliedCrop.y2 - appliedCrop.y1) : 1;
+    const aspect = (baseW * cropW) / (baseH * cropH);
     let w = cw, h = cw / aspect;
     if (h > ch) { h = ch; w = ch * aspect; }
-    const dpr = window.devicePixelRatio || 1;
+    // Cap DPR at 2: beyond that the per-pixel adjustment loop (getImageData →
+    // applyPixelAdjustments → putImageData, run on every slider tick) grows
+    // fast with no visible gain on the preview.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width  = Math.floor(w * dpr);
     canvas.height = Math.floor(h * dpr);
     canvas.style.width  = Math.floor(w) + 'px';
     canvas.style.height = Math.floor(h) + 'px';
-  }, []);
+  }, [rotation, appliedCrop]);
 
   // ── Drawing helpers ───────────────────────────────────────────────────────
 
@@ -340,19 +421,14 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
 
     // ── image ──
     ctx.save();
-    if (flipH || flipV) {
-      ctx.translate(flipH ? cw : 0, flipV ? ch : 0);
-      ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-    }
-    if (appliedCrop) {
-      const { x1, y1, x2, y2 } = appliedCrop;
-      ctx.drawImage(img,
-        x1 * img.naturalWidth,  y1 * img.naturalHeight,
-        (x2 - x1) * img.naturalWidth, (y2 - y1) * img.naturalHeight,
-        0, 0, cw, ch);
-    } else {
-      ctx.drawImage(img, 0, 0, cw, ch);
-    }
+    const { destW, destH } = applyImageTransform(ctx, cw, ch, rotation, flipH, flipV);
+    const src = appliedCrop
+      ? cropToSourceRect(appliedCrop, rotation)
+      : { x1: 0, y1: 0, x2: 1, y2: 1 };
+    ctx.drawImage(img,
+      src.x1 * img.naturalWidth, src.y1 * img.naturalHeight,
+      (src.x2 - src.x1) * img.naturalWidth, (src.y2 - src.y1) * img.naturalHeight,
+      0, 0, destW, destH);
     ctx.restore();
 
     // pixel-based adjustments (works in all browsers)
@@ -369,7 +445,23 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
     if (cropDraft && activeTool === 'crop') {
       drawCropOverlay(ctx, cropDraft, cw, ch);
     }
-  }, [imgLoaded, flipH, flipV, appliedCrop, adj, textLayers, selectedId, cropDraft, activeTool, drawTextLayer, drawCropOverlay]);
+  }, [imgLoaded, flipH, flipV, rotation, appliedCrop, adj, textLayers, selectedId, cropDraft, activeTool, drawTextLayer, drawCropOverlay]);
+
+  // Coalesce redraws into one animation frame. Slider onChange fires at pointer
+  // rate (60-120Hz) and each draw() runs a full-frame getImageData/pixel-loop/
+  // putImageData pass, so without this a retina drag queues dozens of redundant
+  // passes per visible frame.
+  const drawRafRef = useRef<number | null>(null);
+  const scheduleDraw = useCallback(() => {
+    if (drawRafRef.current != null) return;
+    drawRafRef.current = requestAnimationFrame(() => {
+      drawRafRef.current = null;
+      draw();
+    });
+  }, [draw]);
+  useEffect(() => () => {
+    if (drawRafRef.current != null) cancelAnimationFrame(drawRafRef.current);
+  }, []);
 
   // Size canvas then draw when image first loads
   useEffect(() => {
@@ -378,8 +470,8 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
     draw();
   }, [imgLoaded, sizeCanvas, draw]);
 
-  // Redraw on every state change
-  useEffect(() => { draw(); }, [draw]);
+  // Redraw on every state change (coalesced to one frame)
+  useEffect(() => { scheduleDraw(); }, [scheduleDraw]);
 
   // ── Crop hit-testing ──────────────────────────────────────────────────────
 
@@ -547,6 +639,12 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
         case 's':  y2 = clamp(c0.y2 + dy); break;
         case 'sw': x1 = clamp(c0.x1 + dx); y2 = clamp(c0.y2 + dy); break;
         case 'w':  x1 = clamp(c0.x1 + dx); break;
+        default: {
+          // A new CropHandle must define how it moves the rect; without this
+          // the drag would silently do nothing.
+          const _exhaustive: never = handle;
+          void _exhaustive;
+        }
       }
 
       setCropDraft({ x1, y1, x2, y2 });
@@ -608,6 +706,16 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
 
   const resetCrop = () => { setCropDraft(null); setAppliedCrop(null); };
 
+  // ── Rotate ────────────────────────────────────────────────────────────────
+
+  const rotateBy = (deltaDeg: 90 | -90) => {
+    setRotation(prev => ((((prev + deltaDeg) % 360) + 360) % 360) as Rotation);
+    // A crop rect is stored in the pre-rotation on-screen space; rotating would
+    // reinterpret it against the new axes. Drop it rather than smear the image.
+    setCropDraft(null);
+    setAppliedCrop(null);
+  };
+
   // ── Watermark helpers ─────────────────────────────────────────────────────
 
   const addWatermark = () => {
@@ -654,63 +762,71 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
       name, text: tText, fontSize: tSize, fontFamily: tFont,
       color: tColor, bold: tBold, italic: tItalic, opacity: tOpacity, align: tAlign, angle: tAngle,
     };
-    const previous = presets;
     const updated = [...presets, preset];
-    setPresets(updated);
+    setPresetsOverride(updated);
     setSavePresetName('');
     setShowSavePreset(false);
     try {
       await saveWatermarkPresets(updated);
+      // Await the refetch before dropping the override, otherwise `presets`
+      // falls back to the stale server list for the duration of the refetch
+      // and the just-saved preset visibly disappears then reappears.
+      await queryClient.invalidateQueries({ queryKey: ['watermark-presets'] });
+      setPresetsOverride(null);
     } catch {
       // Roll back the optimistic update — otherwise the sidebar shows a
       // preset that was never actually persisted, and it silently vanishes
       // next time the list reloads from the server.
-      setPresets(previous);
+      setPresetsOverride(null);
       setSaveError('Failed to save watermark preset. Try again.');
     }
   };
 
   const deletePreset = async (id: string) => {
-    const previous = presets;
     const updated = presets.filter(p => p.id !== id);
-    setPresets(updated);
+    setPresetsOverride(updated);
     try {
       await saveWatermarkPresets(updated);
+      await queryClient.invalidateQueries({ queryKey: ['watermark-presets'] });
+      setPresetsOverride(null);
     } catch {
-      setPresets(previous);
+      setPresetsOverride(null);
       setSaveError('Failed to delete watermark preset. Try again.');
     }
   };
 
   // ── Save ──────────────────────────────────────────────────────────────────
 
-  const handleSave = async () => {
+  const handleSave = async (mode: 'new' | 'overwrite') => {
     const img     = imgRef.current;
     const display = canvasRef.current;
     if (!img || !display) return;
+    if (mode === 'overwrite' && !overwriteTarget) return;
 
-    setSaving(true);
+    setSavingMode(mode);
     setSaveError('');
     try {
       const offscreen = document.createElement('canvas');
-      let sx = 0, sy = 0, sw = img.naturalWidth, sh = img.naturalHeight;
-      if (appliedCrop) {
-        sx = appliedCrop.x1 * img.naturalWidth;
-        sy = appliedCrop.y1 * img.naturalHeight;
-        sw = (appliedCrop.x2 - appliedCrop.x1) * img.naturalWidth;
-        sh = (appliedCrop.y2 - appliedCrop.y1) * img.naturalHeight;
-      }
-      offscreen.width  = Math.round(sw);
-      offscreen.height = Math.round(sh);
+      const src = appliedCrop
+        ? cropToSourceRect(appliedCrop, rotation)
+        : { x1: 0, y1: 0, x2: 1, y2: 1 };
+      const sx = src.x1 * img.naturalWidth;
+      const sy = src.y1 * img.naturalHeight;
+      const sw = (src.x2 - src.x1) * img.naturalWidth;
+      const sh = (src.y2 - src.y1) * img.naturalHeight;
+
+      // Output dimensions follow the rotated source rect.
+      const rot90 = rotation === 90 || rotation === 270;
+      offscreen.width  = Math.round(rot90 ? sh : sw);
+      offscreen.height = Math.round(rot90 ? sw : sh);
       const ctx = offscreen.getContext('2d')!;
 
       // Image
       ctx.save();
-      if (flipH || flipV) {
-        ctx.translate(flipH ? offscreen.width : 0, flipV ? offscreen.height : 0);
-        ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-      }
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, offscreen.width, offscreen.height);
+      const { destW, destH } = applyImageTransform(
+        ctx, offscreen.width, offscreen.height, rotation, flipH, flipV,
+      );
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, destW, destH);
       ctx.restore();
 
       // Pixel adjustments at full res
@@ -753,7 +869,14 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
 
       const title = saveTitle.trim() || `${imageName.replace(/\.[^.]+$/, '')} (edited)`;
       const file  = new File([blob], `${title}.jpg`, { type: 'image/jpeg' });
-      if (sourceKind === 'telescope') {
+
+      if (mode === 'overwrite' && overwriteTarget) {
+        if (overwriteTarget.kind === 'processed') {
+          await overwriteProcessedImage(objectId, overwriteTarget.id, file);
+        } else {
+          await uploadLibraryFile(objectId, date, file, overwriteTarget.path);
+        }
+      } else if (sourceKind === 'telescope') {
         await uploadLibraryFile(objectId, date, file);
       } else {
         await uploadProcessedImage(objectId, date, file, title, 'Created with image editor');
@@ -764,7 +887,7 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed');
     } finally {
-      setSaving(false);
+      setSavingMode(null);
     }
   };
 
@@ -784,12 +907,12 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, selectedId, activeTool, confirmCrop]);
+  }, [onClose, selectedId, activeTool, cropDraft, confirmCrop]);
 
   // ── Dynamic cursor for crop mode ──────────────────────────────────────────
 
   const canvasCursorStyle = activeTool === 'crop'
-    ? (cropDragStartRef.current ? canvasCursor : canvasCursor)
+    ? canvasCursor
     : activeTool === 'text' ? 'cell' : 'default';
 
   // ── Shared Tailwind helpers ───────────────────────────────────────────────
@@ -1036,6 +1159,10 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
 
                     {presetsLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin text-slate-500 mx-auto" />
+                    ) : presetsQueryError ? (
+                      <p className="text-[10px] text-red-400">
+                        Couldn't load saved presets. Try reopening the editor.
+                      </p>
                     ) : presets.length === 0 ? (
                       <p className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                         No saved presets. Click + to save current settings.
@@ -1093,6 +1220,25 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
                   {adjRow('saturation', 'Saturation')}
 
                   <div>
+                    <p className={`flex justify-between text-xs font-medium mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      <span>Rotate</span>
+                      {rotation !== 0 && <span className="tabular-nums">{rotation}°</span>}
+                    </p>
+                    <div className="flex gap-1">
+                      <button onClick={() => rotateBy(-90)}
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-medium transition ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />Left
+                      </button>
+                      <button onClick={() => rotateBy(90)}
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-medium transition ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}
+                      >
+                        <RotateCw className="w-3.5 h-3.5" />Right
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
                     <p className={`text-xs font-medium mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Flip</p>
                     <div className="flex gap-1">
                       <button onClick={() => setFlipH(f => !f)}
@@ -1116,8 +1262,8 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
                     </div>
                   </div>
 
-                  {(adj.brightness !== 0 || adj.contrast !== 0 || adj.saturation !== 0 || flipH || flipV) && (
-                    <button onClick={() => { setAdj({ brightness: 0, contrast: 0, saturation: 0 }); setFlipH(false); setFlipV(false); }}
+                  {(adj.brightness !== 0 || adj.contrast !== 0 || adj.saturation !== 0 || flipH || flipV || rotation !== 0) && (
+                    <button onClick={() => { setAdj({ brightness: 0, contrast: 0, saturation: 0 }); setFlipH(false); setFlipV(false); setRotation(0); }}
                       className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
                       <RotateCcw className="w-3.5 h-3.5" />Reset all
                     </button>
@@ -1133,14 +1279,33 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
                 <input type="text" value={saveTitle} onChange={e => setSaveTitle(e.target.value)} className={inputCls} />
               </div>
               {saveError && <p className="text-xs text-red-400">{saveError}</p>}
-              <button onClick={handleSave} disabled={saving || !imgLoaded}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
+
+              {overwriteTarget && (
+                <button onClick={() => handleSave('overwrite')} disabled={saving || !imgLoaded}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  {savingMode === 'overwrite' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {savingMode === 'overwrite' ? 'Saving…' : 'Save'}
+                </button>
+              )}
+
+              <button onClick={() => handleSave('new')} disabled={saving || !imgLoaded}
+                className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                  overwriteTarget
+                    ? isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    : 'bg-accent-500 text-white hover:bg-accent-600'
+                }`}
               >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {saving ? 'Saving…' : 'Save as new version'}
+                {savingMode === 'new' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {savingMode === 'new' ? 'Saving…' : 'Save as new version'}
               </button>
+
               <p className={`text-[10px] text-center ${isDark ? 'text-slate-700' : 'text-slate-400'}`}>
-                {sourceKind === 'telescope' ? 'Saves alongside the original telescope images' : 'Saves to Processed Images'}
+                {overwriteTarget
+                  ? sourceKind === 'telescope'
+                    ? 'Save replaces this file. New version keeps the original and adds an edited copy.'
+                    : 'Save replaces this image. New version keeps the original in Processed Images.'
+                  : sourceKind === 'telescope' ? 'Saves alongside the original telescope images' : 'Saves to Processed Images'}
               </p>
             </div>
 

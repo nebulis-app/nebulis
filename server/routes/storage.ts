@@ -14,9 +14,23 @@ import { startMigration, getMigrationStatus } from '../lib/libraryMigration.js';
 import { renestObject, renestLibrary, getRenestStatus, countFlatObjects } from '../lib/library/libraryRenest.js';
 import { getImportStatus } from '../lib/library/import.js';
 import { testNetworkLibraryConnection, NETWORK_MOUNT_DIR, type NetworkLibraryConfig } from '../lib/libraryNetwork.js';
+import zlib from 'zlib';
 import { requireAdmin } from '../middleware/auth.js';
-import db from '../lib/db.js';
+import { strictRateLimiter } from '../middleware/rateLimit.js';
+import { getLibraryObjectNames } from '../lib/localLibrary.js';
 import { pickDefaultTarget } from '../lib/telescopes.js';
+import { logEvent } from '../lib/systemLog.js';
+import { isRecord } from '../lib/typeGuards.js';
+import { createManualDatabaseBackup } from '../lib/db.js';
+import { getCurrentVersion } from '../lib/appUpdate/platform.js';
+import {
+  BACKUPS_DIR,
+  MAX_RETAINED,
+  listDatabaseBackups,
+  findDatabaseBackup,
+  deleteDatabaseBackup,
+  readLastAttempt,
+} from '../lib/dbBackup.js';
 
 const router = Router();
 
@@ -170,15 +184,17 @@ async function computeStorageStats(): Promise<void> {
 const REFRESH_INTERVAL_OFFLINE = 30 * 60 * 1000;
 function scheduleStorageRefresh(): void {
   const delay = consecutiveSmbFailures > 0 ? REFRESH_INTERVAL_OFFLINE : REFRESH_INTERVAL;
+  // unref: importing this router (e.g. in a test, or a script) must not keep
+  // a process alive on a self-re-arming timer with no retained handle.
   setTimeout(async () => {
     await computeStorageStats().catch(() => {});
     scheduleStorageRefresh();
-  }, delay);
+  }, delay).unref?.();
 }
 scheduleStorageRefresh();
 
 // Kick off initial computation at startup (non-blocking)
-setTimeout(() => computeStorageStats().catch(() => {}), 5_000);
+setTimeout(() => computeStorageStats().catch(() => {}), 5_000).unref?.();
 
 // ─── Route ──────────────────────────────────────────────────────────
 
@@ -361,8 +377,15 @@ function dataDirBreakdown(dir: string): DataDirEntry[] {
 
 // GET /api/v1/storage/system
 router.get('/system', async (_req: Request, res: Response) => {
-  const dataDir   = dirStats(DATA_DIR);
+  // dataDirBreakdown already walks every top-level entry of DATA_DIR via
+  // dirStats(); the total is their sum, so deriving it here avoids a second
+  // full recursive stat of the tree (which can hold tens of thousands of
+  // files between thumbnails/, sky-cache/, and backups/).
   const breakdown = dataDirBreakdown(DATA_DIR);
+  const dataDir = breakdown.reduce(
+    (acc, e) => ({ size: acc.size + e.size, files: acc.files + e.files }),
+    { size: 0, files: 0 },
+  );
 
   // When the library has been relocated to a separate drive, report that
   // drive's usage too. The DATA_DIR disk only covers the boot volume, so a
@@ -418,10 +441,7 @@ async function computeLibraryStats(): Promise<void> {
   const LIBRARY_DIR = getLibraryDir();
   try {
     // Pull display names from DB (non-deleted objects)
-    interface LibraryNameRow { objectId: string; folderName: string; objectName: string | null; }
-    const rows = db
-      .prepare<[], LibraryNameRow>('SELECT objectId, folderName, objectName FROM libraryObjects WHERE deleted = 0')
-      .all();
+    const rows = getLibraryObjectNames();
 
     const nameMap = new Map(rows.map(r => [r.folderName, { objectId: r.objectId, name: r.objectName || r.folderName }]));
 
@@ -453,9 +473,11 @@ async function computeLibraryStats(): Promise<void> {
   }
 }
 
-// Kick off initial computation non-blocking
-setTimeout(() => { void computeLibraryStats().catch(() => { /* best-effort */ }); }, 8_000);
-setInterval(() => { void computeLibraryStats().catch(() => { /* best-effort */ }); }, LIBRARY_CACHE_TTL);
+// Kick off initial computation non-blocking. unref: same reasoning as
+// scheduleStorageRefresh above — importing this router must not pin a
+// process/test-worker's event loop open.
+setTimeout(() => { void computeLibraryStats().catch(() => { /* best-effort */ }); }, 8_000).unref?.();
+setInterval(() => { void computeLibraryStats().catch(() => { /* best-effort */ }); }, LIBRARY_CACHE_TTL).unref?.();
 
 // GET /api/v1/storage/library
 router.get('/library', (_req: Request, res: Response) => {
@@ -499,20 +521,34 @@ router.get('/browse', requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Rebuild one drag-and-drop file sample from an untrusted array entry.
+ * Returns null for anything that isn't `{ relativePath: string, size: number }`
+ * so the caller drops it rather than handing a half-shaped object to the
+ * on-disk folder matcher.
+ */
+function parseLocateSample(value: unknown): LocateSample | null {
+  if (!isRecord(value)) return null;
+  const { relativePath, size } = value;
+  if (typeof relativePath !== 'string' || typeof size !== 'number') return null;
+  return { relativePath, size };
+}
+
 // POST /api/v1/storage/locate-folder — given the name and a file sample of a
 // folder dropped into the import modal, check whether that exact folder exists
 // on this machine's disk so the import can read it in place instead of
 // uploading. Best-effort: a miss returns { path: null }, never an error.
 router.post('/locate-folder', requireAdmin, async (req: Request, res: Response) => {
-  const body = (req.body ?? {}) as { anchorName?: unknown; samples?: unknown };
+  // `req.body` is whatever the client posted. `isRecord` narrows it for real,
+  // and each sample is rebuilt field by field by parseLocateSample, so nothing
+  // downstream depends on an asserted shape.
+  const body: Record<string, unknown> = isRecord(req.body) ? req.body : {};
   const anchorName = typeof body.anchorName === 'string' ? body.anchorName : '';
-  const rawSamples = Array.isArray(body.samples) ? body.samples : [];
-  const samples: LocateSample[] = rawSamples
-    .filter((s): s is { relativePath: string; size: number } =>
-      typeof s === 'object' && s !== null
-      && typeof (s as { relativePath?: unknown }).relativePath === 'string'
-      && typeof (s as { size?: unknown }).size === 'number')
-    .map(s => ({ relativePath: s.relativePath, size: s.size }));
+  const rawSamples: unknown[] = Array.isArray(body.samples) ? body.samples : [];
+  const samples: LocateSample[] = rawSamples.flatMap(entry => {
+    const sample = parseLocateSample(entry);
+    return sample ? [sample] : [];
+  });
 
   if (!validateLocateInput(anchorName, samples)) {
     res.apiError(400, 'INVALID_LOCATE_INPUT', 'Provide a folder name and a non-empty file sample.');
@@ -530,33 +566,40 @@ router.get('/library-location', async (_req: Request, res: Response) => {
   res.apiSuccess({ location: await getLibraryLocationInfo(), migration: getMigrationStatus() });
 });
 
-interface NetworkBody {
-  host?: unknown; share?: unknown; domain?: unknown;
-  username?: unknown; password?: unknown; subpath?: unknown;
-}
-
-function parseNetworkConfig(body: NetworkBody): NetworkLibraryConfig {
+/**
+ * Build a share config out of a request body. Takes `unknown` rather than a
+ * body-shaped interface so the caller never has to assert what Express handed
+ * it: `req.body` is whatever the client sent (including a JSON array, a
+ * string, or nothing at all), and every field here is already coerced
+ * individually, so a non-object simply yields the all-empty config that the
+ * host/share emptiness checks downstream already reject.
+ */
+function parseNetworkConfig(body: unknown): NetworkLibraryConfig {
+  const b = isRecord(body) ? body : {};
+  const trimmed = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
   return {
-    host: typeof body.host === 'string' ? body.host.trim() : '',
-    share: typeof body.share === 'string' ? body.share.trim() : '',
-    domain: typeof body.domain === 'string' ? body.domain.trim() : '',
-    username: typeof body.username === 'string' ? body.username.trim() : '',
-    password: typeof body.password === 'string' ? body.password : '',
-    subpath: typeof body.subpath === 'string' ? body.subpath.trim() : '',
+    host: trimmed(b.host),
+    share: trimmed(b.share),
+    domain: trimmed(b.domain),
+    username: trimmed(b.username),
+    // Not trimmed: leading/trailing whitespace can be part of a password.
+    password: typeof b.password === 'string' ? b.password : '',
+    subpath: trimmed(b.subpath),
   };
 }
 
 // POST /api/v1/storage/library-location/network/test — try connecting to a
 // share with not-yet-saved credentials. Never persists anything.
 router.post('/library-location/network/test', requireAdmin, async (req: Request, res: Response) => {
-  const cfg = parseNetworkConfig((req.body ?? {}) as NetworkBody);
+  const cfg = parseNetworkConfig(req.body);
   const result = await testNetworkLibraryConnection(cfg);
   res.apiSuccess(result);
 });
 
 // POST /api/v1/storage/migrate { targetPath } OR { network: {...} } — start moving the library
 router.post('/migrate', requireAdmin, (req: Request, res: Response) => {
-  const body = req.body as { targetPath?: unknown; network?: NetworkBody };
+  // req.body is client-controlled, so narrow it instead of asserting a shape.
+  const body = isRecord(req.body) ? req.body : {};
 
   if (body.network) {
     if (process.platform !== 'win32' && process.platform !== 'darwin') {
@@ -580,7 +623,18 @@ router.post('/migrate', requireAdmin, (req: Request, res: Response) => {
       return;
     }
     try {
-      res.apiSuccess({ migration: startMigration('', networkConfig) });
+      const migration = startMigration('', networkConfig);
+      logEvent({
+        category: 'storage',
+        event: 'library_migration_started',
+        level: 'warning',
+        message: `Started moving the library to network share "${networkConfig.host}/${networkConfig.share}".`,
+        userId: req.userId,
+        username: req.username,
+        ip: req.ip ?? req.socket.remoteAddress,
+        metadata: { target: 'network', host: networkConfig.host, share: networkConfig.share },
+      });
+      res.apiSuccess({ migration });
     } catch (err: unknown) {
       res.apiError(409, 'MIGRATION_FAILED', err instanceof Error ? err.message : 'Could not start migration');
     }
@@ -593,7 +647,18 @@ router.post('/migrate', requireAdmin, (req: Request, res: Response) => {
     return;
   }
   try {
-    res.apiSuccess({ migration: startMigration(targetPath) });
+    const migration = startMigration(targetPath);
+    logEvent({
+      category: 'storage',
+      event: 'library_migration_started',
+      level: 'warning',
+      message: `Started moving the library to "${targetPath}".`,
+      userId: req.userId,
+      username: req.username,
+      ip: req.ip ?? req.socket.remoteAddress,
+      metadata: { target: 'local', targetPath },
+    });
+    res.apiSuccess({ migration });
   } catch (err: unknown) {
     res.apiError(409, 'MIGRATION_FAILED', err instanceof Error ? err.message : 'Could not start migration');
   }
@@ -631,9 +696,10 @@ router.post('/renest', requireAdmin, async (req: Request, res: Response) => {
     return;
   }
 
-  const objectId = typeof (req.body as { objectId?: unknown })?.objectId === 'string'
-    ? String((req.body as { objectId: string }).objectId)
-    : null;
+  // Optional body: `{ objectId }` reorganizes one object, no body reorganizes
+  // the whole library. Narrowed with isRecord + typeof, never asserted.
+  const renestBody: Record<string, unknown> = isRecord(req.body) ? req.body : {};
+  const objectId = typeof renestBody.objectId === 'string' ? renestBody.objectId : null;
 
   try {
     if (objectId) {
@@ -666,6 +732,84 @@ router.post('/renest', requireAdmin, async (req: Request, res: Response) => {
     }
     res.apiError(500, 'RENEST_FAILED', message);
   }
+});
+
+// ─── Database backups (pre-upgrade snapshots + manual) ──────────────────────
+// The automatic snapshot is taken at boot, before migrations (see
+// lib/dbBackup.ts). These routes let an admin see what's retained, make one on
+// demand, download one to keep permanently, or delete one.
+
+// GET /api/v1/storage/db-backups — list retained snapshots + last attempt.
+router.get('/db-backups', requireAdmin, (_req: Request, res: Response) => {
+  res.apiSuccess({
+    backups: listDatabaseBackups(),
+    lastAttempt: readLastAttempt(),
+    dir: BACKUPS_DIR,
+    maxRetainedPerKind: MAX_RETAINED,
+    currentVersion: getCurrentVersion().version,
+  });
+});
+
+// POST /api/v1/storage/db-backups — take a snapshot now.
+router.post('/db-backups', requireAdmin, strictRateLimiter, (req: Request, res: Response) => {
+  try {
+    const { backup, pruned } = createManualDatabaseBackup();
+    logEvent({
+      category: 'storage',
+      event: 'db_backup_manual',
+      message: `Created a manual database backup: ${backup.name}.`,
+      userId: req.userId,
+      username: req.username,
+      ip: req.ip ?? req.socket.remoteAddress,
+      metadata: { backupName: backup.name, sizeBytes: backup.sizeBytes, pruned },
+    });
+    res.apiSuccess({ backup, pruned });
+  } catch (err) {
+    console.error('[storage] manual db backup failed:', err instanceof Error ? err.message : err);
+    res.apiError(500, 'BACKUP_FAILED', err instanceof Error ? err.message : 'Could not create a backup');
+  }
+});
+
+// GET /api/v1/storage/db-backups/:name/download — stream one, gzip on the fly.
+router.get('/db-backups/:name/download', requireAdmin, (req: Request, res: Response) => {
+  const found = findDatabaseBackup(String(req.params.name));
+  if (!found) {
+    res.apiError(404, 'NOT_FOUND', 'That backup does not exist.');
+    return;
+  }
+  res.setHeader('Content-Type', 'application/gzip');
+  res.setHeader('Content-Disposition', `attachment; filename="${found.name}.gz"`);
+  const readStream = fs.createReadStream(found.path);
+  readStream.on('error', (err) => {
+    console.error('[storage] db backup download error:', err.message);
+    if (!res.headersSent) res.apiError(500, 'STREAM_ERROR', 'Failed to read the backup file');
+  });
+  readStream.pipe(zlib.createGzip()).pipe(res);
+});
+
+// DELETE /api/v1/storage/db-backups/:name
+router.delete('/db-backups/:name', requireAdmin, (req: Request, res: Response) => {
+  const name = String(req.params.name);
+  const found = findDatabaseBackup(name);
+  if (!found) {
+    res.apiError(404, 'NOT_FOUND', 'That backup does not exist.');
+    return;
+  }
+  if (!deleteDatabaseBackup(name)) {
+    res.apiError(500, 'DELETE_FAILED', 'Could not delete the backup file.');
+    return;
+  }
+  logEvent({
+    category: 'storage',
+    event: 'db_backup_deleted',
+    level: 'warning',
+    message: `Deleted database backup ${name}.`,
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+    metadata: { backupName: name },
+  });
+  res.apiSuccess({ deleted: true, name });
 });
 
 export { router as storageRouter };

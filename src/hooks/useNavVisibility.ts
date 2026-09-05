@@ -11,18 +11,39 @@ export const NAV_ITEMS: { id: NavItemId; label: string }[] = [
 
 const STORAGE_KEY = 'nebulis-nav-hidden';
 
+/** Nav items that default to hidden as of this change, until the user turns
+ *  them on in Settings → General. A brand-new browser has no `STORAGE_KEY`
+ *  entry at all, so these could just be the fallback for a missing key — but
+ *  most real users already have one (even an empty `[]`, written the first
+ *  time the provider ever mounted), which would otherwise mask the new
+ *  default forever. `FORECAST_DEFAULT_SEEDED_KEY` below applies it once,
+ *  regardless of what's already stored, the same "seen/applied once" pattern
+ *  TourProvider uses for its tour-seen flag. */
+const DEFAULT_HIDDEN: NavItemId[] = ['forecast'];
+const FORECAST_DEFAULT_SEEDED_KEY = 'nebulis-nav-forecast-default-seeded-v1';
+
 function getInitialHidden(): Set<NavItemId> {
-  if (typeof window === 'undefined') return new Set();
+  if (typeof window === 'undefined') return new Set(DEFAULT_HIDDEN);
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw) as string[];
+    const parsed = raw ? (JSON.parse(raw) as string[]) : [];
     const valid = parsed.filter((id): id is NavItemId =>
       NAV_ITEMS.some(item => item.id === id)
     );
-    return new Set(valid);
+    const hidden = new Set(valid);
+
+    // One-time seed: merge in the new default exactly once per browser, then
+    // never again — a later explicit re-enable (toggle() writing forecast
+    // back out of the stored set) must stick on every future load.
+    if (localStorage.getItem(FORECAST_DEFAULT_SEEDED_KEY) !== '1') {
+      for (const id of DEFAULT_HIDDEN) hidden.add(id);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([...hidden]));
+      localStorage.setItem(FORECAST_DEFAULT_SEEDED_KEY, '1');
+    }
+
+    return hidden;
   } catch {
-    return new Set();
+    return new Set(DEFAULT_HIDDEN);
   }
 }
 

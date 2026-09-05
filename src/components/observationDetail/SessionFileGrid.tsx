@@ -1,8 +1,8 @@
-import { Telescope, Columns, Crown, Download, Heart, ChevronLeft, ChevronRight, FileImage } from 'lucide-react';
+import { Columns, Crown, Download, Heart, ChevronLeft, ChevronRight, FileImage } from 'lucide-react';
 import { FitsThumbnail } from '../FitsThumbnail';
 import { useTheme } from '../../hooks/useTheme';
 import type { SessionFile } from '../../types';
-import type { CompareItem } from '../../pages/ObservationDetail';
+import type { CompareItem } from './types';
 import type { CompareFile } from '../ImageCompareModal';
 import { thumbSrcFor, canPreviewImage } from '../../lib/sessionImageSrc';
 import { processedFormatLabel as formatLabel } from '../../lib/processedFormats';
@@ -48,23 +48,16 @@ export function SessionFileGrid({
   imageFavoriteSet: Set<string>;
   onToggleFavorite: (imagePath: string, isFavorite: boolean) => void;
   date: string;
-  openGallery: (index: number, fileList?: SessionFile[]) => void;
+  openGallery: (index: number) => void;
   isAdmin: boolean;
 }) {
   const { isDark } = useTheme();
 
   return (
     <div className={`rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
-      <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-        <h2 className={`font-display font-semibold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-          <Telescope className="w-4 h-4 flex-shrink-0 text-teal-500" />
-          Images
-          {files.length > 0 && (
-            <span className={`text-xs px-2 py-0.5 rounded-full ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-              {files.length}
-            </span>
-          )}
-        </h2>
+      {/* No title row: the selected tab immediately above already names this
+          panel and carries its count, so the bar is only its controls. */}
+      <div className={`flex items-center justify-end p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
         <div className="flex items-center gap-2">
           <button
             onClick={onToggleCompareMode}
@@ -127,7 +120,7 @@ export function SessionFileGrid({
                       className="w-full h-full block cursor-pointer"
                     >
                       {file.type === 'fits' ? (
-                        <FitsThumbnail url={file.downloadUrl} stretch={1.0} isDark={isDark} />
+                        <FitsThumbnail url={file.downloadUrl} thumbUrl={file.thumbUrl} stretch={1.0} isDark={isDark} />
                       ) : !canPreviewImage(file) ? (
                         // Defensive fallback for a format the server has flagged as
                         // untrustworthy to render (or an older response with no

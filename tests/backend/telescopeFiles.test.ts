@@ -83,6 +83,23 @@ describe('parseFilename', () => {
       expect(result.date).toBe('2025-10-02');
     });
 
+    it('parses a date-first lunar timelapse video, stripping the -timelapse marker', () => {
+      const result = parseFilename('2026-08-27-202843-Lunar-timelapse.mp4');
+      expect(result.type).toBe('video');
+      expect(result.target).toBe('Lunar');
+      expect(result.timestamp).toBe('20260827-202843');
+      expect(result.date).toBe('2026-08-27');
+      expect(result.extension).toBe('.mp4');
+      expect(result.isThumbnail).toBe(false);
+    });
+
+    it('parses a date-first video with no timelapse marker', () => {
+      const result = parseFilename('2026-08-27-202843-Solar.mov');
+      expect(result.type).toBe('video');
+      expect(result.target).toBe('Solar');
+      expect(result.date).toBe('2026-08-27');
+    });
+
     it('parses DSO_Stacked filename without mode field', () => {
       const result = parseFilename('DSO_Stacked_1318_M 81_30.0s_20250323_060820.jpg');
       expect(result.type).toBe('stacked');
@@ -141,6 +158,11 @@ describe('parseFilename', () => {
       expect(result.target).toBe('Lunar');
       expect(result.date).toBe('2024-10-15');
       expect(result.extension).toBe('.avi');
+    });
+
+    it('types an underscore-timestamp .mp4 / .mov as video', () => {
+      expect(parseFilename('Jupiter_20241015-193000.mp4').type).toBe('video');
+      expect(parseFilename('Jupiter_20241015-193000.mov').type).toBe('video');
     });
 
     it('parses simple image with timestamp', () => {
@@ -221,6 +243,81 @@ describe('parseFilename — Dwarf', () => {
     const afterMidnight = parseFilename('120-DWARF3_M31_2026-05-13_00-02-15-100.fits');
     expect(afterMidnight.date).toBe('2026-05-13');
     expect(earlyEvening.target).toBe(afterMidnight.target);
+  });
+});
+
+describe('parseFilename — ASIAIR', () => {
+  it('parses a full light frame with filter, gain and sensor temperature', () => {
+    const result = parseFilename('Light_M42_10.0s_Bin1_S_gain360_20240320-203324_-10.0C_0001.fit');
+    expect(result.type).toBe('sub');
+    expect(result.target).toBe('M42');
+    expect(result.exposure).toBe('10.0s');
+    expect(result.filter).toBe('S');
+    expect(result.subIndex).toBe(1);
+    expect(result.date).toBe('2024-03-20');
+    expect(result.extension).toBe('.fit');
+  });
+
+  it('parses a frame with no temperature and an ISO gain instead of gain<n>', () => {
+    const result = parseFilename('Light_M42_240.0s_Bin1_ISO1600_20230212-195555_0001.FIT');
+    expect(result.type).toBe('sub');
+    expect(result.target).toBe('M42');
+    expect(result.date).toBe('2023-02-12');
+    // ISO1600 is the exposure setting, not a filter name.
+    expect(result.filter).toBeUndefined();
+  });
+
+  it('keeps a multi-word target intact', () => {
+    const result = parseFilename('Light_NGC 7000_120.0s_Bin2_Duo-Band_gain100_20240320-203324.fit');
+    expect(result.target).toBe('NGC 7000');
+    expect(result.filter).toBe('Duo-Band');
+    expect(result.date).toBe('2024-03-20');
+  });
+
+  it('parses a target-less calibration frame, falling back to the frame type', () => {
+    // ASIAIR writes darks with no target token at all. These are archived
+    // rather than imported, so the frame type is only a display fallback.
+    const result = parseFilename('Dark_60s_Bin1_20250723-13073265_0018.fit');
+    expect(result.type).toBe('sub');
+    expect(result.target).toBe('Dark');
+    expect(result.date).toBe('2025-07-23');
+    expect(result.subIndex).toBe(18);
+  });
+
+  it('parses a millisecond-exposure flat', () => {
+    const result = parseFilename('Flat_1.0ms_Bin1_S_gain100_20240320-233122_-10.5C_0001.fit');
+    expect(result.target).toBe('Flat');
+    expect(result.exposure).toBe('1.0ms');
+    expect(result.date).toBe('2024-03-20');
+  });
+
+  it('does not change how SeeStar and Dwarf names parse', () => {
+    // The ASIAIR rule sits ahead of the SeeStar Light_* rule in the ladder and
+    // shares its prefix. These are the names it must not steal.
+    const seestarLight = parseFilename('Light_10P_10.0s_IRCUT_20260407-043257.fit');
+    expect(seestarLight.type).toBe('sub');
+    expect(seestarLight.target).toBe('10P');
+    expect(seestarLight.filter).toBe('IRCUT');
+
+    const seestarStacked = parseFilename('Stacked_150_M42_10.0s_IRCUT_20241015-210530A.jpg');
+    expect(seestarStacked.type).toBe('stacked');
+    expect(seestarStacked.frameCount).toBe(150);
+
+    const seestarSub = parseFilename('sub_00001_M42_10.0s_IRCUT_20241015-205200.fit');
+    expect(seestarSub.type).toBe('sub');
+    expect(seestarSub.subIndex).toBe(1);
+
+    const dwarfStack = parseFilename('stacked-16_Barnard 33_15s60_Duo-Band_20260325-200347458.fits');
+    expect(dwarfStack.type).toBe('stacked');
+    expect(dwarfStack.target).toBe('Barnard 33');
+  });
+
+  it('reclassifies a non-FITS ASIAIR frame as that frame preview', () => {
+    // The universal rule in parseFilename: a sub-frame is FITS, so anything
+    // else matching a sub pattern is the device's per-frame preview.
+    const result = parseFilename('Light_M42_10.0s_Bin1_S_gain360_20240320-203324_-10.0C_0001.jpg');
+    expect(result.type).toBe('thumbnail');
+    expect(result.framePreview).toBe(true);
   });
 });
 

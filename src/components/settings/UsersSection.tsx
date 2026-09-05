@@ -1,8 +1,20 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, ShieldCheck, Eye, EyeOff, Pencil } from 'lucide-react';
-import { getUsers, createUser, deleteAppUser, resetUserPassword, updateUserRole, updateUserProfile, toUserRole, type UserRole } from '../../lib/api/auth';
+import { getUsers, createUser, deleteAppUser, toUserRole, type UserRole } from '../../lib/api/auth';
 import { getInputClass, getLabelClass, Sec } from './SettingsUI';
+import { ConfirmModal } from '../ConfirmModal';
+import { EditUserModal } from './EditUserModal';
+
+interface NewUserDraft {
+  username: string;
+  email: string;
+  password: string;
+  displayName: string;
+  role: UserRole;
+}
+
+const EMPTY_NEW_USER: NewUserDraft = { username: '', email: '', password: '', displayName: '', role: 'viewer' };
 
 export function UsersSection({ isDark }: { isDark: boolean }) {
   const queryClient = useQueryClient();
@@ -17,57 +29,44 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
   const adminCount = users.filter(u => u.role === 'admin').length;
 
   const [showCreateUser, setShowCreateUser] = useState(false);
-  const [newUser, setNewUser] = useState({ username: '', email: '', password: '', displayName: '', role: 'viewer' as UserRole });
+  const [newUser, setNewUser] = useState<NewUserDraft>(EMPTY_NEW_USER);
   const [showNewUserPassword, setShowNewUserPassword] = useState(false);
   const [userError, setUserError] = useState('');
-  const [resetPwUserId, setResetPwUserId] = useState<string | null>(null);
-  const [resetPwValue, setResetPwValue] = useState('');
-  const [editProfileUserId, setEditProfileUserId] = useState<string | null>(null);
-  const [editProfileValues, setEditProfileValues] = useState({ displayName: '', email: '' });
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [deletingUser, setDeletingUser] = useState<{ id: string; label: string } | null>(null);
 
   const createUserMutation = useMutation({
     mutationFn: createUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setShowCreateUser(false);
-      setNewUser({ username: '', email: '', password: '', displayName: '', role: 'viewer' });
+      setNewUser(EMPTY_NEW_USER);
       setShowNewUserPassword(false);
       setUserError('');
     },
     onError: (err) => {
-      setUserError(err instanceof Error ? err.message : 'Failed to create user');
+      setUserError(err instanceof Error ? err.message : 'Could not create that user. Check the username is not already taken, then try again.');
     },
   });
 
+  const [deleteUserError, setDeleteUserError] = useState('');
   const deleteUserMutation = useMutation({
     mutationFn: deleteAppUser,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
-  });
-
-  const resetPasswordMutation = useMutation({
-    mutationFn: ({ id, password }: { id: string; password: string }) => resetUserPassword(id, password),
-    onSuccess: () => {
-      setResetPwUserId(null);
-      setResetPwValue('');
-    },
-  });
-
-  const updateRoleMutation = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: UserRole }) => updateUserRole(id, role),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
-  });
-
-  const updateProfileMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { displayName: string; email: string } }) => updateUserProfile(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      setEditProfileUserId(null);
+      setDeletingUser(null);
+    },
+    onError: (err) => {
+      // Without this a failed delete (e.g. a duplicate request 404) was
+      // swallowed entirely and the modal just sat there.
+      setDeleteUserError(err instanceof Error ? err.message : 'Could not delete that user. Try again.');
     },
   });
 
   const selectClass = `${inputClass} cursor-pointer`;
 
   return (
+    <>
     <Sec
       title="Users"
       description="Same credentials work for the web app and iOS app."
@@ -78,7 +77,7 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
             setShowCreateUser(true);
             setUserError('');
             setShowNewUserPassword(false);
-            setNewUser({ username: '', email: '', password: '', displayName: '', role: 'viewer' });
+            setNewUser(EMPTY_NEW_USER);
           }}
           className={`inline-flex items-center gap-1.5 text-[13px] font-medium px-3.5 py-2 rounded-lg transition-all duration-150 border ${
             isDark
@@ -133,7 +132,6 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
                 <div className="relative">
                   <input
                     type={showNewUserPassword ? 'text' : 'password'}
-                    placeholder="Min 6 characters"
                     value={newUser.password}
                     onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))}
                     className={`${inputClass} pr-10`}
@@ -147,6 +145,7 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
                     {showNewUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                <p className={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>Minimum 6 characters.</p>
               </div>
             </div>
             <div>
@@ -233,79 +232,19 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
                     </div>
                   </div>
 
-                  {resetPwUserId === user.id ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="password"
-                      placeholder="New password"
-                      value={resetPwValue}
-                      onChange={e => setResetPwValue(e.target.value)}
-                      className={`w-36 px-3 py-1.5 rounded-lg border text-xs transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/30 ${
-                        isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-800'
-                      }`}
-                    />
-                    <button
-                      onClick={() => resetPasswordMutation.mutate({ id: user.id, password: resetPwValue })}
-                      disabled={resetPwValue.length < 6 || resetPasswordMutation.isPending}
-                      className="text-xs px-3 py-1.5 rounded-lg bg-accent-500 text-white disabled:opacity-50 transition"
-                    >
-                      {resetPasswordMutation.isPending ? '…' : 'Save'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setResetPwUserId(null);
-                        setResetPwValue('');
-                      }}
-                      className={`text-xs px-2 py-1 ${isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}`}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
                   <div className="flex items-center gap-1">
-                    <select
-                      value={user.role}
-                      onChange={e => updateRoleMutation.mutate({ id: user.id, role: toUserRole(e.target.value) })}
-                      disabled={updateRoleMutation.isPending || (user.role === 'admin' && adminCount <= 1)}
-                      title={user.role === 'admin' && adminCount <= 1 ? 'Cannot remove admin role from the last admin' : undefined}
-                      className={`text-xs px-2 py-1.5 rounded-lg border appearance-none cursor-pointer transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
-                        isDark
-                          ? 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-600'
-                          : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                      }`}
-                    >
-                      <option value="admin">Admin</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
                     <button
-                      onClick={() => {
-                        setEditProfileUserId(user.id);
-                        setEditProfileValues({ displayName: user.displayName || '', email: user.email || '' });
-                      }}
-                      className={`text-xs px-2 py-1.5 rounded-lg transition-all duration-150 ${
+                      onClick={() => setEditingUserId(user.id)}
+                      className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all duration-150 ${
                         isDark ? 'text-slate-400 hover:bg-slate-700/50 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-100'
                       }`}
-                      title="Edit name and email"
+                      title="Edit name, email, role, or password"
                     >
                       <Pencil className="w-3.5 h-3.5" />
+                      Edit
                     </button>
                     <button
-                      onClick={() => {
-                        setResetPwUserId(user.id);
-                        setResetPwValue('');
-                      }}
-                      className={`text-xs px-3 py-1.5 rounded-lg transition-all duration-150 ${
-                        isDark ? 'text-slate-400 hover:bg-slate-700/50 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-100'
-                      }`}
-                    >
-                      Reset password
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (confirm(`Delete user "${user.displayName || user.username}"?`)) {
-                          deleteUserMutation.mutate(user.id);
-                        }
-                      }}
+                      onClick={() => setDeletingUser({ id: user.id, label: user.displayName || user.username })}
                       disabled={deleteUserMutation.isPending || (user.role === 'admin' && adminCount <= 1)}
                       title={user.role === 'admin' && adminCount <= 1 ? 'Cannot delete the last admin' : undefined}
                       className="text-xs px-3 py-1.5 rounded-lg text-danger-500 hover:bg-danger-500/10 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -313,57 +252,36 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
                       Delete
                     </button>
                   </div>
-                )}
                 </div>
-
-                {/* Expanded edit profile panel */}
-                {editProfileUserId === user.id && (
-                  <div className={`mx-3 mb-3 p-4 rounded-xl border space-y-3 ${isDark ? 'bg-slate-800/40 border-slate-700/80' : 'bg-slate-50 border-slate-200'}`}>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className={labelClass}>Display Name</label>
-                        <input
-                          type="text"
-                          placeholder="Jane Doe"
-                          value={editProfileValues.displayName}
-                          onChange={e => setEditProfileValues(v => ({ ...v, displayName: e.target.value }))}
-                          className={inputClass}
-                          autoFocus
-                        />
-                      </div>
-                      <div>
-                        <label className={labelClass}>Email</label>
-                        <input
-                          type="email"
-                          placeholder="jane@example.com"
-                          value={editProfileValues.email}
-                          onChange={e => setEditProfileValues(v => ({ ...v, email: e.target.value }))}
-                          className={inputClass}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        onClick={() => updateProfileMutation.mutate({ id: user.id, data: editProfileValues })}
-                        disabled={!editProfileValues.displayName || updateProfileMutation.isPending}
-                        className="px-4 py-2 rounded-lg text-sm font-medium bg-accent-500 text-white hover:bg-accent-600 transition-all duration-150 disabled:opacity-50"
-                      >
-                        {updateProfileMutation.isPending ? 'Saving…' : 'Save changes'}
-                      </button>
-                      <button
-                        onClick={() => setEditProfileUserId(null)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition ${isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'}`}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
             ))}
           </div>
         )}
       </div>
     </Sec>
+    {editingUserId && (() => {
+      const editingUser = users.find(u => u.id === editingUserId);
+      return editingUser ? (
+        <EditUserModal
+          isDark={isDark}
+          user={editingUser}
+          adminCount={adminCount}
+          onClose={() => setEditingUserId(null)}
+        />
+      ) : null;
+    })()}
+    {deletingUser && (
+      <ConfirmModal
+        title="Delete user"
+        message={deleteUserError
+          ? `Delete user "${deletingUser.label}"?\n\n${deleteUserError}`
+          : `Delete user "${deletingUser.label}"?`}
+        confirmLabel="Delete"
+        pending={deleteUserMutation.isPending}
+        onConfirm={() => { setDeleteUserError(''); deleteUserMutation.mutate(deletingUser.id); }}
+        onCancel={() => { setDeleteUserError(''); setDeletingUser(null); }}
+      />
+    )}
+    </>
   );
 }

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { deleteLibrarySession } from '../lib/api/library';
 import { useTheme } from '../hooks/useTheme';
@@ -16,21 +17,34 @@ interface Props {
 export function DeleteSessionModal({ isOpen, onClose, objectId, date, displayName, formattedDate }: Props) {
   const { isDark } = useTheme();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [confirmText, setConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = useCallback(async () => {
+    // Re-entry guard: the confirm input fires this on Enter, and key auto-repeat
+    // can land a second call before React commits the disabled state.
+    if (isDeleting) return;
     if (confirmText.toLowerCase() !== 'delete') return;
     setIsDeleting(true);
     try {
       await deleteLibrarySession(objectId, date);
+      // This route back always lands on the object page, and without these
+      // its session grid and "N deleted" restore link both read from caches
+      // that still show the world as it was before the delete: the default
+      // staleTime is 30s, so navigating back within that window (the normal
+      // case) would otherwise show nothing had changed.
+      queryClient.invalidateQueries({ queryKey: ['library-sessions', objectId] });
+      queryClient.invalidateQueries({ queryKey: ['deleted-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['library-objects'] });
+      queryClient.invalidateQueries({ queryKey: ['observations'] });
       onClose();
       navigate(-1);
     } catch {
       setIsDeleting(false);
     }
-  }, [confirmText, objectId, date, onClose, navigate]);
+  }, [isDeleting, confirmText, objectId, date, onClose, navigate, queryClient]);
 
   if (!isOpen) return null;
 

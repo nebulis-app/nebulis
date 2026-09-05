@@ -171,9 +171,15 @@ export function CatalogObjectModal({
   const hasLocation = observerLat != null && observerLon != null;
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
+  // Close the lightbox when switching to a different catalog object.
+  // Render-phase reset; the scroll-to-top is a real DOM effect, kept separate.
+  const [shownObjectId, setShownObjectId] = useState(object.id);
+  if (shownObjectId !== object.id) {
+    setShownObjectId(object.id);
+    setLightboxOpen(false);
+  }
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
-    setLightboxOpen(false);
   }, [object.id]);
 
   useEffect(() => {

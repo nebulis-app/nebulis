@@ -8,6 +8,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import db from '../db.js';
 import { getLibraryDir } from '../libraryPath.js';
 import { normalizeCatalogId } from '../telescopeFiles.js';
@@ -20,6 +21,7 @@ import {
   LIBRARY_API_BASE,
 } from './objects.js';
 import { isRenderableProcessedName } from './processed.js';
+import { isDwarfThumbnailPreviewName } from './dwarfRestack.js';
 import { getImageFavorites } from './favorites.js';
 import { caldwellToNgcId } from '../caldwellCatalog.js';
 import { hubbleImagePath, wikiImagePath, imageCachePath, fovForEntry, findCachedMaster } from '../catalogPrefetch.js';
@@ -95,9 +97,13 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
     for (const entry of listObjectFiles(objDir, getObjectLayout(obj.objectId))) {
       const file = entry.fileName;
       const lower = file.toLowerCase();
-      if (!lower.endsWith('.jpg') && !lower.endsWith('.jpeg') && !lower.endsWith('.png')) continue;
+      // Same renderable-format check as the processed-image pass below, so a
+      // raw TIFF master (e.g. Dwarf's img_stacked_all.tif) shows up here too
+      // instead of only appearing once it's been re-uploaded as "processed".
+      if (!isRenderableProcessedName(file)) continue;
       if (lower.includes('_thn.')) continue;
       if (file.startsWith('sky_') || file.startsWith('gallery_')) continue;
+      if (isDwarfThumbnailPreviewName(file)) continue; // Dwarf's own redundant stacked_thumbnail.* preview
 
       const filePath = `${obj.folderName}/${entry.relPath}`;
       results.push({
@@ -124,17 +130,23 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
   // Restricted to formats a browser can render inline: an XISF/FITS/PSD/RAW
   // deliverable can't go in an `<img>`, and has nowhere else to show here.
   const objById = new Map(objects.map(o => [o.objectId, o]));
-  for (const r of db.prepare<[], { objectId: string; date: string; filename: string }>(
+  for (const r of db.prepare<[], { objectId: string; date: string | null; filename: string }>(
     'SELECT objectId, date, filename FROM sessionProcessedImages',
   ).all()) {
     if (!isRenderableProcessedName(r.filename)) continue;
+    if (isDwarfThumbnailPreviewName(r.filename)) continue; // Dwarf's own redundant stacked_thumbnail.* preview
     const obj = objById.get(r.objectId);
     if (!obj) continue; // processed row survives a deleted/unknown object; skip rather than fabricate one
     const filePath = `${obj.folderName}/processed/${r.filename}`;
     results.push({
       name: r.filename,
       path: filePath,
-      date: r.date,
+      // sessionProcessedImages.date is nullable (a user-uploaded processing
+      // result isn't always tied to a session date) — the sort below calls
+      // .localeCompare on this field, which throws on null and 500s the
+      // whole /library/all-images endpoint. Same 'unknown' fallback the raw
+      // walk uses above for the same field.
+      date: r.date || 'unknown',
       objectId: obj.objectId,
       objectName: obj.objectName || obj.objectId,
       objectType: obj.objectType,
@@ -217,6 +229,7 @@ export function getStackedImages(objectId: string): Array<{ name: string; path: 
     if (!lower.endsWith('.jpg') && !lower.endsWith('.jpeg') && !lower.endsWith('.png')) continue;
     if (lower.includes('_thn.')) continue; // skip thumbnails
     if (file.startsWith('sky_') || file.startsWith('gallery_')) continue; // skip managed images
+    if (isDwarfThumbnailPreviewName(file)) continue; // Dwarf's own redundant stacked_thumbnail.* preview
 
     const filePath = `${folderName}/${entry.relPath}`;
     results.push({
@@ -307,6 +320,26 @@ export function resolveCatalogSourceSentinel(value: string, resolvedId: string):
     : source === 'wiki' ? wikiImagePath(resolvedId)
     : imageCachePath(resolvedId);
   return fs.existsSync(candidate) ? candidate : null;
+}
+
+/**
+ * Disk-cache key (basename, no extension) for an object's gallery thumbnail.
+ *
+ * The prewarm pass in import.ts and the `/objects/:id/thumbnail` route both
+ * derive the cached JPEG's filename from this, so it MUST stay a single
+ * function: a mismatch silently wastes the entire prewarm (the route recomputes
+ * a different name and rerenders on first view). The sha256 hash also keeps the
+ * name constant-length regardless of how long a Dwarf's device-folder path
+ * runs, which a raw base64url of `path:WxH:mtime` did not (ENAMETOOLONG on
+ * sharp's toFile → broken `<img>`).
+ */
+export function objectThumbnailDiskCacheKey(
+  srcPath: string,
+  width: number,
+  height: number,
+  mtimeMs: number,
+): string {
+  return createHash('sha256').update(`${srcPath}:${width}x${height}:${mtimeMs}`).digest('base64url');
 }
 
 /**

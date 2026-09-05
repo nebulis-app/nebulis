@@ -19,12 +19,14 @@ import { debugLog, isDebugLoggingEnabled } from '../lib/debugLogger.js';
 import { isErrnoException } from '../lib/errors.js';
 import { THUMBNAILS_DIR } from '../lib/paths.js';
 import { getLibraryDir, isLibraryAvailable, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
+import { mintDownloadToken, DOWNLOAD_TOKEN_TTL_MS } from '../lib/downloadToken.js';
 import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
 import { getSite } from '../lib/observingSites.js';
+import { plantSampleObject, purgeSampleObject } from '../lib/library/sampleLibrary.js';
 import sharp from '../lib/sharp-optional.js';
 import { generateFitsThumbnail, fitsThumbnailPath, type FitsThumbnailTier } from '../lib/fitsThumbnail.js';
 import { generateTiffThumbnail, tiffThumbnailPath, type TiffThumbnailTier } from '../lib/tiffThumbnail.js';
-import { normalizeCatalogId, parseFilename, isRealFile, sessionNightFor, clampToNightSafeTime } from '../lib/telescopeFiles.js';
+import { normalizeCatalogId, clampToNightSafeTime, mimeTypeForExtension } from '../lib/telescopeFiles.js';
 import {
   runImport,
   runAllTelescopesImport,
@@ -37,10 +39,10 @@ import {
   getLocalObjects,
   getLocalSessions,
   getLocalFiles,
-  getLocalThumbnail,
   getLocalFile,
   getLocalObservations,
   getLocalObservationDetail,
+  getObjectLocation,
   getLocalIntegrationStats,
   getLocalFitsHeader,
   deleteLocalFile,
@@ -54,8 +56,8 @@ import {
   commitFolderImport,
   getFavorites,
   syncSessionSubFrames,
+  syncObjectSubFrames,
   deleteSessionSubFrames,
-  purgeSubFrameImages,
   getSessionTelescopeId,
   getObjectPrimaryTelescopeId,
   setFavorite,
@@ -64,7 +66,6 @@ import {
   getAllLibraryImages,
   invalidateAllImagesCache,
   createManualObservation,
-  getGalleryImage,
   getGalleryImageRow,
   setGalleryImage,
   setGalleryImageUserChosen,
@@ -78,10 +79,12 @@ import {
   getAllProcessedImagesForObject,
   getProcessedImageRecord,
   addProcessedImage,
+  replaceProcessedImageFile,
   deleteProcessedImage,
   getProcessedImageFile,
   isRenderableProcessedName,
   isStoredOnlyProcessedName,
+  processedImageMimeType,
   createProcessingRun,
   getProcessingRun,
   getProcessingRunsForObject,
@@ -89,9 +92,9 @@ import {
   scanImportFolder,
   LIBRARY_OBJECT_FILTERS,
   resolveObjectImagePath,
-  resolveCatalogSourceSentinel,
+  objectThumbnailDiskCacheKey,
 } from '../lib/localLibrary.js';
-import { getArchiveDir, listArchivedFolders } from '../lib/library/archiveFolders.js';
+import { getArchiveDir, listArchivedFolders, listArchiveScopes } from '../lib/library/archiveFolders.js';
 import { stageUploadDestPath } from '../lib/library/uploadPath.js';
 import {
   IMPORT_TMP_BASE,
@@ -101,8 +104,14 @@ import {
   purgeImportTmpSession,
   checkFreeSpace,
 } from '../lib/library/importStaging.js';
+import {
+  getCaptureInfoForObject,
+  summarizeSessionCapture,
+  type CaptureInfoRow,
+  type SessionCaptureSummary,
+} from '../lib/library/captureInfo.js';
 import { createNote, getNote } from '../lib/notes.js';
-import { hasCachedCatalogImage, fovForEntry, findCachedMaster, prefetchObjectWiki, prefetchObjectHubble } from '../lib/catalogPrefetch.js';
+import { hasCachedCatalogImage, fovForEntry, prefetchObjectWiki, prefetchObjectHubble } from '../lib/catalogPrefetch.js';
 import { prefetchSkyImage } from '../lib/skyImage.js';
 import { getById as getDsoById } from '../lib/dsoCatalog.js';
 import { caldwellToNgcId } from '../lib/caldwellCatalog.js';
@@ -117,10 +126,14 @@ import { queryString, contentDispositionHeader } from '../lib/queryHelpers.js';
 // can't break the rename. Original name is preserved through multer's
 // `file.originalname` and used downstream when distributing into the library.
 // fileFilter: only allow extensions we actually ingest. Anything else is a
-// caller error and shouldn't squat 200 MB of disk waiting for cleanup.
+// caller error and shouldn't squat 200 MB of disk waiting for cleanup. This
+// is a coarse pre-filter only — whether a video/thumbnail/etc. actually gets
+// imported is still decided by classifyImportFile (importFilter.ts) once the
+// staged upload reaches /import/scan, same as a folder import.
 const ALLOWED_UPLOAD_EXTS = new Set([
   '.fit', '.fits', '.fts',
   '.jpg', '.jpeg', '.png', '.tif', '.tiff',
+  '.avi', '.mp4', '.mov',
 ]);
 
 const upload = multer({
@@ -250,6 +263,16 @@ const MoveObservationBodySchema = z.object({
 const SubframesBodySchema = z.object({
   dates: z.array(z.string()).min(1, 'dates must be a non-empty array'),
   filters: z.array(z.string()).optional(),
+  // Matches `/sessions?includeVariants=true` and `/download/objects/:objectId?includeVariants=true`:
+  // a mosaic/Ha/etc. variant's sub-frames live in that variant's own object
+  // folder, not the base object's, so combining "all of M31" requires pulling
+  // dates from every variant folder in the family.
+  includeVariants: z.boolean().optional(),
+  // When true, every sub-frame is flattened into a single `<objectFolder>/lights/`
+  // directory inside the zip instead of keeping the per-session / per-variant
+  // folder structure. Makes the archive drop-in ready for Siril's sequence
+  // conversion, which wants all lights in one folder.
+  sirilLayout: z.boolean().optional(),
 });
 
 const GalleryImageBodySchema = z.object({
@@ -443,6 +466,28 @@ router.post('/objects/:objectId/sessions/:date/sync-subframes', requireAdmin, (r
   });
 
   res.apiSuccess({ started: true, objectId, date, telescopeId: telescopeId ?? null });
+});
+
+/**
+ * Sync raw sub-frames for every session of one object, in one pass. Runs the
+ * per-session sync above once per night (each night against the telescope that
+ * captured it), so the user does not have to open each observation and sync it
+ * by hand. Same no-reachability-gate reasoning as the per-session route.
+ */
+router.post('/objects/:objectId/sync-subframes', requireAdmin, (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+
+  if (!claimImportLock()) {
+    res.apiError(409, 'IMPORT_RUNNING', 'An import is already in progress');
+    return;
+  }
+
+  log.info({ objectId }, '[subframe-sync] Syncing sub-frames for every night of %s', objectId);
+  syncObjectSubFrames(objectId).catch(err => {
+    console.error('Object sub-frame sync error:', err.message);
+  });
+
+  res.apiSuccess({ started: true, objectId });
 });
 
 /**
@@ -917,23 +962,54 @@ function groupByVariants(objects: ReturnType<typeof getLocalObjects>) {
   return result;
 }
 
+/** Every object id in objectId's variant family (itself plus its Mosaic/Ha/etc.
+ *  siblings), or just `[objectId]` when there is no family. Shared by every
+ *  `?includeVariants=true` route so "combine subs" / "download all" / session
+ *  listing agree on which ids make up one target. */
+function resolveVariantIds(objectId: string, userId: string): string[] {
+  const all = getLocalObjects(userId);
+  const grouped = groupByVariants(all);
+  const family = grouped.find(g => g.id === objectId || g.variants.some(v => v.objectId === objectId));
+  return family ? [family.id, ...family.variants.map(v => v.objectId)] : [objectId];
+}
+
 router.get('/object-filters', (_req: Request, res: Response) => {
   res.apiSuccess(LIBRARY_OBJECT_FILTERS);
 });
 
 /**
- * Folders archive mode kept but did not model: calibration frames, restacks,
- * daytime captures. A plain directory listing, deliberately: these are bytes in
- * the library, not objects, and giving them a home in the UI is what makes
+ * Folders archive mode kept but did not model: calibration frames and daytime
+ * captures. A plain directory listing, deliberately: these are bytes in the
+ * library, not objects, and giving them a home in the UI is what makes
  * archive mode read as an import rather than a silent copy. The absolute path
  * is returned so the user can point Siril or PixInsight straight at it.
+ *
+ * `telescopeId` scopes to one telescope's archive (two Dwarf units can have
+ * distinct CALI_FRAME/DWARF_DARK files); omitted, this returns the shared
+ * unscoped bucket (a folder-import run with no telescope assigned, or
+ * pre-scoping data migrated there — see archiveFolders.ts). Unmatched
+ * RESTACKED leftovers are not part of this endpoint at all: they live in the
+ * shared RESTACKED/ folder at the library root, not under a telescope scope.
  */
-router.get('/archive', (_req: Request, res: Response) => {
+router.get('/archive', (req: Request, res: Response) => {
   try {
-    res.apiSuccess({ path: getArchiveDir(), folders: listArchivedFolders() });
+    const telescopeId = typeof req.query.telescopeId === 'string' ? req.query.telescopeId : null;
+    res.apiSuccess({ path: getArchiveDir(telescopeId), folders: listArchivedFolders(telescopeId) });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to list the archive';
     res.apiError(500, 'ARCHIVE_LIST_FAILED', message);
+  }
+});
+
+/** Every scope (telescope id, or null for the shared unscoped bucket) that
+ *  currently has archived data — lets Settings show a stat per telescope
+ *  without probing each one individually. */
+router.get('/archive/scopes', (_req: Request, res: Response) => {
+  try {
+    res.apiSuccess(listArchiveScopes());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to list archive scopes';
+    res.apiError(500, 'ARCHIVE_SCOPES_FAILED', message);
   }
 });
 
@@ -1035,7 +1111,7 @@ router.get('/objects/:objectId/thumbnail', async (req: Request, res: Response) =
     // master) busts the disk-cached thumbnail. Without mtime, srcPath alone
     // would map to the same .jpg forever even after the source bytes change.
     const mtimeMs = (await withTimeout(fs.promises.stat(srcPath), LIBRARY_IO_TIMEOUT_MS)).mtimeMs;
-    const cacheKey = thumbnailCacheKey(`${srcPath}:${w}x${h}:${mtimeMs}`);
+    const cacheKey = objectThumbnailDiskCacheKey(srcPath, w, h, mtimeMs);
     const cachePath = path.join(THUMBNAILS_DIR, `${cacheKey}.jpg`);
 
     if (!fs.existsSync(cachePath)) {
@@ -1112,12 +1188,65 @@ router.get('/objects/:objectId/sessions', (req: Request, res: Response) => {
   }
 });
 
+// Where an object's (or one session's) files live on disk / on the telescope,
+// for the "Show file location" panel. `?date=` scopes to a session; without it,
+// the whole variant family's folders are returned so the object card's
+// location covers M31 + M31_Mosaic + M31_Ha.
+router.get('/objects/:objectId/location', async (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const date = typeof req.query.date === 'string' && req.query.date ? req.query.date : undefined;
+  try {
+    const primary = await getObjectLocation(objectId, date);
+
+    let variants: Array<{ objectId: string; label: string; relPath: string; path: string; exists: boolean }> = [];
+    if (!date) {
+      const grouped = groupByVariants(getLocalObjects(req.userId ?? ''));
+      const family = grouped.find(g => g.id === objectId || g.variants.some(v => v.objectId === objectId));
+      if (family) {
+        const ids = [family.id, ...family.variants.map(v => v.objectId)].filter(id => id !== objectId);
+        variants = await Promise.all(
+          ids.map(async id => {
+            const loc = await getObjectLocation(id);
+            const label =
+              family.id === id ? 'Primary' : family.variants.find(v => v.objectId === id)?.label ?? id;
+            return { objectId: id, label, ...loc.object };
+          }),
+        );
+      }
+    }
+
+    res.apiSuccess({ ...primary, variants });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to resolve file location';
+    res.apiError(500, 'LOCATION_FAILED', message);
+  }
+});
+
 // ─── Delete object / session (tombstone) ─────────────────────────────────────
 
 // A running import can be actively writing into the same directory tree
 // these routes delete/move from (a new file mid-copy, a session folder being
 // created). Refused outright rather than age-gated or best-effort, same
 // posture as the import-tmp cleanup routes above.
+// ─── Product tour demo object ────────────────────────────────────────────────
+// The tour needs a real object to walk through on an install that has none
+// yet. It is planted when the tour starts and removed when the tour ends, so
+// it is never left sitting in the user's library. Both are no-ops when the
+// library already holds real objects (nothing is planted) or when nothing is
+// planted (nothing to remove).
+
+router.post('/sample-object', requireAdmin, async (_req: Request, res: Response) => {
+  const planted = await plantSampleObject();
+  if (planted.object) invalidateAllImagesCache();
+  res.apiSuccess(planted);
+});
+
+router.delete('/sample-object', requireAdmin, (_req: Request, res: Response) => {
+  const purged = purgeSampleObject();
+  if (purged.object) invalidateAllImagesCache();
+  res.apiSuccess(purged);
+});
+
 router.delete('/objects/:objectId', requireAdmin, (req: Request, res: Response) => {
   if (getImportStatus().running) {
     res.apiError(409, 'IMPORT_RUNNING', 'An import is running. Wait for it to finish, then delete.');
@@ -1207,23 +1336,6 @@ router.delete('/objects/:objectId/sessions/:date/subframes', requireAdmin, (req:
   }
 });
 
-// ─── Maintenance: purge frame-named JPG previews ─────────────────────────────
-//
-// One-off cleanup for libraries imported before sub-frame import was made
-// FITS-only: older imports copied `Light_*.jpg` previews out of the telescope's
-// _sub folder into the library. Deletes only files that parse as a sub-frame
-// AND carry an image extension — never raw .fit subs or stacked JPGs. Pass
-// `{ dryRun: true }` to get a count without deleting (the Danger-zone button
-// scans first, then purges on confirm).
-router.post('/maintenance/purge-subframe-previews', requireAdmin, (req: Request, res: Response) => {
-  const dryRun = req.body?.dryRun === true;
-  try {
-    res.apiSuccess(purgeSubFrameImages({ dryRun }));
-  } catch (err) {
-    res.apiError(500, 'PURGE_FAILED', err instanceof Error ? err.message : 'Cleanup failed');
-  }
-});
-
 // ─── Move observation ────────────────────────────────────────────────────────
 
 router.post('/objects/:objectId/sessions/:date/move', requireAdmin, (req: Request, res: Response) => {
@@ -1292,14 +1404,7 @@ router.get('/file', async (req: Request, res: Response) => {
     return;
   }
 
-  const ext = result.name.split('.').pop()?.toLowerCase() || '';
-  const mimeMap: Record<string, string> = {
-    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-    tif: 'image/tiff', tiff: 'image/tiff',
-    fit: 'application/fits', fits: 'application/fits',
-    avi: 'video/avi', mp4: 'video/mp4', mov: 'video/quicktime',
-  };
-  const mimeType = mimeMap[ext] || 'application/octet-stream';
+  const mimeType = mimeTypeForExtension(result.name);
   const isInline = mimeType.startsWith('image/');
 
   res.set('Content-Type', mimeType);
@@ -1308,6 +1413,70 @@ router.get('/file', async (req: Request, res: Response) => {
     res.set('Content-Disposition', contentDispositionHeader('attachment', result.name));
   }
   res.send(result.data);
+});
+
+// ─── Video streaming (inline, byte-range) ────────────────────────────────────
+//
+// Separate from `/file` for two reasons:
+//   1. `/file` reads the whole file into a Buffer and sends it with no `Range`
+//      support. A `<video>` element (Safari especially) needs `206 Partial
+//      Content` to play at all, and an AVPlayer / ExoPlayer on the native
+//      clients seeks with range requests. `res.sendFile` streams from disk and
+//      implements the entire range contract (206, Content-Range, 416, If-Range,
+//      HEAD) — do not hand-roll it.
+//   2. `/file` sets `Content-Disposition: attachment` for non-images so the
+//      Download button downloads. This route sets `inline` so the same file can
+//      also be played in place.
+// Only H.264 MP4 / MOV actually plays in a browser or on the mobile clients;
+// raw AVI (older SeeStar planetary captures) is served correctly here but the
+// UI must fall back to a download for it.
+const STREAMABLE_VIDEO_EXTS = new Set(['mp4', 'mov', 'avi']);
+
+router.get('/video', async (req: Request, res: Response) => {
+  const filePath = queryString(req.query.path);
+  if (!filePath) {
+    res.status(400).send('Missing path');
+    return;
+  }
+
+  const ext = filePath.split('.').pop()?.toLowerCase() || '';
+  if (!STREAMABLE_VIDEO_EXTS.has(ext)) {
+    res.status(415).type('text/plain').send('Unsupported file type for video streaming');
+    return;
+  }
+
+  // Resolve and contain inside the library root, trailing-separator compared so
+  // a sibling like `<...>/library-x` can't satisfy a bare startsWith. Same guard
+  // as /file/thumbnail.
+  const LIBRARY_DIR = getLibraryDir();
+  const absPath = path.resolve(LIBRARY_DIR, filePath);
+  const libRoot = LIBRARY_DIR.endsWith(path.sep) ? LIBRARY_DIR : LIBRARY_DIR + path.sep;
+  if (!absPath.startsWith(libRoot)) {
+    res.status(403).type('text/plain').send('Forbidden');
+    return;
+  }
+
+  if (!(await requireLibraryReachable(res))) return;
+  try {
+    await withTimeout(fs.promises.access(absPath), LIBRARY_IO_TIMEOUT_MS);
+  } catch {
+    res.status(404).type('text/plain').send('Not found');
+    return;
+  }
+
+  const mimeType = ext === 'mp4' ? 'video/mp4' : ext === 'mov' ? 'video/quicktime' : 'video/x-msvideo';
+  res.type(mimeType);
+  res.set('Content-Disposition', contentDispositionHeader('inline', path.basename(absPath)));
+  res.set('Cache-Control', 'public, max-age=3600');
+
+  res.sendFile(absPath, { acceptRanges: true, dotfiles: 'deny' }, (err) => {
+    if (!err) return;
+    // A dropped connection mid-stream surfaces here as ECONNABORTED / write
+    // after end — not an error worth logging or responding to.
+    if (res.headersSent) return;
+    const status = (err as NodeJS.ErrnoException).code === 'ENOENT' ? 404 : 500;
+    res.status(status).type('text/plain').send('Could not read video');
+  });
 });
 
 // ─── Thumbnail (on-demand resize with disk cache) ────────────────────────────
@@ -1365,9 +1534,12 @@ router.get('/file/thumbnail', burstyRateLimiter, async (req: Request, res: Respo
   const w = Math.min(Math.max(parseInt(queryString(req.query.w) || '400', 10) || 400, 32), 1200);
   const h = Math.min(Math.max(parseInt(queryString(req.query.h) || '400', 10) || 400, 32), 1200);
 
-  // Only serve image files — reject FITS/video
+  // Only serve image files — reject FITS/video. No library pipeline can ever
+  // produce a .webp (not in ALLOWED_UPLOAD_EXTS above, PROCESSED_FORMATS in
+  // lib/library/processed.ts, or REAL_EXTENSIONS in lib/telescopeFiles.ts),
+  // so it was dead and inconsistent here; keep this list matching those.
   const ext = filePath.split('.').pop()?.toLowerCase() || '';
-  if (!['jpg', 'jpeg', 'png', 'tif', 'tiff', 'webp'].includes(ext)) {
+  if (!['jpg', 'jpeg', 'png', 'tif', 'tiff'].includes(ext)) {
     res.status(415).send('Unsupported file type for thumbnail');
     return;
   }
@@ -1540,6 +1712,37 @@ router.get('/tiff-thumbnail', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Capture summaries for every night of one object ─────────────────────────
+
+/**
+ * What the device recorded for each observing night of this object, keyed by
+ * night. One indexed query and no filesystem work, which is what makes it
+ * cheap enough for the object page to ask for on load.
+ *
+ * Deliberately not the same thing as `/integration`: that one opens every
+ * sub-frame's FITS header to estimate exposure. This reads the device's own
+ * sidecar, so it is both exact and free, and simply has nothing to say for a
+ * telescope that writes no sidecar. An absent night means "not recorded", never
+ * "zero", and the UI must render it as absent.
+ */
+router.get('/objects/:objectId/capture', (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const byNight = new Map<string, CaptureInfoRow[]>();
+  for (const row of getCaptureInfoForObject(objectId)) {
+    if (!row.sessionDate) continue;
+    const rows = byNight.get(row.sessionDate);
+    if (rows) rows.push(row);
+    else byNight.set(row.sessionDate, [row]);
+  }
+
+  const result: Record<string, SessionCaptureSummary> = {};
+  for (const [date, rows] of byNight) {
+    const summary = summarizeSessionCapture(rows);
+    if (summary) result[date] = summary;
+  }
+  res.apiSuccess(result);
+});
+
 // ─── Integration stats (local sub-frames only) ───────────────────────────────
 
 router.get('/objects/:objectId/integration', async (req: Request, res: Response) => {
@@ -1594,6 +1797,43 @@ router.get('/headers', async (req: Request, res: Response) => {
 });
 
 // ─── ZIP download (local files only) ─────────────────────────────────────────
+
+// Mint a short-lived signed URL for the whole-object ZIP below. Authenticated
+// (any signed-in role — a download is a read), because the browser's <a download>
+// click that ultimately hits the ZIP route cannot send an Authorization header.
+// The returned URL carries `?t=<token>` which server/middleware/auth.ts verifies
+// against this exact path. See lib/downloadToken.ts.
+const DownloadLinkBodySchema = z.object({
+  fileType: z.string().optional(),
+  date: z.string().optional(),
+  includeVariants: z.boolean().optional(),
+});
+
+router.post('/download/objects/:objectId/link', strictRateLimiter, (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const parsed = DownloadLinkBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.apiError(400, 'INVALID_BODY', parsed.error.issues[0]?.message ?? 'Invalid request body');
+    return;
+  }
+  const { fileType, date, includeVariants } = parsed.data;
+
+  // Scope must match the prefix-stripped path the browser GET produces, which
+  // the auth middleware compares against decodeURIComponent(req.path).
+  const scope = `/library/download/objects/${objectId}`;
+  const token = mintDownloadToken(scope);
+
+  const params = new URLSearchParams();
+  if (fileType) params.set('fileType', fileType);
+  if (date) params.set('date', date);
+  if (includeVariants) params.set('includeVariants', 'true');
+  params.set('t', token);
+
+  res.apiSuccess({
+    url: `/api/v1/library/download/objects/${encodeURIComponent(objectId)}?${params.toString()}`,
+    expiresInMs: DOWNLOAD_TOKEN_TTL_MS,
+  });
+});
 
 router.get('/download/objects/:objectId', strictRateLimiter, async (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
@@ -1676,18 +1916,22 @@ const MAX_TEMP_DOWNLOADS = 200;
 interface ArchiveJob {
   filesTotal: number;
   filesDone: number;
-  status: 'running' | 'done' | 'error';
+  status: 'running' | 'done' | 'error' | 'cancelled';
   token?: string;
   filename?: string;
   size?: number;
   error?: string;
   startedAt: number;
   expiresAt: number;
+  /** Set once the ZIP build starts; aborts the archiver + removes the partial file. */
+  abort?: () => void;
 }
 const archiveJobs = new Map<string, ArchiveJob>();
 const MAX_ARCHIVE_JOBS = 200;
 
-// Periodic cleanup — remove expired tokens and jobs
+// Periodic cleanup — remove expired tokens and jobs. unref: importing this
+// router (e.g. tests/backend/routeDecoding.test.ts) must not pin the process's
+// event loop open on a 10-minute interval no one is waiting on.
 setInterval(() => {
   const now = Date.now();
   for (const [token, meta] of tempDownloads) {
@@ -1699,35 +1943,31 @@ setInterval(() => {
   for (const [id, job] of archiveJobs) {
     if (now > job.expiresAt) archiveJobs.delete(id);
   }
-}, 10 * 60 * 1000);
+}, 10 * 60 * 1000).unref?.();
 
 // Filter query — returns distinct filter names found across sub-frames for the given dates
 router.post('/download/objects/:objectId/subframe-filters', strictRateLimiter, (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
-  const bodyParsed = z.object({ dates: z.array(z.string()).min(1) }).safeParse(req.body);
+  const bodyParsed = z.object({
+    dates: z.array(z.string()).min(1),
+    includeVariants: z.boolean().optional(),
+  }).safeParse(req.body);
   if (!bodyParsed.success) {
     res.apiError(400, 'INVALID_DATES', 'dates must be a non-empty array');
     return;
   }
-  const dateSet = new Set(bodyParsed.data.dates.map(String));
-  const folderName = getObjectFolderName(objectId);
-  const LIBRARY_DIR = getLibraryDir();
-  const objDir = path.resolve(LIBRARY_DIR, folderName);
-  if (!objDir.startsWith(LIBRARY_DIR + path.sep)) {
-    res.apiError(400, 'INVALID_OBJECT_ID', 'Object id resolves outside the library');
-    return;
-  }
-  if (!fs.existsSync(objDir)) {
-    res.apiSuccess({ filters: [] });
-    return;
-  }
+  // A mosaic/Ha/etc. variant's sub-frames live in that variant's own object
+  // folder, not the base object's — see resolveVariantIds. Uses getLocalFiles
+  // (same layout-aware, libraryFiles-backed accessor `getLocalSessions` uses)
+  // rather than a flat readdir, because a nested object stores files under
+  // per-session subfolders that a flat listing never sees.
+  const ids = bodyParsed.data.includeVariants ? resolveVariantIds(objectId, req.userId ?? '') : [objectId];
   const filters = new Set<string>();
-  for (const f of fs.readdirSync(objDir)) {
-    if (!isRealFile(f)) continue;
-    const parsed = parseFilename(f);
-    const night = sessionNightFor(parsed);
-    if (parsed.type === 'sub' && night !== null && dateSet.has(night) && parsed.filter) {
-      filters.add(parsed.filter);
+  for (const id of ids) {
+    for (const date of bodyParsed.data.dates) {
+      for (const f of getLocalFiles(id, date)) {
+        if (f.fileType === 'sub' && f.filter) filters.add(f.filter);
+      }
     }
   }
   res.apiSuccess({ filters: [...filters].sort() });
@@ -1741,34 +1981,35 @@ router.post('/download/objects/:objectId/subframes', strictRateLimiter, (req: Re
     res.apiError(400, 'INVALID_DATES', bodyParsed.error.issues[0]?.message ?? 'dates must be a non-empty array');
     return;
   }
-  const { dates, filters } = bodyParsed.data;
+  const { dates, filters, includeVariants, sirilLayout } = bodyParsed.data;
 
-  const dateSet = new Set(dates.map(String));
   const filterSet = filters && filters.length > 0 ? new Set(filters) : null;
-  // Resolve the object folder strictly inside LIBRARY_DIR — `getObjectFolderName`
-  // falls back to the raw objectId when the lookup misses, which means a
-  // crafted objectId with traversal tokens would otherwise escape.
-  const folderName = getObjectFolderName(objectId);
+  // A mosaic/Ha/etc. variant's sub-frames live in that variant's own object
+  // folder, not the base object's — see resolveVariantIds. Uses getLocalFiles
+  // (same layout-aware, libraryFiles-backed accessor `getLocalSessions` uses)
+  // rather than a flat readdir, because a nested object stores files under
+  // per-session subfolders that a flat listing never sees.
+  const ids = includeVariants ? resolveVariantIds(objectId, req.userId ?? '') : [objectId];
   const LIBRARY_DIR = getLibraryDir();
-  const objDir = path.resolve(LIBRARY_DIR, folderName);
-  if (!objDir.startsWith(LIBRARY_DIR + path.sep)) {
-    res.apiError(400, 'INVALID_OBJECT_ID', 'Object id resolves outside the library');
-    return;
-  }
-
-  if (!fs.existsSync(objDir)) {
+  const anyObjectExists = ids.some(id => {
+    const objDir = path.resolve(LIBRARY_DIR, getObjectFolderName(id));
+    return objDir.startsWith(LIBRARY_DIR + path.sep) && fs.existsSync(objDir);
+  });
+  if (!anyObjectExists) {
     res.apiError(404, 'NOT_FOUND', 'Object not found in local library');
     return;
   }
 
-  const subFrames = fs.readdirSync(objDir).filter(f => {
-    if (!isRealFile(f)) return false;
-    const parsed = parseFilename(f);
-    const night = sessionNightFor(parsed);
-    if (parsed.type !== 'sub' || night === null || !dateSet.has(night)) return false;
-    if (filterSet !== null && (!parsed.filter || !filterSet.has(parsed.filter))) return false;
-    return true;
-  });
+  const subFrames: { libPath: string }[] = [];
+  for (const id of ids) {
+    for (const date of dates) {
+      for (const f of getLocalFiles(id, date)) {
+        if (f.fileType !== 'sub') continue;
+        if (filterSet !== null && (!f.filter || !filterSet.has(f.filter))) continue;
+        subFrames.push({ libPath: f.path });
+      }
+    }
+  }
 
   if (subFrames.length === 0) {
     res.apiError(404, 'NO_FILES', 'No subframes found for the selected sessions');
@@ -1802,9 +2043,20 @@ router.post('/download/objects/:objectId/subframes', strictRateLimiter, (req: Re
   const output = fs.createWriteStream(tmpPath);
   const archive = archiver('zip', { zlib: { level: 1 } });
 
+  // Cancellation: the client's "Cancel" now actually stops the server work
+  // instead of only halting the poll. abort() clears the pending file queue,
+  // detaches the pipes, and we drop the partial ZIP.
+  job.abort = () => {
+    if (job.status !== 'running') return;
+    job.status = 'cancelled';
+    try { archive.abort(); } catch { /* best effort */ }
+    fs.unlink(tmpPath, () => {});
+  };
+
   archive.on('entry', () => { job.filesDone++; });
 
   output.on('close', () => {
+    if (job.status === 'cancelled') { fs.unlink(tmpPath, () => {}); return; }
     const token = randomUUID();
     if (tempDownloads.size >= MAX_TEMP_DOWNLOADS) {
       tempDownloads.delete(tempDownloads.keys().next().value!);
@@ -1817,14 +2069,39 @@ router.post('/download/objects/:objectId/subframes', strictRateLimiter, (req: Re
 
   archive.on('error', (err: Error) => {
     fs.unlink(tmpPath, () => {});
+    if (job.status === 'cancelled') return;
     job.status = 'error';
     job.error = err.message;
   });
 
   archive.pipe(output);
 
-  for (const fname of subFrames) {
-    archive.file(path.join(objDir, fname), { name: `${objectId}/${fname}` });
+  // libPath is folderName-relative (may include a session subfolder for a
+  // nested object); by default keep that structure in the zip entry name too,
+  // both to avoid same-filename collisions across sessions and to stay
+  // meaningful once extracted.
+  //
+  // With sirilLayout, flatten everything into `<objectFolder>/lights/` so the
+  // archive extracts straight into a Siril working folder. Filenames are kept
+  // as-is (SeeStar and Dwarf sub-frame names already carry a per-frame
+  // timestamp), and any residual collision gets a `-2`, `-3` suffix.
+  const sirilFolder = sirilLayout ? getObjectFolderName(objectId) : null;
+  const usedNames = new Set<string>();
+  for (const { libPath } of subFrames) {
+    let entryName = libPath;
+    if (sirilFolder) {
+      const base = path.basename(libPath);
+      entryName = `${sirilFolder}/lights/${base}`;
+      if (usedNames.has(entryName)) {
+        const ext = path.extname(base);
+        const stem = ext ? base.slice(0, -ext.length) : base;
+        let n = 2;
+        while (usedNames.has(`${sirilFolder}/lights/${stem}-${n}${ext}`)) n++;
+        entryName = `${sirilFolder}/lights/${stem}-${n}${ext}`;
+      }
+      usedNames.add(entryName);
+    }
+    archive.file(path.join(LIBRARY_DIR, libPath), { name: entryName });
   }
 
   archive.finalize();
@@ -1849,11 +2126,24 @@ router.get('/download/status/:jobId', (req: Request, res: Response) => {
     payload.size = job.size;
     archiveJobs.delete(String(req.params.jobId));
   }
-  if (job.status === 'error') {
+  if (job.status === 'error' || job.status === 'cancelled') {
     payload.error = job.error;
     archiveJobs.delete(String(req.params.jobId));
   }
   res.apiSuccess(payload);
+});
+
+// Cancel an in-flight ZIP build. Without this "Cancel" only stopped the client
+// poll while the server kept zipping (potentially tens of GB) to the tmp dir.
+router.post('/download/status/:jobId/cancel', strictRateLimiter, (req: Request, res: Response) => {
+  const jobId = String(req.params.jobId);
+  const job = archiveJobs.get(jobId);
+  if (job) {
+    job.abort?.();
+    archiveJobs.delete(jobId);
+  }
+  // Idempotent: an already-finished / unknown job is a successful no-op.
+  res.apiSuccess({ cancelled: true });
 });
 
 // Phase 3 — serve pre-built ZIP via one-time token (auth-free; token = credential)
@@ -2227,21 +2517,7 @@ router.post('/objects/:objectId/sessions/:date/processed-images', requireAdmin, 
     runId = runIdRaw;
   }
 
-  const mimeMap: Record<string, string> = {
-    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-    tif: 'image/tiff', tiff: 'image/tiff',
-    // Stored-but-not-rendered formats. Real IANA types where one exists, so a
-    // browser download names and handles the file correctly.
-    fit: 'application/fits', fits: 'application/fits', fts: 'application/fits',
-    xisf: 'application/x-xisf',
-    psd: 'image/vnd.adobe.photoshop', xcf: 'image/x-xcf',
-    dng: 'image/x-adobe-dng', cr2: 'image/x-canon-cr2', cr3: 'image/x-canon-cr3',
-    nef: 'image/x-nikon-nef', arw: 'image/x-sony-arw',
-  };
-  const ext = file.originalname.split('.').pop()?.toLowerCase() || '';
-  // Falling back to image/jpeg would tell the client an XISF is a renderable
-  // JPEG, so the grid would show a broken thumbnail instead of a file card.
-  const mimeType = mimeMap[ext] || 'application/octet-stream';
+  const mimeType = processedImageMimeType(file.originalname);
 
   try {
     const record = addProcessedImage(objectId, date, file.path, file.originalname, mimeType, title, notes, runId);
@@ -2253,6 +2529,42 @@ router.post('/objects/:objectId/sessions/:date/processed-images', requireAdmin, 
   } catch (err) {
     try { fs.unlinkSync(file.path); } catch { /* ignore */ }
     res.apiError(500, 'UPLOAD_FAILED', err instanceof Error ? err.message : 'Upload failed');
+  }
+});
+
+// Overwrite an existing processed image's file bytes in place, keeping its row
+// and id — the image editor's "Save" (vs the POST above, "Save as new
+// version"). Not scoped by session date so it also covers an object-level
+// processed image (date NULL).
+router.put('/objects/:objectId/processed-images/:id', requireAdmin, processedUpload.single('image'), (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const id = String(req.params.id);
+  const file = req.file;
+  if (!file) {
+    res.apiError(400, 'NO_IMAGE', 'No image file provided');
+    return;
+  }
+
+  const existing = getProcessedImageRecord(id);
+  if (!existing || existing.objectId !== objectId) {
+    try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+    res.apiError(404, 'NOT_FOUND', 'Processed image not found');
+    return;
+  }
+
+  try {
+    const record = replaceProcessedImageFile(
+      id, file.path, file.originalname, processedImageMimeType(file.originalname),
+    );
+    if (!record) {
+      res.apiError(404, 'NOT_FOUND', 'Processed image not found');
+      return;
+    }
+    invalidateAllImagesCache();
+    res.apiSuccess(record);
+  } catch (err) {
+    try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+    res.apiError(500, 'SAVE_FAILED', err instanceof Error ? err.message : 'Save failed');
   }
 });
 
@@ -2307,23 +2619,44 @@ router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, edi
     }
     if (!fs.existsSync(objDir)) fs.mkdirSync(objDir, { recursive: true });
 
-    // Build a filename that parseFilename can associate with the correct session
-    // date: <objectId>_YYYYMMDD-HHMMSSE.jpg  — the trailing `E` marks this as an
-    // edited variant and lands in the simpleMatch suffix slot (`[A-Z]?`). Adding
-    // free-form text like ` (edited)` here breaks the regex, so the file would
-    // be saved on disk but invisible to getLocalFiles().
-    //
-    // `date` is the session the user is editing, not this file's own capture
-    // time — the embedded time-of-day is clamped into the rollover-safe zone
-    // (see clampToNightSafeTime) so an edit made at, say, 2am doesn't get
-    // rolled back a day by sessionNightFor the next time it's read.
-    const now = new Date();
-    const datePart = date.replace(/-/g, ''); // YYYYMMDD from session date
-    const rawTimePart = now.toTimeString().slice(0, 8).replace(/:/g, ''); // HHMMSS
-    const timePart = clampToNightSafeTime(rawTimePart);
-    const ext = file.originalname.split('.').pop()?.toLowerCase() || 'jpg';
-    const filename = `${objectId}_${datePart}-${timePart}E.${ext}`;
-    const destPath = path.join(objDir, filename);
+    // `overwritePath` (optional): the image editor's "Save", which replaces one
+    // exact existing file rather than adding an "…E.jpg" variant ("Save as new
+    // version"). Must be a library-relative path resolving to an existing JPEG
+    // *inside this object's folder* — anything else is rejected so the route
+    // can never be steered to clobber another object's data or escape the tree.
+    const overwriteRaw = typeof req.body?.overwritePath === 'string' ? req.body.overwritePath.trim() : '';
+    let filename: string;
+    let destPath: string;
+    if (overwriteRaw) {
+      const resolved = path.resolve(LIBRARY_DIR, overwriteRaw);
+      if (!resolved.startsWith(objDir + path.sep)) {
+        throw new Error('overwritePath is outside this object folder');
+      }
+      if (!/\.jpe?g$/i.test(resolved) || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+        throw new Error('overwritePath does not name an existing JPEG in this object');
+      }
+      destPath = resolved;
+      filename = path.basename(resolved);
+    } else {
+      // Build a filename that parseFilename can associate with the correct
+      // session date: <objectId>_YYYYMMDD-HHMMSSE.jpg — the trailing `E` marks
+      // this as an edited variant and lands in the simpleMatch suffix slot
+      // (`[A-Z]?`). Adding free-form text like ` (edited)` here breaks the
+      // regex, so the file would be saved on disk but invisible to
+      // getLocalFiles().
+      //
+      // `date` is the session the user is editing, not this file's own capture
+      // time — the embedded time-of-day is clamped into the rollover-safe zone
+      // (see clampToNightSafeTime) so an edit made at, say, 2am doesn't get
+      // rolled back a day by sessionNightFor the next time it's read.
+      const now = new Date();
+      const datePart = date.replace(/-/g, ''); // YYYYMMDD from session date
+      const rawTimePart = now.toTimeString().slice(0, 8).replace(/:/g, ''); // HHMMSS
+      const timePart = clampToNightSafeTime(rawTimePart);
+      const ext = file.originalname.split('.').pop()?.toLowerCase() || 'jpg';
+      filename = `${objectId}_${datePart}-${timePart}E.${ext}`;
+      destPath = path.join(objDir, filename);
+    }
     try {
       fs.renameSync(file.path, destPath);
     } catch (renameErr) {
@@ -2355,6 +2688,21 @@ router.delete('/objects/:objectId/sessions/:date/processed-images/:id', requireA
   res.apiSuccess({ deleted: true, id });
 });
 
+/** Object-scoped delete, no session date — mirrors the session-scoped route
+ *  above for the aggregate "Processed" section (see deleteObjectProcessedImage
+ *  in src/lib/api/library.ts), which mixes images from many dates. */
+router.delete('/objects/:objectId/processed-images/:id', requireAdmin, (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const record = getProcessedImageRecord(id);
+  if (!record) {
+    res.apiError(404, 'NOT_FOUND', 'Processed image not found');
+    return;
+  }
+  deleteProcessedImage(id);
+  invalidateAllImagesCache();
+  res.apiSuccess({ deleted: true, id });
+});
+
 /** Serve a processed image file by id. */
 router.get('/processed-images/:id', async (req: Request, res: Response) => {
   const id = String(req.params.id);
@@ -2367,6 +2715,33 @@ router.get('/processed-images/:id', async (req: Request, res: Response) => {
   res.set('Content-Type', file.mimeType || 'image/jpeg');
   res.set('Cache-Control', 'public, max-age=3600');
   res.send(file.data);
+});
+
+/** Object-scoped upload, no session date — for a processed image the user
+ *  wants filed against the object itself rather than one observing night.
+ *  Stored with date NULL (source stays 'user'), so it shows in the object's
+ *  aggregate Processed Images section but under no single observation. No
+ *  runId: combining nights is a per-session-upload concept. */
+router.post('/objects/:objectId/processed-images', requireAdmin, processedUpload.single('image'), (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const file = req.file;
+  if (!file) {
+    res.apiError(400, 'NO_IMAGE', 'No image file provided');
+    return;
+  }
+
+  const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+  const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+  const mimeType = processedImageMimeType(file.originalname);
+
+  try {
+    const record = addProcessedImage(objectId, null, file.path, file.originalname, mimeType, title, notes, null);
+    invalidateAllImagesCache();
+    res.apiSuccess(record);
+  } catch (err) {
+    try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+    res.apiError(500, 'UPLOAD_FAILED', err instanceof Error ? err.message : 'Upload failed');
+  }
 });
 
 /** List all processed images across all sessions for this object. */

@@ -1,21 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation, useMutationState } from '@tanstack/react-query';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import {
-  ArrowLeft,
-  MapPin,
-  Layers,
-  FileImage,
-  Info,
-  ExternalLink,
-  X,
-  Loader2,
-  Crown,
-  Pencil,
-  Columns,
-  Frame,
-  Sparkles,
-} from 'lucide-react';
+import { ArrowLeft, X, Loader2, Columns, Frame } from 'lucide-react';
 import { getObservationDetail, getObjectInfo } from '../lib/api/observations';
 import {
   deleteSessionSubFrames,
@@ -27,6 +13,7 @@ import {
   toggleImageFavorite,
   startSubframesArchive,
   getSubframesArchiveStatus,
+  cancelSubframesArchive,
   getSubframesArchiveTmpUrl,
 } from '../lib/api/library';
 import { getSettings } from '../lib/api/settings';
@@ -34,6 +21,7 @@ import { getTelescopeStatus, listTelescopes } from '../lib/api/telescopes';
 import { fetchLocationName } from '../lib/api/catalog';
 import { getNote } from '../lib/api/notes';
 import { formatObjectTitle } from '../lib/dsoSearch';
+import { formatObservationDate } from '../lib/observationDisplay';
 import { previewSrcFor, thumbSrcFor, isPoorHeroCandidate } from '../lib/sessionImageSrc';
 import { isRenderableProcessed } from '../lib/processedFormats';
 import { MoveObservationModal } from '../components/MoveObservationModal';
@@ -41,83 +29,56 @@ import { UploadProcessedModal } from '../components/UploadProcessedModal';
 import { DeleteSessionModal } from '../components/DeleteSessionModal';
 import { GalleryModal, type GalleryItem } from '../components/GalleryModal';
 import { FitsHeaderModal } from '../components/FitsHeaderModal';
-import { FitsPreview } from '../components/FitsPreview';
 import { SessionNotesModal } from '../components/SessionNotesModal';
-import { ObservationMap } from '../components/ObservationMap';
-import { ImageEditorModal } from '../components/ImageEditorModal';
+import { ImageEditorModal, type OverwriteTarget } from '../components/ImageEditorModal';
 import { ImageCompareModal, type CompareFile } from '../components/ImageCompareModal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useSyncSubframes } from '../contexts/SyncSubframesContext';
 import { SatelliteTrailScanModal } from '../components/SatelliteTrailScanModal';
 import { FramingModal, FRAMING_MOSAIC_ENABLED } from '../components/catalogs/FramingModal';
-import { ObservationHeader } from '../components/observationDetail/ObservationHeader';
-import { WeatherPanel } from '../components/observationDetail/WeatherPanel';
-import { CapturePanel } from '../components/observationDetail/CapturePanel';
-import { ObservedFromControl } from '../components/observationDetail/ObservedFromPanel';
-import { ObservationStrip } from '../components/observationDetail/ObservationStrip';
+import { SessionHero, type HeroBadge, type HeroMedia } from '../components/observationDetail/SessionHero';
+import { buildCaptureMetrics } from '../lib/captureMetrics';
+import { ObjectPanel } from '../components/observationDetail/ObjectPanel';
+import { ConditionsPanel } from '../components/observationDetail/ConditionsPanel';
+import { SitePanel } from '../components/observationDetail/SitePanel';
 import { ObservationTabs, type ObservationTab } from '../components/observationDetail/ObservationTabs';
+import { VideoPanel } from '../components/observationDetail/VideoPanel';
 import { SessionFileGrid } from '../components/observationDetail/SessionFileGrid';
 import { SubframesPanel } from '../components/observationDetail/SubframesPanel';
 import { ProcessedImagesGrid } from '../components/observationDetail/ProcessedImagesGrid';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/AuthContext';
 import type { SessionFile, ProcessedImage } from '../types';
+import type { CompareItem } from '../components/observationDetail/types';
 
-function formatRa(ra: string): string {
-  if (/\d+h/i.test(ra)) return ra; // already sexagesimal (e.g. "05h 34m 31.94s")
-  const h = parseFloat(ra); // decimal hours (OpenNGC stores RA in hours, not degrees)
-  if (isNaN(h)) return ra;
-  const hh = Math.floor(h);
-  const mFrac = (h - hh) * 60;
-  const m = Math.floor(mFrac);
-  const s = (mFrac - m) * 60;
-  return `${hh.toString().padStart(2, '0')}h ${m.toString().padStart(2, '0')}m ${s.toFixed(1).padStart(4, '0')}s`;
+/** `YYYYMMDD-HHMMSS` (what the telescope writes) or an ISO timestamp, as
+ *  `HH:MM` in 24-hour time. */
+function formatClock(timestamp: string): string {
+  try {
+    const m = timestamp.match(/^\d{8}-(\d{2})(\d{2})/);
+    if (m) return `${m[1]}:${m[2]}`;
+    return new Date(timestamp).toLocaleTimeString('en-GB', {
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    });
+  } catch {
+    return timestamp;
+  }
 }
-
-function formatDec(dec: string): string {
-  const deg = parseFloat(dec);
-  if (isNaN(deg)) return dec; // already formatted (e.g. "+22° 00′ 52.2″")
-  const sign = deg >= 0 ? '+' : '-';
-  const abs = Math.abs(deg);
-  const d = Math.floor(abs);
-  const mFrac = (abs - d) * 60;
-  const m = Math.floor(mFrac);
-  const s = (mFrac - m) * 60;
-  return `${sign}${d.toString().padStart(2, '0')}° ${m.toString().padStart(2, '0')}′ ${s.toFixed(1)}″`;
-}
-
-// Compare-mode selection slot — shared by the telescope-file grid and the
-// processed-images grid, since either can supply either side of a compare.
-export type CompareItem = { key: string; file: CompareFile };
 
 /**
- * How the hero is sized, which depends on the frame's orientation.
+ * An observation, laid out as: the picture and what it cost, then what the
+ * object is, what the sky was doing and where you stood, then the files.
  *
- * The two supported telescopes disagree about shape: a Dwarf stack is wide,
- * a Seestar stack is tall. One fixed layout cannot serve both. An uncapped
- * image pushed the whole session below the fold, but capping height alone left
- * a portrait frame as a narrow ribbon stranded in a wide column.
- *
- * So the column tracks the image. A landscape frame gets the wide column and a
- * shorter cap; a portrait frame gets a narrow column and more height to use, so
- * it fills its space and the About card beside it gains the width instead.
- * Nothing is ever cropped, since cropping an astro frame hides the framing the
- * user is checking. Full resolution stays one click away in the gallery.
+ * The reading half of the page is always visible; only the file grids are
+ * behind tabs. That is the reverse of the old arrangement, where the capture
+ * settings, the conditions and the location all sat in a Details tab nobody
+ * opened while the picture itself was capped at 420px beside a rail of 10px
+ * labels.
  */
-const HERO_SIZING = {
-  landscape: {
-    grid: 'lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]',
-    maxH: 'max-h-[420px]',
-  },
-  portrait: {
-    grid: 'lg:grid-cols-[minmax(0,0.5fr)_minmax(0,1fr)]',
-    maxH: 'max-h-[600px]',
-  },
-} as const;
-
-/** Taller than this much of its width counts as portrait. The margin keeps a
- *  roughly square frame in the landscape layout, where it looks better. */
-const PORTRAIT_RATIO = 1.1;
+// Stable across renders (unlike `observation?.files || []`, a fresh array
+// literal every time observation is loading) so `files` itself is a safe
+// useMemo dependency below without needing its own memo layer.
+const EMPTY_FILES: SessionFile[] = [];
 
 export function ObservationDetail() {
   const { objectId = '', date = '' } = useParams<{ objectId: string; date: string }>();
@@ -126,7 +87,13 @@ export function ObservationDetail() {
   const queryClient = useQueryClient();
   const { openSync } = useSyncSubframes();
 
-  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
+  // Intent only — which live list the open gallery is showing, not a frozen
+  // copy of its contents. galleryItems below is derived from the current
+  // query data every render, so an open lightbox can't go stale the moment a
+  // favorite toggles or the observation refetches while it's open.
+  const [gallerySource, setGallerySource] = useState<
+    { kind: 'files' } | { kind: 'subframes' } | { kind: 'processed' } | { kind: 'single'; file: SessionFile } | null
+  >(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [galleryOpen, setGalleryOpen] = useState(false);
   // Defaults to 'all' so the tab's contents match the count on its badge. A
@@ -134,7 +101,12 @@ export function ObservationDetail() {
   const [viewMode, setViewMode] = useState<'all' | 'fits' | 'image'>('all');
   const [headerFile, setHeaderFile] = useState<SessionFile | null>(null);
   const [galleryPage, setGalleryPage] = useState(0);
-  useEffect(() => { setGalleryPage(0); }, [viewMode]);
+  // Reset paging when the file-type filter changes (render-phase, no extra render).
+  const [pagedViewMode, setPagedViewMode] = useState(viewMode);
+  if (pagedViewMode !== viewMode) {
+    setPagedViewMode(viewMode);
+    setGalleryPage(0);
+  }
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
 
@@ -151,7 +123,12 @@ export function ObservationDetail() {
 
   // Image editor state
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editorSrc, setEditorSrc] = useState<{ url: string; name: string; sourceKind: 'telescope' | 'processed' } | null>(null);
+  const [editorSrc, setEditorSrc] = useState<{
+    url: string;
+    name: string;
+    sourceKind: 'telescope' | 'processed';
+    overwriteTarget?: OverwriteTarget;
+  } | null>(null);
 
   // Compare state — key is file.path (telescope) or img.id (processed)
   const [compareMode, setCompareMode] = useState(false);
@@ -161,49 +138,33 @@ export function ObservationDetail() {
   const [confirmDeleteSubframes, setConfirmDeleteSubframes] = useState(false);
   const [archiveState, setArchiveState] = useState<{ done: number; total: number } | 'idle' | 'error'>('idle');
   const archiveAbortRef = useRef(false);
+  // In-flight ZIP job id so leaving the page stops the server-side build, not
+  // just the client poll.
+  const archiveJobIdRef = useRef<string | null>(null);
   const [notesModalOpen, setNotesModalOpen] = useState(false);
   const [framingOpen, setFramingOpen] = useState(false);
   const [locationName, setLocationName] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ObservationTab>('images');
+  // `null` until the user picks a tab; the shown tab is then derived (see
+  // `activeTab` below, after the file tallies it depends on).
+  const [pinnedTab, setPinnedTab] = useState<ObservationTab | null>(null);
   const tabsSectionRef = useRef<HTMLDivElement | null>(null);
   const isFirstTabRender = useRef(true);
 
-  /** Tabs swap in content of very different heights (a tall image grid vs. a
-   *  short or empty Details/Subframes panel). Left alone, the document shrinks
-   *  when a shorter tab mounts and the browser clamps scrollY to whatever the
-   *  new height allows, landing mid-page instead of at the top of the new
-   *  content. Switching back then lands at that same clamped position rather
-   *  than where the grid had actually been scrolled to, cutting off rows that
-   *  were visible before. Anchoring to the tab bar on every switch keeps the
-   *  landing spot the same no matter how tall each tab's content is. Skips
-   *  the initial mount so loading the page doesn't itself cause a scroll.
-   */
-  useEffect(() => {
-    if (isFirstTabRender.current) { isFirstTabRender.current = false; return; }
-    tabsSectionRef.current?.scrollIntoView({ block: 'start' });
-  }, [activeTab]);
-  /** Set from the hero's natural dimensions once it loads. Null until then, so
-   *  the first paint uses the landscape layout rather than flashing a guess. */
-  const [heroIsPortrait, setHeroIsPortrait] = useState<boolean | null>(null);
-  /** A plain `<img>` hero has no reserved space until it loads (no width/height
-   *  metadata is available ahead of time — see noteHeroSize below), so it
-   *  collapses to nothing and then jumps to full height, shoving the tabs and
-   *  file grid down. That jump landing while someone is mid-scroll is what
-   *  reads as the page "jittering." A fixed-size loading placeholder (same
-   *  pattern FitsPreview already uses for FITS heroes) keeps the box a stable
-   *  size throughout, so nothing moves once the image actually finishes. */
-  const [heroImgLoaded, setHeroImgLoaded] = useState(false);
-
-  // Note existence (for Session Notes tile indicator)
+  // Note existence, which switches the hero's Notes action to "edit".
   const { data: existingNote } = useQuery({
     queryKey: ['note', objectId, date],
     queryFn: () => getNote(objectId, date),
     enabled: !!objectId && !!date,
   });
 
-  const openImageEditor = (url: string, name: string, sourceKind: 'telescope' | 'processed') => {
+  const openImageEditor = (
+    url: string,
+    name: string,
+    sourceKind: 'telescope' | 'processed',
+    overwriteTarget?: OverwriteTarget,
+  ) => {
     setGalleryOpen(false);
-    setEditorSrc({ url, name, sourceKind });
+    setEditorSrc({ url, name, sourceKind, overwriteTarget });
     setEditorOpen(true);
   };
 
@@ -306,14 +267,17 @@ export function ObservationDetail() {
     return set;
   }, [imageFavoritePaths, pendingFavorites]);
 
-  const files = observation?.files || [];
-  const subFrames = files.filter(f => f.fileType === 'sub');
-  const filteredFiles = files.filter(f => {
+  const files = observation?.files ?? EMPTY_FILES;
+  // Memoized: both are passed down as props to SubframesPanel/SessionFileGrid
+  // and read by the galleryItems derivation below — a fresh array reference
+  // every render would defeat any memoization those children rely on.
+  const subFrames = useMemo(() => files.filter(f => f.fileType === 'sub'), [files]);
+  const filteredFiles = useMemo(() => files.filter(f => {
     if (f.fileType === 'sub') return false;
     if (viewMode === 'fits') return f.type === 'fits';
     if (viewMode === 'image') return f.type === 'image';
     return f.type === 'fits' || f.type === 'image';
-  });
+  }), [files, viewMode]);
 
   // The Images tab badge counts everything that tab can ever show, not what the
   // current All/Image/FITS filter happens to leave visible. Using the filtered
@@ -322,10 +286,39 @@ export function ObservationDetail() {
     f => f.fileType !== 'sub' && (f.type === 'image' || f.type === 'fits'),
   ).length;
 
+  // Lunar/planetary video and timelapse captures. Their own tab: a video has no
+  // thumbnail to crown or compare, and the gallery lightbox only knows stills.
+  const videoFiles = useMemo(() => files.filter(f => f.type === 'video'), [files]);
+
   const stackedImages = files.filter(f => f.fileType === 'stacked' && f.type === 'image');
   const stackedImage = stackedImages.find(f => !isPoorHeroCandidate(f)) ?? stackedImages[0];
   // Stacked FITS fallback: some sessions have a stacked .fit but no rendered .jpg.
   const stackedFits = files.find(f => f.fileType === 'stacked' && f.type === 'fits');
+
+  // The shown tab: whatever the user pinned, else Images — unless the night is
+  // video-only (a lunar timelapse with no stills, subframes, or processed
+  // uploads), in which case Videos leads so the page never opens on an empty
+  // grid.
+  const activeTab: ObservationTab = pinnedTab ?? (
+    imageTabCount === 0 && subFrames.length === 0 && processedImages.length === 0 && videoFiles.length > 0
+      ? 'videos'
+      : 'images'
+  );
+
+  /** Tabs swap in content of very different heights (a tall image grid vs. a
+   *  short or empty Subframes panel). Left alone, the document shrinks when a
+   *  shorter tab mounts and the browser clamps scrollY to whatever the new
+   *  height allows, landing mid-page instead of at the top of the new content.
+   *  Switching back then lands at that same clamped position rather than where
+   *  the grid had actually been scrolled to, cutting off rows that were visible
+   *  before. Anchoring to the tab bar on every switch keeps the landing spot the
+   *  same no matter how tall each tab's content is. Skips the initial mount so
+   *  loading the page doesn't itself cause a scroll.
+   */
+  useEffect(() => {
+    if (isFirstTabRender.current) { isFirstTabRender.current = false; return; }
+    tabsSectionRef.current?.scrollIntoView({ block: 'start' });
+  }, [activeTab]);
 
   // Designated session image (falls back to stacked image, then any image, then stacked FITS)
   const designatedSessionFile = observation?.sessionImage
@@ -377,35 +370,158 @@ export function ObservationDetail() {
   const heroIsUserDesignated = (!!designatedSessionFile && designatedSessionFile !== stackedImage) || !!designatedProcessedImage;
   const heroIsFits = heroFile?.type === 'fits';
 
-  const heroSizing = heroIsPortrait ? HERO_SIZING.portrait : HERO_SIZING.landscape;
-  const noteHeroSize = useCallback((w: number, h: number) => {
-    setHeroIsPortrait(h > w * PORTRAIT_RATIO);
-  }, []);
-  // A different hero (crowned image, navigation to another session) may have the
-  // opposite orientation, so the measurement has to be retaken rather than left
-  // over from the previous frame.
-  const heroKey = effectiveProcessedImage?.id ?? heroFile?.path ?? null;
-  useEffect(() => { setHeroIsPortrait(null); setHeroImgLoaded(false); }, [heroKey]);
-
   const formattedDate = date && date !== 'unknown'
     ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     : 'Unknown date';
+  const shortDate = date && date !== 'unknown' ? formatObservationDate(date) : 'Unknown date';
 
   const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-accent-500';
+  // The hero sits on dark imagery in every theme, and only a fixed set of
+  // accent-* utilities is re-mapped for night and space, so it takes the bright
+  // accent value directly rather than the light-mode-darkened token.
+  const accent = isNight ? '#f87171' : isSpace ? '#a78bfa' : '#fbbf24';
   const displayName = formatObjectTitle(observation?.catalogId, observation?.objectName, objectId);
 
-  function openGallery(index: number, fileList?: SessionFile[]) {
-    const list = fileList || filteredFiles;
-    setGalleryItems(list.map(f => ({ kind: 'file' as const, file: f })));
+  const timeRange = observation?.startTime
+    ? observation.endTime && observation.endTime !== observation.startTime
+      ? `${formatClock(observation.startTime)} - ${formatClock(observation.endTime)}`
+      : formatClock(observation.startTime)
+    : null;
+
+  function openGallery(index: number, source: 'files' | 'subframes' = 'files') {
+    setGallerySource({ kind: source });
     setGalleryIndex(index);
+    setGalleryOpen(true);
+  }
+
+  function openSingleFileGallery(file: SessionFile) {
+    setGallerySource({ kind: 'single', file });
+    setGalleryIndex(0);
     setGalleryOpen(true);
   }
 
   function openProcessedGallery(index: number) {
-    setGalleryItems(processedImages.map(img => ({ kind: 'processed' as const, img })));
+    setGallerySource({ kind: 'processed' });
     setGalleryIndex(index);
     setGalleryOpen(true);
   }
+
+  const galleryItems = useMemo((): GalleryItem[] => {
+    if (!gallerySource) return [];
+    switch (gallerySource.kind) {
+      case 'files': return filteredFiles.map(f => ({ kind: 'file' as const, file: f }));
+      case 'subframes': return subFrames.map(f => ({ kind: 'file' as const, file: f }));
+      case 'processed': return processedImages.map(img => ({ kind: 'processed' as const, img }));
+      case 'single': return [{ kind: 'file' as const, file: gallerySource.file }];
+      default: {
+        const _exhaustive: never = gallerySource;
+        void _exhaustive;
+        return [];
+      }
+    }
+  }, [gallerySource, filteredFiles, subFrames, processedImages]);
+
+  // ─── What the hero shows ────────────────────────────────────────────────────
+  // A processed image, when one is crowned or auto-picked, otherwise the best
+  // telescope frame. The badge distinguishes the three: an explicit crown is the
+  // observer's choice and gets the amber treatment, the other two are the page's
+  // own pick and say plainly which kind of file they are.
+
+  let heroMedia: HeroMedia = null;
+  let heroBadge: HeroBadge = null;
+  let openHeroMedia = () => {};
+
+  if (effectiveProcessedImage) {
+    const img = effectiveProcessedImage;
+    heroMedia = {
+      kind: 'image',
+      src: img.url,
+      alt: img.title || img.originalName,
+      onEdit: () => openImageEditor(img.url, img.title || img.originalName, 'processed', { kind: 'processed', id: img.id }),
+    };
+    heroBadge = designatedProcessedImage
+      ? { tone: 'crown', text: 'Session image' }
+      : { tone: 'processed', text: 'Processed' };
+    openHeroMedia = () => {
+      const idx = processedImages.findIndex(p => p.id === img.id);
+      if (idx >= 0) openProcessedGallery(idx);
+    };
+  } else if (heroFile) {
+    const file = heroFile;
+    heroMedia = heroIsFits
+      ? { kind: 'fits', url: file.downloadUrl }
+      : {
+        kind: 'image',
+        src: previewSrcFor(file),
+        alt: displayName,
+        onEdit: () => openImageEditor(
+          file.downloadUrl, file.name, 'telescope',
+          // Overwriting in place only makes sense for a JPEG original — the
+          // editor always exports JPEG.
+          /\.jpe?g$/i.test(file.name) ? { kind: 'telescope', path: file.path } : undefined,
+        ),
+      };
+    heroBadge = heroIsUserDesignated
+      ? { tone: 'crown', text: 'Session image' }
+      : {
+        tone: 'stacked',
+        text: [
+          `Stacked${heroIsFits ? ' FITS' : ''}`,
+          file.frameCount ? `${file.frameCount} frames` : null,
+          file.exposure,
+        ].filter(Boolean).join(' · '),
+      };
+    openHeroMedia = () => {
+      const idx = filteredFiles.findIndex(f => f.path === file.path);
+      // A stacked FITS is in filteredFiles under the default 'all' view but not
+      // once the user switches to Image, so fall back to a gallery of just it.
+      if (idx >= 0) openGallery(idx);
+      else openSingleFileGallery(file);
+    };
+  } else if (videoFiles.length > 0) {
+    // Lunar/planetary sessions that produced only video. Without this the hero
+    // fell to "No images captured" even though the session has a capture to
+    // show, and the object-page card (which borrows the object thumbnail) made
+    // it look like a still existed. Prefer the main capture over its timelapse,
+    // and a browser-playable container over an AVI.
+    const isTimelapse = (n: string) => /-timelapse\.[^.]+$/i.test(n);
+    const isPlayable = (n: string) => /\.(mp4|mov)$/i.test(n);
+    const pick = videoFiles.find(f => isPlayable(f.name) && !isTimelapse(f.name))
+      ?? videoFiles.find(f => isPlayable(f.name))
+      ?? videoFiles.find(f => !isTimelapse(f.name))
+      ?? videoFiles[0];
+    const goToVideos = () => {
+      setPinnedTab('videos');
+      tabsSectionRef.current?.scrollIntoView({ block: 'start' });
+    };
+    heroMedia = {
+      kind: 'video',
+      src: pick.videoUrl ?? pick.downloadUrl,
+      playable: isPlayable(pick.name),
+      onOpen: goToVideos,
+    };
+    heroBadge = { tone: 'video', text: videoFiles.length > 1 ? `${videoFiles.length} videos` : 'Video' };
+    openHeroMedia = goToVideos;
+  }
+
+  const canResetCrown = isAdmin && (!!designatedProcessedImage || heroIsUserDesignated);
+
+  const captureMetrics = buildCaptureMetrics({
+    capture: observation?.capture,
+    files,
+    tempUnit,
+  });
+
+  // The catalog id is only worth its own slot when the title does not already
+  // carry it, which for most objects it does ("M42 (Orion Nebula)").
+  const eyebrowCatalogId = observation?.catalogId && !displayName.includes(observation.catalogId)
+    ? observation.catalogId
+    : null;
+  const eyebrow = [
+    eyebrowCatalogId,
+    objectInfo?.type || observation?.type,
+    objectInfo?.constellation || observation?.constellation,
+  ].filter((v): v is string => !!v);
 
   // ─── Session image handlers ─────────────────────────────────────────────────
 
@@ -435,7 +551,8 @@ export function ObservationDetail() {
     archiveAbortRef.current = false;
     try {
       const { jobId, filesTotal } = await startSubframesArchive(objectId, [date]);
-      if (archiveAbortRef.current) return;
+      if (archiveAbortRef.current) { void cancelSubframesArchive(jobId).catch(() => {}); return; }
+      archiveJobIdRef.current = jobId;
       setArchiveState({ done: 0, total: filesTotal });
 
       // Poll until done. ~500ms cadence matches the server's docstring contract.
@@ -448,6 +565,8 @@ export function ObservationDetail() {
           setArchiveState({ done: s.filesDone, total: s.filesTotal });
           continue;
         }
+        archiveJobIdRef.current = null;
+        if (s.status === 'cancelled') { setArchiveState('idle'); return; }
         if (s.status === 'error' || !s.token) {
           setArchiveState('error');
           setTimeout(() => { if (!archiveAbortRef.current) setArchiveState('idle'); }, 4000);
@@ -496,7 +615,13 @@ export function ObservationDetail() {
 
   useEffect(() => {
     archiveAbortRef.current = false;
-    return () => { archiveAbortRef.current = true; };
+    return () => {
+      archiveAbortRef.current = true;
+      if (archiveJobIdRef.current) {
+        void cancelSubframesArchive(archiveJobIdRef.current).catch(() => {});
+        archiveJobIdRef.current = null;
+      }
+    };
   }, []);
 
 if (!objectId || !date) return null;
@@ -528,21 +653,28 @@ if (isLoading) {
 
   return (
     <div className="space-y-6">
-      <ObservationHeader
+      <SessionHero
         objectId={objectId}
         date={date}
         displayName={displayName}
         formattedDate={formattedDate}
-        observation={observation}
-        isAdmin={isAdmin}
-        showTelescopeUI={showTelescopeUI}
-        telescopeForObs={telescopeForObs}
+        shortDate={shortDate}
+        timeRange={timeRange}
+        eyebrow={eyebrow}
+        media={heroMedia}
+        badge={heroBadge}
+        onOpenMedia={openHeroMedia}
+        onResetCrown={canResetCrown && !settingSessionImage ? () => handleSetSessionImage(null) : null}
+        emptyReason={files.some(f => f.type === 'fits') ? 'Raw FITS frames only' : 'No images captured'}
+        telescope={showTelescopeUI ? telescopeForObs : null}
         telescopes={telescopes}
-        onMove={() => setShowMoveModal(true)}
-        onDelete={() => setShowDeleteModal(true)}
-        onOpenNotes={() => setNotesModalOpen(true)}
+        isAdmin={isAdmin}
+        captureMetrics={captureMetrics}
+        accent={accent}
+        onOpenNotes={observation && (isAdmin || !!existingNote) ? () => setNotesModalOpen(true) : null}
         hasNote={!!existingNote}
-        canOpenNotes={!!objectId && !!date}
+        onCombine={observation && isAdmin ? () => setShowMoveModal(true) : null}
+        onDelete={observation && isAdmin ? () => setShowDeleteModal(true) : null}
       />
 
       {FRAMING_MOSAIC_ENABLED && (
@@ -586,327 +718,50 @@ if (isLoading) {
         </div>
       )}
 
-      {/* Top section: Image + About side by side. The column split follows the
-          hero's orientation, so a tall Seestar frame does not sit marooned in a
-          column sized for a wide Dwarf one. */}
-      <div className={`grid grid-cols-1 ${heroSizing.grid} gap-5 items-start transition-[grid-template-columns] duration-200`}>
-        {/* Left: Session image (user-designated, else the most recent processed
-            image, else the stacked fallback — click to enlarge) */}
-        {effectiveProcessedImage ? (
-          <div className={`rounded-xl border overflow-hidden ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
-            <div
-              className="cursor-pointer relative group"
-              onClick={() => {
-                const idx = processedImages.findIndex(img => img.id === effectiveProcessedImage.id);
-                if (idx >= 0) openProcessedGallery(idx);
-              }}
-            >
-              {!heroImgLoaded && (
-                <div className={`aspect-video w-full flex items-center justify-center ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
-                  <Loader2 className="w-5 h-5 animate-spin text-accent-500/60" />
-                </div>
-              )}
-              <img
-                src={effectiveProcessedImage.url}
-                alt={effectiveProcessedImage.title || effectiveProcessedImage.originalName}
-                onLoad={e => { noteHeroSize(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight); setHeroImgLoaded(true); }}
-                // A failed load (404, network error) never fires onLoad — without
-                // this, the placeholder spinner would spin forever instead of
-                // falling back to the browser's broken-image state.
-                onError={() => setHeroImgLoaded(true)}
-                className={`block mx-auto w-auto max-w-full ${heroSizing.maxH} transition-opacity ${heroImgLoaded ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
-              />
-              {/* An explicit crown gets the amber "Session Image" badge; an
-                  automatic pick (nothing crowned, a processed image just
-                  happens to exist) gets a plainer "Processed" badge instead —
-                  it was not the user's deliberate choice, so it should not
-                  look like one, and there is nothing to "reset" below. */}
-              {designatedProcessedImage ? (
-                <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-amber-500/90 text-white text-[11px] font-semibold flex items-center gap-1 shadow">
-                  <Crown className="w-3 h-3" />
-                  Session Image
-                </div>
-              ) : (
-                <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-accent-500/90 text-white text-[11px] font-semibold flex items-center gap-1 shadow">
-                  <Sparkles className="w-3 h-3" />
-                  Processed
-                </div>
-              )}
-              <button
-                onClick={e => { e.stopPropagation(); openImageEditor(effectiveProcessedImage.url, effectiveProcessedImage.title || effectiveProcessedImage.originalName, 'processed'); }}
-                className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60"
-                title="Edit image"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <div className={`px-3 py-1.5 border-t flex items-center justify-between gap-2 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-              {designatedProcessedImage ? (
-                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-500 text-[11px] font-semibold flex items-center gap-1">
-                  <Crown className="w-3 h-3" />
-                  Session Image
-                </span>
-              ) : (
-                <span className="px-2 py-0.5 rounded-md bg-accent-500/20 text-accent-500 text-[11px] font-semibold flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" />
-                  Processed
-                </span>
-              )}
-              {designatedProcessedImage && isAdmin && (
-                <button
-                  onClick={() => handleSetSessionImage(null)}
-                  disabled={settingSessionImage}
-                  className={`text-[11px] transition shrink-0 ${isDark ? 'text-slate-600 hover:text-slate-400' : 'text-slate-400 hover:text-slate-600'}`}
-                  title="Clear session image (revert to stacked)"
-                >
-                  Reset
-                </button>
-              )}
-            </div>
-          </div>
-        ) : heroFile ? (
-          <div className={`rounded-xl border overflow-hidden ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
-            <div
-              className="cursor-pointer relative group"
-              onClick={() => {
-                if (heroIsFits) {
-                  // A stacked FITS is in filteredFiles under the default 'all'
-                  // view but not once the user switches to Image, so fall back
-                  // to opening the gallery on just this file.
-                  const idx = filteredFiles.findIndex(f => f.path === heroFile.path);
-                  if (idx >= 0) openGallery(idx);
-                  else openGallery(0, [heroFile]);
-                  return;
-                }
-                const idx = filteredFiles.findIndex(f => f.path === heroFile.path);
-                if (idx >= 0) openGallery(idx);
-              }}
-            >
-              {heroIsFits ? (
-                <FitsPreview
-                  url={heroFile.downloadUrl}
-                  isDark={isDark}
-                  onNaturalSize={noteHeroSize}
-                  maxHeightClass={heroSizing.maxH}
-                />
-              ) : (
-                <>
-                  {!heroImgLoaded && (
-                    <div className={`aspect-video w-full flex items-center justify-center ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
-                      <Loader2 className="w-5 h-5 animate-spin text-accent-500/60" />
-                    </div>
-                  )}
-                  <img
-                    src={previewSrcFor(heroFile)}
-                    alt={displayName}
-                    onLoad={e => { noteHeroSize(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight); setHeroImgLoaded(true); }}
-                // A failed load (404, network error) never fires onLoad — without
-                // this, the placeholder spinner would spin forever instead of
-                // falling back to the browser's broken-image state.
-                onError={() => setHeroImgLoaded(true)}
-                    className={`block mx-auto w-auto max-w-full ${heroSizing.maxH} transition-opacity ${heroImgLoaded ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
-                  />
-                </>
-              )}
-              {/* Crown badge for user-designated session image */}
-              {heroIsUserDesignated && (
-                <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-amber-500/90 text-white text-[11px] font-semibold flex items-center gap-1 shadow">
-                  <Crown className="w-3 h-3" />
-                  Session Image
-                </div>
-              )}
-              {/* The image editor works on rasterized images only, not raw FITS. */}
-              {!heroIsFits && (
-                <button
-                  onClick={e => { e.stopPropagation(); openImageEditor(heroFile.downloadUrl, heroFile.name, 'telescope'); }}
-                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60"
-                  title="Edit image"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-            <div className={`px-3 py-1.5 border-t flex items-center justify-between gap-2 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-              <div className="flex items-center gap-2 min-w-0">
-                {heroIsUserDesignated ? (
-                  <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-500 text-[11px] font-semibold flex items-center gap-1">
-                    <Crown className="w-3 h-3" />
-                    Session Image
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 rounded-md bg-accent-500/90 text-white text-[11px] font-semibold flex items-center gap-1">
-                    <Layers className="w-3 h-3" />
-                    Stacked{heroIsFits ? ' FITS' : ''}{heroFile.frameCount ? ` · ${heroFile.frameCount} frames` : ''}
-                  </span>
-                )}
-                {heroFile.exposure && (
-                  <span className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{heroFile.exposure}</span>
-                )}
-              </div>
-              {heroIsUserDesignated && isAdmin && (
-                <button
-                  onClick={() => handleSetSessionImage(null)}
-                  disabled={settingSessionImage}
-                  className={`text-[11px] transition shrink-0 ${isDark ? 'text-slate-600 hover:text-slate-400' : 'text-slate-400 hover:text-slate-600'}`}
-                  title="Clear session image (revert to stacked)"
-                >
-                  Reset
-                </button>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className={`rounded-xl border flex flex-col items-center justify-center gap-3 py-14 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
-            <FileImage className={`w-8 h-8 ${isDark ? 'text-slate-700' : 'text-slate-300'}`} />
-            <div className="text-center space-y-1">
-              <p className={`text-sm font-medium ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>No stacked image</p>
-              <p className={`text-xs ${isDark ? 'text-slate-600' : 'text-slate-500'}`}>
-                {files.some(f => f.type === 'fits') ? 'Raw FITS frames only' : 'No images captured'}
-              </p>
-            </div>
-          </div>
-        )}
+      {/* The three questions an observation raises once you have looked at the
+          picture: what is it, what was the sky doing, and where were you. These
+          lived in a Details tab, next to a Capture Settings card whose numbers
+          the hero now carries, so they were a click away from a page that had
+          room for them. */}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <ObjectPanel
+          displayName={displayName}
+          info={objectInfo}
+          magnitude={observation?.magnitude}
+          distanceLy={observation?.distanceLy}
+        />
 
-        {/* Right: About, Location, Notes */}
-        <div className="space-y-4">
-          {/* Object Information */}
-          {objectInfo && (
-            <div className={`rounded-xl border p-4 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
-              <div className="flex items-start gap-4">
-                {/* Left: header + description + wiki link */}
-                <div className="flex-1 min-w-0">
-                  <h3 className={`font-display font-semibold text-sm flex items-center gap-2 mb-3 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                    <Info className={`w-3.5 h-3.5 ${accentText}`} />
-                    About {displayName}
-                  </h3>
-                  {objectInfo.description && (
-                    <div className="flex flex-col gap-3">
-                      <p className={`text-xs leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        {objectInfo.description}
-                      </p>
-                      {objectInfo.wikiUrl && (
-                        <a
-                          href={objectInfo.wikiUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`inline-flex items-center gap-1.5 text-xs font-medium transition ${accentText} hover:underline`}
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Wikipedia
-                        </a>
-                      )}
-                    </div>
-                  )}
-                  {!objectInfo.description && objectInfo.wikiUrl && (
-                    <a
-                      href={objectInfo.wikiUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`inline-flex items-center gap-1.5 text-xs font-medium transition ${accentText} hover:underline`}
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      Wikipedia
-                    </a>
-                  )}
-                </div>
+        <ConditionsPanel
+          weather={observation?.weather}
+          sky={observation?.note}
+          tempUnit={tempUnit}
+        />
 
-                {/* Catalog panel */}
-                {(objectInfo.type || objectInfo.constellation || observation?.magnitude != null || observation?.distanceLy != null || objectInfo.size || objectInfo.ra || objectInfo.dec) && (
-                  <div className={`shrink-0 w-36 ${objectInfo.description ? `border-l pl-4 ${isDark ? 'border-slate-800' : 'border-slate-200'}` : 'flex-1'}`}>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest mb-2.5 text-amber-500/80">
-                      Catalog
-                    </p>
-                    <div className="space-y-2">
-                      {objectInfo.type && (
-                        <div>
-                          <p className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>Type</p>
-                          <p className={`text-[11px] font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{objectInfo.type}</p>
-                        </div>
-                      )}
-                      {objectInfo.constellation && (
-                        <div>
-                          <p className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>Constellation</p>
-                          <p className={`text-[11px] font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{objectInfo.constellation}</p>
-                        </div>
-                      )}
-                      {observation?.magnitude != null && (
-                        <div>
-                          <p className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>Magnitude</p>
-                          <p className={`text-[11px] font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            {observation.magnitude.toFixed(2)}
-                          </p>
-                        </div>
-                      )}
-                      {observation?.distanceLy != null && (
-                        <div>
-                          <p className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>Distance</p>
-                          <p className={`text-[11px] font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            {formatDistanceLy(observation.distanceLy)}
-                          </p>
-                        </div>
-                      )}
-                      {objectInfo.size && (
-                        <div>
-                          <p
-                            title="Apparent angular size as seen from Earth, measured in arcminutes (′). The full Moon is ~30′ across for comparison."
-                            className={`text-[10px] cursor-help underline decoration-dotted underline-offset-2 ${isDark ? 'text-slate-600 decoration-slate-700' : 'text-slate-400 decoration-slate-300'}`}
-                          >
-                            Angular size
-                          </p>
-                          <p className={`text-[11px] font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{objectInfo.size}</p>
-                        </div>
-                      )}
-                      {objectInfo.ra && (
-                        <div>
-                          <p className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>RA</p>
-                          <p className={`text-[11px] font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            {formatRa(String(objectInfo.ra))}
-                          </p>
-                        </div>
-                      )}
-                      {objectInfo.dec && (
-                        <div>
-                          <p className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>Dec</p>
-                          <p className={`text-[11px] font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            {formatDec(String(objectInfo.dec))}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* The session's headline numbers. Sits under the object description
-              rather than in a band of its own: the hero is taller than the About
-              card, so this fills that gap instead of adding a full-width strip
-              below and pushing the tabs down. Prefers the telescope's own
-              sidecar values over the filename parse, so each figure appears once
-              and comes from the better source. */}
-          <ObservationStrip
-            capture={observation?.capture}
-            files={files}
-            weather={observation?.weather}
-            note={observation?.note}
-            tempUnit={tempUnit}
+        {observation && (
+          <SitePanel
+            objectId={objectId}
+            date={date}
+            siteId={observation.siteId}
+            coordinates={observation.coordinates}
+            fileCoordinates={observation.fileCoordinates}
+            locationName={locationName}
+            isAdmin={isAdmin}
           />
-        </div>
+        )}
       </div>
 
-      {/* Everything below the strip lives in one of these panels. That keeps the
-          page a fixed height as content grows (a new file category is a tab, new
-          session metadata is a row inside Details) and gives each grid the full
-          width, where Images and Subframes used to split it in half. */}
+      {/* The session's files. One grid at a time, each with the full page
+          width, so a new file category becomes a tab rather than another band
+          down the page. */}
       <div ref={tabsSectionRef}>
         <ObservationTabs
           active={activeTab}
-          onChange={setActiveTab}
+          onChange={setPinnedTab}
           counts={{
             images: imageTabCount,
             subframes: subFrames.length,
             processed: processedImages.length,
+            videos: videoFiles.length,
           }}
         />
 
@@ -937,6 +792,10 @@ if (isLoading) {
           openGallery={openGallery}
           isAdmin={isAdmin}
         />
+        )}
+
+        {activeTab === 'videos' && (
+        <VideoPanel videos={videoFiles} date={date} />
         )}
 
         {activeTab === 'subframes' && (
@@ -975,65 +834,6 @@ if (isLoading) {
         />
         )}
 
-        {/* Details: the capture sidecar, conditions, and where it was shot.
-            These were four separate cards in a vertical rail. */}
-        {activeTab === 'details' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
-            {observation?.capture && (
-              <CapturePanel capture={observation.capture} tempUnit={tempUnit} />
-            )}
-
-            <WeatherPanel
-              weather={observation?.weather}
-              sky={observation?.note}
-              tempUnit={tempUnit}
-            />
-
-            {(observation?.coordinates || observation) && (
-              <div
-                className={`rounded-xl border p-4 space-y-3 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}
-                style={{ isolation: 'isolate', position: 'relative', zIndex: 0 }}
-              >
-                <h3 className={`font-display font-semibold text-sm flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  <MapPin className={`w-3.5 h-3.5 ${accentText}`} />
-                  Location
-                </h3>
-
-                {/* The site picker lives here rather than in a card of its own,
-                    which is what put the site name on the page twice. */}
-                {observation && (
-                  <ObservedFromControl
-                    objectId={objectId}
-                    date={date}
-                    siteId={observation.siteId}
-                    fileCoordinates={observation.fileCoordinates}
-                    isAdmin={isAdmin}
-                  />
-                )}
-
-                {observation?.coordinates && (
-                  <>
-                    <div className="h-[150px] rounded-lg overflow-hidden">
-                      <ObservationMap
-                        lat={observation.coordinates.lat}
-                        lon={observation.coordinates.lon}
-                        isDark={isDark}
-                      />
-                    </div>
-                    <div className={`flex items-center justify-between text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                      <span className={isDark ? 'text-slate-600' : 'text-slate-400'}>
-                        {locationName || 'Coordinates'}
-                      </span>
-                      <span className="font-medium tabular-nums">
-                        {observation.coordinates.lat.toFixed(2)}°, {observation.coordinates.lon.toFixed(2)}°
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
         </div>
       </div>
 
@@ -1188,6 +988,7 @@ if (isLoading) {
           date={date}
           isDark={isDark}
           sourceKind={editorSrc.sourceKind}
+          overwriteTarget={editorSrc.overwriteTarget}
           onClose={() => { setEditorOpen(false); setEditorSrc(null); }}
           onSaved={() => {
             if (editorSrc.sourceKind === 'telescope') {
@@ -1201,12 +1002,4 @@ if (isLoading) {
       )}
     </div>
   );
-}
-
-function formatDistanceLy(ly: number): string {
-  if (ly >= 1_000_000) {
-    const mly = ly / 1_000_000;
-    return `${mly % 1 === 0 ? mly.toFixed(0) : mly.toFixed(2)} million ly`;
-  }
-  return `${ly.toLocaleString('en-US')} ly`;
 }

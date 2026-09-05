@@ -32,6 +32,12 @@ export interface DetectedDrive {
   looksLikeSeestar: boolean;
   /** True when root contains a Dwarf hallmark folder. */
   looksLikeDwarf: boolean;
+  /** True when root looks like ASIAIR removable storage. */
+  looksLikeAsiair: boolean;
+  /** Set when the ASIAIR tree sits under an `ASIAir/` folder rather than at the
+   *  volume root, so the caller can point a `local` transport at the right
+   *  directory instead of the mount point. */
+  asiairSubPath?: string;
   /** Best-guess Dwarf model from session folder fingerprints. Seestar can't be
    *  distinguished S50 vs S30 from the filesystem alone. */
   detectedDwarfModel?: 'dwarf-2' | 'dwarf-3' | 'dwarf-mini';
@@ -44,6 +50,11 @@ export interface DetectedDrive {
 }
 
 const SEESTAR_HALLMARK_DIR = 'MyWorks';
+/** ASIAIR's capture-mode folders. Any one of them at a volume root (or inside
+ *  the `ASIAir/` folder the device writes on removable media) identifies the
+ *  storage. `Live` is included so a Live-only user's stick is still detected. */
+const ASIAIR_HALLMARK_DIRS = ['Autorun', 'Plan', 'Live'];
+const ASIAIR_USB_ROOT_DIR = 'ASIAir';
 const DWARF_FOLDER_HINTS = ['Astronomy', 'DWARF_DATA', 'DWARF3_DATA', 'DCIM'];
 const DWARF_MODEL_FINGERPRINTS: Record<'dwarf-2' | 'dwarf-3', string[]> = {
   'dwarf-3': ['DWARF3_RAW_', 'DWARF3_'],
@@ -89,7 +100,25 @@ async function inspectRoot(root: string): Promise<DetectedDrive | undefined> {
   const entrySet = new Set(entries);
   const looksLikeSeestar = entrySet.has(SEESTAR_HALLMARK_DIR);
   const looksLikeDwarf = DWARF_FOLDER_HINTS.some(h => entrySet.has(h));
-  if (!looksLikeSeestar && !looksLikeDwarf) return undefined;
+
+  // ASIAIR: capture-mode folders either at the volume root or one level down
+  // under `ASIAir/`, which is what the device writes on a stick. Checked
+  // against the real directory listing rather than a stat of a guessed name so
+  // the `ASIAir` casing does not have to be exact.
+  let looksLikeAsiair = ASIAIR_HALLMARK_DIRS.some(h => entrySet.has(h));
+  let asiairSubPath: string | undefined;
+  if (!looksLikeAsiair) {
+    const usbRoot = entries.find(e => e.toLowerCase() === ASIAIR_USB_ROOT_DIR.toLowerCase());
+    if (usbRoot) {
+      const inner = await fs.readdir(path.join(root, usbRoot)).catch(() => [] as string[]);
+      if (ASIAIR_HALLMARK_DIRS.some(h => inner.includes(h))) {
+        looksLikeAsiair = true;
+        asiairSubPath = usbRoot;
+      }
+    }
+  }
+
+  if (!looksLikeSeestar && !looksLikeDwarf && !looksLikeAsiair) return undefined;
 
   let detectedDwarfModel: DetectedDrive['detectedDwarfModel'];
   if (looksLikeDwarf) {
@@ -132,6 +161,8 @@ async function inspectRoot(root: string): Promise<DetectedDrive | undefined> {
     volumeName: path.basename(root) || root,
     looksLikeSeestar,
     looksLikeDwarf,
+    looksLikeAsiair,
+    asiairSubPath,
     detectedDwarfModel,
     alreadyKnownDeviceId,
     alreadyKnownProfileId,

@@ -1,25 +1,88 @@
+/**
+ * A library object: everything you have shot of one target.
+ *
+ * The page reads in three passes. The hero says what the target is, shows the
+ * best picture you have of it, and totals what it has cost you. The panel row
+ * says what it is in the catalog and whether it is worth going out for tonight.
+ * The grid below is the record: one card per night, newest first.
+ *
+ * What changed from the old layout, and why:
+ *   - The picture was a 176px square. It is the reason the object is in your
+ *     library, so it now gets the same mat the observation page gives a frame.
+ *   - The catalog values were a 176px rail of 11px label/value pairs ruled off
+ *     the header's right edge, which made a magnitude the smallest text on the
+ *     page. They are a panel now, at the same scale as every other fact.
+ *   - Four equally loud bordered buttons sat in a row under the header. One
+ *     accent button now carries the thing you came to do; the rest are quiet.
+ *   - Nothing anywhere said whether the object is up tonight, which is the
+ *     question that decides whether you shoot it again. The Tonight panel
+ *     answers it from your active observing site.
+ */
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Calendar, FolderOpen, RotateCw, Image, Layers, Columns, Download, PlusCircle, Trash2, AlertTriangle, Pencil, ExternalLink, Frame } from 'lucide-react';
-import { getLibrarySessions, getDownloadUrl, deleteLibraryObject, deleteLibrarySession, getGalleryImage, getLibraryFileUrl, getLibraryObjects } from '../lib/api/library';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { AlertTriangle, ArrowLeft, RotateCcw, RotateCw } from 'lucide-react';
+import {
+  getLibrarySessions, requestObjectDownloadUrl, deleteLibraryObject, deleteLibrarySession,
+  getGalleryImage, getLibraryFileUrl, getLibraryObjects, getObjectCapture, toggleFavorite,
+  getDeletedObjects, getDeletedSessions, restoreLibraryObject, restoreLibrarySession,
+} from '../lib/api/library';
 import { getCatalogEntry } from '../lib/api/catalog';
+import { getObservations } from '../lib/api/observations';
+import { listTelescopes } from '../lib/api/telescopes';
+import { getActiveSite } from '../lib/api/sites';
+import { getSettings } from '../lib/api/settings';
 import { getCatalogThumbnailUrl, getCatalogSourceThumbnailUrl, parseSourceSentinel } from '../lib/catalogImage';
+import { parseRaHours, parseDecDegrees } from '../lib/observationDisplay';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/AuthContext';
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSyncSubframes } from '../contexts/SyncSubframesContext';
 import { GalleryImageModal } from '../components/GalleryImageModal';
 import { CompareSessionsModal } from '../components/CompareSessionsModal';
 import { CombineSubframesModal } from '../components/CombineSubframesModal';
 import { EditObjectModal } from '../components/EditObjectModal';
 import { FramingModal, FRAMING_MOSAIC_ENABLED } from '../components/catalogs/FramingModal';
 import { NewObservationModal } from '../components/NewObservationModal';
+import { ObjectPanel } from '../components/observationDetail/ObjectPanel';
+import { ObjectHero } from '../components/objectDetail/ObjectHero';
+import { TonightPanel } from '../components/objectDetail/TonightPanel';
+import { ObservationsSection } from '../components/objectDetail/ObservationsSection';
+import { ObjectTrashModal } from '../components/objectDetail/ObjectTrashModal';
+import { DangerConfirm } from '../components/objectDetail/DangerConfirm';
+import { buildObjectMetrics, summarizeObject } from '../components/objectDetail/objectStats';
+import { ObjectProcessedSection } from '../components/objectDetail/ObjectProcessedSection';
+import { TourAnchor } from '../components/tour/TourAnchor';
+import { DWARF_STARTRAILS_OBJECT_TYPE, DWARF_STARTRAILS_PLACEHOLDER_IMAGE } from '../lib/dwarfStartrails';
+import type { ObservationCardModel } from '../components/objectDetail/ObservationCard';
+import type { AstroObject } from '../types';
+
+/**
+ * Requested size for the hero's fallback catalog image, when the object has no
+ * gallery image of its own. `getCatalogThumbnailUrl`'s default (384×384) is
+ * sized for a grid tile; at that size the hero's `<img>` has nothing to scale
+ * up to (CSS `max-height`/`max-width` only ever shrink, never grow a small
+ * source), so the picture rendered at a fraction of the space the hero gives
+ * it. 960 matches the hero's own max-height headroom for a high-DPI screen and
+ * is comfortably under both `MAX_REQUEST_DIMENSION` (1920) and the DSS2
+ * master's native resolution, so nothing here is upscaled and blurred — this
+ * is the same trick the catalog lightbox already uses (see `CatalogObjectModal`'s
+ * `800×800` request), just sized for a wider surface. A personal gallery image
+ * (`getLibraryFileUrl`) is untouched: it serves the original file directly and
+ * is already full resolution.
+ */
+const HERO_IMAGE_SIZE = 960;
 
 export function ObjectDetail() {
   const { objectId } = useParams<{ objectId: string }>();
-  const { isDark } = useTheme();
+  const { isDark, isNight, isSpace } = useTheme();
   const { isAdmin } = useAuth();
+  const { openObjectSync } = useSyncSubframes();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // The hero is night-side in every theme, so it takes the bright accent hex
+  // rather than the light-mode-darkened token. Same rule as every other hero.
+  const accent = isNight ? '#f87171' : isSpace ? '#a78bfa' : '#fbbf24';
 
   const [deleteObjectConfirm, setDeleteObjectConfirm] = useState(false);
   const [deleteSession, setDeleteSession] = useState<{ objectId: string; date: string } | null>(null);
@@ -29,45 +92,53 @@ export function ObjectDetail() {
   const [combineSubframesOpen, setCombineSubframesOpen] = useState(false);
   const [editObjectOpen, setEditObjectOpen] = useState(false);
   const [framingOpen, setFramingOpen] = useState(false);
-  const [headerImgLoaded, setHeaderImgLoaded] = useState(false);
+  const [trashModalOpen, setTrashModalOpen] = useState(false);
+  const [trashError, setTrashError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadPending, setDownloadPending] = useState(false);
   const [headerImgError, setHeaderImgError] = useState(false);
   // Tracks how many times we've force-refetched gallery data after an image load
   // failure. Prevents infinite retry loops while still auto-healing stale paths.
   const [galleryErrorRetries, setGalleryErrorRetries] = useState(0);
 
-  // Find variants by looking up the grouped library objects list.
-  // This is cached from the Gallery so it's free when navigating normally;
-  // on direct navigation it fetches once.
+  // Find variants by looking up the grouped library objects list. Cached from
+  // the Library grid, so it is free when navigating normally; on a direct load
+  // it fetches once.
   const { data: allObjects } = useQuery({
     queryKey: ['library-objects'],
     queryFn: getLibraryObjects,
     staleTime: 5 * 60 * 1000,
   });
 
-  // The current object may itself be a variant (e.g. IC434_Mosaic).
-  // Find the base entry that owns it — either the object is the base, or
-  // it's listed in another object's variants array.
+  // The current object may itself be a variant (e.g. IC434_Mosaic). Find the
+  // base entry that owns it: either the object is the base, or it is listed in
+  // another object's variants array.
   const baseObject = allObjects?.find(
     o => o.id === objectId || o.variants?.some(v => v.objectId === objectId),
   );
 
-  // Always work off the base object. If the URL points at a variant, redirect
-  // to the base so all variants are visible under one page.
   const baseObjectId = baseObject?.id ?? objectId ?? '';
   const activeObjectId = baseObjectId;
 
-  // Redirect variant URLs (e.g. /object/IC434_Mosaic) to the base (/object/IC434)
+  // The synthetic "DWARF Star Trails" object (see server/lib/library/dwarfStartrails.ts):
+  // not a real celestial target, so it gets a distinct presentation below —
+  // no Tonight visibility panel, a curated description/type instead of a
+  // (nonexistent) catalog lookup, and a bundled cover until a real capture
+  // sets one.
+  const isStartrails = baseObject?.type === DWARF_STARTRAILS_OBJECT_TYPE;
+
+  // Redirect variant URLs (e.g. /object/IC434_Mosaic) to the base, so every
+  // variant is visible under one page.
   useEffect(() => {
     if (baseObject && baseObject.id !== objectId) {
       navigate(`/object/${encodeURIComponent(baseObject.id)}`, { replace: true });
     }
   }, [baseObject, objectId, navigate]);
 
-  // All objectIds for this entry: base + variants.
-  // Memoized as a stable array so the useQueries and allSessions memo below
-  // don't recompute on every render.
-  // Fall back to [objectId] while allObjects is still loading so sessions are
-  // fetched immediately rather than waiting for the catalog lookup.
+  // All objectIds for this entry: base + variants. Memoized as a stable array
+  // so the useQueries and allSessions memo below don't recompute every render.
+  // Falls back to [objectId] while allObjects is loading so sessions are
+  // fetched immediately rather than waiting on the catalog lookup.
   const allVariantIds = useMemo<string[]>(() =>
     allObjects === undefined
       ? [objectId ?? '']
@@ -80,6 +151,13 @@ export function ObjectDetail() {
     mutationFn: () => deleteLibraryObject(activeObjectId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['library-objects'] });
+      // The delete lands in the same trash the restore button reads from, so
+      // without this the "N deleted" count on the page you land back on stays
+      // stale until something else happens to refetch it (its 15s staleTime
+      // means that can be a while). This object's own page is about to
+      // navigate away, so this is for whichever object list the user returns
+      // to next.
+      queryClient.invalidateQueries({ queryKey: ['deleted-objects'] });
       navigate('/');
     },
   });
@@ -89,11 +167,83 @@ export function ObjectDetail() {
       deleteLibrarySession(oid, date),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['library-sessions', variables.objectId] });
+      // Without this the "N deleted" restore link never appears after
+      // deleting an observation: the trash query has a 15s staleTime and
+      // nothing else on this page would trigger a refetch of it.
+      queryClient.invalidateQueries({ queryKey: ['deleted-sessions'] });
+      // Counts/last-observed on the Library grid and the Observations
+      // calendar are derived from these and go stale the same way.
+      queryClient.invalidateQueries({ queryKey: ['library-objects'] });
+      queryClient.invalidateQueries({ queryKey: ['observations'] });
       setDeleteSession(null);
     },
   });
 
-  // Fetch sessions for every variant (base + all variants) in parallel.
+  // Global trash lists, filtered down to this object's own ids. Kept as one
+  // global fetch (the trash is normally tiny) rather than a per-object
+  // endpoint, then narrowed client-side so every object page can show its own
+  // "N deleted" affordance without a bespoke query per object.
+  //
+  // `allVariantIds` already falls back to `[objectId]` when the object was
+  // fully deleted (it no longer appears in `allObjects`), so this also covers
+  // the not-found branch below without any extra lookup.
+  const { data: deletedObjectsAll } = useQuery({
+    queryKey: ['deleted-objects'],
+    queryFn: getDeletedObjects,
+    enabled: isAdmin,
+    staleTime: 15_000,
+  });
+  const { data: deletedSessionsAll } = useQuery({
+    queryKey: ['deleted-sessions'],
+    queryFn: getDeletedSessions,
+    enabled: isAdmin,
+    staleTime: 15_000,
+  });
+  const deletedObjectsForThis = useMemo(
+    () => (deletedObjectsAll ?? []).filter(o => allVariantIds.includes(o.objectId)),
+    [deletedObjectsAll, allVariantIds],
+  );
+  const deletedSessionsForThis = useMemo(
+    () => (deletedSessionsAll ?? []).filter(s => allVariantIds.includes(s.objectId)),
+    [deletedSessionsAll, allVariantIds],
+  );
+  const trashCount = deletedObjectsForThis.length + deletedSessionsForThis.length;
+
+  const restoreObjectMutation = useMutation({
+    mutationFn: (id: string) => restoreLibraryObject(id),
+    onSuccess: () => {
+      setTrashError(null);
+      queryClient.invalidateQueries({ queryKey: ['deleted-objects'] });
+      queryClient.invalidateQueries({ queryKey: ['library-objects'] });
+    },
+    onError: (err: Error) => setTrashError(err.message),
+  });
+
+  const restoreSessionMutation = useMutation({
+    mutationFn: ({ objectId: oid, date }: { objectId: string; date: string }) => restoreLibrarySession(oid, date),
+    onSuccess: (_data, variables) => {
+      setTrashError(null);
+      queryClient.invalidateQueries({ queryKey: ['deleted-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['library-sessions', variables.objectId] });
+    },
+    onError: (err: Error) => setTrashError(err.message),
+  });
+
+  // Optimistic, like the Library grid's star: the whole point of a favorite is
+  // that it reacts instantly.
+  const favoriteMutation = useMutation({
+    mutationFn: (next: boolean) => toggleFavorite(activeObjectId, next),
+    onSuccess: (_data, next) => {
+      queryClient.setQueryData<AstroObject[]>(['library-objects'], old =>
+        old?.map(o => (o.id === activeObjectId ? { ...o, isFavorite: next } : o)));
+      queryClient.invalidateQueries({ queryKey: ['library-objects'] });
+    },
+  });
+  const isFavorite = favoriteMutation.isPending
+    ? (favoriteMutation.variables ?? false)
+    : (baseObject?.isFavorite ?? false);
+
+  // Sessions for every variant, in parallel.
   const sessionQueries = useQueries({
     queries: allVariantIds.map(id => ({
       queryKey: ['library-sessions', id],
@@ -126,74 +276,201 @@ export function ObjectDetail() {
     retry: false,
   });
 
+  // What the telescope itself recorded per night: exposure, frames, integration.
+  // One indexed query, and empty for a telescope that writes no sidecar.
+  const { data: captureByDate } = useQuery({
+    queryKey: ['object-capture', activeObjectId],
+    queryFn: () => getObjectCapture(activeObjectId),
+    enabled: !!activeObjectId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Observation summaries carry the two things the sessions endpoint does not:
+  // which telescope shot a night, and whether it has notes. Shared cache with
+  // the Observations page, so this is usually already warm.
+  const { data: observationSummaries } = useQuery({
+    queryKey: ['observations'],
+    queryFn: getObservations,
+    staleTime: 60_000,
+  });
+
+  const { data: telescopes = [] } = useQuery({
+    queryKey: ['telescopes'],
+    queryFn: listTelescopes,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: site } = useQuery({
+    queryKey: ['active-site'],
+    queryFn: getActiveSite,
+    staleTime: 60_000,
+  });
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: getSettings,
+    staleTime: Infinity,
+  });
+
   const { data: galleryData } = useQuery({
     queryKey: ['gallery-image', activeObjectId],
     queryFn: () => getGalleryImage(activeObjectId),
     enabled: !!activeObjectId,
     // Prevent background refetches from transiently changing the URL and
-    // re-triggering the loading spinner while the image is already displayed.
+    // re-triggering the loading state while the image is already displayed.
     staleTime: 5 * 60 * 1000,
   });
 
-  // Reset retry counter when navigating to a different object.
-  useEffect(() => {
-    setGalleryErrorRetries(0);
-  }, [activeObjectId]);
-
-  // Compute the header image URL only when galleryData has resolved.
-  // Returning null while loading prevents multiple URL changes (once on mount,
-  // once when galleryData arrives, once when catalogEntry arrives) from each
-  // resetting the spinner via the useEffect below.
+  // Computed only once galleryData resolves. Returning null while loading keeps
+  // the hero from swapping its source twice on the way in.
   const headerPinnedSource = parseSourceSentinel(galleryData?.galleryImage);
+  // Only the personal-file branch can produce a different URL on a retry: a
+  // stale path can be re-resolved by the server. The two catalog-thumbnail
+  // branches always recompute to the exact same URL from the exact same
+  // inputs, so retrying them is not a second attempt, it is the same 404
+  // again — see handleHeaderImgError below.
+  const headerImgHealable = !headerPinnedSource && !!galleryData?.galleryImage;
   const headerImgSrc = galleryData === undefined
     ? null
     : headerPinnedSource
-      ? getCatalogSourceThumbnailUrl(catalogEntry?.id || baseObjectId, headerPinnedSource)
+      ? getCatalogSourceThumbnailUrl(catalogEntry?.id || baseObjectId, headerPinnedSource, HERO_IMAGE_SIZE, HERO_IMAGE_SIZE)
       : galleryData.galleryImage
         ? getLibraryFileUrl(galleryData.galleryImage)
-        : getCatalogThumbnailUrl(catalogEntry?.id || baseObjectId, catalogEntry?.majorAxisArcmin ?? null);
+        // Star Trails has no catalog entry to fall back to (getCatalogThumbnailUrl
+        // would just 404) — show the bundled placeholder until a real capture
+        // sets a galleryImage, at which point the branch above wins instead.
+        : isStartrails
+          ? DWARF_STARTRAILS_PLACEHOLDER_IMAGE
+          : getCatalogThumbnailUrl(catalogEntry?.id || baseObjectId, catalogEntry?.majorAxisArcmin ?? null, HERO_IMAGE_SIZE, HERO_IMAGE_SIZE);
 
-  // Reset load/error state whenever the image source changes so a newly-saved
-  // gallery image is always rendered (headerImgError would otherwise keep the
-  // <img> out of the DOM permanently after any prior load failure).
-  // Skip the reset while galleryData is still loading (null src) to avoid the
-  // spinner being shown before we even know what URL to load.
-  // After the reset, check img.complete on the next frame: if the URL was
-  // already cached by the browser (via a row thumbnail or prior visit) the
-  // load event fired before React attached the listener, so the loaded flag
-  // would otherwise stay false and the spinner would never clear.
-  const headerImgRef = useRef<HTMLImageElement | null>(null);
-  useEffect(() => {
-    if (headerImgSrc === null) return;
-    setHeaderImgLoaded(false);
+  /**
+   * Both image-state resets, done during render rather than in effects.
+   *
+   * A new object starts its retry budget over; a new source (the user just
+   * chose a different gallery image) gets a fresh chance to load even if the
+   * previous one had failed twice. As effects, each of these repainted one
+   * frame of the previous object's state first, and cascaded a second render.
+   */
+  const [imageStateFor, setImageStateFor] = useState<{ objectId: string; src: string | null }>(
+    { objectId: activeObjectId, src: headerImgSrc },
+  );
+  if (imageStateFor.objectId !== activeObjectId) {
+    setImageStateFor({ objectId: activeObjectId, src: headerImgSrc });
+    setGalleryErrorRetries(0);
     setHeaderImgError(false);
-    const id = requestAnimationFrame(() => {
-      const img = headerImgRef.current;
-      if (img && img.complete && img.naturalHeight > 0) setHeaderImgLoaded(true);
-    });
-    return () => cancelAnimationFrame(id);
-  }, [headerImgSrc]);
+  } else if (headerImgSrc !== null && imageStateFor.src !== headerImgSrc) {
+    setImageStateFor({ objectId: activeObjectId, src: headerImgSrc });
+    setHeaderImgError(false);
+  }
 
-  // When the gallery image URL fails to load (e.g. file was moved or deleted
-  // since the React Query cache was last populated), force-refetch the gallery
-  // data once so the server can return an updated path. The server auto-heals:
-  // it picks the best available file, or clears a stale path. If the second
-  // attempt also fails, fall back to "No image".
+  // When the image URL fails to load, and it names a personal file (the file
+  // moved or was deleted since the cache was populated), force-refetch the
+  // gallery data once: the server auto-heals by picking the best available
+  // file, or clearing a stale path. If the second attempt also fails, fall
+  // back to "No image yet".
+  //
+  // The two catalog-thumbnail branches skip the retry and fail immediately:
+  // invalidating `gallery-image` there just re-derives the identical URL from
+  // the identical inputs, so the `<img>` src never changes, the browser never
+  // re-requests it, and `onError` never fires a second time — `headerImgError`
+  // would otherwise never be set and the broken image would sit there forever
+  // instead of falling through to the empty state.
   const handleHeaderImgError = useCallback(() => {
-    if (galleryErrorRetries === 0) {
+    if (headerImgHealable && galleryErrorRetries === 0) {
       setGalleryErrorRetries(1);
       queryClient.invalidateQueries({ queryKey: ['gallery-image', activeObjectId] });
-      // Stay in loading state (headerImgError stays false) — the refetch will
-      // update galleryData → headerImgSrc → useEffect resets loading state.
     } else {
       setHeaderImgError(true);
     }
-  }, [galleryErrorRetries, queryClient, activeObjectId]);
+  }, [headerImgHealable, galleryErrorRetries, queryClient, activeObjectId]);
 
-  // Show a not-found page when the object doesn't exist in the library or catalog.
-  // allObjects === undefined means the library query is still loading — wait before deciding.
+  // The "Download" button can't be a plain <a href>: the ZIP route needs a
+  // credential, and a browser download navigation can't send the auth header.
+  // Mint a short-lived signed URL, then click a synthetic <a> at it.
+  const handleDownloadAll = useCallback(async () => {
+    setDownloadError(null);
+    setDownloadPending(true);
+    try {
+      const { url } = await requestObjectDownloadUrl(activeObjectId, { fileType: 'all', includeVariants: true });
+      const a = document.createElement('a');
+      a.href = url;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Could not start the download. Try again.');
+    } finally {
+      setDownloadPending(false);
+    }
+  }, [activeObjectId]);
+
+  const displayName = catalogEntry?.name || baseObject?.name || objectId || baseObjectId;
+
+  const totals = useMemo(() => summarizeObject(allSessions, captureByDate), [allSessions, captureByDate]);
+  const metrics = useMemo(() => buildObjectMetrics(totals), [totals]);
+
+  // Telescopes that have actually been on this target, in the library's own
+  // recency order, resolved to names and colours.
+  const heroTelescopes = useMemo(() => {
+    const ids = baseObject?.telescopeIds ?? [];
+    return ids
+      .map(id => telescopes.find(t => t.id === id))
+      .filter((t): t is NonNullable<typeof t> => !!t)
+      .map(t => ({ id: t.id, name: t.name, color: t.color }));
+  }, [baseObject?.telescopeIds, telescopes]);
+
+  const observationCards = useMemo<ObservationCardModel[]>(() => {
+    // Keyed by `objectId|date`, which is how a variant's night stays distinct
+    // from the base object's night on the same date.
+    const summaryByKey = new Map(
+      (observationSummaries ?? []).map(o => [`${o.objectId}|${o.date}`, o]),
+    );
+    return allSessions.map(s => {
+      const summary = summaryByKey.get(`${s.sessionObjectId}|${s.date}`);
+      const telescope = summary?.telescopeId
+        ? telescopes.find(t => t.id === summary.telescopeId)
+        : undefined;
+      return {
+        objectId: s.sessionObjectId,
+        id: s.id,
+        date: s.date,
+        stackedCount: s.stackedCount,
+        subFrameCount: s.subFrameCount,
+        processedCount: s.processedCount,
+        imageCount: s.imageCount,
+        videoCount: s.videoCount ?? 0,
+        thumbnailUrl: s.thumbnailUrl
+          || `/api/library/objects/${encodeURIComponent(s.sessionObjectId)}/thumbnail`,
+        weather: s.weather ?? null,
+        variantLabel: s.variantLabel,
+        capture: captureByDate?.[s.date] ?? null,
+        telescope: telescope ? { name: telescope.name, color: telescope.color } : null,
+        hasNote: summary?.hasNotes ?? false,
+      };
+    });
+  }, [allSessions, observationSummaries, telescopes, captureByDate]);
+
+  const raHours = parseRaHours(catalogEntry?.ra);
+  const decDegrees = parseDecDegrees(catalogEntry?.dec);
+
+  const eyebrow = [
+    baseObjectId,
+    catalogEntry?.type || (isStartrails ? baseObject?.type : undefined),
+    catalogEntry?.constellation && catalogEntry.constellation !== 'Unknown'
+      ? catalogEntry.constellation
+      : null,
+  ].filter((v): v is string => !!v);
+
+  // Show a not-found page when the object exists in neither the library nor the
+  // catalog. `allObjects === undefined` means the query is still loading.
   const notFound = allObjects !== undefined && !baseObject && catalogNotFound;
   if (notFound) {
+    // A deleted (not merely nonexistent) object still lands here whenever it
+    // isn't a recognized catalog id — a custom/non-cataloged target has no
+    // other page to show its restore button on, so it goes here instead of
+    // the generic empty state.
+    const deletedEntry = deletedObjectsForThis[0];
     return (
       <div className="space-y-6">
         <Link
@@ -202,255 +479,172 @@ export function ObjectDetail() {
             isDark ? 'text-slate-400 hover:text-accent-400' : 'text-slate-500 hover:text-accent-600'
           }`}
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="h-4 w-4" />
           Back to Library
         </Link>
         <div className={`rounded-2xl border p-12 text-center ${
-          isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white shadow-sm'
         }`}>
-          <AlertTriangle className={`w-10 h-10 mx-auto mb-4 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />
-          <p className={`text-lg font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-            Object not found
-          </p>
-          <p className={`mt-1 text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            <span className="font-mono">{objectId}</span> does not exist in your library or the catalog.
-          </p>
+          {deletedEntry ? (
+            <>
+              <RotateCcw className={`mx-auto mb-4 h-10 w-10 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />
+              <p className={`text-lg font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                {deletedEntry.objectName || deletedEntry.objectId} was deleted
+              </p>
+              <p className={`mt-1 text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                Its local files are gone, and it is blocked from re-syncing. Restoring only lifts
+                the block, so the telescope can send it back next time it images this target.
+              </p>
+              <button
+                type="button"
+                onClick={() => restoreObjectMutation.mutate(deletedEntry.objectId)}
+                disabled={restoreObjectMutation.isPending}
+                className={`mt-5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                {restoreObjectMutation.isPending
+                  ? <RotateCw className="h-3.5 w-3.5 animate-spin" />
+                  : <RotateCcw className="h-3.5 w-3.5" />}
+                Restore
+              </button>
+              {trashError && (
+                <p className={`mt-3 text-sm ${isDark ? 'text-red-300' : 'text-red-600'}`}>{trashError}</p>
+              )}
+            </>
+          ) : (
+            <>
+              <AlertTriangle className={`mx-auto mb-4 h-10 w-10 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />
+              <p className={`text-lg font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                Object not found
+              </p>
+              <p className={`mt-1 text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                <span className="font-mono">{objectId}</span> does not exist in your library or the catalog.
+              </p>
+            </>
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      {/* Breadcrumb */}
-      <Link
-        to="/"
-        className={`inline-flex items-center gap-2 text-sm font-medium transition ${
-          isDark ? 'text-slate-400 hover:text-accent-400' : 'text-slate-500 hover:text-accent-600'
-        }`}
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to Library
-      </Link>
+    <div className="space-y-6">
+      <TourAnchor id="object-processed" className="block">
+      <ObjectHero
+        displayName={displayName}
+        eyebrow={eyebrow}
+        imageSrc={headerImgSrc}
+        imageFailed={headerImgError}
+        onImageError={handleHeaderImgError}
+        onEditImage={isAdmin ? () => setGalleryModalOpen(true) : null}
+        telescopes={heroTelescopes}
+        metrics={metrics}
+        accent={accent}
+        isFavorite={isFavorite}
+        onToggleFavorite={() => favoriteMutation.mutate(!isFavorite)}
+        onAddObservation={isAdmin ? () => setNewObservationOpen(true) : null}
+        onCompare={allSessions.length >= 2 ? () => setCompareModalOpen(true) : null}
+        onCombine={() => setCombineSubframesOpen(true)}
+        onDownloadAll={handleDownloadAll}
+        downloadPending={downloadPending}
+        onSyncAllSubframes={isAdmin && !isStartrails && allSessions.length > 0
+          ? () => openObjectSync(activeObjectId)
+          : null}
+        // The planner searches by catalog id, so an object the catalog does not
+        // know cannot be handed to it.
+        onPlan={catalogEntry?.id
+          ? () => navigate('/planner', { state: { searchQuery: catalogEntry.id } })
+          : null}
+        onEditDetails={isAdmin ? () => setEditObjectOpen(true) : null}
+        onDelete={isAdmin ? () => setDeleteObjectConfirm(true) : null}
+        objectId={activeObjectId}
+        hideTargetActions={isStartrails}
+      />
+      </TourAnchor>
 
-      {/* Object header */}
-      <div className={`relative rounded-2xl border p-8 ${
-        isDark
-          ? 'bg-gradient-to-br from-slate-900 to-slate-900/50 border-slate-800'
-          : 'bg-gradient-to-br from-white to-slate-50 border-slate-200 shadow-sm'
-      }`}>
-        {isAdmin && (
+      {downloadError && (
+        <p className={`text-sm ${isDark ? 'text-red-300' : 'text-red-600'}`} role="alert">{downloadError}</p>
+      )}
+
+      {FRAMING_MOSAIC_ENABLED && (
+        <div className="flex flex-wrap gap-3">
           <button
-            onClick={() => setDeleteObjectConfirm(true)}
-            title="Delete object"
-            className={`absolute top-4 right-4 p-2 rounded-lg transition ${
-              isDark
-                ? 'text-slate-600 hover:text-red-400 hover:bg-red-900/20'
-                : 'text-slate-300 hover:text-red-500 hover:bg-red-50'
+            onClick={() => setFramingOpen(true)}
+            className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition ${
+              isDark ? 'border-slate-800 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
             }`}
+            title="Preview how this object frames in your telescope, and plan a mosaic"
           >
-            <Trash2 className="w-4 h-4" />
+            Framing &amp; Mosaic
           </button>
-        )}
-        <div className="flex flex-col md:flex-row md:items-start gap-6">
-          {/* Object image — stock or custom gallery */}
-          <div
-            className={`group/img relative flex-shrink-0 w-36 h-36 md:w-44 md:h-44 rounded-xl overflow-hidden ${isAdmin ? 'cursor-pointer' : ''}`}
-            onClick={() => isAdmin && setGalleryModalOpen(true)}
-          >
-            <div className={`absolute inset-0 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-              {headerImgSrc === null ? (
-                /* galleryData still loading — show neutral placeholder, not spinner */
-                null
-              ) : !headerImgError ? (
-                <>
-                  {!headerImgLoaded && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <RotateCw className="w-5 h-5 animate-spin text-accent-500/40" />
-                    </div>
-                  )}
-                  <img
-                    ref={headerImgRef}
-                    src={headerImgSrc}
-                    alt={catalogEntry?.name || objectId}
-                    onLoad={() => setHeaderImgLoaded(true)}
-                    onError={handleHeaderImgError}
-                    className={`w-full h-full object-cover transition-opacity duration-300 ${
-                      headerImgLoaded ? 'opacity-100' : 'opacity-0'
-                    }`}
-                  />
-                </>
-              ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
-                  <Image className={`w-8 h-8 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />
-                  <span className={`text-xs ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>No image</span>
-                </div>
-              )}
-            </div>
-            {/* Hover overlay with centered edit icon — admin only */}
-            {isAdmin && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover/img:bg-black/40 transition-all duration-200 pointer-events-none">
-                <Pencil className="w-6 h-6 text-white opacity-0 group-hover/img:opacity-100 transition-opacity duration-200 drop-shadow-lg" />
-              </div>
-            )}
-          </div>
-
-          {/* Text info */}
-          <div className="flex-1 min-w-0">
-            {/* Badges row - full width above main content */}
-            <div className="flex items-center gap-2 flex-wrap mb-5">
-              <span className={`font-display text-sm font-semibold px-3 py-1 rounded-lg ${
-                isDark ? 'bg-accent-500/10 text-accent-400' : 'bg-accent-50 text-accent-700'
-              }`}>
-                {baseObjectId}
-              </span>
-              {catalogEntry?.type && (
-                <span className={`text-sm px-2.5 py-0.5 rounded-md ${
-                  isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'
-                }`}>
-                  {catalogEntry.type}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-start gap-6">
-              {/* Left: title, description, wiki */}
-              <div className="flex-1 min-w-0 space-y-4">
-                <div className="flex items-center gap-3">
-                  <h1 className={`font-display text-3xl font-bold tracking-tight ${
-                    isDark ? 'text-white' : 'text-slate-900'
-                  }`}>
-                    {catalogEntry?.name || objectId}
-                  </h1>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => setEditObjectOpen(true)}
-                      title="Edit object details"
-                      className={`p-1.5 rounded-lg transition ${
-                        isDark
-                          ? 'text-slate-500 hover:text-slate-200 hover:bg-slate-800'
-                          : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-                {catalogEntry?.description?.trim() && (
-                  <p className={`leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                    {catalogEntry.description.trim()}
-                  </p>
-                )}
-                {catalogEntry?.wikiUrl && (
-                  <a
-                    href={catalogEntry.wikiUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`inline-flex items-center gap-1.5 text-sm font-medium transition ${isDark ? 'text-accent-400 hover:text-accent-300' : 'text-accent-600 hover:text-accent-700'} hover:underline`}
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Wikipedia
-                  </a>
-                )}
-
-                {(catalogEntry?.alsoKnownAs?.length ?? 0) > 0 && (
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 pt-1">
-                    <span className={`text-[11px] font-semibold uppercase tracking-widest ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                      Also known as
-                    </span>
-                    {catalogEntry?.alsoKnownAs?.map(aka => (
-                      <span
-                        key={aka}
-                        className={`text-xs font-medium px-2 py-0.5 rounded-md ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}
-                      >
-                        {aka}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Right: catalog panel */}
-              {(catalogEntry?.constellation || catalogEntry?.magnitude != null || catalogEntry?.distanceLy != null || catalogEntry?.ra || catalogEntry?.dec || catalogEntry?.size) && (
-                <div className={`shrink-0 w-44 border-l pl-6 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-                  <p className="text-[11px] font-semibold uppercase tracking-widest mb-3 text-amber-500/80">
-                    Catalog
-                  </p>
-                <div className="space-y-2.5">
-                  {catalogEntry?.constellation && catalogEntry.constellation !== 'Unknown' && (
-                    <div>
-                      <p className={`text-xs ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>Constellation</p>
-                      <p className={`text-sm font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{catalogEntry.constellation}</p>
-                    </div>
-                  )}
-                  {catalogEntry?.magnitude != null && (
-                    <div>
-                      <p className={`text-xs ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>Magnitude</p>
-                      <p className={`text-sm font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        {typeof catalogEntry.magnitude === 'number' ? catalogEntry.magnitude.toFixed(2) : catalogEntry.magnitude}
-                      </p>
-                    </div>
-                  )}
-                  {catalogEntry?.distanceLy != null && (
-                    <div>
-                      <p className={`text-xs ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>Distance</p>
-                      <p className={`text-sm font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                        {catalogEntry.distanceLy >= 1_000_000
-                          ? `${(catalogEntry.distanceLy / 1_000_000).toFixed(2)}M ly`
-                          : `${catalogEntry.distanceLy.toLocaleString()} ly`}
-                      </p>
-                    </div>
-                  )}
-                  {catalogEntry?.size && (
-                    <div>
-                      <p
-                        title="Apparent angular size as seen from Earth, measured in arcminutes (′). The full Moon is ~30′ across for comparison."
-                        className={`text-xs cursor-help underline decoration-dotted underline-offset-2 ${isDark ? 'text-slate-600 decoration-slate-700' : 'text-slate-400 decoration-slate-300'}`}
-                      >
-                        Angular size
-                      </p>
-                      <p className={`text-sm font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{catalogEntry.size}</p>
-                    </div>
-                  )}
-                  {catalogEntry?.ra != null && (
-                    <div>
-                      <p className={`text-xs ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>RA</p>
-                      <p className={`text-sm font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{formatRA(catalogEntry.ra)}</p>
-                    </div>
-                  )}
-                  {catalogEntry?.dec != null && (
-                    <div>
-                      <p className={`text-xs ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>Dec</p>
-                      <p className={`text-sm font-medium leading-tight ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{formatDec(catalogEntry.dec)}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            </div>
-          </div>
-
         </div>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <ObjectPanel
+          displayName={displayName}
+          info={{
+            type: catalogEntry?.type || (isStartrails ? baseObject?.type : undefined),
+            constellation: catalogEntry?.constellation && catalogEntry.constellation !== 'Unknown'
+              ? catalogEntry.constellation
+              : null,
+            size: catalogEntry?.size,
+            ra: catalogEntry?.ra != null ? String(catalogEntry.ra) : null,
+            dec: catalogEntry?.dec != null ? String(catalogEntry.dec) : null,
+            // Star Trails has no catalog entry (getCatalogEntry 404s), so its
+            // curated description — already sitting on the library row itself
+            // — is the only source of one.
+            description: catalogEntry?.description || (isStartrails ? baseObject?.description : undefined),
+            wikiUrl: catalogEntry?.wikiUrl,
+          }}
+          magnitude={typeof catalogEntry?.magnitude === 'number' ? catalogEntry.magnitude : null}
+          distanceLy={catalogEntry?.distanceLy ?? null}
+          alsoKnownAs={catalogEntry?.alsoKnownAs ?? undefined}
+        />
+
+        {/* Visibility-tonight math doesn't apply to a non-celestial synthetic
+            target, so the row collapses to one column instead. */}
+        {!isStartrails && <TonightPanel raHours={raHours} decDegrees={decDegrees} site={site} />}
       </div>
 
-      {/* Compare sessions modal */}
+      <ObjectProcessedSection objectId={activeObjectId} isAdmin={isAdmin} />
+
+      <ObservationsSection
+        observations={observationCards}
+        isDark={isDark}
+        loading={sessionsLoading}
+        tempUnit={settings?.temperatureUnit === 'fahrenheit' ? 'fahrenheit' : 'celsius'}
+        onDelete={isAdmin
+          ? o => setDeleteSession({ objectId: o.objectId, date: o.date })
+          : null}
+        trashCount={isAdmin ? trashCount : 0}
+        onOpenTrash={isAdmin ? () => setTrashModalOpen(true) : null}
+      />
+
+      {trashModalOpen && (
+        <ObjectTrashModal
+          isDark={isDark}
+          objectName={displayName}
+          deletedObjects={deletedObjectsForThis}
+          deletedSessions={deletedSessionsForThis}
+          onRestoreObject={id => restoreObjectMutation.mutate(id)}
+          onRestoreSession={args => restoreSessionMutation.mutate(args)}
+          restoringObjectId={restoreObjectMutation.isPending ? (restoreObjectMutation.variables ?? null) : null}
+          restoringSession={restoreSessionMutation.isPending ? (restoreSessionMutation.variables ?? null) : null}
+          error={trashError}
+          onClose={() => setTrashModalOpen(false)}
+        />
+      )}
+
       {compareModalOpen && (
-        <CompareSessionsModal
-          objectId={activeObjectId}
-          onClose={() => setCompareModalOpen(false)}
-        />
+        <CompareSessionsModal objectId={activeObjectId} onClose={() => setCompareModalOpen(false)} />
       )}
 
-      {/* Combine subframes modal */}
       {combineSubframesOpen && (
-        <CombineSubframesModal
-          objectId={activeObjectId}
-          onClose={() => setCombineSubframesOpen(false)}
-        />
+        <CombineSubframesModal objectId={activeObjectId} onClose={() => setCombineSubframesOpen(false)} />
       )}
 
-      {/* Edit object metadata modal */}
       {editObjectOpen && (
         <EditObjectModal
           objectId={baseObjectId}
@@ -468,17 +662,15 @@ export function ObjectDetail() {
         />
       )}
 
-      {/* Framing & mosaic planner */}
       {framingOpen && (
         <FramingModal
           catalogId={catalogEntry?.id || baseObjectId}
-          objectName={catalogEntry?.name || objectId || baseObjectId}
+          objectName={displayName}
           isDark={isDark}
           onClose={() => setFramingOpen(false)}
         />
       )}
 
-      {/* Gallery image modal */}
       {galleryModalOpen && (
         <GalleryImageModal
           objectId={activeObjectId}
@@ -493,7 +685,7 @@ export function ObjectDetail() {
         isOpen={newObservationOpen}
         onClose={() => setNewObservationOpen(false)}
         objectId={activeObjectId}
-        objectName={catalogEntry?.name || baseObjectId}
+        objectName={displayName}
         onSuccess={result => {
           setNewObservationOpen(false);
           queryClient.invalidateQueries({ queryKey: ['library-sessions', result.objectId] });
@@ -501,355 +693,45 @@ export function ObjectDetail() {
         }}
       />
 
-      {/* Action buttons */}
-      <div className="flex flex-wrap gap-3">
-        <button
-          onClick={() => { if (allSessions.length >= 2) setCompareModalOpen(true); }}
-          aria-disabled={allSessions.length < 2}
-          title={allSessions.length < 2 ? 'Need 2 or more observations to use compare' : undefined}
-          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition ${
-            allSessions.length < 2
-              ? `cursor-not-allowed opacity-50 ${isDark ? 'border-slate-800 text-slate-500' : 'border-slate-200 text-slate-400'}`
-              : isDark ? 'border-slate-800 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Columns className={`w-4 h-4 ${allSessions.length < 2 ? 'text-slate-400' : 'text-violet-500'}`} />
-          Compare
-        </button>
-        <button
-          onClick={() => setCombineSubframesOpen(true)}
-          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition ${
-            isDark ? 'border-slate-800 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Layers className="w-4 h-4 text-emerald-500" />
-          Combine Subframes &amp; Download
-        </button>
-        {FRAMING_MOSAIC_ENABLED && (
-        <button
-          onClick={() => setFramingOpen(true)}
-          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition ${
-            isDark ? 'border-slate-800 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}
-          title="Preview how this object frames in your telescope, and plan a mosaic"
-        >
-          <Frame className="w-4 h-4 text-sky-500" />
-          Framing &amp; Mosaic
-        </button>
-        )}
-        <a
-          href={getDownloadUrl(activeObjectId, { fileType: 'all', includeVariants: true })}
-          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition ${
-            isDark ? 'border-slate-800 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Download className="w-4 h-4 text-accent-500" />
-          Download All
-        </a>
-      </div>
-
-      {/* Observations */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className={`font-display text-xl font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>
-            <Calendar className="w-5 h-5 inline mr-2 text-accent-500" />
-            Observations
-          </h2>
-          <div className="flex items-center gap-3">
-            {allSessions.length > 0 && (
-              <span className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                {allSessions.length} observation{allSessions.length !== 1 ? 's' : ''}
-              </span>
-            )}
-            {isAdmin && (
-              <button
-                onClick={() => setNewObservationOpen(true)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                  isDark
-                    ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 border border-accent-500/30'
-                    : 'bg-accent-300 text-accent-700 hover:bg-accent-400 border border-accent-400'
-                }`}
-              >
-                <PlusCircle className="w-3.5 h-3.5" />
-                Add Observation
-              </button>
-            )}
-          </div>
-        </div>
-
-        {sessionsLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className={`rounded-2xl overflow-hidden border ${
-                  isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-                }`}
-              >
-                <div className={`h-56 img-placeholder ${isDark ? '' : 'bg-gradient-to-br from-slate-100 to-slate-200'}`} />
-                <div className="p-4">
-                  <div className={`h-4 rounded w-2/3 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`} />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : allSessions.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {allSessions.map(session => (
-              <SessionCard
-                key={`${session.sessionObjectId}-${session.id}`}
-                objectId={session.sessionObjectId}
-                session={session}
-                variantLabel={session.variantLabel ?? undefined}
-                isDark={isDark}
-                onDelete={isAdmin ? () => setDeleteSession({ objectId: session.sessionObjectId, date: session.date }) : undefined}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className={`text-center py-12 rounded-xl border ${
-            isDark ? 'bg-slate-900 border-slate-700 text-slate-500' : 'bg-white border-slate-200 text-slate-400'
-          }`}>
-            <FolderOpen className="w-10 h-10 mx-auto mb-3 opacity-40" />
-            <p>No observations found for this object</p>
-          </div>
-        )}
-      </div>
-      {/* Delete object confirmation */}
       {deleteObjectConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className={`w-full max-w-md rounded-2xl p-6 space-y-4 ${
-            isDark ? 'bg-slate-900 border border-slate-800' : 'bg-white shadow-xl'
-          }`}>
-            <div className="flex items-center gap-3 text-red-500">
-              <AlertTriangle className="w-6 h-6" />
-              <h3 className="font-display font-semibold text-lg">Delete Object</h3>
-            </div>
-            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              This will permanently delete all local image files for <strong>{objectId}</strong>. That
-              part cannot be undone. It also blocks {objectId} from being re-synced from the telescope,
-              but that part can: restore it from Settings, Storage, Trash. Observation notes will not
-              be deleted.
-            </p>
-            {deleteObjectMutation.error && (
-              <p className="text-sm text-red-500">
-                {deleteObjectMutation.error instanceof Error ? deleteObjectMutation.error.message : 'Failed to delete object. Try again.'}
-              </p>
-            )}
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setDeleteObjectConfirm(false)}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
-                  isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'
-                }`}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => deleteObjectMutation.mutate()}
-                disabled={deleteObjectMutation.isPending}
-                className="px-4 py-2 rounded-xl text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 flex items-center gap-2"
-              >
-                {deleteObjectMutation.isPending && <RotateCw className="w-4 h-4 animate-spin" />}
-                Delete Permanently
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete session confirmation */}
-      {deleteSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className={`w-full max-w-md rounded-2xl p-6 space-y-4 ${
-            isDark ? 'bg-slate-900 border border-slate-800' : 'bg-white shadow-xl'
-          }`}>
-            <div className="flex items-center gap-3 text-red-500">
-              <AlertTriangle className="w-6 h-6" />
-              <h3 className="font-display font-semibold text-lg">Delete Observation</h3>
-            </div>
-            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              This will permanently delete all local files for the{' '}
-              <strong>{deleteSession.objectId}</strong>{' '}observation on{' '}
-              <strong>
-                {new Date(deleteSession.date + 'T12:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-              </strong>
-              . That part cannot be undone. It also blocks this observation from being re-synced from
-              the telescope, but that part can: restore it from Settings, Storage, Trash.
-            </p>
-            {deleteSessionMutation.error && (
-              <p className="text-sm text-red-500">
-                {deleteSessionMutation.error instanceof Error ? deleteSessionMutation.error.message : 'Failed to delete observation. Try again.'}
-              </p>
-            )}
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setDeleteSession(null)}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
-                  isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'
-                }`}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => deleteSessionMutation.mutate(deleteSession)}
-                disabled={deleteSessionMutation.isPending}
-                className="px-4 py-2 rounded-xl text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 flex items-center gap-2"
-              >
-                {deleteSessionMutation.isPending && <RotateCw className="w-4 h-4 animate-spin" />}
-                Delete Permanently
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function formatRA(ra: string): string {
-  // Already sexagesimal — display as-is
-  if (/\d+h/i.test(ra)) return ra;
-  const h = parseFloat(ra);
-  if (isNaN(h)) return ra;
-  // Decimal hours → HH h MM m SS.s s
-  const hh = Math.floor(h);
-  const mRem = (h - hh) * 60;
-  const mm = Math.floor(mRem);
-  const ss = ((mRem - mm) * 60).toFixed(1).padStart(4, '0');
-  return `${String(hh).padStart(2, '0')}h ${String(mm).padStart(2, '0')}m ${ss}s`;
-}
-
-function formatDec(dec: string): string {
-  // Already sexagesimal — display as-is
-  if (/°/.test(dec)) return dec;
-  const d = parseFloat(dec);
-  if (isNaN(d)) return dec;
-  // Decimal degrees → ±DD° MM′ SS″
-  const sign = d < 0 ? '−' : '+';
-  const abs = Math.abs(d);
-  const dd = Math.floor(abs);
-  const mRem = (abs - dd) * 60;
-  const mm = Math.floor(mRem);
-  const ss = Math.round((mRem - mm) * 60);
-  return `${sign}${String(dd).padStart(2, '0')}° ${String(mm).padStart(2, '0')}′ ${String(ss).padStart(2, '0')}″`;
-}
-
-function variantBadgeClass(label: string, isDark: boolean) {
-  const l = label.toLowerCase();
-  if (l.includes('mosaic')) return isDark ? 'bg-amber-500/85 text-white' : 'bg-amber-500 text-white';
-  if (l === 'hα' || l === 'ha') return isDark ? 'bg-red-500/85 text-white' : 'bg-red-500 text-white';
-  if (l === 'oiii') return isDark ? 'bg-cyan-500/85 text-white' : 'bg-cyan-500 text-white';
-  if (l === 'sii') return isDark ? 'bg-blue-500/85 text-white' : 'bg-blue-500 text-white';
-  return isDark ? 'bg-violet-500/85 text-white' : 'bg-violet-500 text-white';
-}
-
-function SessionCard({
-  objectId,
-  session,
-  variantLabel,
-  isDark,
-  onDelete,
-}: {
-  objectId: string;
-  session: { id: string; date: string; fileCount: number; stackedCount: number; fitsCount: number; imageCount: number; subFrameCount: number; processedCount: number; thumbnailUrl: string };
-  variantLabel?: string;
-  isDark: boolean;
-  onDelete?: () => void;
-}) {
-  const [imgLoaded, setImgLoaded] = useState(false);
-  const [imgError, setImgError] = useState(false);
-
-  const thumbUrl = session.thumbnailUrl || `/api/library/objects/${encodeURIComponent(objectId)}/thumbnail`;
-
-  const formattedDate = session.date !== 'unknown'
-    ? new Date(session.date + 'T12:00:00').toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      })
-    : 'Unknown date';
-
-  return (
-    <div className={`group relative card-hover rounded-2xl overflow-hidden border transition-all ${
-      isDark
-        ? 'bg-slate-900 border-slate-800 hover:border-slate-700'
-        : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm hover:shadow-md'
-    }`}>
-      <Link to={`/observations/${encodeURIComponent(objectId)}/${encodeURIComponent(session.date)}`}>
-        <div className={`relative h-56 overflow-hidden ${
-          isDark ? 'bg-slate-800' : 'bg-slate-100'
-        }`}>
-          {variantLabel && (
-            <div className={`absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${variantBadgeClass(variantLabel, isDark)}`}>
-              {variantLabel.toLowerCase().includes('mosaic') && <Layers className="w-3 h-3" />}
-              {variantLabel}
-            </div>
-          )}
-          {!imgError ? (
+        <DangerConfirm
+          title="Delete object"
+          pending={deleteObjectMutation.isPending}
+          error={deleteObjectMutation.error}
+          onCancel={() => setDeleteObjectConfirm(false)}
+          onConfirm={() => deleteObjectMutation.mutate()}
+          body={
             <>
-              {!imgLoaded && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <RotateCw className="w-6 h-6 animate-spin text-accent-500/40" />
-                </div>
-              )}
-              <img
-                src={thumbUrl}
-                alt={session.date}
-                onLoad={() => setImgLoaded(true)}
-                onError={() => setImgError(true)}
-                className={`w-full h-full object-cover transition-opacity duration-300 ${
-                  imgLoaded ? 'opacity-100' : 'opacity-0'
-                }`}
-              />
+              This permanently deletes every local image file for <strong>{baseObjectId}</strong>.
+              That part cannot be undone. It also blocks {baseObjectId} from being re-synced from
+              the telescope, but that part can: come back to this object's page and restore it.
+              Observation notes are kept.
             </>
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-              <Image className={`w-8 h-8 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />
-              <span className={`text-xs ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>No preview</span>
-            </div>
-          )}
-        </div>
+          }
+        />
+      )}
 
-        <div className="p-4 space-y-2">
-          <p className={`font-medium text-sm ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-            <Calendar className="w-3.5 h-3.5 inline mr-1.5" />
-            {formattedDate}
-          </p>
-          <div className={`flex items-center gap-3 text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            {session.stackedCount > 0 && (
-              <span className="flex items-center gap-1">
-                <Layers className="w-3 h-3" />
-                {session.stackedCount} stacked
-              </span>
-            )}
-            {session.subFrameCount > 0 && (
-              <span className="flex items-center gap-1">
-                <Image className="w-3 h-3" />
-                {session.subFrameCount} subs
-              </span>
-            )}
-            {session.processedCount > 0 && (
-              <span className="flex items-center gap-1">
-                <Pencil className="w-3 h-3" />
-                {session.processedCount} processed
-              </span>
-            )}
-            {session.stackedCount === 0 && session.subFrameCount === 0 && session.processedCount === 0 && (
-              <span>No files</span>
-            )}
-          </div>
-        </div>
-      </Link>
-
-      {onDelete && (
-        <button
-          onClick={e => { e.preventDefault(); onDelete(); }}
-          className="absolute top-2 right-2 p-1.5 rounded-lg bg-red-600/80 text-white hover:bg-red-600 transition opacity-0 group-hover:opacity-100"
-          title="Delete session"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+      {deleteSession && (
+        <DangerConfirm
+          title="Delete observation"
+          pending={deleteSessionMutation.isPending}
+          error={deleteSessionMutation.error}
+          onCancel={() => setDeleteSession(null)}
+          onConfirm={() => deleteSessionMutation.mutate(deleteSession)}
+          body={
+            <>
+              This permanently deletes every local file for the{' '}
+              <strong>{deleteSession.objectId}</strong> observation on{' '}
+              <strong>
+                {new Date(deleteSession.date + 'T12:00:00').toLocaleDateString(undefined, {
+                  year: 'numeric', month: 'long', day: 'numeric',
+                })}
+              </strong>. That part cannot be undone. It also blocks this observation from being
+              re-synced from the telescope, but that part can: restore it from the Observations
+              section on this page.
+            </>
+          }
+        />
       )}
     </div>
   );

@@ -33,9 +33,13 @@ import path from 'path';
 import db from '../db.js';
 import { getLibraryDir } from '../libraryPath.js';
 import { log } from '../logger.js';
+import { parseJsonRecord } from '../typeGuards.js';
 
-/** Sidecar filenames this module knows how to read. */
-const KNOWN_SIDECARS = new Set(['shotsinfo.json']);
+/** Sidecar filenames this module knows how to read. `meta.json` is Nebulis's
+ *  own field, documented as part of the Generic SMB Layout (Help page,
+ *  Add Telescope modal) for custom SMB sources that have no vendor sidecar
+ *  of their own. */
+const KNOWN_SIDECARS = new Set(['shotsinfo.json', 'meta.json']);
 
 export function isCaptureInfoSidecar(fileName: string): boolean {
   return KNOWN_SIDECARS.has(fileName.toLowerCase());
@@ -99,35 +103,75 @@ function str(v: unknown): string | null {
 }
 
 /**
+ * `meta.json` — Nebulis's own generic sidecar, not a device vendor's. Field
+ * names already match ParsedCaptureInfo's units, so there is no RA-in-hours
+ * style ambiguity to resolve like shotsInfo.json needs below.
+ *
+ * `frameCount` and `integrationSec` are both optional and either can be given
+ * alone. When only the total is known, a synthetic per-frame `exposureSec` is
+ * derived (`integrationSec / frameCount`, or `integrationSec` itself with a
+ * frame count of 1) so the existing `exposureSec * framesStacked` total
+ * (summarizeSessionCapture) reproduces the documented integrationSec without
+ * a schema change.
+ */
+function parseGenericMeta(o: Record<string, unknown>): ParsedCaptureInfo {
+  const exposureSecGiven = num(o.exposureSec);
+  const frameCount = int(o.frameCount);
+  const integrationSec = num(o.integrationSec);
+  const exposureSec = exposureSecGiven
+    ?? (integrationSec !== null && frameCount ? integrationSec / frameCount : integrationSec);
+  const framesStacked = frameCount ?? (integrationSec !== null ? 1 : null);
+
+  return {
+    exposureSec,
+    gain: int(o.gain),
+    filter: str(o.filter),
+    binning: null,
+    framesStacked,
+    framesTaken: null,
+    framesPlanned: null,
+    minTempC: null,
+    maxTempC: null,
+    raHours: null,
+    decDeg: null,
+    target: null,
+  };
+}
+
+/**
  * Parse sidecar JSON text. Returns null when the text is not an object at all;
  * individual missing or malformed fields become null rather than failing the
  * whole parse, because a partially-readable record is still worth keeping.
+ *
+ * `fileName` picks the field-name mapping: Nebulis's own `meta.json` versus a
+ * Dwarf's `shotsInfo.json`. Omit it (or pass any other known sidecar name) to
+ * get the shotsInfo.json mapping, the original and still most common case.
  */
-export function parseCaptureInfo(text: string): ParsedCaptureInfo | null {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch {
-    return null;
-  }
-  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const o = raw as Record<string, unknown>;
+export function parseCaptureInfo(text: string, fileName?: string): ParsedCaptureInfo | null {
+  // Sidecar JSON written by the telescope (or, for meta.json, by the user or
+  // their own tooling), so treat it as untrusted: the helper rejects bad
+  // JSON, arrays, and non-objects in one step, and every field below is
+  // still coerced individually by num()/int()/str().
+  const o = parseJsonRecord(text);
+  if (!o) return null;
 
-  const parsed: ParsedCaptureInfo = {
-    exposureSec: num(o.exp),
-    gain: int(o.gain),
-    // `ir` is the filter/IR-cut selection ("Astro", "Duo-Band", "IRCut").
-    filter: str(o.ir),
-    binning: str(o.binning),
-    framesStacked: int(o.shotsStacked),
-    framesTaken: int(o.shotsTaken),
-    framesPlanned: int(o.shotsToTake),
-    minTempC: num(o.minTemp),
-    maxTempC: num(o.maxTemp),
-    raHours: num(o.RA),
-    decDeg: num(o.DEC),
-    target: str(o.target),
-  };
+  const parsed = fileName?.toLowerCase() === 'meta.json'
+    ? parseGenericMeta(o)
+    : {
+        exposureSec: num(o.exp),
+        gain: int(o.gain),
+        // `ir` is the filter/IR-cut selection ("Astro", "Duo-Band", "IRCut").
+        filter: str(o.ir),
+        binning: str(o.binning),
+        framesStacked: int(o.shotsStacked),
+        framesTaken: int(o.shotsTaken),
+        framesPlanned: int(o.shotsToTake),
+        minTempC: num(o.minTemp),
+        maxTempC: num(o.maxTemp),
+        raHours: num(o.RA),
+        decDeg: num(o.DEC),
+        target: str(o.target),
+      };
 
   // Require at least one field to have landed. An empty object, or JSON that
   // happens to be an object of unrelated keys, should not produce a row.
@@ -210,7 +254,7 @@ export function ingestCaptureInfoFile(
     return false;
   }
 
-  const parsed = parseCaptureInfo(text);
+  const parsed = parseCaptureInfo(text, path.posix.basename(relPath.replace(/\\/g, '/')));
   if (!parsed) return false;
 
   saveCaptureInfo({

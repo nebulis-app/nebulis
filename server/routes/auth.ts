@@ -2,7 +2,8 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { registerUser, loginUser, verifyToken, getUserById, getUserCount, getAllUsers, deleteUser, updateUserPassword, updateUserRole, updateUserProfile, getUserTokenVersion, USER_ROLES } from '../lib/auth.js';
 import { requireAdmin } from '../middleware/auth.js';
-import { isDeviceActive, touchDevice } from '../lib/devicePairing.js';
+import { isDeviceActive, touchDevice, revokeAllDevicesForUser } from '../lib/devicePairing.js';
+import { logEvent } from '../lib/systemLog.js';
 
 const router = Router();
 
@@ -50,8 +51,16 @@ function noteFailure(req: Request): void {
     return;
   }
   bucket.failures++;
-  if (bucket.failures >= MAX_FAILURES) {
+  if (bucket.failures >= MAX_FAILURES && bucket.blockedUntil <= now) {
     bucket.blockedUntil = now + LOCKOUT_MS;
+    logEvent({
+      category: 'auth',
+      event: 'rate_limited',
+      level: 'warning',
+      message: `Blocked further sign-in attempts from ${ip} after ${bucket.failures} failures.`,
+      ip,
+      metadata: { failures: bucket.failures, lockoutMs: LOCKOUT_MS },
+    });
   }
 }
 
@@ -102,23 +111,55 @@ const RoleBodySchema = z.object({
   role: z.enum(USER_ROLES),
 });
 
+// getUserCount() > 0 and the eventual insert inside registerUser() are
+// separated by an await (bcrypt.hash), so two concurrent first-registration
+// requests could both observe count === 0 and both create an admin account
+// (CODE_AUDIT.md Finding 10). Serializing the whole check-then-register
+// sequence through this process-local queue closes the window — the server
+// is a single Node process, so this is sufficient without a DB-level lock.
+let registrationQueue: Promise<void> = Promise.resolve();
+function serializeFirstRegistration<T>(fn: () => Promise<T>): Promise<T> {
+  const run = registrationQueue.then(fn);
+  registrationQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+class RegistrationClosedError extends Error {}
+class RegisterValidationError extends Error {}
+
 // Register the first user (setup only — closed once any account exists).
 // Subsequent accounts must be created by an admin via POST /users.
 router.post('/register', rateLimit, async (req: Request, res: Response) => {
-  if (getUserCount() > 0) {
-    res.apiError(403, 'REGISTRATION_CLOSED', 'Registration is closed. Ask an admin to create your account.');
-    return;
-  }
-  const parsed = RegisterBodySchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
-    return;
-  }
   try {
-    const { username, password, displayName, email } = parsed.data;
-    const result = await registerUser(username, password, displayName, email);
+    const result = await serializeFirstRegistration(async () => {
+      if (getUserCount() > 0) {
+        throw new RegistrationClosedError();
+      }
+      const parsed = RegisterBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new RegisterValidationError(parsed.error.issues[0]?.message ?? 'Invalid request body');
+      }
+      const { username, password, displayName, email } = parsed.data;
+      return registerUser(username, password, displayName, email);
+    });
+    logEvent({
+      category: 'auth',
+      event: 'first_user_registered',
+      message: `Created the first account, "${result.user.username}".`,
+      userId: result.user.id,
+      username: result.user.username,
+      ip: clientIp(req),
+    });
     res.apiSuccess(result);
   } catch (err: unknown) {
+    if (err instanceof RegistrationClosedError) {
+      res.apiError(403, 'REGISTRATION_CLOSED', 'Registration is closed. Ask an admin to create your account.');
+      return;
+    }
+    if (err instanceof RegisterValidationError) {
+      res.apiError(422, 'VALIDATION_ERROR', err.message);
+      return;
+    }
     noteFailure(req);
     const message = err instanceof Error ? err.message : 'Registration failed';
     res.apiError(400, 'REGISTRATION_FAILED', message);
@@ -142,12 +183,29 @@ router.post('/login', rateLimit, async (req: Request, res: Response) => {
     const result = await loginUser(username, password);
     noteSuccess(req);
     console.log('[auth] login_attempt outcome=success username=%s ip=%s ua=%s', username, ip, userAgent);
+    logEvent({
+      category: 'auth',
+      event: 'login_success',
+      message: `Signed in as "${username}".`,
+      userId: result.user.id,
+      username: result.user.username,
+      ip,
+    });
     res.apiSuccess(result);
   } catch (err: unknown) {
     noteFailure(req);
     const username = (req.body as { username?: unknown })?.username;
+    const usernameStr = typeof username === 'string' ? username : 'unknown';
     const message = err instanceof Error ? err.message : 'Login failed';
-    console.warn('[auth] login_attempt outcome=failure username=%s ip=%s ua=%s error=%s', typeof username === 'string' ? username : 'unknown', ip, userAgent, message);
+    console.warn('[auth] login_attempt outcome=failure username=%s ip=%s ua=%s error=%s', usernameStr, ip, userAgent, message);
+    logEvent({
+      category: 'auth',
+      event: 'login_failed',
+      level: 'warning',
+      message: `Failed sign-in attempt for "${usernameStr}".`,
+      username: usernameStr,
+      ip,
+    });
     res.apiError(401, 'LOGIN_FAILED', message);
   }
 });
@@ -230,6 +288,15 @@ router.post('/users', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { username, password, displayName, email, role } = parsed.data;
     await registerUser(username, password, displayName, email, role ?? 'viewer');
+    logEvent({
+      category: 'user',
+      event: 'created',
+      message: `Created user "${username}" with role ${role ?? 'viewer'}.`,
+      userId: req.userId,
+      username: req.username,
+      ip: clientIp(req),
+      metadata: { targetUsername: username, role: role ?? 'viewer' },
+    });
     // Return user list instead of token
     res.apiSuccess(getAllUsers());
   } catch (err: unknown) {
@@ -253,6 +320,20 @@ router.delete('/users/:id', requireAdmin, (req: Request, res: Response) => {
   }
   const deleted = deleteUser(id);
   if (deleted) {
+    // connectedDevices has no FK to users, so a deleted user's paired
+    // devices are otherwise orphaned rows that a stolen/leaked device
+    // token could still resolve against if this cleanup were skipped.
+    revokeAllDevicesForUser(id, 'user_deleted');
+    logEvent({
+      category: 'user',
+      event: 'deleted',
+      level: 'warning',
+      message: `Deleted user "${target.username}".`,
+      userId: req.userId,
+      username: req.username,
+      ip: clientIp(req),
+      metadata: { targetUsername: target.username, targetUserId: target.id },
+    });
     res.apiSuccess(getAllUsers());
   } else {
     res.apiError(404, 'NOT_FOUND', 'User not found');
@@ -269,8 +350,23 @@ router.put('/users/:id/password', requireAdmin, async (req: Request, res: Respon
   try {
     const id = String(req.params.id);
     const { password } = parsed.data;
+    const target = getAllUsers().find(u => u.id === id);
     const updated = await updateUserPassword(id, password);
     if (updated) {
+      // "Change password to log out all sessions" should also cover paired
+      // devices — device tokens don't carry a tokenVersion claim, so the
+      // bump inside updateUserPassword only invalidates login tokens.
+      revokeAllDevicesForUser(id, 'password_changed');
+      logEvent({
+        category: 'user',
+        event: 'password_reset',
+        level: 'warning',
+        message: `Reset the password for "${target?.username ?? id}".`,
+        userId: req.userId,
+        username: req.username,
+        ip: clientIp(req),
+        metadata: { targetUsername: target?.username ?? null, targetUserId: id },
+      });
       res.apiSuccess({ updated: true });
     } else {
       res.apiError(404, 'NOT_FOUND', 'User not found');
@@ -307,16 +403,26 @@ router.put('/users/:id/role', requireAdmin, (req: Request, res: Response) => {
   }
   const id = String(req.params.id);
   const { role } = parsed.data;
+  const allUsersBefore = getAllUsers();
+  const target = allUsersBefore.find(u => u.id === id);
   if (role !== 'admin') {
-    const allUsers = getAllUsers();
-    const target = allUsers.find(u => u.id === id);
-    if (target?.role === 'admin' && allUsers.filter(u => u.role === 'admin').length <= 1) {
+    if (target?.role === 'admin' && allUsersBefore.filter(u => u.role === 'admin').length <= 1) {
       res.apiError(400, 'LAST_ADMIN', 'Cannot remove admin role from the last admin account');
       return;
     }
   }
   const updated = updateUserRole(id, role);
   if (updated) {
+    logEvent({
+      category: 'user',
+      event: 'role_changed',
+      level: 'warning',
+      message: `Changed the role of "${target?.username ?? id}" from ${target?.role ?? 'unknown'} to ${role}.`,
+      userId: req.userId,
+      username: req.username,
+      ip: clientIp(req),
+      metadata: { targetUsername: target?.username ?? null, targetUserId: id, oldRole: target?.role ?? null, newRole: role },
+    });
     res.apiSuccess(getAllUsers());
   } else {
     res.apiError(404, 'NOT_FOUND', 'User not found');

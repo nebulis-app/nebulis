@@ -25,7 +25,7 @@ export interface GeocodeSearchResult {
 /** Forward geocode a city/place name to ranked candidates (Open-Meteo). */
 export const searchLocations = (q: string) =>
   fetchJSON<GeocodeSearchResult[]>(`/catalog/geocode/search?q=${encodeURIComponent(q)}`)
-    .catch(() => [] as GeocodeSearchResult[]);
+    .catch((): GeocodeSearchResult[] => []);
 export const getCatalogEntry = (id: string) => fetchJSON<CatalogEntry>(`/catalog/${encodeURIComponent(id)}`);
 
 // Catalog object info (fetched lazily from library DB / catalogCache / static catalog)

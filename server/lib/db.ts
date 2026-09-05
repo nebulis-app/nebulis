@@ -10,6 +10,16 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { DATA_DIR } from './paths.js';
 import { encrypt as encryptSecret, decrypt as decryptSecret } from './crypto/secretBox.js';
+import { COLOR_BY_KIND, kindFromModel, isTelescopeKind } from './types/telescopeKind.js';
+import { isRecord } from './typeGuards.js';
+import {
+  maybeBackupBeforeMigrations,
+  backupDatabaseNow,
+  pruneDatabaseBackups,
+  type StartupBackupOutcome,
+  type DatabaseBackupInfo,
+} from './dbBackup.js';
+import { getCurrentVersion } from './appUpdate/platform.js';
 
 const DB_PATH = path.join(DATA_DIR, 'nebulis.db');
 
@@ -29,6 +39,23 @@ db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
 db.pragma('foreign_keys = ON');
 db.pragma('busy_timeout = 5000');
+
+// ─── Pre-upgrade snapshot (runs before any migration below) ─────────────────
+// If the build version changed since the last boot, copy the database into
+// {DATA_DIR}/backups/ while it still holds the OLD schema + data, so a later
+// downgrade has something clean to restore. Never throws. server/index.ts
+// writes the outcome to the admin system log once logging is available.
+export const startupBackupOutcome: StartupBackupOutcome = (() => {
+  try {
+    return maybeBackupBeforeMigrations(db, getCurrentVersion());
+  } catch (err) {
+    return {
+      status: 'failed',
+      error: err instanceof Error ? err.message : String(err),
+      previousVersion: null,
+    };
+  }
+})();
 
 // ─── Schema creation (runs on first import) ─────────────────────────────────
 // NOTE: db.exec() here is safe — it runs static DDL with no user input.
@@ -122,7 +149,7 @@ db.exec(`
     wikiUrl    TEXT NOT NULL DEFAULT '', -- Canonical Wikipedia page URL
     source     TEXT NOT NULL DEFAULT 'wikipedia',
     fetchedAt  INTEGER NOT NULL,        -- Unix ms
-    status     TEXT NOT NULL            -- 'ok' | 'not_found' | 'error'
+    status     TEXT NOT NULL            -- CATALOG_DESCRIPTION_STATUSES in lib/types/catalog.ts
   );
 
   -- ─── Catalog prefetch job status (single-row) ─────────────────
@@ -179,13 +206,14 @@ db.exec(`
     ON sessionImportLog(telescopeId, remotePath);
 
   -- One profile can carry multiple transports (e.g. one Seestar reachable via
-  -- both SMB and USB). Active transport is picked at run time by
-  -- selectActiveTransport(): local mount present wins over SMB reachable;
-  -- tiebreak by priority asc, then lastSeenAt desc.
+  -- both SMB and USB, or a Dwarf reachable via FTP). Active transport is
+  -- picked at run time by selectActiveTransport(): local mount present wins,
+  -- then FTP, then SMB reachable; tiebreak by priority asc, then lastSeenAt
+  -- desc.
   CREATE TABLE IF NOT EXISTS telescopeTransports (
     id          TEXT PRIMARY KEY,
     profileId   TEXT NOT NULL REFERENCES telescopeProfiles(id) ON DELETE CASCADE,
-    kind        TEXT NOT NULL,                          -- 'smb' | 'local'
+    kind        TEXT NOT NULL,                          -- TRANSPORT_KINDS in lib/telescopeTransports.ts: 'smb' | 'local' | 'ftp'
     priority    INTEGER NOT NULL DEFAULT 100,
     hostname    TEXT NOT NULL DEFAULT '',
     shareName   TEXT NOT NULL DEFAULT 'EMMC Images',
@@ -393,6 +421,28 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_connectedDevices_user ON connectedDevices(userId);
 
+  -- ─── System log (admin audit trail) ───────────────────────────
+  -- Security and administrative events: logins (success/failure), user and
+  -- telescope management, device pairing, sync summaries, storage and
+  -- settings changes. Append-only; see server/lib/systemLog.ts for the
+  -- writer/reader and the nightly prune that enforces retention.
+  -- username is a snapshot at write time so a later rename or deletion of
+  -- the account doesn't rewrite history.
+  CREATE TABLE IF NOT EXISTS systemLog (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    createdAt INTEGER NOT NULL,               -- Unix ms
+    category  TEXT    NOT NULL,               -- 'auth' | 'user' | 'device' | 'telescope' | 'sync' | 'storage' | 'settings' | 'system'
+    event     TEXT    NOT NULL,               -- machine-readable id, e.g. 'login_failed'
+    level     TEXT    NOT NULL DEFAULT 'info', -- 'info' | 'warning' | 'error'
+    message   TEXT    NOT NULL,               -- human-readable summary
+    userId    TEXT,                           -- actor id; NULL for unauthenticated events
+    username  TEXT,                           -- actor username snapshot; NULL if unknown
+    ip        TEXT,
+    metadata  TEXT                            -- JSON blob of structured extras (counts, ids)
+  );
+  CREATE INDEX IF NOT EXISTS idx_systemLog_createdAt ON systemLog(createdAt DESC);
+  CREATE INDEX IF NOT EXISTS idx_systemLog_category ON systemLog(category);
+
   -- ─── User overrides for catalog metadata ─────────────────────
   -- Per-field override layered on top of the static catalog + library DB.
   -- NULL on a column means "no override for this field" — falls through to
@@ -569,6 +619,25 @@ db.exec(`
   if (!cols.some(c => c.name === 'nightlyForecastLastRun')) {
     db.prepare('ALTER TABLE appSettings ADD COLUMN nightlyForecastLastRun INTEGER').run();
   }
+  if (!cols.some(c => c.name === 'nightlyMaintenanceEnabled')) {
+    // Master switch for the whole nightly maintenance batch. The per-task
+    // columns above are kept for backward compatibility but are no longer
+    // read by the scheduler — this one flag gates everything.
+    db.prepare('ALTER TABLE appSettings ADD COLUMN nightlyMaintenanceEnabled INTEGER NOT NULL DEFAULT 1').run();
+    // Preserve prior intent on upgrade: an install that had deliberately
+    // disabled ALL four per-task toggles keeps maintenance off rather than
+    // silently turning it back on. A partial state (some on, some off)
+    // collapses to "on" — the individual off-switches no longer exist, so
+    // the previously-disabled task runs again, which is the point of a single
+    // master switch.
+    db.prepare(
+      `UPDATE appSettings SET nightlyMaintenanceEnabled = 0
+       WHERE plannerPrefetchEnabled = 0
+         AND nightlyCatalogPackCheckEnabled = 0
+         AND nightlyHousekeepingEnabled = 0
+         AND nightlyForecastPrefetchEnabled = 0`
+    ).run();
+  }
   if (!cols.some(c => c.name === 'windSpeedUnit')) {
     db.prepare("ALTER TABLE appSettings ADD COLUMN windSpeedUnit TEXT NOT NULL DEFAULT 'mph'").run();
   }
@@ -605,6 +674,53 @@ db.exec(`
     // automatically; the Settings toggle lets them opt back into the old
     // split-by-calendar-date behavior.
     db.prepare('ALTER TABLE appSettings ADD COLUMN groupObservingNights INTEGER NOT NULL DEFAULT 1').run();
+  }
+  if (!cols.some(c => c.name === 'sampleLibrarySeeded')) {
+    // Marks the one-time bootstrap of the M31 sample object. The DEFAULT is 1
+    // ("already seeded, leave it alone") so an established install upgrading
+    // into this feature never has a sample object appear in its library. The
+    // repair below immediately re-derives the value, because ADD COLUMN cannot
+    // tell a brand-new database from an upgrade — it stamps the same default
+    // onto both.
+    db.prepare('ALTER TABLE appSettings ADD COLUMN sampleLibrarySeeded INTEGER NOT NULL DEFAULT 1').run();
+  }
+  if (!cols.some(c => c.name === 'sampleSeedFlagRepaired')) {
+    // One-time repair of the flag above.
+    //
+    // The ADD COLUMN default stamped `sampleLibrarySeeded = 1` onto EVERY
+    // database, brand-new ones included, so the "have we seeded yet?" flag
+    // read as "yes" on an install that had never seeded anything. The only
+    // honest signal for "this library is established, keep the sample out" is
+    // whether the library actually holds objects, so re-derive it from that
+    // once. An empty library has nothing to protect.
+    //
+    // Gated on its own marker column rather than run every boot: a real user
+    // who deletes every object must not have the sample reappear afterwards.
+    db.prepare('ALTER TABLE appSettings ADD COLUMN sampleSeedFlagRepaired INTEGER NOT NULL DEFAULT 0').run();
+    const objectRow = db.prepare<[], { n: number }>(
+      'SELECT COUNT(*) AS n FROM libraryObjects',
+    ).get();
+    const hasLibraryData = (objectRow?.n ?? 0) > 0;
+    db.prepare('UPDATE appSettings SET sampleLibrarySeeded = ?, sampleSeedFlagRepaired = 1 WHERE id = 1')
+      .run(hasLibraryData ? 1 : 0);
+  }
+  if (!cols.some(c => c.name === 'sampleObjectId')) {
+    // The objectId of the demo object currently planted for the product tour,
+    // or '' when none is planted. The sample is a tour prop: it exists only
+    // while the tour is running and is purged when the tour ends (or at the
+    // next boot, if the tour was abandoned by closing the browser). This is
+    // the record of "we put that there", so the purge only ever removes an
+    // object this app planted and never touches a real one.
+    db.prepare("ALTER TABLE appSettings ADD COLUMN sampleObjectId TEXT NOT NULL DEFAULT ''").run();
+  }
+  if (!cols.some(c => c.name === 'sampleLocationSiteId')) {
+    // The tour also needs coordinates, because the Planner computes nothing
+    // without them and a brand-new install has none. These two record the
+    // observing site whose coordinates were filled in for the tour, and the
+    // name it had beforehand, so the purge can put it back exactly as it was.
+    // Empty means no demo location is planted.
+    db.prepare("ALTER TABLE appSettings ADD COLUMN sampleLocationSiteId TEXT NOT NULL DEFAULT ''").run();
+    db.prepare("ALTER TABLE appSettings ADD COLUMN sampleLocationPrevName TEXT NOT NULL DEFAULT ''").run();
   }
 }
 
@@ -700,6 +816,18 @@ db.exec(`
   const upCols = db.prepare<[], { name: string }>('PRAGMA table_info(userPreferences)').all();
   if (!upCols.some(c => c.name === 'lastSeenVersion')) {
     db.prepare('ALTER TABLE userPreferences ADD COLUMN lastSeenVersion TEXT').run();
+  }
+
+  // Version of the curated-description backfill that has been applied to
+  // libraryObjects. curated-descriptions.json was merged into the one catalog
+  // store, so rows imported before a given batch of descriptions was added
+  // still carry a blank description. server/lib/library/objects.ts runs the
+  // one-time backfill when this is behind CURATED_DESCRIPTION_BACKFILL_VERSION
+  // and bumps it, so a future curated-data expansion re-runs it once by
+  // incrementing that constant.
+  const asColsForCurated = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
+  if (!asColsForCurated.some(c => c.name === 'curatedDescriptionBackfillVersion')) {
+    db.prepare('ALTER TABLE appSettings ADD COLUMN curatedDescriptionBackfillVersion INTEGER NOT NULL DEFAULT 0').run();
   }
 
   const lsCols = db.prepare<[], { name: string }>('PRAGMA table_info(librarySessions)').all();
@@ -990,27 +1118,6 @@ db.exec(`
 // with the active telescope's id, infers `kind` from `model`, picks a default
 // color per kind. Idempotent — only writes to NULL/default cells.
 {
-  // Default color palette by kind. Kept here (not in src/) so the backend
-  // doesn't reach into frontend code at boot.
-  const colorByKind: Record<string, string> = {
-    'seestar-s50': '#3b82f6',
-    'seestar-s30': '#10b981',
-    'dwarf-3':     '#f59e0b',
-    'dwarf-2':     '#ef4444',
-    'dwarf-mini':  '#f97316',
-    'other':       '#8b5cf6',
-  };
-  const kindFromModel = (model: string): string => {
-    switch (model) {
-      case 'SeeStar S50': return 'seestar-s50';
-      case 'SeeStar S30': return 'seestar-s30';
-      case 'Dwarf 3':     return 'dwarf-3';
-      case 'Dwarf II':    return 'dwarf-2';
-      case 'Dwarf Mini':  return 'dwarf-mini';
-      default:            return 'other';
-    }
-  };
-
   // Backfill `kind` from `model` for any row still at the default 'other'
   // where the model identifies a known device.
   const profileRows = db
@@ -1025,8 +1132,13 @@ db.exec(`
     const inferredKind = kindFromModel(row.model);
     const wantsKind = row.kind === 'other' && inferredKind !== 'other' ? inferredKind : row.kind;
     // Only overwrite the default violet if we actually inferred a kind.
-    const wantsColor = row.color === '#8b5cf6' && wantsKind !== 'other'
-      ? colorByKind[wantsKind]
+    // `wantsKind` may come straight from the DB's TEXT column, so it is
+    // narrowed with isTelescopeKind rather than asserted: a row written by a
+    // newer build with a kind this version doesn't know used to index
+    // COLOR_BY_KIND with it anyway and write the resulting `undefined` into
+    // the color column.
+    const wantsColor = row.color === '#8b5cf6' && wantsKind !== 'other' && isTelescopeKind(wantsKind)
+      ? COLOR_BY_KIND[wantsKind]
       : row.color;
     if (wantsKind !== row.kind || wantsColor !== row.color) {
       updateProfileMeta.run(wantsKind, wantsColor, row.id);
@@ -1034,50 +1146,62 @@ db.exec(`
   }
 
   // Stamp librarySessions.telescopeId for any session that's still NULL.
-  // Best-guess attribution: the currently-active telescope. Fine for v1
-  // (single-scope users) — multi-scope users can reassign per-session later.
-  const activeRow = db
-    .prepare<[], { id: string }>('SELECT id FROM telescopeProfiles WHERE isActive = 1 LIMIT 1')
-    .get();
-  const fallbackRow = activeRow
-    ? null
-    : db.prepare<[], { id: string }>('SELECT id FROM telescopeProfiles ORDER BY createdAt ASC LIMIT 1').get();
-  const stampId = activeRow?.id ?? fallbackRow?.id ?? null;
-  if (stampId) {
-    const stamped = db
-      .prepare('UPDATE librarySessions SET telescopeId = ? WHERE telescopeId IS NULL')
-      .run(stampId);
-    if (stamped.changes > 0) {
-      console.log(`[telescopes] Backfilled telescopeId on ${stamped.changes} session(s) → ${stampId}`);
-    }
+  //
+  // ONE-SHOT, gated by a libraryMeta column. This block used to run on every
+  // boot and, whenever no profile was marked active, fell back to the
+  // oldest-created profile — so a session row that was briefly NULL (a
+  // reconcile re-bucket, a merge/split, a note-only entry) got permanently
+  // claimed by whatever happened to be profile #1 on the next restart, and
+  // addSessionStamped's COALESCE then made that stick forever. That is how a
+  // SeeStar-only object ended up with Dwarf-attributed nights.
+  //
+  // Now: only the initial schema upgrade stamps, only from a genuinely active
+  // profile, and never by guessing. A session whose files carry no id stays
+  // NULL — the read path derives attribution from the per-file table instead
+  // (see dominantTelescopeByDate).
+  const lmCols = db.prepare<[], { name: string }>('PRAGMA table_info(libraryMeta)').all();
+  if (!lmCols.some(c => c.name === 'sessionTelescopeBackfilled')) {
+    db.prepare('ALTER TABLE libraryMeta ADD COLUMN sessionTelescopeBackfilled INTEGER NOT NULL DEFAULT 0').run();
+    const activeRow = db
+      .prepare<[], { id: string }>('SELECT id FROM telescopeProfiles WHERE isActive = 1 LIMIT 1')
+      .get();
+    const stampId = activeRow?.id ?? null;
+    if (stampId) {
+      const stamped = db
+        .prepare('UPDATE librarySessions SET telescopeId = ? WHERE telescopeId IS NULL')
+        .run(stampId);
+      if (stamped.changes > 0) {
+        console.log(`[telescopes] Backfilled telescopeId on ${stamped.changes} session(s) → ${stampId}`);
+      }
 
-    // Compute primaryTelescopeId per object as the telescope with the most
-    // sessions for that object. With a single telescope, every object resolves
-    // to the same id. Only writes rows that are still NULL.
-    const objectsNeedingPrimary = db
-      .prepare<[], { objectId: string }>(
-        'SELECT objectId FROM libraryObjects WHERE primaryTelescopeId IS NULL',
-      )
-      .all();
-    if (objectsNeedingPrimary.length > 0) {
-      const pickPrimary = db.prepare<[string], { telescopeId: string | null; n: number }>(
-        `SELECT telescopeId, COUNT(*) as n FROM librarySessions
-           WHERE objectId = ? AND telescopeId IS NOT NULL
-           GROUP BY telescopeId ORDER BY n DESC LIMIT 1`,
-      );
-      const setPrimary = db.prepare(
-        'UPDATE libraryObjects SET primaryTelescopeId = ? WHERE objectId = ?',
-      );
-      const tx = db.transaction(() => {
-        for (const { objectId } of objectsNeedingPrimary) {
-          const top = pickPrimary.get(objectId);
-          if (top?.telescopeId) setPrimary.run(top.telescopeId, objectId);
-          else setPrimary.run(stampId, objectId); // no sessions yet → fall back to active
-        }
-      });
-      tx();
-      console.log(`[telescopes] Computed primaryTelescopeId for ${objectsNeedingPrimary.length} object(s)`);
+      // Compute primaryTelescopeId per object as the telescope with the most
+      // sessions for that object. Only writes rows that are still NULL.
+      const objectsNeedingPrimary = db
+        .prepare<[], { objectId: string }>(
+          'SELECT objectId FROM libraryObjects WHERE primaryTelescopeId IS NULL',
+        )
+        .all();
+      if (objectsNeedingPrimary.length > 0) {
+        const pickPrimary = db.prepare<[string], { telescopeId: string | null; n: number }>(
+          `SELECT telescopeId, COUNT(*) as n FROM librarySessions
+             WHERE objectId = ? AND telescopeId IS NOT NULL
+             GROUP BY telescopeId ORDER BY n DESC LIMIT 1`,
+        );
+        const setPrimary = db.prepare(
+          'UPDATE libraryObjects SET primaryTelescopeId = ? WHERE objectId = ?',
+        );
+        const tx = db.transaction(() => {
+          for (const { objectId } of objectsNeedingPrimary) {
+            const top = pickPrimary.get(objectId);
+            if (top?.telescopeId) setPrimary.run(top.telescopeId, objectId);
+            else setPrimary.run(stampId, objectId); // no sessions yet → fall back to active
+          }
+        });
+        tx();
+        console.log(`[telescopes] Computed primaryTelescopeId for ${objectsNeedingPrimary.length} object(s)`);
+      }
     }
+    db.prepare('UPDATE libraryMeta SET sessionTelescopeBackfilled = 1 WHERE id = 1').run();
   }
 }
 
@@ -1155,12 +1279,13 @@ db.exec(`
       // Constructor coercions narrow `unknown` field-by-field — never trust a
       // JSON blob's claimed type by assertion alone.
       const parsed: unknown = JSON.parse(row.data);
-      if (parsed === null || typeof parsed !== 'object') {
+      // `isRecord` is a real runtime guard, so `data` is narrowed by the
+      // compiler rather than asserted. Field types are then narrowed one at a
+      // time via the coercion helpers below before any DB write.
+      if (!isRecord(parsed)) {
         throw new Error('non-object'); // caught below — defaults remain
       }
-      // Trust boundary: object shape verified above; field types narrowed via
-      // helper coercions before each DB write. No `as unknown as T`.
-      const data = parsed as Record<string, unknown>;
+      const data = parsed;
       // Only migrate if appSettings is still at defaults (hasn't been migrated yet)
       const current = getCurrentCatalogSourceStmt.get();
       if (current && current.catalogSource === 'builtin' && !data._migrated) {
@@ -1269,6 +1394,56 @@ export function seedDefaultObservingSite(): boolean {
 // final values rather than the pre-migration defaults.
 if (seedDefaultObservingSite()) {
   console.log('Seeded default observing site from appSettings');
+}
+
+const RESET_LIBRARY_TABLES = [
+  'libraryDeletedSessions',
+  'librarySessions',
+  'libraryObjects',
+  'libraryMeta',
+  'notes',
+  'wishlist',
+  'favorites',
+] as const;
+
+/** Purges every library-data table (keeps settings, users, telescope
+ *  profiles), used by DELETE /settings/reset-database. Wrapped in a
+ *  transaction so a crash mid-purge can't leave the database with some
+ *  tables cleared and others not — the route only ever deletes the
+ *  filesystem library and cache directories once this has fully committed. */
+export function resetLibraryData(): void {
+  const reset = db.transaction(() => {
+    for (const table of RESET_LIBRARY_TABLES) {
+      db.exec(`DELETE FROM ${table}`);
+    }
+    // Re-insert the singleton libraryMeta row.
+    db.exec(`INSERT OR IGNORE INTO libraryMeta (id, version) VALUES (1, 1)`);
+  });
+  reset();
+}
+
+/** Take a database snapshot on demand (Settings > Storage > Backups) and prune
+ *  to the retained set. The routes layer can't touch the `db` handle directly,
+ *  so the call is wrapped here where it legitimately lives. */
+export function createManualDatabaseBackup(): { backup: DatabaseBackupInfo; pruned: number } {
+  const backup = backupDatabaseNow(db, { version: getCurrentVersion().version, kind: 'manual' });
+  const pruned = pruneDatabaseBackups();
+  return { backup, pruned };
+}
+
+/** Row counts across the core library tables, for the debug-logging bundle's
+ *  diagnostic snapshot (server/routes/settings.ts). Not exhaustive — just the
+ *  three tables that answer "how much data is in this install". */
+export function getLibraryDbStats(): { objects: number; sessions: number; files: number } {
+  // The statement is typed at prepare() time, so `.get()` returns the row shape
+  // without an assertion. `?? 0` covers the (impossible for COUNT(*), but
+  // type-visible) no-row case instead of a non-null assertion.
+  const n = (sql: string) => db.prepare<[], { n: number }>(sql).get()?.n ?? 0;
+  return {
+    objects: n('SELECT COUNT(*) AS n FROM libraryObjects'),
+    sessions: n('SELECT COUNT(*) AS n FROM librarySessions'),
+    files: n('SELECT COUNT(*) AS n FROM libraryFiles'),
+  };
 }
 
 export default db;

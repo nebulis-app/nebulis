@@ -26,7 +26,9 @@ import { createProfile, updateSettingsData } from '../../server/lib/telescopes';
 import { parseFilename, sessionNightFor } from '../../server/lib/telescopeFiles';
 import { stmts } from '../../server/lib/library/objects';
 import { getLibraryFilesForObject, sessionDateForRow } from '../../server/lib/library/libraryFiles';
-import { ARCHIVE_DIR_NAME, listArchivedFolders } from '../../server/lib/library/archiveFolders';
+import {
+  ARCHIVE_DIR_NAME, ARCHIVE_UNSCOPED_DIR, RESTACKED_ROOT_DIR_NAME, isReservedLibraryDir, listArchivedFolders,
+} from '../../server/lib/library/archiveFolders';
 
 /**
  * Every file inside an object folder, at any depth, as basenames.
@@ -190,8 +192,14 @@ describe('scan + commit', () => {
     // holds. Folder exclusion ran upstream of every file-level setting, so
     // "archive everything" silently still dropped calibration frames and
     // restacks: the product stated something untrue.
+    // No telescope is assigned in these plans, so archived bytes land in the
+    // shared unscoped bucket rather than under a telescope-id-named scope
+    // (see archiveFolders.ts's getArchiveDir). RESTACKED is the one
+    // exception: it never scopes by telescope at all, and lands directly in
+    // the shared RESTACKED/ folder at the library root instead.
     const archiveOf = (folder: string) =>
-      path.join(LIBRARY_DIR, ARCHIVE_DIR_NAME, folder, 'dark_001.fits');
+      path.join(LIBRARY_DIR, ARCHIVE_DIR_NAME, ARCHIVE_UNSCOPED_DIR, folder, 'dark_001.fits');
+    const restackArchiveOf = () => path.join(LIBRARY_DIR, RESTACKED_ROOT_DIR_NAME, 'dark_001.fits');
 
     it('keeps the excluded folders as files when archive mode is on', async () => {
       const root = makeDwarfVolumeTree();
@@ -205,9 +213,10 @@ describe('scan + commit', () => {
         }],
       });
 
-      for (const folder of ['CALI_FRAME', 'DWARF_DARK', 'RESTACKED', 'STARTRAILS']) {
+      for (const folder of ['CALI_FRAME', 'DWARF_DARK', 'STARTRAILS']) {
         expect(fs.existsSync(archiveOf(folder))).toBe(true);
       }
+      expect(fs.existsSync(restackArchiveOf())).toBe(true);
     });
 
     it('does not turn archived folders into library objects', async () => {
@@ -226,12 +235,25 @@ describe('scan + commit', () => {
       });
 
       for (const folder of ['CALI_FRAME', 'DWARF_DARK', 'RESTACKED', 'STARTRAILS']) {
-        expect(fs.existsSync(path.join(LIBRARY_DIR, folder))).toBe(false);
         expect(getLocalSessions(folder)).toEqual([]);
       }
+      // CALI_FRAME/DWARF_DARK/STARTRAILS never appear at the library root at
+      // all (they're nested under _archive/). RESTACKED is the one exception
+      // — it's a real top-level directory by design — so what matters for it
+      // is that isReservedLibraryDir excludes it from every object-discovery
+      // sweep, not that the directory is absent.
+      for (const folder of ['CALI_FRAME', 'DWARF_DARK', 'STARTRAILS']) {
+        expect(fs.existsSync(path.join(LIBRARY_DIR, folder))).toBe(false);
+      }
+      expect(fs.existsSync(path.join(LIBRARY_DIR, RESTACKED_ROOT_DIR_NAME))).toBe(true);
+      expect(isReservedLibraryDir(RESTACKED_ROOT_DIR_NAME)).toBe(true);
     });
 
-    it('archives nothing when archive mode is off', async () => {
+    it('archive mode off still archives calibration frames and RESTACKED, but nothing else', async () => {
+      // CALI_FRAME/DWARF_DARK/RESTACKED are always pulled in (see
+      // archiveFolders.ts) — unlike the rest of archive mode, this isn't
+      // gated on archiveAllFiles. Normal_Photos/Panoramas (daytime/terrestrial
+      // captures) still need the toggle.
       const root = makeDwarfVolumeTree();
       await commitFolderImport({
         rootPath: root,
@@ -241,7 +263,13 @@ describe('scan + commit', () => {
           sessionMap: { '2024-10-15': '2024-10-15' },
         }],
       });
-      expect(fs.existsSync(path.join(LIBRARY_DIR, ARCHIVE_DIR_NAME))).toBe(false);
+      for (const folder of ['CALI_FRAME', 'DWARF_DARK']) {
+        expect(fs.existsSync(archiveOf(folder))).toBe(true);
+      }
+      expect(fs.existsSync(restackArchiveOf())).toBe(true);
+      for (const folder of ['Normal_Photos', 'Panoramas', 'STARTRAILS']) {
+        expect(fs.existsSync(archiveOf(folder))).toBe(false);
+      }
     });
 
     it('does not duplicate the archive when the same folder is imported twice', async () => {
@@ -258,7 +286,7 @@ describe('scan + commit', () => {
       await commitFolderImport(plan);
       await commitFolderImport(plan);
 
-      const dir = path.join(LIBRARY_DIR, ARCHIVE_DIR_NAME, 'CALI_FRAME');
+      const dir = path.join(LIBRARY_DIR, ARCHIVE_DIR_NAME, ARCHIVE_UNSCOPED_DIR, 'CALI_FRAME');
       expect(fs.readdirSync(dir)).toEqual(['dark_001.fits']);
     });
 
@@ -285,15 +313,19 @@ describe('scan + commit', () => {
         }],
       });
 
+      // RESTACKED isn't part of this telescope-scoped listing at all — it
+      // lives in its own shared root, checked separately below.
       const folders = listArchivedFolders();
       expect(folders.map(f => f.name)).toEqual([
-        'CALI_FRAME', 'DWARF_DARK', 'Normal_Photos', 'Panoramas', 'RESTACKED', 'STARTRAILS',
+        'CALI_FRAME', 'DWARF_DARK', 'Normal_Photos', 'Panoramas', 'STARTRAILS',
       ]);
       const cali = folders.find(f => f.name === 'CALI_FRAME')!;
       expect(cali.fileCount).toBe(1);
       expect(cali.bytes).toBeGreaterThan(0);
       // The path is what lets the user point Siril or PixInsight at the frames.
-      expect(cali.path).toBe(path.join(LIBRARY_DIR, ARCHIVE_DIR_NAME, 'CALI_FRAME'));
+      expect(cali.path).toBe(path.join(LIBRARY_DIR, ARCHIVE_DIR_NAME, ARCHIVE_UNSCOPED_DIR, 'CALI_FRAME'));
+
+      expect(fs.existsSync(restackArchiveOf())).toBe(true);
     });
   });
 
@@ -478,6 +510,7 @@ describe('scan + commit', () => {
         count: 4,
         // Sized, so the review screen can say how much turning it on would add.
         bytes: expect.any(Number),
+        samples: expect.any(Array),
       },
     ]);
     expect(off.skipped[0].bytes).toBeGreaterThan(0);

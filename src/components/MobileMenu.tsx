@@ -1,9 +1,9 @@
-import { Link } from 'react-router-dom';
 import { useRef, useState } from 'react';
 import { Smartphone, QrCode, Tv } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { ConnectDeviceModal } from './settings/ConnectDeviceModal';
+import { EnterCodeModal } from './settings/EnterCodeModal';
 
 const IOS_APP_URL = 'https://apps.apple.com/us/app/nebulis/id6769902885';
 const ANDROID_APP_URL = 'https://play.google.com/store/apps/details?id=com.nebulis.app';
@@ -17,6 +17,7 @@ export function MobileMenu() {
   const { isDark, isNight, isSpace } = useTheme();
   const [open, setOpen] = useState(false);
   const [showConnect, setShowConnect] = useState(false);
+  const [showEnterCode, setShowEnterCode] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useClickOutside(ref, () => setOpen(false), { enabled: open, closeOnEscape: true });
 
@@ -60,7 +61,50 @@ export function MobileMenu() {
           <div className={`px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider border-b ${
             isDark ? 'text-slate-500 border-slate-800' : 'text-slate-400 border-slate-100'
           }`}>
-            Get Nebulis on your devices
+            Connect your device
+          </div>
+
+          <div className="p-2 space-y-1">
+            <button
+              type="button"
+              onClick={() => { setShowConnect(true); setOpen(false); }}
+              className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left transition ${
+                isDark ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'
+              }`}
+            >
+              <QrCode className={`w-5 h-5 shrink-0 ${isDark ? 'text-accent-400' : 'text-accent-600'}`} />
+              <div className="min-w-0">
+                <p className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                  Scan QR code
+                </p>
+                <p className={`text-xs truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Connect a phone or tablet
+                </p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowEnterCode(true); setOpen(false); }}
+              className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left transition ${
+                isDark ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'
+              }`}
+            >
+              <Tv className={`w-5 h-5 shrink-0 ${isDark ? 'text-accent-400' : 'text-accent-600'}`} />
+              <div className="min-w-0">
+                <p className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                  Enter code
+                </p>
+                <p className={`text-xs truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Add an Apple TV
+                </p>
+              </div>
+            </button>
+          </div>
+
+          <div className={`px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider border-t ${
+            isDark ? 'text-slate-500 border-slate-800' : 'text-slate-400 border-slate-100'
+          }`}>
+            Get Nebulis on your device
           </div>
 
           <div className="p-2 space-y-1">
@@ -101,47 +145,11 @@ export function MobileMenu() {
               </div>
             </a>
           </div>
-
-          <div className={`p-2 border-t space-y-1 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-            <button
-              type="button"
-              onClick={() => { setShowConnect(true); setOpen(false); }}
-              className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left transition ${
-                isDark ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'
-              }`}
-            >
-              <QrCode className={`w-5 h-5 shrink-0 ${isDark ? 'text-accent-400' : 'text-accent-600'}`} />
-              <div className="min-w-0">
-                <p className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                  Scan QR code
-                </p>
-                <p className={`text-xs truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Connect a phone or tablet
-                </p>
-              </div>
-            </button>
-            <Link
-              to="/link"
-              onClick={() => setOpen(false)}
-              className={`flex items-center gap-3 px-2.5 py-2 rounded-xl transition ${
-                isDark ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'
-              }`}
-            >
-              <Tv className={`w-5 h-5 shrink-0 ${isDark ? 'text-accent-400' : 'text-accent-600'}`} />
-              <div className="min-w-0">
-                <p className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                  Enter code
-                </p>
-                <p className={`text-xs truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Add an Apple TV
-                </p>
-              </div>
-            </Link>
-          </div>
         </div>
       )}
 
       {showConnect && <ConnectDeviceModal isDark={isDark} onClose={() => setShowConnect(false)} />}
+      {showEnterCode && <EnterCodeModal isDark={isDark} onClose={() => setShowEnterCode(false)} />}
     </div>
   );
 }

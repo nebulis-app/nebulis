@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRightLeft, Search, Loader2, AlertTriangle } from 'lucide-react';
 import { moveObservation } from '../lib/api/library';
 import { searchDsoCatalog, type DsoEntry } from '../lib/api/planner';
@@ -21,65 +21,71 @@ export function MoveObservationModal({ isOpen, onClose, objectId, date, displayN
   const queryClient = useQueryClient();
 
   const [moveSearch, setMoveSearch] = useState('');
-  const [moveSearchResults, setMoveSearchResults] = useState<DsoEntry[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedTarget, setSelectedTarget] = useState<DsoEntry | null>(null);
-  const [isMoving, setIsMoving] = useState(false);
-  const [moveError, setMoveError] = useState('');
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-accent-500';
 
-  useEffect(() => {
-    if (!isOpen) return;
-    setMoveSearch('');
-    setMoveSearchResults([]);
+  // Reset the form each time the modal opens. Done as a render-phase adjustment
+  // (the sanctioned "reset state when a prop changes" pattern) rather than an
+  // effect, so there's no extra render / one-frame flash of stale results.
+  const [prevOpen, setPrevOpen] = useState(isOpen);
+  if (isOpen !== prevOpen) {
+    setPrevOpen(isOpen);
+    if (isOpen) {
+      setMoveSearch('');
+      setDebouncedSearch('');
+      setSelectedTarget(null);
+    }
+  }
+
+  const onSearchType = (q: string) => {
+    setMoveSearch(q);
     setSelectedTarget(null);
-    setMoveError('');
-  }, [isOpen]);
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    const trimmed = q.trim();
+    if (trimmed.length < 2) { setDebouncedSearch(''); return; }
+    debounceTimer.current = setTimeout(() => setDebouncedSearch(trimmed), 300);
+  };
 
-  useEffect(() => {
-    if (!moveSearch.trim() || moveSearch.trim().length < 2) {
-      setMoveSearchResults([]);
-      return;
-    }
-    let cancelled = false;
-    setIsSearching(true);
-    const timer = setTimeout(async () => {
-      try {
-        const data = await searchDsoCatalog(moveSearch.trim(), 10);
-        if (!cancelled) setMoveSearchResults(data.results);
-      } catch {
-        if (!cancelled) setMoveSearchResults([]);
-      } finally {
-        if (!cancelled) setIsSearching(false);
-      }
-    }, 300);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [moveSearch]);
+  const searchQuery = useQuery({
+    queryKey: ['dso-search', debouncedSearch, 10],
+    queryFn: () => searchDsoCatalog(debouncedSearch, 10),
+    enabled: debouncedSearch.length >= 2,
+    staleTime: 30_000,
+  });
+  const moveSearchResults = searchQuery.data?.results ?? [];
+  const isSearching = searchQuery.isFetching;
 
-  const handleMove = useCallback(async () => {
-    if (!selectedTarget || isMoving) return;
-    setIsMoving(true);
-    setMoveError('');
-    try {
-      await moveObservation(objectId, date, selectedTarget.id);
+  const moveMutation = useMutation({
+    mutationFn: (targetId: string) => moveObservation(objectId, date, targetId),
+    onSuccess: async (_data, targetId) => {
       onClose();
-      await queryClient.invalidateQueries({ queryKey: ['observation', objectId, date] });
-      await queryClient.invalidateQueries({ queryKey: ['observation-files', objectId, date] });
-      await queryClient.invalidateQueries({ queryKey: ['library-sessions', objectId] });
-      await queryClient.invalidateQueries({ queryKey: ['library-sessions', selectedTarget.id] });
-      await queryClient.invalidateQueries({ queryKey: ['library-objects'] });
-      await queryClient.invalidateQueries({ queryKey: ['observations'] });
-      await queryClient.invalidateQueries({ queryKey: ['processedImages', objectId, date] });
-      await queryClient.invalidateQueries({ queryKey: ['processedImages', selectedTarget.id, date] });
-      await queryClient.invalidateQueries({ queryKey: ['all-processed-images', objectId] });
-      await queryClient.invalidateQueries({ queryKey: ['all-processed-images', selectedTarget.id] });
-      navigate(`/observations/${encodeURIComponent(selectedTarget.id)}/${encodeURIComponent(date)}`);
-    } catch (err) {
-      setMoveError(err instanceof Error ? err.message : 'Move failed');
-      setIsMoving(false);
-    }
-  }, [selectedTarget, isMoving, objectId, date, onClose, queryClient, navigate]);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['observation', objectId, date] }),
+        queryClient.invalidateQueries({ queryKey: ['observation-files', objectId, date] }),
+        queryClient.invalidateQueries({ queryKey: ['library-sessions', objectId] }),
+        queryClient.invalidateQueries({ queryKey: ['library-sessions', targetId] }),
+        queryClient.invalidateQueries({ queryKey: ['library-objects'] }),
+        queryClient.invalidateQueries({ queryKey: ['observations'] }),
+        queryClient.invalidateQueries({ queryKey: ['processedImages', objectId, date] }),
+        queryClient.invalidateQueries({ queryKey: ['processedImages', targetId, date] }),
+        queryClient.invalidateQueries({ queryKey: ['all-processed-images', objectId] }),
+        queryClient.invalidateQueries({ queryKey: ['all-processed-images', targetId] }),
+      ]);
+      navigate(`/observations/${encodeURIComponent(targetId)}/${encodeURIComponent(date)}`);
+    },
+  });
+  const isMoving = moveMutation.isPending;
+  const moveError = moveMutation.error
+    ? (moveMutation.error instanceof Error ? moveMutation.error.message : 'Move failed')
+    : '';
+
+  const handleMove = () => {
+    if (!selectedTarget || isMoving) return;
+    moveMutation.mutate(selectedTarget.id);
+  };
 
   if (!isOpen) return null;
 
@@ -109,7 +115,7 @@ export function MoveObservationModal({ isOpen, onClose, objectId, date, displayN
             <input
               type="text"
               value={moveSearch}
-              onChange={e => { setMoveSearch(e.target.value); setSelectedTarget(null); }}
+              onChange={e => onSearchType(e.target.value)}
               placeholder="e.g. M42, NGC 7000, Orion Nebula"
               autoFocus
               className={`w-full pl-9 pr-3 py-2 rounded-lg border text-sm transition ${
@@ -126,30 +132,56 @@ export function MoveObservationModal({ isOpen, onClose, objectId, date, displayN
 
         {moveSearchResults.length > 0 && (
           <div className={`max-h-48 overflow-y-auto rounded-lg border ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
-            {moveSearchResults.map(entry => (
+            {moveSearchResults.map(entry => {
+              // A result can match on an alias rather than its displayed name
+              // (e.g. searching "butterfly" finds NGC6302, shown as "Bug
+              // Nebula"). Surface the alias that actually matched so the row
+              // doesn't look unrelated to what was typed.
+              const q = moveSearch.trim().toLowerCase();
+              const matchedAlias = q.length >= 2
+                ? entry.commonNames.find(cn => cn.toLowerCase() !== entry.name.toLowerCase() && cn.toLowerCase().includes(q))
+                : undefined;
+              return (
               <button
                 key={entry.id}
                 onClick={() => setSelectedTarget(entry)}
-                className={`w-full text-left px-3 py-2 text-sm transition flex items-center justify-between ${
+                className={`group relative w-full text-left pl-4 pr-3 py-2 text-sm transition-colors flex items-center justify-between gap-3 ${
                   selectedTarget?.id === entry.id
                     ? isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-300 text-accent-700'
-                    : isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700'
+                    : isDark ? 'text-slate-300 hover:bg-accent-500/10 hover:text-accent-300' : 'text-slate-700 hover:bg-accent-50 hover:text-accent-700'
                 } ${isDark ? 'border-b border-slate-800 last:border-0' : 'border-b border-slate-100 last:border-0'}`}
               >
-                <div>
-                  <span className="font-medium">{entry.id}</span>
-                  {entry.name && entry.name !== entry.id && (
-                    <span className={`ml-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                      {entry.name}
-                    </span>
+                {/* Accent bar: slides in on hover (and stays on the selected row),
+                    echoing the catalog tile's amber frame without a row-lift pop
+                    that would look wrong on a stacked list. */}
+                <span
+                  aria-hidden="true"
+                  className={`absolute left-0 inset-y-1 w-[3px] rounded-r-full bg-current transition-opacity duration-200 ${
+                    selectedTarget?.id === entry.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                  }`}
+                />
+                <div className="min-w-0">
+                  <div>
+                    <span className="font-medium">{entry.id}</span>
+                    {entry.name && entry.name !== entry.id && (
+                      <span className={`ml-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                        {entry.name}
+                      </span>
+                    )}
+                  </div>
+                  {matchedAlias && (
+                    <div className={`truncate text-xs italic ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                      aka {matchedAlias}
+                    </div>
                   )}
                 </div>
-                <div className={`text-xs ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                <div className={`shrink-0 text-xs ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                   {entry.type && <span>{entry.type}</span>}
                   {entry.constellation && <span className="ml-2">{entry.constellation}</span>}
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
 

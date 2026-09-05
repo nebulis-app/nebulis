@@ -1,4 +1,67 @@
-`# Changelog
+# Changelog
+## 2.0.0 (248) - August 10th, 2026
+### Important
+- The Forecast menu bar item is now hidden by default as you can open the forecast from the Planner page no. You can re-add it Settings -> Navigation Bar.
+
+### New
+- Added ZWO ASIAIR support (beta): pick "ZWO ASIAIR (Beta)" when adding a telescope and connect over its network share or by plugging in its USB stick or microSD card. Autorun, Plan, and Live captures all land on one library object; darks, flats, and biases go to the archive, not the library.
+- Added support for the Seestar S30 Pro and new Seestar S50 Pro.
+- Added Sharpless to the Catalog library.
+- New more comprehensive Help page with guides and screenshots and new About page (Settings -> About).
+- System log for admins (Settings -> System Log): a searchable history of sign-ins, user changes, telescope/device changes, syncs, and settings changes.
+- Guided Tour: Launches automatically on a new install. Replay it anytime from Help -> Start The Guided Tour.
+- Dwarf: Archive viewer (Settings -> Telescopes) browses archived calibration folders and their aggregate size/count, with a path you can copy into external stacking tools.
+- Dwarf: combined "RESTACKED" images now import as regular library objects, added automatically as processed images.
+- Dwarf: Star Trails captures now import as their own library object.
+- Gallery: added a telescope filter, matching Library.
+- Database backups: Nebulis now snapshots its database automatically just before applying an update, so you can roll back without losing data. Manage backups, or make one yourself, at Settings -> Storage -> Backups; restore steps are in DOWNGRADE.md and a RESTORE.txt saved alongside them.
+
+
+### Updated
+- Planner: redesigned around picking a night. A two-week strip shows each night's forecast rating, Moon phase, and plan status; the schedule reads the weather forecast with a rating strip and per-hour popups, shows twilight/Moon shading and a live time marker, and turns empty stretches into fillable gaps.
+- Planner: add a target with one tap and it's placed at its best free time automatically. Scheduled blocks now show the object's photo.
+- Planner: now works properly on phone and tablet, with separate Targets and Schedule tabs. On iOS and Android the schedule's top block is a single quiet line (date, dark window, Moon, site) instead of a heavy floating card.
+- Settings (iOS and Android): reorganized. Appearance is now one "Theme" menu, Observing Sites moved into Location, and the separate Gallery section is gone (its toggle lives in Library). Toggle explanations now sit behind (i) buttons instead of blocks of text.
+- Object page: "more actions" now includes "Sync all sub-frames" (pulls every night's raw frames) and exporting all sub-frames into a single flat "lights" folder for tools like Siril.
+- Object page: now centers on your best photo, with totals (observations, last shot, integration time, frames, processed versions), a Tonight panel (worth setting up? peak altitude, best months), and the ability to star a favorite.
+- Sky Forecast: rebuilt around tonight: one score, the Moon at its real phase, a night ribbon covering twilight/clouds/Moon-up hours/visibility, a "best window" readout, and a cloud-cover trend for upcoming nights.
+- Sky Forecast (iOS and Android): the hero leads with the current hour's score and verdict, falling back to tonight's outlook, and the best-window card now folds in Moon phase, illumination, and sunset/sunrise. Removed the rating legend, source credit, Moon rise/set line, stat cards, and the duplicated Moon percentage.
+- Catalogs: more curated entries, search now matches any of an object's alternate catalog names, and descriptions come from one place, so Messier, Caldwell, and Herschel 400 all show a write-up right after import, even offline, instead of sometimes staying blank.
+- Observations: opens on nights out, objects, and a clickable year chart. The calendar opens on your most recent night with each day's photo; removed the duplicate list that used to sit under it.
+- Session page: now built around the photo you took, with object, sky conditions, and location shown directly instead of behind a Details tab. Adding an observation now opens in a popup instead of a separate page.
+- Session page: a night that captured only video (lunar/planetary timelapse) now plays that video instead of showing "No images captured"; its card on the object page marks it as video instead of borrowing the object's photo.
+- Star Trails sessions: hid actions that don't apply to them (Compare, Combine, constellation).
+- Backup Status: rebuilt with a cleaner banner showing whether your library is current, last sync time, reachable telescopes, and recent activity, plus live progress/rate/time-left while syncing; each telescope card shows its last sync and whether it syncs on its own.
+- Backup Status: a failed or cancelled sync gets its own panel with the full error. "Files left on the telescope" has an info button listing filenames a page at a time; "files belonging to deleted sessions" links to a restore list so the next sync brings them back.
+- Image viewer: now matches the rest of the app (black stage in every theme, arrows on the image itself), sized to the picture instead of the screen, and shows processed images (not just raw frames) with more reliable FITS handling.
+- Satellite trail detection and identification: now works correctly on wide-field and non-SeeStar rigs (ASIAIR, generic SMB telescopes), using the image's real plate scale and orientation from its FITS WCS header instead of assumptions sized for a SeeStar's narrow field, and searching the whole exposure instead of just its first instant.
+- Maintenance: nightly maintenance is now one on/off switch, with a manual "run now" (Settings -> General).
+- Library, Gallery, Catalogs, Observations, Planner, Sky Forecast, and Backup Status banners now have a deep-sky photography hero image behind them.
+- Light mode reworked for better contrast throughout.
+- Settings: completely redesigned, with better grouping, descriptions, and organization.
+
+### Fixes
+- The observation section tabs (Images, Subframes, Processed) no longer show a stray scrollbar to the right of the row.
+- A FITS thumbnail that had not finished rendering, or failed to render, could stretch an invisible click target across the page and swallow clicks on other controls.
+- An observation whose location was missing from the server response took the whole page down instead of showing no location.
+- The top navigation bar's background was being painted behind other navigation regions on the page, including the changelog's version list.
+- The sync details popup on the Backup Status page (the "i" icon on a sync history row) rendered as a broken full-screen black overlay instead of the standard dialog.
+- The Southern Ring Nebula artwork was NASA's two-panel instrument comparison, so a white divider ran down the middle of any banner using it. It's now the NIRCam panel on its own.
+- Some declination values (like -05° 23′ 28″) lost their arcminutes and arcseconds when displayed, showing -05° 00′ 0.0″ instead. Fixed on both the object and observation pages.
+- The Moon on the Sky Forecast page drew every phase as its complement, so a 4% crescent showed as an almost-full disk. It now matches the reported illumination at every phase.
+- The Observations year chart showed back/forward arrows even with nowhere to go. They now appear only when they lead somewhere.
+- The telescope filter's icon overlapped its own label in Safari, which clamps padding on a native dropdown. The control no longer relies on that.
+- The Moon's rise and set times were cut off on the Planner and Sky Forecast panels ("Sets 10:12 PM" showed as "sets 10:1"). They now have room and wrap instead of truncating.
+- A new Moon was drawn with almost no edge, so it disappeared into the panel behind it on Planner and Forecast. It now carries a visible rim and sphere shading at every phase.
+- An observation could show the wrong telescope (for example a SeeStar night labeled Dwarf). It's now read from the imported files themselves, which each record the scope that captured them, instead of a single per-night value that could go stale; existing mislabeled nights self-correct the next time the object is opened.
+- The "Download" button on an object page now goes through a signed, expiring link instead of an open URL, so a whole-object export can no longer be pulled by anyone on the network without signing in.
+- Planner (iOS and Android): the schedule used the phone's current GPS location instead of the observing site you set up, so the same night could differ by device. It now uses the site as the source of truth, matching web and Sky Forecast; GPS is only a fallback when no site has coordinates.
+- The Sky Forecast could get stuck on "forecast unavailable" for up to an hour, most often right after the server started or woke from sleep, because an empty weather result was being cached and served to every client. Empty forecasts are no longer cached, the fetch retries quickly, and Retry now recovers immediately.
+- Sky Forecast (iOS and Android): the hero's second line read "Tonight averages 72" with no unit (72 was the visibility score, not a temperature). It now shows the overnight temperature range and average cloud instead, and forecast temperatures throughout the app follow the Temperature Unit setting.
+- The observation location map (Session page and Observations world map) showed a tile watermarked "API KEY REQUIRED" instead of the actual map, because the tile provider (CARTO) had locked its free basemap CDN behind a paid API key. Map tiles now come from Esri, which is free and requires no key.
+- The satellite catalog download from CelesTrak timed out constantly. It was fetching about 20 separate lists on every server start, several of which CelesTrak rejects, which is the exact pattern CelesTrak blocks a server's IP address for (once blocked, every request silently times out for days). It now makes a single request, stops immediately if CelesTrak declines it, backs off for hours instead of retrying in a tight loop, and shows the reason in Settings -> Catalogs. A recent snapshot of the catalog now ships with the app, so trail identification works out of the box and keeps working through an outage.
+
+
 ## 1.5.2 (211) - August 9th, 2026
 ### Updated
 - Folder picker: wider, shows more folders at once, no longer cuts off long paths.

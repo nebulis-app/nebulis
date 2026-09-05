@@ -23,15 +23,6 @@ export interface SmbProfile {
   password: string;
 }
 
-export function profileToSmb(profile: Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'>): SmbProfile {
-  return {
-    hostname: profile.hostname || '',
-    shareName: profile.shareName || 'EMMC Images',
-    username: profile.username || 'guest',
-    password: profile.password || '',
-  };
-}
-
 /**
  * Sanitize a string for safe use in SMB path arguments.
  * Rejects characters that could break out of command context — including
@@ -45,6 +36,29 @@ export function sanitizePath(input: string): string {
     throw new Error(`Invalid characters in path: ${input}`);
   }
   return input;
+}
+
+/**
+ * Resolve a share-relative path against an absolute filesystem `root` and
+ * refuse anything that escapes it. This is the containment check `smb.local.ts`
+ * has always used (`path.resolve` + boundary `startsWith`), which is the
+ * strongest of the traversal guards — `path.resolve` collapses every `..`
+ * before the comparison, so a sneaky input that slipped past the string-level
+ * `validatePathNoTraversal` still can't land outside `root`.
+ *
+ * Returns the resolved absolute path.
+ */
+export function assertInsideRoot(root: string, relPath: string): string {
+  const absRoot = path.resolve(root);
+  const candidate = path.resolve(absRoot, relPath);
+  // A drive root (`F:\`) already ends in a separator; others don't. Build the
+  // boundary only when one isn't there, or the startsWith looks for a double
+  // separator that never matches.
+  const rootWithSep = absRoot.endsWith(path.sep) ? absRoot : absRoot + path.sep;
+  if (candidate !== absRoot && !candidate.startsWith(rootWithSep)) {
+    throw new Error(`Path traversal detected: ${relPath}`);
+  }
+  return candidate;
 }
 
 export function validatePathNoTraversal(filePath: string): void {
@@ -252,4 +266,95 @@ export function loadSettings(profile: Partial<Pick<TelescopeProfile, 'hostname' 
     username: profile?.username || 'guest',
     password: profile?.password || '',
   };
+}
+
+/**
+ * Strip every shape an SMB credential is carried in before text is logged or
+ * surfaced: `smbclient -U user%password` (both the flag form and a bare
+ * `user%pass`) and a `//user:password@host` mount URL. `execFile` puts the
+ * whole command line, password included, in `err.message`, and `mount_smbfs`
+ * echoes its URL.
+ */
+export function scrubSmbSecrets(text: string): string {
+  return text
+    .replace(/(-U\s+\S+?%)\S+/g, '$1***')
+    .replace(/(-U\s+)\S+/g, '$1***')
+    .replace(/(\/\/[^:/@\s]+):[^@\s]*@/g, '$1:***@');
+}
+
+/**
+ * Turn a raw transport failure into one short, client-safe reason.
+ *
+ * `smbclient` writes most of its diagnostics (session-setup and tree-connect
+ * failures, the NT_STATUS code) to stdout, not stderr, so both streams are
+ * inspected. `err.message` is excluded for the smbclient backend because
+ * `execFile` embeds the full command line there and it carries no signal the
+ * streams don't; `mount_smbfs` puts its reason in the message, so that backend
+ * includes it. Everything is scrubbed first so a password containing a keyword
+ * like "auth" can't steer the result.
+ */
+export function classifySmbError(err: unknown, backend: 'smbclient' | 'mount'): string {
+  if (!(err instanceof Error)) return 'Unknown error';
+  // A plain Error this layer threw (the hostname guard) has no command line.
+  if (/^No (?:SeeStar|hostname)/.test(err.message)) return err.message;
+
+  const e = err as { stdout?: string; stderr?: string; code?: string };
+  const raw = backend === 'mount'
+    ? scrubSmbSecrets(`${err.message}\n${e.stderr ?? ''}`)
+    : scrubSmbSecrets(`${e.stderr ?? ''}\n${e.stdout ?? ''}`);
+
+  if (backend === 'smbclient' && (e.code === 'ENOENT' || /\bENOENT\b/.test(err.message))) {
+    return 'smbclient is not installed on the server';
+  }
+  const ntStatus = raw.match(/NT_STATUS_[A-Z0-9_]+/);
+  if (ntStatus) return ntStatus[0];
+  if (/Connection refused/i.test(raw)) return 'Connection refused';
+  if (/timed out|timeout|IO_TIMEOUT/i.test(raw)) return 'Connection timed out';
+  if (/Unable to resolve|Name or service not known|No address associated/i.test(raw)) return 'Host not found';
+  if (/protocol negotiation failed|Server (?:does ?n[o']?t|didn['’]?t) support|no protocol supported/i.test(raw)) {
+    return 'SMB protocol negotiation failed';
+  }
+  if (/session setup failed|logon failure|bad password|wrong password/i.test(raw)) {
+    return 'Authentication failed';
+  }
+  if (backend === 'mount') {
+    // mount_smbfs refusing a share it thinks is already mounted. ensureMount
+    // tries to reuse one first, so reaching here means that lookup missed.
+    if (/File exists/i.test(raw)) {
+      return 'That share is already mounted on this Mac and the existing mount could not be reused';
+    }
+    if (/auth|credentials|password/i.test(raw)) return 'Authentication failed';
+    if (/no such file|does not exist/i.test(raw)) return 'Share or folder not found';
+  }
+  return 'Connection failed';
+}
+
+/** Profile shape the native backends accept — a partial connection profile. */
+type SmbProfileArg = Partial<Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'>> | null | undefined;
+
+/**
+ * The shared prologue every native SMB op ran by hand: resolve the profile,
+ * require a hostname, and reject an unsafe path before it reaches the OS.
+ * `requireInsideBasePath` adds the delete-only `MyWorks` boundary check.
+ *
+ * Deliberately does NOT wrap the operation's own errors — each backend has
+ * post-failure cleanup (posix's deduped logging, mac's mount teardown) that
+ * can't be unified here.
+ */
+export async function withSmbGuards<T>(
+  smbPath: string,
+  profile: SmbProfileArg,
+  fn: (settings: SmbProfile) => Promise<T>,
+  opts: { requireInsideBasePath?: boolean } = {},
+): Promise<T> {
+  const settings = loadSettings(profile);
+  if (!settings.hostname) {
+    throw new Error('No SeeStar hostname configured. Please configure it in Settings.');
+  }
+  sanitizePath(smbPath);
+  validatePathNoTraversal(smbPath);
+  if (opts.requireInsideBasePath && smbPath !== BASE_PATH && !smbPath.startsWith(BASE_PATH + '/')) {
+    throw new Error('Can only delete files within MyWorks');
+  }
+  return fn(settings);
 }

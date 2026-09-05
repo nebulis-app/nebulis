@@ -1,20 +1,21 @@
 import { useTheme } from '../../hooks/useTheme';
 
-export type ObservationTab = 'images' | 'subframes' | 'processed' | 'details';
+export type ObservationTab = 'images' | 'subframes' | 'processed' | 'videos';
 
 /**
- * The page's single navigation control.
+ * The page's single navigation control, and the boundary between reading the
+ * session and working on its files.
  *
- * Everything below the session strip lives in one of these panels, which is
- * what keeps the page a fixed height as content grows: a new file category
- * becomes a tab and new session metadata becomes a row inside Details, and
- * neither lengthens the default view. It also gives the file grids the full
- * page width, where Images and Subframes previously split it in half.
+ * Everything above it describes the night and is always visible; everything
+ * below it is a grid of files, and only one grid at a time. That is what keeps
+ * the page a fixed height as a session grows: a new file category becomes a tab
+ * rather than another band down the page, and each grid gets the full width
+ * where Images and Subframes used to split it in half.
  */
 export function ObservationTabs({ active, onChange, counts }: {
   active: ObservationTab;
   onChange: (tab: ObservationTab) => void;
-  counts: { images: number; subframes: number; processed: number };
+  counts: { images: number; subframes: number; processed: number; videos: number };
 }) {
   const { isDark, isNight, isSpace } = useTheme();
   const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-accent-500';
@@ -24,13 +25,18 @@ export function ObservationTabs({ active, onChange, counts }: {
     { id: 'images', label: 'Images', count: counts.images },
     { id: 'subframes', label: 'Subframes', count: counts.subframes },
     { id: 'processed', label: 'Processed', count: counts.processed },
-    { id: 'details', label: 'Details' },
+    // Only surfaces when the night has a video (lunar/planetary timelapse). A
+    // DSO observation never has one, so the tab stays hidden rather than sitting
+    // at zero on every page.
+    ...(counts.videos > 0
+      ? [{ id: 'videos' as const, label: 'Videos', count: counts.videos }]
+      : []),
   ];
 
   return (
     <div
       role="tablist"
-      aria-label="Observation sections"
+      aria-label="Session files"
       className={`flex items-center gap-1 overflow-x-auto no-scrollbar border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}
     >
       {tabs.map(({ id, label, count }) => {

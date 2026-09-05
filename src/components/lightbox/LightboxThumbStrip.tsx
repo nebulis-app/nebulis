@@ -12,15 +12,14 @@ interface Props {
   entries: ThumbEntry[];
   index: number;
   onSelect: (index: number) => void;
-  isDark: boolean;
   /** Tiles rendered either side of the current one, before the strip's
    *  rendered width has been measured. Once ResizeObserver reports a real
    *  width this is ignored in favor of however many tiles actually fit. */
   window?: number;
 }
 
-/** Tile width (`w-14` = 56px) plus the row's `gap-2` (8px). */
-const TILE_SLOT_PX = 64;
+/** Tile width (`w-16` = 64px) plus the row's `gap-2` (8px). */
+const TILE_SLOT_PX = 72;
 /** An overflow marker is narrower than a tile, but budgeting it a full slot
  *  keeps the fit math simple and guarantees the row never overflows. */
 const MARKER_SLOTS = 1;
@@ -48,7 +47,6 @@ export function LightboxThumbStrip({
   entries,
   index,
   onSelect,
-  isDark,
   window: fallbackSide = 10,
 }: Props) {
   const stripRef = useRef<HTMLDivElement>(null);
@@ -72,52 +70,84 @@ export function LightboxThumbStrip({
     ? Math.max(MIN_SIDE * 2 + 1, Math.floor(containerWidth / TILE_SLOT_PX))
     : fallbackSide * 2 + 1;
 
+  /**
+   * The window, centred on the current tile but always spending its full tile
+   * budget.
+   *
+   * The previous version took `side` tiles either side of the index and
+   * stopped, so at the start or end of a long list half the window fell
+   * outside the array and the rail rendered half empty: frame 1 of 300 showed
+   * six tiles in a strip with room for eleven. Sliding the window back inside
+   * the array instead keeps it the same size wherever you are in the list.
+   */
   let start = 0;
   let end = entries.length;
-  let side = 0;
   if (entries.length > maxTiles) {
+    const fit = (budget: number) => {
+      const visible = Math.min(entries.length, Math.max(MIN_SIDE * 2 + 1, budget));
+      const s = Math.min(
+        Math.max(0, index - Math.floor((visible - 1) / 2)),
+        entries.length - visible,
+      );
+      return { s, e: s + visible };
+    };
+
     // First pass ignoring overflow markers, then — only if a marker turns out
     // to be needed on that side — shrink the tile budget by one slot per
     // marker and recompute. Reserving marker space that never renders would
     // under-fill the strip for no reason.
-    side = Math.max(MIN_SIDE, Math.floor((maxTiles - 1) / 2));
-    start = Math.max(0, index - side);
-    end = Math.min(entries.length, index + side + 1);
-
+    ({ s: start, e: end } = fit(maxTiles));
     const reserved = (start > 0 ? MARKER_SLOTS : 0) + (end < entries.length ? MARKER_SLOTS : 0);
-    if (reserved > 0) {
-      side = Math.max(MIN_SIDE, Math.floor((maxTiles - reserved - 1) / 2));
-      start = Math.max(0, index - side);
-      end = Math.min(entries.length, index + side + 1);
-    }
+    if (reserved > 0) ({ s: start, e: end } = fit(maxTiles - reserved));
   }
+  /** How far the overflow markers jump: one screenful of tiles. */
+  const page = end - start;
 
   useEffect(() => {
     const thumb = activeRef.current;
     const strip = stripRef.current;
     if (!thumb || !strip) return;
+    // Measured against the scroller's own box rather than `offsetLeft`, which
+    // is relative to the nearest positioned ancestor and so silently picked up
+    // the rail's padding once the tiles moved inside a centring wrapper.
+    const thumbBox = thumb.getBoundingClientRect();
+    const stripBox = strip.getBoundingClientRect();
     strip.scrollTo({
-      left: Math.max(0, thumb.offsetLeft - strip.clientWidth / 2 + thumb.offsetWidth / 2),
+      left: Math.max(
+        0,
+        strip.scrollLeft + (thumbBox.left - stripBox.left) - strip.clientWidth / 2 + thumbBox.width / 2,
+      ),
       behavior: 'smooth',
     });
   }, [index]);
 
   if (entries.length <= 1) return null;
 
-  const markerClass = `flex-shrink-0 px-2 py-1 rounded-md text-[10px] font-medium tabular-nums transition ${
-    isDark
-      ? 'text-slate-500 hover:text-slate-200 hover:bg-slate-800'
-      : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
-  }`;
+  const markerClass = 'flex-shrink-0 rounded-full px-2.5 py-1.5 text-[10px] font-medium tabular-nums '
+    + 'text-white/45 outline-none transition hover:bg-white/10 hover:text-white '
+    + 'focus-visible:ring-2 focus-visible:ring-white/60';
 
   return (
-    <div className={`flex-shrink-0 border-t p-3 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-      <div ref={stripRef} className="flex gap-2 overflow-x-auto pb-1 items-center">
+    // No rule above the rail: the panel is one dark surface, and a hairline
+    // across it read as a second card bolted to the bottom of the first. The
+    // strip separates itself by sitting on a slightly deeper black instead.
+    <div className="relative z-10 flex-shrink-0 px-3 pb-3 pt-1">
+      {/* Centred, and only as wide as the tiles it holds. A two-frame session
+          used to leave a full-width bar with two tiles huddled in the corner of
+          it, which read as a rail that had failed to load. `w-max mx-auto`
+          inside the scroller is what centres a short row without stranding the
+          left end of a long one out of reach, which plain `justify-center`
+          does. The rail also no longer paints its own darker band: with the
+          tiles centred there is nothing to separate, and the band was drawing
+          a box around mostly empty space. */}
+      <div ref={stripRef} className="overflow-x-auto pb-1">
+        <div className="mx-auto flex w-max items-center gap-2 rounded-2xl bg-white/[0.04] p-2
+          ring-1 ring-inset ring-white/[0.08] backdrop-blur-md">
         {start > 0 && (
           <button
             type="button"
-            onClick={() => onSelect(Math.max(0, index - side * 2))}
-            title={`Jump back ${Math.min(start, side * 2)} images`}
+            onClick={() => onSelect(Math.max(0, index - page))}
+            title={`Jump back ${Math.min(start, page)} images`}
             className={markerClass}
           >
             +{start}
@@ -135,10 +165,16 @@ export function LightboxThumbStrip({
               onClick={() => onSelect(idx)}
               aria-label={entry.label}
               aria-current={isActive ? 'true' : undefined}
-              className={`flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition ${
+              // Ring rather than a 2px border, so the tile's picture keeps the
+              // full 64px instead of losing four of them to the frame and
+              // reflowing by a pixel as the selection moves. Unselected tiles
+              // are held back to 55%: with every tile at full strength the
+              // strip competed with the picture it is there to navigate.
+              className={`h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg outline-none transition
+                focus-visible:ring-2 focus-visible:ring-white/70 ${
                 isActive
-                  ? 'border-accent-500'
-                  : isDark ? 'border-slate-800 hover:border-slate-600' : 'border-slate-200 hover:border-slate-300'
+                  ? 'opacity-100 ring-2 ring-accent-400'
+                  : 'opacity-55 ring-1 ring-inset ring-white/10 hover:opacity-100 hover:ring-white/30'
               }`}
             >
               {entry.content}
@@ -149,13 +185,14 @@ export function LightboxThumbStrip({
         {end < entries.length && (
           <button
             type="button"
-            onClick={() => onSelect(Math.min(entries.length - 1, index + side * 2))}
-            title={`Jump forward ${Math.min(entries.length - end, side * 2)} images`}
+            onClick={() => onSelect(Math.min(entries.length - 1, index + page))}
+            title={`Jump forward ${Math.min(entries.length - end, page)} images`}
             className={markerClass}
           >
             +{entries.length - end}
           </button>
         )}
+        </div>
       </div>
     </div>
   );

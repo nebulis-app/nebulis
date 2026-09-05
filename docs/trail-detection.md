@@ -25,7 +25,7 @@ When you ask the server to scan a sub-frame:
 
 4. **It throws out everything that obviously couldn't have been there.** Below the horizon? Skip. In Earth's shadow (so it can't reflect sunlight)? Skip. Geosynchronous (way too far away to streak through a 0.7° field)? Skip. Too far from where the camera was pointing? Skip.
 
-5. **For everything left, it simulates the actual exposure.** Steps every 0.2 seconds across the exposure window plus a small buffer. Records the satellite's path. If the path crosses the camera's field of view at some point during the exposure, this satellite is a candidate.
+5. **For everything left, it simulates the actual exposure.** First a coarse walk across the whole window (a fixed number of steps, so a 600s sub costs no more than a 10s one) to find the moment of closest approach, then fine sampling around that moment at a step sized to the telescope's field. Records the satellite's path. If the path crosses the camera's field of view at any point, this satellite is a candidate.
 
 6. **It scores and ranks the candidates.** Lower score is better: passes closer to the center of the image, and crossings that fall *inside* the actual exposure window beat crossings that fall in the buffer. If a trail angle was detected in step 1, candidates whose direction of travel doesn't match (within 45°) are rejected entirely.
 
@@ -85,7 +85,7 @@ The result gets cached to disk so re-opening the modal is instant.
   │     SGP4 propagate         │                     │
   │     horizon / shadow /     │                     │
   │       distance filters     │                     │
-  │     0.2s path sampling     │                     │
+  │     coarse + fine sampling │                     │
   │     FOV cross check        │                     │
   │     trail angle match      │                     │
   │     score                  │                     │
@@ -134,20 +134,25 @@ This is the tricky step. A naive "mask everything > 5σ" approach also masks the
 
 1. Flood-fill (4-neighbor) every pixel above 5σ into connected components.
 2. For each component, measure:
-   - **Aspect ratio** = `max(bbW, bbH) / min(bbW, bbH)`
-   - **Fill ratio** = `pixels / (bbW * bbH)`
-3. Apply the shape filter:
+   - **bbox diagonal** = `hypot(bbW, bbH)` — how long the feature is.
+   - **linearity** = `pixels / bboxDiagonal`. For an elongated feature this reads out as its **width in pixels**; for a round source of radius r it is about `1.1 × r`.
+3. Apply the shape filter, in this order:
 
-| Component shape | Aspect | Fill | Action |
-|---|---|---|---|
-| Saturated star | ~1:1 | ~0.5–0.8 | Mask + brightness-proportional padding (3–12 px) |
-| Diffraction spike pattern | ~1.5:1 | ~0.4 | Mask |
-| **Satellite trail** | **≥ 6:1, often 20:1+** | **≤ 0.2** | **Skip: leave in residual** |
-| Cosmic ray / hot pixel | tiny (< 4 px) | n/a | Skip |
+| Component shape | Test | Action |
+|---|---|---|
+| **Long feature** | bbox diagonal ≥ `LONG_COMPONENT_FRACTION` (5%) of image diagonal | **Never masked.** It is already long enough to be the trail we are looking for, so no later test may reclassify it |
+| **Satellite trail** | linearity ≤ 10 px AND diagonal ≥ 20 px | Skip: leave in residual |
+| Saturated star | linearity > 10 px | Mask + padding sized to the component's own radius (2–8 px) |
+| Cosmic ray / hot pixel | < 4 px | Mask, no padding |
 
-The thresholds (`aspect ≥ 4` AND `fill ≤ 0.35`) sit comfortably between the star and trail regimes.
+Then a coverage guard: if the mask covers more than `MAX_MASK_COVERAGE` (45%) of the frame there is no sky left to search, so the mask is rebuilt at a stricter sigma cut (5 → 8 → 12 → 20) until it fits or the sparsest attempt is used.
 
-> Historical note: an earlier implementation masked every bright pixel and dilated by `intensity / sigma` radius. That fattened the trail's own pixels into mask blobs, erasing the trail before the projection search ran. Detection rate was effectively zero for typical Seestar trails. This was the single biggest correctness fix in the trail pipeline.
+> Historical note 1: the original implementation masked every bright pixel and dilated by `intensity / sigma` radius. That fattened the trail's own pixels into mask blobs, erasing the trail before the projection search ran. Detection rate was effectively zero for typical Seestar trails.
+
+> Historical note 2 (the two scale-dependence bugs this section now guards):
+>
+> - The linearity cutoff was **2.5**, and since linearity *is* the width, that declared every trail wider than 2.5 working px a star and masked its bounding box — the whole frame, for a full-frame diagonal. Measured: a 2048² frame lost every trail at ≥6 px native FWHM and a 1080×1920 Seestar frame at ≥4 px, with 100% of the trail's own pixels masked. It threw away the brightest, most obvious passes (ISS, flares), and hit hardest on the rigs that downsample least. The `LONG_COMPONENT_FRACTION` row above is the escape hatch that makes a width-based test safe at all.
+> - Padding was `min(12, max(3, maxIntensity / sigma))`. That ratio grows with the downsample factor, because box-filtering suppresses noise faster than it suppresses star peaks — so on a big sensor every star saturated the 12 px cap and claimed a ~25×25 working block. The same 300-star sky masked 0.4% of a 1024² frame and 26% of a 6248² one; at 6000 stars the large sensor masked 99.6% and detected nothing. Padding is now driven by the component's measured radius, which does not move with sensor size.
 
 #### 5. Angle search: `findTrailAngle()`
 
@@ -167,26 +172,42 @@ The 1° step is sufficient because trails are not infinitely thin: a real trail'
 Once we have a candidate angle, prove the trail is real:
 
 1. Build the perpendicular profile (same projection, finer detail).
-2. Find the **narrowest peak** above 2σ, *not* the tallest. M42's halo would be tall but wide; we want thin.
+2. Score peaks by `height / (fwhm + 2)` — height AND thinness, *not* the tallest (M42's halo is tall but wide) and not the narrowest (a 2 px noise spike wins that).
 3. Measure FWHM of that peak.
    - **FWHM > 12 px** in the downsampled frame → reject. (Real Seestar trails downsample to FWHM 2–6 px.)
-4. Project pixels within ±FWHM of the peak onto the line direction.
-5. Find the longest contiguous run above background + 2σ. That's the trail length.
-   - **Length < 10% of image diagonal** → reject. (Eliminates noise and small artifacts.)
-6. Convert endpoints back to original-image coordinates (un-downsample by `1/scale`).
-7. Compute confidence:
+4. Project pixels within ±max(FWHM, 3) of the peak onto the line direction, with flanking strips subtracted per bin, then convert to z-scores.
+5. Find the longest gap-tolerant run above z = 2.5. That's the trail length.
+   - **Length below the minimum** → reject. The minimum is 10% of the image diagonal by default, but see below.
+6. Fill-fraction and contiguous-run checks (see the thresholds table).
+7. Convert endpoints back to original-image coordinates (un-downsample by `1/scale`).
+8. Compute confidence:
    ```
-   confidence = clamp01(0.4 * lengthRatio + 0.3 * thinness + 0.3)
+   confidence = clamp01(0.6 * lengthRatio + 0.4 * thinness)
        where lengthRatio = trailLength / diagonal
              thinness    = max(0, 1 − fwhm/8)
    ```
+   Reject below `MIN_CONFIDENCE` (0.15).
+
+##### Minimum length is angular when the plate scale is known
+
+`detect()` takes an optional `degreesPerPixel`, which `routes/satellite.ts` derives from the header (preferring a plate-solved CD matrix, else `XPIXSZ × binning / FOCALLEN`). When present, the length floor becomes:
+
+```
+minLengthFraction = min(0.10, (MIN_TRAIL_ANGULAR_DEG / degreesPerPixel) / diagonalPixels)
+```
+
+10% of the diagonal is scale-free, but a trail's length is not — it is `angular rate × exposure` degrees whatever optics took the frame. On a Seestar 10% of the diagonal is 0.15°, well under the several degrees a satellite sweeps in one sub, so the rule never bites. On a camera-lens field (63° diagonal) 10% is **6.3°**, and real trails were being discarded for being "too short". Taking the lower of the two floors means a plate scale can only ever make the detector more sensitive on wide fields, never looser on the narrow ones the 10% rule was tuned for. The contiguous-run floor scales with it (it is 30% of the length floor by construction).
+
+##### Reported angle
+
+`angleDegrees` is the direction the **trail itself** runs, `0°` = +x (image rows), increasing towards +y, folded into `[0, 180)`. The projection search parameterises a trail by its *normal*, and that number used to be returned verbatim — so a horizontal trail reported 90° in the API and in the scan modal's "· N° angle" label. `imageAngleToSkyPA` in `fitsWcs.ts` consumes the direction convention.
 
 #### Output shape
 
 ```ts
 {
   trailDetected: true,
-  angleDegrees: 47,
+  angleDegrees: 47,        // direction the trail runs, [0, 180)
   lengthPixels: 1240,        // in original image coordinates
   midpoint: { x: 980, y: 712 },
   endpoints: [{ x: 580, y: 320 }, { x: 1380, y: 1104 }],
@@ -228,8 +249,8 @@ For every TLE record (typically ~12,000), run filters in order. Filters short-ci
 | (c) | SGP4 propagate to `observationDate` | non-zero position | TLEs occasionally fail to propagate |
 | (d) | **Above horizon** | elevation ≥ 0 | Below-horizon satellites don't show up |
 | (e) | **Sunlit** (`isIlluminated`) | not in Earth's shadow cone | A satellite in shadow can't reflect sunlight; you can't photograph it |
-| (f) | **Angular distance pre-filter** | within `min(fovDiag/2 + 1.2°/s × duration, 15°)` of image center | Cheap great-circle test; skip far-away satellites before doing the expensive path sampling |
-| (g) | **FOV cross check** (path sampling) | actually crosses the FOV rectangle at some point | Sample every 0.2s across `[exposure − 5s, exposure + 5s + duration]`; LEO moves ~1°/s, so 0.2s gives ~0.2° resolution |
+| (f) | **Angular distance pre-filter** | comes within `fovHalfDiag + 1.5°/s × coarseStep` of image center at some coarse sample | Walks the whole window, not just the shutter opening. The old form evaluated one instant and capped the radius at 15°, so at ~1.2°/s only crossings within ±12.5s of the opening were reachable: a 60s sub searched ~21% of its own window, a 300s sub ~4%. The cap was also *below* the frame for any field wider than 30° diagonal, rejecting satellites visibly inside the picture |
+| (g) | **FOV cross check** (path sampling) | the path *segment* between consecutive samples intersects the FOV rectangle | Fine step is `clamp(0.01s, 0.2s, minFOV / (4 × rate))`, and the rectangle is oriented by the WCS sensor rotation rather than assumed square to RA/DEC. The old fixed 0.2s step and point-only test encoded the ~0.7° Seestar field: on a 0.24° field a transit lasts ~0.2s and was missed outright ~29% of the time |
 | (h) | **Velocity** | ≥ 0.3°/s | Slower than that won't make a visible trail at typical exposure lengths |
 | (i) | **Trail angle match** *(if trail angle was detected)* | difference ≤ 45°, mod 180° | The satellite's direction of motion must roughly match the trail's angle in the image |
 
@@ -351,22 +372,31 @@ Archives older than 1 year are pruned (`pruneArchives()`), keeping disk footprin
 
 | Symptom | Likely cause | Where to look |
 |---|---|---|
-| Trail detector finds zero trails on a frame with obvious trails | Star mask was eating the trail before connected-component fix landed | `createStarMask()` aspect/fill thresholds |
+| Trail detector finds zero trails on a frame with obvious trails | Star mask eating the trail (thick/bright trail, or a star field dense enough to saturate the mask) | `createStarMask()` linearity + `LONG_COMPONENT_FRACTION`; check `buildStarMask()` coverage escalation |
+| Detector works on one telescope's frames but not another's | A scale-dependent threshold. Length floor is angular only when the caller passes `degreesPerPixel` | `minLengthFraction` in `detect()`; confirm the header yields a plate scale |
+| Trail at exactly 45°/135° missed on a square sensor | Projection end-bins degenerate to one corner pixel and get amplified by count normalization | `MIN_BIN_COVERAGE` in `findTrailAngles()` / `validateTrail()` |
 | Trail detector reports false positives in heavy nebulosity (M42, M31) | Tile median doesn't fully suppress wide-field nebulosity; long thin nebula features can fool the projection | Tune `tileSize` in `subtractBackground()` or raise the line peak/σ threshold in `findTrailAngle()` |
 | Trail detected, no candidates returned | Missing FITS headers (`DATE-OBS`, `RA`, etc.) or observation older than archive coverage | Modal shows `missingHeaders` array; check FITS file with `fitsverify` |
 | Trail detected, only near-miss candidates | Satellite probably real but TLE drift > FOV/2 | Acceptable. UI labels these clearly |
 | All candidates are wrong direction | TLEs are stale relative to the observation date | Archive coverage gap; modal sets `tleArchiveUnavailable: true` |
 | Specific satellite known to have caused trail not in candidate list | Period filter (>130 min), velocity filter (<0.3°/s), or shadow filter at fault. Test by removing one filter at a time | Filter chain in `evaluateSatellite()` |
+| Long-exposure (120–600s) frames find nothing, short subs work | Was the 15° pre-filter cap evaluated at the shutter opening. Now a coarse walk over the whole window | `SearchWindow` in `filterVisibleSatellites()`; check `rejections.distance` |
+| Wide-field (lens) frames reject satellites visibly in the picture | Pre-filter radius smaller than the frame's own half-diagonal | `preFilterRadius` — must never be capped below `fovHalfDiag` |
+| Candidates rejected as 'slow' on long exposures | Endpoint-chord velocity understates a curved path | `medianRate()` — must be a local finite difference, not first-to-last |
 
 ### Tuning knobs
 
 If you find the detector misses a class of trail or scores wrongly:
 
 - `MAX_DIM` in `downsample()`: higher = slower but better S/N for very faint trails
-- Aspect/fill thresholds in `createStarMask()`: relax for very wide trails (long satellites with extended panels)
+- `LINEARITY_MAX_WIDTH_PX` in `createStarMask()` (currently 10): this is the trail's width in working pixels, so raise it for very wide trails; `LONG_COMPONENT_FRACTION` already exempts anything trail-length regardless
+- `STAR_PAD_MIN_PX` / `STAR_PAD_MAX_PX` and `MAX_MASK_COVERAGE`: lower the padding or the ceiling for very dense star fields
+- `MIN_TRAIL_ANGULAR_DEG` (currently 0.25°): the shortest streak worth reporting on a wide field
 - Peak σ in `findTrailAngle()` (currently 5): drop to 4 for fainter trails, raise for fewer false positives
 - FWHM cap in `validateTrail()` (currently 12 px in downsampled frame): raise for blurred / out-of-focus trails
 - Velocity floor in `evaluateSatellite()` (currently 0.3°/s): drop for higher-altitude objects
+- `COARSE_MAX_SAMPLES` (24) and `FINE_STEP_MIN_SEC`/`FINE_STEP_MAX_SEC` in `satelliteTracker.ts`: the search's cost/accuracy trade
+- `MAX_TRACK_POINTS` in `routes/satellite.ts` (48): how much of the path is returned and cached
 - Trail angle tolerance (currently 45°): tighten for fewer candidates, loosen if PA conventions cause genuine matches to be rejected
 
 ---
@@ -387,7 +417,7 @@ If you find the detector misses a class of trail or scores wrongly:
 // Response (trail detected, full)
 {
   trailDetected: true,
-  angleDegrees: 47,
+  angleDegrees: 47,        // direction the trail runs, [0, 180)
   lengthPixels: 1240,
   midpoint: { x: 980, y: 712 },
   endpoints: [{ x: 580, y: 320 }, { x: 1380, y: 1104 }],
@@ -404,7 +434,7 @@ If you find the detector misses a class of trail or scores wrongly:
       velocityDegPerSec: 0.78,
       matchScore: 0.36,
       duringExposure: true,
-      track: [/* RA/DEC samples every 0.2s */]
+      track: [/* RA/DEC samples, decimated to at most 48 points */]
     },
     /* ... up to 10 ... */
   ],

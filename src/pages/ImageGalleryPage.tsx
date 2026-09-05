@@ -1,19 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useMutationState, useQueryClient } from '@tanstack/react-query';
 import {
-  Star, Images, AlertCircle, Search, Clapperboard, Filter, ArrowUpDown, Check, Sparkles,
+  Star, Images, AlertCircle, Search, Filter, ArrowUpDown, Check, Sparkles,
 } from 'lucide-react';
 import { getAllLibraryImages, toggleImageFavorite, getLibraryObjectFilters, type LibraryImage } from '../lib/api/library';
 import { getSettings } from '../lib/api/settings';
 import { normalizeSearch } from '../lib/dsoSearch';
 import { useTheme } from '../hooks/useTheme';
 import { PlanetariumMode } from '../components/gallery/PlanetariumMode';
+import { ImageGalleryHero } from '../components/gallery/ImageGalleryHero';
 import { ImageViewer } from '../components/gallery/ImageViewer';
 import { ImageCard } from '../components/gallery/ImageCard';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { useFilterChipPrefs } from '../hooks/useFilterChipPrefs';
 import { FilterCustomizeMenu } from '../components/filters/FilterCustomizeMenu';
+import { TourAnchor } from '../components/tour/TourAnchor';
 import { buildTypeFilters, matchesFilter, defaultEnabledIds, filterLabel, ALL_FILTER_ID, FAVORITES_FILTER_ID } from '../lib/objectTypeFilters';
+import { isOptionValue } from '../lib/typeGuards';
 
 type SortKey = 'name-asc' | 'name-desc' | 'date-desc' | 'date-asc';
 
@@ -29,14 +32,17 @@ const SORT_STORAGE_KEY = 'nebulis-gallery-sort';
 function readStoredSort(): SortKey {
   try {
     const v = localStorage.getItem(SORT_STORAGE_KEY);
-    if (v && SORT_OPTIONS.some(o => o.value === v)) return v as SortKey;
+    if (v !== null && isOptionValue(SORT_OPTIONS, v)) return v;
   } catch { /* ignore */ }
   return 'name-asc';
 }
 
 export function ImageGalleryPage() {
   const { isDark, isNight, isSpace } = useTheme();
-  const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-accent-500';
+  // The hero is night-side in every theme (a picture of the sky), so it takes
+  // the bright accent hex directly rather than the light-mode-darkened token,
+  // matching the Observations, Planner and Catalog banners.
+  const accent = isNight ? '#f87171' : isSpace ? '#a78bfa' : '#fbbf24';
   const queryClient = useQueryClient();
 
   const [activeFilterId, setActiveFilterId] = useState<string>(ALL_FILTER_ID);
@@ -147,9 +153,12 @@ export function ImageGalleryPage() {
     );
   }, [serverImages, pendingFavorites]);
 
+  // Filter/sort against a deferred copy of the search string so typing stays at
+  // 60fps while a 1k-10k image grid reconciles behind it.
+  const deferredSearch = useDeferredValue(search);
   const filtered = useMemo(() => {
     if (!images) return [];
-    const q = normalizeSearch(search);
+    const q = normalizeSearch(deferredSearch);
     const list = images.filter(img => {
       if (!matchesFilter(effectiveFilterId, { objectType: img.objectType, isFavorite: img.isFavorite }, objectFilters)) {
         return false;
@@ -168,22 +177,38 @@ export function ImageGalleryPage() {
     return [...list].sort((a, b) => {
       switch (sortKey) {
         case 'name-asc':
-          return a.objectName.localeCompare(b.objectName) || a.name.localeCompare(b.name);
+          return (a.objectName ?? '').localeCompare(b.objectName ?? '') || (a.name ?? '').localeCompare(b.name ?? '');
         case 'name-desc':
-          return b.objectName.localeCompare(a.objectName) || b.name.localeCompare(a.name);
+          return (b.objectName ?? '').localeCompare(a.objectName ?? '') || (b.name ?? '').localeCompare(a.name ?? '');
         case 'date-desc':
           return (b.date ?? '').localeCompare(a.date ?? '');
         case 'date-asc':
           return (a.date ?? '').localeCompare(b.date ?? '');
-        default:
+        default: {
+          // Every SORT_OPTIONS entry must define an order here. Unreachable at
+          // runtime (readStoredSort narrows), so it keeps the neutral compare.
+          const _exhaustive: never = sortKey;
+          void _exhaustive;
           return 0;
+        }
       }
     });
-  }, [images, effectiveFilterId, objectFilters, processedOnly, search, sortKey]);
+  }, [images, effectiveFilterId, objectFilters, processedOnly, deferredSearch, sortKey]);
 
-  function handleToggleFavorite(img: LibraryImage) {
-    favMutation.mutate({ imagePath: img.path, isFavorite: !img.isFavorite });
-  }
+  // Depend on favMutation.mutate, not favMutation itself: useMutation returns a
+  // fresh object every render (`{ ...result, mutate, mutateAsync }`), so
+  // `[favMutation]` makes this callback unstable every render and defeats
+  // ImageCard's memo on an unpaginated grid that can hold thousands of images.
+  // `mutate` is a useCallback keyed on the observer, so it IS stable.
+  const favMutate = favMutation.mutate;
+  const handleToggleFavorite = useCallback((img: LibraryImage) => {
+    favMutate({ imagePath: img.path, isFavorite: !img.isFavorite });
+  }, [favMutate]);
+
+  const handleOpenImage = useCallback((img: LibraryImage) => {
+    const idx = filtered.findIndex(f => f.path === img.path);
+    if (idx >= 0) setViewerIndex(idx);
+  }, [filtered]);
 
   // Capture a stable snapshot at launch time so Planetarium never re-pools
   // from parent re-renders caused by optimistic updates.
@@ -195,7 +220,10 @@ export function ImageGalleryPage() {
   useEffect(() => {
     if (!sortOpen) return;
     function handleClick(e: MouseEvent) {
-      if (sortRef.current && !sortRef.current.contains(e.target as Node)) {
+      // `target` is `EventTarget | null`; only a Node can be "inside" the menu.
+      const target = e.target;
+      if (!(target instanceof Node)) return;
+      if (sortRef.current && !sortRef.current.contains(target)) {
         setSortOpen(false);
       }
     }
@@ -227,31 +255,13 @@ export function ImageGalleryPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className={`font-display text-3xl font-bold tracking-tight flex items-center gap-3 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            <Images className={`w-7 h-7 ${accentText}`} />
-            Image Gallery
-          </h1>
-          <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-            All telescope images from your library
-          </p>
-        </div>
-
-        {images && images.length > 0 && (
-          <button
-            onClick={() => launchPlanetarium()}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all border ${
-              isDark ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 border-accent-500/30'
-                     : 'bg-accent-300 text-accent-700 hover:bg-accent-400 border-accent-400'
-            }`}
-          >
-            <Clapperboard className="w-4 h-4" />
-            Planetarium
-          </button>
-        )}
-      </div>
-
+      <TourAnchor id="gallery" className="block space-y-6">
+      <ImageGalleryHero
+        images={images ?? []}
+        accent={accent}
+        onLaunchPlanetarium={launchPlanetarium}
+        canLaunchPlanetarium={!!images && images.length > 0}
+      />
       <div className="flex flex-col sm:flex-row gap-3">
         <div className={`relative flex-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
           <Search className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
@@ -260,9 +270,9 @@ export function ImageGalleryPage() {
             placeholder="Search by object name..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40 ${
-              isDark ? 'bg-slate-900 border-slate-800 placeholder-slate-600 focus:border-accent-500/50'
-                     : 'bg-white border-slate-200 placeholder-slate-400 focus:border-accent-400'
+            className={`w-full pl-10 pr-4 py-2.5 rounded-full text-sm ring-1 ring-inset transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50 ${
+              isDark ? 'bg-slate-900/70 ring-slate-700/60 placeholder-slate-600'
+                     : 'bg-white ring-slate-200 placeholder-slate-400'
             }`}
           />
         </div>
@@ -270,17 +280,17 @@ export function ImageGalleryPage() {
         <div ref={sortRef} className="relative shrink-0">
           <button
             onClick={() => setSortOpen(o => !o)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
+            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-medium whitespace-nowrap ring-1 ring-inset transition-colors ${
               isDark
-                ? 'bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700'
-                : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200 shadow-sm'
+                ? 'bg-slate-900/70 text-slate-300 ring-slate-700/60 hover:bg-slate-800'
+                : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-100'
             }`}
           >
             <ArrowUpDown className="w-4 h-4" />
             {SORT_OPTIONS.find(o => o.value === sortKey)?.label}
           </button>
           {sortOpen && (
-            <div className={`absolute right-0 top-full mt-1.5 z-20 w-44 rounded-xl border shadow-lg overflow-hidden ${
+            <div className={`absolute right-0 top-full mt-1.5 z-20 w-44 rounded-2xl border shadow-lg overflow-hidden ${
               isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
             }`}>
               {SORT_OPTIONS.map(opt => (
@@ -316,12 +326,12 @@ export function ImageGalleryPage() {
             aria-haspopup="menu"
             aria-expanded={filterMenuOpen}
             title="Customize filters"
-            className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${
+            className={`flex items-center justify-center w-8 h-8 rounded-full ring-1 ring-inset transition-colors ${
               filterMenuOpen
-                ? isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-100 border-slate-300 text-slate-700'
+                ? isDark ? 'bg-slate-800 ring-slate-600 text-slate-200' : 'bg-slate-100 ring-slate-300 text-slate-700'
                 : isDark
-                  ? 'bg-slate-900 border-slate-800 hover:border-slate-700 hover:text-slate-300'
-                  : 'bg-white border-slate-200 hover:border-slate-300 hover:text-slate-700 shadow-sm'
+                  ? 'bg-slate-900/70 ring-slate-700/60 hover:bg-slate-800 hover:text-slate-300'
+                  : 'bg-white ring-slate-200 hover:bg-slate-100 hover:text-slate-700'
             }`}
           >
             <Filter className="w-4 h-4" />
@@ -339,14 +349,14 @@ export function ImageGalleryPage() {
         </div>
         <button
           onClick={() => setActiveFilterId(effectiveFilterId === FAVORITES_FILTER_ID ? ALL_FILTER_ID : FAVORITES_FILTER_ID)}
-          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
             effectiveFilterId === FAVORITES_FILTER_ID
               ? isDark
-                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                : 'bg-amber-100 text-amber-700 border border-amber-300'
+                ? 'bg-amber-500/15 text-amber-400 ring-1 ring-inset ring-amber-500/30'
+                : 'bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-300'
               : isDark
-                ? 'hover:bg-slate-800 border border-transparent'
-                : 'hover:bg-slate-100 border border-transparent'
+                ? 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-100'
+                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
           }`}
         >
           <Star className={`w-3.5 h-3.5 ${effectiveFilterId === FAVORITES_FILTER_ID ? 'fill-current' : ''}`} />
@@ -358,14 +368,14 @@ export function ImageGalleryPage() {
         <button
           onClick={() => setProcessedOnlyOverride(!processedOnly)}
           aria-pressed={processedOnly}
-          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
             processedOnly
               ? isDark
-                ? 'bg-accent-500/15 text-accent-400 border border-accent-500/30'
-                : 'bg-accent-300 text-accent-700 border border-accent-400'
+                ? 'bg-accent-500/15 text-accent-400 ring-1 ring-inset ring-accent-500/30'
+                : 'bg-accent-500 text-white'
               : isDark
-                ? 'hover:bg-slate-800 border border-transparent'
-                : 'hover:bg-slate-100 border border-transparent'
+                ? 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-100'
+                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
           }`}
         >
           <Sparkles className="w-3.5 h-3.5" />
@@ -373,12 +383,12 @@ export function ImageGalleryPage() {
         </button>
         <button
           onClick={() => setActiveFilterId(ALL_FILTER_ID)}
-          className={`px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+          className={`px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
             effectiveFilterId === ALL_FILTER_ID
-              ? isDark ? 'bg-accent-500/15 text-accent-400 border border-accent-500/30'
-                       : 'bg-accent-300 text-accent-700 border border-accent-400'
-              : isDark ? 'hover:bg-slate-800 border border-transparent'
-                       : 'hover:bg-slate-100 border border-transparent'
+              ? isDark ? 'bg-accent-500/15 text-accent-400 ring-1 ring-inset ring-accent-500/30'
+                       : 'bg-accent-500 text-white'
+              : isDark ? 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-100'
+                       : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
           }`}
         >
           All
@@ -387,12 +397,12 @@ export function ImageGalleryPage() {
           <button
             key={chip.id}
             onClick={() => setActiveFilterId(chip.id)}
-            className={`px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+            className={`px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
               effectiveFilterId === chip.id
-                ? isDark ? 'bg-accent-500/15 text-accent-400 border border-accent-500/30'
-                         : 'bg-accent-300 text-accent-700 border border-accent-400'
-                : isDark ? 'hover:bg-slate-800 border border-transparent'
-                         : 'hover:bg-slate-100 border border-transparent'
+                ? isDark ? 'bg-accent-500/15 text-accent-400 ring-1 ring-inset ring-accent-500/30'
+                         : 'bg-accent-500 text-white'
+                : isDark ? 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-100'
+                         : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
             }`}
           >
             {chip.label}
@@ -416,7 +426,7 @@ export function ImageGalleryPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {Array.from({ length: 18 }).map((_, i) => (
             <div key={i} className={`rounded-xl overflow-hidden border aspect-square ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
-              <div className={`w-full h-full img-placeholder ${isDark ? '' : 'bg-gradient-to-br from-slate-100 to-slate-200'}`} />
+              <div className="w-full h-full img-placeholder" />
             </div>
           ))}
         </div>
@@ -428,10 +438,10 @@ export function ImageGalleryPage() {
         </div>
       ) : filtered.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-          {filtered.map((img, idx) => (
+          {filtered.map((img) => (
             <ImageCard
               key={img.path} image={img} isDark={isDark}
-              onOpen={() => setViewerIndex(idx)}
+              onOpen={handleOpenImage}
               onToggleFavorite={handleToggleFavorite}
             />
           ))}
@@ -458,13 +468,13 @@ export function ImageGalleryPage() {
           </div>
         </div>
       )}
+      </TourAnchor>
 
       {viewerIndex !== null && filtered.length > 0 && (
         <ImageViewer
           images={filtered} initialIndex={viewerIndex}
           onClose={() => setViewerIndex(null)}
           onToggleFavorite={handleToggleFavorite}
-          isDark={isDark}
         />
       )}
     </div>

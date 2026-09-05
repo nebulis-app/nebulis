@@ -24,8 +24,8 @@ A user can configure N telescopes (S50 + S30 + Dwarf 3 + …). Every imported se
 | `name`, `model`, `hostname`, `shareName`, `username`, `password` | Connection details. Mirrors the active transport row; `telescopeTransports` is live truth. |
 | `isActive` | Single row at a time has 1 |
 | `createdAt` | ISO timestamp |
-| **`kind`** | `'seestar-s50' \| 'seestar-s30' \| 'dwarf-3' \| 'dwarf-2' \| 'dwarf-mini' \| 'other'`. Drives walker dispatch and default color/share. |
-| **`connectionType`** | `'smb' \| 'local' \| 'ftp'`. Defaults to `'ftp'` for Dwarf kinds (they serve no SMB share), `'smb'` otherwise. |
+| **`kind`** | `'seestar-s50' \| 'seestar-s50-pro' \| 'seestar-s30' \| 'dwarf-3' \| 'dwarf-2' \| 'dwarf-mini' \| 'asiair' \| 'other'`. Drives walker dispatch and default color/share. |
+| **`connectionType`** | `'smb' \| 'local' \| 'ftp'`. Defaults to `'ftp'` for Dwarf kinds (they serve no SMB share), `'smb'` otherwise. ASIAIR is SMB or local only: it runs no FTP server, and the transport routes reject an `ftp` transport on that kind. |
 | **`localPath`** | Absolute filesystem path when `connectionType === 'local'`. Empty for SMB and FTP. |
 | **`color`** | Hex (e.g. `#3b82f6`). Drives badge tint. Default per-kind palette in [server/lib/db.ts](../server/lib/db.ts) and [src/lib/telescopePresets.ts](../src/lib/telescopePresets.ts); keep them in sync. |
 | **`autoImportEnabled`** | INTEGER (0/1). When 0, the auto-import scheduler skips this scope; manual imports still work. |
@@ -132,11 +132,15 @@ The `server/lib/walkers/` directory abstracts folder layout per telescope kind. 
 |---|---|
 | [telescopeWalker.ts](../server/lib/walkers/telescopeWalker.ts) | SeeStar. Discovers `<base>/<Object>/...` and `<base>/<Object>_sub/...` folders. |
 | [dwarfWalker.ts](../server/lib/walkers/dwarfWalker.ts) | DWARFLAB. Session folders (`DWARF3_RAW_*` / `DWARF_RAW_*`) under `Astronomy/`, one folder per session rather than per object. |
-| [index.ts](../server/lib/walkers/index.ts) | `getWalkerConfig(kind)` returns `{ basePath }`. SeeStar uses `'MyWorks'`, Dwarf uses `'Astronomy'`, `other` uses `''` (share root). `isDwarfKind(kind)` distinguishes the two layout families. |
+| [asiairWalker.ts](../server/lib/walkers/asiairWalker.ts) | ZWO ASIAIR (beta). Frame-type-first: `Autorun\|Plan/Light/<Target>/` plus `Live/<Target>/`, unioned into one object per target. |
+| [genericWalker.ts](../server/lib/walkers/genericWalker.ts) | The documented Generic SMB Layout for kind `other`: `<Object>/<YYYY-MM-DD>_<HHMM>/lights\|subframes/`. |
+| [index.ts](../server/lib/walkers/index.ts) | `getWalkerConfig(kind)` returns `{ basePath }`. SeeStar uses `'MyWorks'`, Dwarf uses `'Astronomy'`, `asiair` and `other` use `''`. `isDwarfKind(kind)` / `isAsiairKind(kind)` distinguish the layout families. |
 
 `DWARF_BASE_PATH` is `'Astronomy'` for every Dwarf model no matter how the device is reached. The knowledge that a Dwarf II keeps that folder under `/DWARF_II` lives in the FTP transport, not the walker — a USB mount exposes it at the volume root regardless of model.
 
-**Still speculative:** the "generic" layout documented in the Add Telescope modal for the `other` kind (session subfolders + `lights/subframes/`) is a different tree that no importer has been tested against. `other` currently runs the SeeStar walker at the share root.
+ASIAIR is the one exception to `basePath` carrying the whole layout: its targets sit two levels down under a capture-mode and frame-type pair, and the same target can appear under several of them at once, so `discoverAsiairObjects` does the descent itself. Its `ASIAir/`-on-removable-media probe lives in the walker rather than a transport, because it is a layout fact that holds over both SMB and USB.
+
+**Still speculative:** ASIAIR support is built from ZWO's published transfer guide and community tooling, not from a device on the bench, which is what its "(Beta)" label claims. Within that, the `Live/` output filenames and the `Video/` folder layout are specifically unconfirmed and nothing parses them.
 
 ---
 

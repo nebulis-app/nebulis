@@ -30,8 +30,8 @@ import {
 } from './importFilter.js';
 import { planObjectFolder, groupByTarget, targetFromFileName, isNonObjectFolder } from './objectDiscovery.js';
 import { deriveFileDate, confidenceForSource, type DerivedDate, type DateSource } from './dateDerivation.js';
-import { isDwarfSessionFolder, extractTargetFromSessionFolder } from '../walkers/dwarfWalker.js';
-import { getWalkerConfig } from '../walkers/index.js';
+import { isStartrailsFolder, STARTRAILS_TARGET_NAME } from './dwarfStartrails.js';
+import { isDwarfSessionFolder, extractTargetFromSessionFolder, getWalkerConfig } from '../walkers/index.js';
 import type { TelescopeKind } from '../telescopes.js';
 import { log } from '../logger.js';
 
@@ -227,7 +227,150 @@ const SOURCE_RANK: Record<DateSource, number> = {
  * the previous behaviour exactly: the given root's direct children are
  * always the object level.
  */
+/** Case-insensitive child-directory lookup. ASIAIR's own casing is consistent,
+ *  but a tree copied through a case-preserving share or restored from a backup
+ *  may not be. Returns the real on-disk name. */
+function findChildDir(dirPath: string, name: string): string | null {
+  try {
+    const hit = fs.readdirSync(dirPath, { withFileTypes: true })
+      .find(e => e.isDirectory() && e.name.toLowerCase() === name.toLowerCase());
+    return hit ? hit.name : null;
+  } catch {
+    return null;
+  }
+}
+
+function readChildDirs(dirPath: string): string[] {
+  try {
+    return fs.readdirSync(dirPath, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * ASIAIR layout, for the folder-import wizard.
+ *
+ *   <root>/Autorun/Light/<Target>/     frames
+ *   <root>/Plan/Light/<Target>/        frames
+ *   <root>/Live/<Target>/              live-stacked output
+ *   <root>/Autorun|Plan/Dark|Flat|Bias calibration, excluded
+ *
+ * One target appearing in several of those is one object, so its directories
+ * are grouped into a single ObjectSource. That is the same mechanism the Dwarf
+ * pass uses to merge two nights of one target, just seeded from a different
+ * shape of tree.
+ *
+ * Returns null when the tree has none of the ASIAIR capture-mode folders, so a
+ * caller can fall back to ordinary folder handling.
+ */
+function collectAsiairObjectSources(rootPath: string): CollectedSources | null {
+  // Removable media nests everything under `ASIAir/`; an SMB share is already
+  // inside. Only descend when the child actually holds the capture-mode
+  // folders, so a user folder that happens to be named "ASIAir" cannot
+  // silently redirect the scan.
+  let resolvedRoot = rootPath;
+  let basePathDetected: string | null = null;
+  const usbRoot = findChildDir(rootPath, 'ASIAir');
+  if (usbRoot) {
+    const inner = path.join(rootPath, usbRoot);
+    if (['Autorun', 'Plan', 'Live'].some(n => findChildDir(inner, n))) {
+      resolvedRoot = inner;
+      basePathDetected = usbRoot;
+    }
+  }
+
+  const modeDirs = ['Autorun', 'Plan']
+    .map(name => findChildDir(resolvedRoot, name))
+    .filter((n): n is string => n !== null);
+  const liveDir = findChildDir(resolvedRoot, 'Live');
+  if (modeDirs.length === 0 && !liveDir) return null;
+
+  /** space-stripped lowercase target -> raw display name + its directories */
+  const groups = new Map<string, { raw: string; dirs: string[] }>();
+  const addDir = (raw: string, dir: string): void => {
+    const key = raw.replace(/\s+/g, '').toLowerCase();
+    const group = groups.get(key) ?? { raw, dirs: [] };
+    group.dirs.push(dir);
+    groups.set(key, group);
+  };
+
+  const excludedFolders: string[] = [];
+  const sources: ObjectSource[] = [];
+
+  for (const mode of modeDirs) {
+    const modePath = path.join(resolvedRoot, mode);
+    for (const child of readChildDirs(modePath)) {
+      // Dark/Flat/Bias carry no target and are never observations. They are
+      // reported as excluded so the user is told, and archive mode picks them
+      // up from resolvedRoot by that same relative name.
+      if (isNonObjectFolder(child)) excludedFolders.push(`${mode}/${child}`);
+    }
+    const lightDir = findChildDir(modePath, 'Light');
+    if (!lightDir) continue;
+    const lightPath = path.join(modePath, lightDir);
+
+    for (const target of readChildDirs(lightPath)) {
+      if (!isObjectFolder(target) || isNonObjectFolder(target)) continue;
+      addDir(target, path.join(lightPath, target));
+    }
+
+    // Older firmware wrote frames straight into Light/ with no target folder.
+    // The filename still carries the target, so group by that rather than
+    // dropping them or creating one object literally named "Light".
+    const loose = readRealFileNames(lightPath);
+    if (loose.length > 0) {
+      const byTarget = new Map<string, string[]>();
+      for (const name of loose) {
+        const target = targetFromFileName(name);
+        if (!target) continue;
+        const bucket = byTarget.get(target) ?? [];
+        bucket.push(name);
+        byTarget.set(target, bucket);
+      }
+      for (const [target, fileNames] of byTarget) {
+        sources.push({
+          folderName: target,
+          sourceDirs: [lightPath],
+          topLevelOnly: true,
+          fileNames: new Set(fileNames),
+        });
+      }
+    }
+  }
+
+  if (liveDir) {
+    const livePath = path.join(resolvedRoot, liveDir);
+    for (const target of readChildDirs(livePath)) {
+      if (!isObjectFolder(target) || isNonObjectFolder(target)) continue;
+      addDir(target, path.join(livePath, target));
+    }
+  }
+
+  for (const child of readChildDirs(resolvedRoot)) {
+    if (isNonObjectFolder(child)) excludedFolders.push(child);
+  }
+
+  for (const { raw, dirs } of groups.values()) {
+    sources.push({ folderName: raw, sourceDirs: dirs, topLevelOnly: false });
+  }
+
+  if (sources.length === 0 && excludedFolders.length === 0) return null;
+  return { sources, excludedFolders: excludedFolders.sort(), resolvedRoot, basePathDetected };
+}
+
 export function collectObjectSources(rootPath: string, telescopeKind?: TelescopeKind): CollectedSources {
+  // ASIAIR nests targets two levels down under a capture-mode and frame-type
+  // pair, and the same target can appear under several of them at once. That
+  // is not something `basePath` can describe, so it gets its own pass. It
+  // returns null for a tree that turns out not to be ASIAIR-shaped (a user who
+  // picked the kind but pointed at a plain folder of images), which falls
+  // through to the ordinary handling below rather than erroring.
+  if (telescopeKind === 'asiair') {
+    const asiair = collectAsiairObjectSources(rootPath);
+    if (asiair) return asiair;
+  }
+
   let basePathDetected: string | null = null;
   if (telescopeKind) {
     const { basePath } = getWalkerConfig(telescopeKind);
@@ -259,7 +402,6 @@ export function collectObjectSources(rootPath: string, telescopeKind?: Telescope
   // objects. Excluding them here rather than at either call site is what keeps
   // the scan's plan and commit's re-derivation in agreement.
   const allDirs = entries.filter(e => e.isDirectory());
-  const excludedFolders = allDirs.filter(e => isNonObjectFolder(e.name)).map(e => e.name).sort();
   const candidateDirs = allDirs.filter(e => !isNonObjectFolder(e.name));
   const objectDirs = candidateDirs.filter(e => isObjectFolder(e.name));
   const subDirs = candidateDirs.filter(e => isSubFolder(e.name));
@@ -274,6 +416,35 @@ export function collectObjectSources(rootPath: string, telescopeKind?: Telescope
   // of the same target (e.g. two nights on M31) into one ObjectSource.
   const dwarfGroups = new Map<string, string[]>();
   const nonDwarfDirs: fs.Dirent[] = [];
+
+  // STARTRAILS: not itself a Dwarf session folder (isNonObjectFolder already
+  // excludes it from objectDirs above, same as CALI_FRAME/DWARF_DARK), but
+  // each immediate subfolder is one capture with no target of its own. Fold
+  // them into the same dwarfGroups map under one fixed synthetic target —
+  // this reuses the exact mechanism that already merges multiple session
+  // dirs of one real target into one ObjectSource, just seeded from a
+  // different directory. An unreadable STARTRAILS folder falls through to
+  // being reported as an ordinary excluded folder rather than aborting the
+  // scan.
+  let startrailsFolded = false;
+  const startrailsDir = allDirs.find(e => isStartrailsFolder(e.name));
+  if (startrailsDir) {
+    try {
+      const startrailsPath = path.join(rootPath, startrailsDir.name);
+      const captures = fs.readdirSync(startrailsPath, { withFileTypes: true }).filter(e => e.isDirectory());
+      if (captures.length > 0) {
+        dwarfGroups.set(STARTRAILS_TARGET_NAME, captures.map(c => path.join(startrailsPath, c.name)));
+        startrailsFolded = true;
+      }
+    } catch (err) {
+      log.warn({ err: err instanceof Error ? err.message : String(err), folder: startrailsDir.name }, '[folder-scan] STARTRAILS folder unreadable — leaving it excluded');
+    }
+  }
+
+  const excludedFolders = allDirs
+    .filter(e => isNonObjectFolder(e.name))
+    .filter(e => !(startrailsFolded && isStartrailsFolder(e.name)))
+    .map(e => e.name).sort();
 
   for (const dir of objectDirs) {
     if (isDwarfSessionFolder(dir.name)) {
@@ -486,7 +657,8 @@ export function walkObjectFiles(
         // on a local file is the same order of cost as the readdir above.
         let skippedBytes = 0;
         try { skippedBytes = fs.statSync(abs).size; } catch { /* size unknown */ }
-        countSkip(skipped, decision.reason, 1, skippedBytes);
+        countSkip(skipped, decision.reason, 1, skippedBytes,
+          [path.relative(baseDir, abs).split(path.sep).join('/')]);
         continue;
       }
       let stat: fs.Stats;
@@ -599,7 +771,7 @@ export function scanImportFolder(
   // say the opposite of what is about to happen. The wizard reports the archive
   // separately, off `excludedFolders`.
   if (settings.archiveAllFiles !== true) {
-    countSkip(skipTotals, 'non-observation-folder', excludedFolders.length);
+    countSkip(skipTotals, 'non-observation-folder', excludedFolders.length, 0, excludedFolders);
   }
 
   for (const source of sources) {
@@ -608,7 +780,7 @@ export function scanImportFolder(
     // Tallied before the empty check: an object that is *entirely* skipped is
     // exactly the case the user most needs explained.
     for (const [reason, v] of skipped) {
-      countSkip(skipTotals, reason, v.count, v.bytes);
+      countSkip(skipTotals, reason, v.count, v.bytes, v.samples);
     }
     if (files.length === 0) continue;
 

@@ -8,7 +8,6 @@ interface Props {
   thumbSrc?: string;
   alt: string;
   zp: ZoomPan;
-  isDark: boolean;
 }
 
 /**
@@ -19,7 +18,7 @@ interface Props {
  * already in cache from the page behind the viewer), and the real image fades
  * in over it. The result reads as the image sharpening rather than appearing.
  */
-export function LightboxImage({ src, thumbSrc, alt, zp, isDark }: Props) {
+export function LightboxImage({ src, thumbSrc, alt, zp }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -35,10 +34,8 @@ export function LightboxImage({ src, thumbSrc, alt, zp, isDark }: Props) {
   if (failed) {
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-        <ImageOff className={`w-10 h-10 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
-        <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-          This image could not be loaded.
-        </p>
+        <ImageOff className="h-10 w-10 text-white/25" />
+        <p className="text-sm text-white/55">This image could not be loaded.</p>
       </div>
     );
   }

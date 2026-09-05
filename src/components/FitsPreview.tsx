@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { RotateCw, AlertCircle } from 'lucide-react';
 import { parseFits, renderFitsToCanvas } from '../lib/fits';
 import { fetchBinary } from '../lib/api/client';
@@ -29,36 +30,34 @@ export function FitsPreview({
   maxHeightClass = 'max-h-[420px]',
 }: FitsPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [state, setState] = useState<'loading' | 'done' | 'error'>('loading');
-  const [error, setError] = useState<string | null>(null);
 
-  // Held in a ref so a caller passing an inline arrow doesn't re-run the fetch.
+  // Held in a ref so a caller passing an inline arrow doesn't re-run the effect.
   const onNaturalSizeRef = useRef(onNaturalSize);
   onNaturalSizeRef.current = onNaturalSize;
 
+  // Cached by url (same key namespace as FitsThumbnail/FitsViewer) so
+  // navigating away and back to this observation doesn't re-download the
+  // hero frame. staleTime: Infinity because the bytes at a given library URL
+  // never change.
+  const fitsQuery = useQuery({
+    queryKey: ['fits-binary', url],
+    queryFn: async ({ signal }) => parseFits(await fetchBinary(url, signal)),
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  // Stretch is a display parameter of the same pixel data, not a reason to
+  // re-fetch — this just redraws the canvas from whatever is already cached.
   useEffect(() => {
-    const controller = new AbortController();
-    setState('loading');
-    setError(null);
+    const fits = fitsQuery.data;
+    if (!fits || !canvasRef.current) return;
+    renderFitsToCanvas(canvasRef.current, fits, stretch, 'gray', window.devicePixelRatio || 1);
+    const { width, height } = canvasRef.current;
+    if (width > 0 && height > 0) onNaturalSizeRef.current?.(width, height);
+  }, [fitsQuery.data, stretch]);
 
-    fetchBinary(url, controller.signal)
-      .then(buffer => {
-        const fits = parseFits(buffer);
-        if (canvasRef.current) {
-          renderFitsToCanvas(canvasRef.current, fits, stretch, 'gray', window.devicePixelRatio || 1);
-          const { width, height } = canvasRef.current;
-          if (width > 0 && height > 0) onNaturalSizeRef.current?.(width, height);
-        }
-        setState('done');
-      })
-      .catch(err => {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        setError(err.message);
-        setState('error');
-      });
-
-    return () => { controller.abort(); };
-  }, [url, stretch]);
+  const state: 'loading' | 'done' | 'error' = fitsQuery.isError ? 'error' : fitsQuery.data ? 'done' : 'loading';
+  const error = fitsQuery.error instanceof Error ? fitsQuery.error.message : null;
 
   return (
     <div className="relative w-full">

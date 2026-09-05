@@ -10,8 +10,8 @@
  * what was actually planned, not what could be observed.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTheme } from '../../hooks/useTheme';
 import { computeAltitudeCurve } from '../../lib/altaz';
+import { twilightGradientCss, type TwilightMarks } from '../../lib/plannerNight';
 import { formatHm, hourTicks } from './scheduleGeometry';
 import type { PlannedSession } from '../../lib/api/plannedSessions';
 
@@ -24,6 +24,11 @@ interface AltitudeBandChartProps {
   minAlt?: number;
   /** IANA timezone for tick/tooltip labels. Defaults to machine-local. */
   observerTimezone?: string;
+  /** Sun-angle boundaries, painted left-to-right behind the plot so this
+   *  chart reads as a continuation of the schedule timeline above it (same
+   *  twilight gradient, rotated to match this chart's horizontal time axis)
+   *  rather than a flat black slab under a gradient one. */
+  twilight?: TwilightMarks | null;
 }
 
 // Default / minimum chart height. The rendered height is measured at runtime
@@ -74,8 +79,14 @@ export function AltitudeBandChart({
   observerLon,
   minAlt,
   observerTimezone,
+  twilight,
 }: AltitudeBandChartProps) {
-  const { isDark } = useTheme();
+  // The chart sits directly under the schedule on the same night canvas, so its
+  // palette is night-side in every theme rather than following the app theme.
+  const background = useMemo(
+    () => twilightGradientCss(twilight, nightStart.getTime(), nightEnd.getTime() - nightStart.getTime(), 'to right'),
+    [twilight, nightStart, nightEnd],
+  );
 
   // Compute one altitude curve per scheduled block, clipped to its time band.
   const curves = useMemo(() => {
@@ -151,25 +162,88 @@ export function AltitudeBandChart({
   const yTicks: number[] = [];
   for (let a = Math.ceil(range.lo / 10) * 10; a <= range.hi; a += 10) yTicks.push(a);
 
-  const axisColor = isDark ? 'rgb(71 85 105)' : 'rgb(148 163 184)';
-  const gridColor = isDark ? 'rgb(51 65 85 / 0.6)' : 'rgb(203 213 225 / 0.6)';
-  const textColor = isDark ? 'rgb(203 213 225)' : 'rgb(51 65 85)';
-  const labelColor = isDark ? 'rgb(148 163 184)' : 'rgb(100 116 139)';
+  const axisColor = 'rgb(255 255 255 / 0.22)';
+  const gridColor = 'rgb(255 255 255 / 0.10)';
+  const textColor = 'rgb(226 232 240 / 0.75)';
+  const labelColor = 'rgb(226 232 240 / 0.45)';
   const curveColor = 'rgb(52 211 153)';     // emerald-400
   const minAltLineColor = 'rgb(244 114 182 / 0.7)'; // pink-ish
 
   // Viewport-relative height: grows on tall screens, floored so it stays usable
   // on short ones. The measured value feeds the SVG's coordinate system above.
-  const wrapperStyle = { height: `clamp(${DEFAULT_HEIGHT}px, 22vh, 380px)` };
+  // `background` carries the same twilight gradient as the timeline above, so
+  // both branches below (empty and populated) paint it rather than falling
+  // through to the parent panel's flat bg-slate-950.
+  const wrapperStyle = { height: `clamp(${DEFAULT_HEIGHT}px, 22vh, 380px)`, background };
 
   if (sessions.length === 0) {
+    // Same axis frame as the populated chart below, just with no curves to
+    // plot — an empty grid reads as "nothing scheduled yet" the same way the
+    // timeline above it reads as "an empty night." A flat unstyled box here
+    // read as broken instead, especially once the schedule pane above it
+    // stopped being the only dark thing on the page (see hero-panel).
     return (
-      <div
-        ref={wrapRef}
-        className={`shrink-0 flex items-center justify-center px-4 py-3 border-t ${isDark ? 'border-slate-800 bg-slate-950/40 text-slate-500' : 'border-slate-200 bg-slate-50 text-slate-500'}`}
-        style={wrapperStyle}
-      >
-        <span className="text-xs">Drag targets from the library onto the timeline to see their altitude curves here.</span>
+      <div ref={wrapRef} className="relative shrink-0 border-t border-white/10" style={wrapperStyle}>
+        <svg
+          viewBox={`0 0 ${SVG_WIDTH} ${height}`}
+          preserveAspectRatio="none"
+          className="block h-full w-full"
+          role="img"
+          aria-label="Altitude chart, no targets scheduled"
+        >
+          {yTicks.map(a => {
+            const y = altToY(a);
+            return (
+              <g key={a}>
+                <line
+                  x1={plotLeft}
+                  x2={plotRight}
+                  y1={y}
+                  y2={y}
+                  stroke={gridColor}
+                  strokeDasharray="3 4"
+                  strokeWidth={1}
+                />
+                <text
+                  x={plotLeft - 6}
+                  y={y}
+                  textAnchor="end"
+                  dominantBaseline="middle"
+                  fontSize={11}
+                  fill={labelColor}
+                >
+                  {a}°
+                </text>
+              </g>
+            );
+          })}
+          {ticks.map((t, i) => {
+            const x = timeToX(t);
+            return (
+              <g key={i}>
+                <line x1={x} x2={x} y1={plotTop} y2={plotBottom} stroke={gridColor} strokeWidth={0.5} />
+                <line x1={x} x2={x} y1={plotBottom} y2={plotBottom + 4} stroke={axisColor} strokeWidth={1} />
+                <text x={x} y={plotBottom + 16} textAnchor="middle" fontSize={11} fill={textColor}>
+                  {formatHm(t, observerTimezone)}
+                </text>
+              </g>
+            );
+          })}
+          <rect
+            x={plotLeft}
+            y={plotTop}
+            width={plotWidth}
+            height={plotHeight}
+            fill="none"
+            stroke={axisColor}
+            strokeWidth={1}
+          />
+        </svg>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-4" style={{ paddingBottom: PAD_BOTTOM + LABEL_BAND_HEIGHT }}>
+          <span className="rounded-full bg-slate-950/70 px-3 py-1.5 text-xs text-white/50 ring-1 ring-inset ring-white/10">
+            Add targets to the schedule to see their altitude curves here.
+          </span>
+        </div>
       </div>
     );
   }
@@ -177,7 +251,7 @@ export function AltitudeBandChart({
   return (
     <div
       ref={wrapRef}
-      className={`shrink-0 border-t ${isDark ? 'border-slate-800 bg-slate-950/40' : 'border-slate-200 bg-slate-50'}`}
+      className="shrink-0 border-t border-white/10"
       style={wrapperStyle}
     >
       <svg
@@ -313,7 +387,7 @@ export function AltitudeBandChart({
                 y={plotTop}
                 width={Math.max(0, xEnd - xStart)}
                 height={plotHeight}
-                fill={isDark ? 'rgb(16 185 129 / 0.05)' : 'rgb(16 185 129 / 0.07)'}
+                fill="rgb(16 185 129 / 0.07)"
               />
               <line x1={xStart} x2={xStart} y1={plotTop} y2={plotBottom} stroke={axisColor} strokeWidth={1} />
               <line x1={xEnd} x2={xEnd} y1={plotTop} y2={plotBottom} stroke={axisColor} strokeWidth={1} />
@@ -351,7 +425,6 @@ export function AltitudeBandChart({
             objectName={hover.objectName}
             time={hover.time}
             alt={hover.alt}
-            isDark={isDark}
             axisColor={axisColor}
             timeZone={observerTimezone}
           />
@@ -370,7 +443,6 @@ interface HoverOverlayProps {
   objectName: string;
   time: Date;
   alt: number;
-  isDark: boolean;
   axisColor: string;
   timeZone?: string;
 }
@@ -384,7 +456,6 @@ function HoverOverlay({
   objectName,
   time,
   alt,
-  isDark,
   axisColor,
   timeZone,
 }: HoverOverlayProps) {
@@ -397,12 +468,12 @@ function HoverOverlay({
   const tooltipX = placeRight ? x + margin : x - margin - tooltipWidth;
   const tooltipY = Math.max(plotTop + 2, Math.min(plotBottom - tooltipHeight - 2, curveY - tooltipHeight / 2));
 
-  const bg = isDark ? 'rgb(15 23 42 / 0.95)' : 'rgb(255 255 255 / 0.95)';
-  const border = isDark ? 'rgb(71 85 105)' : 'rgb(203 213 225)';
-  const headColor = isDark ? 'rgb(241 245 249)' : 'rgb(15 23 42)';
-  const subColor = isDark ? 'rgb(148 163 184)' : 'rgb(71 85 105)';
+  const bg = 'rgb(2 6 23 / 0.95)';
+  const border = 'rgb(255 255 255 / 0.18)';
+  const headColor = 'rgb(241 245 249)';
+  const subColor = 'rgb(148 163 184)';
   const dotColor = 'rgb(52 211 153)';
-  const dotRing = isDark ? 'rgb(15 23 42)' : 'rgb(255 255 255)';
+  const dotRing = 'rgb(2 6 23)';
 
   const timeLabel = formatHm(time, timeZone);
 

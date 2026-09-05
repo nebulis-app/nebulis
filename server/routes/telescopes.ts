@@ -13,8 +13,8 @@ import {
   unarchiveProfile,
   bulkReassignTelescope,
   getProfileByDeviceId,
+  sessionCountsByTelescope,
 } from '../lib/telescopes.js';
-import db from '../lib/db.js';
 import { smbListDir } from '../lib/smb.js';
 import { parseShareName, validateHostAddress } from '../lib/smb.shared.js';
 import { tcpProbe, getSmbOpHealth, invalidateSmbReachability, SMB_PORT } from '../lib/smbReachability.js';
@@ -23,9 +23,10 @@ import { getWalkerConfig, isDwarfKind } from '../lib/walkers/index.js';
 import { log } from '../lib/logger.js';
 import { isObjectFolder } from '../lib/telescopeFiles.js';
 import type { TelescopeKind } from '../lib/telescopes.js';
-import { TELESCOPE_KINDS } from '../lib/types/telescopeKind.js';
+import { TELESCOPE_KINDS, isAsiairKind } from '../lib/types/telescopeKind.js';
 import { detectDwarfMounts } from '../lib/dwarfMounts.js';
 import { detectDrives } from '../lib/driveEnumeration.js';
+import { logEvent } from '../lib/systemLog.js';
 import {
   getTransportsForProfile,
   getTransportById,
@@ -42,6 +43,12 @@ import { invalidateDeviceCache } from '../lib/smbCache.js';
 import { invalidateFtpCache } from '../lib/smb.ftp.js';
 
 const router = Router();
+
+/** The placeholder `presentTransport` / the profile responses substitute for a
+ *  stored password. The UI echoes it back verbatim when the user leaves the
+ *  field untouched; every write path must treat it as "keep what's stored", and
+ *  never as a literal password. */
+const MASKED_PASSWORD = '••••••••';
 
 /** Drop any cached SMB/FTP listings, reachability, and root-detection state
  *  for a transport after its address/share/kind changes or it's removed.
@@ -141,6 +148,13 @@ const TestConnectionBodySchema = z.object({
    *  client sent before FTP existed. 'local' is not testable here — a USB
    *  mount is verified by the drive picker instead. */
   connectionType: z.enum(TRANSPORT_KINDS).optional(),
+  /** When testing an edit to an existing transport, the UI cannot resend the
+   *  password (it only ever received the '••••••••' mask). Passing the profile
+   *  and transport ids lets the test fall back to the stored, decrypted
+   *  password so it exercises exactly what an import would use. Omitted for the
+   *  brand-new / pre-save case, where the typed fields are all there is. */
+  profileId: z.string().optional(),
+  transportId: z.string().optional(),
 });
 
 const ReassignBodySchema = z.object({
@@ -170,19 +184,7 @@ const ProbeIdentityBodySchema = z.object({
  *  out of the API surface. The presence of a password is signalled via the
  *  same '••••••••' sentinel used for profiles. */
 function presentTransport(t: TelescopeTransport): Omit<TelescopeTransport, 'password'> & { password: string } {
-  return { ...t, password: t.password ? '••••••••' : '' };
-}
-
-// Cached query — `librarySessions.telescopeId` was added in Phase 1.
-const sessionCountStmt = db.prepare<[], { telescopeId: string; n: number }>(
-  `SELECT telescopeId, COUNT(*) as n FROM librarySessions
-     WHERE telescopeId IS NOT NULL GROUP BY telescopeId`,
-);
-
-function sessionCountsByTelescope(): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const row of sessionCountStmt.all()) counts.set(row.telescopeId, row.n);
-  return counts;
+  return { ...t, password: t.password ? MASKED_PASSWORD : '' };
 }
 
 // Enumerate Dwarf USB volumes currently mounted on the server host.
@@ -200,16 +202,21 @@ router.get('/dwarf-mounts', async (_req: Request, res: Response) => {
 // render the per-profile transports list in HardwareSection.
 router.get('/', (_req: Request, res: Response) => {
   const counts = sessionCountsByTelescope();
-  const profiles = getAllProfiles().map(p => ({
-    ...p,
-    password: p.password ? '••••••••' : '',
-    sessionCount: counts.get(p.id) ?? 0,
-    transports: getTransportsForProfile(p.id).map(presentTransport),
-    // Server-side resolution of which transport the import pipeline would
-    // pick right now. Lets the UI highlight the active pill without
-    // reimplementing the mount-presence check client-side.
-    activeTransportId: selectActiveTransport(p.id)?.id ?? null,
-  }));
+  const profiles = getAllProfiles().map(p => {
+    // Fetched once and handed to selectActiveTransport below so a cold 30s
+    // cache doesn't decrypt every transport's password twice per request.
+    const transports = getTransportsForProfile(p.id);
+    return {
+      ...p,
+      password: p.password ? MASKED_PASSWORD : '',
+      sessionCount: counts.get(p.id) ?? 0,
+      transports: transports.map(presentTransport),
+      // Server-side resolution of which transport the import pipeline would
+      // pick right now. Lets the UI highlight the active pill without
+      // reimplementing the mount-presence check client-side.
+      activeTransportId: selectActiveTransport(p.id, transports)?.id ?? null,
+    };
+  });
   res.apiSuccess(profiles);
 });
 
@@ -304,7 +311,16 @@ router.post('/:id/transports', requireAdmin, (req: Request, res: Response) => {
       'Dwarf telescopes do not expose an SMB share. Use FTP over Wi-Fi, or USB storage.');
     return;
   }
-  const transport = addTransport(id, parsed.data);
+  if (isAsiairKind(profile.kind) && parsed.data.kind === 'ftp') {
+    res.apiError(422, 'VALIDATION_ERROR',
+      'ASIAIR does not run an FTP server. Use the SMB share, or USB storage.');
+    return;
+  }
+  // A blank Add form never carries the mask, but strip it defensively so a
+  // future prefilled-form path can't store the bullet string as a password.
+  const addData = { ...parsed.data };
+  if (addData.password === MASKED_PASSWORD) delete addData.password;
+  const transport = addTransport(id, addData);
   invalidateTransportCaches(transport);
   res.apiSuccess(presentTransport(transport));
 });
@@ -329,11 +345,16 @@ router.put('/:id/transports/:tid', requireAdmin, (req: Request, res: Response) =
       'Dwarf telescopes do not expose an SMB share. Use FTP over Wi-Fi, or USB storage.');
     return;
   }
+  if (profile && isAsiairKind(profile.kind) && parsed.data.kind === 'ftp') {
+    res.apiError(422, 'VALIDATION_ERROR',
+      'ASIAIR does not run an FTP server. Use the SMB share, or USB storage.');
+    return;
+  }
   const updates = { ...parsed.data };
   // Mirror the profile's password-masking convention: the UI sends back
   // '••••••••' for unchanged passwords. Drop those so we don't encrypt the
   // sentinel string into the row.
-  if (updates.password === '••••••••') delete updates.password;
+  if (updates.password === MASKED_PASSWORD) delete updates.password;
   const updated = updateTransport(tid, updates);
   if (!updated) {
     res.apiError(404, 'NOT_FOUND', 'Transport not found');
@@ -379,7 +400,16 @@ router.post('/', requireAdmin, (req: Request, res: Response) => {
     return;
   }
   const profile = createProfile(parsed.data);
-  res.apiSuccess({ ...profile, password: profile.password ? '••••••••' : '' });
+  logEvent({
+    category: 'telescope',
+    event: 'added',
+    message: `Added telescope "${profile.name}".`,
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+    metadata: { telescopeId: profile.id, name: profile.name, kind: profile.kind },
+  });
+  res.apiSuccess({ ...profile, password: profile.password ? MASKED_PASSWORD : '' });
 });
 
 // Update a telescope profile
@@ -390,7 +420,7 @@ router.put('/:id', requireAdmin, (req: Request, res: Response) => {
     return;
   }
   const updates = { ...parsed.data };
-  if (updates.password === '••••••••') delete updates.password;
+  if (updates.password === MASKED_PASSWORD) delete updates.password;
   const id = String(req.params.id);
   if (updates.pinnedTransportId) {
     const transports = getTransportsForProfile(id);
@@ -401,7 +431,7 @@ router.put('/:id', requireAdmin, (req: Request, res: Response) => {
   }
   const updated = updateProfile(id, updates);
   if (updated) {
-    res.apiSuccess({ ...updated, password: updated.password ? '••••••••' : '' });
+    res.apiSuccess({ ...updated, password: updated.password ? MASKED_PASSWORD : '' });
   } else {
     res.apiError(404, 'NOT_FOUND', 'Telescope profile not found');
   }
@@ -413,6 +443,16 @@ router.delete('/:id', requireAdmin, (req: Request, res: Response) => {
   const profile = getProfileById(id);
   const deleted = deleteProfile(id);
   if (deleted) {
+    logEvent({
+      category: 'telescope',
+      event: 'removed',
+      level: 'warning',
+      message: `Removed telescope "${profile?.name ?? id}".`,
+      userId: req.userId,
+      username: req.username,
+      ip: req.ip ?? req.socket.remoteAddress,
+      metadata: { telescopeId: id, name: profile?.name ?? null },
+    });
     res.apiSuccess({ deleted: true });
   } else {
     res.apiError(400, 'DELETE_FAILED', 'Cannot delete the only telescope profile');
@@ -424,22 +464,42 @@ router.delete('/:id', requireAdmin, (req: Request, res: Response) => {
 // archived profiles, refused when this is the last unarchived profile.
 router.post('/:id/archive', requireAdmin, (req: Request, res: Response) => {
   const id = typeof req.params.id === 'string' ? req.params.id : '';
+  const profile = getProfileById(id);
   const result = archiveProfile(id);
   if (result === 'not_found') {
     res.apiError(404, 'NOT_FOUND', 'Telescope profile not found');
     return;
   }
+  logEvent({
+    category: 'telescope',
+    event: 'archived',
+    message: `Archived telescope "${profile?.name ?? id}".`,
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+    metadata: { telescopeId: id, name: profile?.name ?? null },
+  });
   res.apiSuccess({ archived: true });
 });
 
 // Unarchive — restore an archived profile to active status. Idempotent.
 router.post('/:id/unarchive', requireAdmin, (req: Request, res: Response) => {
   const id = typeof req.params.id === 'string' ? req.params.id : '';
+  const profile = getProfileById(id);
   const ok = unarchiveProfile(id);
   if (!ok) {
     res.apiError(404, 'NOT_FOUND', 'Telescope profile not found');
     return;
   }
+  logEvent({
+    category: 'telescope',
+    event: 'unarchived',
+    message: `Unarchived telescope "${profile?.name ?? id}".`,
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+    metadata: { telescopeId: id, name: profile?.name ?? null },
+  });
   res.apiSuccess({ unarchived: true });
 });
 
@@ -604,13 +664,31 @@ router.get('/status', async (_req: Request, res: Response) => {
   });
 });
 
+/** One row of GET /status/all. Declared once so the not-configured early
+ *  return and the probed result are checked against the same shape. The
+ *  annotation is what makes `checkedAt: null` legal in the first branch —
+ *  it used to need a widening `as string | null` assertion, which would have
+ *  gone on compiling if the two branches ever drifted apart. */
+interface TelescopeStatusEntry {
+  id: string;
+  name: string;
+  color: string;
+  kind: TelescopeKind;
+  hostname: string;
+  configured: boolean;
+  online: boolean;
+  latencyMs: number | null;
+  checkedAt: string | null;
+  transportKind: TransportKind;
+}
+
 // GET /api/v1/telescopes/status/all — every ACTIVE telescope, probed in parallel.
 // Archived profiles are excluded so the header status pill ("1/3 online") only
 // counts scopes the user actually expects to see online. To list archived ones
 // the settings page hits GET /telescopes which doesn't filter.
 router.get('/status/all', async (_req: Request, res: Response) => {
   const profiles = getAllProfiles().filter(p => p.archivedAt === null);
-  const probes = await Promise.all(profiles.map(async p => {
+  const probes = await Promise.all(profiles.map(async (p): Promise<TelescopeStatusEntry> => {
     // Under multi-transport, probe whichever transport the import pipeline
     // would actually use. selectActiveTransport returns the USB transport
     // when the mount is present, else the configured SMB one. When that
@@ -631,7 +709,7 @@ router.get('/status/all', async (_req: Request, res: Response) => {
         configured: false,
         online: false,
         latencyMs: null,
-        checkedAt: null as string | null,
+        checkedAt: null,
         transportKind,
       };
     }
@@ -670,9 +748,33 @@ router.post('/test-connection', requireAdmin, async (req: Request, res: Response
   const hostname = parsed.data.hostname?.trim() ?? '';
   const shareName = parsed.data.shareName?.trim() ?? '';
   const username = parsed.data.username?.trim() ?? '';
-  const password = parsed.data.password ?? '';
   const kind: TelescopeKind = parsed.data.kind ?? 'other';
   const connectionType = parsed.data.connectionType ?? 'smb';
+
+  // Resolve the password. The UI sends '••••••••' when the user is editing a
+  // saved transport without retouching the field — testing with that literal
+  // string would authenticate as the wrong password.
+  //
+  // The stored password is substituted ONLY when every connection parameter in
+  // the request matches the named transport's own values. Without that check a
+  // caller could pass a real transportId but swap in their own hostname and
+  // have smbclient send that transport's password to a server they control
+  // (an NTLM/credential capture). Anyone testing a genuinely different target
+  // must supply the password themselves; the mask degrades to empty otherwise.
+  let password = parsed.data.password ?? '';
+  if (password === MASKED_PASSWORD) {
+    const { profileId, transportId } = parsed.data;
+    const stored = profileId && transportId ? getTransportById(transportId) : null;
+    const matchesStoredTarget =
+      stored != null
+      && !stored.decryptFailed
+      && stored.profileId === profileId
+      && stored.kind === connectionType
+      && stored.hostname.trim().toLowerCase() === hostname.toLowerCase()
+      && (stored.shareName ?? '').trim() === shareName
+      && (stored.username ?? '').trim() === username;
+    password = matchesStoredTarget && stored ? stored.password : '';
+  }
 
   if (!hostname) {
     res.apiSuccess({ connected: false, error: 'Hostname is required' });

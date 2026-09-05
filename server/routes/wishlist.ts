@@ -12,12 +12,12 @@ const WishlistPostBodySchema = z.object({
   constellation: z.string().optional(),
   magnitude: z.number().optional(),
   majorAxisArcmin: z.number().optional(),
-  priority: z.enum(['low', 'medium', 'high']).default('medium'),
+  priority: z.enum(Wishlist.WISHLIST_PRIORITIES).default('medium'),
   notes: z.string().default(''),
 });
 
 const WishlistPatchBodySchema = z.object({
-  priority: z.enum(['low', 'medium', 'high']).optional(),
+  priority: z.enum(Wishlist.WISHLIST_PRIORITIES).optional(),
   notes: z.string().optional(),
 });
 

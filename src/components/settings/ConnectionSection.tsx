@@ -12,6 +12,7 @@ import {
   Network,
   RefreshCw,
   Pin,
+  Boxes,
 } from 'lucide-react';
 import {
   listTelescopes,
@@ -23,12 +24,14 @@ import {
   type TelescopeProfile,
   type ConnectionType,
 } from '../../lib/api/telescopes';
-import { triggerImport, getImportStatus } from '../../lib/api/library';
-import { deviceNoun } from '../../lib/telescopePresets';
+import { triggerImport, getImportStatus, getLibraryArchive } from '../../lib/api/library';
+import { deviceNoun, isDwarfKind } from '../../lib/telescopePresets';
 import { AddTelescopeModal } from './AddTelescopeModal';
 import { ReassignTelescopeModal } from './ReassignTelescopeModal';
 import { TransportEditorModal } from './TransportEditorModal';
+import { ArchiveBrowserModal } from './ArchiveBrowserModal';
 import { Sec } from './SettingsUI';
+import { ConfirmModal } from '../ConfirmModal';
 
 /**
  * Connection settings — the per-telescope card grid.
@@ -55,6 +58,10 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
   // Held as an id (not a snapshot) so the modal re-renders with fresh
   // pin/active state after every mutation-triggered ['telescopes'] refetch.
   const [managingTransportsId, setManagingTransportsId] = useState<string | null>(null);
+  const [archiveBrowserId, setArchiveBrowserId] = useState<string | null>(null);
+  // One shared confirm dialog for both destructive actions below (archive,
+  // permanent delete) rather than two near-identical pieces of state.
+  const [pendingConfirm, setPendingConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const { data: telescopes = [] } = useQuery({
     queryKey: ['telescopes'],
@@ -80,6 +87,7 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
   const active = telescopes.filter(t => t.archivedAt === null);
   const archived = telescopes.filter(t => t.archivedAt !== null);
   const managingTransports = telescopes.find(t => t.id === managingTransportsId) ?? null;
+  const archiveBrowserTelescope = telescopes.find(t => t.id === archiveBrowserId) ?? null;
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ['telescopes'] });
@@ -93,7 +101,7 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteTelescope(id),
-    onSuccess: invalidateAll,
+    onSuccess: () => { invalidateAll(); setPendingConfirm(null); },
   });
 
   const toggleAutoImportMutation = useMutation({
@@ -104,7 +112,7 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
 
   const archiveMutation = useMutation({
     mutationFn: archiveTelescope,
-    onSuccess: invalidateAll,
+    onSuccess: () => { invalidateAll(); setPendingConfirm(null); },
   });
 
   const unarchiveMutation = useMutation({
@@ -137,10 +145,10 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
 
   function handleArchive(t: TelescopeProfile) {
     const sessionCount = t.sessionCount ?? 0;
-    const msg = sessionCount > 0
+    const message = sessionCount > 0
       ? `Archive "${t.name}"? It will stop auto-importing but its ${sessionCount} session${sessionCount === 1 ? '' : 's'} stay attributed to it. You can restore or move sessions later.`
       : `Archive "${t.name}"? It will stop auto-importing.`;
-    if (confirm(msg)) archiveMutation.mutate(t.id);
+    setPendingConfirm({ message, onConfirm: () => archiveMutation.mutate(t.id) });
   }
 
   return (
@@ -175,6 +183,23 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
           onClose={() => setManagingTransportsId(null)}
         />
       )}
+      {archiveBrowserTelescope && (
+        <ArchiveBrowserModal
+          telescope={archiveBrowserTelescope}
+          isDark={isDark}
+          onClose={() => setArchiveBrowserId(null)}
+        />
+      )}
+      {pendingConfirm && (
+        <ConfirmModal
+          title="Confirm"
+          message={pendingConfirm.message}
+          confirmLabel="Confirm"
+          onConfirm={pendingConfirm.onConfirm}
+          onCancel={() => setPendingConfirm(null)}
+          pending={deleteMutation.isPending || archiveMutation.isPending}
+        />
+      )}
 
       <div className="p-4 sm:p-5">
       {/* useMutation tracks `.error` whether or not an onError callback is
@@ -205,6 +230,7 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
             onManageTransports={() => setManagingTransportsId(t.id)}
             onToggleAutoImport={() => toggleAutoImportMutation.mutate({ id: t.id, autoImportEnabled: !t.autoImportEnabled })}
             onSync={() => syncMutation.mutate(t.id)}
+            onBrowseArchive={() => setArchiveBrowserId(t.id)}
             // Disable sync when this telescope (or any other) is already
             // syncing — runImport holds a global lock, so a second click
             // would just fail server-side.
@@ -230,11 +256,14 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
 
       {archived.length > 0 && (
         <div className="mt-7">
-          <h3 className={`text-[12px] font-semibold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+          {/* Same label + description typography as RowGroup (the sub-header
+              strip used inside Sec elsewhere), for a consistent look even
+              though this section isn't part of that bordered-row flow. */}
+          <h3 className={`text-[10px] font-semibold uppercase tracking-[0.1em] mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
             Archived
           </h3>
-          <p className={`text-[12px] mb-3 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            Retired telescopes. Their historical sessions stay attributed for accurate reporting; auto-import is paused.
+          <p className={`text-[12px] leading-relaxed mb-3 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+            Retired telescopes; sessions stay attributed, auto-import is paused.
           </p>
           <div className="space-y-2">
             {archived.map(t => (
@@ -244,11 +273,10 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
                 isDark={isDark}
                 onUnarchive={() => unarchiveMutation.mutate(t.id)}
                 onReassign={() => setReassigning(t)}
-                onDelete={() => {
-                  if (confirm(`Delete "${t.name}" permanently? This removes the connection record. Imported observations remain on disk.`)) {
-                    deleteMutation.mutate(t.id);
-                  }
-                }}
+                onDelete={() => setPendingConfirm({
+                  message: `Delete "${t.name}" permanently? This removes the connection record. Imported observations remain on disk.`,
+                  onConfirm: () => deleteMutation.mutate(t.id),
+                })}
                 canReassign={active.length > 0}
                 isPending={isAnyPending}
               />
@@ -277,6 +305,7 @@ function TelescopeRow({
   onManageTransports,
   onToggleAutoImport,
   onSync,
+  onBrowseArchive,
   isSyncingThis,
   isAnyImportRunning,
   canReassign,
@@ -292,6 +321,7 @@ function TelescopeRow({
   onManageTransports: () => void;
   onToggleAutoImport: () => void;
   onSync: () => void;
+  onBrowseArchive: () => void;
   isSyncingThis: boolean;
   isAnyImportRunning: boolean;
   canReassign: boolean;
@@ -299,6 +329,20 @@ function TelescopeRow({
 }) {
   const sessions = telescope.sessionCount ?? 0;
   const transports = telescope.transports ?? [];
+
+  // Calibration frames/darks pulled in from CALI_FRAME/DWARF_DARK — never
+  // library objects, scoped to this telescope (see archiveFolders.ts). Only
+  // Dwarf profiles ever have any.
+  const { data: archiveData } = useQuery({
+    queryKey: ['telescope-archive', telescope.id],
+    queryFn: () => getLibraryArchive(telescope.id),
+    enabled: isDwarfKind(telescope.kind),
+    staleTime: 60_000,
+  });
+  const calFileCount = (archiveData?.folders ?? [])
+    .filter(f => f.name === 'CALI_FRAME' || f.name === 'DWARF_DARK')
+    .reduce((sum, f) => sum + f.fileCount, 0);
+
   // Wi-Fi covers both network protocols, matching the pills. Counting only
   // `smb` here used to drop a Dwarf's FTP transport from the line entirely,
   // so a Dwarf with FTP + USB read as just "1 USB".
@@ -349,8 +393,20 @@ function TelescopeRow({
         </div>
         <div className={`text-xs truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
           {telescope.model} · {transportLine} · {sessions} session{sessions === 1 ? '' : 's'}
+          {calFileCount > 0 && ` · ${calFileCount} calibration file${calFileCount === 1 ? '' : 's'}`}
         </div>
       </div>
+      {calFileCount > 0 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onBrowseArchive(); }}
+          title="Browse calibration frames and darks"
+          className={`p-1.5 rounded-lg transition ${
+            isDark ? 'hover:bg-slate-800 text-slate-400 hover:text-accent-400' : 'hover:bg-slate-100 text-slate-500 hover:text-accent-600'
+          }`}
+        >
+          <Boxes className="w-3.5 h-3.5" />
+        </button>
+      )}
       <button
         onClick={(e) => { e.stopPropagation(); onSync(); }}
         disabled={isAnyImportRunning || isPending}
@@ -514,7 +570,7 @@ function ArchivedTelescopeRow({
  *  showing two identical "Wi-Fi" pills would read as a rendering bug. FTP wins
  *  that tiebreak, matching selectActiveTransport's own ranking. */
 function TransportPills({ telescope, isDark, online }: { telescope: TelescopeProfile; isDark: boolean; online: boolean }) {
-  const isDwarf = telescope.kind === 'dwarf-2' || telescope.kind === 'dwarf-3' || telescope.kind === 'dwarf-mini';
+  const isDwarf = isDwarfKind(telescope.kind);
   const transports = telescope.transports ?? [];
   const smbTransport = !isDwarf ? transports.find(t => t.kind === 'smb') : undefined;
   const ftpTransport = transports.find(t => t.kind === 'ftp');

@@ -32,8 +32,10 @@ export function ObservedFromControl({
   date: string;
   /** The session's explicit tag. Null = untagged, so the files decide. */
   siteId: string | null;
-  /** What the capture files recorded, or null if they carried no location. */
-  fileCoordinates: { lat: number; lon: number } | null;
+  /** What the capture files recorded, or null if they carried no location.
+   *  Undefined as well as null: a response from before this field existed
+   *  omits it entirely, and reading `.lat` off that took the whole page down. */
+  fileCoordinates: { lat: number; lon: number } | null | undefined;
   isAdmin: boolean;
 }) {
   const { isDark } = useTheme();
@@ -52,7 +54,7 @@ export function ObservedFromControl({
     },
   });
 
-  const hasFileLocation = fileCoordinates !== null;
+  const hasFileLocation = fileCoordinates != null;
 
   // Untagged with no file location still resolves to the default site, so that
   // is what the control shows selected.

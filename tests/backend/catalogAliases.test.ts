@@ -5,7 +5,9 @@ import {
   resolveCanonicalId,
   getAliasesForCanonical,
   expandSearchAliases,
+  normalizeDesignation,
 } from '../../server/lib/catalogAliases';
+import { getById } from '../../server/lib/dsoCatalog';
 
 /**
  * Pull every alias key straight from the source so the test stays in sync with
@@ -103,5 +105,109 @@ describe('catalogAliases', () => {
     const terms = expandSearchAliases('C63');
     expect(terms).toContain('C63');
     expect(terms).toContain('NGC7293');
+  });
+});
+
+describe('normalizeDesignation', () => {
+  const cases: Array<[string, string]> = [
+    ['ngc 224', 'NGC224'],
+    ['NGC0224', 'NGC224'],
+    ['ic 342', 'IC342'],
+    ['IC0405', 'IC405'],
+    ['m 31', 'M31'],
+    ['Messier 31', 'M31'],
+    ['caldwell 5', 'C5'],
+    ['C5', 'C5'],
+    ['Sh2-155', 'SH2-155'],
+    ['sh2 155', 'SH2-155'],
+    ['sharpless 155', 'SH2-155'],
+    ['B33', 'B33'],
+    ['Barnard 33', 'B33'],
+  ];
+  for (const [input, expected] of cases) {
+    it(`"${input}" -> "${expected}"`, () => {
+      expect(normalizeDesignation(input)).toBe(expected);
+      // Idempotent.
+      expect(normalizeDesignation(expected)).toBe(expected);
+    });
+  }
+
+  it('leaves non-designations (custom names, comet ids) untouched', () => {
+    expect(normalizeDesignation('My Favorite Nebula')).toBe('My Favorite Nebula');
+    expect(normalizeDesignation('C-2023 A3')).toBe('C-2023 A3');
+    expect(normalizeDesignation('Star Trails')).toBe('Star Trails');
+  });
+
+  it('leaves variant ids that merely START like a designation untouched', () => {
+    // A prefix match here uppercased the whole string ("M31_mosaic" ->
+    // "M31_MOSAIC"), which rekeyed a live library object and orphaned its
+    // files. A bare designation is the WHOLE string, not just its start.
+    for (const id of [
+      'M31_mosaic', 'M31_Mosaic', 'IC434_mosaic', 'NGC7000_mosaic',
+      'M31_Ha', 'NGC2244SatelliteCluster', 'B33_panel2',
+    ]) {
+      expect(normalizeDesignation(id)).toBe(id);
+      expect(resolveCanonicalId(id)).toBe(id);
+    }
+  });
+
+  it('still normalizes and folds bare designations, incl. component suffixes', () => {
+    expect(normalizeDesignation('ngc 7318a')).toBe('NGC7318A');
+    expect(normalizeDesignation('NGC 0224')).toBe('NGC224');
+    expect(resolveCanonicalId('ngc224')).toBe('M31');
+    expect(resolveCanonicalId('NGC9999')).toBe('NGC9999');
+  });
+});
+
+describe('cross-catalog lookup coverage', () => {
+  // Caldwell numbers with no higher catalog designation (dark nebulae / naked-eye
+  // clusters that were never given an NGC/IC number), plus C37 whose NGC6885 is
+  // filtered out of the Seestar DSO catalog. Anything NEW landing here is a
+  // regression — this is the invariant the IC342 "no description" bug violated.
+  const CALDWELL_EXCEPTIONS = new Set(['C41', 'C99', 'C37']);
+  const CALDWELL = Array.from({ length: 109 }, (_, i) => `C${i + 1}`);
+
+  it('every Caldwell number (minus known exceptions) resolves to a stable, findable object', () => {
+    const broken: string[] = [];
+    for (const c of CALDWELL) {
+      if (CALDWELL_EXCEPTIONS.has(c)) continue;
+      const canonical = resolveCanonicalId(c);
+      if (canonical === c) { broken.push(`${c}: no alias`); continue; }
+      if (resolveCanonicalId(canonical) !== canonical) { broken.push(`${c} -> ${canonical} not a fixpoint`); continue; }
+      const byC = getById(c);
+      const byCanonical = getById(canonical);
+      if (!byC) broken.push(`${c}: getById returned nothing`);
+      else if (!byCanonical) broken.push(`${canonical} (from ${c}): getById returned nothing`);
+      else if (byC.id !== byCanonical.id) broken.push(`${c} -> ${byC.id} but ${canonical} -> ${byCanonical.id}`);
+    }
+    expect(broken).toEqual([]);
+  });
+
+  it('the known Caldwell exceptions are exactly those three (flag new gaps)', () => {
+    const gaps: string[] = [];
+    for (const c of CALDWELL) {
+      const canonical = resolveCanonicalId(c);
+      if (canonical === c || !getById(canonical)) gaps.push(c);
+    }
+    expect(new Set(gaps)).toEqual(CALDWELL_EXCEPTIONS);
+  });
+
+  it('every Messier number resolves to a fixpoint and is findable', () => {
+    const broken: string[] = [];
+    for (let n = 1; n <= 110; n++) {
+      const m = `M${n}`;
+      // M102 is disputed and deliberately mapped to NGC5866.
+      const expected = m === 'M102' ? 'NGC5866' : m;
+      if (resolveCanonicalId(m) !== expected) broken.push(`${m} -> ${resolveCanonicalId(m)} (want ${expected})`);
+      if (!getById(m)) broken.push(`${m}: getById returned nothing`);
+    }
+    expect(broken).toEqual([]);
+  });
+
+  it('resolves an object identically from its NGC and Messier designation', () => {
+    // M16 = NGC6611, M1 = NGC1952, M45 has no NGC (skipped).
+    for (const [a, b] of [['NGC6611', 'M16'], ['NGC1952', 'M1'], ['NGC224', 'M31'], ['NGC5194', 'M51']]) {
+      expect(getById(a)?.id).toBe(getById(b)?.id);
+    }
   });
 });

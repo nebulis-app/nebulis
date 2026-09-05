@@ -5,6 +5,7 @@ import type { Settings as SettingsType } from '../../types';
 import { getUpdateStatus, checkForUpdate, applyUpdate } from '../../lib/api/update';
 import { Sec, Row, Seg, Toggle } from './SettingsUI';
 import { ChangelogModal } from '../ChangelogModal';
+import { WhatsNewForVersion } from '../help/WhatsNewForVersion';
 
 /**
  * Software Updates settings card. Self-contained: it owns the /meta/update
@@ -26,6 +27,7 @@ export function SoftwareUpdateCard({
   const queryClient = useQueryClient();
   const channel = form.updateChannel ?? 'stable';
   const [changelogMode, setChangelogMode] = useState<'history' | 'whats-new' | null>(null);
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
 
   const statusQuery = useQuery({
     queryKey: ['update-status'],
@@ -79,13 +81,22 @@ export function SoftwareUpdateCard({
                 <div className={`text-xs mt-0.5 ${muted}`}>
                   Nebulis {status.currentVersion}{status.currentBuild ? ` (${status.currentBuild})` : ''}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setChangelogMode('history')}
-                  className={`text-xs mt-1 ${isDark ? 'text-accent-400 hover:text-accent-300' : 'text-accent-600 hover:text-accent-500'} hover:underline`}
-                >
-                  Release notes
-                </button>
+                <div className="flex items-center gap-3 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowWhatsNew(true)}
+                    className={`text-xs ${isDark ? 'text-accent-400 hover:text-accent-300' : 'text-accent-600 hover:text-accent-500'} hover:underline`}
+                  >
+                    What's new
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChangelogMode('history')}
+                    className={`text-xs ${isDark ? 'text-accent-400 hover:text-accent-300' : 'text-accent-600 hover:text-accent-500'} hover:underline`}
+                  >
+                    Release notes
+                  </button>
+                </div>
               </>
             ) : (
               <div className={`text-xs mt-0.5 ${muted}`}>Loading…</div>
@@ -207,7 +218,7 @@ export function SoftwareUpdateCard({
           </Row>
           <Row
             label="Update channel"
-            description="Stable is recommended. Beta gets new features earlier, with more risk."
+            description="Stable is recommended; Beta ships earlier, with more risk."
             isDark={isDark}
           >
             <Seg
@@ -228,6 +239,14 @@ export function SoftwareUpdateCard({
         onClose={() => setChangelogMode(null)}
         onlyVersion={changelogMode === 'whats-new' ? (status?.latestVersion ?? status?.currentVersion) : undefined}
       />
+
+      {status && (
+        <WhatsNewForVersion
+          version={status.currentVersion}
+          isOpen={showWhatsNew}
+          onClose={() => setShowWhatsNew(false)}
+        />
+      )}
     </Sec>
   );
 }

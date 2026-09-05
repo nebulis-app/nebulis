@@ -1,0 +1,2753 @@
+{
+  "Andromeda Galaxy": {
+    "canonical": "Andromeda Galaxy",
+    "aliases": []
+  },
+  "C-2023 A3": {
+    "canonical": "C-2023 A3",
+    "aliases": []
+  },
+  "C1": {
+    "canonical": "NGC188",
+    "aliases": [
+      "C1"
+    ]
+  },
+  "C10": {
+    "canonical": "NGC663",
+    "aliases": [
+      "C10"
+    ]
+  },
+  "C100": {
+    "canonical": "IC2944",
+    "aliases": [
+      "C100"
+    ]
+  },
+  "C101": {
+    "canonical": "NGC6744",
+    "aliases": [
+      "C101"
+    ]
+  },
+  "C102": {
+    "canonical": "NGC2070",
+    "aliases": [
+      "C102"
+    ]
+  },
+  "C103": {
+    "canonical": "NGC2547",
+    "aliases": [
+      "C103"
+    ]
+  },
+  "C104": {
+    "canonical": "NGC362",
+    "aliases": [
+      "C104"
+    ]
+  },
+  "C105": {
+    "canonical": "NGC4833",
+    "aliases": [
+      "C105"
+    ]
+  },
+  "C106": {
+    "canonical": "NGC104",
+    "aliases": [
+      "C106"
+    ]
+  },
+  "C107": {
+    "canonical": "NGC6101",
+    "aliases": [
+      "C107"
+    ]
+  },
+  "C108": {
+    "canonical": "NGC4372",
+    "aliases": [
+      "C108"
+    ]
+  },
+  "C109": {
+    "canonical": "NGC3195",
+    "aliases": [
+      "C109"
+    ]
+  },
+  "C11": {
+    "canonical": "NGC7635",
+    "aliases": [
+      "C11",
+      "Sh2-162"
+    ]
+  },
+  "C12": {
+    "canonical": "NGC6946",
+    "aliases": [
+      "C12"
+    ]
+  },
+  "C13": {
+    "canonical": "NGC457",
+    "aliases": [
+      "C13"
+    ]
+  },
+  "C14": {
+    "canonical": "NGC869",
+    "aliases": [
+      "C14"
+    ]
+  },
+  "C15": {
+    "canonical": "NGC6826",
+    "aliases": [
+      "C15"
+    ]
+  },
+  "C16": {
+    "canonical": "NGC7243",
+    "aliases": [
+      "C16"
+    ]
+  },
+  "C17": {
+    "canonical": "NGC147",
+    "aliases": [
+      "C17"
+    ]
+  },
+  "C18": {
+    "canonical": "NGC185",
+    "aliases": [
+      "C18"
+    ]
+  },
+  "C19": {
+    "canonical": "IC5146",
+    "aliases": [
+      "C19",
+      "Sh2-125"
+    ]
+  },
+  "C2": {
+    "canonical": "NGC40",
+    "aliases": [
+      "C2"
+    ]
+  },
+  "C20": {
+    "canonical": "NGC7000",
+    "aliases": [
+      "C20",
+      "Sh2-117"
+    ]
+  },
+  "C21": {
+    "canonical": "NGC4449",
+    "aliases": [
+      "C21"
+    ]
+  },
+  "C22": {
+    "canonical": "NGC7662",
+    "aliases": [
+      "C22"
+    ]
+  },
+  "C23": {
+    "canonical": "NGC891",
+    "aliases": [
+      "C23"
+    ]
+  },
+  "C24": {
+    "canonical": "NGC1275",
+    "aliases": [
+      "C24"
+    ]
+  },
+  "C25": {
+    "canonical": "NGC2419",
+    "aliases": [
+      "C25"
+    ]
+  },
+  "C26": {
+    "canonical": "NGC4244",
+    "aliases": [
+      "C26"
+    ]
+  },
+  "C27": {
+    "canonical": "NGC6888",
+    "aliases": [
+      "C27",
+      "Sh2-105"
+    ]
+  },
+  "C28": {
+    "canonical": "NGC752",
+    "aliases": [
+      "C28"
+    ]
+  },
+  "C29": {
+    "canonical": "NGC5005",
+    "aliases": [
+      "C29"
+    ]
+  },
+  "C3": {
+    "canonical": "NGC4236",
+    "aliases": [
+      "C3"
+    ]
+  },
+  "C30": {
+    "canonical": "NGC7331",
+    "aliases": [
+      "C30"
+    ]
+  },
+  "C31": {
+    "canonical": "IC405",
+    "aliases": [
+      "C31",
+      "Sh2-229"
+    ]
+  },
+  "C32": {
+    "canonical": "NGC4631",
+    "aliases": [
+      "C32"
+    ]
+  },
+  "C33": {
+    "canonical": "NGC6992",
+    "aliases": [
+      "C33"
+    ]
+  },
+  "C34": {
+    "canonical": "NGC6960",
+    "aliases": [
+      "C34"
+    ]
+  },
+  "C35": {
+    "canonical": "NGC4889",
+    "aliases": [
+      "C35"
+    ]
+  },
+  "C36": {
+    "canonical": "NGC4559",
+    "aliases": [
+      "C36"
+    ]
+  },
+  "C37": {
+    "canonical": "NGC6885",
+    "aliases": [
+      "C37"
+    ]
+  },
+  "C38": {
+    "canonical": "NGC4565",
+    "aliases": [
+      "C38"
+    ]
+  },
+  "C39": {
+    "canonical": "NGC2392",
+    "aliases": [
+      "C39"
+    ]
+  },
+  "C4": {
+    "canonical": "NGC7023",
+    "aliases": [
+      "C4"
+    ]
+  },
+  "C40": {
+    "canonical": "NGC3626",
+    "aliases": [
+      "C40"
+    ]
+  },
+  "C41": {
+    "canonical": "C41",
+    "aliases": []
+  },
+  "C42": {
+    "canonical": "NGC7006",
+    "aliases": [
+      "C42"
+    ]
+  },
+  "C43": {
+    "canonical": "NGC7814",
+    "aliases": [
+      "C43"
+    ]
+  },
+  "C44": {
+    "canonical": "NGC7479",
+    "aliases": [
+      "C44"
+    ]
+  },
+  "C45": {
+    "canonical": "NGC5248",
+    "aliases": [
+      "C45"
+    ]
+  },
+  "C46": {
+    "canonical": "NGC2261",
+    "aliases": [
+      "C46"
+    ]
+  },
+  "C47": {
+    "canonical": "NGC6934",
+    "aliases": [
+      "C47"
+    ]
+  },
+  "C48": {
+    "canonical": "NGC2775",
+    "aliases": [
+      "C48"
+    ]
+  },
+  "C49": {
+    "canonical": "NGC2237",
+    "aliases": [
+      "C49"
+    ]
+  },
+  "C5": {
+    "canonical": "IC342",
+    "aliases": [
+      "C5"
+    ]
+  },
+  "C50": {
+    "canonical": "NGC2244",
+    "aliases": [
+      "C50"
+    ]
+  },
+  "C51": {
+    "canonical": "IC1613",
+    "aliases": [
+      "C51"
+    ]
+  },
+  "C52": {
+    "canonical": "NGC4697",
+    "aliases": [
+      "C52"
+    ]
+  },
+  "C53": {
+    "canonical": "NGC3115",
+    "aliases": [
+      "C53"
+    ]
+  },
+  "C54": {
+    "canonical": "NGC2506",
+    "aliases": [
+      "C54"
+    ]
+  },
+  "C55": {
+    "canonical": "NGC7009",
+    "aliases": [
+      "C55"
+    ]
+  },
+  "C56": {
+    "canonical": "NGC246",
+    "aliases": [
+      "C56"
+    ]
+  },
+  "C57": {
+    "canonical": "NGC6822",
+    "aliases": [
+      "C57"
+    ]
+  },
+  "C58": {
+    "canonical": "NGC2360",
+    "aliases": [
+      "C58"
+    ]
+  },
+  "C59": {
+    "canonical": "NGC3242",
+    "aliases": [
+      "C59"
+    ]
+  },
+  "C6": {
+    "canonical": "NGC6543",
+    "aliases": [
+      "C6"
+    ]
+  },
+  "C60": {
+    "canonical": "NGC4038",
+    "aliases": [
+      "C60"
+    ]
+  },
+  "C61": {
+    "canonical": "NGC4039",
+    "aliases": [
+      "C61"
+    ]
+  },
+  "C62": {
+    "canonical": "NGC247",
+    "aliases": [
+      "C62"
+    ]
+  },
+  "C63": {
+    "canonical": "NGC7293",
+    "aliases": [
+      "C63"
+    ]
+  },
+  "C64": {
+    "canonical": "NGC2362",
+    "aliases": [
+      "C64"
+    ]
+  },
+  "C65": {
+    "canonical": "NGC253",
+    "aliases": [
+      "C65"
+    ]
+  },
+  "C66": {
+    "canonical": "NGC5694",
+    "aliases": [
+      "C66"
+    ]
+  },
+  "C67": {
+    "canonical": "NGC1097",
+    "aliases": [
+      "C67"
+    ]
+  },
+  "C68": {
+    "canonical": "NGC6729",
+    "aliases": [
+      "C68"
+    ]
+  },
+  "C69": {
+    "canonical": "NGC6302",
+    "aliases": [
+      "C69",
+      "Sh2-6"
+    ]
+  },
+  "C7": {
+    "canonical": "NGC2403",
+    "aliases": [
+      "C7"
+    ]
+  },
+  "C70": {
+    "canonical": "NGC300",
+    "aliases": [
+      "C70"
+    ]
+  },
+  "C71": {
+    "canonical": "NGC2477",
+    "aliases": [
+      "C71"
+    ]
+  },
+  "C72": {
+    "canonical": "NGC55",
+    "aliases": [
+      "C72"
+    ]
+  },
+  "C73": {
+    "canonical": "NGC1851",
+    "aliases": [
+      "C73"
+    ]
+  },
+  "C74": {
+    "canonical": "NGC3132",
+    "aliases": [
+      "C74"
+    ]
+  },
+  "C75": {
+    "canonical": "NGC6124",
+    "aliases": [
+      "C75"
+    ]
+  },
+  "C76": {
+    "canonical": "NGC6231",
+    "aliases": [
+      "C76"
+    ]
+  },
+  "C77": {
+    "canonical": "NGC5128",
+    "aliases": [
+      "C77"
+    ]
+  },
+  "C78": {
+    "canonical": "NGC6541",
+    "aliases": [
+      "C78"
+    ]
+  },
+  "C79": {
+    "canonical": "NGC3201",
+    "aliases": [
+      "C79"
+    ]
+  },
+  "C8": {
+    "canonical": "NGC559",
+    "aliases": [
+      "C8"
+    ]
+  },
+  "C80": {
+    "canonical": "NGC5139",
+    "aliases": [
+      "C80"
+    ]
+  },
+  "C81": {
+    "canonical": "NGC6352",
+    "aliases": [
+      "C81"
+    ]
+  },
+  "C82": {
+    "canonical": "NGC6193",
+    "aliases": [
+      "C82"
+    ]
+  },
+  "C83": {
+    "canonical": "NGC4945",
+    "aliases": [
+      "C83"
+    ]
+  },
+  "C84": {
+    "canonical": "NGC5286",
+    "aliases": [
+      "C84"
+    ]
+  },
+  "C85": {
+    "canonical": "IC2391",
+    "aliases": [
+      "C85"
+    ]
+  },
+  "C86": {
+    "canonical": "NGC6397",
+    "aliases": [
+      "C86"
+    ]
+  },
+  "C87": {
+    "canonical": "NGC1261",
+    "aliases": [
+      "C87"
+    ]
+  },
+  "C88": {
+    "canonical": "NGC5823",
+    "aliases": [
+      "C88"
+    ]
+  },
+  "C89": {
+    "canonical": "NGC6087",
+    "aliases": [
+      "C89"
+    ]
+  },
+  "C9": {
+    "canonical": "SH2-155",
+    "aliases": [
+      "C9"
+    ]
+  },
+  "C90": {
+    "canonical": "NGC2867",
+    "aliases": [
+      "C90"
+    ]
+  },
+  "C91": {
+    "canonical": "NGC3532",
+    "aliases": [
+      "C91"
+    ]
+  },
+  "C92": {
+    "canonical": "NGC3372",
+    "aliases": [
+      "C92"
+    ]
+  },
+  "C93": {
+    "canonical": "NGC6752",
+    "aliases": [
+      "C93"
+    ]
+  },
+  "C94": {
+    "canonical": "NGC4755",
+    "aliases": [
+      "C94"
+    ]
+  },
+  "C95": {
+    "canonical": "NGC6025",
+    "aliases": [
+      "C95"
+    ]
+  },
+  "C96": {
+    "canonical": "NGC2516",
+    "aliases": [
+      "C96"
+    ]
+  },
+  "C97": {
+    "canonical": "NGC3766",
+    "aliases": [
+      "C97"
+    ]
+  },
+  "C98": {
+    "canonical": "NGC4609",
+    "aliases": [
+      "C98"
+    ]
+  },
+  "C99": {
+    "canonical": "C99",
+    "aliases": []
+  },
+  "Caldwell 14": {
+    "canonical": "NGC869",
+    "aliases": [
+      "C14"
+    ]
+  },
+  "IC2118": {
+    "canonical": "IC2118",
+    "aliases": [
+      "NGC1909"
+    ]
+  },
+  "IC342": {
+    "canonical": "IC342",
+    "aliases": [
+      "C5"
+    ]
+  },
+  "LUNAR": {
+    "canonical": "Moon",
+    "aliases": [
+      "LUNAR"
+    ]
+  },
+  "M1": {
+    "canonical": "M1",
+    "aliases": [
+      "NGC1952",
+      "Sh2-244"
+    ]
+  },
+  "M10": {
+    "canonical": "M10",
+    "aliases": [
+      "NGC6254"
+    ]
+  },
+  "M100": {
+    "canonical": "M100",
+    "aliases": [
+      "NGC4321"
+    ]
+  },
+  "M101": {
+    "canonical": "M101",
+    "aliases": [
+      "NGC5457"
+    ]
+  },
+  "M102": {
+    "canonical": "NGC5866",
+    "aliases": [
+      "M102"
+    ]
+  },
+  "M103": {
+    "canonical": "M103",
+    "aliases": [
+      "NGC581"
+    ]
+  },
+  "M104": {
+    "canonical": "M104",
+    "aliases": [
+      "NGC4594"
+    ]
+  },
+  "M105": {
+    "canonical": "M105",
+    "aliases": [
+      "NGC3379"
+    ]
+  },
+  "M106": {
+    "canonical": "M106",
+    "aliases": [
+      "NGC4258"
+    ]
+  },
+  "M107": {
+    "canonical": "M107",
+    "aliases": [
+      "NGC6171"
+    ]
+  },
+  "M108": {
+    "canonical": "M108",
+    "aliases": [
+      "NGC3556"
+    ]
+  },
+  "M109": {
+    "canonical": "M109",
+    "aliases": [
+      "NGC3992"
+    ]
+  },
+  "M11": {
+    "canonical": "M11",
+    "aliases": [
+      "NGC6705"
+    ]
+  },
+  "M110": {
+    "canonical": "M110",
+    "aliases": [
+      "NGC205"
+    ]
+  },
+  "M12": {
+    "canonical": "M12",
+    "aliases": [
+      "NGC6218"
+    ]
+  },
+  "M13": {
+    "canonical": "M13",
+    "aliases": [
+      "NGC6205"
+    ]
+  },
+  "M14": {
+    "canonical": "M14",
+    "aliases": [
+      "NGC6402"
+    ]
+  },
+  "M15": {
+    "canonical": "M15",
+    "aliases": [
+      "NGC7078"
+    ]
+  },
+  "M16": {
+    "canonical": "M16",
+    "aliases": [
+      "NGC6611",
+      "Sh2-49"
+    ]
+  },
+  "M17": {
+    "canonical": "M17",
+    "aliases": [
+      "NGC6618",
+      "Sh2-45"
+    ]
+  },
+  "M18": {
+    "canonical": "M18",
+    "aliases": [
+      "NGC6613"
+    ]
+  },
+  "M19": {
+    "canonical": "M19",
+    "aliases": [
+      "NGC6273"
+    ]
+  },
+  "M2": {
+    "canonical": "M2",
+    "aliases": [
+      "NGC7089"
+    ]
+  },
+  "M20": {
+    "canonical": "M20",
+    "aliases": [
+      "NGC6514",
+      "Sh2-30"
+    ]
+  },
+  "M21": {
+    "canonical": "M21",
+    "aliases": [
+      "NGC6531"
+    ]
+  },
+  "M22": {
+    "canonical": "M22",
+    "aliases": [
+      "NGC6656"
+    ]
+  },
+  "M23": {
+    "canonical": "M23",
+    "aliases": [
+      "NGC6494"
+    ]
+  },
+  "M24": {
+    "canonical": "M24",
+    "aliases": []
+  },
+  "M25": {
+    "canonical": "M25",
+    "aliases": [
+      "IC4725"
+    ]
+  },
+  "M26": {
+    "canonical": "M26",
+    "aliases": [
+      "NGC6694"
+    ]
+  },
+  "M27": {
+    "canonical": "M27",
+    "aliases": [
+      "NGC6853"
+    ]
+  },
+  "M28": {
+    "canonical": "M28",
+    "aliases": [
+      "NGC6626"
+    ]
+  },
+  "M29": {
+    "canonical": "M29",
+    "aliases": [
+      "NGC6913"
+    ]
+  },
+  "M3": {
+    "canonical": "M3",
+    "aliases": [
+      "NGC5272"
+    ]
+  },
+  "M30": {
+    "canonical": "M30",
+    "aliases": [
+      "NGC7099"
+    ]
+  },
+  "M31": {
+    "canonical": "M31",
+    "aliases": [
+      "NGC224"
+    ]
+  },
+  "M32": {
+    "canonical": "M32",
+    "aliases": [
+      "NGC221"
+    ]
+  },
+  "M33": {
+    "canonical": "M33",
+    "aliases": [
+      "NGC598"
+    ]
+  },
+  "M34": {
+    "canonical": "M34",
+    "aliases": [
+      "NGC1039"
+    ]
+  },
+  "M35": {
+    "canonical": "M35",
+    "aliases": [
+      "NGC2168"
+    ]
+  },
+  "M36": {
+    "canonical": "M36",
+    "aliases": [
+      "NGC1960"
+    ]
+  },
+  "M37": {
+    "canonical": "M37",
+    "aliases": [
+      "NGC2099"
+    ]
+  },
+  "M38": {
+    "canonical": "M38",
+    "aliases": [
+      "NGC1912"
+    ]
+  },
+  "M39": {
+    "canonical": "M39",
+    "aliases": [
+      "NGC7092"
+    ]
+  },
+  "M4": {
+    "canonical": "M4",
+    "aliases": [
+      "NGC6121"
+    ]
+  },
+  "M40": {
+    "canonical": "M40",
+    "aliases": []
+  },
+  "M41": {
+    "canonical": "M41",
+    "aliases": [
+      "NGC2287"
+    ]
+  },
+  "M42": {
+    "canonical": "M42",
+    "aliases": [
+      "NGC1976",
+      "Sh2-281"
+    ]
+  },
+  "M43": {
+    "canonical": "M43",
+    "aliases": [
+      "NGC1982"
+    ]
+  },
+  "M44": {
+    "canonical": "M44",
+    "aliases": [
+      "NGC2632"
+    ]
+  },
+  "M45": {
+    "canonical": "M45",
+    "aliases": []
+  },
+  "M46": {
+    "canonical": "M46",
+    "aliases": [
+      "NGC2437"
+    ]
+  },
+  "M47": {
+    "canonical": "M47",
+    "aliases": [
+      "NGC2422"
+    ]
+  },
+  "M48": {
+    "canonical": "M48",
+    "aliases": [
+      "NGC2548"
+    ]
+  },
+  "M49": {
+    "canonical": "M49",
+    "aliases": [
+      "NGC4472"
+    ]
+  },
+  "M5": {
+    "canonical": "M5",
+    "aliases": [
+      "NGC5904"
+    ]
+  },
+  "M50": {
+    "canonical": "M50",
+    "aliases": [
+      "NGC2323"
+    ]
+  },
+  "M51": {
+    "canonical": "M51",
+    "aliases": [
+      "NGC5194"
+    ]
+  },
+  "M52": {
+    "canonical": "M52",
+    "aliases": [
+      "NGC7654"
+    ]
+  },
+  "M53": {
+    "canonical": "M53",
+    "aliases": [
+      "NGC5024"
+    ]
+  },
+  "M54": {
+    "canonical": "M54",
+    "aliases": [
+      "NGC6715"
+    ]
+  },
+  "M55": {
+    "canonical": "M55",
+    "aliases": [
+      "NGC6809"
+    ]
+  },
+  "M56": {
+    "canonical": "M56",
+    "aliases": [
+      "NGC6779"
+    ]
+  },
+  "M57": {
+    "canonical": "M57",
+    "aliases": [
+      "NGC6720"
+    ]
+  },
+  "M58": {
+    "canonical": "M58",
+    "aliases": [
+      "NGC4579"
+    ]
+  },
+  "M59": {
+    "canonical": "M59",
+    "aliases": [
+      "NGC4621"
+    ]
+  },
+  "M6": {
+    "canonical": "M6",
+    "aliases": [
+      "NGC6405"
+    ]
+  },
+  "M60": {
+    "canonical": "M60",
+    "aliases": [
+      "NGC4649"
+    ]
+  },
+  "M61": {
+    "canonical": "M61",
+    "aliases": [
+      "NGC4303"
+    ]
+  },
+  "M62": {
+    "canonical": "M62",
+    "aliases": [
+      "NGC6266"
+    ]
+  },
+  "M63": {
+    "canonical": "M63",
+    "aliases": [
+      "NGC5055"
+    ]
+  },
+  "M64": {
+    "canonical": "M64",
+    "aliases": [
+      "NGC4826"
+    ]
+  },
+  "M65": {
+    "canonical": "M65",
+    "aliases": [
+      "NGC3623"
+    ]
+  },
+  "M66": {
+    "canonical": "M66",
+    "aliases": [
+      "NGC3627"
+    ]
+  },
+  "M67": {
+    "canonical": "M67",
+    "aliases": [
+      "NGC2682"
+    ]
+  },
+  "M68": {
+    "canonical": "M68",
+    "aliases": [
+      "NGC4590"
+    ]
+  },
+  "M69": {
+    "canonical": "M69",
+    "aliases": [
+      "NGC6637"
+    ]
+  },
+  "M7": {
+    "canonical": "M7",
+    "aliases": [
+      "NGC6475"
+    ]
+  },
+  "M70": {
+    "canonical": "M70",
+    "aliases": [
+      "NGC6681"
+    ]
+  },
+  "M71": {
+    "canonical": "M71",
+    "aliases": [
+      "NGC6838"
+    ]
+  },
+  "M72": {
+    "canonical": "M72",
+    "aliases": [
+      "NGC6981"
+    ]
+  },
+  "M73": {
+    "canonical": "M73",
+    "aliases": [
+      "NGC6994"
+    ]
+  },
+  "M74": {
+    "canonical": "M74",
+    "aliases": [
+      "NGC628"
+    ]
+  },
+  "M75": {
+    "canonical": "M75",
+    "aliases": [
+      "NGC6864"
+    ]
+  },
+  "M76": {
+    "canonical": "M76",
+    "aliases": [
+      "NGC650",
+      "NGC651"
+    ]
+  },
+  "M77": {
+    "canonical": "M77",
+    "aliases": [
+      "NGC1068"
+    ]
+  },
+  "M78": {
+    "canonical": "M78",
+    "aliases": [
+      "NGC2068"
+    ]
+  },
+  "M79": {
+    "canonical": "M79",
+    "aliases": [
+      "NGC1904"
+    ]
+  },
+  "M8": {
+    "canonical": "M8",
+    "aliases": [
+      "NGC6523",
+      "Sh2-25"
+    ]
+  },
+  "M80": {
+    "canonical": "M80",
+    "aliases": [
+      "NGC6093"
+    ]
+  },
+  "M81": {
+    "canonical": "M81",
+    "aliases": [
+      "NGC3031"
+    ]
+  },
+  "M82": {
+    "canonical": "M82",
+    "aliases": [
+      "NGC3034"
+    ]
+  },
+  "M83": {
+    "canonical": "M83",
+    "aliases": [
+      "NGC5236"
+    ]
+  },
+  "M84": {
+    "canonical": "M84",
+    "aliases": [
+      "NGC4374"
+    ]
+  },
+  "M85": {
+    "canonical": "M85",
+    "aliases": [
+      "NGC4382"
+    ]
+  },
+  "M86": {
+    "canonical": "M86",
+    "aliases": [
+      "NGC4406"
+    ]
+  },
+  "M87": {
+    "canonical": "M87",
+    "aliases": [
+      "NGC4486"
+    ]
+  },
+  "M88": {
+    "canonical": "M88",
+    "aliases": [
+      "NGC4501"
+    ]
+  },
+  "M89": {
+    "canonical": "M89",
+    "aliases": [
+      "NGC4552"
+    ]
+  },
+  "M9": {
+    "canonical": "M9",
+    "aliases": [
+      "NGC6333"
+    ]
+  },
+  "M90": {
+    "canonical": "M90",
+    "aliases": [
+      "NGC4569"
+    ]
+  },
+  "M91": {
+    "canonical": "M91",
+    "aliases": [
+      "NGC4548"
+    ]
+  },
+  "M92": {
+    "canonical": "M92",
+    "aliases": [
+      "NGC6341"
+    ]
+  },
+  "M93": {
+    "canonical": "M93",
+    "aliases": [
+      "NGC2447"
+    ]
+  },
+  "M94": {
+    "canonical": "M94",
+    "aliases": [
+      "NGC4736"
+    ]
+  },
+  "M95": {
+    "canonical": "M95",
+    "aliases": [
+      "NGC3351"
+    ]
+  },
+  "M96": {
+    "canonical": "M96",
+    "aliases": [
+      "NGC3368"
+    ]
+  },
+  "M97": {
+    "canonical": "M97",
+    "aliases": [
+      "NGC3587"
+    ]
+  },
+  "M98": {
+    "canonical": "M98",
+    "aliases": [
+      "NGC4192"
+    ]
+  },
+  "M99": {
+    "canonical": "M99",
+    "aliases": [
+      "NGC4254"
+    ]
+  },
+  "NGC0224": {
+    "canonical": "M31",
+    "aliases": [
+      "NGC224"
+    ]
+  },
+  "NGC1909": {
+    "canonical": "IC2118",
+    "aliases": [
+      "NGC1909"
+    ]
+  },
+  "NGC1952": {
+    "canonical": "M1",
+    "aliases": [
+      "NGC1952",
+      "Sh2-244"
+    ]
+  },
+  "NGC224": {
+    "canonical": "M31",
+    "aliases": [
+      "NGC224"
+    ]
+  },
+  "NGC5194": {
+    "canonical": "M51",
+    "aliases": [
+      "NGC5194"
+    ]
+  },
+  "NGC5866": {
+    "canonical": "NGC5866",
+    "aliases": [
+      "M102"
+    ]
+  },
+  "NGC6611": {
+    "canonical": "M16",
+    "aliases": [
+      "NGC6611",
+      "Sh2-49"
+    ]
+  },
+  "NGC7089": {
+    "canonical": "M2",
+    "aliases": [
+      "NGC7089"
+    ]
+  },
+  "SOLAR": {
+    "canonical": "Sun",
+    "aliases": [
+      "SOLAR"
+    ]
+  },
+  "Sh2-1": {
+    "canonical": "IC1470",
+    "aliases": [
+      "Sh2-1"
+    ]
+  },
+  "Sh2-10": {
+    "canonical": "SH2-10",
+    "aliases": []
+  },
+  "Sh2-100": {
+    "canonical": "SH2-100",
+    "aliases": []
+  },
+  "Sh2-101": {
+    "canonical": "SH2-101",
+    "aliases": []
+  },
+  "Sh2-102": {
+    "canonical": "SH2-102",
+    "aliases": []
+  },
+  "Sh2-103": {
+    "canonical": "SH2-103",
+    "aliases": []
+  },
+  "Sh2-104": {
+    "canonical": "SH2-104",
+    "aliases": []
+  },
+  "Sh2-105": {
+    "canonical": "NGC6888",
+    "aliases": [
+      "C27",
+      "Sh2-105"
+    ]
+  },
+  "Sh2-106": {
+    "canonical": "SH2-106",
+    "aliases": []
+  },
+  "Sh2-107": {
+    "canonical": "SH2-107",
+    "aliases": []
+  },
+  "Sh2-108": {
+    "canonical": "SH2-108",
+    "aliases": []
+  },
+  "Sh2-109": {
+    "canonical": "SH2-109",
+    "aliases": []
+  },
+  "Sh2-11": {
+    "canonical": "NGC6357",
+    "aliases": [
+      "Sh2-11"
+    ]
+  },
+  "Sh2-110": {
+    "canonical": "SH2-110",
+    "aliases": []
+  },
+  "Sh2-111": {
+    "canonical": "SH2-111",
+    "aliases": []
+  },
+  "Sh2-112": {
+    "canonical": "SH2-112",
+    "aliases": []
+  },
+  "Sh2-113": {
+    "canonical": "SH2-113",
+    "aliases": []
+  },
+  "Sh2-114": {
+    "canonical": "SH2-114",
+    "aliases": []
+  },
+  "Sh2-115": {
+    "canonical": "SH2-115",
+    "aliases": []
+  },
+  "Sh2-116": {
+    "canonical": "SH2-116",
+    "aliases": []
+  },
+  "Sh2-117": {
+    "canonical": "NGC7000",
+    "aliases": [
+      "C20",
+      "Sh2-117"
+    ]
+  },
+  "Sh2-118": {
+    "canonical": "SH2-118",
+    "aliases": []
+  },
+  "Sh2-119": {
+    "canonical": "SH2-119",
+    "aliases": []
+  },
+  "Sh2-12": {
+    "canonical": "SH2-12",
+    "aliases": []
+  },
+  "Sh2-120": {
+    "canonical": "SH2-120",
+    "aliases": []
+  },
+  "Sh2-121": {
+    "canonical": "SH2-121",
+    "aliases": []
+  },
+  "Sh2-122": {
+    "canonical": "SH2-122",
+    "aliases": []
+  },
+  "Sh2-123": {
+    "canonical": "SH2-123",
+    "aliases": []
+  },
+  "Sh2-124": {
+    "canonical": "SH2-124",
+    "aliases": []
+  },
+  "Sh2-125": {
+    "canonical": "IC5146",
+    "aliases": [
+      "C19",
+      "Sh2-125"
+    ]
+  },
+  "Sh2-126": {
+    "canonical": "SH2-126",
+    "aliases": []
+  },
+  "Sh2-127": {
+    "canonical": "SH2-127",
+    "aliases": []
+  },
+  "Sh2-128": {
+    "canonical": "SH2-128",
+    "aliases": []
+  },
+  "Sh2-129": {
+    "canonical": "SH2-129",
+    "aliases": []
+  },
+  "Sh2-13": {
+    "canonical": "SH2-13",
+    "aliases": []
+  },
+  "Sh2-130": {
+    "canonical": "SH2-130",
+    "aliases": []
+  },
+  "Sh2-131": {
+    "canonical": "SH2-131",
+    "aliases": []
+  },
+  "Sh2-132": {
+    "canonical": "SH2-132",
+    "aliases": []
+  },
+  "Sh2-133": {
+    "canonical": "SH2-133",
+    "aliases": []
+  },
+  "Sh2-134": {
+    "canonical": "SH2-134",
+    "aliases": []
+  },
+  "Sh2-135": {
+    "canonical": "SH2-135",
+    "aliases": []
+  },
+  "Sh2-136": {
+    "canonical": "SH2-136",
+    "aliases": []
+  },
+  "Sh2-137": {
+    "canonical": "SH2-137",
+    "aliases": []
+  },
+  "Sh2-138": {
+    "canonical": "SH2-138",
+    "aliases": []
+  },
+  "Sh2-139": {
+    "canonical": "SH2-139",
+    "aliases": []
+  },
+  "Sh2-14": {
+    "canonical": "SH2-14",
+    "aliases": []
+  },
+  "Sh2-140": {
+    "canonical": "SH2-140",
+    "aliases": []
+  },
+  "Sh2-141": {
+    "canonical": "SH2-141",
+    "aliases": []
+  },
+  "Sh2-142": {
+    "canonical": "NGC7380",
+    "aliases": [
+      "Sh2-142"
+    ]
+  },
+  "Sh2-143": {
+    "canonical": "SH2-143",
+    "aliases": []
+  },
+  "Sh2-144": {
+    "canonical": "SH2-144",
+    "aliases": []
+  },
+  "Sh2-145": {
+    "canonical": "SH2-145",
+    "aliases": []
+  },
+  "Sh2-146": {
+    "canonical": "SH2-146",
+    "aliases": []
+  },
+  "Sh2-147": {
+    "canonical": "SH2-147",
+    "aliases": []
+  },
+  "Sh2-148": {
+    "canonical": "SH2-148",
+    "aliases": []
+  },
+  "Sh2-149": {
+    "canonical": "SH2-149",
+    "aliases": []
+  },
+  "Sh2-15": {
+    "canonical": "SH2-15",
+    "aliases": []
+  },
+  "Sh2-150": {
+    "canonical": "SH2-150",
+    "aliases": []
+  },
+  "Sh2-151": {
+    "canonical": "SH2-151",
+    "aliases": []
+  },
+  "Sh2-152": {
+    "canonical": "SH2-152",
+    "aliases": []
+  },
+  "Sh2-153": {
+    "canonical": "SH2-153",
+    "aliases": []
+  },
+  "Sh2-154": {
+    "canonical": "SH2-154",
+    "aliases": []
+  },
+  "Sh2-155": {
+    "canonical": "SH2-155",
+    "aliases": [
+      "C9"
+    ]
+  },
+  "Sh2-156": {
+    "canonical": "SH2-156",
+    "aliases": []
+  },
+  "Sh2-157": {
+    "canonical": "SH2-157",
+    "aliases": []
+  },
+  "Sh2-158": {
+    "canonical": "NGC7538",
+    "aliases": [
+      "Sh2-158"
+    ]
+  },
+  "Sh2-159": {
+    "canonical": "SH2-159",
+    "aliases": []
+  },
+  "Sh2-16": {
+    "canonical": "SH2-16",
+    "aliases": []
+  },
+  "Sh2-160": {
+    "canonical": "SH2-160",
+    "aliases": []
+  },
+  "Sh2-161": {
+    "canonical": "SH2-161",
+    "aliases": []
+  },
+  "Sh2-162": {
+    "canonical": "NGC7635",
+    "aliases": [
+      "C11",
+      "Sh2-162"
+    ]
+  },
+  "Sh2-163": {
+    "canonical": "SH2-163",
+    "aliases": []
+  },
+  "Sh2-164": {
+    "canonical": "SH2-164",
+    "aliases": []
+  },
+  "Sh2-165": {
+    "canonical": "SH2-165",
+    "aliases": []
+  },
+  "Sh2-166": {
+    "canonical": "SH2-166",
+    "aliases": []
+  },
+  "Sh2-167": {
+    "canonical": "SH2-167",
+    "aliases": []
+  },
+  "Sh2-168": {
+    "canonical": "SH2-168",
+    "aliases": []
+  },
+  "Sh2-169": {
+    "canonical": "SH2-169",
+    "aliases": []
+  },
+  "Sh2-17": {
+    "canonical": "SH2-17",
+    "aliases": []
+  },
+  "Sh2-170": {
+    "canonical": "SH2-170",
+    "aliases": []
+  },
+  "Sh2-171": {
+    "canonical": "NGC7822",
+    "aliases": [
+      "Sh2-171"
+    ]
+  },
+  "Sh2-172": {
+    "canonical": "SH2-172",
+    "aliases": []
+  },
+  "Sh2-173": {
+    "canonical": "SH2-173",
+    "aliases": []
+  },
+  "Sh2-174": {
+    "canonical": "SH2-174",
+    "aliases": []
+  },
+  "Sh2-175": {
+    "canonical": "SH2-175",
+    "aliases": []
+  },
+  "Sh2-176": {
+    "canonical": "SH2-176",
+    "aliases": []
+  },
+  "Sh2-177": {
+    "canonical": "SH2-177",
+    "aliases": []
+  },
+  "Sh2-178": {
+    "canonical": "SH2-178",
+    "aliases": []
+  },
+  "Sh2-179": {
+    "canonical": "SH2-179",
+    "aliases": []
+  },
+  "Sh2-18": {
+    "canonical": "SH2-18",
+    "aliases": []
+  },
+  "Sh2-180": {
+    "canonical": "SH2-180",
+    "aliases": []
+  },
+  "Sh2-181": {
+    "canonical": "SH2-181",
+    "aliases": []
+  },
+  "Sh2-182": {
+    "canonical": "SH2-182",
+    "aliases": []
+  },
+  "Sh2-183": {
+    "canonical": "SH2-183",
+    "aliases": []
+  },
+  "Sh2-184": {
+    "canonical": "NGC281",
+    "aliases": [
+      "Sh2-184"
+    ]
+  },
+  "Sh2-185": {
+    "canonical": "SH2-185",
+    "aliases": []
+  },
+  "Sh2-186": {
+    "canonical": "SH2-186",
+    "aliases": []
+  },
+  "Sh2-187": {
+    "canonical": "SH2-187",
+    "aliases": []
+  },
+  "Sh2-188": {
+    "canonical": "SH2-188",
+    "aliases": []
+  },
+  "Sh2-189": {
+    "canonical": "SH2-189",
+    "aliases": []
+  },
+  "Sh2-19": {
+    "canonical": "SH2-19",
+    "aliases": []
+  },
+  "Sh2-190": {
+    "canonical": "SH2-190",
+    "aliases": []
+  },
+  "Sh2-191": {
+    "canonical": "SH2-191",
+    "aliases": []
+  },
+  "Sh2-192": {
+    "canonical": "SH2-192",
+    "aliases": []
+  },
+  "Sh2-193": {
+    "canonical": "SH2-193",
+    "aliases": []
+  },
+  "Sh2-194": {
+    "canonical": "SH2-194",
+    "aliases": []
+  },
+  "Sh2-195": {
+    "canonical": "SH2-195",
+    "aliases": []
+  },
+  "Sh2-196": {
+    "canonical": "SH2-196",
+    "aliases": []
+  },
+  "Sh2-197": {
+    "canonical": "SH2-197",
+    "aliases": []
+  },
+  "Sh2-198": {
+    "canonical": "SH2-198",
+    "aliases": []
+  },
+  "Sh2-199": {
+    "canonical": "IC1848",
+    "aliases": [
+      "Sh2-199"
+    ]
+  },
+  "Sh2-2": {
+    "canonical": "SH2-2",
+    "aliases": []
+  },
+  "Sh2-20": {
+    "canonical": "SH2-20",
+    "aliases": []
+  },
+  "Sh2-200": {
+    "canonical": "SH2-200",
+    "aliases": []
+  },
+  "Sh2-201": {
+    "canonical": "SH2-201",
+    "aliases": []
+  },
+  "Sh2-202": {
+    "canonical": "SH2-202",
+    "aliases": []
+  },
+  "Sh2-203": {
+    "canonical": "SH2-203",
+    "aliases": []
+  },
+  "Sh2-204": {
+    "canonical": "SH2-204",
+    "aliases": []
+  },
+  "Sh2-205": {
+    "canonical": "SH2-205",
+    "aliases": []
+  },
+  "Sh2-206": {
+    "canonical": "SH2-206",
+    "aliases": []
+  },
+  "Sh2-207": {
+    "canonical": "SH2-207",
+    "aliases": []
+  },
+  "Sh2-208": {
+    "canonical": "SH2-208",
+    "aliases": []
+  },
+  "Sh2-209": {
+    "canonical": "SH2-209",
+    "aliases": []
+  },
+  "Sh2-21": {
+    "canonical": "SH2-21",
+    "aliases": []
+  },
+  "Sh2-210": {
+    "canonical": "SH2-210",
+    "aliases": []
+  },
+  "Sh2-211": {
+    "canonical": "NGC1624",
+    "aliases": [
+      "Sh2-211"
+    ]
+  },
+  "Sh2-212": {
+    "canonical": "SH2-212",
+    "aliases": []
+  },
+  "Sh2-213": {
+    "canonical": "SH2-213",
+    "aliases": []
+  },
+  "Sh2-214": {
+    "canonical": "SH2-214",
+    "aliases": []
+  },
+  "Sh2-215": {
+    "canonical": "SH2-215",
+    "aliases": []
+  },
+  "Sh2-216": {
+    "canonical": "SH2-216",
+    "aliases": []
+  },
+  "Sh2-217": {
+    "canonical": "SH2-217",
+    "aliases": []
+  },
+  "Sh2-218": {
+    "canonical": "SH2-218",
+    "aliases": []
+  },
+  "Sh2-219": {
+    "canonical": "SH2-219",
+    "aliases": []
+  },
+  "Sh2-22": {
+    "canonical": "SH2-22",
+    "aliases": []
+  },
+  "Sh2-220": {
+    "canonical": "NGC1499",
+    "aliases": [
+      "Sh2-220"
+    ]
+  },
+  "Sh2-221": {
+    "canonical": "SH2-221",
+    "aliases": []
+  },
+  "Sh2-222": {
+    "canonical": "NGC1579",
+    "aliases": [
+      "Sh2-222"
+    ]
+  },
+  "Sh2-223": {
+    "canonical": "SH2-223",
+    "aliases": []
+  },
+  "Sh2-224": {
+    "canonical": "SH2-224",
+    "aliases": []
+  },
+  "Sh2-225": {
+    "canonical": "SH2-225",
+    "aliases": []
+  },
+  "Sh2-226": {
+    "canonical": "SH2-226",
+    "aliases": []
+  },
+  "Sh2-227": {
+    "canonical": "SH2-227",
+    "aliases": []
+  },
+  "Sh2-228": {
+    "canonical": "SH2-228",
+    "aliases": []
+  },
+  "Sh2-229": {
+    "canonical": "IC405",
+    "aliases": [
+      "C31",
+      "Sh2-229"
+    ]
+  },
+  "Sh2-23": {
+    "canonical": "SH2-23",
+    "aliases": []
+  },
+  "Sh2-230": {
+    "canonical": "SH2-230",
+    "aliases": []
+  },
+  "Sh2-231": {
+    "canonical": "SH2-231",
+    "aliases": []
+  },
+  "Sh2-232": {
+    "canonical": "SH2-232",
+    "aliases": []
+  },
+  "Sh2-233": {
+    "canonical": "SH2-233",
+    "aliases": []
+  },
+  "Sh2-234": {
+    "canonical": "SH2-234",
+    "aliases": []
+  },
+  "Sh2-235": {
+    "canonical": "SH2-235",
+    "aliases": []
+  },
+  "Sh2-236": {
+    "canonical": "SH2-236",
+    "aliases": []
+  },
+  "Sh2-237": {
+    "canonical": "NGC1931",
+    "aliases": [
+      "Sh2-237"
+    ]
+  },
+  "Sh2-238": {
+    "canonical": "NGC1555",
+    "aliases": [
+      "Sh2-238"
+    ]
+  },
+  "Sh2-239": {
+    "canonical": "SH2-239",
+    "aliases": []
+  },
+  "Sh2-24": {
+    "canonical": "SH2-24",
+    "aliases": []
+  },
+  "Sh2-240": {
+    "canonical": "SH2-240",
+    "aliases": []
+  },
+  "Sh2-241": {
+    "canonical": "SH2-241",
+    "aliases": []
+  },
+  "Sh2-242": {
+    "canonical": "SH2-242",
+    "aliases": []
+  },
+  "Sh2-243": {
+    "canonical": "SH2-243",
+    "aliases": []
+  },
+  "Sh2-244": {
+    "canonical": "M1",
+    "aliases": [
+      "NGC1952",
+      "Sh2-244"
+    ]
+  },
+  "Sh2-245": {
+    "canonical": "SH2-245",
+    "aliases": []
+  },
+  "Sh2-246": {
+    "canonical": "SH2-246",
+    "aliases": []
+  },
+  "Sh2-247": {
+    "canonical": "SH2-247",
+    "aliases": []
+  },
+  "Sh2-248": {
+    "canonical": "IC443",
+    "aliases": [
+      "Sh2-248"
+    ]
+  },
+  "Sh2-249": {
+    "canonical": "SH2-249",
+    "aliases": []
+  },
+  "Sh2-25": {
+    "canonical": "M8",
+    "aliases": [
+      "NGC6523",
+      "Sh2-25"
+    ]
+  },
+  "Sh2-250": {
+    "canonical": "SH2-250",
+    "aliases": []
+  },
+  "Sh2-251": {
+    "canonical": "SH2-251",
+    "aliases": []
+  },
+  "Sh2-252": {
+    "canonical": "SH2-252",
+    "aliases": []
+  },
+  "Sh2-253": {
+    "canonical": "SH2-253",
+    "aliases": []
+  },
+  "Sh2-254": {
+    "canonical": "SH2-254",
+    "aliases": []
+  },
+  "Sh2-255": {
+    "canonical": "SH2-255",
+    "aliases": []
+  },
+  "Sh2-256": {
+    "canonical": "SH2-256",
+    "aliases": []
+  },
+  "Sh2-257": {
+    "canonical": "SH2-257",
+    "aliases": []
+  },
+  "Sh2-258": {
+    "canonical": "SH2-258",
+    "aliases": []
+  },
+  "Sh2-259": {
+    "canonical": "SH2-259",
+    "aliases": []
+  },
+  "Sh2-26": {
+    "canonical": "SH2-26",
+    "aliases": []
+  },
+  "Sh2-260": {
+    "canonical": "SH2-260",
+    "aliases": []
+  },
+  "Sh2-261": {
+    "canonical": "SH2-261",
+    "aliases": []
+  },
+  "Sh2-262": {
+    "canonical": "SH2-262",
+    "aliases": []
+  },
+  "Sh2-263": {
+    "canonical": "SH2-263",
+    "aliases": []
+  },
+  "Sh2-264": {
+    "canonical": "SH2-264",
+    "aliases": []
+  },
+  "Sh2-265": {
+    "canonical": "SH2-265",
+    "aliases": []
+  },
+  "Sh2-266": {
+    "canonical": "SH2-266",
+    "aliases": []
+  },
+  "Sh2-267": {
+    "canonical": "SH2-267",
+    "aliases": []
+  },
+  "Sh2-268": {
+    "canonical": "SH2-268",
+    "aliases": []
+  },
+  "Sh2-269": {
+    "canonical": "SH2-269",
+    "aliases": []
+  },
+  "Sh2-27": {
+    "canonical": "SH2-27",
+    "aliases": []
+  },
+  "Sh2-270": {
+    "canonical": "SH2-270",
+    "aliases": []
+  },
+  "Sh2-271": {
+    "canonical": "SH2-271",
+    "aliases": []
+  },
+  "Sh2-272": {
+    "canonical": "SH2-272",
+    "aliases": []
+  },
+  "Sh2-273": {
+    "canonical": "NGC2264",
+    "aliases": [
+      "Sh2-273"
+    ]
+  },
+  "Sh2-274": {
+    "canonical": "SH2-274",
+    "aliases": []
+  },
+  "Sh2-275": {
+    "canonical": "SH2-275",
+    "aliases": []
+  },
+  "Sh2-276": {
+    "canonical": "SH2-276",
+    "aliases": []
+  },
+  "Sh2-277": {
+    "canonical": "NGC2024",
+    "aliases": [
+      "Sh2-277"
+    ]
+  },
+  "Sh2-278": {
+    "canonical": "SH2-278",
+    "aliases": []
+  },
+  "Sh2-279": {
+    "canonical": "NGC1973",
+    "aliases": [
+      "Sh2-279"
+    ]
+  },
+  "Sh2-28": {
+    "canonical": "SH2-28",
+    "aliases": []
+  },
+  "Sh2-280": {
+    "canonical": "SH2-280",
+    "aliases": []
+  },
+  "Sh2-281": {
+    "canonical": "M42",
+    "aliases": [
+      "NGC1976",
+      "Sh2-281"
+    ]
+  },
+  "Sh2-282": {
+    "canonical": "SH2-282",
+    "aliases": []
+  },
+  "Sh2-283": {
+    "canonical": "SH2-283",
+    "aliases": []
+  },
+  "Sh2-284": {
+    "canonical": "SH2-284",
+    "aliases": []
+  },
+  "Sh2-285": {
+    "canonical": "SH2-285",
+    "aliases": []
+  },
+  "Sh2-286": {
+    "canonical": "SH2-286",
+    "aliases": []
+  },
+  "Sh2-287": {
+    "canonical": "SH2-287",
+    "aliases": []
+  },
+  "Sh2-288": {
+    "canonical": "SH2-288",
+    "aliases": []
+  },
+  "Sh2-289": {
+    "canonical": "SH2-289",
+    "aliases": []
+  },
+  "Sh2-29": {
+    "canonical": "NGC6559",
+    "aliases": [
+      "Sh2-29"
+    ]
+  },
+  "Sh2-290": {
+    "canonical": "SH2-290",
+    "aliases": []
+  },
+  "Sh2-291": {
+    "canonical": "SH2-291",
+    "aliases": []
+  },
+  "Sh2-292": {
+    "canonical": "SH2-292",
+    "aliases": []
+  },
+  "Sh2-293": {
+    "canonical": "SH2-293",
+    "aliases": []
+  },
+  "Sh2-294": {
+    "canonical": "SH2-294",
+    "aliases": []
+  },
+  "Sh2-295": {
+    "canonical": "SH2-295",
+    "aliases": []
+  },
+  "Sh2-296": {
+    "canonical": "SH2-296",
+    "aliases": []
+  },
+  "Sh2-297": {
+    "canonical": "SH2-297",
+    "aliases": []
+  },
+  "Sh2-298": {
+    "canonical": "NGC2359",
+    "aliases": [
+      "Sh2-298"
+    ]
+  },
+  "Sh2-299": {
+    "canonical": "SH2-299",
+    "aliases": []
+  },
+  "Sh2-3": {
+    "canonical": "SH2-3",
+    "aliases": []
+  },
+  "Sh2-30": {
+    "canonical": "M20",
+    "aliases": [
+      "NGC6514",
+      "Sh2-30"
+    ]
+  },
+  "Sh2-300": {
+    "canonical": "SH2-300",
+    "aliases": []
+  },
+  "Sh2-301": {
+    "canonical": "SH2-301",
+    "aliases": []
+  },
+  "Sh2-302": {
+    "canonical": "SH2-302",
+    "aliases": []
+  },
+  "Sh2-303": {
+    "canonical": "SH2-303",
+    "aliases": []
+  },
+  "Sh2-304": {
+    "canonical": "SH2-304",
+    "aliases": []
+  },
+  "Sh2-305": {
+    "canonical": "SH2-305",
+    "aliases": []
+  },
+  "Sh2-306": {
+    "canonical": "SH2-306",
+    "aliases": []
+  },
+  "Sh2-307": {
+    "canonical": "SH2-307",
+    "aliases": []
+  },
+  "Sh2-308": {
+    "canonical": "SH2-308",
+    "aliases": []
+  },
+  "Sh2-309": {
+    "canonical": "SH2-309",
+    "aliases": []
+  },
+  "Sh2-31": {
+    "canonical": "SH2-31",
+    "aliases": []
+  },
+  "Sh2-310": {
+    "canonical": "SH2-310",
+    "aliases": []
+  },
+  "Sh2-311": {
+    "canonical": "NGC2467",
+    "aliases": [
+      "Sh2-311"
+    ]
+  },
+  "Sh2-312": {
+    "canonical": "SH2-312",
+    "aliases": []
+  },
+  "Sh2-313": {
+    "canonical": "SH2-313",
+    "aliases": []
+  },
+  "Sh2-32": {
+    "canonical": "SH2-32",
+    "aliases": []
+  },
+  "Sh2-33": {
+    "canonical": "SH2-33",
+    "aliases": []
+  },
+  "Sh2-34": {
+    "canonical": "SH2-34",
+    "aliases": []
+  },
+  "Sh2-35": {
+    "canonical": "SH2-35",
+    "aliases": []
+  },
+  "Sh2-36": {
+    "canonical": "SH2-36",
+    "aliases": []
+  },
+  "Sh2-37": {
+    "canonical": "IC1283",
+    "aliases": [
+      "Sh2-37"
+    ]
+  },
+  "Sh2-38": {
+    "canonical": "SH2-38",
+    "aliases": []
+  },
+  "Sh2-39": {
+    "canonical": "SH2-39",
+    "aliases": []
+  },
+  "Sh2-4": {
+    "canonical": "SH2-4",
+    "aliases": []
+  },
+  "Sh2-40": {
+    "canonical": "SH2-40",
+    "aliases": []
+  },
+  "Sh2-41": {
+    "canonical": "SH2-41",
+    "aliases": []
+  },
+  "Sh2-42": {
+    "canonical": "SH2-42",
+    "aliases": []
+  },
+  "Sh2-43": {
+    "canonical": "SH2-43",
+    "aliases": []
+  },
+  "Sh2-44": {
+    "canonical": "SH2-44",
+    "aliases": []
+  },
+  "Sh2-45": {
+    "canonical": "M17",
+    "aliases": [
+      "NGC6618",
+      "Sh2-45"
+    ]
+  },
+  "Sh2-46": {
+    "canonical": "SH2-46",
+    "aliases": []
+  },
+  "Sh2-47": {
+    "canonical": "SH2-47",
+    "aliases": []
+  },
+  "Sh2-48": {
+    "canonical": "SH2-48",
+    "aliases": []
+  },
+  "Sh2-49": {
+    "canonical": "M16",
+    "aliases": [
+      "NGC6611",
+      "Sh2-49"
+    ]
+  },
+  "Sh2-5": {
+    "canonical": "SH2-5",
+    "aliases": []
+  },
+  "Sh2-50": {
+    "canonical": "SH2-50",
+    "aliases": []
+  },
+  "Sh2-51": {
+    "canonical": "SH2-51",
+    "aliases": []
+  },
+  "Sh2-52": {
+    "canonical": "SH2-52",
+    "aliases": []
+  },
+  "Sh2-53": {
+    "canonical": "SH2-53",
+    "aliases": []
+  },
+  "Sh2-54": {
+    "canonical": "SH2-54",
+    "aliases": []
+  },
+  "Sh2-55": {
+    "canonical": "SH2-55",
+    "aliases": []
+  },
+  "Sh2-56": {
+    "canonical": "SH2-56",
+    "aliases": []
+  },
+  "Sh2-57": {
+    "canonical": "SH2-57",
+    "aliases": []
+  },
+  "Sh2-58": {
+    "canonical": "SH2-58",
+    "aliases": []
+  },
+  "Sh2-59": {
+    "canonical": "SH2-59",
+    "aliases": []
+  },
+  "Sh2-6": {
+    "canonical": "NGC6302",
+    "aliases": [
+      "C69",
+      "Sh2-6"
+    ]
+  },
+  "Sh2-60": {
+    "canonical": "SH2-60",
+    "aliases": []
+  },
+  "Sh2-61": {
+    "canonical": "SH2-61",
+    "aliases": []
+  },
+  "Sh2-62": {
+    "canonical": "SH2-62",
+    "aliases": []
+  },
+  "Sh2-63": {
+    "canonical": "SH2-63",
+    "aliases": []
+  },
+  "Sh2-64": {
+    "canonical": "SH2-64",
+    "aliases": []
+  },
+  "Sh2-65": {
+    "canonical": "SH2-65",
+    "aliases": []
+  },
+  "Sh2-66": {
+    "canonical": "SH2-66",
+    "aliases": []
+  },
+  "Sh2-67": {
+    "canonical": "SH2-67",
+    "aliases": []
+  },
+  "Sh2-68": {
+    "canonical": "SH2-68",
+    "aliases": []
+  },
+  "Sh2-69": {
+    "canonical": "SH2-69",
+    "aliases": []
+  },
+  "Sh2-7": {
+    "canonical": "SH2-7",
+    "aliases": []
+  },
+  "Sh2-70": {
+    "canonical": "SH2-70",
+    "aliases": []
+  },
+  "Sh2-71": {
+    "canonical": "SH2-71",
+    "aliases": []
+  },
+  "Sh2-72": {
+    "canonical": "SH2-72",
+    "aliases": []
+  },
+  "Sh2-73": {
+    "canonical": "SH2-73",
+    "aliases": []
+  },
+  "Sh2-74": {
+    "canonical": "SH2-74",
+    "aliases": []
+  },
+  "Sh2-75": {
+    "canonical": "SH2-75",
+    "aliases": []
+  },
+  "Sh2-76": {
+    "canonical": "SH2-76",
+    "aliases": []
+  },
+  "Sh2-77": {
+    "canonical": "SH2-77",
+    "aliases": []
+  },
+  "Sh2-78": {
+    "canonical": "SH2-78",
+    "aliases": []
+  },
+  "Sh2-79": {
+    "canonical": "SH2-79",
+    "aliases": []
+  },
+  "Sh2-8": {
+    "canonical": "NGC6334",
+    "aliases": [
+      "Sh2-8"
+    ]
+  },
+  "Sh2-80": {
+    "canonical": "SH2-80",
+    "aliases": []
+  },
+  "Sh2-81": {
+    "canonical": "SH2-81",
+    "aliases": []
+  },
+  "Sh2-82": {
+    "canonical": "SH2-82",
+    "aliases": []
+  },
+  "Sh2-83": {
+    "canonical": "SH2-83",
+    "aliases": []
+  },
+  "Sh2-84": {
+    "canonical": "SH2-84",
+    "aliases": []
+  },
+  "Sh2-85": {
+    "canonical": "SH2-85",
+    "aliases": []
+  },
+  "Sh2-86": {
+    "canonical": "NGC6820",
+    "aliases": [
+      "Sh2-86"
+    ]
+  },
+  "Sh2-87": {
+    "canonical": "SH2-87",
+    "aliases": []
+  },
+  "Sh2-88": {
+    "canonical": "SH2-88",
+    "aliases": []
+  },
+  "Sh2-89": {
+    "canonical": "SH2-89",
+    "aliases": []
+  },
+  "Sh2-9": {
+    "canonical": "SH2-9",
+    "aliases": []
+  },
+  "Sh2-90": {
+    "canonical": "SH2-90",
+    "aliases": []
+  },
+  "Sh2-91": {
+    "canonical": "SH2-91",
+    "aliases": []
+  },
+  "Sh2-92": {
+    "canonical": "SH2-92",
+    "aliases": []
+  },
+  "Sh2-93": {
+    "canonical": "SH2-93",
+    "aliases": []
+  },
+  "Sh2-94": {
+    "canonical": "SH2-94",
+    "aliases": []
+  },
+  "Sh2-95": {
+    "canonical": "SH2-95",
+    "aliases": []
+  },
+  "Sh2-96": {
+    "canonical": "SH2-96",
+    "aliases": []
+  },
+  "Sh2-97": {
+    "canonical": "SH2-97",
+    "aliases": []
+  },
+  "Sh2-98": {
+    "canonical": "SH2-98",
+    "aliases": []
+  },
+  "Sh2-99": {
+    "canonical": "SH2-99",
+    "aliases": []
+  },
+  "Sharpless 155": {
+    "canonical": "SH2-155",
+    "aliases": [
+      "C9"
+    ]
+  },
+  "ngc 224": {
+    "canonical": "M31",
+    "aliases": [
+      "NGC224"
+    ]
+  }
+}

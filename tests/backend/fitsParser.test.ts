@@ -224,3 +224,44 @@ describe('scoreSubFrame', () => {
     expect(result.grade).toBe('excellent');
   });
 });
+
+describe('parseFitsHeader — truncated input must terminate', () => {
+  // The inner card loop bailed on a short tail WITHOUT advancing `offset`,
+  // while the outer `while (offset < buffer.length)` stayed true — so any
+  // header with no END card whose length is not a multiple of 80 spun forever
+  // and hung the request thread. A partially-copied file off a telescope share
+  // reaches this through POST /api/satellite/detect.
+  //
+  // Every case here would hang the process on the old code; the assertions
+  // matter less than the fact that the call returns at all.
+
+  it('returns on a buffer whose length is not a multiple of 80 and has no END', () => {
+    const buffer = Buffer.from('SIMPLE  =                    T'.padEnd(80) + 'XX', 'ascii');
+    const header = parseFitsHeader(buffer);
+    expect(header.values.SIMPLE).toBe(true);
+  });
+
+  it('returns on a buffer shorter than a single card', () => {
+    expect(parseFitsHeader(Buffer.from('SIMPLE', 'ascii')).cards).toEqual([]);
+  });
+
+  it('returns on an empty buffer', () => {
+    expect(parseFitsHeader(Buffer.alloc(0)).cards).toEqual([]);
+  });
+
+  it('returns on a full 2880-byte block with no END and a ragged tail', () => {
+    const block = 'SIMPLE  =                    T'.padEnd(80).repeat(36);
+    const header = parseFitsHeader(Buffer.from(block + 'ragged', 'ascii'));
+    expect(header.values.SIMPLE).toBe(true);
+  });
+
+  it('still parses a well-formed header to its END card', () => {
+    const cards = [
+      'SIMPLE  =                    T'.padEnd(80),
+      'NAXIS1  =                 1920'.padEnd(80),
+      'END'.padEnd(80),
+    ].join('');
+    const header = parseFitsHeader(Buffer.from(cards.padEnd(2880), 'ascii'));
+    expect(header.values.NAXIS1).toBe(1920);
+  });
+});

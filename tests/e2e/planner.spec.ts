@@ -63,8 +63,42 @@ test.describe('Planner Page', () => {
   });
 
   test('shows the moon summary and sky-map control', async ({ page }) => {
-    await expect(page.getByRole('button', { name: /set visible sky/i })).toBeVisible();
-    await expect(page.getByText(/moon 42%/i)).toBeVisible();
+    // The illumination no longer repeats the word "Moon": the block is already
+    // labelled, and the line has to leave room for the rise/set times, which
+    // were being truncated mid-number when everything shared one line.
+    await expect(page.getByText('Moon', { exact: true })).toBeVisible();
+    await expect(page.getByText(/42% lit/i)).toBeVisible();
+    // The visible-sky editor sits with the night picker, not on the night
+    // panel: it is a property of the observing site, not of tonight.
+    await expect(page.getByRole('button', { name: /visible sky/i })).toBeVisible();
+  });
+
+  // The planner reads the same forecast the Sky Forecast page does, and shows
+  // the full hour-by-hour picture in a popup rather than sending you to
+  // another page for it.
+  test.describe('night weather popup', () => {
+    test('the rating opens the full forecast for the night', async ({ page }) => {
+      await page.getByRole('button', { name: /open the hour-by-hour forecast/i }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByText(/dark hours/i)).toBeVisible();
+      await expect(dialog.getByText(/best window/i)).toBeVisible();
+    });
+
+    test('an hour on the weather gutter opens its breakdown', async ({ page }) => {
+      await page.locator('button[aria-label^="Forecast for"]').nth(4).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      // Landing on an hour means its score breakdown is already open.
+      await expect(dialog.getByText(/transparency/i).first()).toBeVisible();
+    });
+
+    test('the popup closes again', async ({ page }) => {
+      await page.getByRole('button', { name: /open the hour-by-hour forecast/i }).click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.getByRole('button', { name: /close weather/i }).click();
+      await expect(page.getByRole('dialog')).not.toBeVisible();
+    });
   });
 
   // The feature under test: an object that never clears the horizon tonight is

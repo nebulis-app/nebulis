@@ -1,4 +1,5 @@
 import { formatBytes } from '../../lib/utils';
+import { formatDuration } from '../../lib/captureMetrics';
 import type { SessionFile, ProcessedImage } from '../../types';
 
 /**
@@ -38,6 +39,13 @@ export interface ItemMeta {
   detail: string;
 }
 
+/** "20.0s" as a number of seconds, or null when it is not in that shape. */
+function exposureSeconds(exposure: string): number | null {
+  const m = /^([\d.]+)\s*s$/i.exec(exposure.trim());
+  const v = m ? Number.parseFloat(m[1]) : NaN;
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
 export function sessionFileMeta(file: SessionFile, objectName?: string): ItemMeta {
   const kind = STACKED_LABEL[file.fileType];
 
@@ -45,10 +53,23 @@ export function sessionFileMeta(file: SessionFile, objectName?: string): ItemMet
   const titleParts: string[] = [];
   if (objectName) titleParts.push(objectName);
   if (kind) titleParts.push(kind);
-  if (file.frameCount) titleParts.push(`${file.frameCount} subs`);
 
   const facts: string[] = [];
-  if (file.exposure) facts.push(file.frameCount ? `× ${file.exposure}` : file.exposure);
+  // The count and the exposure belong to each other: "96 × 20.0s" is how the
+  // capture is described out loud. Splitting them across the two lines left the
+  // second one opening on a bare "× 20.0s", a multiplication with nothing to
+  // multiply. The product is spelled out too, since total integration is the
+  // number that actually decides whether a stack is worth keeping and nothing
+  // in the viewer was working it out.
+  if (file.frameCount && file.exposure) {
+    const secs = exposureSeconds(file.exposure);
+    facts.push(`${file.frameCount} × ${file.exposure}`);
+    if (secs) facts.push(`${formatDuration(file.frameCount * secs)} total`);
+  } else if (file.frameCount) {
+    facts.push(`${file.frameCount} subs`);
+  } else if (file.exposure) {
+    facts.push(file.exposure);
+  }
   if (file.filter) facts.push(file.filter);
   const when = formatTimestamp(file.timestamp) ?? file.date;
   if (when) facts.push(when);

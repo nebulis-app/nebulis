@@ -13,11 +13,15 @@ export function SkySection({
   form: Partial<SettingsType>;
   setForm: React.Dispatch<React.SetStateAction<Partial<SettingsType>>>;
 }) {
+  // No wrapping space-y here: `Sec` (see SettingsUI.tsx) already carries its
+  // own `mt-10 first:mt-0`, so a Fragment lets it space itself against
+  // whichever Sec — from any of these three sub-components — actually lands
+  // first in the DOM, the same way GeneralSection and LibrarySection do.
   return (
-    <div className="space-y-10">
+    <>
       <SitesSection isDark={isDark} />
       <CatalogSection isDark={isDark} form={form} setForm={setForm} />
       <DataSourcesSection isDark={isDark} />
-    </div>
+    </>
   );
 }

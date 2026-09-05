@@ -9,17 +9,28 @@ test.describe('Observations Calendar', () => {
   });
 
   test('shows page heading', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /observation/i })).toBeVisible();
+    // Exact: the page also carries a "Recent Observations" section heading, so
+    // a loose /observation/i match is a strict-mode violation the moment that
+    // section has data to render.
+    await expect(page.getByRole('heading', { name: 'Observations', exact: true })).toBeVisible();
   });
 
-  test('renders observations from API', async ({ page }) => {
-    await expect(page.getByText('Orion Nebula')).toBeVisible();
-    await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
+  // The calendar view is scoped to one month, and it opens on the month of the
+  // most recent night (March 2024 in the fixture) rather than on today. So the
+  // grid shows M42 and not M31, which is a month earlier. The whole record is
+  // the List view's job, asserted below.
+  test('renders the landing month from the API', async ({ page }) => {
+    await expect(page.getByRole('link', { name: /Orion Nebula/ })).toBeVisible();
   });
 
-  test('shows observation dates', async ({ page }) => {
-    // Dates appear either on calendar cells or in the list
-    await expect(page.getByText(/2024/)).toBeVisible();
+  test('list view renders every observation from the API', async ({ page }) => {
+    await page.getByRole('button', { name: 'List' }).click();
+    await expect(page.getByText('Orion Nebula').first()).toBeVisible();
+    await expect(page.getByText('Andromeda Galaxy').first()).toBeVisible();
+  });
+
+  test('shows the month it is displaying', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: 'March 2024' })).toBeVisible();
   });
 
   test('shows constellation labels', async ({ page }) => {
@@ -166,6 +177,24 @@ test.describe('Observation Detail', () => {
     ).toBeVisible();
   });
 
+  test('the file-location button shows the session folder on disk', async ({ page }) => {
+    await page.route('**/api/library/objects/*/location*', r =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, data: {
+          storage: 'local',
+          libraryRoot: '/srv/nebulis/library',
+          object: { relPath: 'M42', path: '/srv/nebulis/library/M42', exists: true },
+          session: { relPath: 'M42/2024-03-15', path: '/srv/nebulis/library/M42/2024-03-15', exists: true },
+          variants: [],
+        } }),
+      }));
+    await page.getByRole('button', { name: /file location/i }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('/srv/nebulis/library/M42/2024-03-15')).toBeVisible();
+  });
+
 });
 
 // Regression test for the hero-image layout-shift fix: it previously had no
@@ -173,9 +202,13 @@ test.describe('Observation Detail', () => {
 // ahead of time), so the hero — and everything below it: tabs, file grid —
 // jumped from ~0 height to full height the instant the image finished
 // loading. That jump landing while someone was mid-scroll read as the page
-// jittering. Fixed by a fixed-size loading placeholder that the real
-// (opacity-toggled) image replaces once it fires `onLoad`, mirroring the
-// pattern FitsPreview already used for FITS heroes.
+// jittering. Fixed by a fixed-size loading placeholder that the real image
+// replaces once it fires `onLoad`, mirroring the pattern FitsPreview already
+// used for FITS heroes. The swap is now a hidden/flex toggle on the image's
+// own wrapper (not an opacity fade on the `<img>` itself): the wrapper has to
+// be absent from layout while loading so the column can shrink-wrap to the
+// picture's real aspect ratio once it's known, which an opacity-0-but-still-
+// laid-out image would have defeated.
 //
 // Separate describe block (own beforeEach, no shared `Observation Detail`
 // setup) so the hero's image route can be mocked before the page's single
@@ -221,7 +254,9 @@ test.describe('Observation Detail hero image', () => {
 
     const hero = page.getByAltText(/Orion Nebula/);
     await expect(hero).toBeVisible();
-    await expect(hero).toHaveClass(/opacity-100/);
-    await expect(hero).not.toHaveClass(/opacity-0/);
+    // The wrapper that was hidden while loading must have swapped to shown:
+    // a stuck loading placeholder would leave the spinner on screen forever
+    // instead of ever revealing the image.
+    await expect(page.locator('.animate-spin')).toHaveCount(0);
   });
 });

@@ -303,10 +303,18 @@ export async function ensureNetworkLibraryConnected(cfg: NetworkLibraryConfig): 
 
 // ─── Test connection (surfaces the real error, for the Settings UI) ───────
 
+/** execFile rejects with an Error carrying `stdout`/`stderr`, which the base
+ *  Error type doesn't declare. Prove the property is there and is a string
+ *  rather than asserting a shape onto the error: a rejection from anywhere
+ *  else (a plain `throw new Error`) legitimately has neither. */
+function stderrOf(err: Error): string {
+  if ('stderr' in err && typeof err.stderr === 'string') return err.stderr;
+  return '';
+}
+
 function extractReason(err: unknown): string {
   if (!(err instanceof Error)) return 'Unknown error.';
-  const stderr = (err as { stderr?: string }).stderr ?? '';
-  const msg = `${err.message} ${stderr}`;
+  const msg = `${err.message} ${stderrOf(err)}`;
   if (/connection refused/i.test(msg)) return 'Connection refused.';
   if (/timed out|timeout/i.test(msg)) return 'Connection timed out.';
   if (/auth|credentials|password|logon|denied|access is denied/i.test(msg)) {

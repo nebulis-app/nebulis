@@ -67,7 +67,7 @@ export function validateLocateInput(anchorName: string, samples: LocateSample[])
 
 function readdirSafe(dir: string): Promise<Dirent[]> {
   return withTimeout(
-    fsp.readdir(dir, { withFileTypes: true }).catch(() => [] as Dirent[]),
+    fsp.readdir(dir, { withFileTypes: true }).catch((): Dirent[] => []),
     FS_CALL_TIMEOUT_MS,
     [],
   );

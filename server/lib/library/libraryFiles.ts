@@ -48,6 +48,7 @@ import {
 } from '../telescopeFiles.js';
 import { isDwarfMasterStack } from './importFilter.js';
 import { isReservedLibraryDir } from './archiveFolders.js';
+import { isRecord, parseJsonRecord } from '../typeGuards.js';
 
 /** What a file *is*, decided once at import instead of re-guessed per read.
  *
@@ -177,19 +178,19 @@ const insertFileStmt = db.prepare(
      originalName = COALESCE(libraryFiles.originalName, excluded.originalName)`,
 );
 
-/** Record (or refresh) one file. Keyed on relPath, so re-importing the same
- *  file updates its row rather than duplicating it. */
-export function recordLibraryFile(input: RecordFileInput): void {
+function insertOneFileRow(input: RecordFileInput): void {
   const relPath = input.sessionFolder
     ? `${input.folderName}/${input.sessionFolder}/${input.fileName}`
     : `${input.folderName}/${input.fileName}`;
-  const parsed = parseFilename(input.fileName);
-  // Fall back to whatever the filename yields so a caller that has no better
-  // information still produces a row at least as good as the old derivation.
-  const captureDate = input.captureDate !== undefined ? input.captureDate : (parsed.date ?? null);
+  // Only parse the filename when the caller left a date field undefined — the
+  // import paths pass both captureDate and captureTime explicitly, so the
+  // parse (once per file, thousands per run) was pure waste there.
+  const needsParse = input.captureDate === undefined || input.captureTime === undefined;
+  const parsed = needsParse ? parseFilename(input.fileName) : null;
+  const captureDate = input.captureDate !== undefined ? input.captureDate : (parsed?.date ?? null);
   const captureTime = input.captureTime !== undefined
     ? input.captureTime
-    : (parsed.timestamp ? parsed.timestamp.slice(-6) : null);
+    : (parsed?.timestamp ? parsed.timestamp.slice(-6) : null);
 
   insertFileStmt.run(
     input.objectId,
@@ -205,6 +206,29 @@ export function recordLibraryFile(input: RecordFileInput): void {
     input.sourcePath ?? null,
     new Date().toISOString(),
   );
+}
+
+const recordFilesTxn = db.transaction((inputs: RecordFileInput[]) => {
+  for (const input of inputs) insertOneFileRow(input);
+});
+
+/**
+ * Record (or refresh) a batch of files in one transaction. Keyed on relPath, so
+ * re-importing the same file updates its row rather than duplicating it.
+ *
+ * `better-sqlite3` in WAL mode commits (and fsyncs the WAL) once per statement
+ * run outside an explicit transaction, so the old per-file `recordLibraryFile`
+ * meant ~2,000 fsync round-trips for a 2,000-file import. The import paths now
+ * accumulate rows per object and flush them here once.
+ */
+export function recordLibraryFiles(inputs: RecordFileInput[]): void {
+  if (inputs.length === 0) return;
+  recordFilesTxn(inputs);
+}
+
+/** Single-file convenience — the backfill and one-off callers. */
+export function recordLibraryFile(input: RecordFileInput): void {
+  insertOneFileRow(input);
 }
 
 const selectByObjectStmt = db.prepare<[string], LibraryFileRow>(
@@ -231,6 +255,70 @@ export function getLibraryFileRow(relPath: string): LibraryFileRow | undefined {
  *  backfill ran, or one whose files were dropped in by hand). */
 export function hasRecordedFiles(objectId: string): boolean {
   return (countByObjectStmt.get(objectId)?.n ?? 0) > 0;
+}
+
+/** Cheap indexed COUNT(*), used as a change proxy to skip re-deriving
+ *  expensive per-file aggregates (see dominantTelescopeByDate above and
+ *  reconcileSessionTelescopesFromFiles in observations.ts) when nothing
+ *  about the object's files has changed since the last read. */
+export function countLibraryFilesForObject(objectId: string): number {
+  return countByObjectStmt.get(objectId)?.n ?? 0;
+}
+
+/**
+ * The telescope that actually captured this night, derived from the per-file
+ * attribution recorded at import.
+ *
+ * `librarySessions.telescopeId` is a single value written first-write-wins, so
+ * it goes stale whenever a night's files come from a different scope than the
+ * one that first created the row (a legacy mis-stamp, a NULL row later claimed
+ * by a boot backfill, or a night that genuinely mixes two telescopes). The
+ * files themselves are ground truth: each `libraryFiles` row carries the id of
+ * the telescope whose import wrote it.
+ *
+ * Returns the id with the most files for the night, or null when no file in the
+ * night carries an id (nothing imported through the per-file pipeline yet).
+ */
+export function dominantTelescopeForSession(objectId: string, date: string): string | null {
+  return dominantTelescopeByDate(objectId).get(date) ?? null;
+}
+
+/** Every night of an object's per-file telescope attribution only changes
+ *  when files are added or removed for that object, so this is memoized per
+ *  objectId keyed by its current row count rather than rescanned on every
+ *  observation-detail or session-list read. A file's `telescopeId` is set
+ *  once at import and never mutated in place, so the count is a reliable
+ *  proxy for "has this object's attribution data changed". */
+const dominantTelescopeCache = new Map<string, { count: number; map: Map<string, string> }>();
+
+/** Same as {@link dominantTelescopeForSession} but for every night of an
+ *  object in a single pass over its file rows — for list views that resolve
+ *  many sessions at once. */
+export function dominantTelescopeByDate(objectId: string): Map<string, string> {
+  const count = countByObjectStmt.get(objectId)?.n ?? 0;
+  const cached = dominantTelescopeCache.get(objectId);
+  if (cached && cached.count === count) return cached.map;
+
+  const counts = new Map<string, Map<string, number>>();
+  for (const row of selectByObjectStmt.all(objectId)) {
+    if (!row.telescopeId) continue;
+    const date = sessionDateForRow(row);
+    if (!date) continue;
+    let perDate = counts.get(date);
+    if (!perDate) { perDate = new Map(); counts.set(date, perDate); }
+    perDate.set(row.telescopeId, (perDate.get(row.telescopeId) ?? 0) + 1);
+  }
+  const out = new Map<string, string>();
+  for (const [date, perDate] of counts) {
+    let winner: string | null = null;
+    let best = 0;
+    for (const [id, n] of perDate) {
+      if (n > best) { winner = id; best = n; }
+    }
+    if (winner) out.set(date, winner);
+  }
+  dominantTelescopeCache.set(objectId, { count, map: out });
+  return out;
 }
 
 const deleteByRelPathStmt = db.prepare('DELETE FROM libraryFiles WHERE relPath = ?');
@@ -365,6 +453,86 @@ interface ManifestShape {
   files: Array<Omit<LibraryFileRow, 'id' | 'objectId'>>;
 }
 
+type ManifestFile = ManifestShape['files'][number];
+
+/** Every role, as a lookup. `satisfies Record<LibraryFileRole, true>` is what
+ *  makes this safe to guard with: adding a role to the union without adding it
+ *  here is a compile error, so the guard below can never silently start
+ *  rejecting a valid role. */
+const LIBRARY_FILE_ROLES = {
+  stacked: true,
+  sub: true,
+  thumbnail: true,
+  preview: true,
+  video: true,
+  metadata: true,
+  unknown: true,
+} satisfies Record<LibraryFileRole, true>;
+
+function isLibraryFileRole(value: unknown): value is LibraryFileRole {
+  return typeof value === 'string' && Object.hasOwn(LIBRARY_FILE_ROLES, value);
+}
+
+/** A nullable TEXT-ish field: anything that isn't a string reads as absent. */
+function optionalString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+/**
+ * Validate one manifest entry field by field.
+ *
+ * A manifest is a file sitting in the library folder — on a USB drive or a
+ * network share, editable by hand, and possibly written by an older version of
+ * this app. It is not our own DB row until it has been checked, so nothing here
+ * trusts the JSON's shape. `relPath` and `fileName` are required (without them
+ * there is no file to restore); everything else degrades to a null/default
+ * rather than dropping an otherwise-recoverable row, which matches the
+ * backfill's "record what's there" philosophy.
+ */
+function parseManifestFile(value: unknown): ManifestFile | null {
+  if (!isRecord(value)) return null;
+  const { relPath, fileName, originalName, bytes, importedAt } = value;
+  if (typeof relPath !== 'string' || relPath.length === 0) return null;
+  if (typeof fileName !== 'string' || fileName.length === 0) return null;
+  return {
+    relPath,
+    fileName,
+    originalName: typeof originalName === 'string' ? originalName : fileName,
+    role: isLibraryFileRole(value.role) ? value.role : 'unknown',
+    captureDate: optionalString(value.captureDate),
+    captureTime: optionalString(value.captureTime),
+    sessionDateOverride: optionalString(value.sessionDateOverride),
+    telescopeId: optionalString(value.telescopeId),
+    bytes: typeof bytes === 'number' && Number.isFinite(bytes) ? bytes : 0,
+    sourcePath: optionalString(value.sourcePath),
+    importedAt: typeof importedAt === 'string' ? importedAt : new Date().toISOString(),
+  };
+}
+
+/** Parse a manifest file's text. Returns null for anything that isn't a v1
+ *  manifest object, which includes the case a bare `JSON.parse` used to make
+ *  fatal: valid JSON that is `null`, where reading `.version` off the result
+ *  threw a TypeError and aborted the whole rebuild sweep. */
+function parseManifest(text: string): ManifestShape | null {
+  const root = parseJsonRecord(text);
+  if (!root) return null;
+  if (root.version !== 1) return null;
+  if (typeof root.objectId !== 'string' || root.objectId.length === 0) return null;
+  if (!Array.isArray(root.files)) return null;
+  const rawFiles: unknown[] = root.files;
+  const files: ManifestFile[] = [];
+  for (const entry of rawFiles) {
+    const parsed = parseManifestFile(entry);
+    if (parsed) files.push(parsed);
+  }
+  return {
+    version: 1,
+    objectId: root.objectId,
+    updatedAt: typeof root.updatedAt === 'string' ? root.updatedAt : '',
+    files,
+  };
+}
+
 export function writeObjectManifest(objectId: string, folderName: string): void {
   const objDir = path.join(getLibraryDir(), folderName);
   if (!fs.existsSync(objDir)) return;
@@ -414,21 +582,30 @@ export function rebuildFromManifests(): number {
     if (isReservedLibraryDir(folderName)) continue;
     const manifestPath = path.join(libraryDir, folderName, MANIFEST_NAME);
     if (!fs.existsSync(manifestPath)) continue;
-    let manifest: ManifestShape;
+    let manifest: ManifestShape | null;
     try {
-      manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      manifest = parseManifest(fs.readFileSync(manifestPath, 'utf-8'));
     } catch {
       continue;
     }
-    if (manifest.version !== 1 || !Array.isArray(manifest.files)) continue;
-    if (hasRecordedFiles(manifest.objectId)) continue;
+    if (!manifest) continue;
+    // The manifest's own `objectId` field can be stale — a boot migration may
+    // have rekeyed the object (space-strip, alias fold) after the manifest was
+    // last written. The directory the manifest sits in is the ground truth, so
+    // bind to whatever `libraryObjects` row owns that folder; only fall back to
+    // the manifest's field when no row claims the folder.
+    const owner = db
+      .prepare<[string], { objectId: string }>('SELECT objectId FROM libraryObjects WHERE folderName = ? AND deleted = 0')
+      .get(folderName);
+    const objectId = owner?.objectId ?? manifest.objectId;
+    if (hasRecordedFiles(objectId)) continue;
     const tx = db.transaction(() => {
       for (const f of manifest.files) {
         // Skip rows whose file is no longer on disk — the manifest is a
         // record of intent, the filesystem is the record of fact.
         if (!fs.existsSync(path.join(libraryDir, f.relPath))) continue;
         insertFileStmt.run(
-          manifest.objectId, f.relPath, f.fileName, f.originalName, f.role,
+          objectId, f.relPath, f.fileName, f.originalName, f.role,
           f.captureDate, f.captureTime, f.sessionDateOverride, f.telescopeId,
           f.bytes, f.sourcePath, f.importedAt,
         );

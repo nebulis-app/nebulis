@@ -119,4 +119,36 @@ describe('syncSessionSubFrames — scoped writes', () => {
     const files = fs.readdirSync(path.join(LIBRARY_DIR, 'NGC7293'));
     expect(files).toContain('Light_NGC7293_10.0s_IRCUT_20260621-120000.fit');
   });
+
+  it('matches a device _sub folder named with a catalog alias to the canonical object', async () => {
+    // Object stored under its canonical id, but the device wrote the _sub
+    // companion using the Caldwell name the user picked in the telescope app
+    // ("C 63_sub"). The SeeStar-style _sub lookup must fold that alias before
+    // comparing, or sub-frame sync finds nothing and hard-fails.
+    fs.mkdirSync(path.join(LIBRARY_DIR, 'NGC7293'), { recursive: true });
+    stmts.upsertObject.run(
+      'NGC7293', 'NGC7293', 0, new Date().toISOString(), 0, null,
+      null, null, null, null, null, null, null, null, null,
+    );
+
+    const deviceRoot = tmpDir('subsync-aliasfolder-device-');
+    fs.mkdirSync(path.join(deviceRoot, 'C 63_sub'));
+    fs.writeFileSync(
+      path.join(deviceRoot, 'C 63_sub', 'Light_C63_10.0s_IRCUT_20260621-120000.fit'),
+      'sub1',
+    );
+
+    const profile = createProfile({
+      name: 'Test SeeStar alias folder',
+      kind: 'other',
+      connectionType: 'local',
+      localPath: deviceRoot,
+    });
+
+    expect(claimImportLock()).toBe(true);
+    await syncSessionSubFrames('NGC7293', '2026-06-21', { telescopeId: profile.id });
+
+    const files = fs.readdirSync(path.join(LIBRARY_DIR, 'NGC7293'));
+    expect(files).toContain('Light_C63_10.0s_IRCUT_20260621-120000.fit');
+  });
 });

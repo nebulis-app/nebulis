@@ -66,6 +66,16 @@ describe('dateDerivation', () => {
     expect(deriveFromPath('99999999/x.fit')).toBeNull();
   });
 
+  it('rejects impossible calendar dates in a folder segment', () => {
+    expect(deriveFromPath('2024-02-30/x.fit')).toBeNull();
+    expect(deriveFromPath('2024-11-31/x.fit')).toBeNull();
+    expect(deriveFromPath('2023-02-29/x.fit')).toBeNull(); // not a leap year
+    // A real leap day still resolves.
+    expect(deriveFromPath('2024-02-29/x.fit')).toEqual({
+      date: '2024-02-29', source: 'folder', time: null,
+    });
+  });
+
   it('derives date + time from mtime', () => {
     const d = new Date(2024, 2, 4, 21, 5, 9);
     expect(deriveFromMtime(d)).toEqual({ date: '2024-03-04', source: 'mtime', time: '210509' });

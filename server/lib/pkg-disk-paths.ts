@@ -21,6 +21,15 @@
 import { Module } from 'node:module';
 import path from 'node:path';
 
+/**
+ * Runtime check for Node's internal `Module._initPaths`. A type guard rather
+ * than a cast: `in` proves the property is there and `typeof` proves it is
+ * callable, which is everything the call site below actually needs.
+ */
+function hasInitPaths(value: object): value is object & { _initPaths: () => void } {
+  return '_initPaths' in value && typeof value._initPaths === 'function';
+}
+
 // `pkg` is injected on `process` by the @yao-pkg/pkg runtime. The `in` check
 // narrows without needing a cast or a global type augmentation.
 if ('pkg' in process) {
@@ -35,5 +44,10 @@ if ('pkg' in process) {
     : onDiskModules;
   // _initPaths is an undocumented but ancient and stable Module internal —
   // it's what `Module` itself calls during startup to populate globalPaths.
-  (Module as unknown as { _initPaths: () => void })._initPaths();
+  // There is no public type for it, but that is not a reason to reach for
+  // `as unknown as`: hasInitPaths proves at runtime that the property exists
+  // and is callable, so a future Node that drops or renames it leaves
+  // NODE_PATH set for child processes instead of throwing
+  // "Module._initPaths is not a function" at startup.
+  if (hasInitPaths(Module)) Module._initPaths();
 }

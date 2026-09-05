@@ -41,6 +41,7 @@ import fs from 'fs';
 import path from 'path';
 import db from '../db.js';
 import { getLibraryDir } from '../libraryPath.js';
+import { isRealFile } from '../telescopeFiles.js';
 import { ILLEGAL_FS_CHARS } from './importNaming.js';
 
 export type LibraryLayout = 'flat' | 'nested';
@@ -232,4 +233,55 @@ function collectSessionFiles(
 /** Convenience wrapper resolving the object directory from a folder name. */
 export function listObjectFilesByFolder(folderName: string, layout: LibraryLayout): ObjectFileEntry[] {
   return listObjectFiles(path.join(getLibraryDir(), folderName), layout);
+}
+
+/**
+ * Repair objects whose stored `layout` disagrees with what is actually on disk.
+ *
+ * A boot migration that rekeyed an objectId used to recreate the row without
+ * its `layout` column, dropping a nested object back to the 'flat' default.
+ * `listObjectFiles` then walked the flat root, found nothing, and every session
+ * of that object rendered as empty ("No stacked image").
+ *
+ * Only the flat → nested direction is repaired, and only when the evidence is
+ * unambiguous: a session-style subdirectory holds a real file and nothing real
+ * sits loose at the object root. The reverse (nested row, loose root files) is
+ * a normal mid-renest state, not a bug, and is left to the renest tool.
+ *
+ * Walks the library with synchronous fs calls, so call it from the same
+ * deferred, `isLibraryAvailable()`-gated boot path as the other repairs.
+ * Idempotent. Returns the number of objects flipped.
+ */
+export function reconcileLayoutFromDisk(): number {
+  const libraryDir = getLibraryDir();
+  const flatObjects = db
+    .prepare<[], { objectId: string; folderName: string | null }>(
+      "SELECT objectId, folderName FROM libraryObjects WHERE deleted = 0 AND (layout IS NULL OR layout != 'nested')",
+    )
+    .all();
+
+  let fixed = 0;
+  for (const { objectId, folderName } of flatObjects) {
+    const objDir = path.join(libraryDir, folderName || objectId);
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(objDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    if (entries.some(e => e.isFile() && isRealFile(e.name))) continue; // loose root files → still flat
+    const hasNestedRealFile = entries.some(e => {
+      if (!e.isDirectory() || !isSessionFolderEntry(e.name)) return false;
+      try {
+        return fs.readdirSync(path.join(objDir, e.name)).some(f => isRealFile(f));
+      } catch {
+        return false;
+      }
+    });
+    if (hasNestedRealFile) {
+      setObjectLayout(objectId, 'nested');
+      fixed++;
+    }
+  }
+  return fixed;
 }

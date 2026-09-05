@@ -12,13 +12,13 @@ import os from 'os';
 import { execFile, execFileSync } from 'child_process';
 import { promisify } from 'util';
 import {
-  BASE_PATH,
   type SmbEntry,
   type SmbProfile,
-  sanitizePath,
-  validatePathNoTraversal,
-  loadSettings,
   parseShareName,
+  assertInsideRoot,
+  classifySmbError,
+  scrubSmbSecrets,
+  withSmbGuards,
 } from './smb.shared.js';
 import type { TelescopeProfile } from './telescopes.js';
 
@@ -47,12 +47,9 @@ const mounts = new Map<string, MountEntry>();
  *  smb.ftp.ts. */
 const mountInFlight = new Map<string, Promise<string>>();
 
-/** Replace the password in a `//user:pass@host/share` URL. mount_smbfs echoes
- *  its whole command line in error messages, so anything derived from one has
- *  to pass through here before being logged. */
-function scrubUrl(text: string): string {
-  return text.replace(/(\/\/[^:/@\s]+):[^@\s]*@/g, '$1:***@');
-}
+/** Alias of the shared scrubber — mount_smbfs echoes its whole `//user:pass@host`
+ *  command line in error messages. */
+const scrubUrl = scrubSmbSecrets;
 
 /** Keyed on the share, not the raw share field: the mount is per-share, so two
  *  profiles pointing at different folders inside one share should reuse a
@@ -92,7 +89,7 @@ async function teardownMount(key: string): Promise<void> {
 // same share, so we must reuse the existing mount point instead of creating one.
 /** One smbfs row from `mount`. Real format, which is NOT what this code
  *  previously assumed:
- *    //brent@Orion._smb._tcp.local/Seestar on /Volumes/Seestar (smbfs, nodev, ...)
+ *    //user@host._smb._tcp.local/Seestar on /Volumes/Seestar (smbfs, nodev, ...)
  *  Note there is no password, and the host is whatever name the share was
  *  mounted with, which may be a Bonjour name where we hold an IP. */
 interface MountedShare { user: string; host: string; share: string; mountPoint: string }
@@ -201,29 +198,13 @@ async function ensureMount(settings: SmbProfile): Promise<string> {
 }
 
 function extractMountReason(err: unknown): string {
-  if (!(err instanceof Error)) return 'Unknown error';
-  const stderr = (err as { stderr?: string }).stderr ?? '';
-  // Scrub before anything else. mount_smbfs echoes its full command line,
-  // credentials included, and this was writing the user's SMB password to
-  // server.log in plaintext. Classifying against the scrubbed text also stops
-  // a password that happens to contain "auth" from steering the result.
-  const msg = scrubUrl(`${err.message} ${stderr}`);
-  console.warn('[smb] mount_smbfs raw error:', msg);
-  if (msg.includes('Connection refused')) return 'Connection refused';
-  if (/timed out|timeout/i.test(msg)) return 'Connection timed out';
-  if (/auth|credentials|password/i.test(msg)) return 'Authentication failed';
-  // "File exists" is mount_smbfs refusing to mount an already-mounted share.
-  // ensureMount tries to reuse one first, so getting here means that lookup
-  // missed and the user needs to know it is a mount collision, not a network
-  // problem.
-  if (/File exists/i.test(msg)) {
-    return 'That share is already mounted on this Mac and the existing mount could not be reused';
+  // The raw line is the only breadcrumb when a mount fails; keep logging it
+  // (scrubbed) even though classification now lives in smb.shared.ts.
+  if (err instanceof Error) {
+    const stderr = (err as { stderr?: string }).stderr ?? '';
+    console.warn('[smb] mount_smbfs raw error:', scrubUrl(`${err.message} ${stderr}`));
   }
-  // Node's ENOENT text is lowercase ("no such file or directory"), so the old
-  // case-sensitive check never fired and a missing folder was reported as a
-  // connection failure.
-  if (/no such file|does not exist/i.test(msg)) return 'Share or folder not found';
-  return 'Connection failed';
+  return classifySmbError(err, 'mount');
 }
 
 // Clean up every mount when the process exits so we don't leave dangling
@@ -239,14 +220,7 @@ process.on('exit', () => {
 });
 
 export async function smbListDir(smbPath: string, profile?: ProfileArg): Promise<SmbEntry[]> {
-  const settings = loadSettings(profile);
-  if (!settings.hostname) {
-    throw new Error('No SeeStar hostname configured. Please configure it in Settings.');
-  }
-
-  sanitizePath(smbPath);
-  validatePathNoTraversal(smbPath);
-
+  return withSmbGuards(smbPath, profile, async (settings) => {
   let mp: string;
   try {
     mp = await ensureMount(settings);
@@ -254,7 +228,7 @@ export async function smbListDir(smbPath: string, profile?: ProfileArg): Promise
     throw new Error(`SMB connection failed: ${extractMountReason(err)}`);
   }
 
-  const fullPath = path.join(mp, smbPath);
+  const fullPath = assertInsideRoot(mp, smbPath);
   try {
     const dirents = await fs.promises.readdir(fullPath, { withFileTypes: true });
     // Stat all file entries in parallel — one logical wait regardless of count,
@@ -283,17 +257,11 @@ export async function smbListDir(smbPath: string, profile?: ProfileArg): Promise
     await teardownMount(profileKey(settings));
     throw new Error(`SMB connection failed: ${extractMountReason(err)}`);
   }
+  });
 }
 
 export async function smbGetFile(smbPath: string, maxBytes?: number, profile?: ProfileArg): Promise<Buffer> {
-  const settings = loadSettings(profile);
-  if (!settings.hostname) {
-    throw new Error('No SeeStar hostname configured');
-  }
-
-  sanitizePath(smbPath);
-  validatePathNoTraversal(smbPath);
-
+  return withSmbGuards(smbPath, profile, async (settings) => {
   let mp: string;
   try {
     mp = await ensureMount(settings);
@@ -302,7 +270,7 @@ export async function smbGetFile(smbPath: string, maxBytes?: number, profile?: P
   }
 
   try {
-    let data = await fs.promises.readFile(path.join(mp, smbPath));
+    let data = await fs.promises.readFile(assertInsideRoot(mp, smbPath));
     if (maxBytes && data.length > maxBytes) {
       data = data.subarray(0, maxBytes);
     }
@@ -311,17 +279,11 @@ export async function smbGetFile(smbPath: string, maxBytes?: number, profile?: P
     await teardownMount(profileKey(settings));
     throw new Error(`SMB connection failed: ${extractMountReason(err)}`);
   }
+  });
 }
 
 export async function smbPutFile(smbPath: string, data: Buffer, profile?: ProfileArg): Promise<void> {
-  const settings = loadSettings(profile);
-  if (!settings.hostname) {
-    throw new Error('No SeeStar hostname configured');
-  }
-
-  sanitizePath(smbPath);
-  validatePathNoTraversal(smbPath);
-
+  return withSmbGuards(smbPath, profile, async (settings) => {
   let mp: string;
   try {
     mp = await ensureMount(settings);
@@ -330,29 +292,16 @@ export async function smbPutFile(smbPath: string, data: Buffer, profile?: Profil
   }
 
   try {
-    await fs.promises.writeFile(path.join(mp, smbPath), data);
+    await fs.promises.writeFile(assertInsideRoot(mp, smbPath), data);
   } catch (err) {
     await teardownMount(profileKey(settings));
     throw new Error(`SMB connection failed: ${extractMountReason(err)}`);
   }
+  });
 }
 
 export async function smbDelete(smbPath: string, profile?: ProfileArg): Promise<void> {
-  const settings = loadSettings(profile);
-  if (!settings.hostname) {
-    throw new Error('No SeeStar hostname configured');
-  }
-
-  sanitizePath(smbPath);
-  validatePathNoTraversal(smbPath);
-
-  // Plain startsWith(BASE_PATH) has no trailing-separator boundary check, so
-  // a sibling folder named e.g. "MyWorks_evil" (or "MyWorksEvil") would also
-  // pass — the prefix matches but the path is not actually inside BASE_PATH.
-  if (smbPath !== BASE_PATH && !smbPath.startsWith(BASE_PATH + '/')) {
-    throw new Error('Can only delete files within MyWorks');
-  }
-
+  return withSmbGuards(smbPath, profile, async (settings) => {
   let mp: string;
   try {
     mp = await ensureMount(settings);
@@ -361,9 +310,10 @@ export async function smbDelete(smbPath: string, profile?: ProfileArg): Promise<
   }
 
   try {
-    await fs.promises.unlink(path.join(mp, smbPath));
+    await fs.promises.unlink(assertInsideRoot(mp, smbPath));
   } catch (err) {
     await teardownMount(profileKey(settings));
     throw new Error(`SMB connection failed: ${extractMountReason(err)}`);
   }
+  }, { requireInsideBasePath: true });
 }

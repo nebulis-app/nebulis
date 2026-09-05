@@ -5,6 +5,20 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+/** Whole-number variant for headline stat tiles, where "222 GB" reads as a
+ *  figure and "222.38 GB" reads as a spec sheet. Switches to one decimal at
+ *  the TB tier, since "1 TB" vs "4 TB" throws away real information that
+ *  "222" vs "223" GB does not. */
+export function formatBytesCompact(bytes: number): string {
+  const GB = 1024 * 1024 * 1024;
+  const TB = GB * 1024;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  if (bytes < GB) return `${Math.round(bytes / (1024 * 1024))} MB`;
+  if (bytes < TB) return `${Math.round(bytes / GB)} GB`;
+  return `${(bytes / TB).toFixed(1)} TB`;
+}
+
 /** Compile-time exhaustiveness guard for discriminated union switches. */
 export function assertNever(x: never): never {
   throw new Error(`Unhandled variant: ${JSON.stringify(x)}`);

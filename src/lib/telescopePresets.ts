@@ -11,9 +11,20 @@
  * convention differs from SeeStar's (see [docs/multi-telescope-support.md]).
  */
 
+import { isOneOf } from './typeGuards';
+
 // Keep in sync with server/lib/types/telescopeKind.ts — these cannot share a source without a monorepo.
-export const TELESCOPE_KINDS = ['seestar-s50', 'seestar-s30', 'dwarf-3', 'dwarf-2', 'dwarf-mini', 'other'] as const;
+export const TELESCOPE_KINDS = ['seestar-s50', 'seestar-s50-pro', 'seestar-s30', 'seestar-s30-pro', 'dwarf-3', 'dwarf-2', 'dwarf-mini', 'asiair', 'other'] as const;
 export type TelescopeKind = typeof TELESCOPE_KINDS[number];
+
+interface HelpBlock {
+  /** Bolded first line. One idea, no more than ~45 chars. */
+  headline: string;
+  /** Optional supporting sentence. */
+  body?: string;
+  /** Optional caveats, rendered as a bullet list. */
+  tips?: string[];
+}
 
 interface TelescopePreset {
   kind: TelescopeKind;
@@ -27,21 +38,30 @@ interface TelescopePreset {
   /** Default username. Empty for `other`. `anonymous` for Dwarf kinds,
    *  matching the FTP login their firmware documents (smb.ftp.ts). */
   username: string;
-  /** Short help text shown beneath the share-name input. */
-  shareHelp: string;
+  /** Help under the Hostname/IP field. Only used by FTP (Dwarf) kinds. */
+  addressHelp?: HelpBlock;
+  /** Help under the SMB Share Name field. Unused by FTP kinds. */
+  shareHelp?: HelpBlock;
   /** Pre-filled address for the connection field. Dwarf devices always sit at
    *  192.168.88.1 when running their own access point. Empty means the user
    *  has to find their telescope's IP themselves. */
   defaultHostname: string;
+  /** Support for this device is built from published layouts rather than
+   *  tested against hardware. Renders a "(Beta)" marker and a short caveat so
+   *  the user knows what they are opting into. */
+  beta?: boolean;
 }
 
 /** Address a DWARFLAB telescope serves from when broadcasting its own Wi-Fi.
  *  In station mode (joined to a home router) the address comes from DHCP. */
 export const DWARF_AP_HOST = '192.168.88.1';
 
-/** Help text under the Dwarf address field. Same for all three models. */
-const DWARF_FTP_HELP =
-  'Dwarf telescopes serve their storage over FTP, not SMB. Connect to the telescope Wi-Fi and leave the address at 192.168.88.1, or enter the address your router gave it if you have station mode on.';
+/** Help for Dwarf address field. Same for all three models. */
+const DWARF_ADDRESS_HELP: HelpBlock = {
+  headline: 'Dwarf telescopes use FTP, not SMB.',
+  body: 'Connect to telescope Wi-Fi and leave the address at 192.168.88.1.',
+  tips: ['On station mode, enter the address your router gave it instead.'],
+};
 
 export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
   'seestar-s50': {
@@ -50,7 +70,22 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
     model: 'SeeStar S50',
     shareName: 'EMMC Images',
     username: 'guest',
-    shareHelp: 'SeeStar S50 publishes its photo storage as the SMB share "EMMC Images" with guest access.',
+    shareHelp: {
+      headline: 'Leave this as "EMMC Images".',
+      body: 'SeeStar publishes its photo storage under that name with guest access.',
+    },
+    defaultHostname: '',
+  },
+  'seestar-s50-pro': {
+    kind: 'seestar-s50-pro',
+    label: 'ZWO SeeStar S50 Pro',
+    model: 'SeeStar S50 Pro',
+    shareName: 'EMMC Images',
+    username: 'guest',
+    shareHelp: {
+      headline: 'Leave this as "EMMC Images".',
+      body: 'SeeStar publishes its photo storage under that name with guest access.',
+    },
     defaultHostname: '',
   },
   'seestar-s30': {
@@ -59,7 +94,22 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
     model: 'SeeStar S30',
     shareName: 'EMMC Images',
     username: 'guest',
-    shareHelp: 'SeeStar S30 publishes its photo storage as the SMB share "EMMC Images" with guest access.',
+    shareHelp: {
+      headline: 'Leave this as "EMMC Images".',
+      body: 'SeeStar publishes its photo storage under that name with guest access.',
+    },
+    defaultHostname: '',
+  },
+  'seestar-s30-pro': {
+    kind: 'seestar-s30-pro',
+    label: 'ZWO SeeStar S30 Pro',
+    model: 'SeeStar S30 Pro',
+    shareName: 'EMMC Images',
+    username: 'guest',
+    shareHelp: {
+      headline: 'Leave this as "EMMC Images".',
+      body: 'SeeStar publishes its photo storage under that name with guest access.',
+    },
     defaultHostname: '',
   },
   'dwarf-3': {
@@ -68,7 +118,7 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
     model: 'Dwarf 3',
     shareName: '',
     username: 'anonymous',
-    shareHelp: DWARF_FTP_HELP,
+    addressHelp: DWARF_ADDRESS_HELP,
     defaultHostname: DWARF_AP_HOST,
   },
   'dwarf-2': {
@@ -77,7 +127,7 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
     model: 'Dwarf II',
     shareName: '',
     username: 'anonymous',
-    shareHelp: DWARF_FTP_HELP,
+    addressHelp: DWARF_ADDRESS_HELP,
     defaultHostname: DWARF_AP_HOST,
   },
   'dwarf-mini': {
@@ -86,8 +136,26 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
     model: 'Dwarf Mini',
     shareName: '',
     username: 'anonymous',
-    shareHelp: DWARF_FTP_HELP,
+    addressHelp: DWARF_ADDRESS_HELP,
     defaultHostname: DWARF_AP_HOST,
+  },
+  'asiair': {
+    kind: 'asiair',
+    label: 'ZWO ASIAIR (Beta)',
+    model: 'ASIAIR',
+    // ZWO uses the same share name on ASIAIR as on SeeStar.
+    shareName: 'EMMC Images',
+    username: 'guest',
+    beta: true,
+    shareHelp: {
+      headline: 'Leave this as "EMMC Images".',
+      body: 'ASIAIR publishes its storage under that name with guest access, read-only.',
+      tips: [
+        'ASIAIR has no FTP server. Use the share, or plug its USB stick into this machine.',
+        'Frames import as sub-frames, since ASIAIR only stacks in Live mode.',
+      ],
+    },
+    defaultHostname: '',
   },
   'other': {
     kind: 'other',
@@ -95,7 +163,11 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
     model: 'Custom',
     shareName: '',
     username: '',
-    shareHelp: 'Custom SMB share. Use the share name on its own, or "share/folder" to start inside a subfolder. Do not paste a full smb:// address. See "Generic SMB Layout" for the folder convention this app expects.',
+    shareHelp: {
+      headline: 'Enter the share name on its own.',
+      body: 'Use "share/folder" to start inside a subfolder. Do not paste a full smb:// address.',
+      tips: ['See "Generic SMB Layout" for the folder layout Nebulis expects.'],
+    },
     defaultHostname: '',
   },
 };
@@ -106,6 +178,19 @@ export function isDwarfKind(kind: TelescopeKind): boolean {
   return kind === 'dwarf-2' || kind === 'dwarf-3' || kind === 'dwarf-mini';
 }
 
+/** True for ZWO SeeStar models. Keep in sync with server/lib/types/telescopeKind.ts. */
+export function isSeestarKind(kind: TelescopeKind): boolean {
+  return kind === 'seestar-s50' || kind === 'seestar-s50-pro'
+    || kind === 'seestar-s30' || kind === 'seestar-s30-pro';
+}
+
+/** True for the ZWO ASIAIR controller, whose transport story is SMB over the
+ *  network or its USB storage. Never FTP: the device runs no FTP server. Keep
+ *  in sync with server/lib/types/telescopeKind.ts. */
+export function isAsiairKind(kind: TelescopeKind): boolean {
+  return kind === 'asiair';
+}
+
 /** What to call this device in a sentence. The `other` kind is a NAS or a PC
  *  sharing a folder, so calling it a telescope reads as nonsense to whoever
  *  chose that option. Mirrors deviceNoun in server/lib/deviceWording.ts, which
@@ -114,20 +199,29 @@ export function deviceNoun(kind: TelescopeKind | null | undefined): string {
   return kind === 'other' ? 'server' : 'telescope';
 }
 
+/** Narrows a bare string (DOM select value, API payload) to a TelescopeKind.
+ *  Mirrors isTelescopeKind in server/lib/types/telescopeKind.ts. */
+export function isTelescopeKind(v: string): v is TelescopeKind {
+  return isOneOf(TELESCOPE_KINDS, v);
+}
+
 /** Coerce a DOM select string to TelescopeKind. Unknown values fall back to 'other'. */
 export function toTelescopeKind(v: string): TelescopeKind {
-  return (TELESCOPE_KINDS as readonly string[]).includes(v) ? (v as TelescopeKind) : 'other';
+  return isTelescopeKind(v) ? v : 'other';
 }
 
 /** Default badge color for each telescope kind. The backend uses the same
  *  palette during boot backfill — keep them in sync. */
 export const DEFAULT_COLOR_BY_KIND: Record<TelescopeKind, string> = {
-  'seestar-s50': '#3b82f6',
-  'seestar-s30': '#10b981',
-  'dwarf-3':     '#f59e0b',
-  'dwarf-2':     '#ef4444',
-  'dwarf-mini':  '#f97316',
-  'other':       '#8b5cf6',
+  'seestar-s50':     '#3b82f6',
+  'seestar-s50-pro': '#14b8a6',
+  'seestar-s30':     '#10b981',
+  'seestar-s30-pro': '#84cc16',
+  'dwarf-3':         '#f59e0b',
+  'dwarf-2':         '#ef4444',
+  'dwarf-mini':      '#f97316',
+  'asiair':          '#06b6d4',
+  'other':           '#8b5cf6',
 };
 
 /** Hand-picked palette used by the per-telescope color picker. Eight shades
@@ -147,11 +241,14 @@ export const TELESCOPE_COLOR_PALETTE: string[] = [
  *  it was created from. Used by the edit modal to seed the dropdown. */
 export function modelToKind(model: string): TelescopeKind {
   switch (model) {
-    case 'SeeStar S50': return 'seestar-s50';
-    case 'SeeStar S30': return 'seestar-s30';
-    case 'Dwarf 3':     return 'dwarf-3';
-    case 'Dwarf II':    return 'dwarf-2';
-    case 'Dwarf Mini':  return 'dwarf-mini';
-    default:            return 'other';
+    case 'SeeStar S50':     return 'seestar-s50';
+    case 'SeeStar S50 Pro': return 'seestar-s50-pro';
+    case 'SeeStar S30':     return 'seestar-s30';
+    case 'SeeStar S30 Pro': return 'seestar-s30-pro';
+    case 'Dwarf 3':         return 'dwarf-3';
+    case 'Dwarf II':        return 'dwarf-2';
+    case 'Dwarf Mini':      return 'dwarf-mini';
+    case 'ASIAIR':          return 'asiair';
+    default:                return 'other';
   }
 }

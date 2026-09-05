@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { MapPin, ChevronDown, Check, Settings2 } from 'lucide-react';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { SiteManagerModal } from './SiteManagerModal';
@@ -34,8 +35,31 @@ export function SitePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [showManager, setShowManager] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
-  useClickOutside(wrapRef, () => setOpen(false), { closeOnEscape: true });
+  const menuRef = useRef<HTMLUListElement | null>(null);
+  useClickOutside([wrapRef, menuRef], () => setOpen(false), { closeOnEscape: true });
+
+  // The menu is portaled to <body> (see below) so it can escape the hero
+  // panel's `overflow-hidden`, which otherwise clips it whenever the list is
+  // taller than the remaining hero space. Portaling means it's no longer
+  // positioned by the wrapper's `relative`, so track the trigger's viewport
+  // rect ourselves and keep it in sync while open.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const updatePosition = () => {
+      const rect = wrapRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    };
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open]);
 
   const label = currentSite?.name || fallbackLabel;
 
@@ -63,10 +87,12 @@ export function SitePicker({
           className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''} ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
         />
       </button>
-      {open && (
+      {open && menuPos && createPortal(
         <ul
+          ref={menuRef}
           role="listbox"
-          className={`absolute z-20 right-0 mt-1 min-w-[15rem] max-h-72 overflow-auto rounded-xl border shadow-lg py-1 ${
+          style={{ position: 'fixed', top: menuPos.top, right: menuPos.right }}
+          className={`z-20 min-w-[15rem] max-h-72 overflow-auto rounded-xl border shadow-lg py-1 ${
             isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
           }`}
         >
@@ -104,7 +130,8 @@ export function SitePicker({
               Manage locations...
             </button>
           </li>
-        </ul>
+        </ul>,
+        document.body,
       )}
       {showManager && (
         <SiteManagerModal isDark={isDark} onClose={() => setShowManager(false)} />

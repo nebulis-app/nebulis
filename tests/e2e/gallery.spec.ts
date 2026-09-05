@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockAllRoutes } from './fixtures/mocks';
+import { mockAllRoutes, MOCK } from './fixtures/mocks';
 
 test.describe('Gallery', () => {
   test.beforeEach(async ({ page }) => {

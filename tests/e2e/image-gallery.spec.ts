@@ -203,6 +203,22 @@ test.describe('Image Gallery', () => {
     }
   });
 
+  test('viewer title links to the image\'s object', async ({ page }) => {
+    const firstCard = page.locator('[class*="card"], [class*="image"]')
+      .filter({ has: page.getByText('Orion Nebula') })
+      .first();
+
+    if (await firstCard.isVisible()) {
+      await firstCard.click();
+      const titleLink = page.getByRole('link', { name: /orion nebula/i });
+      await expect(titleLink).toBeVisible();
+      await expect(titleLink).toHaveAttribute('href', '/object/M42');
+
+      await titleLink.click();
+      await expect(page).toHaveURL(/\/object\/M42/);
+    }
+  });
+
   // ─── Empty state ──────────────────────────────────────────────────────────
 
   test('shows empty state when library has no images', async ({ page }) => {

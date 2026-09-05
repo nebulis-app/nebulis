@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { LibraryImage } from '../../lib/api/library';
-import { FADE_MS, KB_MS, randomKenBurns } from './galleryUtils';
+import { FADE_MS, KB_MS, randomKenBurns, slideImageUrl } from './galleryUtils';
 
 // Two of these are stacked; only one is visible (opacity 1) at a time.
 // Opacity crossfade is a plain CSS transition driven by the `opacity` prop.
@@ -52,7 +52,7 @@ export function KenBurnsSlide({ image, opacity, rotateCCW }: KenBurnsSlideProps)
         style={{ willChange: 'transform', transformOrigin: 'center center' }}
       >
         <img
-          src={image.downloadUrl}
+          src={slideImageUrl(image.path)}
           alt={image.objectName}
           draggable={false}
           className="absolute inset-0 w-full h-full object-cover select-none"

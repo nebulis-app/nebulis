@@ -1,4 +1,4 @@
-import { fetchJSON } from './client';
+import { fetchJSON, BASE, authHeaders, errorMessage } from './client';
 
 interface StorageObject {
   id: string;
@@ -175,3 +175,66 @@ export const startRenest = (objectId?: string) =>
     method: 'POST',
     body: JSON.stringify(objectId ? { objectId } : {}),
   });
+
+
+// ─── Database backups (pre-upgrade snapshots + manual) ──────────────────────
+
+export interface DatabaseBackupInfo {
+  name: string;
+  path: string;
+  kind: 'upgrade' | 'manual';
+  version: string | null;
+  createdAt: number;
+  sizeBytes: number;
+}
+
+export interface LastBackupAttempt {
+  at: number;
+  fromVersion: string | null;
+  toVersion: string;
+  status: 'created' | 'failed';
+  error?: string;
+  backupName?: string;
+}
+
+export interface DatabaseBackupsResponse {
+  backups: DatabaseBackupInfo[];
+  lastAttempt: LastBackupAttempt | null;
+  dir: string;
+  maxRetainedPerKind: number;
+  currentVersion: string;
+}
+
+export const getDatabaseBackups = () =>
+  fetchJSON<DatabaseBackupsResponse>('/storage/db-backups');
+
+export const createDatabaseBackup = () =>
+  fetchJSON<{ backup: DatabaseBackupInfo; pruned: number }>('/storage/db-backups', {
+    method: 'POST',
+  });
+
+export const deleteDatabaseBackup = (name: string) =>
+  fetchJSON<{ deleted: boolean; name: string }>(`/storage/db-backups/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  });
+
+/** Downloads a gzipped copy of the backup through the browser. */
+export async function downloadDatabaseBackup(name: string): Promise<void> {
+  const res = await fetch(
+    `${BASE}/storage/db-backups/${encodeURIComponent(name)}/download`,
+    { headers: authHeaders() },
+  );
+  if (!res.ok) {
+    const body: unknown = await res.json().catch(() => ({}));
+    throw new Error(errorMessage(body, res.statusText));
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${name}.gz`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
+}

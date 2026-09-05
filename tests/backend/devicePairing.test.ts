@@ -8,6 +8,7 @@ import {
   pollPairing,
   listDevicesForUser,
   revokeDeviceForUser,
+  revokeAllDevicesForUser,
   adminRevokeDevice,
   adminListAllDevices,
   renameDeviceForUser,
@@ -226,6 +227,32 @@ describe('devicePairing', () => {
       expect(all[0].id).toBe(d1);
       expect(all[0].userId).toBe(u1.id);
       expect(all[0].ownerUsername).toBe('admin-a');
+    });
+
+    // CODE_AUDIT.md Finding 3: password change didn't revoke paired devices,
+    // and Finding 1's cleanup half (user deletion should revoke devices too,
+    // even though the auth-middleware fix already blocks them independently).
+    it('revokeAllDevicesForUser revokes every active device for that user and none for others', async () => {
+      const { user: u1, deviceId: d1 } = await approveAndPoll('TV 1', 'multi-a');
+      const p2 = startPairing('TV 2');
+      approvePairing(p2.userCode, u1.id);
+      const poll2 = pollPairing(p2.deviceCode);
+      if (poll2.status !== 'approved') throw new Error('poll did not approve');
+      const d2 = poll2.deviceId;
+      const { deviceId: otherDeviceId } = await approveAndPoll('TV 3', 'multi-b');
+
+      const count = revokeAllDevicesForUser(u1.id, 'password_changed');
+
+      expect(count).toBe(2);
+      expect(isDeviceActive(d1)).toBe(false);
+      expect(isDeviceActive(d2)).toBe(false);
+      expect(isDeviceActive(otherDeviceId)).toBe(true);
+      expect(listDevicesForUser(u1.id)).toEqual([]);
+    });
+
+    it('revokeAllDevicesForUser is a no-op for a user with no devices', async () => {
+      const user = await freshUser('no-devices');
+      expect(revokeAllDevicesForUser(user.id, 'user_deleted')).toBe(0);
     });
 
     it('renameDeviceForUser trims and length-caps the name', async () => {

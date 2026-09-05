@@ -24,6 +24,7 @@ import { AppUpdateIndex, type UpdateChannel } from './manifest.js';
 import { getUpdatePlatform, getCurrentVersion, compareVersions } from './platform.js';
 import { getSettingsData } from '../telescopes.js';
 import { UPDATES_DIR, setUpdateStatus, getUpdateStatus } from './state.js';
+import { logEvent } from '../systemLog.js';
 
 const BASE_URL = 'https://downloads.nebulis.app/app/v1';
 const STARTUP_DELAY_MS = 90_000;
@@ -99,8 +100,12 @@ async function runUpdateCheckInner(): Promise<void> {
   checkTimer = shouldAutoPoll() ? setTimeout(() => void runUpdateCheck(), CHECK_INTERVAL_MS) : null;
 
   const platform = getUpdatePlatform();
-  const { version: currentVersion, build: currentBuild } = getCurrentVersion();
+  const { version: currentVersion, build: currentBuild, known: versionKnown } = getCurrentVersion();
   const channel = readChannel();
+  // Snapshot before this check overwrites it, so we can tell whether the
+  // outcome below is new information (worth a log entry) or just a repeat of
+  // what the last poll already found.
+  const previousStatus = getUpdateStatus();
   setUpdateStatus({ platform, currentVersion, channel });
   if (!platform) return;
 
@@ -116,12 +121,35 @@ async function runUpdateCheckInner(): Promise<void> {
     if (!verifyAppManifestSignature(indexBuf, indexSig)) {
       setUpdateStatus({ lastCheckedAt: Date.now(), lastError: 'manifest signature invalid' });
       console.warn('[appUpdate] manifest signature invalid — ignoring');
+      logEvent({
+        category: 'system',
+        event: 'update_check_failed',
+        level: 'warning',
+        message: `Update manifest signature for the ${channel} channel failed verification and was ignored.`,
+        metadata: { channel },
+      });
       return;
     }
 
     const index = AppUpdateIndex.parse(JSON.parse(indexBuf.toString('utf8')));
     const latest = index.latest;
     setUpdateStatus({ latestBuild: latest.build });
+
+    // Kill switch: a yanked release is pulled back for everyone who has not
+    // updated yet. Report the version so the UI can say "on the latest" but
+    // never offer it.
+    if (latest.yanked) {
+      setUpdateStatus({
+        latestVersion: latest.version,
+        updateAvailable: false,
+        mandatory: false,
+        notesUrl: latest.notesUrl,
+        lastCheckedAt: Date.now(),
+        lastError: null,
+      });
+      console.warn(`[appUpdate] latest ${channel} release ${latest.version} is yanked — not offering`);
+      return;
+    }
 
     // Downgrade protection: only ever offer a strictly newer version or build.
     const versionCmp = compareVersions(latest.version, currentVersion);
@@ -138,8 +166,11 @@ async function runUpdateCheckInner(): Promise<void> {
     }
 
     // Enforce minUpgradableFrom: in-place upgrade is only safe from recent builds.
-    // Older installs must download the installer manually.
-    if (compareVersions(currentVersion, latest.minUpgradableFrom) < 0) {
+    // Older installs must download the installer manually. Skipped when the
+    // running version is unknown (package.json unreadable → currentVersion is
+    // the "0.0.0" default): that is a deployment glitch, not a genuinely
+    // ancient build, and blocking every update on it is the wrong call.
+    if (versionKnown && compareVersions(currentVersion, latest.minUpgradableFrom) < 0) {
       setUpdateStatus({
         latestVersion: latest.version,
         updateAvailable: false,
@@ -174,10 +205,23 @@ async function runUpdateCheckInner(): Promise<void> {
     });
     console.log(`[appUpdate] ${platform}: update available ${currentVersion} → ${latest.version} (${channel})`);
 
+    // Only log when this is new information — otherwise every 6h poll while an
+    // update sits unapplied would re-log the same "available" event.
+    const alreadyKnown = previousStatus.updateAvailable && previousStatus.latestVersion === latest.version;
+    if (!alreadyKnown) {
+      logEvent({
+        category: 'system',
+        event: 'update_available',
+        level: 'info',
+        message: `Update available: ${currentVersion} → ${latest.version} (${channel} channel).`,
+        metadata: { fromVersion: currentVersion, toVersion: latest.version, channel, mandatory: latest.mandatory },
+      });
+    }
+
     // macOS delegates download/install to Sparkle — do not pre-stage.
     if (platform !== 'win-x64') return;
 
-    await stageWindowsInstaller(artifact.url, artifact.sha256, controller.signal);
+    await stageWindowsInstaller(latest.version, artifact.url, artifact.sha256, controller.signal);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg !== 'aborted') {
@@ -192,12 +236,13 @@ async function runUpdateCheckInner(): Promise<void> {
  * SHA-256 before marking it staged. If a previously staged installer already
  * matches, skip the download. Removes stale installers from older versions.
  */
-async function stageWindowsInstaller(url: string, sha256: string, signal: AbortSignal): Promise<void> {
+async function stageWindowsInstaller(version: string, url: string, sha256: string, signal: AbortSignal): Promise<void> {
   fs.mkdirSync(UPDATES_DIR, { recursive: true });
   const dest = path.join(UPDATES_DIR, path.basename(new URL(url).pathname));
 
   // Already staged and intact? Don't re-download. Check the file on disk
-  // directly so a service restart doesn't lose the staged state.
+  // directly so a service restart doesn't lose the staged state. No log entry
+  // here — this is a repeat finding, not new information.
   if (fs.existsSync(dest) && verifyFileSha256(dest, sha256)) {
     setUpdateStatus({ staged: true, stagedPath: dest, stagedSha256: sha256 });
     return;
@@ -216,9 +261,23 @@ async function stageWindowsInstaller(url: string, sha256: string, signal: AbortS
     try { fs.unlinkSync(dest); } catch { /* ignore */ }
     setUpdateStatus({ staged: false, stagedPath: null, stagedSha256: null, lastError: 'staged installer failed SHA-256 check' });
     console.warn('[appUpdate] staged installer failed SHA-256 verification — deleted');
+    logEvent({
+      category: 'system',
+      event: 'update_verify_failed',
+      level: 'error',
+      message: `Downloaded installer for version ${version} failed SHA-256 verification and was deleted.`,
+      metadata: { version },
+    });
     return;
   }
 
   setUpdateStatus({ staged: true, stagedPath: dest, stagedSha256: sha256 });
   console.log('[appUpdate] installer staged and verified');
+  logEvent({
+    category: 'system',
+    event: 'update_staged',
+    level: 'info',
+    message: `Downloaded and verified update ${version}. Ready to install.`,
+    metadata: { version },
+  });
 }

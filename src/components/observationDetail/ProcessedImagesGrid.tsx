@@ -1,8 +1,8 @@
-import { Sparkles, Upload, ImagePlus, Crown, Download, Star, Trash2, Loader2, FileDown, Layers } from 'lucide-react';
+import { Upload, ImagePlus, Crown, Download, Star, Trash2, Loader2, FileDown, Layers } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { isRenderableProcessed, processedFormatLabel } from '../../lib/processedFormats';
 import type { ProcessedImage } from '../../types';
-import type { CompareItem } from '../../pages/ObservationDetail';
+import type { CompareItem } from './types';
 
 /** The "Processed Images" panel: uploaded/edited images with an upload drop
  *  zone, compare-mode selection, session-image designation, set-as-gallery,
@@ -45,23 +45,13 @@ export function ProcessedImagesGrid({
   onDropFile: (file: File) => void;
 }) {
   const { isDark } = useTheme();
-  const accentTextGlow = isDark ? 'text-accent-400' : 'text-accent-500';
 
   return (
     <div className={`rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
       {/* Header */}
-      <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-        <div className="flex items-center gap-2">
-          <h2 className={`font-display font-semibold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            <Sparkles className={`w-5 h-5 ${accentTextGlow}`} />
-            Processed Images
-          </h2>
-          {processedImages.length > 0 && (
-            <span className={`text-xs px-2 py-0.5 rounded-full ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-              {processedImages.length}
-            </span>
-          )}
-        </div>
+      {/* No title row: the selected tab immediately above already names this
+          panel and carries its count, so the bar is only its controls. */}
+      <div className={`flex items-center justify-end p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
         {isAdmin && (
           <button
             onClick={onUploadClick}

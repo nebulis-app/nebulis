@@ -6,9 +6,29 @@ vi.mock('../../server/lib/auth', () => ({
   verifyToken: vi.fn(),
   getUserCount: vi.fn(),
   getUserTokenVersion: vi.fn(),
+  getUserById: vi.fn(),
 }));
 
-import { verifyToken, getUserCount, getUserTokenVersion } from '../../server/lib/auth';
+// isDeviceActive/touchDevice are real DB-backed functions in most of this
+// file's tests (unmocked), but the device-token regression suite below
+// mocks them directly so it can drive jti-branch scenarios without a real
+// connectedDevices row.
+vi.mock('../../server/lib/devicePairing', async () => {
+  const actual = await vi.importActual<typeof import('../../server/lib/devicePairing')>('../../server/lib/devicePairing');
+  return { ...actual, isDeviceActive: vi.fn(), touchDevice: vi.fn() };
+});
+
+// Signed download-token verification is exercised in downloadToken.test.ts; here
+// we only care whether apiAuth consults it, so stub it to a controllable fn.
+vi.mock('../../server/lib/downloadToken', () => ({
+  verifyDownloadToken: vi.fn(),
+}));
+
+import { verifyToken, getUserCount, getUserTokenVersion, getUserById } from '../../server/lib/auth';
+import { isDeviceActive, touchDevice } from '../../server/lib/devicePairing';
+import { verifyDownloadToken } from '../../server/lib/downloadToken';
+
+const mockedVerifyDownloadToken = verifyDownloadToken as ReturnType<typeof vi.fn>;
 
 // Mock fs so loadApiKey can be controlled
 vi.mock('fs', async () => {
@@ -32,6 +52,9 @@ import { setApiKey as setRealApiKey, getApiKey as getRealApiKey } from '../../se
 const mockedVerifyToken = verifyToken as ReturnType<typeof vi.fn>;
 const mockedGetUserCount = getUserCount as ReturnType<typeof vi.fn>;
 const mockedGetUserTokenVersion = getUserTokenVersion as ReturnType<typeof vi.fn>;
+const mockedGetUserById = getUserById as ReturnType<typeof vi.fn>;
+const mockedIsDeviceActive = isDeviceActive as ReturnType<typeof vi.fn>;
+const mockedTouchDevice = touchDevice as ReturnType<typeof vi.fn>;
 const mockedExistsSync = fs.existsSync as ReturnType<typeof vi.fn>;
 const mockedReadFileSync = fs.readFileSync as ReturnType<typeof vi.fn>;
 
@@ -270,6 +293,92 @@ describe('apiAuth middleware', () => {
   });
 });
 
+// Regression suite for CODE_AUDIT.md Findings 1+2+3: a device-scoped JWT
+// (carries `jti`) used to be trusted for role and identity straight off the
+// signed payload as long as its connectedDevices row was still active. That
+// let a deleted user's paired device keep authenticating (Finding 1) and a
+// demoted admin's paired device keep admin rights (Finding 2) for up to the
+// token's 30-day expiry. The fix re-resolves the owning user from the DB on
+// every device-token request and takes the role from there, never from the
+// JWT claim.
+describe('apiAuth device-token (jti) branch — token revocation regressions', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockedIsDeviceActive.mockReturnValue(true);
+    mockedGetUserCount.mockReturnValue(1);
+  });
+
+  it('rejects a device token whose owning user was deleted (Finding 1)', () => {
+    mockedVerifyToken.mockReturnValue({ userId: 'deleted-user', username: 'ghost', role: 'admin', jti: 'device-1' });
+    mockedGetUserById.mockReturnValue(undefined); // user row gone
+    const req = mockReq({ headers: { authorization: 'Bearer device-token' } });
+    const res = mockRes();
+    const next = vi.fn();
+
+    apiAuth(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.apiError).toHaveBeenCalledWith(401, 'USER_NOT_FOUND', expect.any(String));
+    expect(req.userRole).toBeUndefined();
+  });
+
+  it('uses the live DB role, not the stale JWT claim, for a demoted admin device token (Finding 2)', () => {
+    // Token was signed while the user was still admin; DB now says viewer.
+    mockedVerifyToken.mockReturnValue({ userId: 'user-1', username: 'alice', role: 'admin', jti: 'device-2' });
+    mockedGetUserById.mockReturnValue({ id: 'user-1', username: 'alice', role: 'viewer' });
+    const req = mockReq({ headers: { authorization: 'Bearer device-token' } });
+    const res = mockRes();
+    const next = vi.fn();
+
+    apiAuth(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(req.userRole).toBe('viewer');
+  });
+
+  it('still grants admin for an active device token whose owner remains admin', () => {
+    mockedVerifyToken.mockReturnValue({ userId: 'user-1', username: 'alice', role: 'admin', jti: 'device-3' });
+    mockedGetUserById.mockReturnValue({ id: 'user-1', username: 'alice', role: 'admin' });
+    const req = mockReq({ headers: { authorization: 'Bearer device-token' } });
+    const res = mockRes();
+    const next = vi.fn();
+
+    apiAuth(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(req.userRole).toBe('admin');
+    expect(req.userId).toBe('user-1');
+    expect(mockedTouchDevice).toHaveBeenCalledWith('device-3');
+  });
+
+  it('still rejects a revoked device before ever consulting the user row', () => {
+    mockedIsDeviceActive.mockReturnValue(false);
+    mockedVerifyToken.mockReturnValue({ userId: 'user-1', username: 'alice', role: 'admin', jti: 'device-4' });
+    const req = mockReq({ headers: { authorization: 'Bearer device-token' } });
+    const res = mockRes();
+    const next = vi.fn();
+
+    apiAuth(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.apiError).toHaveBeenCalledWith(401, 'DEVICE_REVOKED', expect.any(String));
+    expect(mockedGetUserById).not.toHaveBeenCalled();
+  });
+
+  it('applies the same resolution through the X-API-Key JWT fallback path', () => {
+    mockedVerifyToken.mockReturnValue({ userId: 'deleted-user', username: 'ghost', role: 'admin', jti: 'device-5' });
+    mockedGetUserById.mockReturnValue(undefined);
+    const req = mockReq({ headers: { 'x-api-key': 'device-token-in-header' } });
+    const res = mockRes();
+    const next = vi.fn();
+
+    apiAuth(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.apiError).toHaveBeenCalledWith(401, 'USER_NOT_FOUND', expect.any(String));
+  });
+});
+
 // Regression suite: the path-bypass list in apiAuth previously used `\b`
 // after each path prefix, which is a *word*-boundary check, not a
 // path-segment boundary. That let `/library/file%00something` and similar
@@ -300,10 +409,11 @@ describe('apiAuth bypass-list anchoring', () => {
     '/library/file',
     '/library/file?id=abc',
     '/library/file/sub/path.jpg',
+    '/library/video',
+    '/library/video?path=Moon/2026-08-27-202843-Lunar-timelapse.mp4',
     '/library/objects/M42/thumbnail',
     '/library/objects/M42/thumbnail?size=large',
     '/library/processed-images/something.jpg',
-    '/library/download/objects/M42',
     '/library/download/tmp/abc-123',
     '/telescope/files',
     '/telescope/files?path=M42',
@@ -347,23 +457,66 @@ describe('apiAuth bypass-list anchoring', () => {
     expect(res.apiError).toHaveBeenCalledWith(401, 'AUTH_REQUIRED', expect.stringContaining('Authentication required'));
   });
 
-  // The /library/download/objects/ bypass exists only for the GET route a
-  // plain <a href> hits. The POST routes under the same prefix (subframe ZIP
-  // jobs) do real async work and previously fell through the method-agnostic
-  // regex with zero auth — pin that they now require it.
+  // The whole-object ZIP GET is only reachable without a session when it
+  // carries a valid signed `?t=` token (minted by the authenticated
+  // POST .../link). The POST sub-routes under the same prefix always require
+  // normal auth.
   it.each([
     '/library/download/objects/M42/subframes',
     '/library/download/objects/M42/subframe-filters',
+    '/library/download/objects/M42/link',
   ])('does NOT bypass auth for POST %s', (path) => {
     const { next, res } = check(path, 'POST');
     expect(next).not.toHaveBeenCalled();
     expect(res.apiError).toHaveBeenCalledWith(401, 'AUTH_REQUIRED', expect.stringContaining('Authentication required'));
   });
 
-  it('still bypasses auth for GET /library/download/objects/M42', () => {
+  it('does NOT bypass auth for GET /library/download/objects/M42 without a token', () => {
+    mockedVerifyDownloadToken.mockReturnValue(false);
     const { next, res } = check('/library/download/objects/M42', 'GET');
+    expect(next).not.toHaveBeenCalled();
+    expect(res.apiError).toHaveBeenCalledWith(401, 'AUTH_REQUIRED', expect.stringContaining('Authentication required'));
+  });
+
+  it('does NOT bypass auth for GET /library/download/objects/M42 with an invalid token', () => {
+    mockedVerifyDownloadToken.mockReturnValue(false);
+    const req = mockReq({ path: '/library/download/objects/M42', method: 'GET', query: { t: 'bogus' } });
+    const res = mockRes();
+    const next = vi.fn();
+    apiAuth(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(mockedVerifyDownloadToken).toHaveBeenCalledWith('bogus', '/library/download/objects/M42');
+  });
+
+  it('bypasses auth for GET /library/download/objects/M42 with a valid signed token', () => {
+    mockedVerifyDownloadToken.mockReturnValue(true);
+    const req = mockReq({ path: '/library/download/objects/M42', method: 'GET', query: { t: 'valid-token' } });
+    const res = mockRes();
+    const next = vi.fn();
+    apiAuth(req, res, next);
     expect(next).toHaveBeenCalled();
     expect(res.apiError).not.toHaveBeenCalled();
+  });
+
+  it('still bypasses auth for HEAD /library/file', () => {
+    const { next, res } = check('/library/file', 'HEAD');
+    expect(next).toHaveBeenCalled();
+    expect(res.apiError).not.toHaveBeenCalled();
+  });
+
+  // The bypass is READ-only. `DELETE /library/file` and `DELETE /telescope/files`
+  // sit behind requireAdmin; if the bypass covered them it would strip
+  // req.userRole and the guard would 403 every caller, admin included. They must
+  // fall through to real auth here.
+  it.each([
+    ['/library/file', 'DELETE'],
+    ['/telescope/files', 'DELETE'],
+    ['/library/file', 'POST'],
+    ['/library/objects/M42/thumbnail', 'DELETE'],
+  ])('does NOT bypass auth for %s %s', (path, method) => {
+    const { next, res } = check(path, method);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.apiError).toHaveBeenCalledWith(401, 'AUTH_REQUIRED', expect.stringContaining('Authentication required'));
   });
 });
 

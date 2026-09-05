@@ -14,13 +14,14 @@ import { THUMBNAILS_DIR } from '../paths.js';
 import { generateFitsThumbnail } from '../fitsThumbnail.js';
 import sharp from '../sharp-optional.js';
 import db from '../db.js';
+import { writeImportHistory } from './importHistory.js';
 import {
   getProfileById,
   getManualImportProfiles,
   setProfileDeviceId,
   type TelescopeProfile,
 } from '../telescopes.js';
-import { smbListDir, smbGetFile, smbCopyFileTo, supportsStreamedCopy } from '../smb.js';
+import { smbListDir, smbGetFile, type SmbEntry } from '../smb.js';
 import { selectActiveTransport, markTransportSeen, type TransportKind } from '../telescopeTransports.js';
 import { writeIdentityIfMissing } from '../deviceIdentity.js';
 import {
@@ -34,8 +35,20 @@ import {
   extractTargetFromSessionFolder,
   extractTimestampFromSessionFolder,
   isDwarfSessionFolder,
+  discoverGenericObjects,
+  listGenericObjectFiles,
+  buildGenericFilePath,
+  discoverAsiairObjects,
+  listAsiairObjectFiles,
+  buildAsiairFilePath,
+  asiairLocalName,
+  resolveAsiairRoot,
+  ASIAIR_CALIBRATION_PATHS,
   type WalkerConfig,
+  type GenericDiscoveredObject,
+  type AsiairDiscoveredObject,
 } from '../walkers/index.js';
+import { isAsiairKind } from '../types/telescopeKind.js';
 import {
   parseFilename,
   isObjectFolder,
@@ -58,10 +71,16 @@ import {
   loadSettings,
   resolveCatalogMeta,
   enrichObjectData,
+  type LibraryIndex,
 } from './objects.js';
-import { resolveObjectImagePath, invalidateAllImagesCache } from './gallery.js';
-import { recordLibraryFile, roleForFile, resolverFor, writeObjectManifest } from './libraryFiles.js';
+import { resolveObjectImagePath, invalidateAllImagesCache, objectThumbnailDiskCacheKey } from './gallery.js';
+import { writeFileIntoLibrary, copyTransportFile } from './importWrite.js';
+import { recordLibraryFiles, roleForFile, resolverFor, writeObjectManifest, type RecordFileInput } from './libraryFiles.js';
 import { isCaptureInfoSidecar, ingestCaptureInfoFile } from './captureInfo.js';
+import { getStartrailsObjectId, patchStartrailsObjectMeta } from './dwarfStartrails.js';
+import { collectRemoteArchiveCandidates, downloadToArchive } from './remoteArchive.js';
+import { RESTACKED_FOLDER, isRestackedFolder, resolveRestackTargetId, mimeTypeForExtension, SHOTS_INFO_FILENAME, targetFromShotsInfo, isDwarfThumbnailPreviewName } from './dwarfRestack.js';
+import { addProcessedImage, hasRestackedImage, isRenderableProcessedName, isStoredOnlyProcessedName } from './processed.js';
 import {
   sessionFolderFor,
   layoutForImport,
@@ -71,18 +90,19 @@ import {
   sanitizeSessionFolder,
   type LibraryLayout,
 } from './libraryLayout.js';
-import { backfillSessionWeather } from './observations.js';
+import { enqueueSessionWeatherBackfill, getSessionTelescopeId } from './observations.js';
 import {
   classifyImportFile,
   isDwarfMasterStack,
   countSkip,
   summarizeSkips,
-  SKIP_LABELS,
+  isImportSkipReason,
   type ImportSkipReason,
   type ImportSkipSummary,
   type SkipTally,
 } from './importFilter.js';
-import { isContainerFolder, groupByTarget } from './objectDiscovery.js';
+import { isRecord } from '../typeGuards.js';
+import { isContainerFolder, groupByTarget, stripCaptureModeSuffix } from './objectDiscovery.js';
 import {
   collectObjectSources,
   walkObjectFiles,
@@ -100,8 +120,12 @@ import {
 } from './importStaging.js';
 import {
   getArchiveDir,
+  getRestackArchiveDir,
+  migrateRestackedToSharedRootOnce,
+  RESTACKED_ROOT_DIR_NAME,
   collectArchiveCandidates,
   copyToArchive,
+  type ArchiveCandidate,
 } from './archiveFolders.js';
 import { deviceNoun, isGenericShare, offlineAdvice } from '../deviceWording.js';
 import { canonicalImportName } from './importNaming.js';
@@ -110,72 +134,12 @@ import { log } from '../logger.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export interface ImportStatus {
-  running: boolean;
-  /** Unique id minted when this run started. Lets a caller cancel exactly
-   *  the run it started (see cancelImport) instead of whatever import
-   *  happens to be active — e.g. the sub-frame sync modal closing must not
-   *  kill an unrelated auto-import that raced in and claimed the lock. Null
-   *  when no import has ever run in this process. */
-  runId: string | null;
-  currentObject: string | null;
-  /** Telescope driving the current import run. Null for folder imports and
-   *  drag-and-drop uploads, since those have no telescope context. */
-  telescopeId: string | null;
-  /** Human-readable name of the telescope (e.g. "Dwarf II", "Living-room
-   *  SeeStar"). Lets the UI say "Importing M31 from Dwarf II" without
-   *  another round-trip. Null when telescopeId is null. */
-  telescopeName: string | null;
-  /** Which transport this run is using. Drives the "via Wi-Fi" / "via USB"
-   *  hint in the import progress UI so users with both transports
-   *  configured can see which one the auto-import is actually pulling
-   *  from. Null for non-telescope imports. */
-  transportKind: TransportKind | null;
-  objectsTotal: number;
-  objectsDone: number;
-  filesTotal: number;
-  filesDone: number;
-  currentObjectFilesTotal: number;
-  currentObjectFilesDone: number;
-  bytesTotal: number;
-  bytesDone: number;
-  skippedFiles: number;
-  /** Files this run found on the telescope but will not import, grouped by
-   *  why, largest group first. Distinct from `skippedFiles`, which counts
-   *  files that were already present locally.
-   *
-   *  Without this the only signal is a file count lower than what is on the
-   *  device, which reads as the import losing files rather than as a filter
-   *  doing its job. The folder-import wizard has reported this since it
-   *  shipped; the telescope path used to leave it in the debug log. */
-  skipped: ImportSkipSummary[];
-  lastRun: string | null;
-  error: string | null;
-  /** True when `error` describes a user-requested cancellation rather than a
-   *  genuine failure. Lets callers show a cancelled run differently (or not
-   *  at all) from an error that needs the user's attention — the Library
-   *  page's error banner skips it entirely, since a cancellation is
-   *  something the user just did, not new information. The run is still
-   *  recorded in Sync History either way. */
-  cancelled: boolean;
-  startedAt: string | null;
-  warmingThumbnails: { done: number; total: number } | null;
-  /** True when the user explicitly triggered this run (Sync Now, a
-   *  per-object/session sync, a folder import), false for the scheduled
-   *  auto-import tick. Threaded into the importHistory row so a zero-new-file
-   *  run the user asked for directly can still surface in Sync History,
-   *  while a routine background tick that (correctly) found nothing stays
-   *  hidden. */
-  manual: boolean;
-  /** Files copied into the reserved `_archive` directory by this run, and where
-   *  it is on disk. Only ever non-zero for a folder import with archive mode
-   *  on. Present so the wizard can say the calibration and restack folders were
-   *  kept: preserving bytes the user cannot find does not read as "it worked".
-   *  Optional so the two telescope-import status literals, which can never
-   *  archive anything, stay unchanged. */
-  archivedFiles?: number;
-  archivePath?: string | null;
-}
+// ImportStatus/TouchedObject/TouchedSession live in importTypes.ts (see that
+// file's header for why) and are re-exported here so every existing importer
+// of them from './import.js' (including the library/index.ts barrel) keeps
+// working unchanged.
+export type { ImportStatus, TouchedObject, TouchedSession } from './importTypes.js';
+import type { ImportStatus, TouchedObject, TouchedSession } from './importTypes.js';
 
 /** Options accepted by runImport. */
 export interface RunImportOptions {
@@ -187,6 +151,12 @@ export interface RunImportOptions {
    *  auto-import tick, which must never opt itself into being surfaced as if
    *  the user had asked for it. */
   manual?: boolean;
+  /** Sub-frame sync only: when `syncObjectSubFrames` drives one night at a
+   *  time, each `syncSessionSubFrames` call runs with `rollup: true` so it
+   *  neither resets the shared run accumulators nor writes its own Sync
+   *  History row — the whole-object caller owns both, and "sync all
+   *  sub-frames" lands as a single history entry. */
+  rollup?: boolean;
 }
 
 export interface ImportHistoryEntry {
@@ -217,6 +187,14 @@ export interface ImportHistoryEntry {
   /** True when the user explicitly triggered this run. False (including for
    *  rows written before this column existed) for a scheduled auto-import tick. */
   manual: boolean;
+  /** Catalog objects that received at least one new file this run, deduped,
+   *  each flagged for whether the object itself was brand-new. Null for rows
+   *  written before this was tracked, and for runs that added no files. */
+  objectsTouched: TouchedObject[] | null;
+  /** Observation nights (object + date) that received at least one new file
+   *  this run, deduped, each flagged for whether the night itself was new.
+   *  Null under the same conditions as `objectsTouched`. */
+  sessionsTouched: TouchedSession[] | null;
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -258,6 +236,12 @@ let currentImportWalker: WalkerConfig = { basePath: 'MyWorks' };
 // Transient tracking of new files downloaded in the current import run
 let importNewFiles: Array<{ name: string; size: number }> = [];
 let importBytesNew = 0;
+// Deduped per-run summaries, keyed by objectId / `${objectId}|${date}`. Built
+// alongside importNewFiles so the Sync History detail view can show "what
+// changed" (objects created vs. added to, observations created vs. added to)
+// without re-deriving it from the flat file list.
+let importObjectsTouched: Map<string, TouchedObject> = new Map();
+let importSessionsTouched: Map<string, TouchedSession> = new Map();
 
 /**
  * Request cancellation of the active import. When `runId` is given, only
@@ -346,7 +330,7 @@ async function pregenerateObjectThumbnails(objectIds: Iterable<string>): Promise
         const srcPath = await resolveObjectImagePath(objectId);
         if (srcPath && fs.existsSync(srcPath)) {
           const mtimeMs = fs.statSync(srcPath).mtimeMs;
-          const cacheKey = Buffer.from(`${srcPath}:${THUMB_W}x${THUMB_H}:${mtimeMs}`).toString('base64url');
+          const cacheKey = objectThumbnailDiskCacheKey(srcPath, THUMB_W, THUMB_H, mtimeMs);
           const cachePath = path.join(THUMBNAILS_DIR, `${cacheKey}.jpg`);
           if (!fs.existsSync(cachePath)) {
             fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
@@ -411,14 +395,28 @@ export function friendlyImportError(err: unknown, profile: TelescopeProfile | nu
         ? 'Check the address is right and that the server is on.'
         : 'Confirm it is powered on and connected to your network, then try again.');
   }
-  if (lower.includes('enotfound') || lower.includes('eai_again') || lower.includes('getaddrinfo')) {
+  if (lower.includes('enotfound') || lower.includes('eai_again') || lower.includes('getaddrinfo') || lower.includes('host not found')) {
     return `Could not find ${name}${host ? ` at ${host}` : ''}. Check the hostname or IP address in Settings, Hardware.`;
+  }
+  if (lower.includes('smbclient is not installed')) {
+    return 'The server is missing the smbclient program it needs to read SMB shares. '
+      + 'Install the samba client package on the host (the official Docker image already includes it).';
   }
   if (lower.includes('ehostunreach') || lower.includes('enetunreach') || lower.includes('host is down')) {
     return `${name} is not reachable on the network. ${offlineAdvice(profile?.kind)}`;
   }
-  if (lower.includes('nt_status_logon_failure') || lower.includes('logon_failure') || lower.includes('access denied')) {
-    return `${name} refused the login. Open Settings, Hardware, ${name}, and check the SMB username and password.`;
+  if (
+    lower.includes('nt_status_logon_failure') || lower.includes('logon_failure')
+    || lower.includes('access denied') || lower.includes('nt_status_access_denied')
+    || lower.includes('authentication failed') || lower.includes('session setup failed')
+    || lower.includes('bad password') || lower.includes('wrong password')
+  ) {
+    return `${name} refused the login. Open Settings, Hardware, ${name}, and check the SMB username and password. `
+      + 'A share that only allows guests needs the username and password fields left blank.';
+  }
+  if (lower.includes('smb protocol negotiation failed') || lower.includes('nt_status_connection_reset')) {
+    return `${name} answered but would not agree on an SMB protocol version. `
+      + 'The share may require SMB1, or a minimum of SMB2/SMB3 that the other end does not offer. Check its SMB settings.';
   }
   if (lower.includes('nt_status_bad_network_name') || lower.includes('bad_network_name')) {
     return generic
@@ -426,10 +424,12 @@ export function friendlyImportError(err: unknown, profile: TelescopeProfile | nu
       : `${name} does not expose the expected file share. Make sure the telescope is fully booted and SMB sharing is on.`;
   }
   if (lower.includes('failed to connect to smb') || lower.includes('smb connection')) {
-    return `Could not reach ${name}${host ? ` at ${host}` : ''} over SMB. `
-      + (generic
-        ? 'Check the address is right and that the server is on and sharing over SMB.'
-        : 'Check that it is powered on and connected to your network, then try again.');
+    // The raw reason was too generic for smbclient to classify (it lands here
+    // as "SMB connection failed: Connection failed"). The host answered enough
+    // for smbclient to run, so this is a share/credential/protocol problem, not
+    // a power or network one. Keep the raw tail so support can still see it.
+    return `${name}${host ? ` at ${host}` : ''} answered but the SMB share could not be opened. `
+      + `Check the SMB share name, username, and password in Settings, Hardware. (${raw})`;
   }
   if (lower.includes('enoent') || lower.includes('no such file') || lower.includes('not a directory')) {
     return `Could not read from ${name}. The expected folder is missing. If this is a USB-mounted Dwarf, make sure the drive is connected.`;
@@ -469,6 +469,51 @@ function safeObjectDir(objectName: string): string | null {
   const resolved = path.resolve(LIBRARY_DIR, safe);
   if (resolved !== LIBRARY_DIR && !resolved.startsWith(LIBRARY_DIR + path.sep)) return null;
   return resolved;
+}
+
+/**
+ * Registers a bare library object for a RESTACKED target that doesn't exist
+ * yet, so a Dwarf MegaStack of a target the user has never separately
+ * imported a session for lands as a real object instead of archived bytes.
+ *
+ * Ordinary session folders already get this trust level with no gate at all
+ * — the walker creates an object from whatever the device calls the target
+ * folder, however implausible (this library has a real object literally
+ * named "Unknown", because that's what the device wrote). Requiring RESTACKED
+ * targets to already exist was a stricter bar than that, and the practical
+ * effect was that a Dwarf resync of a target you hadn't yet imported an
+ * ordinary session for silently dumped its MegaStack into `_archive/`
+ * instead of the object it plainly named — see resolveRestackTargetId's own
+ * doc for the two ways a target gets resolved.
+ *
+ * A no-op when the object already exists (and isn't soft-deleted) — the
+ * RESTACKED loop then just attaches the processed image to it, which is the
+ * "combine" side of create-or-combine. Mirrors the enrichment shape the main
+ * per-target import loop and createManualObservation both use: a fresh
+ * `index.objects` entry with no sessions (RESTACKED files aren't tied to a
+ * single observing night — see addProcessedImage's 'dwarf-restack' source),
+ * plus a `libraryObjects` row via resolveCatalogMeta so it shows up in the
+ * UI immediately rather than waiting for this run's end-of-loop save.
+ */
+function ensureRestackObject(targetId: string, index: LibraryIndex, telescopeId: string | null): void {
+  if (index.objects[targetId] && !index.objects[targetId].deleted) return;
+  const preferCaldwell = loadSettings().preferredCatalog === 'caldwell';
+  const folderName = applyCatalogPreference(targetId, preferCaldwell);
+  const lastImport = new Date().toISOString();
+  index.objects[targetId] = { folderName, sessions: [], fileCount: 0, lastImport };
+  try {
+    db.transaction(() => {
+      const cat = resolveCatalogMeta(targetId);
+      stmts.upsertObject.run(
+        targetId, folderName, 0, lastImport, 0, null,
+        cat.catalogId, cat.objectName, cat.objectType, cat.constellation,
+        cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy,
+      );
+      if (telescopeId) stmts.setObjectPrimaryTelescopeIfNull.run(telescopeId, targetId);
+    })();
+  } catch (err) {
+    log.warn({ err: err instanceof Error ? err.message : String(err), targetId }, '[import] failed to create object for RESTACKED target');
+  }
 }
 
 /** True when a filename from a remote (SMB) directory listing is safe to use
@@ -736,6 +781,8 @@ export async function runImport(
   myRunId = importStatus.runId;
   importNewFiles = [];
   importBytesNew = 0;
+  importObjectsTouched = new Map();
+  importSessionsTouched = new Map();
   importSkips = new Map();
 
   // Stamp this run's deviceId from `.nebulis.dat` if the user has tracking
@@ -807,6 +854,16 @@ export async function runImport(
   }
 
   const isDwarf = isDwarfKind(profile.kind);
+  // 'other' also supports the documented "Generic SMB Layout" (nested
+  // <object>/<YYYY-MM-DD>_<HHMM>/lights|subframes session folders), tried
+  // first per object; any object with no such session folders falls back to
+  // the flat SeeStar-style layout below, so an existing flat custom-SMB
+  // setup keeps working unchanged.
+  const isGeneric = profile.kind === 'other';
+  // ASIAIR nests target folders under a capture-mode and frame-type pair
+  // (Autorun|Plan/Light/<Target>, plus Live/<Target>), which no basePath can
+  // express, so it gets its own discovery branch like Dwarf and generic do.
+  const isAsiair = isAsiairKind(profile.kind);
 
   // Vendor-specific object discovery.
     interface ObjectToImport {
@@ -814,6 +871,17 @@ export async function runImport(
       subFolderName: string | null;
       // Only set for Dwarf: the real session folders under Astronomy/.
       dwarfSessionFolders: string[];
+      // Only set for the synthetic Star Trails object: base path
+      // dwarfSessionFolders are joined against (Astronomy/STARTRAILS rather
+      // than Astronomy/ directly).
+      dwarfSessionBase?: string;
+      // Only set for a generic ('other') object using the documented
+      // Generic SMB Layout: the <YYYY-MM-DD>_<HHMM> session folders found
+      // under it, each already verified to hold a non-empty lights/.
+      genericSessionFolders: string[];
+      // Only set for ASIAIR: where this target's files were found, since one
+      // target can appear under Autorun, Plan and Live at once.
+      asiairObject?: AsiairDiscoveredObject;
       // Set when this entry was expanded from a container folder (e.g. Planetary_Photo).
       // Used as the SMB path for file listing; objectName becomes the library destination.
       remoteFolderName?: string;
@@ -833,8 +901,40 @@ export async function runImport(
           objectName: o.folderName,
           subFolderName: null,
           dwarfSessionFolders: o._dwarfSessionFolders ?? [],
+          dwarfSessionBase: o._dwarfSessionBase,
+          genericSessionFolders: [],
+        }));
+    } else if (isAsiair) {
+      debugLog('import:discover', `ASIAIR: scanning ${transportAddress} for objects`);
+      const discovered = await discoverAsiairObjects(profile);
+      debugLog('import:discover', `ASIAIR: found ${discovered.length} object(s) total`);
+      if (discovered.length > 0) debugLog('import:discover', `Objects: ${discovered.map(o => o.folderName).join(', ')}`);
+      toImport = discovered
+        .filter(o => !targetObjectId || resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId)
+        .filter(o => !index.objects[resolveCanonicalId(normalizeObjectId(o.folderName))]?.deleted)
+        .map(o => ({
+          objectName: o.folderName,
+          subFolderName: null,
+          dwarfSessionFolders: [],
+          genericSessionFolders: [],
+          asiairObject: o,
         }));
     } else {
+      // Generic ('other') sources may follow the documented Generic SMB
+      // Layout (nested session folders). Try that first — anything it finds
+      // is excluded from the flat listing below so it isn't processed twice.
+      let genericObjects: GenericDiscoveredObject[] = [];
+      if (isGeneric) {
+        debugLog('import:discover', `Generic: scanning ${transportAddress} for the documented session-folder layout`);
+        try {
+          genericObjects = await discoverGenericObjects(profile);
+          if (genericObjects.length > 0) debugLog('import:discover', `Generic: ${genericObjects.length} object(s) with session folders: ${genericObjects.map(o => o.folderName).join(', ')}`);
+        } catch (err) {
+          log.warn({ err: err instanceof Error ? err.message : String(err) }, '[import] generic-layout discovery failed; falling back to flat layout only');
+        }
+      }
+      const genericObjectNames = new Set(genericObjects.map(o => o.folderName));
+
       debugLog('import:discover', `SeeStar: connecting to ${transportAddress}, listing ${walkerBase || '/'}`);
       // Per-object listings later in this run are already isolated (each is
       // its own try/catch that skips just that object on failure). This root
@@ -847,7 +947,7 @@ export async function runImport(
         log.warn({ err: err instanceof Error ? err.message : String(err), walkerBase }, '[import] root listing failed, retrying once');
         entries = await smbListDir(walkerBase, profile);
       }
-      const objectFolders = entries.filter(e => e.type === 'dir' && isObjectFolder(e.name));
+      const objectFolders = entries.filter(e => e.type === 'dir' && isObjectFolder(e.name) && !genericObjectNames.has(e.name));
       const subFolders = entries.filter(e => e.type === 'dir' && isSubFolder(e.name));
       debugLog('import:discover', `SeeStar: found ${objectFolders.length} object folder(s), ${subFolders.length} sub folder(s)`);
       if (objectFolders.length > 0) debugLog('import:discover', `Objects: ${objectFolders.map(e => e.name).join(', ')}`);
@@ -884,6 +984,7 @@ export async function runImport(
               // sub-frames, so there is no `<container>_sub` to attach.
               subFolderName: null,
               dwarfSessionFolders: [],
+              genericSessionFolders: [],
               remoteFolderName: entry.name,
               fileNameFilter: new Set(fileNames),
             });
@@ -895,16 +996,37 @@ export async function runImport(
       }
 
       toImport = [
+        ...genericObjects
+          .filter(o => !targetObjectId || resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId)
+          .filter(o => !index.objects[resolveCanonicalId(normalizeObjectId(o.folderName))]?.deleted)
+          .map(o => ({
+            objectName: o.folderName,
+            subFolderName: null,
+            dwarfSessionFolders: [],
+            genericSessionFolders: o._genericSessionFolders ?? [],
+          })),
         ...(targetObjectId
-          ? normalFolders.filter(e => resolveCanonicalId(normalizeObjectId(e.name)) === targetObjectId)
+          ? normalFolders.filter(e => resolveCanonicalId(normalizeObjectId(stripCaptureModeSuffix(e.name))) === targetObjectId)
           : normalFolders
         )
-          .filter(e => !index.objects[resolveCanonicalId(normalizeObjectId(e.name))]?.deleted)
-          .map(objEntry => ({
-            objectName: objEntry.name,
-            subFolderName: subFolders.find(s => getObjectFromSubFolder(s.name) === objEntry.name)?.name ?? null,
-            dwarfSessionFolders: [],
-          })),
+          .filter(e => !index.objects[resolveCanonicalId(normalizeObjectId(stripCaptureModeSuffix(e.name)))]?.deleted)
+          .map(objEntry => {
+            // `Lunar_video` and `Lunar` are one object; the suffix is a SeeStar
+            // capture mode, not part of the target name. The `_sub` lookup still
+            // keys on the raw folder name: a `_video` folder never has a `_sub`
+            // companion, and stripping first could wrongly attach the stills
+            // folder's `_sub` to it.
+            const objectName = stripCaptureModeSuffix(objEntry.name);
+            return {
+              objectName,
+              // The stripped name is the library destination; the raw folder is
+              // still where the files are read from on the share.
+              remoteFolderName: objectName === objEntry.name ? undefined : objEntry.name,
+              subFolderName: subFolders.find(s => getObjectFromSubFolder(s.name) === objEntry.name)?.name ?? null,
+              dwarfSessionFolders: [],
+              genericSessionFolders: [],
+            };
+          }),
         ...expandedEntries
           .filter(e => !targetObjectId || resolveCanonicalId(normalizeObjectId(e.objectName)) === targetObjectId)
           .filter(e => !index.objects[resolveCanonicalId(normalizeObjectId(e.objectName))]?.deleted),
@@ -941,8 +1063,8 @@ export async function runImport(
         // transient USB read error) must not abort every remaining object —
         // the SeeStar branch below already isolates per-folder listing
         // failures the same way.
-        let files: Array<{ name: string; size?: number }>;
-        let subFiles: Array<{ name: string; size?: number }>;
+        let files: Array<{ name: string; size?: number; mtime?: string }>;
+        let subFiles: Array<{ name: string; size?: number; mtime?: string }>;
         try {
           ({ files, subFiles } = await listDwarfObjectFiles(
             profile,
@@ -950,6 +1072,7 @@ export async function runImport(
               folderName: objectName,
               subFolderName: null,
               _dwarfSessionFolders: obj.dwarfSessionFolders,
+              _dwarfSessionBase: obj.dwarfSessionBase,
             },
             // Archive mode means everything, including the per-frame previews
             // the device keeps in a session sub-directory.
@@ -964,7 +1087,7 @@ export async function runImport(
           importStatus.objectsDone++;
           continue;
         }
-        const toImportFile = (e: { name: string; size?: number }, fromSub: boolean): ImportFile | null => {
+        const toImportFile = (e: { name: string; size?: number; mtime?: string }, fromSub: boolean): ImportFile | null => {
           // listDwarfObjectFiles tags entries as `<sessionFolder>/<basename>`, or
           // `<sessionFolder>/<subDir>/<basename>` for a file inside a session
           // sub-directory (archive mode only). The sub-directory is preserved on
@@ -973,7 +1096,16 @@ export async function runImport(
           const sessionFolder = parts.length > 1 ? parts[0] : '';
           const subPath = sanitizeDwarfSubPath(parts.slice(1, -1));
           const basename = parts[parts.length - 1];
-          const night = dwarfFolderNightDate(sessionFolder);
+          // The synthetic Star Trails object's capture folders carry no
+          // target and may carry no parseable timestamp either (unverified
+          // real layout) — fall back to the file's own mtime rather than
+          // leaving the capture undated when a perfectly good date is
+          // sitting right there. A *file's* mtime, not the folder's: local
+          // directory listings never populate mtime for directory entries
+          // (only files), so a folder-level fallback would silently never
+          // fire on local/USB transports.
+          const night = dwarfFolderNightDate(sessionFolder)
+            ?? (e.mtime ? e.mtime.slice(0, 10) : null);
 
           // Nested: mirror the device's own session directory and keep the file
           // name exactly as the Dwarf wrote it. dwarfLocalName is not consulted
@@ -985,21 +1117,21 @@ export async function runImport(
           if (objectLayout === 'nested') {
             if (!isSafeRemoteFileName(basename) || subPath === null) {
               debugLog('import:dwarf', `Skipping Dwarf file (unsafe path): ${e.name}`);
-              countSkip(importSkips, 'unsupported-type');
+              countSkip(importSkips, 'unsupported-type', 1, 0, [basename]);
               return null;
             }
             const sessionDir = sessionFolderFor(sessionFolder || null, night, null);
             const dir = sessionDir && subPath ? `${sessionDir}/${subPath}` : sessionDir;
             if (!dir) {
               debugLog('import:dwarf', `Skipping Dwarf file (unusable session folder): ${e.name}`);
-              countSkip(importSkips, 'undecodable-session-folder');
+              countSkip(importSkips, 'undecodable-session-folder', 1, 0, [basename]);
               return null;
             }
             return {
               localName: basename,
               sessionFolder: dir,
               originalName: basename,
-              remotePath: buildDwarfFilePath(e.name),
+              remotePath: buildDwarfFilePath(e.name, obj.dwarfSessionBase),
               size: e.size,
               fromSub,
               date: night,
@@ -1009,14 +1141,14 @@ export async function runImport(
           const named = dwarfLocalName(basename, sessionFolder);
           if (named.name === null) {
             debugLog('import:dwarf', `Skipping Dwarf file (${named.reason}): ${e.name}`);
-            countSkip(importSkips, named.reason);
+            countSkip(importSkips, named.reason, 1, 0, [basename]);
             return null;
           }
           return {
             localName: named.name,
             sessionFolder: null,
             originalName: basename,
-            remotePath: buildDwarfFilePath(e.name),
+            remotePath: buildDwarfFilePath(e.name, obj.dwarfSessionBase),
             size: e.size,
             fromSub,
             date: night,
@@ -1032,7 +1164,143 @@ export async function runImport(
         const wantSubFrames = settings.importSubFrames === true || settings.archiveAllFiles === true;
         if (!wantSubFrames) {
           countSkip(importSkips, 'sub-frames-disabled', subFiles.length,
-            subFiles.reduce((sum, f) => sum + (f.size ?? 0), 0));
+            subFiles.reduce((sum, f) => sum + (f.size ?? 0), 0),
+            subFiles.map(f => f.name));
+        }
+        allFiles = [
+          ...files.map(f => toImportFile(f, false)).filter(isImportFile),
+          ...(wantSubFrames ? subFiles.map(f => toImportFile(f, true)).filter(isImportFile) : []),
+        ];
+      } else if (isGeneric && obj.genericSessionFolders.length > 0) {
+        // The documented Generic SMB Layout: one unreadable session folder
+        // must not abort every remaining object, matching the isolation the
+        // Dwarf and SeeStar branches already give their own per-folder reads.
+        let files: SmbEntry[];
+        let subFiles: SmbEntry[];
+        try {
+          ({ files, subFiles } = await listGenericObjectFiles(profile, {
+            folderName: objectName,
+            subFolderName: null,
+            _genericSessionFolders: obj.genericSessionFolders,
+          }));
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          debugLog('import:error', `Failed to list generic session files for "${objectName}" — ${reason}`);
+          console.error(`[import] Failed to list generic session files for "${objectName}":`, reason);
+          const msg = `Could not read session files for "${objectName}" (${reason}).`;
+          importStatus.error = importStatus.error ? `${importStatus.error}; ${msg}` : msg;
+          importStatus.objectsDone++;
+          continue;
+        }
+        const toImportFile = (e: { name: string; size?: number }, fromSub: boolean): ImportFile | null => {
+          // listGenericObjectFiles tags entries as `<session>/<basename>`
+          // (meta.json and any other loose file in the session folder) or
+          // `<session>/lights|subframes/<basename>`.
+          const parts = e.name.split('/');
+          const session = parts[0];
+          const basename = parts[parts.length - 1];
+          if (!isSafeRemoteFileName(basename)) {
+            debugLog('import:generic', `Skipping generic file (unsafe name): ${e.name}`);
+            countSkip(importSkips, 'unsupported-type', 1, 0, [basename]);
+            return null;
+          }
+          // Session folder is <YYYY-MM-DD>_<HHMM> by construction (discoverGenericObjects
+          // only keeps folders matching that pattern), so the date is always its first 10 chars.
+          const date = session.slice(0, 10);
+
+          if (objectLayout === 'nested') {
+            return {
+              localName: basename,
+              sessionFolder: sessionFolderFor(session, date, null),
+              originalName: basename,
+              remotePath: buildGenericFilePath({ folderName: objectName }, e.name),
+              size: e.size,
+              fromSub,
+              date,
+            };
+          }
+
+          // Flat layout (an existing object created before this feature, or
+          // before it had any nested session): prefix the session folder onto
+          // the basename so files from different sessions never collide
+          // inside the one flat directory a flat object stores everything in.
+          return {
+            localName: `${session}_${basename}`,
+            sessionFolder: null,
+            originalName: basename,
+            remotePath: buildGenericFilePath({ folderName: objectName }, e.name),
+            size: e.size,
+            fromSub,
+            date,
+          };
+        };
+        const isImportFile = (f: ImportFile | null): f is ImportFile => f !== null;
+        const wantSubFrames = settings.importSubFrames === true || settings.archiveAllFiles === true;
+        if (!wantSubFrames) {
+          countSkip(importSkips, 'sub-frames-disabled', subFiles.length,
+            subFiles.reduce((sum, f) => sum + (f.size ?? 0), 0),
+            subFiles.map(f => f.name));
+        }
+        allFiles = [
+          ...files.map(f => toImportFile(f, false)).filter(isImportFile),
+          ...(wantSubFrames ? subFiles.map(f => toImportFile(f, true)).filter(isImportFile) : []),
+        ];
+      } else if (isAsiair && obj.asiairObject) {
+        // ASIAIR: Autorun/Plan light frames are sub-frames, Live/ output is the
+        // finished image. One unreadable source directory must not abort the
+        // remaining objects, matching the isolation the branches above give
+        // their own per-folder reads.
+        let files: SmbEntry[];
+        let subFiles: SmbEntry[];
+        try {
+          ({ files, subFiles } = await listAsiairObjectFiles(profile, obj.asiairObject));
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          debugLog('import:error', `Failed to list ASIAIR files for "${objectName}" — ${reason}`);
+          console.error(`[import] Failed to list ASIAIR files for "${objectName}":`, reason);
+          const msg = `Could not read files for "${objectName}" (${reason}).`;
+          importStatus.error = importStatus.error ? `${importStatus.error}; ${msg}` : msg;
+          importStatus.objectsDone++;
+          continue;
+        }
+        const toImportFile = (e: { name: string; size?: number }, fromSub: boolean): ImportFile | null => {
+          // listAsiairObjectFiles tags entries with the full source directory
+          // (`Autorun/Light/M42/<basename>`), which is already the remote path.
+          const basename = asiairLocalName(e.name);
+          if (!isSafeRemoteFileName(basename)) {
+            debugLog('import:asiair', `Skipping ASIAIR file (unsafe name): ${e.name}`);
+            countSkip(importSkips, 'unsupported-type', 1, 0, [basename]);
+            return null;
+          }
+          const night = sessionNightFor(parseFilename(basename));
+          return {
+            // ASIAIR names carry the target and a full timestamp, so they are
+            // unique across capture modes and nights and need no rewriting.
+            // The file keeps the name the device gave it (CLAUDE.md, "Imported
+            // File Preservation").
+            localName: basename,
+            // Like SeeStar, ASIAIR has no session directory of its own: frames
+            // from many nights sit flat in one target folder. A nested object
+            // gets a canonical session folder built from the frame's own
+            // observing night.
+            sessionFolder: objectLayout === 'nested' ? sessionFolderFor(null, night, null) : null,
+            originalName: basename,
+            remotePath: buildAsiairFilePath(e.name),
+            size: e.size,
+            fromSub,
+            date: night,
+          };
+        };
+        const isImportFile = (f: ImportFile | null): f is ImportFile => f !== null;
+        const wantSubFrames = settings.importSubFrames === true || settings.archiveAllFiles === true;
+        if (!wantSubFrames) {
+          // Worth counting loudly here: for ASIAIR this is not a slice of the
+          // run, it is almost all of it. New ASIAIR profiles are created with
+          // importSubFrames on for exactly this reason (telescopes.ts), so a
+          // user seeing this number has turned it off deliberately.
+          countSkip(importSkips, 'sub-frames-disabled', subFiles.length,
+            subFiles.reduce((sum, f) => sum + (f.size ?? 0), 0),
+            subFiles.map(f => f.name));
         }
         allFiles = [
           ...files.map(f => toImportFile(f, false)).filter(isImportFile),
@@ -1117,7 +1385,7 @@ export async function runImport(
         // matching the folder-import wizard: a JPG preview the firmware dropped
         // into a `_sub` folder must not ride in under the JPG setting.
         const decision = classifyImportFile(f.localName, settings, { fromSubFolder: f.fromSub });
-        if (!decision.import) { filteredType++; countSkip(importSkips, decision.reason, 1, f.size ?? 0); return false; }
+        if (!decision.import) { filteredType++; countSkip(importSkips, decision.reason, 1, f.size ?? 0, [f.originalName ?? f.localName]); return false; }
         // Never re-import tombstoned sessions (strict policy)
         if (f.date && index.objects[objIdNormalized]?.deletedSessions?.includes(f.date)) {
           filteredTombstone++;
@@ -1144,6 +1412,11 @@ export async function runImport(
       // record — otherwise the gallery fills with placeholder entries that
       // have zero sessions.
       const hasPriorImport = !!index.objects[objIdNormalized];
+      // Snapshotted now, before this object's own index entry is overwritten
+      // further down: it's the "did this night already have a session"
+      // signal for the touched-sessions summary below, sourced for free from
+      // the index already loaded rather than an extra DB query.
+      const priorSessionDates = new Set(index.objects[objIdNormalized]?.sessions ?? []);
       debugLog('import:object', `${objectName}: ${allFiles.length} file(s) to process${hasPriorImport ? ' (prior import exists)' : ' (new object)'}`);
       if (allFiles.length === 0 && !hasPriorImport) {
         console.log(`[import] Skipping empty folder: ${objectName}`);
@@ -1180,6 +1453,9 @@ export async function runImport(
       let downloadErrors = 0;
       let firstDownloadError: string | null = null;
       let downloadsCancelled = false;
+      // Accumulated per object, flushed in one transaction after the download
+      // pool — one fsync for the whole object instead of one per file.
+      const pendingFileRows: RecordFileInput[] = [];
 
       // FITS thumbnailing runs on its own bounded worker pool: previously it
       // was awaited inline right after each file's write, so the CPU-bound
@@ -1195,6 +1471,27 @@ export async function runImport(
       /** Object-relative destination for a file: `<session>/<name>` when nested. */
       const destRelFor = (file: ImportFile): string =>
         file.sessionFolder ? `${file.sessionFolder}/${file.localName}` : file.localName;
+      /** Note this object as touched by the run (deduped, first call wins the
+       *  isNew flag) — called only when a file actually lands, so an object
+       *  with nothing new to pull never appears. */
+      const recordTouchedObject = (): void => {
+        if (!importObjectsTouched.has(objIdNormalized)) {
+          importObjectsTouched.set(objIdNormalized, { objectId: objIdNormalized, name: objectName, isNew: !hasPriorImport });
+        }
+      };
+      /** Same idea for the observing night: isNew reflects whether this
+       *  object+date combination existed before this run started. */
+      const recordTouchedSession = (date: string): void => {
+        const sessionKey = `${objIdNormalized}|${date}`;
+        if (!importSessionsTouched.has(sessionKey)) {
+          importSessionsTouched.set(sessionKey, {
+            objectId: objIdNormalized,
+            objectName,
+            date,
+            isNew: !priorSessionDates.has(date),
+          });
+        }
+      };
       /** Record the per-file row. `date` from the walker is an observing night
        *  (already rolled), not a raw capture instant, so it is only pinned as
        *  an override when the filename itself yields no date to derive from —
@@ -1202,7 +1499,7 @@ export async function runImport(
        *  on every read. Same rule the backfill uses. */
       const recordFile = (file: ImportFile, bytes: number): void => {
         const parsed = parseFilename(file.localName);
-        recordLibraryFile({
+        pendingFileRows.push({
           objectId: objIdNormalized,
           folderName: objFolderName,
           sessionFolder: file.sessionFolder,
@@ -1220,109 +1517,72 @@ export async function runImport(
 
       const downloadOne = async (file: ImportFile): Promise<void> => {
         const destRel = destRelFor(file);
-        const localPath = path.resolve(objLocalDir, destRel);
-        const objRoot = path.resolve(objLocalDir);
-        let tmpPath: string | null = null;
-        try {
-          if (localPath !== objRoot && !localPath.startsWith(objRoot + path.sep)) {
-            throw new Error(`Refusing to write outside object directory: ${destRel}`);
-          }
+        debugLog('import:file', `Downloading: ${objectName}/${destRel}${file.size != null ? ` (${(file.size / 1024).toFixed(0)} KB)` : ''}`);
+        const outcome = await writeFileIntoLibrary(
+          { source: file.remotePath, destRel, expectedSize: file.size, sourceKind: 'transport' },
+          { profile, objectDir: objLocalDir, thumbnailQueue },
+        );
 
-          // Skip if already exists
-          if (fs.existsSync(localPath)) {
-            debugLog('import:file', `Skip (exists): ${objectName}/${destRel}`);
-            importStatus.filesDone++;
-            importStatus.currentObjectFilesDone++;
-            importStatus.skippedFiles++;
-            importStatus.bytesDone += file.size || 0;
-            fileCount++;
-            // Still record it: a re-run is how files imported before this table
-            // existed acquire a row without waiting for the boot backfill.
-            let onDiskBytes = file.size || 0;
-            if (!onDiskBytes) {
-              try { onDiskBytes = fs.statSync(localPath).size; } catch { /* best effort */ }
-            }
-            recordFile(file, onDiskBytes);
-            if (file.date) {
-              sessionSet.add(file.date);
-            } else if (/\.jpe?g$/i.test(file.localName)) {
-              const d = exifDateFromFile(localPath);
-              if (d) sessionSet.add(d);
-            }
-            return;
-          }
-
-          tmpPath = `${localPath}.tmp`;
-          debugLog('import:file', `Downloading: ${objectName}/${destRel}${file.size != null ? ` (${(file.size / 1024).toFixed(0)} KB)` : ''}`);
-          // Nested files land in a per-session directory that may not exist yet.
-          if (file.sessionFolder) {
-            await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
-          }
-          let bytes: number;
-          // Local (USB) is already a filesystem and FTP can stream its data
-          // socket to a file — copy directly instead of reading the whole file
-          // into memory first, which doubles the RAM cost for large FITS and
-          // video files.
-          if (supportsStreamedCopy(profile)) {
-            await smbCopyFileTo(file.remotePath, tmpPath, profile);
-            bytes = (await fs.promises.stat(tmpPath)).size;
-          } else {
-            const data = await smbGetFile(file.remotePath, undefined, profile);
-            bytes = data.length;
-            // Async write: a synchronous writeFileSync of a multi-MB FITS
-            // blocks the event loop for the whole write, stalling every
-            // concurrent request (e.g. a page refresh) until it finishes.
-            // Yielding here keeps the server responsive during background
-            // auto-imports.
-            await fs.promises.writeFile(tmpPath, data);
-          }
-          if (file.size != null && bytes !== file.size) {
-            throw new Error(`Size mismatch: expected ${file.size}, got ${bytes} bytes`);
-          }
-          await fs.promises.rename(tmpPath, localPath);
-          debugLog('import:file', `Saved: ${objectName}/${destRel} (${(bytes / 1024).toFixed(0)} KB)`);
-          fileCount++;
-          importStatus.filesDone++;
-          importStatus.currentObjectFilesDone++;
-          importStatus.bytesDone += bytes;
-          importNewFiles.push({ name: `${objectName}/${destRel}`, size: bytes });
-          importBytesNew += bytes;
-          recordFile(file, bytes);
-          // A device sidecar carries the authoritative record of the run that
-          // produced these frames. Parsed here, once the file is on disk.
-          if (isCaptureInfoSidecar(file.localName)) {
-            ingestCaptureInfoFile(
-              objIdNormalized,
-              `${objFolderName}/${destRel}`,
-              file.sessionFolder ?? '',
-              file.date,
-            );
-          }
-
-          if (/\.f(?:it|its|ts)$/i.test(localPath)) {
-            thumbnailQueue.push(localPath);
-          }
-
-          if (file.date) {
-            sessionSet.add(file.date);
-          } else if (/\.jpe?g$/i.test(file.localName)) {
-            // Streamed copies never held the bytes in memory — read the EXIF
-            // date back off disk instead of a Buffer we don't have.
-            const d = exifDateFromFile(localPath);
-            if (d) sessionSet.add(d);
-          }
-        } catch (err) {
-          if (tmpPath) {
-            try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
-          }
+        if (outcome.status === 'error') {
           downloadErrors++;
-          const reason = err instanceof Error ? err.message : String(err);
-          if (!firstDownloadError) firstDownloadError = reason;
-          debugLog('import:error', `Download failed: ${objectName}/${file.localName} — ${reason}`);
-          console.error(`Download failed: ${file.localName}:`, reason);
+          if (!firstDownloadError) firstDownloadError = outcome.reason;
+          debugLog('import:error', `Download failed: ${objectName}/${file.localName} — ${outcome.reason}`);
+          console.error(`Download failed: ${file.localName}:`, outcome.reason);
           importStatus.filesDone++;
           importStatus.currentObjectFilesDone++;
           importStatus.bytesDone += file.size || 0;
+          return;
+        }
+
+        if (outcome.status === 'exists') {
+          debugLog('import:file', `Skip (exists): ${objectName}/${destRel}`);
+          importStatus.filesDone++;
+          importStatus.currentObjectFilesDone++;
+          importStatus.skippedFiles++;
+          importStatus.bytesDone += file.size || 0;
+          fileCount++;
+          // Still record it: a re-run is how files imported before this table
+          // existed acquire a row without waiting for the boot backfill.
+          recordFile(file, outcome.bytes);
+          if (file.date) {
+            sessionSet.add(file.date);
+          } else if (/\.jpe?g$/i.test(file.localName)) {
+            const d = exifDateFromFile(outcome.localPath);
+            if (d) sessionSet.add(d);
+          }
+          return;
+        }
+
+        // outcome.status === 'new'
+        const { localPath, bytes } = outcome;
+        debugLog('import:file', `Saved: ${objectName}/${destRel} (${(bytes / 1024).toFixed(0)} KB)`);
+        fileCount++;
+        importStatus.filesDone++;
+        importStatus.currentObjectFilesDone++;
+        importStatus.bytesDone += bytes;
+        importNewFiles.push({ name: `${objectName}/${destRel}`, size: bytes });
+        importBytesNew += bytes;
+        recordTouchedObject();
+        recordFile(file, bytes);
+        // A device sidecar carries the authoritative record of the run that
+        // produced these frames. Parsed here, once the file is on disk.
+        if (isCaptureInfoSidecar(file.localName)) {
+          ingestCaptureInfoFile(
+            objIdNormalized,
+            `${objFolderName}/${destRel}`,
+            file.sessionFolder ?? '',
+            file.date,
+          );
+        }
+
+        if (file.date) {
+          sessionSet.add(file.date);
+          recordTouchedSession(file.date);
+        } else if (/\.jpe?g$/i.test(file.localName)) {
+          // Streamed copies never held the bytes in memory — read the EXIF
+          // date back off disk instead of a Buffer we don't have.
+          const d = exifDateFromFile(localPath);
+          if (d) { sessionSet.add(d); recordTouchedSession(d); }
         }
       };
 
@@ -1346,6 +1606,12 @@ export async function runImport(
       }));
       thumbnailQueue.close();
       await thumbnailQueue.drain();
+
+      // One transaction for every file row this object produced (new + skipped),
+      // written before the object/session rows below so a crash can't leave the
+      // object pointing at files with no row — the same order as before, just
+      // batched.
+      recordLibraryFiles(pendingFileRows);
 
       if (downloadsCancelled) {
         importStatus.error = 'Import cancelled. Files already downloaded were kept; the rest will be picked up on the next run.';
@@ -1408,6 +1674,16 @@ export async function runImport(
             cat.catalogId, cat.objectName, cat.objectType, cat.constellation,
             cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy
           );
+          // The synthetic Star Trails object has no catalog entry, so
+          // resolveCatalogMeta above just wrote generic placeholders
+          // ('Unknown' type, empty description) that upsertObject's own
+          // COALESCE would never revisit on a later re-import. Patch it on
+          // every import instead — it writes the same fixed constants each
+          // time, so this also self-heals any row created before this patch
+          // existed.
+          if (objId === getStartrailsObjectId()) {
+            patchStartrailsObjectMeta(objId);
+          }
           // First-to-import-wins on the per-object color/attribution. A later
           // import from a different profile won't overwrite this — the user
           // can use Settings → Telescope → Move to consciously transfer
@@ -1463,6 +1739,150 @@ export async function runImport(
       importStatus.objectsDone++;
     }
 
+    // RESTACKED: DWARFLAB's cloud-combined MegaStack (or a Siril/PixInsight
+    // restack synced back down) of an existing target — tied to an object,
+    // not to any single observation. Runs after the per-target loop above so
+    // a target this same sync just created from ordinary session folders is
+    // already in `index.objects` and counts as a match.
+    //
+    // Candidates are collected for the WHOLE RESTACKED tree up front (exactly
+    // like calibration frames), then only the files actually turned into
+    // processed images are subtracted from what gets archived — rather than
+    // assuming every file lives one level down inside a per-stack subfolder.
+    // Real layout is unverified, and a loose file sitting directly in
+    // RESTACKED/ must still be preserved as bytes, never silently dropped —
+    // but a subfolder that resolves to a target id (however it resolves) now
+    // gets an object created for it via ensureRestackObject rather than being
+    // archived just because nothing imported that target yet. See
+    // ensureRestackObject's own doc for why "existing object required" was
+    // dropped as a gate.
+    if (isDwarf && !importCancelRequested) {
+      importStatus.currentObject = 'RESTACKED (MegaStack)';
+      try {
+        await migrateRestackedToSharedRootOnce();
+        const restackedPath = path.posix.join(walkerBase, RESTACKED_FOLDER);
+        const allCandidates = await collectRemoteArchiveCandidates(profile, walkerBase, [RESTACKED_FOLDER]);
+        const matchedRelPaths = new Set<string>();
+        // Derive the subfolder set and each subfolder's file list from
+        // allCandidates: collectRemoteArchiveCandidates already walked the
+        // entire RESTACKED tree just above. Re-listing the root and then every
+        // subfolder a second time doubled this pass's listing latency on every
+        // import (including every scheduled auto-import tick), and over FTP —
+        // one serialized control connection — that is the whole cost.
+        const filesBySubfolder = new Map<string, Array<{ name: string; size: number; remotePath: string; relPath: string }>>();
+        for (const c of allCandidates) {
+          const parts = c.relPath.split('/');
+          // parts[0] is RESTACKED_FOLDER. Only direct file children of a
+          // subfolder are import candidates (matches the old type==='file'
+          // filter on a per-subfolder listing). Root-level files and any
+          // more-deeply-nested ones stay in allCandidates and fall through to
+          // the archive pass below unchanged.
+          if (parts.length !== 3 || parts[1].startsWith('.')) continue;
+          const list = filesBySubfolder.get(parts[1]) ?? [];
+          list.push({ name: parts[2], size: c.size, remotePath: c.remotePath, relPath: c.relPath });
+          filesBySubfolder.set(parts[1], list);
+        }
+        let matched = 0;
+        for (const [subName, files] of filesBySubfolder) {
+          let shotsInfoTarget: string | null = null;
+          if (files.some(f => f.name === SHOTS_INFO_FILENAME)) {
+            try {
+              const shotsInfoPath = path.posix.join(restackedPath, subName, SHOTS_INFO_FILENAME);
+              shotsInfoTarget = targetFromShotsInfo(JSON.parse((await smbGetFile(shotsInfoPath, 65536, profile)).toString('utf8')));
+            } catch { /* shotsInfo.json unreadable/invalid -- fall back to the folder name */ }
+          }
+          const targetId = resolveRestackTargetId(subName, shotsInfoTarget);
+          if (!targetId) continue; // nothing plausible to name an object after — stays in allCandidates, archived below
+          // shotsInfo.json carries no date, only RA/DEC/target — the capture
+          // night lives in the subfolder's own trailing timestamp instead
+          // (e.g. "..._20250709-010411632"), same token every file inside it
+          // shares. Null when the name doesn't carry one; that's the old
+          // "No specific session" behavior, not a regression.
+          const restackDate = extractDateFromSessionFolder(subName);
+
+          // Dwarf queues a RESTACKED subfolder before it has anything in it —
+          // an interrupted/still-running restack leaves an empty directory
+          // with no shotsInfo.json to resolve against. Nothing to attach to
+          // an object yet, so don't create one from an empty folder's name:
+          // ensureRestackObject only runs once there's a real file in hand.
+          const hasImportableFile = files.some(f =>
+            (isRenderableProcessedName(f.name) || isStoredOnlyProcessedName(f.name)) && !isDwarfThumbnailPreviewName(f.name));
+          if (!hasImportableFile) continue; // stays in allCandidates, archived below (usually nothing — empty dir)
+          ensureRestackObject(targetId, index, profile.id);
+          for (const f of files) {
+            if (!isRenderableProcessedName(f.name) && !isStoredOnlyProcessedName(f.name)) continue;
+            // Dwarf's redundant low-res preview of stacked.jpg -- never worth
+            // a processed-image row. Leave it unmatched so it still lands in
+            // the archive with everything else, bytes preserved either way.
+            if (isDwarfThumbnailPreviewName(f.name)) continue;
+            const relPath = f.relPath;
+            if (hasRestackedImage(targetId, f.name)) { matchedRelPaths.add(relPath); continue; } // already imported on a prior sync
+            const tmpPath = path.join(IMPORT_TMP_BASE, `restack_${randomUUID()}_${path.basename(f.name)}`);
+            try {
+              await fs.promises.mkdir(IMPORT_TMP_BASE, { recursive: true });
+              await copyTransportFile(f.remotePath, tmpPath, profile);
+              addProcessedImage(targetId, restackDate, tmpPath, f.name, mimeTypeForExtension(f.name), subName, '', null, 'dwarf-restack');
+              matched++;
+              matchedRelPaths.add(relPath);
+            } catch (err) {
+              log.warn({ err: err instanceof Error ? err.message : String(err), folder: subName, file: f.name }, '[import] RESTACKED file failed; skipping');
+              try { await fs.promises.unlink(tmpPath); } catch { /* best-effort */ }
+            }
+          }
+        }
+        const toArchive = allCandidates.filter(c => !matchedRelPaths.has(c.relPath));
+        if (toArchive.length > 0) {
+          // relPath already comes back "RESTACKED/<subfolder>/<file>" (see
+          // collectRemoteArchiveCandidates's folders param below), so the
+          // destination root is the library root itself, not
+          // getRestackArchiveDir() — that would double up the RESTACKED
+          // segment. getRestackArchiveDir() is for callers that just want
+          // the resolved path (e.g. import status reporting).
+          await downloadToArchive(profile, toArchive, getLibraryDir(), { shouldCancel: () => importCancelRequested });
+        }
+        debugLog('import:dwarf', `RESTACKED: ${matched} file(s) matched to an object, ${toArchive.length} file(s) archived (no matching object)`);
+      } catch {
+        // No RESTACKED folder on this device/model, or listing it failed —
+        // identical to "none found", never surfaced as an import error.
+        debugLog('import:dwarf', 'RESTACKED folder not present or unreadable — skipping');
+      }
+    }
+
+    // Calibration frames: CALI_FRAME/DWARF_DARK are specific to the physical
+    // telescope unit and are never observations of anything, so they are
+    // pulled straight into the archive rather than the object model — same
+    // non-destructive philosophy as the folder-import wizard's archive mode
+    // (archiveFolders.ts), just reachable over the live transport instead of
+    // local disk. Unlike the wizard, this runs on every sync,
+    // unconditionally: a folder-import user has to opt into "archive
+    // everything", but a live-synced Dwarf's calibration data has nowhere
+    // else to go and no reason to be left behind.
+    if ((isDwarf || isAsiair) && !importCancelRequested) {
+      importStatus.currentObject = 'Calibration frames';
+      try {
+        // ASIAIR keeps its calibration under the capture-mode folders
+        // (Autorun/Dark, Plan/Flat, ...) with no target of their own, which is
+        // the same situation as Dwarf's CALI_FRAME and gets the same answer.
+        // Its base is the resolved ASIAIR root rather than walkerBase, which is
+        // '' for this kind: removable media nests the tree under `ASIAir/`.
+        const archiveBase = isAsiair ? await resolveAsiairRoot(profile) : walkerBase;
+        const archiveFolders = isAsiair ? ASIAIR_CALIBRATION_PATHS : ['CALI_FRAME', 'DWARF_DARK'];
+        // Not every device has every folder; collectRemoteArchiveCandidates
+        // lists each independently and simply finds nothing for one that's
+        // absent (smbListDir returns an empty listing for a missing remote
+        // directory rather than throwing, matching SMB/local semantics).
+        const candidates = await collectRemoteArchiveCandidates(profile, archiveBase, archiveFolders);
+        if (candidates.length > 0) {
+          const archived = await downloadToArchive(profile, candidates, getArchiveDir(profile.id), {
+            shouldCancel: () => importCancelRequested,
+          });
+          debugLog('import:dwarf', `Calibration archive: ${archived.copied} new, ${archived.alreadyPresent} already archived, ${archived.failed} failed`);
+        }
+      } catch (err) {
+        log.warn({ err: err instanceof Error ? err.message : String(err) }, '[import] calibration archive pass failed; continuing');
+      }
+    }
+
     // Each object was already saved to DB inside the per-object transaction
     // above. Only the meta timestamp remains. Calling saveIndex(index, ...) here
     // would re-assert the snapshot loaded at import start for every library
@@ -1477,10 +1897,9 @@ export async function runImport(
     }
     importStatus.lastRun = lastImportTs;
 
-    // Enrich with Wikipedia description + SIMBAD size data, and backfill
-    // historical weather for sessions missing it. Both are best-effort
-    // network calls; enrichObjectData internally checks whether the object
-    // is already fully enriched and returns immediately if so.
+    // Enrich with Wikipedia description + SIMBAD size data. Best-effort network
+    // call; enrichObjectData internally checks whether the object is already
+    // fully enriched and returns immediately if so.
     for (const objectId of touchedObjectIds) {
       try {
         debugLog('import:object', `${objectId}: enriching catalog data`);
@@ -1489,20 +1908,15 @@ export async function runImport(
       } catch {
         debugLog('import:object', `${objectId}: enrichment failed (non-fatal)`);
       }
-      try {
-        debugLog('import:object', `${objectId}: backfilling weather`);
-        await backfillSessionWeather(objectId);
-        debugLog('import:object', `${objectId}: weather backfill complete`);
-      } catch (err) {
-        console.warn(`[import] Weather backfill failed for "${objectId}":`, err instanceof Error ? err.message : err);
-        debugLog('import:object', `${objectId}: weather backfill failed — ${err instanceof Error ? err.message : err}`);
-      }
+      // Weather is queued, not awaited — a slow archive API for a 25-night
+      // object used to add minutes to import completion (FC-3).
+      try { enqueueSessionWeatherBackfill(objectId); } catch { /* best-effort */ }
     }
 
     // Pre-warm the gallery thumbnail cache for every object that received new
     // files so the library grid loads instantly on first view.
     if (importNewFiles.length > 0) {
-      const newObjectIds = new Set(importNewFiles.map(f => normalizeObjectId(f.name.split('/')[0])));
+      const newObjectIds = new Set(importNewFiles.map(f => resolveCanonicalId(normalizeObjectId(f.name.split('/')[0]))));
       debugLog('import:thumb', `Pre-warming gallery thumbnails for ${newObjectIds.size} object(s): ${Array.from(newObjectIds).join(', ')}`);
       await pregenerateObjectThumbnails(newObjectIds);
       debugLog('import:thumb', 'Gallery thumbnail pre-warm complete');
@@ -1540,28 +1954,14 @@ export async function runImport(
         importStatus.skipped.map(s => `${s.count} ${s.label}`).join('; '),
       );
     }
-    // Save history record
-    try {
-      stmts.insertHistory.run(
-        importStatus.startedAt,
-        new Date().toISOString(),
-        importStatus.objectsTotal,
-        importStatus.filesTotal,
-        importNewFiles.length,
-        importStatus.bytesTotal,
-        importBytesNew,
-        importStatus.error || null,
-        importNewFiles.length > 0 ? JSON.stringify(importNewFiles.map(f => f.name)) : null,
-        importStatus.telescopeId,
-        importStatus.telescopeName,
-        importStatus.transportKind,
-        importStatus.skipped.length > 0 ? JSON.stringify(importStatus.skipped) : null,
-        importStatus.manual ? 1 : 0,
-        importStatus.cancelled ? 1 : 0,
-      );
-    } catch (err) {
-      console.warn('[import] insertHistory failed:', err instanceof Error ? err.message : err);
-    }
+    // Save history record + system-log summary (one writer for all four paths).
+    writeImportHistory(importStatus, {
+      newFiles: importNewFiles,
+      bytesNew: importBytesNew,
+      objectsTouched: importObjectsTouched,
+      sessionsTouched: importSessionsTouched,
+      source: 'telescope',
+    });
     // New images may have landed; drop the gallery walk cache so they appear
     // on the next /all-images call instead of waiting out the TTL.
     if (importNewFiles.length > 0) invalidateAllImagesCache();
@@ -1638,6 +2038,7 @@ export async function syncSessionSubFrames(
     bytesTotal: 0,
     bytesDone: 0,
     skippedFiles: 0,
+    filesErrored: 0,
     // A sub-frame sync asks for one session's raw frames by date. Everything it
     // passes over is out because the caller narrowed the request, not because a
     // filter dropped it, so there is nothing here to explain.
@@ -1652,6 +2053,17 @@ export async function syncSessionSubFrames(
     manual: true,
   };
   myRunId = importStatus.runId;
+
+  // Own the shared run accumulators unless this call is one night of a
+  // whole-object roll-up (syncObjectSubFrames resets once and writes the
+  // single history row itself).
+  if (!options?.rollup) {
+    importNewFiles = [];
+    importBytesNew = 0;
+    importObjectsTouched = new Map();
+    importSessionsTouched = new Map();
+    importSkips = new Map();
+  }
 
   // Local-fs profiles (Dwarf USB) have no hostname; require localPath instead.
   const transportAddress = profile?.connectionType === 'local' ? profile.localPath : profile?.hostname;
@@ -1670,6 +2082,8 @@ export async function syncSessionSubFrames(
   currentImportWalker = getWalkerConfig(profile.kind);
   const walkerBase = currentImportWalker.basePath;
   const isDwarf = isDwarfKind(profile.kind);
+  const isGeneric = profile.kind === 'other';
+  const isAsiair = isAsiairKind(profile.kind);
   // Existing objects keep whatever shape they were imported with (see
   // libraryLayout.ts) — this sync must land files in the same shape runImport
   // would have used, or a nested object ends up with sub-frames scattered at
@@ -1716,7 +2130,64 @@ export async function syncSessionSubFrames(
     }
     let candidates: SubFrameCandidate[] = [];
 
-    if (isDwarf) {
+    // Generic SMB Layout: tried first (for kind 'other' only) so a matching
+    // nested session takes priority, but a source with no matching nested
+    // session — including the pre-existing "any SMB share" flat layout,
+    // which has no session folders at all — falls through to the flat
+    // SeeStar-style `_sub` lookup below instead of erroring here.
+    let genericMatch: { obj: GenericDiscoveredObject; sessions: string[] } | null = null;
+    if (isGeneric) {
+      debugLog('subframe-sync:discover', `Generic: scanning for sub-frames of "${targetObjectId}" on ${targetDate}`);
+      const discovered = await discoverGenericObjects(profile);
+      const obj = discovered.find(o => resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId);
+      // Session folders are <YYYY-MM-DD>_<HHMM> by construction, so the date
+      // is always the first 10 characters — same rule runImport applies.
+      const sessions = (obj?._genericSessionFolders ?? []).filter(s => s.slice(0, 10) === targetDate);
+      if (obj && sessions.length > 0) {
+        genericMatch = { obj, sessions };
+      } else {
+        debugLog('subframe-sync:discover', `Generic: no session folder found for "${targetObjectId}" on ${targetDate} — falling back to flat layout`);
+      }
+    }
+
+    if (isAsiair) {
+      // ASIAIR has no _sub companion folder and no session folders: the light
+      // frames under Autorun|Plan/Light/<Target> are the sub-frames, and the
+      // night comes from each filename's own timestamp.
+      debugLog('subframe-sync:discover', `ASIAIR: scanning for sub-frames of "${targetObjectId}" on ${targetDate}`);
+      const discovered = await discoverAsiairObjects(profile);
+      // Resolve aliases the same way the branches below do: the device's folder
+      // name is a raw target string that may differ from the canonical id once
+      // catalog aliasing is applied.
+      const obj = discovered.find(o => resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId);
+      if (!obj) {
+        debugLog('subframe-sync:discover', `ASIAIR: no target folder found for "${targetObjectId}"`);
+        importStatus.error = `${profile.name} has no ASIAIR frames for "${targetObjectId}". Capture the object first, then sync.`;
+        return;
+      }
+      const { subFiles } = await listAsiairObjectFiles(profile, obj);
+      debugLog('subframe-sync:discover', `ASIAIR: ${subFiles.length} frame(s) found for "${targetObjectId}"`);
+      candidates = subFiles
+        .filter(e => /\.f(?:it|its|ts)$/i.test(e.name))
+        .map((e): SubFrameCandidate | null => {
+          const basename = asiairLocalName(e.name);
+          if (!isSafeRemoteFileName(basename)) return null;
+          const night = sessionNightFor(parseFilename(basename));
+          if (night !== targetDate) return null;
+          return {
+            remotePath: buildAsiairFilePath(e.name),
+            // Names are unique across capture modes and nights on their own, so
+            // nothing is prefixed here even for a flat object. Mirrors
+            // runImport's ASIAIR branch, which does not rename either.
+            localName: basename,
+            originalName: basename,
+            size: e.size,
+            sessionFolder: objectLayout === 'nested' ? sessionFolderFor(null, night, null) : null,
+          };
+        })
+        .filter((c): c is SubFrameCandidate => c !== null);
+      debugLog('subframe-sync:discover', `ASIAIR: ${candidates.length} sub-frame candidate(s) matching date ${targetDate}`);
+    } else if (isDwarf) {
       // Dwarf has no _sub companion folder. Subframes are the numbered files
       // (001-..., 002-...) sitting next to the rolling stack inside each
       // session folder. Match session folders by target name and by the
@@ -1765,6 +2236,7 @@ export async function syncSessionSubFrames(
         folderName: obj.folderName,
         subFolderName: null,
         _dwarfSessionFolders: folderCandidates,
+        _dwarfSessionBase: obj._dwarfSessionBase,
       });
       debugLog('subframe-sync:discover', `Dwarf: ${subFiles.length} sub-file(s) found across candidate folders`);
       const mapped: Array<SubFrameCandidate | null> = subFiles
@@ -1792,7 +2264,7 @@ export async function syncSessionSubFrames(
             const sessionDir = sessionFolderFor(sessionFolder || null, night, null);
             if (!sessionDir) return null;
             return {
-              remotePath: buildDwarfFilePath(e.name),
+              remotePath: buildDwarfFilePath(e.name, obj._dwarfSessionBase),
               localName: basename,
               originalName: basename,
               size: e.size,
@@ -1812,7 +2284,7 @@ export async function syncSessionSubFrames(
           const night = sessionNightFor(parseFilename(named.name));
           if (night !== targetDate) return null;
           return {
-            remotePath: buildDwarfFilePath(e.name),
+            remotePath: buildDwarfFilePath(e.name, obj._dwarfSessionBase),
             localName: named.name,
             originalName: basename,
             size: e.size,
@@ -1821,12 +2293,47 @@ export async function syncSessionSubFrames(
         });
       candidates = mapped.filter((c): c is SubFrameCandidate => c !== null);
       debugLog('subframe-sync:discover', `Dwarf: ${candidates.length} sub-frame candidate(s) after date filtering`);
+    } else if (genericMatch) {
+      const { obj, sessions } = genericMatch;
+      const { subFiles } = await listGenericObjectFiles(profile, {
+        folderName: obj.folderName,
+        subFolderName: null,
+        _genericSessionFolders: sessions,
+      });
+      debugLog('subframe-sync:discover', `Generic: ${subFiles.length} sub-file(s) found for ${targetDate}`);
+      candidates = subFiles
+        .map((e): SubFrameCandidate | null => {
+          const parts = e.name.split('/');
+          const session = parts[0];
+          const basename = parts[parts.length - 1];
+          if (!isSafeRemoteFileName(basename)) return null;
+          // Flat layout: prefix the session so files from different sessions
+          // never collide in the one flat directory, matching runImport's
+          // own generic-flat naming.
+          return {
+            remotePath: buildGenericFilePath(obj, e.name),
+            localName: objectLayout === 'nested' ? basename : `${session}_${basename}`,
+            originalName: basename,
+            size: e.size,
+            sessionFolder: objectLayout === 'nested' ? sessionFolderFor(session, session.slice(0, 10), null) : null,
+          };
+        })
+        .filter((c): c is SubFrameCandidate => c !== null);
+      debugLog('subframe-sync:discover', `Generic: ${candidates.length} sub-frame candidate(s) after filtering`);
     } else {
       debugLog('subframe-sync:discover', `SeeStar: listing ${walkerBase} for sub-frame folders`);
       const entries = await smbListDir(walkerBase, profile);
       const subFolders = entries.filter(e => e.type === 'dir' && isSubFolder(e.name));
       debugLog('subframe-sync:discover', `SeeStar: ${subFolders.length} sub-folder(s) found`);
-      const subFolder = subFolders.find(s => normalizeObjectId(getObjectFromSubFolder(s.name)) === targetObjectId);
+      // Resolve aliases the same way the Dwarf/Generic branches above (and
+      // runImport's toImport filter) do: the device's `_sub` folder is named
+      // for the raw target string (e.g. "C 30"), which may differ from the
+      // canonical id this sync was asked for (e.g. "NGC7331") once catalog
+      // aliasing is applied. Without resolveCanonicalId here, sub-frame sync
+      // for any alias-folded object silently found no match and synced nothing.
+      const subFolder = subFolders.find(
+        s => resolveCanonicalId(normalizeObjectId(getObjectFromSubFolder(s.name))) === targetObjectId,
+      );
       if (!subFolder) {
         debugLog('subframe-sync:discover', `SeeStar: no sub-frame folder for "${targetObjectId}"`);
         importStatus.error = `${profile.name} has no sub-frame folder for "${targetObjectId}". The telescope only keeps sub-frames for sessions where you enabled that option.`;
@@ -1880,52 +2387,70 @@ export async function syncSessionSubFrames(
     debugLog('subframe-sync:files', `${toDownload.length} file(s) to download, ${importStatus.skippedFiles} already present`);
 
     let downloadErrors = 0;
-    const downloadedPaths: string[] = [];
-    for (const file of toDownload) {
-      if (importCancelRequested) {
-        importStatus.error = 'Sub-frame sync cancelled. Files already downloaded were kept; the rest will be picked up on the next run.';
-        importStatus.cancelled = true;
-        return;
+    const objFolderName = path.basename(objLocalDir);
+    // A sub-frame sync only ever touches an object + night that already exist,
+    // so `isNew` is always false. Populated so the run lands in Sync History
+    // (High-4) with the same touched-objects/sessions detail every other path
+    // records.
+    const noteTouched = (): void => {
+      if (!importObjectsTouched.has(targetObjectId)) {
+        importObjectsTouched.set(targetObjectId, { objectId: targetObjectId, name: objFolderName, isNew: false });
       }
-      const destRel = destRelFor(file);
-      const localPath = path.join(objLocalDir, destRel);
-      const objRoot = path.resolve(objLocalDir);
-      const tmpPath = `${localPath}.tmp`;
-      try {
-        if (localPath !== objRoot && !localPath.startsWith(objRoot + path.sep)) {
-          throw new Error(`Refusing to write outside object directory: ${destRel}`);
-        }
-        debugLog('subframe-sync:file', `Downloading: ${file.localName}${file.size != null ? ` (${(file.size / 1024).toFixed(0)} KB)` : ''}`);
-        const data = await smbGetFile(file.remotePath, undefined, profile);
-        if (file.size != null && data.length !== file.size) {
-          throw new Error(`Size mismatch: expected ${file.size}, got ${data.length} bytes`);
-        }
-        // Nested files land in a per-session directory that may not exist yet.
-        if (file.sessionFolder) {
-          await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
-        }
-        // Async write + rename so a large sub-frame doesn't block the event loop.
-        await fs.promises.writeFile(tmpPath, data);
-        await fs.promises.rename(tmpPath, localPath);
-        downloadedPaths.push(localPath);
-        debugLog('subframe-sync:file', `Saved: ${file.localName} (${(data.length / 1024).toFixed(0)} KB)`);
-      } catch (err) {
-        try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
-        downloadErrors++;
-        const reason = err instanceof Error ? err.message : String(err);
-        debugLog('subframe-sync:error', `Download failed: ${file.localName} — ${reason}`);
-        console.error('Sub-frame download failed: %s:', file.localName, reason);
+      const sessionKey = `${targetObjectId}|${targetDate}`;
+      if (!importSessionsTouched.has(sessionKey)) {
+        importSessionsTouched.set(sessionKey, { objectId: targetObjectId, objectName: objFolderName, date: targetDate, isNew: false });
       }
-      importStatus.filesDone++;
-    }
+    };
 
-    // Generate JPEG thumbnails for newly downloaded FITS subframes so the UI
-    // can show small previews without downloading the full file each time.
-    for (const localPath of downloadedPaths) {
-      if (!/\.f(?:it|its|ts)$/i.test(localPath)) continue;
+    // Same worker-pool + shared FITS-thumbnail queue as runImport's downloadOne.
+    // This path used to download one frame at a time and then thumbnail them all
+    // one at a time, which for the hundreds of raw frames it exists to move made
+    // it the slowest path in the app — and the one users watch a progress bar
+    // for (CORE-PIPELINE-AUDIT High-3).
+    const thumbnailQueue = createWorkerQueue<string>(4, async localPath => {
       await generateFitsThumbnail(localPath).catch(err =>
         console.warn(`[thumb] ${path.basename(localPath)}:`, err instanceof Error ? err.message : err),
       );
+    });
+
+    const DOWNLOAD_CONCURRENCY = profile.connectionType === 'local' ? 6 : 2;
+    const downloadQueue = toDownload.slice();
+    await Promise.all(Array.from({ length: DOWNLOAD_CONCURRENCY }, async () => {
+      while (downloadQueue.length > 0) {
+        if (importCancelRequested) break;
+        const file = downloadQueue.shift();
+        if (!file) break;
+        const destRel = destRelFor(file);
+        debugLog('subframe-sync:file', `Downloading: ${file.localName}${file.size != null ? ` (${(file.size / 1024).toFixed(0)} KB)` : ''}`);
+        const outcome = await writeFileIntoLibrary(
+          { source: file.remotePath, destRel, expectedSize: file.size, sourceKind: 'transport' },
+          { profile, objectDir: objLocalDir, thumbnailQueue },
+        );
+        if (outcome.status === 'error') {
+          downloadErrors++;
+          importStatus.filesErrored = (importStatus.filesErrored ?? 0) + 1;
+          debugLog('subframe-sync:error', `Download failed: ${file.localName} — ${outcome.reason}`);
+          console.error('Sub-frame download failed: %s:', file.localName, outcome.reason);
+        } else {
+          debugLog('subframe-sync:file', `Saved: ${file.localName} (${(outcome.bytes / 1024).toFixed(0)} KB)`);
+          if (outcome.status === 'new') {
+            importNewFiles.push({ name: `${objFolderName}/${destRel}`, size: outcome.bytes });
+            importBytesNew += outcome.bytes;
+            noteTouched();
+          }
+        }
+        // Counts every attempt, success or fail, so the progress bar reaches
+        // 100%. syncObjectSubFrames subtracts filesErrored for its real total.
+        importStatus.filesDone++;
+      }
+    }));
+    thumbnailQueue.close();
+    await thumbnailQueue.drain();
+
+    if (importCancelRequested) {
+      importStatus.error = 'Sub-frame sync cancelled. Files already downloaded were kept; the rest will be picked up on the next run.';
+      importStatus.cancelled = true;
+      return;
     }
 
     if (downloadErrors > 0) {
@@ -1937,7 +2462,7 @@ export async function syncSessionSubFrames(
     // table existed. Roles are 'sub' by construction: this whole path only
     // ever handles raw frames.
     {
-      const objFolderName = path.basename(objLocalDir);
+      const subFrameRows: RecordFileInput[] = [];
       for (const file of candidates) {
         const localPath = path.join(objLocalDir, destRelFor(file));
         let bytes = file.size ?? 0;
@@ -1946,7 +2471,7 @@ export async function syncSessionSubFrames(
           try { bytes = fs.statSync(localPath).size; } catch { /* best effort */ }
         }
         const parsed = parseFilename(file.localName);
-        recordLibraryFile({
+        subFrameRows.push({
           objectId: targetObjectId,
           folderName: objFolderName,
           sessionFolder: file.sessionFolder,
@@ -1961,6 +2486,7 @@ export async function syncSessionSubFrames(
           sourcePath: file.remotePath,
         });
       }
+      recordLibraryFiles(subFrameRows);
       writeObjectManifest(targetObjectId, objFolderName);
     }
 
@@ -2016,6 +2542,19 @@ export async function syncSessionSubFrames(
     const lastImportTs = new Date().toISOString();
     try { stmts.updateMetaLastImport.run(lastImportTs); } catch { /* best-effort */ }
     importStatus.lastRun = lastImportTs;
+
+    // Land in Sync History like every other import path (High-4). Suppressed
+    // for a night driven by syncObjectSubFrames, which writes one roll-up row.
+    if (!options?.rollup) {
+      importStatus.skipped = summarizeSkips(importSkips);
+      writeImportHistory(importStatus, {
+        newFiles: importNewFiles,
+        bytesNew: importBytesNew,
+        objectsTouched: importObjectsTouched,
+        sessionsTouched: importSessionsTouched,
+        source: 'subframe',
+      });
+    }
   } catch (err) {
     importStatus.error = friendlyImportError(err, profile);
   } finally {
@@ -2029,6 +2568,185 @@ export async function syncSessionSubFrames(
   } finally {
     releaseImportLock(myRunId);
   }
+}
+
+/**
+ * syncSessionSubFrames reports "this night has no _sub companion folder / no
+ * device session folder for this date" by setting importStatus.error (see
+ * import.ts ~2225 / ~2251 / ~2358). For a whole-object sweep that is not a
+ * failure: the telescope just was not saving sub-frames that night. Matched on
+ * stable fragments of those messages so such nights are counted as skipped
+ * rather than surfaced as an error.
+ */
+function isNoSubFramesForNight(message: string): boolean {
+  return message.includes('has no sub-frame folder for')
+    || message.includes('has no Dwarf session folder');
+}
+
+/**
+ * Sync raw sub-frames for EVERY session of one object from the telescope, by
+ * running syncSessionSubFrames once per night.
+ *
+ * Lock model mirrors runAllTelescopesImport: the caller (route) claims the lock
+ * for the first night, each syncSessionSubFrames releases it in its own
+ * finally, and this re-claims before the next night. If the auto-import
+ * scheduler wins a between-nights re-claim, the remaining nights are reported
+ * as skipped and picked up next time.
+ *
+ * Each night is synced against the telescope that captured it
+ * (getSessionTelescopeId), so an object shot across two rigs still pulls each
+ * night's sub-frames from the right device.
+ *
+ * While the run is active importStatus reflects the night currently syncing
+ * (its counters reset to 0 per night, same as a single-session sync). Once the
+ * loop finishes it is overwritten once with the run total so a client's
+ * end-of-run check (filesDone === 0 → "nothing new") sees real numbers.
+ */
+export async function syncObjectSubFrames(
+  targetObjectId: string,
+  options?: RunImportOptions,
+): Promise<void> {
+  const canonicalId = resolveCanonicalId(normalizeObjectId(targetObjectId));
+
+  let dates: string[];
+  try {
+    const meta = loadIndex().objects[canonicalId];
+    const deleted = new Set(meta?.deletedSessions ?? []);
+    dates = [...new Set(meta?.sessions ?? [])].filter(d => !deleted.has(d)).sort();
+  } catch (err) {
+    console.error('[subframe-sync] Failed to read library index:', err instanceof Error ? err.message : err);
+    importStatus.error = "Could not read the library to find this object's nights. Check the server logs and try again.";
+    importStatus.running = false;
+    try { stmts.setImportRunning.run(0, null); } catch { /* best-effort */ }
+    releaseImportLock();
+    return;
+  }
+
+  if (dates.length === 0) {
+    // Present a finished, empty run so the client's modal resolves cleanly
+    // instead of hanging on "connecting".
+    importStatus = {
+      ...importStatus,
+      running: false,
+      runId: randomUUID(),
+      currentObject: null,
+      telescopeId: null,
+      telescopeName: null,
+      transportKind: null,
+      objectsTotal: 0,
+      objectsDone: 0,
+      filesTotal: 0,
+      filesDone: 0,
+      skippedFiles: 0,
+      skipped: [],
+      error: null,
+      cancelled: false,
+      startedAt: new Date().toISOString(),
+      manual: true,
+    };
+    try { stmts.setImportRunning.run(0, null); } catch { /* best-effort */ }
+    releaseImportLock();
+    return;
+  }
+
+  log.info({ objectId: canonicalId, nights: dates.length }, '[subframe-sync] Syncing sub-frames for all %d nights of %s', dates.length, canonicalId);
+
+  // Own the shared accumulators for the whole sweep: each night runs with
+  // `rollup: true` so it adds to these without resetting, and this writes the
+  // single Sync History row at the end.
+  const runStartedAt = new Date().toISOString();
+  importNewFiles = [];
+  importBytesNew = 0;
+  importObjectsTouched = new Map();
+  importSessionsTouched = new Map();
+  importSkips = new Map();
+
+  let totalDownloaded = 0;
+  let totalSkipped = 0;
+  let nightsWithoutSubs = 0;
+  let cancelled = false;
+  const errors: string[] = [];
+
+  for (let i = 0; i < dates.length; i++) {
+    // The lock is held (by the route) on the first pass; syncSessionSubFrames
+    // released it in its finally on every pass after that, so re-claim.
+    if (i > 0 && !claimImportLock()) {
+      appendImportStatusError(
+        `Sub-frame sync stopped after ${i} of ${dates.length} nights: another import claimed the lock. Run it again to finish ${dates.slice(i).join(', ')}.`,
+      );
+      return;
+    }
+
+    const telescopeId = options?.telescopeId ?? getSessionTelescopeId(canonicalId, dates[i]) ?? undefined;
+    try {
+      await syncSessionSubFrames(canonicalId, dates[i], { ...(options ?? {}), telescopeId, rollup: true });
+    } catch (err) {
+      errors.push(`${dates[i]}: ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
+
+    // filesDone counts every attempt this night; subtract the failures so a
+    // night where every frame 404s contributes 0, not "downloaded N files".
+    totalDownloaded += Math.max(0, importStatus.filesDone - (importStatus.filesErrored ?? 0));
+    totalSkipped += importStatus.skippedFiles;
+    if (importStatus.cancelled) { cancelled = true; break; }
+    const nightError = importStatus.error;
+    if (nightError) {
+      // A night with no sub-frames on the telescope is skipped, not an error.
+      if (isNoSubFramesForNight(nightError)) nightsWithoutSubs++;
+      else errors.push(`${dates[i]}: ${nightError}`);
+    }
+  }
+
+  // syncSessionSubFrames released the lock in its own finally on the last pass.
+  // Re-claim just long enough to publish the run total so a client polling
+  // right now sees consistent final numbers and the DB row is left clean.
+  const reclaimed = claimImportLock();
+  const noneHadSubs = totalDownloaded === 0 && totalSkipped === 0 && errors.length === 0 && !cancelled;
+  importStatus = {
+    ...importStatus,
+    running: false,
+    currentObject: null,
+    telescopeId: null,
+    telescopeName: null,
+    transportKind: null,
+    objectsTotal: dates.length,
+    objectsDone: dates.length,
+    filesTotal: totalDownloaded,
+    filesDone: totalDownloaded,
+    // When nothing was downloaded and nothing was already present, leave both
+    // counters at 0 with no error so the client shows its plain "no sub-frames
+    // found for this object" state instead of a red failure.
+    skippedFiles: noneHadSubs ? 0 : totalSkipped,
+    skipped: [],
+    error: errors.length > 0
+      ? [...new Set(errors)].join('; ')
+      : cancelled
+        ? 'Sub-frame sync cancelled. Nights already synced were kept; the rest will be picked up next time.'
+        : null,
+    cancelled,
+    startedAt: runStartedAt,
+    lastRun: new Date().toISOString(),
+  };
+  if (nightsWithoutSubs > 0 && !noneHadSubs) {
+    log.info(
+      { objectId: canonicalId, nightsWithoutSubs, downloaded: totalDownloaded },
+      '[subframe-sync] %d of %d nights had no sub-frames on the telescope and were skipped',
+      nightsWithoutSubs, dates.length,
+    );
+  }
+
+  // One Sync History entry for the whole "sync all sub-frames" run.
+  writeImportHistory(importStatus, {
+    newFiles: importNewFiles,
+    bytesNew: importBytesNew,
+    objectsTouched: importObjectsTouched,
+    sessionsTouched: importSessionsTouched,
+    source: 'subframe',
+  });
+
+  if (reclaimed) releaseImportLock();
+  else { try { stmts.setImportRunning.run(0, null); } catch { /* best-effort */ } }
 }
 
 /**
@@ -2129,16 +2847,56 @@ export function getImportHistory(limit = 10, offset = 0): { entries: ImportHisto
       if (!Array.isArray(parsed)) return null;
       const tally: SkipTally = new Map();
       for (const entry of parsed) {
-        if (typeof entry !== 'object' || entry === null) continue;
-        const { reason, count, bytes } = entry as { reason?: unknown; count?: unknown; bytes?: unknown };
+        if (!isRecord(entry)) continue;
+        const { reason, count, bytes, samples } = entry;
         if (typeof reason !== 'string' || typeof count !== 'number') continue;
-        if (!(reason in SKIP_LABELS)) continue;
+        if (!isImportSkipReason(reason)) continue;
         // History rows written before sizes were tallied have no `bytes`; 0 reads
         // as "not measured" and the UI omits the size rather than showing "0 B".
-        countSkip(tally, reason as ImportSkipReason, count, typeof bytes === 'number' ? bytes : 0);
+        // `samples` is absent on rows written before this field existed.
+        const sampleNames = Array.isArray(samples)
+          ? samples.filter((s): s is string => typeof s === 'string')
+          : undefined;
+        countSkip(tally, reason, count, typeof bytes === 'number' ? bytes : 0, sampleNames);
       }
       const summary = summarizeSkips(tally);
       return summary.length > 0 ? summary : null;
+    } catch {
+      return null;
+    }
+  };
+  // Same narrowing pattern: validate shape field-by-field instead of trusting
+  // what a past version of this code (or a hand-edited DB) put in the column.
+  const parseObjectsTouched = (raw: string | null): TouchedObject[] | null => {
+    if (raw === null) return null;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return null;
+      const result: TouchedObject[] = [];
+      for (const entry of parsed) {
+        if (!isRecord(entry)) continue;
+        const { objectId, name, isNew } = entry;
+        if (typeof objectId !== 'string' || typeof name !== 'string' || typeof isNew !== 'boolean') continue;
+        result.push({ objectId, name, isNew });
+      }
+      return result.length > 0 ? result : null;
+    } catch {
+      return null;
+    }
+  };
+  const parseSessionsTouched = (raw: string | null): TouchedSession[] | null => {
+    if (raw === null) return null;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return null;
+      const result: TouchedSession[] = [];
+      for (const entry of parsed) {
+        if (!isRecord(entry)) continue;
+        const { objectId, objectName, date, isNew } = entry;
+        if (typeof objectId !== 'string' || typeof objectName !== 'string' || typeof date !== 'string' || typeof isNew !== 'boolean') continue;
+        result.push({ objectId, objectName, date, isNew });
+      }
+      return result.length > 0 ? result : null;
     } catch {
       return null;
     }
@@ -2150,6 +2908,8 @@ export function getImportHistory(limit = 10, offset = 0): { entries: ImportHisto
       skipped: parseSkipped(r.skipped),
       manual: r.manual === 1,
       cancelled: r.cancelled === 1,
+      objectsTouched: parseObjectsTouched(r.objectsTouched),
+      sessionsTouched: parseSessionsTouched(r.sessionsTouched),
     })),
     total: count,
   };
@@ -2333,6 +3093,8 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
   myRunId = importStatus.runId;
   importNewFiles = [];
   importBytesNew = 0;
+  importObjectsTouched = new Map();
+  importSessionsTouched = new Map();
   importSkips = new Map();
 
   ensureLibraryDir();
@@ -2375,16 +3137,39 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
     // exclusion sat upstream of every file-level setting, so "archive
     // everything" silently still dropped calibration frames and restacks. See
     // archiveFolders.ts.
-    const archiveCandidates = settings.archiveAllFiles === true
-      ? collectArchiveCandidates(resolvedRoot, excludedFolders)
-      : [];
+    //
+    // Calibration frames (CALI_FRAME/DWARF_DARK) are specific to the physical
+    // telescope unit and are never observations of anything, so — like the
+    // live-sync path — they are always archived, not gated behind
+    // archiveAllFiles: a folder-import user has to opt into "archive
+    // everything" for daytime photos and burst captures, but calibration data
+    // has nowhere else to go regardless. RESTACKED is handled separately,
+    // after the main object loop below (matched subfolders become processed
+    // images instead of archived bytes); `restackedFolderName` is carved out
+    // here so it isn't double-archived by the "everything else" pass.
+    const CALIBRATION_FOLDER_NAMES = ['cali_frame', 'dwarf_dark'];
+    const calibrationFolderNames = excludedFolders.filter(f => CALIBRATION_FOLDER_NAMES.includes(f.toLowerCase()));
+    const restackedFolderName = excludedFolders.find(f => isRestackedFolder(f)) ?? null;
+    const otherExcludedFolders = excludedFolders.filter(
+      f => !CALIBRATION_FOLDER_NAMES.includes(f.toLowerCase()) && f !== restackedFolderName,
+    );
+    const archiveCandidates = [
+      ...collectArchiveCandidates(resolvedRoot, calibrationFolderNames),
+      ...(settings.archiveAllFiles === true ? collectArchiveCandidates(resolvedRoot, otherExcludedFolders) : []),
+    ];
     const planByFolder = new Map<string, CommitObjectPlan>();
     for (const p of plan.objects) planByFolder.set(p.folderName, p);
 
-    const active = sources.filter(s => {
+    /** Sources the user kept, each paired with the plan that selected it. The
+     *  pairing is built here rather than re-looked-up in the copy loop below:
+     *  a second `planByFolder.get()` there would hand back `undefined` as far
+     *  as the compiler is concerned, and the only way to use it would be to
+     *  assert the lookup can't miss. Carrying the plan forward proves it. */
+    const active: Array<{ source: ObjectSource; objPlan: CommitObjectPlan }> = [];
+    for (const s of sources) {
       const p = planByFolder.get(s.folderName);
-      return p && !p.skip;
-    });
+      if (p && !p.skip) active.push({ source: s, objPlan: p });
+    }
     importStatus.objectsTotal = active.length;
 
     // When two source folders map to the same library object, they must land
@@ -2414,7 +3199,11 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
     // but the commit runs with the plan's per-import importFits /
     // importSubFrames overrides, so the two can legitimately differ and the
     // commit's numbers are the ones that describe what actually landed.
-    const walkedBySource = new Map<ObjectSource, WalkedFile[]>();
+    //
+    // The walk result rides along with each entry (rather than living in a
+    // side map keyed by source) so the copy loop below reads it by
+    // destructuring instead of a lookup it would then have to assert on.
+    const walked: Array<{ source: ObjectSource; objPlan: CommitObjectPlan; files: WalkedFile[] }> = [];
     let plannedBytes = 0;
     let largestFileBytes = 0;
     // scanImportFolder surfaces this same per-object cap (MAX_FILES_PER_OBJECT
@@ -2424,11 +3213,11 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
     // first 50k files and reported plain success with no sign anything was
     // left behind.
     const truncatedFolders: string[] = [];
-    for (const source of active) {
+    for (const { source, objPlan } of active) {
       const { files, skipped: walkSkips, truncated: sourceTruncated } = walkObjectFiles(source, settings);
-      for (const [reason, v] of walkSkips) countSkip(importSkips, reason, v.count, v.bytes);
+      for (const [reason, v] of walkSkips) countSkip(importSkips, reason, v.count, v.bytes, v.samples);
       if (sourceTruncated) truncatedFolders.push(source.folderName);
-      walkedBySource.set(source, files);
+      walked.push({ source, objPlan, files });
       importStatus.filesTotal += files.length;
       for (const f of files) {
         plannedBytes += f.size;
@@ -2477,13 +3266,12 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
       );
     }
 
-    for (const source of active) {
+    for (const { source, objPlan, files } of walked) {
       if (importCancelRequested) {
         importStatus.error = 'Import cancelled. Files already copied were kept; the rest will be picked up on the next run.';
         importStatus.cancelled = true;
         break;
       }
-      const objPlan = planByFolder.get(source.folderName)!;
       importStatus.currentObject = source.folderName;
 
       const rawTargetInput = (objPlan.targetObjectId || source.folderName).trim();
@@ -2523,16 +3311,44 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
         dirByObjectId.set(targetObjectId, objLocalDir);
         folderNameByObjectId.set(targetObjectId, path.basename(objLocalDir));
       }
+      // Bound to a const so the closures below keep the narrowing the block
+      // above established: a captured `let` widens back to `string | null`
+      // inside a closure body, which is what used to force a `!` there.
+      const objectDir: string = objLocalDir;
 
       log.info(
         { source: source.folderName, targetObjectId, dest: path.basename(objLocalDir) },
         '[folder-import] object',
       );
 
-      // Walked once up front (see the pre-pass above), not here: the
-      // free-space preflight needs the whole import's byte total before the
-      // first file is copied.
-      const files = walkedBySource.get(source)!;
+      // Snapshotted now, before this object's own index entry is overwritten
+      // at the end of this iteration — see the telescope import path for the
+      // same pattern. Two source folders targeting the same new object within
+      // one run correctly report only the first as "new": by the second
+      // iteration the index already reflects the first's write.
+      const hasPriorImport = !!index.objects[targetObjectId];
+      const priorSessionDates = new Set(index.objects[targetObjectId]?.sessions ?? []);
+      const touchedObjectName = path.basename(objLocalDir);
+      const recordTouchedObject = (): void => {
+        if (!importObjectsTouched.has(targetObjectId)) {
+          importObjectsTouched.set(targetObjectId, { objectId: targetObjectId, name: touchedObjectName, isNew: !hasPriorImport });
+        }
+      };
+      const recordTouchedSession = (date: string): void => {
+        const sessionKey = `${targetObjectId}|${date}`;
+        if (!importSessionsTouched.has(sessionKey)) {
+          importSessionsTouched.set(sessionKey, {
+            objectId: targetObjectId,
+            objectName: touchedObjectName,
+            date,
+            isNew: !priorSessionDates.has(date),
+          });
+        }
+      };
+
+      // `files` was walked once up front (see the pre-pass above), not here:
+      // the free-space preflight needs the whole import's byte total before
+      // the first file is copied.
 
       // Existing objects keep their shape; brand-new ones are created nested.
       const objectLayout = layoutByObjectId.get(targetObjectId)
@@ -2548,7 +3364,7 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
         let set = usedByDir.get(dir);
         if (!set) {
           set = new Set<string>();
-          try { for (const f of fs.readdirSync(path.join(objLocalDir!, dir))) set.add(f); }
+          try { for (const f of fs.readdirSync(path.join(objectDir, dir))) set.add(f); }
           catch { /* directory does not exist yet */ }
           usedByDir.set(dir, set);
         }
@@ -2571,6 +3387,7 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
       };
 
       let cancelledMidObject = false;
+      const folderFileRows: RecordFileInput[] = [];
       for (const file of files) {
         if (importCancelRequested) { cancelledMidObject = true; break; }
         const target = resolveTargetDate(objPlan.sessionMap, file.derived.date, file.derived.time);
@@ -2578,7 +3395,7 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
           log.info({ file: file.name, derivedDate: file.derived.date ?? null, reason: 'date-dropped' }, '[folder-import] skip');
           // Not counted in skippedFiles: that number is rendered as "already
           // synced", which these files are not. They were dropped.
-          countSkip(importSkips, 'date-dropped');
+          countSkip(importSkips, 'date-dropped', 1, 0, [file.name]);
           importStatus.filesDone++;
           continue;
         }
@@ -2631,29 +3448,31 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
           : canonicalImportName(file.name, target, file.derived.date, file.derived.time, used);
         used.add(destName);
         const destRel = sessionDir ? `${sessionDir}/${destName}` : destName;
-        const destPath = path.join(objLocalDir, destRel);
-        const tmpDestPath = `${destPath}.tmp`;
+        const tmpDestPath = `${path.join(objLocalDir, destRel)}.tmp`;
         try {
-          if (sessionDir) await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
-          // Copy to a .tmp file, then atomically rename onto the final path.
-          // A straight copy to destPath can leave a truncated file there if
-          // the process crashes mid-copy, and the exists-check above would
-          // then treat that partial file as "already imported" forever.
-          // Mirrors downloadOne's .tmp + rename pattern in runImport.
-          await fs.promises.copyFile(file.absPath, tmpDestPath);
-          const size = (await fs.promises.stat(tmpDestPath)).size;
-          await fs.promises.rename(tmpDestPath, destPath);
+          // Shared write primitive: `.tmp` + rename (so a crash mid-copy can't
+          // leave a truncated file the exists-check above treats as "imported"
+          // forever), containment guard, and the same partial-file heal every
+          // other import path now uses.
+          const outcome = await writeFileIntoLibrary(
+            { source: file.absPath, destRel, expectedSize: file.size, sourceKind: 'localCopy' },
+            { objectDir: objLocalDir },
+          );
+          if (outcome.status === 'error') throw new Error(outcome.reason);
+          const size = outcome.bytes;
           // Release the staged copy now that the library has the file. Done
           // per file rather than by deleting the whole temp dir at the end,
           // which is what made an upload need double its own size in free
           // space for the entire run. Only ever applied to our own staging
-          // area, and only after the copy has succeeded and been stat'd.
+          // area, and only after the copy has succeeded.
           if (stagedSource) {
             try { await fs.promises.unlink(file.absPath); } catch { /* swept later */ }
           }
           importNewFiles.push({ name: `${path.basename(objLocalDir)}/${destRel}`, size });
           importBytesNew += size;
           importStatus.filesDone++;
+          recordTouchedObject();
+          recordTouchedSession(target);
           insertImportLogSafe(rootPath, file.relPath, targetObjectId, target, 'imported', null);
           log.info({ file: destName, objectId: targetObjectId, date: target, bytes: size }, '[folder-import] imported');
           const importedDates = importedDatesByObjectId.get(targetObjectId) ?? new Set<string>();
@@ -2667,7 +3486,7 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
           const derivedNight = file.derived.date
             ? observingNightDate(file.derived.date, file.derived.time)
             : null;
-          recordLibraryFile({
+          folderFileRows.push({
             objectId: targetObjectId,
             folderName: path.basename(objLocalDir),
             sessionFolder: sessionDir || null,
@@ -2697,6 +3516,8 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
           log.warn({ file: file.name, objectId: targetObjectId, err: message }, '[folder-import] copy-error');
         }
       }
+
+      recordLibraryFiles(folderFileRows);
 
       if (cancelledMidObject) {
         importStatus.error = 'Import cancelled. Files already copied were kept; the rest will be picked up on the next run.';
@@ -2749,25 +3570,126 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
       importStatus.objectsDone++;
     }
 
+    // RESTACKED: match each subfolder to a library object by name (same as
+    // the live-sync path), creating the object via ensureRestackObject when
+    // this is the first thing to ever land against that target, and land its
+    // files as processed images instead of archived bytes.
+    //
+    // Candidates are collected for the WHOLE RESTACKED tree up front (exactly
+    // like calibration frames), then only the files actually turned into
+    // processed images are subtracted from what gets archived — rather than
+    // assuming every file lives one level down inside a per-stack subfolder.
+    // Real layout is unverified, and a loose file sitting directly in
+    // RESTACKED/ must still be preserved as bytes, never silently dropped —
+    // but a subfolder that resolves to a target id (however it resolves) no
+    // longer needs a pre-existing object to match; see ensureRestackObject.
+    let restackArchiveCandidates: ArchiveCandidate[] = [];
+    if (restackedFolderName && !importCancelRequested) {
+      importStatus.currentObject = 'RESTACKED (MegaStack)';
+      await migrateRestackedToSharedRootOnce();
+      const allRestackedCandidates = collectArchiveCandidates(resolvedRoot, [restackedFolderName]);
+      const matchedRelPaths = new Set<string>();
+      const restackedDir = path.join(resolvedRoot, restackedFolderName);
+      let subs: fs.Dirent[] = [];
+      try {
+        subs = fs.readdirSync(restackedDir, { withFileTypes: true }).filter(e => e.isDirectory());
+      } catch { /* unreadable — falls through to archiving the whole tree below */ }
+
+      let restackMatched = 0;
+      for (const sub of subs) {
+        const subDir = path.join(restackedDir, sub.name);
+        let shotsInfoTarget: string | null = null;
+        try {
+          shotsInfoTarget = targetFromShotsInfo(JSON.parse(fs.readFileSync(path.join(subDir, SHOTS_INFO_FILENAME), 'utf8')));
+        } catch { /* no shotsInfo.json, or it's unreadable/invalid -- fall back to the folder name */ }
+        const targetId = resolveRestackTargetId(sub.name, shotsInfoTarget);
+        if (!targetId) continue; // nothing plausible to name an object after — stays in allRestackedCandidates, archived below
+        // See the live-sync RESTACKED block above: shotsInfo.json has no date
+        // field, so this comes from the subfolder's own trailing timestamp.
+        const restackDate = extractDateFromSessionFolder(sub.name);
+
+        let files: string[] = [];
+        try {
+          files = fs.readdirSync(subDir).filter(n => isRenderableProcessedName(n) || isStoredOnlyProcessedName(n));
+        } catch { continue; }
+        // Dwarf queues a RESTACKED subfolder before it has anything in it —
+        // see the live-sync block's identical guard for why this must run
+        // before ensureRestackObject, not after.
+        if (!files.some(n => !isDwarfThumbnailPreviewName(n))) continue; // stays in allRestackedCandidates, archived below
+        ensureRestackObject(targetId, index, commitProfile?.id ?? null);
+        for (const f of files) {
+          // Dwarf's redundant low-res preview of stacked.jpg -- never worth a
+          // processed-image row. Leave it unmatched so it still lands in the
+          // archive with everything else, bytes preserved either way.
+          if (isDwarfThumbnailPreviewName(f)) continue;
+          const relPath = `${restackedFolderName}/${sub.name}/${f}`;
+          if (hasRestackedImage(targetId, f)) { matchedRelPaths.add(relPath); continue; } // already imported on a prior run
+          const srcPath = path.join(subDir, f);
+          const tmpPath = `${srcPath}.restack-import-${randomUUID()}`;
+          try {
+            fs.copyFileSync(srcPath, tmpPath);
+            addProcessedImage(targetId, restackDate, tmpPath, f, mimeTypeForExtension(f), sub.name, '', null, 'dwarf-restack');
+            restackMatched++;
+            matchedRelPaths.add(relPath);
+          } catch (err) {
+            log.warn({ err: err instanceof Error ? err.message : String(err), file: f }, '[folder-import] RESTACKED file failed; skipping');
+            try { fs.unlinkSync(tmpPath); } catch { /* best-effort */ }
+          }
+        }
+      }
+      // relPath is remapped from whatever case the source folder actually used
+      // (restackedFolderName) to the canonical RESTACKED_ROOT_DIR_NAME, so every
+      // run lands in the same folder regardless of source casing — otherwise a
+      // case-sensitive filesystem could split restacks across "RESTACKED" and
+      // "Restacked". Done here, inside the block where restackedFolderName is
+      // proven non-null, rather than at the copy site below where it isn't.
+      // Only relPath (the destination) changes; absPath still points at the
+      // source file copyToArchive reads from.
+      restackArchiveCandidates = allRestackedCandidates
+        .filter(c => !matchedRelPaths.has(c.relPath))
+        .map(c => ({ ...c, relPath: RESTACKED_ROOT_DIR_NAME + c.relPath.slice(restackedFolderName.length) }));
+      debugLog('import:dwarf', `RESTACKED: ${restackMatched} file(s) matched to an object, ${restackArchiveCandidates.length} file(s) archived (no matching object)`);
+    }
+
     // Archive pass. Runs after the objects so a cancelled or failed run has
     // already saved the observations, which are the data the user came for.
     // Nothing here writes a DB row: these files are bytes in the library, not
     // objects, which is the whole point (see archiveFolders.ts).
+    //
+    // Two destinations, not one: calibration frames stay telescope-scoped
+    // under _archive/<telescopeId>/ (two Dwarfs can have distinct CALI_FRAME
+    // data), but restack leftovers go to the shared RESTACKED/ root at the
+    // library root — see getRestackArchiveDir's doc. Their relPaths were
+    // already remapped to the canonical RESTACKED_ROOT_DIR_NAME where they
+    // were collected above.
     if (archiveCandidates.length > 0 && !importCancelRequested) {
-      // Reads as an object name in the progress UI, so name it for a person
-      // rather than using the directory's on-disk name.
       importStatus.currentObject = 'Archived folders';
-      const archived = await copyToArchive(archiveCandidates, {
+      const archived = await copyToArchive(archiveCandidates, getArchiveDir(commitProfile?.id ?? null), {
         shouldCancel: () => importCancelRequested,
         onFile: () => { importStatus.filesDone++; },
         deleteSourceAfterCopy: stagedSource,
       });
       importStatus.archivedFiles = archived.copied + archived.alreadyPresent;
-      importStatus.archivePath = getArchiveDir();
+      importStatus.archivePath = getArchiveDir(commitProfile?.id ?? null);
       importBytesNew += archived.bytesCopied;
       log.info(
         { folders: excludedFolders, ...archived, dest: importStatus.archivePath },
         '[folder-import] archived non-observation folders',
+      );
+    }
+    if (restackArchiveCandidates.length > 0 && !importCancelRequested) {
+      importStatus.currentObject = 'Archived folders';
+      const archived = await copyToArchive(restackArchiveCandidates, getLibraryDir(), {
+        shouldCancel: () => importCancelRequested,
+        onFile: () => { importStatus.filesDone++; },
+        deleteSourceAfterCopy: stagedSource,
+      });
+      importStatus.restackArchivedFiles = archived.copied + archived.alreadyPresent;
+      importStatus.restackArchivePath = getRestackArchiveDir();
+      importBytesNew += archived.bytesCopied;
+      log.info(
+        { ...archived, dest: importStatus.restackArchivePath },
+        '[folder-import] archived unmatched RESTACKED files',
       );
     }
 
@@ -2798,6 +3720,11 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
             cat.catalogId, cat.objectName, cat.objectType, cat.constellation,
             cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy
           );
+          // Same self-heal as the live-sync path above: fixed constants for a
+          // reserved id, safe to re-apply on every import.
+          if (objectId === getStartrailsObjectId()) {
+            patchStartrailsObjectMeta(objectId);
+          }
           if (commitProfile) stmts.setObjectPrimaryTelescopeIfNull.run(commitProfile.id, objectId);
           const chosenLayout = layoutByObjectId.get(objectId);
           if (chosenLayout) setObjectLayout(objectId, chosenLayout);
@@ -2831,14 +3758,13 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
       try { await enrichObjectData(objectId); } catch (err) {
         log.warn({ err: err instanceof Error ? err.message : String(err), objectId }, '[folder-import] catalog enrichment failed');
       }
-      try { await backfillSessionWeather(objectId); } catch (err) {
-        console.warn(`[import] Weather backfill failed for "${objectId}":`, err instanceof Error ? err.message : err);
-      }
+      // Queued, not awaited — off the import-completion critical path (FC-3).
+      try { enqueueSessionWeatherBackfill(objectId); } catch { /* best-effort */ }
     }
 
     // Pre-warm gallery thumbnails for newly-imported objects.
     if (importNewFiles.length > 0) {
-      const newObjectIds = new Set(importNewFiles.map(f => normalizeObjectId(f.name.split('/')[0])));
+      const newObjectIds = new Set(importNewFiles.map(f => resolveCanonicalId(normalizeObjectId(f.name.split('/')[0]))));
       await pregenerateObjectThumbnails(newObjectIds);
     }
   } catch (err) {
@@ -2864,29 +3790,13 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
     }
   } finally {
     importStatus.skipped = summarizeSkips(importSkips);
-    try {
-      stmts.insertHistory.run(
-        importStatus.startedAt,
-        new Date().toISOString(),
-        importStatus.objectsTotal,
-        importStatus.filesTotal,
-        importNewFiles.length,
-        importStatus.bytesTotal,
-        importBytesNew,
-        importStatus.error || null,
-        importNewFiles.length > 0 ? JSON.stringify(importNewFiles.map(f => f.name)) : null,
-        importStatus.telescopeId,
-        importStatus.telescopeName,
-        importStatus.transportKind,
-        importStatus.skipped.length > 0 ? JSON.stringify(importStatus.skipped) : null,
-        importStatus.manual ? 1 : 0,
-        importStatus.cancelled ? 1 : 0,
-      );
-    } catch (err) {
-      // This write is the audit trail itself, so its own failure needs to be
-      // visible rather than silently discarded along with it.
-      log.warn({ err: err instanceof Error ? err.message : String(err) }, '[folder-import] history write failed');
-    }
+    writeImportHistory(importStatus, {
+      newFiles: importNewFiles,
+      bytesNew: importBytesNew,
+      objectsTouched: importObjectsTouched,
+      sessionsTouched: importSessionsTouched,
+      source: 'folder',
+    });
     log.info(
       {
         objects: importStatus.objectsDone,

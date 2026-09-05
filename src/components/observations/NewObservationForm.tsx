@@ -65,7 +65,7 @@ export function NewObservationForm({
 
   // React Query for DSO search
   const { data: searchData, isFetching: isSearching } = useQuery({
-    queryKey: ['dso-search', debouncedQuery],
+    queryKey: ['dso-search', debouncedQuery, 12],
     queryFn: () => searchDsoCatalog(debouncedQuery, 12),
     enabled: debouncedQuery.trim().length > 0,
     staleTime: 30_000,

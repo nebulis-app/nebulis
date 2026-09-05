@@ -11,8 +11,15 @@ import { getSettingsData, updateSettingsData, getApiKey, setApiKey, getAllProfil
 import { getDefaultSite, updateSite, type ObservingSite } from '../lib/observingSites.js';
 import { SKY_MAP_BANDS } from '../lib/skyMapConfig.js';
 import { UPDATE_CHANNELS } from '../lib/appUpdate/manifest.js';
-import db from '../lib/db.js';
+import {
+  GALLERY_IMAGE_SOURCES,
+  PREFERRED_CATALOGS,
+  TEMPERATURE_UNITS,
+  WIND_SPEED_UNITS,
+} from '../lib/types/appSettings.js';
+import { resetLibraryData, getLibraryDbStats } from '../lib/db.js';
 import { DATA_DIR } from '../lib/paths.js';
+import { isRecord } from '../lib/typeGuards.js';
 import { getLibraryDir, isDefaultLocation, getLibraryId, writeMarker, isLibraryAvailable, isNetworkLocation } from '../lib/libraryPath.js';
 import { startPrefetch, cancelPrefetch } from '../lib/catalogPrefetch.js';
 import { clearPackState } from '../lib/catalogPack/state.js';
@@ -25,19 +32,15 @@ import {
   type DebugContext,
 } from '../lib/debugLogger.js';
 import { getCurrentVersion } from '../lib/appUpdate/platform.js';
+import { logEvent } from '../lib/systemLog.js';
 
 const router = Router();
 
-// Single source of truth for every enum-valued setting. The Zod schemas below
-// and the Settings type are both derived from these — add a value here once
-// and it propagates to validation (write path) and the inferred type (read
-// path) together, instead of drifting across hand-copied unions.
-const GALLERY_IMAGE_SOURCES = ['sky-survey', 'telescope'] as const;
-const PREFERRED_CATALOGS = ['default', 'caldwell'] as const;
-const TEMPERATURE_UNITS = ['celsius', 'fahrenheit'] as const;
-const WIND_SPEED_UNITS = ['mph', 'kmh'] as const;
-// UPDATE_CHANNELS itself is imported from appUpdate/manifest.ts, which is the
-// real source (it also signs the manifests published under each channel).
+// The enum-valued settings above are imported from lib/types/appSettings.ts
+// (and UPDATE_CHANNELS from appUpdate/manifest.ts, which also signs the
+// manifests published under each channel) so the Zod schemas below and the
+// DB read/write coercion in lib/telescopes.ts share one definition instead of
+// drifting across hand-copied unions.
 
 const SettingsUpdateBodySchema = z.object({
   apiKey: z.string().optional(),
@@ -81,6 +84,7 @@ const SettingsUpdateBodySchema = z.object({
   nightlyCatalogPackCheckEnabled: z.boolean().optional(),
   nightlyHousekeepingEnabled: z.boolean().optional(),
   nightlyForecastPrefetchEnabled: z.boolean().optional(),
+  nightlyMaintenanceEnabled: z.boolean().optional(),
 });
 
 const ResetDatabaseBodySchema = z.object({
@@ -111,6 +115,11 @@ const SettingsSchema = z.object({
   syncThumbnails: z.boolean(),
   syncSubFrames: z.boolean(),
   syncVideos: z.boolean(),
+  // Global default for "keep files Nebulis has no use for" (see
+  // TelescopeProfile.archiveAllFiles for the per-telescope override this
+  // seeds). Was accepted by SettingsUpdateBodySchema and persisted, but
+  // missing here, so it was silently stripped on every read.
+  archiveAllFiles: z.boolean(),
   // Local library import
   autoImportInterval: z.number(), // minutes
   importJpg: z.boolean(),
@@ -155,6 +164,7 @@ const SettingsSchema = z.object({
   nightlyCatalogPackCheckEnabled: z.boolean(),
   nightlyHousekeepingEnabled: z.boolean(),
   nightlyForecastPrefetchEnabled: z.boolean(),
+  nightlyMaintenanceEnabled: z.boolean(),
   nightlyHousekeepingLastRun: z.number().nullable(), // Unix ms, read-only
   nightlyForecastLastRun: z.number().nullable(), // Unix ms, read-only
 });
@@ -177,6 +187,7 @@ const defaultSettings: Settings = {
   syncThumbnails: false,
   syncSubFrames: false,
   syncVideos: false,
+  archiveAllFiles: false,
   autoImportInterval: 60,
   importJpg: true,
   importFits: false,
@@ -202,11 +213,17 @@ const defaultSettings: Settings = {
   nightlyCatalogPackCheckEnabled: true,
   nightlyHousekeepingEnabled: true,
   nightlyForecastPrefetchEnabled: true,
+  nightlyMaintenanceEnabled: true,
   nightlyHousekeepingLastRun: null,
   nightlyForecastLastRun: null,
 };
 
-const appFields = ['apiKey', 'latitude', 'longitude', 'locationName', 'timezone', 'minAlt', 'horizonProfile', 'visibleSkyMap', 'syncEnabled', 'syncJpg', 'syncFits', 'syncThumbnails', 'syncSubFrames', 'syncVideos', 'autoImportInterval', 'importJpg', 'importFits', 'importThumbnails', 'importSubFrames', 'importVideos', 'archiveAllFiles', 'onboardingCompleted', 'prefetchCatalogAssets', 'planetariumShowInfo', 'galleryImageSource', 'slideshowRotateCCW', 'galleryProcessedOnlyDefault', 'planetariumProcessedOnlyDefault', 'preferredCatalog', 'groupObservingNights', 'temperatureUnit', 'windSpeedUnit', 'updateChannel', 'autoUpdateEnabled', 'plannerPrefetchEnabled', 'plannerPrefetchTime', 'nightlyCatalogPackCheckEnabled', 'nightlyHousekeepingEnabled', 'nightlyForecastPrefetchEnabled'] as const;
+// The persistable field list is the request schema's own key set, read off the
+// schema instead of hand-copied beside it. The previous literal array had to be
+// edited in lockstep with SettingsUpdateBodySchema, and a field added to the
+// schema but forgotten here would validate fine and then be silently dropped
+// on write. One definition, so that can't happen.
+const appFields: readonly string[] = Object.keys(SettingsUpdateBodySchema.shape);
 
 function loadSettings(): Settings {
   const appData = getSettingsData();
@@ -238,10 +255,14 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
   const masked = current.apiKey ? `${current.apiKey.slice(0, 8)}...` : null;
   if (updates.apiKey && updates.apiKey === masked) delete updates.apiKey;
 
-  // Only allow known fields
+  // Only allow known fields. Spreading the parsed body into a Record gives a
+  // string-indexable view without a cast (an inferred object type carries an
+  // implicit index signature), so the loop can walk the schema-derived key
+  // list directly.
+  const submitted: Record<string, unknown> = { ...updates };
   const filtered: Record<string, unknown> = {};
   for (const key of appFields) {
-    if (key in updates) filtered[key] = (updates as Record<string, unknown>)[key];
+    if (key in submitted) filtered[key] = submitted[key];
   }
 
   // Reverse geolocation: if latitude/longitude are being set without an explicit
@@ -249,22 +270,26 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
   // label (and timezone), so we skip the lookup then to avoid clobbering it with
   // a less specific reverse-geocode and to save the extra network round-trip.
   const hasExplicitName = typeof filtered.locationName === 'string' && filtered.locationName.trim() !== '';
+  const lat = filtered.latitude;
+  const lon = filtered.longitude;
   if (
     ('latitude' in filtered || 'longitude' in filtered) &&
-    filtered.latitude != null && filtered.longitude != null &&
+    typeof lat === 'number' && typeof lon === 'number' &&
     !hasExplicitName
   ) {
-    const lat = filtered.latitude as number;
-    const lon = filtered.longitude as number;
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`, {
         headers: { 'User-Agent': 'nebulis-nebulis' }
       });
       if (response.ok) {
-        const data = await response.json() as { address?: { city?: string; town?: string; county?: string; state?: string; country?: string } };
-        const address = data.address || {};
-        const city = address.city || address.town || address.county || 'Unknown';
-        const state = address.state || '';
+        // Nominatim is a third party: narrow its payload instead of asserting
+        // it. `str()` also drops non-string field values, so a numeric
+        // "state" can't be interpolated into the label as [object Object].
+        const data: unknown = await response.json();
+        const address = isRecord(data) && isRecord(data.address) ? data.address : {};
+        const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : '');
+        const city = str(address.city) || str(address.town) || str(address.county) || 'Unknown';
+        const state = str(address.state);
         filtered.locationName = state ? `${city}, ${state}` : city;
       }
     } catch (err) {
@@ -296,6 +321,17 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
 
   if (Object.keys(filtered).length > 0) {
     updateSettingsData(filtered);
+    // Field names only, never values — several of these (apiKey, network
+    // credentials) are secrets and don't belong in an audit trail.
+    logEvent({
+      category: 'settings',
+      event: 'updated',
+      message: `Updated settings: ${Object.keys(filtered).join(', ')}.`,
+      userId: req.userId,
+      username: req.username,
+      ip: req.ip ?? req.socket.remoteAddress,
+      metadata: { changedFields: Object.keys(filtered) },
+    });
   }
 
   // Legacy clients (native builds that predate observing sites) PUT the seven
@@ -310,12 +346,18 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
   if ('locationName' in filtered && typeof filtered.locationName === 'string') {
     siteUpdate.name = filtered.locationName;
   }
-  if ('latitude' in filtered) siteUpdate.latitude = filtered.latitude as number | null;
-  if ('longitude' in filtered) siteUpdate.longitude = filtered.longitude as number | null;
-  if ('timezone' in filtered) siteUpdate.timezone = filtered.timezone as string;
-  if ('minAlt' in filtered) siteUpdate.minAlt = filtered.minAlt as number;
-  if ('horizonProfile' in filtered) siteUpdate.horizonProfile = filtered.horizonProfile as number[];
-  if ('visibleSkyMap' in filtered) siteUpdate.visibleSkyMap = filtered.visibleSkyMap as boolean[];
+  // Read these off the parsed body rather than the unknown-valued `filtered`
+  // copy: `updates` is already Zod-validated, so each field arrives with the
+  // exact type ObservingSite wants and needs no assertion. Only locationName
+  // has to come from `filtered`, because the reverse-geocode block above may
+  // have written a derived label into it. `!== undefined` is the presence
+  // test: an optional field the client omitted is absent from `parsed.data`.
+  if (updates.latitude !== undefined) siteUpdate.latitude = updates.latitude;
+  if (updates.longitude !== undefined) siteUpdate.longitude = updates.longitude;
+  if (updates.timezone !== undefined) siteUpdate.timezone = updates.timezone;
+  if (updates.minAlt !== undefined) siteUpdate.minAlt = updates.minAlt;
+  if (updates.horizonProfile !== undefined) siteUpdate.horizonProfile = updates.horizonProfile;
+  if (updates.visibleSkyMap !== undefined) siteUpdate.visibleSkyMap = updates.visibleSkyMap;
   if (Object.keys(siteUpdate).length > 0) {
     updateSite(getDefaultSite().id, siteUpdate);
   }
@@ -344,7 +386,8 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
   // Restart nightly scheduler when its config changes
   if ('plannerPrefetchEnabled' in filtered || 'plannerPrefetchTime' in filtered ||
       'nightlyCatalogPackCheckEnabled' in filtered ||
-      'nightlyHousekeepingEnabled' in filtered || 'nightlyForecastPrefetchEnabled' in filtered) {
+      'nightlyHousekeepingEnabled' in filtered || 'nightlyForecastPrefetchEnabled' in filtered ||
+      'nightlyMaintenanceEnabled' in filtered) {
     restartPlannerNightlyScheduler();
   }
 
@@ -356,10 +399,15 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
   });
 });
 
-// Run the nightly maintenance batch now, on demand. Respects each task's
-// enabled toggle. The work runs in the background; the client refetches
-// settings to see updated last-run times.
+// Run the nightly maintenance batch now, on demand. Respects the master
+// toggle: maintenance off means nothing runs, even manually (matches the UI,
+// which hides "Run now" while the switch is off). The work runs in the
+// background; the client refetches settings to see updated last-run times.
 router.post('/nightly/run', requireAdmin, (_req: Request, res: Response) => {
+  if (!loadSettings().nightlyMaintenanceEnabled) {
+    res.apiError(409, 'MAINTENANCE_DISABLED', 'Nightly maintenance is turned off. Turn it on to run it now.');
+    return;
+  }
   const started = triggerNightlyMaintenance();
   if (!started) {
     res.apiError(409, 'ALREADY_RUNNING', 'Nightly maintenance is already running.');
@@ -369,9 +417,18 @@ router.post('/nightly/run', requireAdmin, (_req: Request, res: Response) => {
 });
 
 // Generate a new API key
-router.post('/generate-api-key', requireAdmin, (_req: Request, res: Response) => {
+router.post('/generate-api-key', requireAdmin, (req: Request, res: Response) => {
   const newKey = `shub_${crypto.randomBytes(24).toString('hex')}`;
   setApiKey(newKey);
+  logEvent({
+    category: 'auth',
+    event: 'api_key_generated',
+    level: 'warning',
+    message: 'Generated a new API key.',
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+  });
 
   // Return the full key once — it won't be shown again
   res.apiSuccess({
@@ -381,8 +438,17 @@ router.post('/generate-api-key', requireAdmin, (_req: Request, res: Response) =>
 });
 
 // Revoke API key
-router.delete('/api-key', requireAdmin, (_req: Request, res: Response) => {
+router.delete('/api-key', requireAdmin, (req: Request, res: Response) => {
   setApiKey('');
+  logEvent({
+    category: 'auth',
+    event: 'api_key_revoked',
+    level: 'warning',
+    message: 'Revoked the API key.',
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+  });
   res.apiSuccess({ revoked: true });
 });
 
@@ -395,22 +461,21 @@ router.delete('/reset-database', requireAdmin, strictRateLimiter, async (req: Re
     return;
   }
 
+  // Logged before the purge runs, not after: this is destructive enough that
+  // the audit trail should exist even if the process crashes partway through.
+  logEvent({
+    category: 'storage',
+    event: 'database_reset',
+    level: 'error',
+    message: 'Reset the database: purged all library data, kept settings and users.',
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+  });
+
   try {
     // 1. Purge database tables (keep settings, users, telescope profiles)
-    const tablesToClear = [
-      'libraryDeletedSessions',
-      'librarySessions',
-      'libraryObjects',
-      'libraryMeta',
-      'notes',
-      'wishlist',
-      'favorites',
-    ];
-    for (const table of tablesToClear) {
-      db.exec(`DELETE FROM ${table}`);
-    }
-    // Re-insert the singleton libraryMeta row
-    db.exec(`INSERT OR IGNORE INTO libraryMeta (id, version) VALUES (1, 1)`);
+    resetLibraryData();
 
     // 2. Remove local data directories
     // Guard the library dir: only delete it when the marker confirms this
@@ -524,12 +589,7 @@ router.post('/debug-logging/enable', requireAdmin, (_req: Request, res: Response
 
   let dbStats: { objects: number; sessions: number; files: number } | undefined;
   try {
-    const n = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
-    dbStats = {
-      objects: n('SELECT COUNT(*) AS n FROM libraryObjects'),
-      sessions: n('SELECT COUNT(*) AS n FROM librarySessions'),
-      files: n('SELECT COUNT(*) AS n FROM libraryFiles'),
-    };
+    dbStats = getLibraryDbStats();
   } catch { /* best-effort */ }
 
   res.apiSuccess(enableDebugLogging({

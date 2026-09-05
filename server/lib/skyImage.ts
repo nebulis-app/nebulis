@@ -16,6 +16,7 @@ import { getCatalogEntry } from '../data/catalog.js';
 import { SOLAR_SYSTEM_LOOKUP_KEYS, SOLAR_SYSTEM_NASA_TERMS, SOLAR_SYSTEM_ASTROBACKYARD_URLS } from '../data/solar-system-catalog.js';
 import { raToDegs, decToDegs } from './astroCalc.js';
 import { DATA_DIR } from './paths.js';
+import { isRecord } from './typeGuards.js';
 
 // Local constants — kept self-contained to avoid a circular dependency with
 // catalogPrefetch.ts (which imports this module). catalogPrefetch exports the
@@ -39,13 +40,8 @@ function imageCachePath(id: string): string {
 const sesameCache = new Map<string, { ra: number; dec: number } | null>();
 const SESAME_CACHE_FILE = path.join(SKY_CACHE_DIR, '_sesame_cache.json');
 
-function pluck(obj: object, key: string): unknown {
-  return key in obj ? (obj as Record<string, unknown>)[key] : undefined;
-}
-
 function isCoords(v: unknown): v is { ra: number; dec: number } {
-  if (v === null || typeof v !== 'object') return false;
-  return typeof pluck(v, 'ra') === 'number' && typeof pluck(v, 'dec') === 'number';
+  return isRecord(v) && typeof v.ra === 'number' && typeof v.dec === 'number';
 }
 
 try {
@@ -120,24 +116,22 @@ async function fetchNasaImage(name: string): Promise<Buffer | null> {
     const resp = await fetch(url, { signal: AbortSignal.timeout(4000) });
     if (!resp.ok) return null;
 
+    // NASA's API is a third party: narrow every level with isRecord rather
+    // than reaching into it through casts.
     const data: unknown = await resp.json();
-    if (data === null || typeof data !== 'object') return null;
-    const collection = pluck(data, 'collection');
-    if (collection === null || typeof collection !== 'object') return null;
-    const items = pluck(collection, 'items');
+    if (!isRecord(data) || !isRecord(data.collection)) return null;
+    const items = data.collection.items;
     if (!Array.isArray(items)) return null;
 
     const isPreviewLink = (l: unknown): l is { href: string; rel: string } => {
-      if (l === null || typeof l !== 'object') return false;
-      const href = pluck(l, 'href');
-      const rel = pluck(l, 'rel');
-      return typeof href === 'string' && typeof rel === 'string'
-        && rel === 'preview' && href.endsWith('.jpg');
+      if (!isRecord(l)) return false;
+      const { href, rel } = l;
+      return typeof href === 'string' && rel === 'preview' && href.endsWith('.jpg');
     };
 
     for (const item of items) {
-      if (item === null || typeof item !== 'object') continue;
-      const links = pluck(item, 'links');
+      if (!isRecord(item)) continue;
+      const links = item.links;
       if (!Array.isArray(links)) continue;
       const link = links.find(isPreviewLink);
       if (link) {

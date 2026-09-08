@@ -16,6 +16,10 @@ services:
     volumes:
       # Persist settings and observation notes across container restarts
       - nebulis-data:/app/data
+      # To keep imported images on a separate disk, bind-mount it here and set
+      # LIBRARY_DIR below to the same path. The database and settings stay in
+      # /app/data. See "Storing images on a separate disk" in docker/README.md.
+      # - /mnt/user/astrophotos:/library
       # Expose macOS-mounted USB volumes to the container so Dwarf telescope
       # detection finds them. The Linux-side detector scans /media/* — by
       # bind-mounting the host's /Volumes there read-only, any plugged-in
@@ -27,6 +31,9 @@ services:
     environment:
       - PORT=8080
       - NODE_ENV=production
+      # Uncomment (and the matching volume above) to store the image library on a
+      # separate disk. Must be an absolute path that exists in the container.
+      # - LIBRARY_DIR=/library
       # Set this to your server's LAN IP so UDP discovery returns the correct
       # address when running in Docker (containers can't see the host's external IP).
       # Example: ADVERTISED_HOST=192.168.1.119

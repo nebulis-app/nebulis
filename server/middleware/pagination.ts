@@ -21,10 +21,20 @@ export interface PaginatedResult<T> {
 /**
  * Parse pagination params from query string.
  * Supports: ?page=1&limit=50 (default: page 1, limit 50, max 200)
+ * A caller may pass ?offset=N directly instead of ?page; when present it wins
+ * and `page` is derived from it, so an offset-based client (the System Log)
+ * isn't silently pinned to the first page.
  */
 export function parsePagination(req: Request, defaultLimit = 50): PaginationParams {
-  const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit || String(defaultLimit)), 10) || defaultLimit));
+
+  const hasOffset = req.query.offset !== undefined;
+  if (hasOffset) {
+    const offset = Math.max(0, parseInt(String(req.query.offset), 10) || 0);
+    return { page: Math.floor(offset / limit) + 1, limit, offset };
+  }
+
+  const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
   const offset = (page - 1) * limit;
   return { page, limit, offset };
 }

@@ -46,6 +46,25 @@ describe('parsePagination', () => {
     expect(result.page).toBe(1);
     expect(result.limit).toBe(50);
   });
+
+  it('honors an explicit offset param over page', () => {
+    const result = parsePagination(mockReq({ offset: '30', limit: '10' }));
+    expect(result.offset).toBe(30);
+    expect(result.limit).toBe(10);
+    expect(result.page).toBe(4);
+  });
+
+  it('clamps a negative offset to 0', () => {
+    const result = parsePagination(mockReq({ offset: '-5', limit: '10' }));
+    expect(result.offset).toBe(0);
+    expect(result.page).toBe(1);
+  });
+
+  it('treats a non-numeric offset as 0', () => {
+    const result = parsePagination(mockReq({ offset: 'abc' }));
+    expect(result.offset).toBe(0);
+    expect(result.page).toBe(1);
+  });
 });
 
 describe('paginate', () => {

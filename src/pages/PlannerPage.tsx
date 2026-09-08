@@ -1241,6 +1241,7 @@ export function PlannerPage() {
           scheduleStart={autoPlanRange.start}
           scheduleHardEnd={autoPlanRange.end}
           defaultClearFirst={autoPlanRange.clearFirst}
+          existingPlanCount={sessions.filter(s => s.id > 0).length}
           moonIllumination={planner?.moonIllumination ?? 0}
           minAlt={currentSite?.minAlt ?? 30}
           visibleSkyMap={visibleSkyMap}

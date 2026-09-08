@@ -31,6 +31,9 @@ export interface NightRating {
   avgHumidity: number;
   avgWind: number;
   precipChance: number;
+  /** `'low'` for the furthest-out night (~72-96 h): render it as a dimmer,
+   *  clearly-less-certain card. Older cached forecasts omit it. */
+  confidence?: 'normal' | 'low';
 }
 
 interface ForecastData {

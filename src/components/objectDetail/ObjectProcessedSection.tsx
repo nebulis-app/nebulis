@@ -170,7 +170,7 @@ export function ObjectProcessedSection({
                   >
                     <div className="relative aspect-square">
                       {canRender ? (
-                        <img src={img.url} alt={img.title || img.originalName} className="w-full h-full object-cover" />
+                        <img src={img.previewUrl ?? img.url} alt={img.title || img.originalName} className="w-full h-full object-cover" />
                       ) : isFits ? (
                         <FitsThumbnail url={img.url} thumbUrl={img.thumbUrl ?? undefined} stretch={1.0} isDark={isDark} />
                       ) : (

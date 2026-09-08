@@ -35,8 +35,8 @@ function buildForecastMock() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
-  // Four days of hourly data: tonight plus the two nights in the outlook.
-  const hourly = Array.from({ length: 96 }, (_, i) => {
+  // Five days of hourly data: tonight plus the three nights in the outlook.
+  const hourly = Array.from({ length: 120 }, (_, i) => {
     const cloudCover = Math.round(45 + 40 * Math.sin((i - 4) / 3.5));
     return {
       time: at(i),
@@ -76,9 +76,10 @@ function buildForecastMock() {
       nauticalDarkHours: 8,
     },
     nightRatings: [
-      { date: dateKey(0), score: 85, rating: 'Great', avgCloudCover: 10, avgHumidity: 40, avgWind: 8, precipChance: 0 },
-      { date: dateKey(1), score: 62, rating: 'Good', avgCloudCover: 38, avgHumidity: 55, avgWind: 12, precipChance: 10 },
-      { date: dateKey(2), score: 31, rating: 'Poor', avgCloudCover: 78, avgHumidity: 72, avgWind: 20, precipChance: 45 },
+      { date: dateKey(0), score: 85, rating: 'Great', avgCloudCover: 10, avgHumidity: 40, avgWind: 8, precipChance: 0, confidence: 'normal' },
+      { date: dateKey(1), score: 62, rating: 'Good', avgCloudCover: 38, avgHumidity: 55, avgWind: 12, precipChance: 10, confidence: 'normal' },
+      { date: dateKey(2), score: 31, rating: 'Poor', avgCloudCover: 78, avgHumidity: 72, avgWind: 20, precipChance: 45, confidence: 'normal' },
+      { date: dateKey(3), score: 54, rating: 'Fair', avgCloudCover: 52, avgHumidity: 60, avgWind: 14, precipChance: 20, confidence: 'low' },
     ],
     sources: { weather: 'Open-Meteo', seeing: '7Timer' },
   };
@@ -684,6 +685,8 @@ export const MOCK = {
       objectType: 'Emission Nebula',
       distanceLy: 1344,
       downloadUrl: '/api/library/file?path=/data/library/M42/2024-03-15/M42_2024-03-15.jpg',
+      thumbUrl: '/api/library/file/thumbnail?path=/data/library/M42/2024-03-15/M42_2024-03-15.jpg',
+      previewUrl: '/api/library/file/thumbnail?w=2048&h=2048&path=/data/library/M42/2024-03-15/M42_2024-03-15.jpg',
       isFavorite: false,
       isProcessed: false,
     },
@@ -696,6 +699,8 @@ export const MOCK = {
       objectType: 'Galaxy',
       distanceLy: 2537000,
       downloadUrl: '/api/library/file?path=/data/library/M31/2024-02-20/M31_2024-02-20.jpg',
+      thumbUrl: '/api/library/file/thumbnail?path=/data/library/M31/2024-02-20/M31_2024-02-20.jpg',
+      previewUrl: '/api/library/file/thumbnail?w=2048&h=2048&path=/data/library/M31/2024-02-20/M31_2024-02-20.jpg',
       isFavorite: true,
       isProcessed: false,
     },
@@ -712,6 +717,8 @@ export const MOCK = {
       objectType: 'Emission Nebula',
       distanceLy: 2590,
       downloadUrl: '/api/library/file?path=NGC7000/processed/NGC7000_final.jpg',
+      thumbUrl: '/api/library/file/thumbnail?path=NGC7000/processed/NGC7000_final.jpg',
+      previewUrl: '/api/library/file/thumbnail?w=2048&h=2048&path=NGC7000/processed/NGC7000_final.jpg',
       isFavorite: false,
       isProcessed: true,
     },

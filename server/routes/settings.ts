@@ -231,6 +231,15 @@ function loadSettings(): Settings {
   return SettingsSchema.parse(merged);
 }
 
+/** True when a submitted settings value matches what's already stored.
+ *  horizonProfile and visibleSkyMap are the only non-scalar fields, both plain
+ *  arrays where element order is meaningful, so a stringify compare is exact. */
+function settingsValueEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) return JSON.stringify(a) === JSON.stringify(b);
+  return false;
+}
+
 router.get('/', (_req: Request, res: Response) => {
   const settings = loadSettings();
   res.apiSuccess({
@@ -260,9 +269,17 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
   // implicit index signature), so the loop can walk the schema-derived key
   // list directly.
   const submitted: Record<string, unknown> = { ...updates };
+  const currentRecord = current as Record<string, unknown>;
   const filtered: Record<string, unknown> = {};
   for (const key of appFields) {
-    if (key in submitted) filtered[key] = submitted[key];
+    if (!(key in submitted)) continue;
+    // The web client PUTs the whole settings object on every save, so an
+    // untouched field arrives identical to what's already stored. Keep only
+    // the fields whose value actually changed, so the write, the audit-log
+    // entry, and the flip detection below all reflect the real change set
+    // instead of listing all ~40 fields every time.
+    if (settingsValueEqual(submitted[key], currentRecord[key])) continue;
+    filtered[key] = submitted[key];
   }
 
   // Reverse geolocation: if latitude/longitude are being set without an explicit
@@ -278,8 +295,13 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
     !hasExplicitName
   ) {
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`, {
-        headers: { 'User-Agent': 'nebulis-nebulis' }
+      // Bounded so a slow/unreachable Nominatim can't hang the settings save
+      // itself — the reverse lookup is a nicety, not the point of the request.
+      // (catalog.ts has a fuller cached copy of this; TODO: share one helper.)
+      // User-Agent per Nominatim's usage policy: identifiable app + contact.
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10`, {
+        signal: AbortSignal.timeout(5000),
+        headers: { 'User-Agent': 'Nebulis/1.0 (astronomy observation app)' },
       });
       if (response.ok) {
         // Nominatim is a third party: narrow its payload instead of asserting
@@ -346,18 +368,16 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
   if ('locationName' in filtered && typeof filtered.locationName === 'string') {
     siteUpdate.name = filtered.locationName;
   }
-  // Read these off the parsed body rather than the unknown-valued `filtered`
-  // copy: `updates` is already Zod-validated, so each field arrives with the
-  // exact type ObservingSite wants and needs no assertion. Only locationName
-  // has to come from `filtered`, because the reverse-geocode block above may
-  // have written a derived label into it. `!== undefined` is the presence
-  // test: an optional field the client omitted is absent from `parsed.data`.
-  if (updates.latitude !== undefined) siteUpdate.latitude = updates.latitude;
-  if (updates.longitude !== undefined) siteUpdate.longitude = updates.longitude;
-  if (updates.timezone !== undefined) siteUpdate.timezone = updates.timezone;
-  if (updates.minAlt !== undefined) siteUpdate.minAlt = updates.minAlt;
-  if (updates.horizonProfile !== undefined) siteUpdate.horizonProfile = updates.horizonProfile;
-  if (updates.visibleSkyMap !== undefined) siteUpdate.visibleSkyMap = updates.visibleSkyMap;
+  // Gate on `filtered` (the changed set) so an unrelated settings save doesn't
+  // rewrite the default site every time, but read the value off the parsed
+  // body: `updates` is already Zod-validated, so each field arrives with the
+  // exact type ObservingSite wants and needs no assertion.
+  if ('latitude' in filtered && updates.latitude !== undefined) siteUpdate.latitude = updates.latitude;
+  if ('longitude' in filtered && updates.longitude !== undefined) siteUpdate.longitude = updates.longitude;
+  if ('timezone' in filtered && updates.timezone !== undefined) siteUpdate.timezone = updates.timezone;
+  if ('minAlt' in filtered && updates.minAlt !== undefined) siteUpdate.minAlt = updates.minAlt;
+  if ('horizonProfile' in filtered && updates.horizonProfile !== undefined) siteUpdate.horizonProfile = updates.horizonProfile;
+  if ('visibleSkyMap' in filtered && updates.visibleSkyMap !== undefined) siteUpdate.visibleSkyMap = updates.visibleSkyMap;
   if (Object.keys(siteUpdate).length > 0) {
     updateSite(getDefaultSite().id, siteUpdate);
   }

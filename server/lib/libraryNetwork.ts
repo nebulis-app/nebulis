@@ -5,7 +5,7 @@
  * `smb.mac.ts`'s `mount_smbfs`) but is a fully independent module: it never
  * touches telescope connectivity, and telescope changes can't regress it.
  *
- * Platform support (see the phase-2 planning conversation, and CLAUDE.md):
+ * Platform support:
  *   - Windows: `getLibraryDir()` returns the UNC path directly (`\\host\share\sub`);
  *     `net use` authenticates the session before every connect attempt (a no-op
  *     for guest shares or an already-authenticated session).

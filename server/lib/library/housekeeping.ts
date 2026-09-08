@@ -7,6 +7,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import db from '../db.js';
 import { getLibraryDir, isLibraryAvailable, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../libraryPath.js';
 import { isLibraryMigrating } from '../libraryMaintenance.js';
 import { purgeImportTmp, type PurgeResult } from './importStaging.js';
@@ -150,6 +151,34 @@ export function purgeStaleImportTmp(): PurgeResult {
 
 export function scheduleImportTmpCleanup(): void {
   setInterval(() => { purgeStaleImportTmp(); }, 60 * 60 * 1000);
+}
+
+// ─── sessionImportLog retention ─────────────────────────────────────────────
+
+/** Days of import-history rows to keep. Only `imported` / `failed` rows are
+ *  written now (no-op scans are dropped in import.ts), so this table grows
+ *  slowly — a year of history is a few thousand rows. The window exists only so
+ *  it can never run away again, not to be aggressive. */
+const IMPORT_LOG_RETENTION_DAYS = 365;
+
+/**
+ * Nightly sessionImportLog trim (runs alongside pruneSystemLog). Removes:
+ *   - rows past the retention window, and
+ *   - any `skipped` (no-op-scan) row — a belt to the import.ts suspenders, so
+ *     the table can't bloat again even if a future change starts writing them.
+ *
+ * The one-time db.ts migration does the initial bulk clear + a VACUUM; this
+ * never VACUUMs (too heavy to run every night — the space is reused in place).
+ */
+export function pruneImportLog(retentionDays = IMPORT_LOG_RETENTION_DAYS): number {
+  const cutoffIso = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+  const removed = db
+    .prepare(`DELETE FROM sessionImportLog WHERE outcome = 'skipped' OR importedAt < ?`)
+    .run(cutoffIso).changes;
+  if (removed > 0) {
+    console.log(`[library] Pruned ${removed} sessionImportLog row(s) (older than ${retentionDays}d or no-op scans)`);
+  }
+  return removed;
 }
 
 // ─── Auto-import scheduler ──────────────────────────────────────────────────

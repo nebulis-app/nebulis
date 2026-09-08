@@ -118,7 +118,7 @@ A Dwarf exposes **no SMB share** — anonymous FTP is its only network interface
 
 The awkward part is that **the storage root differs per model**: Dwarf 3 serves `Astronomy` at the FTP root, Dwarf II serves `/DWARF_II/Astronomy`, Dwarf Mini serves `/DWARF_mini/Astronomy`. `resolveRemoteRoot()` probes the known prefixes for a directory named `Astronomy` and caches the winner, so walkers stay model-agnostic and an unrecognised layout degrades to the plain FTP root instead of erroring.
 
-Connection handling has two constraints worth knowing before editing that file: a single FTP control socket cannot interleave commands (so connections are pooled one-per-target and operations serialised through a per-target queue), and FTP has no ranged read (so a capped `maxBytes` read aborts by destroying the data socket and then discards the control connection). Full contract in [CLAUDE.md](../CLAUDE.md#ftp-transport-dwarflab).
+Connection handling has two constraints worth knowing before editing that file: a single FTP control socket cannot interleave commands (so connections are pooled one-per-target and operations serialised through a per-target queue), and FTP has no ranged read (so a capped `maxBytes` read aborts by destroying the data socket and then discards the control connection). Full contract in [smb.ftp.ts](../server/lib/smb.ftp.ts).
 
 `smbCopyFileTo` streams straight to disk on `local` and `ftp`. Callers gate on `supportsStreamedCopy(profile)` rather than testing `connectionType` themselves.
 

@@ -50,6 +50,49 @@ interface ProbeResult {
 
 const cache = new Map<string, ProbeResult>();
 
+// Last successful hostname → IP resolution. A powered-off `*.local` telescope
+// stops answering mDNS, and macOS `getaddrinfo` for a missing `.local` name
+// burns a hard ~5s (much longer on a degraded network) on a libuv threadpool
+// thread — every 30s, because the SPA polls telescope status on a timer. That
+// hang was showing up as multi-second `/telescopes/status/all` calls and, via
+// browser connection reuse, stalled page navigation. Caching the last-known IP
+// lets the probe skip the lookup and go straight to a 2s bounded TCP connect,
+// which correctly reports the device offline without the DNS wait. Re-resolved
+// on every cache expiry or lookup failure, so a device that moved to a new
+// DHCP address still recovers.
+const resolvedHostCache = new Map<string, { ip: string; at: number }>();
+const RESOLVED_HOST_TTL_MS = 5 * 60_000;
+
+/** Resolve `host` to an IP, bounded by `timeoutMs`. Returns a recently-cached
+ *  IP if the live lookup times out or fails (see resolvedHostCache). `null`
+ *  only when there is no answer and nothing cached. */
+async function resolveHostBounded(host: string, timeoutMs: number): Promise<string | null> {
+  if (net.isIP(host)) return host;
+
+  const cached = resolvedHostCache.get(host);
+  if (cached && Date.now() - cached.at < RESOLVED_HOST_TTL_MS) return cached.ip;
+
+  let timer: NodeJS.Timeout | undefined;
+  const lookup = dns.lookup(host);
+  // A lookup that loses the race is uncancellable and may still reject later;
+  // swallow that so it doesn't surface as an unhandled rejection.
+  lookup.catch(() => { /* ignored — handled via the race below */ });
+  try {
+    const address = await Promise.race([
+      lookup.then(r => r.address),
+      new Promise<string>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('dns lookup timeout')), timeoutMs);
+      }),
+    ]);
+    resolvedHostCache.set(host, { ip: address, at: Date.now() });
+    return address;
+  } catch {
+    return cached?.ip ?? null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * TCP connect to `port` on `host`. Resolves with the round-trip latency in ms
  * on success, or null on connection error / timeout. No shell, no ICMP, no auth.
@@ -60,13 +103,10 @@ export async function tcpProbe(host: string, port = SMB_PORT, timeoutMs = 2000):
   // reach a blocked address just as easily as a literal IP, and validating
   // then connecting to the same resolved address (instead of the original
   // hostname) closes the DNS-rebind gap a check-then-let-it-resolve-again
-  // design would leave open.
-  let target: string;
-  try {
-    target = net.isIP(host) ? host : (await dns.lookup(host)).address;
-  } catch {
-    return null; // unresolvable host is unreachable, same as a dead one
-  }
+  // design would leave open. The lookup is bounded by the same timeout as the
+  // connect so a dead `.local` name can't hang the caller.
+  const target = await resolveHostBounded(host, timeoutMs);
+  if (target === null) return null; // unresolvable host is unreachable, same as a dead one
   if (isBlockedProbeTarget(target)) return null;
 
   return new Promise(resolve => {

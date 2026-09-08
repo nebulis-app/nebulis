@@ -55,7 +55,10 @@ interface Props {
  *  the FITS viewer or the "no preview" card below instead of an `<img>`. */
 function displaySrc(item: GalleryItem): string | null {
   if (item.kind === 'processed') {
-    return isRenderableProcessed(item.img.originalName) ? item.img.url : null;
+    if (!isRenderableProcessed(item.img.originalName)) return null;
+    // Bounded preview tier for display; `img.url` (the raw original, often the
+    // largest file in the library) stays the Download / Share target.
+    return item.img.previewUrl ?? item.img.url;
   }
   if (item.file.type === 'fits') return null;
   if (!canPreviewImage(item.file)) return null;
@@ -269,7 +272,7 @@ export function GalleryModal({
         key: img.id,
         label: img.title || img.originalName,
         content: renderable ? (
-          <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+          <img src={img.thumbUrl ?? img.previewUrl ?? img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
         ) : fits ? (
           <FitsThumbnail url={img.url} thumbUrl={img.thumbUrl ?? undefined} stretch={1.0} isDark />
         ) : (
@@ -423,7 +426,7 @@ export function GalleryModal({
         // is work the GPU does not need to do, and the tile is already cached.
         ambientSrc={noPreview || isFits
           ? null
-          : item.kind === 'file' ? thumbSrcFor(item.file) : item.img.url}
+          : item.kind === 'file' ? thumbSrcFor(item.file) : (item.img.previewUrl ?? item.img.url)}
         contentAspect={isFits ? fitsAspect : (zp.natural ? zp.natural.w / zp.natural.h : null)}
       >
         {noPreview ? (

@@ -45,9 +45,12 @@ import { isRenderableProcessedName } from './processed.js';
 import { isDwarfInternalArtifact } from './importFilter.js';
 import {
   deleteCaptureInfoForSession,
+  getCaptureInfoForObject,
   getCaptureInfoForSession,
   summarizeSessionCapture,
+  type CaptureInfoRow,
 } from './captureInfo.js';
+import { getAllProfiles } from '../telescopes.js';
 import { type ObservingSite } from '../observingSites.js';
 import { sessionLocation, type SessionLocation } from './sessionLocation.js';
 
@@ -550,6 +553,41 @@ export function getLocalSessions(objectId: string) {
   const telescopeIdByDate = new Map<string, string | null>(
     sessionRows.map(r => [r.date, telescopeByFiles.get(r.date) ?? r.telescopeId]),
   );
+
+  // Facts the card grid on the native clients needs but can't cheaply derive
+  // themselves: which rig shot the night (resolved to a name + colour here so
+  // the client doesn't have to cross-reference the telescope list), how much
+  // integration the device recorded, and whether the night has a note. All
+  // three come from indexed queries with no filesystem work.
+  const telescopeById = new Map(
+    getAllProfiles().map(p => [p.id, { name: p.name, color: p.color }]),
+  );
+  const captureByDate = new Map<string, ReturnType<typeof summarizeSessionCapture>>();
+  {
+    const byNight = new Map<string, CaptureInfoRow[]>();
+    for (const row of getCaptureInfoForObject(objectId)) {
+      if (!row.sessionDate) continue;
+      const rows = byNight.get(row.sessionDate);
+      if (rows) rows.push(row);
+      else byNight.set(row.sessionDate, [row]);
+    }
+    for (const [date, rows] of byNight) {
+      captureByDate.set(date, summarizeSessionCapture(rows));
+    }
+  }
+  const enrich = (date: string) => {
+    const telescopeId = telescopeIdByDate.get(date) ?? null;
+    const telescope = telescopeId ? telescopeById.get(telescopeId) ?? null : null;
+    const capture = captureByDate.get(date) ?? null;
+    return {
+      telescopeId,
+      telescopeName: telescope?.name ?? null,
+      telescopeColor: telescope?.color ?? null,
+      integrationSec: capture?.integrationSec ?? null,
+      framesStacked: capture?.framesStacked ?? null,
+      hasNote: !!getNote(objectId, date),
+    };
+  };
   // User-crowned per-session preview: { date → relative library path }.
   // When set, this wins over auto-picked thumbnail/stacked/anyImage below
   // so the object page reflects the same hero image as the observation page.
@@ -594,6 +632,7 @@ export function getLocalSessions(objectId: string) {
         thumbnailUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/thumbnail`,
         filesUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/files`,
         weather: weatherMap.get(date) || null,
+        ...enrich(date),
       }));
   }
 
@@ -692,16 +731,20 @@ export function getLocalSessions(objectId: string) {
           const crownedAbs = path.resolve(LIBRARY_DIR, crowned);
           const contained = crownedAbs === LIBRARY_DIR || crownedAbs.startsWith(LIBRARY_DIR + path.sep);
           if (contained && fs.existsSync(crownedAbs)) {
-            return `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(crowned)}`;
+            // Thumbnail-route a crowned still image (jpg/png/tif) so the card
+            // pulls a bounded JPEG, not a whole mosaic. A crowned file the
+            // resize route would reject (e.g. a raw FITS) still serves raw.
+            return /\.(jpe?g|png|tiff?)$/i.test(crowned)
+              ? `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(crowned)}`
+              : `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(crowned)}`;
           }
         }
-        // Use the thumbnail route for non-JPEG images (PNG/TIF) so sharp
-        // converts them to browser-renderable JPEG. Raw 16-bit PNGs from
-        // Dwarf stacking output cannot be displayed by browsers via <img>.
+        // Always route the card image through the thumbnail resize. PNG/TIF
+        // need it for format conversion (a raw 16-bit PNG from Dwarf stacking
+        // will not render in an <img> at all); JPEG needs it for size, so a
+        // 30-50 MB mosaic stack is not downloaded whole for a grid card.
         const fileUrlFor = (relPath: string) =>
-          /\.(jpg|jpeg)$/i.test(relPath)
-            ? `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(relPath)}`
-            : `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(relPath)}`;
+          `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(relPath)}`;
         // Next: the most recent processed image, ahead of every raw fallback.
         // A processed result is what the observer actually made of the raw
         // data, so it is a better "primary image" for the card than a
@@ -714,7 +757,7 @@ export function getLocalSessions(objectId: string) {
       })(),
       filesUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/files`,
       weather: weatherMap.get(date) || null,
-      telescopeId: telescopeIdByDate.get(date) ?? null,
+      ...enrich(date),
     }));
 }
 
@@ -762,7 +805,15 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
       // nested object's session directory is carried into every URL.
       const libPath = `${folderName}/${entry.relPath}`;
       const isTiff = /\.tiff?$/i.test(fname);
+      const isJpeg = /\.jpe?g$/i.test(fname);
       const needsRasterConversion = /\.png$/i.test(fname) || isTiff;
+      // A displayable JPEG still gets a server-rendered thumb/preview tier.
+      // The raw file can be a 30-50 MB mosaic stack, and every client was
+      // fetching + decoding that original for both the grid card and the
+      // full-screen view. Route it through the same sharp resize + disk cache
+      // the other formats use so clients pull a bounded JPEG instead. The
+      // Download button still points at `downloadUrl` for the true original.
+      const hasRenderedTier = needsRasterConversion || isJpeg;
       return {
         name: fname,
         size: stat.size,
@@ -805,17 +856,18 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
           ? `${LIBRARY_API_BASE}/fits-thumbnail?v=${FITS_THUMBNAIL_PIPELINE_VERSION}&path=${encodeURIComponent(libPath)}`
           : isTiff
             ? `${LIBRARY_API_BASE}/tiff-thumbnail?path=${encodeURIComponent(libPath)}`
-            // PNG needs a server-side conversion too: a 16-bit PNG from Dwarf
-            // stacking cannot be shown by a browser <img> at all.
-            : needsRasterConversion
+            // PNG needs a server-side conversion (a 16-bit PNG from Dwarf
+            // stacking cannot be shown by a browser <img> at all); JPEG does
+            // not, but still benefits from the bounded, cached resize.
+            : hasRenderedTier
               ? `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(libPath)}`
               : undefined,
         previewUrl: knownType === 'fits'
           ? `${LIBRARY_API_BASE}/fits-thumbnail?v=${FITS_THUMBNAIL_PIPELINE_VERSION}&size=preview&path=${encodeURIComponent(libPath)}`
           : isTiff
             ? `${LIBRARY_API_BASE}/tiff-thumbnail?size=preview&path=${encodeURIComponent(libPath)}`
-            : needsRasterConversion
-              ? `${LIBRARY_API_BASE}/file/thumbnail?w=1200&h=1200&path=${encodeURIComponent(libPath)}`
+            : hasRenderedTier
+              ? `${LIBRARY_API_BASE}/file/thumbnail?w=2048&h=2048&path=${encodeURIComponent(libPath)}`
               : undefined,
         subIndex: parsed.subIndex || null,
       };
@@ -1002,24 +1054,23 @@ export function getLocalObservations() {
         subFrameCount: session.subFrameCount,
         processedCount: processedCountByKey.get(`${objectId}|${date}`) ?? 0,
         thumbnailUrl: (() => {
+          // Every branch routes a still image (jpg/png/tif) through the
+          // thumbnail resize: PNG/TIF for format conversion, JPEG so a calendar
+          // card never downloads a 30-50 MB mosaic stack whole. A crowned file
+          // the route would reject still serves raw.
+          const cardUrlFor = (relPath: string) =>
+            /\.(jpe?g|png|tiff?)$/i.test(relPath)
+              ? `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(relPath)}`
+              : `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(relPath)}`;
           const crowned = sessionImageMap.get(date);
-          if (crowned) return `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(crowned)}`;
+          if (crowned) return cardUrlFor(crowned);
           // No explicit crown: the most recent processed image wins next, same
           // priority as getLocalSessions, so the calendar card agrees with the
           // object page and the observation page for the same session.
           const processedThumb = processedThumbByKey.get(`${objectId}|${date}`);
-          if (processedThumb) {
-            const isJpeg = /\.(jpg|jpeg)$/i.test(processedThumb);
-            return isJpeg
-              ? `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(processedThumb)}`
-              : `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(processedThumb)}`;
-          }
+          if (processedThumb) return cardUrlFor(processedThumb);
           if (session.stackedImageFile) {
-            const fullPath = folderName + '/' + session.stackedImageFile;
-            const isJpeg = /\.(jpg|jpeg)$/i.test(session.stackedImageFile);
-            return isJpeg
-              ? `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(fullPath)}`
-              : `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(fullPath)}`;
+            return cardUrlFor(folderName + '/' + session.stackedImageFile);
           }
           return `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/thumbnail`;
         })(),

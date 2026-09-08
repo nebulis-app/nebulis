@@ -146,6 +146,19 @@ async function installTier(
     console.warn(`[catalogPack] ${tier} v${entry.version} recorded as installed but sky-cache/ is empty — reinstalling`);
   }
 
+  // A previously-installed tier now offering a different version is a
+  // correction: the pack was rebuilt to fix a wrong or poor image (the
+  // M48-showing-the-Crab case). The per-file "don't overwrite" guard below
+  // would defeat that — the bad master already exists, so a straight install
+  // keeps serving it until a full data wipe. On a version change, replace
+  // pack-sourced masters. Users pick which VARIANT to show (hubble/wiki/dss2)
+  // via a preference, not by supplying their own file, so there is nothing
+  // user-authored to clobber here.
+  const isCorrectiveUpgrade = existing != null && existing.version !== entry.version;
+  if (isCorrectiveUpgrade) {
+    console.log(`[catalogPack] ${tier} v${existing.version} -> v${entry.version}: replacing pack images`);
+  }
+
   console.log(`[catalogPack] installing ${tier} v${entry.version} (${entry.totalObjects} objects)`);
 
   const tmpDir = path.join(DATA_DIR, 'tmp', `pack-${tier}-${entry.version}`);
@@ -271,15 +284,26 @@ async function installTier(
             : `${canonicalId.toUpperCase().replace(/\s+/g, '')}_master.jpg`;
           const dest = path.join(skyCache, canonicalFilename);
 
-          // Don't overwrite an existing file (live-scraped or from another pack).
+          // Normally don't overwrite an existing file (live-scraped or from
+          // another pack). On a corrective version upgrade of this tier, do
+          // overwrite — that is the whole point of the new pack version.
           let skip = false;
-          try {
-            const stat = fs.statSync(dest);
-            if (stat.size > 0) skip = true;
-          } catch { /* not present */ }
+          if (!isCorrectiveUpgrade) {
+            try {
+              const stat = fs.statSync(dest);
+              if (stat.size > 0) skip = true;
+            } catch { /* not present */ }
+          }
 
           if (!skip) {
-            fs.renameSync(src, dest);
+            // rename replaces an existing dest on both POSIX and Windows; the
+            // copy fallback only covers a cross-device tmp dir (EXDEV).
+            try {
+              fs.renameSync(src, dest);
+            } catch {
+              fs.copyFileSync(src, dest);
+              try { fs.unlinkSync(src); } catch { /* tmp dir is wiped in finally */ }
+            }
             movedCount++;
           }
 

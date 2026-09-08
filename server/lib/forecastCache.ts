@@ -146,9 +146,11 @@ async function fetchOpenMeteoOnce(lat: number, lon: number) {
     `latitude=${lat}`,
     `longitude=${lon}`,
     'hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,temperature_2m,dew_point_2m,wind_speed_10m,visibility,precipitation_probability,wind_speed_500hPa,cape',
-    // 4 days, not 3: the 3rd rated night (d=2) runs to ~06:00 on the 4th
-    // calendar day, so a 3-day window would average only its evening hours.
-    'forecast_days=4',
+    // 5 days: tonight plus 3 rated nights ahead. The 3rd night ahead (d=3)
+    // runs to ~06:00 on the 5th calendar day, so anything shorter would
+    // average only its evening hours. Day 4-5 cloud forecasts carry less
+    // skill, which is why those nights only get the coarse night rating.
+    'forecast_days=5',
     'timezone=auto',
   ].join('&');
   const url = `https://api.open-meteo.com/v1/forecast?${params}`;
@@ -239,6 +241,12 @@ export interface NightRating {
   avgHumidity: number;
   avgWind: number;
   precipChance: number;
+  /**
+   * `'low'` for the furthest-out rated night (~72-96 h). Cloud-cover skill
+   * drops off that far ahead, so the clients render it as a dimmer card with
+   * a "less certain" note rather than letting it read as firm as tonight+1.
+   */
+  confidence: 'normal' | 'low';
 }
 
 /**
@@ -273,6 +281,7 @@ export function rateNightConditions(nightHours: ForecastHour[]): NightRating {
     avgHumidity: Math.round(avgHumidity),
     avgWind: Math.round(avgWind * 10) / 10,
     precipChance: Math.round(avgPrecip),
+    confidence: 'normal',
   };
 }
 
@@ -400,7 +409,7 @@ export async function buildForecast(lat: number, lon: number) {
     nauticalDarkHours: Math.round(nauticalDarkHours * 10) / 10,
   };
 
-  // Rate each night (next 3 nights). Base the date keys on the actual sunset,
+  // Rate tonight plus the next 3 nights. Base the date keys on the actual sunset,
   // not tonightDate: before the 7am observing-night rollover `tonightDate` is
   // still yesterday's calendar day, while the sun/twilight times above have
   // already rolled forward to tonight (SunCalc.getTimes returns the sunset
@@ -410,7 +419,7 @@ export async function buildForecast(lat: number, lon: number) {
   // duplicated with the hero.
   const ratingsBaseDate = sunset ? localDateKey(sunset, forecastTimezone) : tonightDate;
   const nightRatings = [];
-  for (let d = 0; d < 3; d++) {
+  for (let d = 0; d < 4; d++) {
     const ratingDate = addDaysToDateKey(ratingsBaseDate, d);
     const nightDate = zonedDateTimeToUtc(ratingDate, { hour: 22 }, forecastTimezone);
 
@@ -422,7 +431,10 @@ export async function buildForecast(lat: number, lon: number) {
 
     if (nightHours.length === 0) continue;
 
-    nightRatings.push({ date: ratingDate, ...rateNightConditions(nightHours) });
+    // d=3 is the ~72-96 h night: real but noticeably less reliable, so the
+    // clients dim its card. d=0 is tonight and the clients drop it (hero).
+    const confidence: NightRating['confidence'] = d >= 3 ? 'low' : 'normal';
+    nightRatings.push({ date: ratingDate, ...rateNightConditions(nightHours), confidence });
   }
 
   // Display units the clients should format temperature/wind in. Open-Meteo is

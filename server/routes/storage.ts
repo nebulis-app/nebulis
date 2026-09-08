@@ -6,7 +6,7 @@ import { cachedSmbListDir as smbListDir, BASE_PATH, isTelescopeOnline } from '..
 import { isObjectFolder, isSubFolder, getObjectFromSubFolder, normalizeCatalogId, getFileCategory } from '../lib/telescopeFiles.js';
 import { getCatalogEntry } from '../data/catalog.js';
 import { DATA_DIR } from '../lib/paths.js';
-import { getLibraryDir, getLibraryLocationInfo, isLibraryAvailable, isNetworkLocation, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
+import { getLibraryDir, getLibraryLocationInfo, isLibraryAvailable, isDefaultLocation, isNetworkLocation, isLibraryPinned, setLibraryPath, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
 import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
 import { listVolumes, listDirectories } from '../lib/volumes.js';
 import { locateFolderOnDisk, validateLocateInput, type LocateSample } from '../lib/folderLocate.js';
@@ -596,8 +596,47 @@ router.post('/library-location/network/test', requireAdmin, async (req: Request,
   res.apiSuccess(result);
 });
 
+// POST /api/v1/storage/library-location/reset — forget a configured/relocated
+// library location WITHOUT copying any files. For when the old drive or path is
+// gone for good (e.g. a database copied from another machine points at a path
+// this install can't reach, so "Move back to default" refuses because the
+// source is unreachable). Afterwards the library resolves to the default
+// location; the user is expected to already have their image folders there, or
+// to re-import.
+router.post('/library-location/reset', requireAdmin, async (req: Request, res: Response) => {
+  if (isLibraryPinned()) {
+    res.apiError(400, 'LIBRARY_PINNED', 'The library location is set by the LIBRARY_DIR environment variable. There is nothing to reset.');
+    return;
+  }
+  if (isLibraryMigrating()) {
+    res.apiError(409, 'LIBRARY_BUSY', 'The library is being moved. Wait for that to finish first.');
+    return;
+  }
+  const previousPath = getLibraryDir();
+  if (isDefaultLocation()) {
+    res.apiSuccess({ ok: true, changed: false, path: previousPath, previousPath });
+    return;
+  }
+  await setLibraryPath('');
+  logEvent({
+    category: 'storage',
+    event: 'library_location_reset',
+    level: 'warning',
+    message: `Reset the library location to default without moving files (was "${previousPath}").`,
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+    metadata: { previousPath },
+  });
+  res.apiSuccess({ ok: true, changed: true, path: getLibraryDir(), previousPath });
+});
+
 // POST /api/v1/storage/migrate { targetPath } OR { network: {...} } — start moving the library
 router.post('/migrate', requireAdmin, (req: Request, res: Response) => {
+  if (isLibraryPinned()) {
+    res.apiError(400, 'LIBRARY_PINNED', 'The library location is set by the LIBRARY_DIR environment variable. Change that to move the library.');
+    return;
+  }
   // req.body is client-controlled, so narrow it instead of asserting a shape.
   const body = isRecord(req.body) ? req.body : {};
 

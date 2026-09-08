@@ -30,7 +30,7 @@ import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import db from './db.js';
-import { DATA_DIR } from './paths.js';
+import { DATA_DIR, LIBRARY_DIR_OVERRIDE } from './paths.js';
 import { encrypt, decrypt } from './crypto/secretBox.js';
 import {
   type NetworkLibraryConfig,
@@ -192,30 +192,83 @@ async function readMarkerAsync(dir: string, timeoutMs: number): Promise<LibraryM
   }
 }
 
-/** The built-in library location, always on the local data directory. */
-export function getDefaultLibraryDir(): string {
-  return path.join(DATA_DIR, 'library');
+/**
+ * True when the `LIBRARY_DIR` environment variable pins the library location.
+ * When pinned, the stored relocation (local path or network share) is ignored
+ * entirely, no marker file is required, and moving the library from the UI is
+ * disabled. See `LIBRARY_DIR_OVERRIDE` in paths.ts.
+ */
+export function isLibraryPinned(): boolean {
+  return LIBRARY_DIR_OVERRIDE !== null;
 }
 
-/** Where the library currently lives (configured path, network share, or the
- *  default). No I/O for the network case — just builds the path string; call
- *  isLibraryAvailable() to know whether it's actually reachable right now. */
+/** The built-in library location: the `LIBRARY_DIR` override when set,
+ *  otherwise `{DATA_DIR}/library`. */
+export function getDefaultLibraryDir(): string {
+  return LIBRARY_DIR_OVERRIDE ?? path.join(DATA_DIR, 'library');
+}
+
+/** Where the library currently lives (the `LIBRARY_DIR` override, a configured
+ *  path, a network share, or the default). No I/O for the network case — just
+ *  builds the path string; call isLibraryAvailable() to know whether it's
+ *  actually reachable right now. */
 export function getLibraryDir(): string {
+  if (LIBRARY_DIR_OVERRIDE) return LIBRARY_DIR_OVERRIDE;
   const cfg = load();
   if (cfg.locationType === 'network') return resolveNetworkLibraryPath(cfg.network);
   return cfg.path ? cfg.path : getDefaultLibraryDir();
 }
 
 /** True when the library is at its built-in location (not relocated to a
- *  local path or a network share). */
+ *  local path or a network share). Always true when pinned by `LIBRARY_DIR`. */
 export function isDefaultLocation(): boolean {
+  if (LIBRARY_DIR_OVERRIDE) return true;
   const cfg = load();
   return cfg.locationType !== 'network' && !cfg.path;
 }
 
-/** True when the library is configured to live on a network share. */
+/** True when the library is configured to live on a network share. Always
+ *  false when pinned by `LIBRARY_DIR`. */
 export function isNetworkLocation(): boolean {
+  if (LIBRARY_DIR_OVERRIDE) return false;
   return load().locationType === 'network';
+}
+
+/**
+ * When `LIBRARY_DIR` pins the location, clear any relocation left in the
+ * database (e.g. a `libraryPath` from a machine this DB was copied off) so the
+ * stored config can't fight the override or resurface if the env var is later
+ * removed. Idempotent; safe to call on every boot. Call once at startup, after
+ * migrations and before any request handler reads the config.
+ */
+export function reconcilePinnedLibraryConfig(): void {
+  if (!LIBRARY_DIR_OVERRIDE) return;
+  const row = db
+    .prepare<[], { libraryPath: string; libraryLocationType: string; libraryNetworkHost: string }>(
+      `SELECT libraryPath, libraryLocationType, libraryNetworkHost FROM appSettings WHERE id = 1`,
+    )
+    .get();
+  if (!row) return;
+  const stale =
+    (row.libraryPath?.trim() ?? '') !== '' ||
+    row.libraryLocationType === 'network' ||
+    (row.libraryNetworkHost?.trim() ?? '') !== '';
+  if (!stale) return;
+  db.prepare(
+    `UPDATE appSettings SET
+       libraryPath = '', libraryLocationType = 'local',
+       libraryNetworkHost = '', libraryNetworkShare = '', libraryNetworkDomain = '',
+       libraryNetworkUsername = '', libraryNetworkPasswordSealed = '', libraryNetworkSubpath = ''
+     WHERE id = 1`,
+  ).run();
+  refreshLibraryConfig();
+  const was =
+    row.libraryLocationType === 'network'
+      ? `network share ${row.libraryNetworkHost}`
+      : row.libraryPath;
+  console.warn(
+    `[libraryPath] LIBRARY_DIR override is active; cleared the stored library location (was "${was}").`,
+  );
 }
 
 /**
@@ -296,6 +349,9 @@ export function writeMarker(dir: string, libraryId: string): void {
  * up. See incident 2026-07-07.
  */
 export async function isLibraryAvailable(): Promise<boolean> {
+  // Pinned by LIBRARY_DIR: treated like the default location (the operator owns
+  // the path, it's created on demand, no marker check).
+  if (LIBRARY_DIR_OVERRIDE) return true;
   const cfg = load();
   if (cfg.locationType === 'network') {
     // (Re)connect first. A false return means the host is unreachable, so skip
@@ -411,6 +467,9 @@ export interface LibraryLocationInfo {
   network: { host: string; share: string; domain: string; username: string; subpath: string };
   /** false on Linux/Docker — the UI should hide the "Network Share" option there. */
   networkLibrarySupported: boolean;
+  /** true when the `LIBRARY_DIR` env var pins the location: the UI should hide
+   *  "Change location" / "Move" and show the path as fixed by the deployment. */
+  pinned: boolean;
 }
 
 export async function getLibraryLocationInfo(): Promise<LibraryLocationInfo> {
@@ -430,5 +489,6 @@ export async function getLibraryLocationInfo(): Promise<LibraryLocationInfo> {
       subpath: cfg.network.subpath,
     },
     networkLibrarySupported: process.platform === 'win32' || process.platform === 'darwin',
+    pinned: isLibraryPinned(),
   };
 }

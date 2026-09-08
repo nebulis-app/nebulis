@@ -40,6 +40,13 @@ export interface LibraryImageEntry {
   objectType: string | null;
   distanceLy: number | null;
   downloadUrl: string;
+  /** Grid-card JPEG (server resize + disk cache). Always safe for an `<img>`;
+   *  for a raw TIFF master it is the only renderable form. */
+  thumbUrl: string;
+  /** Larger JPEG tier (2048 px) for the full-screen viewer, so a client never
+   *  fetches or decodes a 30-100 MB original just to show it. `downloadUrl`
+   *  stays the path to the true original for the Download button. */
+  previewUrl: string;
   isFavorite: boolean;
   /** True for a user-uploaded post-processing result (sessionProcessedImages),
    *  false for a raw telescope file. Lets the Gallery page offer a "processed
@@ -115,6 +122,8 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
         objectType: obj.objectType,
         distanceLy: obj.distanceLy ?? null,
         downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(filePath)}`,
+        thumbUrl: `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(filePath)}`,
+        previewUrl: `${LIBRARY_API_BASE}/file/thumbnail?w=2048&h=2048&path=${encodeURIComponent(filePath)}`,
         isProcessed: false,
       });
     }
@@ -152,6 +161,8 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
       objectType: obj.objectType,
       distanceLy: obj.distanceLy ?? null,
       downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(filePath)}`,
+      thumbUrl: `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(filePath)}`,
+      previewUrl: `${LIBRARY_API_BASE}/file/thumbnail?w=2048&h=2048&path=${encodeURIComponent(filePath)}`,
       isProcessed: true,
     });
   }
@@ -320,6 +331,34 @@ export function resolveCatalogSourceSentinel(value: string, resolvedId: string):
     : source === 'wiki' ? wikiImagePath(resolvedId)
     : imageCachePath(resolvedId);
   return fs.existsSync(candidate) ? candidate : null;
+}
+
+/** `catalog-source:hubble|wiki|dss2` sentinel → the bare source token, or null
+ *  for anything that isn't the sentinel (a file path, an empty value). */
+export function parseCatalogSourceSentinel(
+  value: string | null | undefined,
+): 'hubble' | 'wiki' | 'dss2' | null {
+  const match = value?.match(CATALOG_SOURCE_SENTINEL_RE);
+  if (!match) return null;
+  const source = match[1];
+  return source === 'hubble' || source === 'wiki' || source === 'dss2' ? source : null;
+}
+
+/**
+ * The catalog-master source a user has explicitly pinned for an object via the
+ * gallery image picker ("use this variant"), or null. Only a user-set
+ * `catalog-source:*` value counts — an auto-assigned gallery image, or a pinned
+ * personal file, is not a master-source preference.
+ *
+ * `/api/catalog/:id/image` consults this so the catalog browser renders the
+ * same variant the object page does after the user picks one. It never causes a
+ * 404: a pin naming a variant that isn't on disk falls through findCachedMaster's
+ * normal priority.
+ */
+export function getPinnedCatalogSource(objectId: string): 'hubble' | 'wiki' | 'dss2' | null {
+  const row = getGalleryImageRow(objectId);
+  if (!row.userSet) return null;
+  return parseCatalogSourceSentinel(row.galleryImage);
 }
 
 /**

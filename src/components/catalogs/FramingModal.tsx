@@ -35,8 +35,8 @@ interface FramingModalProps {
 /**
  * Feature flag. The Framing & Mosaic planner is fully built and working but
  * intentionally hidden from the UI for now. Flip to `true` to re-enable the
- * entry-point buttons on the object and observation detail pages. See CLAUDE.md
- * ("Framing & Mosaic (disabled)") for the full component/endpoint inventory.
+ * entry-point buttons on the object and observation detail pages. The planner
+ * spans this modal, `src/lib/telescopeFov.ts`, and `GET /api/catalog/:id/sky`.
  */
 export const FRAMING_MOSAIC_ENABLED: boolean = false;
 

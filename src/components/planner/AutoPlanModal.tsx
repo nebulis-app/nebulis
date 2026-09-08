@@ -17,6 +17,7 @@ import { formatHm } from '../../lib/timeFormat';
 import { formatObjectName } from '../../lib/utils';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { generateNightPlan } from '../../lib/api/planner';
+import { ConfirmModal } from '../ConfirmModal';
 import type { AutoPlanFocus, PlanBlock } from '../../lib/planTypes';
 import type { PlannerTarget } from '../../lib/api/planner';
 import type { VisibleSkyMap } from '../../lib/visibilityCheck';
@@ -38,6 +39,9 @@ interface AutoPlanModalProps {
   /** Whether "clear existing blocks first" starts ticked. Off when filling a
    *  single gap, since the point there is to keep what is already scheduled. */
   defaultClearFirst?: boolean;
+  /** How many blocks are already scheduled for this night. Drives the
+   *  "replace existing plan" checkbox and the confirmation before a replace. */
+  existingPlanCount?: number;
   isDark: boolean;
   /** Apply the plan: optionally clear the night first, then create blocks. */
   onApply: (blocks: PlanBlock[], clearFirst: boolean) => Promise<void> | void;
@@ -86,6 +90,7 @@ export function AutoPlanModal({
   observerTimezone,
   nightLabel,
   defaultClearFirst = true,
+  existingPlanCount = 0,
   isDark,
   onApply,
   onClose,
@@ -109,6 +114,7 @@ export function AutoPlanModal({
   const [blocks, setBlocks] = useState<PlanBlock[]>([]);
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [confirmReplace, setConfirmReplace] = useState(false);
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
 
@@ -171,7 +177,7 @@ export function AutoPlanModal({
     }
   }, [build]);
 
-  const handleApply = useCallback(async () => {
+  const runApply = useCallback(async () => {
     setApplying(true);
     setApplyError(null);
     try {
@@ -184,8 +190,19 @@ export function AutoPlanModal({
       setApplyError(err instanceof Error ? err.message : 'Could not apply the plan. Some blocks may not have been added.');
     } finally {
       setApplying(false);
+      setConfirmReplace(false);
     }
   }, [blocks, clearFirst, onApply, onClose]);
+
+  // Replacing an existing plan is destructive, so make the user say so first.
+  // Merging (clearFirst off) or an empty night applies straight away.
+  const handleApply = useCallback(() => {
+    if (clearFirst && existingPlanCount > 0) {
+      setConfirmReplace(true);
+      return;
+    }
+    void runApply();
+  }, [clearFirst, existingPlanCount, runApply]);
 
   // formatHm already guards a bad/unrecognized timeZone (see its own
   // comment) rather than duplicating that try/catch here.
@@ -430,7 +447,7 @@ export function AutoPlanModal({
                 </div>
               )}
 
-              {blocks.length > 0 && (
+              {blocks.length > 0 && existingPlanCount > 0 && (
                 <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -438,7 +455,9 @@ export function AutoPlanModal({
                     onChange={(e) => setClearFirst(e.target.checked)}
                     className="accent-amber-500"
                   />
-                  <span className={subtle}>Replace tonight's existing plan</span>
+                  <span className={subtle}>
+                    Replace the {existingPlanCount} {existingPlanCount === 1 ? 'block' : 'blocks'} already planned for {nightLabel}
+                  </span>
                 </label>
               )}
             </>
@@ -497,6 +516,17 @@ export function AutoPlanModal({
           )}
         </div>
       </div>
+
+      {confirmReplace && (
+        <ConfirmModal
+          title={`Replace the plan for ${nightLabel}?`}
+          message={`This clears the ${existingPlanCount} ${existingPlanCount === 1 ? 'target' : 'targets'} already scheduled for ${nightLabel} and replaces ${existingPlanCount === 1 ? 'it' : 'them'} with these ${blocks.length}.`}
+          confirmLabel="Replace"
+          pending={applying}
+          onConfirm={() => { void runApply(); }}
+          onCancel={() => setConfirmReplace(false)}
+        />
+      )}
     </div>
   );
 }

@@ -103,6 +103,21 @@ function thumbUrlFor(filename: string, libPath: string): string | null {
   return `${LIBRARY_API_BASE}/fits-thumbnail?v=${FITS_THUMBNAIL_PIPELINE_VERSION}&path=${encodeURIComponent(libPath)}`;
 }
 
+/** Bounded 2048 px JPEG for the full-screen viewer. A processing deliverable is
+ *  routinely the largest file in the library (a 100-200 MB linear TIFF, a
+ *  50 MB PNG), so opening one must never fetch or decode the original.
+ *  `url` stays the path to the true file for Download. Null for a stored-only
+ *  format with no renderer (XISF, PSD, RAW). */
+function previewUrlFor(filename: string, libPath: string): string | null {
+  if (isFitsProcessedName(filename)) {
+    return `${LIBRARY_API_BASE}/fits-thumbnail?v=${FITS_THUMBNAIL_PIPELINE_VERSION}&size=preview&path=${encodeURIComponent(libPath)}`;
+  }
+  if (isRenderableProcessedName(filename)) {
+    return `${LIBRARY_API_BASE}/file/thumbnail?w=2048&h=2048&path=${encodeURIComponent(libPath)}`;
+  }
+  return null;
+}
+
 /** Resolve `<LIBRARY_DIR>/<folder for objectId>[/...extra]`, refusing to
  *  return a path outside LIBRARY_DIR. getFolderName falls back to the raw
  *  objectId on a DB miss, so a crafted objectId with traversal tokens would
@@ -159,6 +174,9 @@ export interface ProcessedImageRecord {
    *  else (renderable formats need no separate thumbnail, and other
    *  stored-only formats like XISF have no renderer). */
   thumbUrl: string | null;
+  /** Bounded 2048 px JPEG for full-screen viewing. Null for a stored-only
+   *  format with no renderer. `url` is still the true original for Download. */
+  previewUrl: string | null;
   runId: string | null;
   /** All session dates the run covers, sorted, when runId is set and covers
    *  more than one night. Null for single-session images so the UI only
@@ -185,6 +203,7 @@ function withRunDates(row: ProcessedImageRow, folderName: string): ProcessedImag
     url: processedImageUrl(row.id, row.uploadedAt),
     path,
     thumbUrl: thumbUrlFor(row.filename, path),
+    previewUrl: previewUrlFor(row.filename, path),
     runDates: dates && dates.length > 1 ? dates : null,
   };
 }
@@ -263,6 +282,7 @@ export function addProcessedImage(
     url: processedImageUrl(id, uploadedAt),
     path: recordPath,
     thumbUrl: thumbUrlFor(filename, recordPath),
+    previewUrl: previewUrlFor(filename, recordPath),
     runDates: runDates && runDates.length > 1 ? runDates : null,
   };
 }
@@ -332,6 +352,7 @@ export function replaceProcessedImageFile(
     url: processedImageUrl(id, uploadedAt),
     path: recordPath,
     thumbUrl: thumbUrlFor(filename, recordPath),
+    previewUrl: previewUrlFor(filename, recordPath),
     runDates: runDates && runDates.length > 1 ? runDates : null,
   };
 }

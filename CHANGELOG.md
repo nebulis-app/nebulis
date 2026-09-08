@@ -1,5 +1,23 @@
 # Changelog
-## 2.0.0 (248) - August 10th, 2026
+## 2.0.1 (249) - September 7th, 2026
+### New
+- Sky Forecast: the "Upcoming Nights" outlook now covers three nights instead of two. The third night is about three days out, so its card is dimmed to show it is less certain.
+- macOS and Windows: "View Logs" in the menu bar (macOS) or taskbar (Windows) opens a live log viewer. Follow the server log as it's written, clear it, or save a copy to send with a support request. On Windows the viewer now opens right away and stays responsive while a large log streams in, reads and parses off the UI thread, and no longer re-checks the log path (which meant launching a helper process) on every refresh.
+- Docker: set the `LIBRARY_DIR` environment variable to keep your image library on a separate disk or mount, apart from the database and settings. While it is set, the library location is fixed by the deployment and cannot be changed from the app. See the Docker README.
+
+### Fixes
+- Library location: added "Reset to default folder". If the drive or path your library lived on is gone for good, this points the library back at its built-in folder. Before this, a database copied from another machine could leave the library pointing at a path that does not exist on the new machine, with no way to fix it from the app.
+- macOS: the app no longer opens the web UI window on its own every time the server starts.
+- Observation location maps were blank in 2.0.0. They switched to Esri tiles, but the server's security policy still blocked that tile host. 
+- System Log: the next and previous page arrows did nothing. Paging through the log works now.
+- System Log: a settings change listed every setting name each time you saved, even the ones you didn't touch. It now lists only what changed.
+- A telescope reached by name (for example seestar.local) that was powered off could hang status checks for up to half a minute and stall page changes while it did. Name lookups are now capped at 2 seconds, the last known address is reused, and only one check runs per telescope at a time.
+- Saving Settings could hang when the service that names a location from its coordinates was slow or unreachable. It's capped at 5 seconds now and never holds up the save.
+- The import history table grew without limit. Every background scan added a row per object even when nothing was imported. Empty scans no longer add rows, the old ones are cleared once on upgrade (real imports are kept), and anything past a year is trimmed nightly.
+- Catalog image downloads from Wikipedia and NASA had no timeout, so one stalled server could freeze catalog prefetch until a restart. Each download is now capped at 20 seconds.
+- A corrected catalog image pack could not fix an already-downloaded picture. When a pack is reissued with a fixed image, that image now replaces the old one instead of being skipped because a file was already there.
+
+## 2.0.0 (252) - September 4th, 2026
 ### Important
 - The Forecast menu bar item is now hidden by default as you can open the forecast from the Planner page no. You can re-add it Settings -> Navigation Bar.
 

@@ -32,7 +32,7 @@ import { libraryRouter } from './routes/library.js';
 import { repairSpaceDirectories, repairAliasDirectories } from './lib/library/objects.js';
 import { backfillLibraryFiles, rebuildFromManifests } from './lib/library/libraryFiles.js';
 import { reconcileLayoutFromDisk } from './lib/library/libraryLayout.js';
-import { isLibraryAvailable } from './lib/libraryPath.js';
+import { isLibraryAvailable, reconcilePinnedLibraryConfig } from './lib/libraryPath.js';
 import { purgeSampleObject } from './lib/library/sampleLibrary.js';
 import { plannerRouter } from './routes/planner.js';
 import { plannedSessionsRouter } from './routes/plannedSessions.js';
@@ -54,6 +54,7 @@ import { DATA_DIR, LOGS_DIR } from './lib/paths.js';
 import { getInstanceId } from './lib/instanceId.js';
 import { getLanIP } from './lib/lanAddress.js';
 import { isRecord, parseJsonRecord } from './lib/typeGuards.js';
+import { redactUrl } from './lib/logSafe.js';
 import { scheduleAutoImport, purgeJunkFiles, purgeStaleImportTmp, scheduleImportTmpCleanup } from './lib/localLibrary.js';
 import { isTelescopeOnline } from './lib/smbCache.js';
 import { pickDefaultTarget } from './lib/telescopes.js';
@@ -69,6 +70,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Run one-time migration from JSON files if needed (schema already created by db.ts import)
 runMigration();
+
+// If LIBRARY_DIR pins the library location, clear any stale relocation stored in
+// the database (e.g. a Windows path from a DB copied off another machine). Runs
+// before any route can read the library config.
+reconcilePinnedLibraryConfig();
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -145,7 +151,7 @@ if (startupBackupOutcome.status === 'created') {
 app.use((req, _res, next) => {
   if (req.url.includes('upload-temp')) {
     log.info({
-      url: req.url,
+      url: redactUrl(req.url),
       contentLength: req.headers['content-length'],
       contentType: req.headers['content-type'],
       transferEncoding: req.headers['transfer-encoding'],
@@ -242,7 +248,11 @@ app.use(express.json({ limit: '5mb' }));
 
 // Security headers — CSP is tuned to what the SPA actually loads:
 //   - Google Fonts (style + font sources)
-//   - CartoDB tiles via Leaflet (img-src)
+//   - Esri ArcGIS basemap tiles via Leaflet (img-src) — the observation
+//     location map and the observations world map. Replaced CARTO, whose free
+//     tile CDN (*.basemaps.cartocdn.com) now needs a paid API key. Keep this in
+//     sync with the tile URLs in src/components/ObservationMap.tsx and
+//     ObservationsWorldMap.tsx.
 //   - data: URIs for local file-upload previews (img-src)
 // HSTS is intentionally omitted — this app runs over HTTP on local networks.
 app.use(helmet({
@@ -256,7 +266,7 @@ app.use(helmet({
       workerSrc: ["'self'", 'blob:'],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-      imgSrc: ["'self'", 'data:', 'https://*.basemaps.cartocdn.com'],
+      imgSrc: ["'self'", 'data:', 'https://services.arcgisonline.com'],
       connectSrc: ["'self'"],
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],
@@ -542,7 +552,7 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
       LIMIT_FIELD_COUNT: 'Too many form fields in a single upload.',
       LIMIT_UNEXPECTED_FILE: 'Unexpected file field name.',
     };
-    log.warn({ err, method: req.method, url: req.url, status }, 'multer_limit_exceeded');
+    log.warn({ err, method: req.method, url: redactUrl(req.url), status }, 'multer_limit_exceeded');
     if (!res.headersSent) res.apiError(status, code, messages[code] ?? err.message);
     return;
   }
@@ -554,7 +564,7 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
   log.error({
     err,
     method: req.method,
-    url: req.url,
+    url: redactUrl(req.url),
     status,
     // Upload-route diagnostics (undefined for every other route — harmless).
     // bytesReceived vs contentLength distinguishes real truncation (client

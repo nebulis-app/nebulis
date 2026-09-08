@@ -199,11 +199,13 @@ export class SatelliteCatalog {
       return this.fallbackCatalog('cooldown');
     }
 
-    // Cache missing or stale — fetch fresh
+    // Cache missing or stale — fetch fresh. runFetch() logs the failure once
+    // (it is single-flighted, so the eager module-level loadCatalog() and the
+    // one in server/index.ts share the same rejection — logging here logged it
+    // twice on every offline boot).
     try {
       return await this.fetchFromCelestrak();
-    } catch (err) {
-      console.error('Failed to fetch from Celestrak:', err);
+    } catch {
       return this.fallbackCatalog('post-failure');
     }
   }
@@ -293,10 +295,11 @@ export class SatelliteCatalog {
     } catch (err) {
       // A failure here — including a manual refresh — starts/widens the
       // backoff, so the automatic path doesn't immediately re-hit an endpoint
-      // that just refused us.
+      // that just refused us. Logged once here (not in each loadCatalog caller).
       this.lastFetchError = err instanceof Error ? err.message : String(err);
       this.lastFetchFailure = new Date();
       this.consecutiveFailures++;
+      console.error('Failed to fetch from Celestrak:', err);
       throw err;
     }
   }

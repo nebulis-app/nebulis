@@ -17,8 +17,8 @@
  */
 
 // Extension lists mirroring PROCESSED_FORMATS in server/lib/library/processed.ts.
-// The two sides can't share a source without a monorepo (see CLAUDE.md), so
-// this is the frontend's single source: the RENDERABLE/FITS regexes below and
+// Client and server can't share a source module, so this is the frontend's
+// single source: the RENDERABLE/FITS regexes below and
 // the exported *_EXTENSIONS arrays (used to build the upload `accept`
 // attribute) both derive from these instead of re-listing extensions by hand.
 const RENDERABLE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'tif', 'tiff'] as const;

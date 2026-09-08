@@ -21,8 +21,9 @@ import { generateNightPlan } from '../../lib/api/planner';
 import type { PlanCandidate, PlanBlock } from '../../lib/planTypes';
 import { nightWindowFor, formatPlannerDate, plannerToday, localDateKey } from '../../lib/nightWindow';
 import { formatHm } from '../../lib/timeFormat';
-import { createPlannedSession } from '../../lib/api/plannedSessions';
+import { createPlannedSession, deletePlannedSession, listPlannedSessions, type PlannedSession } from '../../lib/api/plannedSessions';
 import type { CatalogProgressObject } from '../../lib/api/catalogs';
+import { PlanConflictDialog } from '../planner/PlanConflictDialog';
 
 interface CatalogPlanModalProps {
   catalogLabel: string;
@@ -64,6 +65,9 @@ export function CatalogPlanModal({
   const queryClient = useQueryClient();
   const [count, setCount] = useState(5);
   const [creating, setCreating] = useState(false);
+  // Set to the night's existing blocks when "Create plan" finds a plan already
+  // scheduled, which opens the replace / add / cancel dialog.
+  const [conflict, setConflict] = useState<PlannedSession[] | null>(null);
 
   // Not-imaged candidates with real coordinates, mapped to the planner's shape.
   const candidates = useMemo<PlanCandidate[]>(
@@ -149,10 +153,15 @@ export function CatalogPlanModal({
 
   const nightLabel = night ? formatPlannerDate(night.start) : 'tonight';
 
-  const handleCreate = useCallback(async () => {
+  // Create the blocks (optionally wiping the night first), then open the planner
+  // on that night so the result is visible right away.
+  const commitPlan = useCallback(async (replaceExisting: PlannedSession[] | null) => {
     if (blocks.length === 0) return;
     setCreating(true);
     try {
+      if (replaceExisting) {
+        await Promise.all(replaceExisting.filter(s => s.id > 0).map(s => deletePlannedSession(s.id)));
+      }
       for (const b of blocks) {
         await createPlannedSession({
           objectId: b.target.id,
@@ -164,13 +173,32 @@ export function CatalogPlanModal({
         });
       }
       await queryClient.invalidateQueries({ queryKey: ['planned-sessions'] });
-      // Open the planner on the night we just scheduled into, not its own
-      // default "today", so the new blocks are visible right away.
+      setConflict(null);
       navigate('/planner', night ? { state: { focusDate: localDateKey(night.start) } } : undefined);
     } finally {
       setCreating(false);
     }
   }, [blocks, queryClient, navigate, night]);
+
+  const handleCreate = useCallback(async () => {
+    if (blocks.length === 0 || !night) return;
+    setCreating(true);
+    try {
+      // Read the night's blocks fresh from the server, not a query cache that
+      // may never have been populated for this date range.
+      const existing = await listPlannedSessions({
+        from: night.start.toISOString(),
+        to: night.end.toISOString(),
+      });
+      if (existing.length > 0) {
+        setConflict(existing);
+        return;
+      }
+      await commitPlan(null);
+    } finally {
+      setCreating(false);
+    }
+  }, [blocks, night, commitPlan]);
 
   const surface = isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900';
   const subtle = isDark ? 'text-slate-400' : 'text-slate-600';
@@ -316,6 +344,17 @@ export function CatalogPlanModal({
           </button>
         </div>
       </div>
+
+      {conflict && (
+        <PlanConflictDialog
+          nightLabel={nightLabel}
+          existingCount={conflict.length}
+          pending={creating}
+          onReplace={() => { void commitPlan(conflict); }}
+          onAdd={() => { void commitPlan(null); }}
+          onCancel={() => setConflict(null)}
+        />
+      )}
     </div>
   );
 }

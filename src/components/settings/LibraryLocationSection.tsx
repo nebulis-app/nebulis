@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, AlertTriangle, Loader2, Plug } from 'lucide-react';
 import {
-  getLibraryLocation, startLibraryMigration,
+  getLibraryLocation, startLibraryMigration, resetLibraryLocation,
   type MigrationStatus,
 } from '../../lib/api/storage';
 import { Sec } from './SettingsUI';
@@ -15,6 +15,7 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [forgetModalOpen, setForgetModalOpen] = useState(false);
 
   const { data, refetch } = useQuery({
     queryKey: ['library-location'],
@@ -65,7 +66,9 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
             )}
             <div className="flex items-center gap-2 mt-2">
               <span className={`text-xs px-2 py-0.5 rounded-full ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-                {location?.isDefault ? 'Default location' : location?.locationType === 'network' ? 'Network share' : 'Custom drive'}
+                {location?.pinned
+                  ? 'Set by LIBRARY_DIR'
+                  : location?.isDefault ? 'Default location' : location?.locationType === 'network' ? 'Network share' : 'Custom drive'}
               </span>
               {location && !location.available && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-500 inline-flex items-center gap-1">
@@ -74,32 +77,50 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
               )}
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => setModalOpen(true)}
-              disabled={migrating}
-              className={`text-sm font-medium px-3.5 py-2 rounded-lg transition-colors ${
-                migrating
-                  ? 'opacity-50 cursor-not-allowed bg-slate-500/10 text-slate-400'
-                  : 'bg-accent-500 text-white hover:bg-accent-600'
-              }`}
-            >
-              Change location
-            </button>
-            {location && !location.isDefault && (
+          {location?.pinned ? (
+            <p className={`text-xs max-w-[13rem] text-right shrink-0 ${sub}`}>
+              Fixed by the <span className="font-mono">LIBRARY_DIR</span> environment variable. Change that to move the library.
+            </p>
+          ) : (
+            <div className="flex flex-col items-end gap-1.5 shrink-0">
               <button
                 type="button"
-                onClick={() => setResetModalOpen(true)}
+                onClick={() => setModalOpen(true)}
                 disabled={migrating}
-                className={`text-xs font-medium px-1 ${
-                  migrating ? 'opacity-50 cursor-not-allowed' : `${sub} hover:opacity-80`
+                className={`text-sm font-medium px-3.5 py-2 rounded-lg transition-colors ${
+                  migrating
+                    ? 'opacity-50 cursor-not-allowed bg-slate-500/10 text-slate-400'
+                    : 'bg-accent-500 text-white hover:bg-accent-600'
                 }`}
               >
-                Move back to default location
+                Change location
               </button>
-            )}
-          </div>
+              {location && !location.isDefault && location.available && (
+                <button
+                  type="button"
+                  onClick={() => setResetModalOpen(true)}
+                  disabled={migrating}
+                  className={`text-xs font-medium px-1 ${
+                    migrating ? 'opacity-50 cursor-not-allowed' : `${sub} hover:opacity-80`
+                  }`}
+                >
+                  Move back to default location
+                </button>
+              )}
+              {location && !location.isDefault && !location.available && (
+                <button
+                  type="button"
+                  onClick={() => setForgetModalOpen(true)}
+                  disabled={migrating}
+                  className={`text-xs font-medium px-1 ${
+                    migrating ? 'opacity-50 cursor-not-allowed' : `${sub} hover:opacity-80`
+                  }`}
+                >
+                  Reset without moving files
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {location && !location.available && !migrating && (
@@ -174,7 +195,106 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
           }}
         />
       )}
+
+      {forgetModalOpen && location && (
+        <ForgetLocationModal
+          isDark={isDark}
+          defaultPath={location.defaultPath}
+          currentPath={location.path}
+          onClose={() => setForgetModalOpen(false)}
+          onDone={() => {
+            setForgetModalOpen(false);
+            queryClient.invalidateQueries({ queryKey: ['library-location'] });
+            refetch();
+          }}
+        />
+      )}
     </Sec>
+  );
+}
+
+function ForgetLocationModal({
+  isDark, defaultPath, currentPath, onClose, onDone,
+}: {
+  isDark: boolean;
+  defaultPath: string;
+  currentPath: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [error, setError] = useState('');
+  const [working, setWorking] = useState(false);
+
+  const heading = isDark ? 'text-white' : 'text-slate-800';
+  const body = isDark ? 'text-slate-300' : 'text-slate-600';
+  const sub = isDark ? 'text-slate-500' : 'text-slate-400';
+
+  async function handleConfirm() {
+    setWorking(true);
+    setError('');
+    try {
+      await resetLibraryLocation();
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not reset the location');
+      setWorking(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div
+        className={`w-full max-w-md rounded-2xl shadow-2xl ${isDark ? 'bg-slate-900' : 'bg-white'}`}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-slate-500/10">
+          <h3 className={`font-display text-lg font-semibold ${heading}`}>Reset to default folder</h3>
+          <p className={`text-xs mt-0.5 ${sub}`}>
+            For when the old drive or path is gone for good. No files are moved or deleted.
+          </p>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          <p className={`text-sm leading-relaxed ${body}`}>
+            Nebulis will stop looking at{' '}
+            <span className={`font-mono text-xs break-all ${heading}`}>{currentPath}</span>{' '}
+            and use its built-in library folder{' '}
+            <span className={`font-mono text-xs break-all ${heading}`}>{defaultPath}</span>{' '}
+            instead. Nothing at the old location is copied. Do this only if your images are already
+            in the default folder, or you plan to re-import them.
+          </p>
+          {error && (
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+              <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+              <p className={`text-xs ${body}`}>{error}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-4 border-t border-slate-500/10 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className={`text-sm font-medium px-3.5 py-2 rounded-lg ${isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={working}
+            onClick={handleConfirm}
+            className={`text-sm font-medium px-3.5 py-2 rounded-lg inline-flex items-center gap-1.5 ${
+              working
+                ? 'opacity-50 cursor-not-allowed bg-slate-500/10 text-slate-400'
+                : 'bg-accent-500 text-white hover:bg-accent-600'
+            }`}
+          >
+            {working && <Loader2 className="w-4 h-4 animate-spin" />}
+            Reset location
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -48,7 +48,11 @@ export function ImageViewer({
 
   const image = images[index];
 
-  const srcs = useMemo(() => images.map(i => i.downloadUrl), [images]);
+  // Display + preload the bounded 2048 px preview tier, never the raw original.
+  // A processed TIFF master can be 100-200 MB and stalls the tab; even a large
+  // stacked JPEG is a needless multi-MB decode. Download/Share still use
+  // `downloadUrl` for the true file.
+  const srcs = useMemo(() => images.map(i => i.previewUrl), [images]);
   useAdjacentPreload(srcs, index);
 
   const navigate = useCallback((dir: -1 | 1) => {
@@ -172,7 +176,7 @@ export function ImageViewer({
         handlers={zp.paneHandlers}
       >
         <LightboxImage
-          src={image.downloadUrl}
+          src={image.previewUrl}
           thumbSrc={getLibraryFileThumbnailUrl(image.path, 400, 400)}
           alt={image.objectName || image.name}
           zp={zp}

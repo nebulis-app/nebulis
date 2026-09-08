@@ -17,7 +17,7 @@ import { getSettingsData, updateSettingsData } from './telescopes.js';
 import { getActiveSite } from './observingSites.js';
 import { findCachedMaster, prewarmThumbnails } from './catalogPrefetch.js';
 import { prefetchSkyImage } from './skyImage.js';
-import { purgeJunkFiles, purgeStaleImportTmp } from './library/housekeeping.js';
+import { purgeJunkFiles, purgeStaleImportTmp, pruneImportLog } from './library/housekeeping.js';
 import { pruneSystemLog } from './systemLog.js';
 import { refreshForecastCache } from './forecastCache.js';
 import { checkAndUpdatePacks } from './catalogPack/updater.js';
@@ -147,6 +147,7 @@ async function runNightlyTasks(): Promise<void> {
     await purgeJunkFiles();
     purgeStaleImportTmp();
     pruneSystemLog();
+    pruneImportLog();
     updateSettingsData({ nightlyHousekeepingLastRun: Date.now() });
     console.log('[nightly] Library housekeeping complete');
   } catch (err) {

@@ -98,6 +98,9 @@ export interface LibraryLocation {
   network: Omit<NetworkLibraryConfig, 'password'>;
   /** false on Linux/Docker — hide the "Network Share" option there. */
   networkLibrarySupported: boolean;
+  /** true when the LIBRARY_DIR env var pins the location — hide "Change" / "Move"
+   *  and show the path as fixed by the deployment. */
+  pinned: boolean;
 }
 
 type MigrationPhase =
@@ -131,6 +134,15 @@ export const startNetworkLibraryMigration = (network: NetworkLibraryConfig) =>
     method: 'POST',
     body: JSON.stringify({ network }),
   });
+
+/** Forget a relocated library location without copying any files. Use when the
+ *  old drive/path is gone for good (e.g. a DB migrated from another machine).
+ *  The library then resolves to the default location. */
+export const resetLibraryLocation = () =>
+  fetchJSON<{ ok: boolean; changed: boolean; path: string; previousPath: string }>(
+    '/storage/library-location/reset',
+    { method: 'POST' },
+  );
 
 export const testNetworkLibraryConnection = (network: NetworkLibraryConfig) =>
   fetchJSON<{ ok: boolean; reason?: string }>('/storage/library-location/network/test', {

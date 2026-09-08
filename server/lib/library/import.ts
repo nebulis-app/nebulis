@@ -1276,8 +1276,8 @@ export async function runImport(
           return {
             // ASIAIR names carry the target and a full timestamp, so they are
             // unique across capture modes and nights and need no rewriting.
-            // The file keeps the name the device gave it (CLAUDE.md, "Imported
-            // File Preservation").
+            // The file keeps the name the device gave it: the importer
+            // catalogs files, it never renames them.
             localName: basename,
             // Like SeeStar, ASIAIR has no session directory of its own: frames
             // from many nights sit flat in one target folder. A nested object
@@ -1708,23 +1708,27 @@ export async function runImport(
         console.error(`[import] Failed to save index for ${objectName}:`, saveErr instanceof Error ? saveErr.message : saveErr);
       }
 
-      // Audit trail: one row per object per import run. Lets the server
-      // dedup later imports by (telescopeId, remotePath) and answer
-      // "why did I get a duplicate?" debugging questions.
+      // Audit trail: one row per object per import run that actually did
+      // something. Answers "why did I get a duplicate?" / "what changed?"
+      // debugging questions. Nothing reads this table for dedup (that runs off
+      // libraryFiles + the manifests), so a "skipped / no new files" row has no
+      // value — and the auto-import scheduler produces one per object on every
+      // tick, which grew this table to hundreds of thousands of rows. Only
+      // `imported` and `failed` outcomes are recorded now.
       try {
         const remotePath = walkerBase ? `${walkerBase}/${objectName}` : objectName;
         const newForObject = importNewFiles.filter(f => f.name.startsWith(`${objectName}/`)).length;
         const outcome = downloadErrors > 0 ? 'failed' : (newForObject > 0 ? 'imported' : 'skipped');
         const message = downloadErrors > 0
           ? `${downloadErrors} file(s) failed`
-          : newForObject > 0
-            ? `${newForObject} new file(s)`
-            : 'no new files';
-        for (const sessionDate of objMeta.sessions) {
-          stmts.insertSessionImportLog.run(
-            profile.id, remotePath, new Date().toISOString(),
-            objId, sessionDate, outcome, message, runDeviceId,
-          );
+          : `${newForObject} new file(s)`;
+        if (outcome !== 'skipped') {
+          for (const sessionDate of objMeta.sessions) {
+            stmts.insertSessionImportLog.run(
+              profile.id, remotePath, new Date().toISOString(),
+              objId, sessionDate, outcome, message, runDeviceId,
+            );
+          }
         }
       } catch (err) {
         // This write is the audit trail itself, so its own failure needs to

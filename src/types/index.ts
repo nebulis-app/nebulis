@@ -230,6 +230,11 @@ export interface ProcessedImage {
    *  else (renderable formats need no separate thumbnail, and other
    *  stored-only formats like XISF have no renderer). */
   thumbUrl: string | null;
+  /** Bounded 2048 px JPEG for full-screen viewing, so opening a processed
+   *  image never fetches or decodes the multi-MB original. Null for a
+   *  stored-only format with no renderer (XISF, PSD, RAW). `url` stays the
+   *  path to the true original for Download. */
+  previewUrl: string | null;
   runId: string | null;
   /** Session dates the run covers, when this image combines more than one
    *  night. Null for ordinary single-session images. */

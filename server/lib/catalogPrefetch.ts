@@ -41,6 +41,19 @@ import type { CatalogDescriptionStatus } from './types/catalog.js';
 const IMAGE_CONCURRENCY = 3;
 const WIKI_CONCURRENCY = 5;
 
+// Hard ceiling on a single image download. The passed AbortSignal only fires on
+// job cancel / shutdown, so without this a CDN that accepts the connection and
+// then stalls the body would hold one of the 3-5 pool workers open forever and
+// wedge the whole prefetch. undici's connectTimeout bounds the connect phase
+// only, not a slow/stalled stream.
+const IMAGE_FETCH_TIMEOUT_MS = 20_000;
+
+/** The caller's cancel signal (if any) combined with a per-request timeout. */
+function imageFetchSignal(signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
 // DSS2 master image dimensions. The catalog route resizes from this on demand
 // for any thumbnail size a client asks for, so this is the single source of
 // truth for "how big do we download from CDS HiPS." Sized to comfortably cover
@@ -622,7 +635,7 @@ async function downloadWikipediaThumbnail(
 ): Promise<boolean> {
   try {
     const res = await fetch(thumbnailUrl, {
-      signal,
+      signal: imageFetchSignal(signal),
       headers: { 'User-Agent': 'Nebulis/1.0 (https://nebulis.app)' },
     });
     if (!res.ok) return false;
@@ -736,7 +749,7 @@ export async function prefetchObjectHubble(id: string, signal?: AbortSignal): Pr
     if (!entry) return false;
 
     const imgRes = await fetch(entry.imageUrl, {
-      signal,
+      signal: imageFetchSignal(signal),
       headers: { 'User-Agent': 'Nebulis/1.0 (astronomy companion app)' },
     });
     if (!imgRes.ok) return false;
@@ -1129,7 +1142,7 @@ async function runJob(
         if (!imageOk) {
           try {
             const imgRes = await fetch(entry.imageUrl, {
-              signal,
+              signal: imageFetchSignal(signal),
               headers: { 'User-Agent': 'Nebulis/1.0 (astronomy companion app)' },
             });
             if (imgRes.ok) {

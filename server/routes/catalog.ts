@@ -31,6 +31,7 @@ import {
   isCanonicalResizedFilename,
   type ResizeFit,
 } from '../lib/catalogPrefetch.js';
+import { getPinnedCatalogSource } from '../lib/library/gallery.js';
 import { getAllPackStates } from '../lib/catalogPack/state.js';
 import { getById as getDsoById } from '../lib/dsoCatalog.js';
 import { getSharplessEntry } from '../lib/sharplessCatalog.js';
@@ -274,10 +275,22 @@ router.get('/:id/image', async (req: Request, res: Response) => {
   // modal so users can choose which variant to render. Unknown values fall
   // through to the default priority.
   const requestedSource = String(req.query.source ?? '');
-  const pinnedSource: 'hubble' | 'wiki' | 'dss2' | null =
+  const explicitSource: 'hubble' | 'wiki' | 'dss2' | null =
     requestedSource === 'hubble' || requestedSource === 'wiki' || requestedSource === 'dss2'
       ? requestedSource
       : null;
+
+  // With no explicit `?source=`, honour a master the user pinned for this
+  // object on its library page (the gallery image picker's "use this variant").
+  // Without this the catalog browser kept showing Hubble/Wikipedia for an
+  // object whose object page shows the DSS2 plate the user chose. Only affects
+  // objects with a user-set `catalog-source:*` pin; everything else is
+  // unchanged. Try the raw id and the canonicalised id since a library object
+  // may be keyed under either ("M100" vs "NGC4321").
+  const pinnedSource: 'hubble' | 'wiki' | 'dss2' | null =
+    explicitSource
+    ?? getPinnedCatalogSource(rawId)
+    ?? (id !== rawId ? getPinnedCatalogSource(id) : null);
 
   // ── Find best available master ──
   // Shared with /api/library/objects/:id/thumbnail via findCachedMaster, so

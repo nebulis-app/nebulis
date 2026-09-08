@@ -289,9 +289,8 @@ export function buildAsiairFilePath(fileName: string): string {
 }
 
 /** Strip the tagged directory prefix back off, giving the name the file keeps
- *  on disk. ASIAIR files are never renamed (see CLAUDE.md's "Imported File
- *  Preservation"): they land flat in the object folder under their original
- *  basename, exactly as SeeStar's do. */
+ *  on disk. ASIAIR files are never renamed: they land flat in the object
+ *  folder under their original basename, exactly as SeeStar's do. */
 export function asiairLocalName(taggedName: string): string {
   return path.posix.basename(taggedName);
 }

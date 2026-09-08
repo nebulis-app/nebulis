@@ -574,6 +574,12 @@ function foldSmbOpHealth(status: StatusCache, hostname: string): StatusCache {
   return { ...status, online: false };
 }
 
+// A probe in progress, keyed the same as statusCacheByHost. Overlapping status
+// polls (the SPA polls on a 30s timer from every open tab, plus /status and
+// /status/all hit the same hosts) would otherwise each start their own probe
+// while the first is still running against a slow/dead host.
+const inFlightProbes = new Map<string, Promise<StatusCache>>();
+
 async function probeWithCache(hostname: string, port = SMB_PORT): Promise<StatusCache> {
   // Cache per (host, port): the same address can legitimately answer on one
   // port and not the other, and a Dwarf never answers on 445 at all.
@@ -581,10 +587,19 @@ async function probeWithCache(hostname: string, port = SMB_PORT): Promise<Status
   const cached = statusCacheByHost.get(cacheKey);
   const ttl = cached && cached.consecutiveFailures > 0 ? FAILURE_RETRY_MS : STATUS_TTL;
   if (cached && Date.now() - cached.checkedAt < ttl) return foldSmbOpHealth(cached, hostname);
-  const latencyMs = await tcpProbe(hostname, port);
-  const fresh = applyHysteresis(latencyMs !== null, latencyMs, cached);
-  statusCacheByHost.set(cacheKey, fresh);
-  return foldSmbOpHealth(fresh, hostname);
+
+  const existing = inFlightProbes.get(cacheKey);
+  if (existing) return existing;
+
+  const work = (async () => {
+    const latencyMs = await tcpProbe(hostname, port);
+    const fresh = applyHysteresis(latencyMs !== null, latencyMs, cached);
+    statusCacheByHost.set(cacheKey, fresh);
+    return foldSmbOpHealth(fresh, hostname);
+  })().finally(() => inFlightProbes.delete(cacheKey));
+
+  inFlightProbes.set(cacheKey, work);
+  return work;
 }
 
 /**

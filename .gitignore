@@ -12,8 +12,7 @@ node_modules
 # ~20k+ package blobs. Never commit. Lives at repo root when pnpm is configured
 # with a local store-dir (which this project does).
 .pnpm-store/
-# Local Claude Code skills + sandbox config — per-developer tooling state,
-# not project source.
+# Local editor/assistant tooling state — per-developer, not project source.
 .claude/
 # Reasonix tool state/config — local-only, never for project source or public sync.
 .reasonix/

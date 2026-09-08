@@ -190,8 +190,12 @@ db.exec(`
     archivedAt        INTEGER                              -- nullable; Unix ms set on archive
   );
 
-  -- Per-import audit trail. Used for incremental dedup (telescopeId+remotePath)
-  -- and for debugging "why did I get a duplicate" cases.
+  -- Per-import audit trail for debugging "why did I get a duplicate" / "what
+  -- changed" cases. Read only by the one-shot attribution migration below and
+  -- the trash/rekey helpers. NOT a dedup index: dedup runs off libraryFiles plus
+  -- the on-disk manifests. Only imported/failed rows are written (no-op scans
+  -- are dropped), and the nightly job prunes past a retention window. No
+  -- secondary indexes: they served a dedup query that was never implemented.
   CREATE TABLE IF NOT EXISTS sessionImportLog (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     telescopeId TEXT NOT NULL,
@@ -202,8 +206,6 @@ db.exec(`
     outcome     TEXT NOT NULL,
     message     TEXT
   );
-  CREATE INDEX IF NOT EXISTS idx_sessionImportLog_telescope_path
-    ON sessionImportLog(telescopeId, remotePath);
 
   -- One profile can carry multiple transports (e.g. one Seestar reachable via
   -- both SMB and USB, or a Dwarf reachable via FTP). Active transport is
@@ -937,9 +939,10 @@ db.exec(`
 // telescopeProfiles.deviceId: UUID generated on first connection, stored in
 // the device's `.nebulis.dat` file. Lets us recognise the same physical
 // telescope reached via different transports (SMB + USB) and merge them.
-// sessionImportLog.deviceId: stamped on import so dedup keys are
-// transport-agnostic: `(deviceId, remotePath)` is unique per file regardless
-// of whether it came in over SMB or USB.
+// sessionImportLog.deviceId: stamped on import so a future dedup pass could key
+// on the physical device rather than the transport. No index — nothing queries
+// this table by device yet (the one-time cleanup migration below drops the
+// index this used to carry).
 {
   const tpCols2 = db.prepare<[], { name: string }>('PRAGMA table_info(telescopeProfiles)').all();
   if (!tpCols2.some(c => c.name === 'deviceId')) {
@@ -955,10 +958,6 @@ db.exec(`
   if (!silCols.some(c => c.name === 'deviceId')) {
     db.prepare('ALTER TABLE sessionImportLog ADD COLUMN deviceId TEXT').run();
   }
-  db.prepare(
-    `CREATE INDEX IF NOT EXISTS idx_sessionImportLog_device_path
-       ON sessionImportLog(deviceId, remotePath)`,
-  ).run();
 }
 
 // ─── Backfill per-telescope import file-type toggles from global appSettings ─
@@ -1211,24 +1210,88 @@ db.exec(`
 // different profile (e.g. the wrong "active" profile during the Phase-1
 // backfill) are corrected here.  When multiple profiles have import log
 // entries the migration is skipped — those attributions are legitimately split.
+//
+// ONE-SHOT via a libraryMeta flag, like every other data migration in this
+// file. This block used to run on every boot: it is a bulk reattribution of
+// telescopeId across the whole library, and `sessionImportLog` is a growing
+// audit table with no retention. Pruning that table (or a profile simply
+// aging out of it) could drop the distinct-telescope count to 1 at any later
+// point, at which case the next restart would silently rewrite the entire
+// library's attribution to one scope. The flag pins the migration to the one
+// upgrade where it is meant to run.
 {
-  const importerCount = db
-    .prepare<[], { n: number }>('SELECT COUNT(DISTINCT telescopeId) as n FROM sessionImportLog')
-    .get();
-  if (importerCount && importerCount.n === 1) {
-    const topImporter = db
-      .prepare<[], { telescopeId: string }>('SELECT telescopeId FROM sessionImportLog LIMIT 1')
+  const lmCols = db.prepare<[], { name: string }>('PRAGMA table_info(libraryMeta)').all();
+  if (!lmCols.some(c => c.name === 'importLogAttributionFixed')) {
+    db.prepare('ALTER TABLE libraryMeta ADD COLUMN importLogAttributionFixed INTEGER NOT NULL DEFAULT 0').run();
+
+    const importerCount = db
+      .prepare<[], { n: number }>('SELECT COUNT(DISTINCT telescopeId) as n FROM sessionImportLog')
       .get();
-    if (topImporter) {
-      const sessionsFixed = db
-        .prepare('UPDATE librarySessions SET telescopeId = ? WHERE telescopeId IS NOT NULL AND telescopeId != ?')
-        .run(topImporter.telescopeId, topImporter.telescopeId);
-      const objectsFixed = db
-        .prepare('UPDATE libraryObjects SET primaryTelescopeId = ? WHERE primaryTelescopeId IS NOT NULL AND primaryTelescopeId != ?')
-        .run(topImporter.telescopeId, topImporter.telescopeId);
-      if (sessionsFixed.changes > 0) {
-        console.log(`[telescopes] Reattributed ${sessionsFixed.changes} session(s) and ${objectsFixed.changes} object(s) → ${topImporter.telescopeId}`);
+    if (importerCount && importerCount.n === 1) {
+      const topImporter = db
+        .prepare<[], { telescopeId: string }>('SELECT telescopeId FROM sessionImportLog LIMIT 1')
+        .get();
+      if (topImporter) {
+        const sessionsFixed = db
+          .prepare('UPDATE librarySessions SET telescopeId = ? WHERE telescopeId IS NOT NULL AND telescopeId != ?')
+          .run(topImporter.telescopeId, topImporter.telescopeId);
+        const objectsFixed = db
+          .prepare('UPDATE libraryObjects SET primaryTelescopeId = ? WHERE primaryTelescopeId IS NOT NULL AND primaryTelescopeId != ?')
+          .run(topImporter.telescopeId, topImporter.telescopeId);
+        if (sessionsFixed.changes > 0) {
+          console.log(`[telescopes] Reattributed ${sessionsFixed.changes} session(s) and ${objectsFixed.changes} object(s) → ${topImporter.telescopeId}`);
+        }
       }
+    }
+
+    db.prepare('UPDATE libraryMeta SET importLogAttributionFixed = 1 WHERE id = 1').run();
+  }
+}
+
+// ─── One-time sessionImportLog cleanup ──────────────────────────────────────
+// This table recorded one row per object per import run *including no-op scans*
+// ("skipped / no new files"), which the auto-import scheduler generates on
+// every tick. Nothing reads it except the (now one-shot) attribution migration
+// above and the trash/rekey helpers. Left unbounded it reached hundreds of
+// thousands of rows carried on two large redundant indexes, dwarfing the rest
+// of the database and slowing every pre-upgrade VACUUM INTO backup.
+//
+// Conservative on purpose: this deletes ONLY the no-op-scan rows (`skipped`).
+// Every real `imported` / `failed` row is kept — those are the useful history
+// and they are few. The nightly job (pruneImportLog) enforces the long-term
+// window going forward.
+//
+// Runs AFTER the attribution block above (top-to-bottom migration order) so it
+// can never feed that block a distinct-telescope count of 1: `skipped` rows are
+// spread across the same telescopes as the `imported` ones, so removing them
+// does not change which telescopes appear in the table.
+{
+  const lmCols = db.prepare<[], { name: string }>('PRAGMA table_info(libraryMeta)').all();
+  if (!lmCols.some(c => c.name === 'importLogTrimmed')) {
+    db.prepare('ALTER TABLE libraryMeta ADD COLUMN importLogTrimmed INTEGER NOT NULL DEFAULT 0').run();
+
+    // Both indexes lead with remotePath and served a dedup query that no longer
+    // exists (dedup runs off libraryFiles + manifests) — pure write amplification.
+    db.exec('DROP INDEX IF EXISTS idx_sessionImportLog_telescope_path');
+    db.exec('DROP INDEX IF EXISTS idx_sessionImportLog_device_path');
+
+    const removed = db
+      .prepare(`DELETE FROM sessionImportLog WHERE outcome = 'skipped'`)
+      .run().changes;
+
+    db.prepare('UPDATE libraryMeta SET importLogTrimmed = 1 WHERE id = 1').run();
+
+    // Only compact the file when the delete actually freed a meaningful amount
+    // (the bloated installs this exists for shed 100k+ rows). A handful of rows
+    // isn't worth a full-file rewrite before the port opens.
+    if (removed > 1000) {
+      console.log(`[db] Removed ${removed} no-op sessionImportLog row(s); compacting database`);
+      // VACUUM can't run inside a transaction; db.ts init is not wrapped in one.
+      try { db.exec('VACUUM'); } catch (err) {
+        console.warn('[db] VACUUM after sessionImportLog trim failed (non-fatal):', err instanceof Error ? err.message : err);
+      }
+    } else if (removed > 0) {
+      console.log(`[db] Removed ${removed} no-op sessionImportLog row(s)`);
     }
   }
 }

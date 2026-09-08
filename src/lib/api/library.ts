@@ -497,6 +497,7 @@ function parseProcessedImage(value: unknown): ProcessedImage {
     url: reqStr('url'),
     path: reqStr('path'),
     thumbUrl: typeof v.thumbUrl === 'string' ? v.thumbUrl : null,
+    previewUrl: typeof v.previewUrl === 'string' ? v.previewUrl : null,
     runId: typeof v.runId === 'string' ? v.runId : null,
     runDates: Array.isArray(v.runDates) ? v.runDates.filter((d): d is string => typeof d === 'string') : null,
     source: v.source === 'dwarf-restack' ? 'dwarf-restack' : 'user',
@@ -1016,6 +1017,13 @@ export interface LibraryImage {
   objectType: string | null;
   distanceLy: number | null;
   downloadUrl: string;
+  /** Grid-card JPEG (server resize + disk cache). Safe for an `<img>` even when
+   *  the original is a raw TIFF master. */
+  thumbUrl: string;
+  /** 2048 px JPEG tier for the full-screen viewer, so opening an image never
+   *  fetches or decodes the multi-MB original. `downloadUrl` stays the path to
+   *  the true original for the Download button. */
+  previewUrl: string;
   isFavorite: boolean;
   /** True for a user-uploaded post-processing result, false for a raw
    *  telescope file. Drives the Gallery page's "Processed only" filter. */

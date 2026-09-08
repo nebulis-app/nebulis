@@ -80,6 +80,7 @@ function Metric({ icon, label, value, warn, isDark }: {
 
 export function NightOutlookCard({ night, hours, isDark, windUnit, timeZone }: Props) {
   const hex = scoreHex(night.score);
+  const lowConfidence = night.confidence === 'low';
 
   const date = new Date(night.date + 'T12:00:00');
   const weekday = safeLocaleDateString(date, timeZone, { weekday: 'long' });
@@ -89,7 +90,7 @@ export function NightOutlookCard({ night, hours, isDark, windUnit, timeZone }: P
     <div
       className={`group relative overflow-hidden rounded-2xl border p-5 transition-transform duration-300 ease-out hover:-translate-y-0.5 ${
         isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
-      }`}
+      } ${lowConfidence ? 'opacity-80' : ''}`}
     >
       {/* Score-tinted wash so a run of good nights is visible without reading. */}
       <div

@@ -17,6 +17,7 @@ import multer from 'multer';
 import { log } from '../lib/logger.js';
 import { debugLog, isDebugLoggingEnabled } from '../lib/debugLogger.js';
 import { isErrnoException } from '../lib/errors.js';
+import { redactUrl } from '../lib/logSafe.js';
 import { THUMBNAILS_DIR } from '../lib/paths.js';
 import { getLibraryDir, isLibraryAvailable, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
 import { mintDownloadToken, DOWNLOAD_TOKEN_TTL_MS } from '../lib/downloadToken.js';
@@ -756,7 +757,7 @@ router.post('/import/upload-temp', requireAdmin, (req: Request, res: Response, n
   });
   log.info({
     method: req.method,
-    url: req.url,
+    url: redactUrl(req.url),
     contentMb,
     contentLengthHeader,
     contentType: req.headers['content-type'],
@@ -1531,8 +1532,11 @@ router.get('/file/thumbnail', burstyRateLimiter, async (req: Request, res: Respo
     return;
   }
 
-  const w = Math.min(Math.max(parseInt(queryString(req.query.w) || '400', 10) || 400, 32), 1200);
-  const h = Math.min(Math.max(parseInt(queryString(req.query.h) || '400', 10) || 400, 32), 1200);
+  // Ceiling is the full-screen preview tier (previewUrl asks for 2048); the
+  // grid card asks for the 400 default. Anything larger than 2048 is past what
+  // any client displays and just bloats the on-disk thumbnail cache.
+  const w = Math.min(Math.max(parseInt(queryString(req.query.w) || '400', 10) || 400, 32), 2048);
+  const h = Math.min(Math.max(parseInt(queryString(req.query.h) || '400', 10) || 400, 32), 2048);
 
   // Only serve image files — reject FITS/video. No library pipeline can ever
   // produce a .webp (not in ALLOWED_UPLOAD_EXTS above, PROCESSED_FORMATS in
@@ -2305,11 +2309,17 @@ router.get('/objects/:objectId/gallery-image', async (req: Request, res: Respons
     }).catch(() => { /* external service unavailable — silent */ });
   }
 
-  // Always fill in Wikipedia and Hubble in the background when not yet present.
-  // Both functions guard against redundant network calls (file-existence check +
-  // catalogCache entry), so they're cheap no-ops once the object is fully cached.
-  prefetchObjectWiki(resolvedId).catch(() => {});
-  prefetchObjectHubble(resolvedId).catch(() => {});
+  // Fill in Wikipedia and Hubble imagery in the background so a later view can
+  // upgrade from a bare DSS2 plate — but NOT when the user has pinned a specific
+  // master for this object. findCachedMaster ranks hubble > wiki > dss2, so
+  // downloading a higher-priority file for a pinned object just leaves it on
+  // disk waiting to override the user's choice on some other screen (the exact
+  // "my clean image keeps reverting after a restart" complaint). Both functions
+  // are already no-ops once their file exists; this only stops the first fetch.
+  if (!row.userSet || !isCatalogSourceSentinel(row.galleryImage ?? '')) {
+    prefetchObjectWiki(resolvedId).catch(() => {});
+    prefetchObjectHubble(resolvedId).catch(() => {});
+  }
 
   res.apiSuccess({ objectId, galleryImage });
 });

@@ -2,6 +2,7 @@ import { Upload, ImagePlus, Crown, Download, Star, Trash2, Loader2, FileDown, La
 import { useTheme } from '../../hooks/useTheme';
 import { isRenderableProcessed, processedFormatLabel } from '../../lib/processedFormats';
 import type { ProcessedImage } from '../../types';
+import type { CompareFile } from '../ImageCompareModal';
 import type { CompareItem } from './types';
 
 /** The "Processed Images" panel: uploaded/edited images with an upload drop
@@ -29,7 +30,7 @@ export function ProcessedImagesGrid({
   processedImages: ProcessedImage[];
   compareMode: boolean;
   compareItems: [CompareItem | null, CompareItem | null];
-  toggleCompareItem: (key: string, file: { name: string; downloadUrl: string }) => void;
+  toggleCompareItem: (key: string, file: CompareFile) => void;
   openProcessedGallery: (index: number) => void;
   sessionImagePath: string | null | undefined;
   isAdmin: boolean;
@@ -136,7 +137,12 @@ export function ProcessedImagesGrid({
                 onClick={() => {
                   if (!canRender) return;
                   if (compareMode) {
-                    toggleCompareItem(img.id, { name: img.title || img.originalName, downloadUrl: img.url });
+                    toggleCompareItem(img.id, {
+                      name: img.title || img.originalName,
+                      downloadUrl: img.url,
+                      previewUrl: img.previewUrl ?? undefined,
+                      thumbUrl: img.thumbUrl ?? undefined,
+                    });
                   } else {
                     openProcessedGallery(idx);
                   }
@@ -146,7 +152,7 @@ export function ProcessedImagesGrid({
                 <div className="relative aspect-square">
                   {isRenderableProcessed(img.originalName) ? (
                     <img
-                      src={img.url}
+                      src={img.previewUrl ?? img.url}
                       alt={img.title || img.originalName}
                       className="w-full h-full object-cover"
                     />

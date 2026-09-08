@@ -29,6 +29,7 @@ import {
   isDefaultLocation,
   isNetworkLocation,
   isLibraryAvailable,
+  isLibraryPinned,
   MARKER_FILENAME,
 } from './libraryPath.js';
 import { setLibraryMigrating } from './libraryMaintenance.js';
@@ -330,6 +331,11 @@ async function run(source: string, target: string, networkConfig?: NetworkLibrar
 export function startMigration(target: string, networkConfig?: NetworkLibraryConfig): MigrationStatus {
   if (isActivePhase(status.phase)) {
     throw new MigrationError('A migration is already in progress.');
+  }
+  if (isLibraryPinned()) {
+    throw new MigrationError(
+      'The library location is set by the LIBRARY_DIR environment variable. Change that to move the library.',
+    );
   }
   const source = getLibraryDir();
 

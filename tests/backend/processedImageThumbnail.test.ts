@@ -53,10 +53,11 @@ function seedProcessedImage(
   );
 }
 
+// Every still image (jpg/png/tif) now routes through the thumbnail resize for
+// a card: PNG/TIF for format conversion, JPEG so a card never downloads a
+// 30-50 MB mosaic stack whole.
 function expectedUrl(relPath: string): string {
-  return /\.(jpg|jpeg)$/i.test(relPath)
-    ? `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(relPath)}`
-    : `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(relPath)}`;
+  return `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(relPath)}`;
 }
 
 describe('processed images auto-win the session thumbnail', () => {
@@ -98,7 +99,7 @@ describe('processed images auto-win the session thumbnail', () => {
     stmts.setSessionImage.run(rawPath, 'M4', '2026-01-15');
 
     const session = getLocalSessions('M4').find(s => s.date === '2026-01-15')!;
-    expect(session.thumbnailUrl).toBe(`${LIBRARY_API_BASE}/file?path=${encodeURIComponent(rawPath)}`);
+    expect(session.thumbnailUrl).toBe(`${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(rawPath)}`);
   });
 
   it('getLocalObservations: the calendar card agrees with the object page', () => {

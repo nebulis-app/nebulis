@@ -7,6 +7,7 @@ import {
   setGalleryImage,
   uploadGalleryImage,
   getLibraryFileUrl,
+  getLibraryFileThumbnailUrl,
 } from '../lib/api/library';
 import { getCatalogSources, prefetchCatalogObject, type CatalogSource } from '../lib/api/catalog';
 import { isRenderableProcessed, canPreviewLocally } from '../lib/processedFormats';
@@ -325,7 +326,7 @@ export function GalleryImageModal({
                 {stackedImages?.map(img => (
                   <ImageOption
                     key={img.path}
-                    src={getLibraryFileUrl(img.path)}
+                    src={getLibraryFileThumbnailUrl(img.path)}
                     label={img.date !== 'unknown'
                       ? new Date(img.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
                       : img.name
@@ -339,7 +340,7 @@ export function GalleryImageModal({
                 {processedImages.map(img => (
                   <ImageOption
                     key={img.id}
-                    src={img.url}
+                    src={img.thumbUrl ?? img.previewUrl ?? getLibraryFileThumbnailUrl(img.path)}
                     label={img.title || img.originalName}
                     isSelected={effectiveSelection === img.path}
                     isDark={isDark}

@@ -41,7 +41,30 @@ export const LOGS_DIR = (() => {
   return dir;
 })();
 
-export const LIBRARY_DIR = path.join(DATA_DIR, 'library');
+/**
+ * Optional hard override for the library directory, from the `LIBRARY_DIR`
+ * environment variable. When set to an absolute path this is where the library
+ * lives, regardless of any relocation stored in the database. It is the
+ * supported way to keep the library on a separate disk in headless/Docker
+ * deployments (bind-mount the disk, point `LIBRARY_DIR` at the mount).
+ *
+ * A missing or non-absolute value is ignored (with a warning) so a typo can
+ * never crash-loop the container. `server/lib/libraryPath.ts` is the consumer;
+ * everything else reaches the library through `getLibraryDir()` there.
+ */
+export const LIBRARY_DIR_OVERRIDE: string | null = (() => {
+  const raw = process.env.LIBRARY_DIR?.trim();
+  if (!raw) return null;
+  if (!path.isAbsolute(raw)) {
+    console.warn(
+      `[paths] LIBRARY_DIR="${raw}" is not an absolute path. Ignoring it and using the default library location.`,
+    );
+    return null;
+  }
+  return path.resolve(raw);
+})();
+
+export const LIBRARY_DIR = LIBRARY_DIR_OVERRIDE ?? path.join(DATA_DIR, 'library');
 
 export const THUMBNAILS_DIR = (() => {
   const dir = path.join(DATA_DIR, 'thumbnails');

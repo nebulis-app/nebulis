@@ -4,6 +4,14 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  # Manual rebuild without cutting a release. Use this to republish the image
+  # from the current tree (e.g. after a sync that only changed source/docs).
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Image tag to publish, e.g. 2.0.1 (":latest" also moves unless it has a pre-release suffix like -beta).'
+        required: true
+        type: string
 
 jobs:
   build-and-push:
@@ -28,9 +36,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract version from tag
+      - name: Resolve version
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            echo "version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -41,6 +56,6 @@ jobs:
           push: true
           tags: |
             ghcr.io/nebulis-app/nebulis:${{ steps.version.outputs.version }}
-            ${{ !contains(github.ref_name, '-') && 'ghcr.io/nebulis-app/nebulis:latest' || '' }}
+            ${{ !contains(steps.version.outputs.version, '-') && 'ghcr.io/nebulis-app/nebulis:latest' || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

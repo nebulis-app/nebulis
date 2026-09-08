@@ -9,7 +9,7 @@
  * repo's one import cycle. `import type` is erased at build (no
  * `verbatimModuleSyntax` in server/tsconfig.json), so it was never a runtime
  * cycle, but it still meant importHistory.ts couldn't be typechecked in
- * isolation from import.ts. See church-audit/church-crusade.md finding W15.
+ * isolation from import.ts.
  */
 import type { TransportKind } from '../telescopeTransports.js';
 import type { ImportSkipSummary } from './importFilter.js';

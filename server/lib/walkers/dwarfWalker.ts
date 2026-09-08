@@ -45,8 +45,7 @@ export const DWARF_BASE_PATH = 'Astronomy';
  *  synthetic library object name it maps to. Live here (not in
  *  library/dwarfStartrails.ts, which re-exports them) so a low-level device
  *  walker doesn't have to depend upward on the library/persistence cluster
- *  just to know a folder name. See church-audit/church-crusade.md finding
- *  W16. */
+ *  just to know a folder name. */
 export const STARTRAILS_FOLDER = 'STARTRAILS';
 export const STARTRAILS_TARGET_NAME = 'DWARF Star Trails';
 

@@ -15,9 +15,8 @@ interface FitsHeaderData {
 /** Mirrors ImportSkipReason in server/lib/library/importFilter.ts — kept as an
  *  explicit union (not `string`) so a reason renamed or added server-side is a
  *  compile error here instead of a silently-unhandled string. There's no
- *  shared module across the server/client boundary yet (see
- *  church-audit/church-crusade.md finding W23), so this list must be updated
- *  by hand alongside the server's. */
+ *  shared module across the server/client boundary yet, so this list must be
+ *  updated by hand alongside the server's. */
 export type ImportSkipReason =
   | 'not-a-real-file'
   | 'processing-artifact'

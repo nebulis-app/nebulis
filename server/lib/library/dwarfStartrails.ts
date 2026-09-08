@@ -16,7 +16,7 @@ import { normalizeObjectId } from '../telescopeFiles.js';
 import { resolveCanonicalId } from '../catalogAliases.js';
 // The folder name and synthetic-object name are Dwarf device facts, owned by
 // the walker; re-exported here so every existing importer of this module
-// keeps working. See church-audit/church-crusade.md finding W16.
+// keeps working.
 import { STARTRAILS_FOLDER, STARTRAILS_TARGET_NAME } from '../walkers/dwarfWalker.js';
 export { STARTRAILS_FOLDER, STARTRAILS_TARGET_NAME };
 

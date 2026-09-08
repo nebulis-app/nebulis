@@ -1,8 +1,8 @@
 {
   "name": "nebulis-web",
   "private": true,
-  "version": "2.0.0",
-  "buildNumber": 252,
+  "version": "2.0.1",
+  "buildNumber": 254,
   "type": "module",
   "packageManager": "pnpm@10.30.3",
   "scripts": {

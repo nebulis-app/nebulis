@@ -1,5 +1,5 @@
 # Changelog
-## 2.0.1 (249) - September 7th, 2026
+## 2.0.1 (254) - September 7th, 2026
 ### New
 - Sky Forecast: the "Upcoming Nights" outlook now covers three nights instead of two. The third night is about three days out, so its card is dimmed to show it is less certain.
 - macOS and Windows: "View Logs" in the menu bar (macOS) or taskbar (Windows) opens a live log viewer. Follow the server log as it's written, clear it, or save a copy to send with a support request. On Windows the viewer now opens right away and stays responsive while a large log streams in, reads and parses off the UI thread, and no longer re-checks the log path (which meant launching a helper process) on every refresh.
@@ -17,7 +17,7 @@
 - Catalog image downloads from Wikipedia and NASA had no timeout, so one stalled server could freeze catalog prefetch until a restart. Each download is now capped at 20 seconds.
 - A corrected catalog image pack could not fix an already-downloaded picture. When a pack is reissued with a fixed image, that image now replaces the old one instead of being skipped because a file was already there.
 
-## 2.0.0 (252) - September 4th, 2026
+## 2.0.0 (253) - September 4th, 2026
 ### Important
 - The Forecast menu bar item is now hidden by default as you can open the forecast from the Planner page no. You can re-add it Settings -> Navigation Bar.
 

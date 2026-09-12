@@ -1,8 +1,9 @@
 import { createContext, useContext, useState, useCallback, useMemo, createElement, type ReactNode } from 'react';
 
-export type NavItemId = 'forecast' | 'planner' | 'catalogs' | 'help';
+export type NavItemId = 'gallery' | 'forecast' | 'planner' | 'catalogs' | 'help';
 
 export const NAV_ITEMS: { id: NavItemId; label: string }[] = [
+  { id: 'gallery',  label: 'Gallery' },
   { id: 'forecast', label: 'Forecast' },
   { id: 'planner',  label: 'Planner' },
   { id: 'catalogs', label: 'Catalogs' },

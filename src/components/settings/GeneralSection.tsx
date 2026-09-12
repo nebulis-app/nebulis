@@ -3,9 +3,10 @@ import { useNavVisibility, NAV_ITEMS } from '../../hooks/useNavVisibility';
 import type { Settings as SettingsType } from '../../types';
 import { Sec, Row, Seg, RadioCard, Toggle } from './SettingsUI';
 import { NightlyMaintenanceSection } from './NightlyMaintenanceSection';
-import { CloudMoon, Crosshair, BookOpen, HelpCircle } from 'lucide-react';
+import { Images, CloudMoon, Crosshair, BookOpen, HelpCircle } from 'lucide-react';
 
 const NAV_ITEM_ICONS: Record<string, React.ReactNode> = {
+  gallery:  <Images className="w-4 h-4" />,
   forecast: <CloudMoon className="w-4 h-4" />,
   planner:  <Crosshair className="w-4 h-4" />,
   catalogs: <BookOpen className="w-4 h-4" />,

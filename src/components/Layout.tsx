@@ -167,12 +167,14 @@ export function Layout({ children }: LayoutProps) {
                   <span>Library</span>
                 </NavLink>
               </TourAnchor>
-              <TourAnchor id="nav-gallery">
-                <NavLink to="/image-gallery" active={location.pathname === '/image-gallery'} activeClass={activeNavClass} isDark={isDark} isNight={isNight}>
-                  <Images className="w-4 h-4" />
-                  <span>Gallery</span>
-                </NavLink>
-              </TourAnchor>
+              {isVisible('gallery') && (
+                <TourAnchor id="nav-gallery">
+                  <NavLink to="/image-gallery" active={location.pathname === '/image-gallery'} activeClass={activeNavClass} isDark={isDark} isNight={isNight}>
+                    <Images className="w-4 h-4" />
+                    <span>Gallery</span>
+                  </NavLink>
+                </TourAnchor>
+              )}
               <TourAnchor id="nav-observations">
                 <NavLink to="/observations" active={location.pathname.startsWith('/observations')} activeClass={activeNavClass} isDark={isDark} isNight={isNight}>
                   <Calendar className="w-4 h-4" />

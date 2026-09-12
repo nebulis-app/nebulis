@@ -319,6 +319,59 @@ describe('parseFilename — ASIAIR', () => {
     expect(result.type).toBe('thumbnail');
     expect(result.framePreview).toBe(true);
   });
+
+  // The cases below are real frames captured off a physical ASIAIR (IC 5146
+  // session, 2026-09-04) plus two names read directly off the device's own
+  // "Customize File Name" settings screen. They confirm two things the
+  // original ZWO-transfer-guide-derived pattern got wrong: decimal points are
+  // written as underscores, not dots, and `_<n>deg_` is the real, independently
+  // toggleable Camera Angle field, not noise.
+
+  it('parses a real captured frame: underscore decimals and a camera angle field', () => {
+    const result = parseFilename('Light_IC_5146_120_0s_Bin1_None_gain100_20260904-051928_2deg_-8_0C_0207.fit');
+    expect(result.type).toBe('sub');
+    // Underscores in the target are restored to spaces so it resolves against
+    // the IC5146 catalog entry (normalizeCatalogId/normalizeObjectId only
+    // strip spaces, not underscores).
+    expect(result.target).toBe('IC 5146');
+    expect(result.exposure).toBe('120_0s');
+    expect(result.subIndex).toBe(207);
+    expect(result.timestamp).toBe('20260904-051928');
+    expect(result.date).toBe('2026-09-04');
+    expect(result.extension).toBe('.fit');
+  });
+
+  it('parses another real captured frame from the same session, with a single-digit angle and sub-zero temperature step', () => {
+    const result = parseFilename('Light_IC_5146_120_0s_Bin1_None_gain100_20260904-023444_3deg_-7_8C_0130.fit');
+    expect(result.target).toBe('IC 5146');
+    expect(result.exposure).toBe('120_0s');
+    expect(result.subIndex).toBe(130);
+    expect(result.date).toBe('2026-09-04');
+  });
+
+  it('parses the "Customize File Name" example with the ASI Camera Model field toggled off', () => {
+    const result = parseFilename('Light_M31_180s_Bin1_R_gain100_20111128-080808_180deg_-20C_0001.fit');
+    expect(result.type).toBe('sub');
+    expect(result.target).toBe('M31');
+    expect(result.exposure).toBe('180s');
+    expect(result.filter).toBe('R');
+    expect(result.subIndex).toBe(1);
+    expect(result.date).toBe('2011-11-28');
+  });
+
+  it('parses the "Customize File Name" example with the ASI Camera Model field toggled on', () => {
+    // With ASI Camera Model on, ASIAIR inserts another token (e.g. "6200MC")
+    // between the filter and the gain. It must not be mistaken for the
+    // filter, nor break the timestamp/angle/temperature fields after it.
+    const result = parseFilename('Light_M31_180s_Bin1_R_6200MC_gain100_20111128-080808_180deg_-20C_0001.fit');
+    expect(result.type).toBe('sub');
+    expect(result.target).toBe('M31');
+    expect(result.exposure).toBe('180s');
+    expect(result.filter).toBe('R');
+    expect(result.subIndex).toBe(1);
+    expect(result.timestamp).toBe('20111128-080808');
+    expect(result.date).toBe('2011-11-28');
+  });
 });
 
 // ─── getSessionKey ──────────────────────────────────────────────

@@ -102,6 +102,9 @@
     "vite": "^8.1.0",
     "vitest": "^4.1.9"
   },
+  "overrides": {
+    "esbuild": "0.28.1"
+  },
   "pnpm": {
     "overrides": {
       "esbuild": "0.28.1",

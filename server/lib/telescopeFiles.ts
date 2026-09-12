@@ -169,12 +169,26 @@ function parseFilenameFormat(filename: string): ParsedFilename {
     };
   }
 
-  // ZWO ASIAIR frames. BEST-EFFORT, UNVERIFIED — built from ZWO's transfer
-  // guide and community tooling, not from a device (see walkers/asiairWalker.ts).
-  //   Light_M42_10.0s_Bin1_S_gain360_20240320-203324_-10.0C_0001.fit
+  // ZWO ASIAIR frames. Validated against real captured frames (IC 5146
+  // session, 2026-09-04) and against the device's own "Customize File Name"
+  // settings screen (Settings → camera icon), which lists five independently
+  // toggleable fields between Bin<n> and the sequence number: ASI Camera
+  // Model, Filter, Gain, Timestamp, Camera Angle and Temperature.
+  //   Light_M31_180s_Bin1_R_gain100_20111128-080808_180deg_-20C_0001.fit
+  //   Light_M31_180s_Bin1_R_6200MC_gain100_20111128-080808_180deg_-20C_0001.fit  (camera model on)
+  //   Light_IC_5146_120_0s_Bin1_None_gain100_20260904-051928_2deg_-8_0C_0207.fit
   //   Light_M42_240.0s_Bin1_ISO1600_20230212-195555_0001.FIT   (no temperature, ISO gain)
   //   Dark_60s_Bin1_20250723-13073265_0018.fit                  (no target, no filter/gain)
   //   Flat_1.0ms_Bin1_S_gain100_20240320-233122_-10.5C_0001.fit
+  //
+  // Two quirks confirmed against real hardware that the pattern below exists
+  // to absorb:
+  //   1. Decimal points come out as underscores (`120_0s`, `-8_0C`), not dots
+  //      — almost certainly FAT32/SMB filename sanitisation on the device.
+  //      Both separators are accepted since older captures/tooling may still
+  //      produce a literal dot.
+  //   2. `_<n>deg_` is the Camera Angle field, a real toggleable field, not
+  //      noise — it sits between the timestamp and the temperature.
   //
   // `_Bin<n>_` is the discriminator: no SeeStar or Dwarf name carries it, and
   // every ASIAIR name does. Everything else is optional because firmware
@@ -182,19 +196,22 @@ function parseFilenameFormat(filename: string): ParsedFilename {
   // timestamp positionally rather than demanding a full field list. This sits
   // ahead of the SeeStar Light_* rule below: that rule cannot currently match
   // an ASIAIR name (it requires the timestamp to end the stem, and ASIAIR
-  // appends temperature and a sequence number), but the two share a prefix and
-  // ordering them explicitly keeps a later widening of either one honest.
+  // appends a camera angle, temperature and a sequence number), but the two
+  // share a prefix and ordering them explicitly keeps a later widening of
+  // either one honest.
   //
-  // The middle chunk between Bin and the timestamp holds the filter and the
-  // gain in either order-of-presence, so it is captured whole and split below
-  // rather than guessed at with alternation.
+  // The middle chunk between Bin and the timestamp holds the filter, the
+  // optional camera model, and the gain in order-of-presence, so it is
+  // captured whole and split below rather than guessed at with alternation.
   const asiairMatch = withoutCopySuffix.match(
-    /^(Light|Dark|Flat|Bias)_(?:(.+?)_)?(\d+(?:\.\d+)?m?s)_Bin\d+((?:_[A-Za-z0-9+-]+)*?)_(\d{8})-(\d{6})\d*(?:_[^_]*C)?(?:_(\d+))?\.[^.]+$/i,
+    /^(Light|Dark|Flat|Bias)_(?:(.+?)_)?(\d+(?:[._]\d+)?m?s)_Bin\d+((?:_[A-Za-z0-9+-]+)*?)_(\d{8})-(\d{6})\d*(?:_\d+deg)?(?:_-?\d+(?:[._]\d+)?C)?(?:_(\d+))?\.[^.]+$/i,
   );
   if (asiairMatch) {
     const [, frameType, target, exposure, middle, datePart, timePart, seq] = asiairMatch;
-    // gain360 / ISO1600 are the exposure settings, not a filter. Whatever else
-    // sits in there is the filter name (L, R, G, B, Ha, S, O, Duo-Band...).
+    // gain360 / ISO1600 are the exposure settings, not a filter. The ASI
+    // Camera Model token (e.g. "6200MC"), when present, sits after the filter
+    // and is skipped the same way: whichever token comes first that isn't a
+    // gain/ISO token is the filter name (L, R, G, B, Ha, S, O, Duo-Band...).
     const filter = middle
       .split('_')
       .filter(Boolean)
@@ -204,7 +221,11 @@ function parseFilenameFormat(filename: string): ParsedFilename {
       // ASIAIR writes calibration frames with no target token. They are
       // archived rather than imported (see import.ts's calibration pass), so
       // naming them after the frame type is only ever a display fallback.
-      target: target ?? frameType,
+      // Multi-word targets come back with underscores instead of spaces
+      // (`IC_5146`, another symptom of the device's filename sanitisation);
+      // restore spaces so this resolves against catalog entries the same way
+      // Dwarf's target.replace below does.
+      target: (target ?? frameType).replace(/_/g, ' '),
       subIndex: seq ? parseInt(seq, 10) : undefined,
       exposure,
       filter,

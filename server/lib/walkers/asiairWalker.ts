@@ -1,10 +1,15 @@
 /**
  * ZWO ASIAIR folder-layout convention.
  *
- * BEST-EFFORT, UNVERIFIED. Built from ZWO's own image-transfer guide, the
- * `poto-siril` ASIAIR toolchain, and Cloudy Nights / ZWO forum reports. It has
- * not been run against a physical ASIAIR, which is what the "(Beta)" label on
- * the telescope kind is claiming. Validate against a real device before
+ * The filename format this module hands off to `parseFilename` has been
+ * validated against real captured frames (IC 5146 session, 2026-09-04) and
+ * against the device's own "Customize File Name" settings screen — see the
+ * ASIAIR block in telescopeFiles.ts. The *folder layout* below (Autorun/Plan
+ * split, Live/ output, calibration folders) remains BEST-EFFORT, UNVERIFIED:
+ * built from ZWO's own image-transfer guide, the `poto-siril` ASIAIR
+ * toolchain, and Cloudy Nights / ZWO forum reports, and not yet run against a
+ * physical ASIAIR, which is what the "(Beta)" label on the telescope kind is
+ * claiming. Validate the directory tree against a real device before
  * dropping that label.
  *
  *   <root>/

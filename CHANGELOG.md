@@ -1,4 +1,9 @@
 # Changelog
+## Unreleased
+### Fixes
+- ZWO ASIAIR (Beta): light frames captured on a real ASIAIR were not recognized, because of how the device writes exposure time, temperature, and camera angle into the filename. Every frame from an affected import landed on a single undated, oddly-named object instead of being grouped by night. Filenames from a real ASIAIR are now read correctly.
+- ZWO ASIAIR (Beta): an object with a multi-word name (for example IC 5146) did not match its catalog entry, because the name read from the filename kept underscores where the catalog expects spaces. It now matches correctly.
+
 ## 2.0.1 (254) - September 7th, 2026
 ### New
 - Sky Forecast: the "Upcoming Nights" outlook now covers three nights instead of two. The third night is about three days out, so its card is dimmed to show it is less certain.

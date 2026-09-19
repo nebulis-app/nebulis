@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Sun, Moon, Settings, Library, Sparkles, EyeOff, CloudMoon, Calendar, Crosshair, RefreshCw, HelpCircle, LogOut, ShieldCheck, Eye, Images, BookOpen, Aperture, Telescope, ChevronDown } from 'lucide-react';
+import { Sun, Moon, Settings, Library, Sparkles, EyeOff, CloudMoon, Calendar, Crosshair, RefreshCw, HelpCircle, Home, LogOut, ShieldCheck, Eye, Images, BookOpen, Aperture, Telescope, ChevronDown } from 'lucide-react';
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -161,6 +161,12 @@ export function Layout({ children }: LayoutProps) {
             {/* Nav links — absolutely centered so the strip stays in the middle
                 of the bar regardless of how wide the logo or right-side group get. */}
             <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1">
+              {isVisible('home') && (
+                <NavLink to="/tonight" active={location.pathname === '/tonight'} activeClass={activeNavClass} isDark={isDark} isNight={isNight}>
+                  <Home className="w-4 h-4" />
+                  <span>Tonight</span>
+                </NavLink>
+              )}
               <TourAnchor id="nav-library">
                 <NavLink to="/" active={location.pathname === '/'} activeClass={activeNavClass} isDark={isDark} isNight={isNight}>
                   <Library className="w-4 h-4" />

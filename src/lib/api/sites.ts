@@ -83,3 +83,16 @@ export const reassignSessionSite = (objectId: string, date: string, siteId: stri
     `/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/site`,
     { method: 'PUT', body: JSON.stringify({ siteId }) },
   );
+
+/**
+ * Look up the Bortle class for a site from satellite light-pollution data
+ * (DarkSkySites.com — monthly VIIRS composite, no API key required).
+ *
+ * Returns the detected `bortleClass` (1–9) and `sqm` (magnitudes per sq
+ * arcsec). Results are cached server-side for 24 hours.
+ */
+export const lookupSiteBortle = (siteId: string) =>
+  fetchJSON<{ bortleClass: number; sqm: number; source: 'live' | 'cache' }>(
+    `/sites/${encodeURIComponent(siteId)}/bortle-lookup`,
+    { method: 'POST' },
+  );

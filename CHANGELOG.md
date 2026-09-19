@@ -1,6 +1,10 @@
 # Changelog
 ## Unreleased
 ### New
+- Added a **Tonight** page (accessible from the top navigation) that shows everything you need for tonight's session on a single screen: how many hours of astronomical darkness are available, weather conditions hour by hour across the dark window, moon phase and illumination, light pollution class, and ten deep-sky objects worth imaging tonight — chosen to give a mix of nebulae, galaxies, clusters, and more rather than showing the same object type over and over.
+- The Tonight page detects your site's light pollution level (Bortle scale) automatically from satellite data the first time you visit, and saves the result to your observing site so it also appears in Settings. Admins can refresh the reading at any time with a single button.
+- Each object in the Tonight targets grid has an **Add to Planner** button that adds it to your planner wishlist in one tap. A **Shuffle** button in the section header swaps in a fresh varied mix of objects from tonight's full visible catalog.
+- The Tonight page can be hidden from the navigation bar in **Settings → General → Navigation bar**, the same way every other optional nav item (Gallery, Forecast, Planner, Catalogs, Help) can be.
 - Library: each object now has a processing status — Unprocessed, Processing, or Processed — that you set yourself to track where it stands in your own editing pipeline (Siril, PixInsight, etc.). It shows as a colored pill next to the favorite button on the object page, where an admin can click it to change it; on the Library grid, the same pill shows on a card next to its favorite icon once set to Processing or Processed, so an untouched object stays uncluttered. It's a manual label only — the app never sets or changes it based on how many processed images or archives you've uploaded for the object.
 - Library: added a Status filter, next to the telescope filter, to show only Unprocessed, Processing, or Processed objects.
 ## 2.0.2 (263) - September 15th, 2026

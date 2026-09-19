@@ -128,4 +128,82 @@ router.delete('/:id', requireAdmin, (req: Request, res: Response) => {
   res.apiSuccess({ deleted: true, id });
 });
 
+// ── Bortle class lookup via DarkSkySites.com ───────────────────────────────
+//
+// Proxies GET /api/site-intelligence?lat=&lng= from darkskysites.com, which
+// returns monthly VIIRS satellite data converted to Bortle class + SQM for
+// any lat/lng. No API key required.
+//
+// We proxy server-side to:
+//   1. Avoid CORS restrictions in the browser.
+//   2. Apply a 24-hour in-memory cache so repeated requests from the same
+//      site don't re-hit the external API (the underlying data is a monthly
+//      VIIRS composite — it never changes more frequently than that).
+//   3. Surface a clean, consistent error to the frontend.
+//
+// POST (not GET) so the browser never caches this or fires it speculatively.
+// requireAdmin: writing the result back to the site is admin-only anyway.
+
+interface BortleCacheEntry { bortleClass: number; sqm: number; fetchedAt: number }
+const bortleCache = new Map<string, BortleCacheEntry>();
+const BORTLE_CACHE_TTL_MS = 24 * 60 * 60 * 1_000; // 24 h
+
+router.post('/:id/bortle-lookup', requireAdmin, async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const site = getSite(id) as ObservingSite | null;
+  if (!site) {
+    res.apiError(404, 'NOT_FOUND', 'Observing site not found');
+    return;
+  }
+  if (site.latitude == null || site.longitude == null) {
+    res.apiError(400, 'NO_COORDINATES', 'Site has no coordinates — set latitude and longitude first.');
+    return;
+  }
+
+  const cacheKey = `${site.latitude.toFixed(4)},${site.longitude.toFixed(4)}`;
+  const cached = bortleCache.get(cacheKey);
+  if (cached && Date.now() - cached.fetchedAt < BORTLE_CACHE_TTL_MS) {
+    res.apiSuccess({ bortleClass: cached.bortleClass, sqm: cached.sqm, source: 'cache' });
+    return;
+  }
+
+  try {
+    const url = `https://darkskysites.com/api/site-intelligence?lat=${site.latitude.toFixed(6)}&lng=${site.longitude.toFixed(6)}`;
+    const upstream = await fetch(url, {
+      headers: {
+        'User-Agent': 'Nebulis/1.0 (https://nebulis.app - astrophotography companion)',
+        'Accept': 'application/json',
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!upstream.ok) {
+      res.apiError(502, 'UPSTREAM_ERROR', `DarkSkySites returned HTTP ${upstream.status}`);
+      return;
+    }
+
+    const json = await upstream.json() as {
+      payload?: { metrics?: { bortleClass?: number; sqm?: number } };
+    };
+    const metrics = json?.payload?.metrics;
+    if (typeof metrics?.bortleClass !== 'number' || typeof metrics?.sqm !== 'number') {
+      res.apiError(502, 'UPSTREAM_ERROR', 'Unexpected response shape from DarkSkySites');
+      return;
+    }
+
+    const entry: BortleCacheEntry = {
+      bortleClass: metrics.bortleClass,
+      sqm: metrics.sqm,
+      fetchedAt: Date.now(),
+    };
+    bortleCache.set(cacheKey, entry);
+
+    res.apiSuccess({ bortleClass: entry.bortleClass, sqm: entry.sqm, source: 'live' });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[bortle-lookup] fetch failed:', msg);
+    res.apiError(502, 'UPSTREAM_ERROR', `Could not reach DarkSkySites: ${msg}`);
+  }
+});
+
 export { router as sitesRouter };

@@ -1,6 +1,7 @@
 # Changelog
 ## Unreleased
 ### New
+- Catalogs: every object in the catalog now shows filter recommendations for your rig — one suggestion for a colour camera and one for a mono camera, based on the object's type. Open any object's detail panel to see the recommendation, with a tooltip explaining why that filter choice suits that target.
 - Library: each object now has a processing status — Unprocessed, Processing, or Processed — that you set yourself to track where it stands in your own editing pipeline (Siril, PixInsight, etc.). It shows as a colored pill next to the favorite button on the object page, where an admin can click it to change it; on the Library grid, the same pill shows on a card next to its favorite icon once set to Processing or Processed, so an untouched object stays uncluttered. It's a manual label only — the app never sets or changes it based on how many processed images or archives you've uploaded for the object.
 - Library: added a Status filter, next to the telescope filter, to show only Unprocessed, Processing, or Processed objects.
 ## 2.0.2 (263) - September 15th, 2026

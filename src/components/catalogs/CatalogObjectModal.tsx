@@ -8,6 +8,7 @@ import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { computeBestImagingWindow, isUpTonight } from '../../lib/bestImagingWindow';
 import type { FitAssessment } from '../../lib/telescopeFov';
 import { FitBadge } from '../FitBadge';
+import { FilterRecommendationPanel } from '../FilterRecommendationPanel';
 import { FramingModal, FRAMING_MOSAIC_ENABLED } from './FramingModal';
 
 interface Props {
@@ -366,6 +367,14 @@ export function CatalogObjectModal({
               )}
             </div>
           </div>
+
+          {/* Filter recommendations */}
+          {info?.filterRecommendations && (
+            <FilterRecommendationPanel
+              recommendations={info.filterRecommendations}
+              isDark={isDark}
+            />
+          )}
 
           {/* Best imaging window chart */}
           {hasLocation && bestWindow ? (

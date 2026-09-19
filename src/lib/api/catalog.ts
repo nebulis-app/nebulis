@@ -1,5 +1,7 @@
 import type { CatalogEntry } from '../../types';
+import type { FilterRecommendation } from '../filterRecommendations';
 import { fetchJSON } from './client';
+export type { FilterRecommendation } from '../filterRecommendations';
 
 // Thumbnail URL
 export const fetchLocationName = (lat: number, lon: number, signal?: AbortSignal) =>
@@ -29,7 +31,7 @@ export const searchLocations = (q: string) =>
 export const getCatalogEntry = (id: string) => fetchJSON<CatalogEntry>(`/catalog/${encodeURIComponent(id)}`);
 
 // Catalog object info (fetched lazily from library DB / catalogCache / static catalog)
-interface CatalogObjectInfo {
+export interface CatalogObjectInfo {
   name: string;
   type: string;
   constellation: string;
@@ -44,6 +46,10 @@ interface CatalogObjectInfo {
   wikiUrl: string | null;
   alsoKnownAs: string[];
   override: CatalogOverrideRecord | null;
+  /** Filter recommendations derived from the object's type.
+   *  Present on servers that support this field; absent on older responses
+   *  (same optional-for-backward-compat convention used throughout this codebase). */
+  filterRecommendations?: FilterRecommendation;
 }
 export const getCatalogObjectInfo = (id: string) =>
   fetchJSON<CatalogObjectInfo>(`/catalog/${encodeURIComponent(id)}/info`);

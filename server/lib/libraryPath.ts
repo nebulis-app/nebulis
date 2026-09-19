@@ -249,14 +249,12 @@ export function getDefaultLibraryDir(): string {
  *  builds the path string; call isLibraryAvailable() to know whether it's
  *  actually reachable right now.
  *
- *  Throws when the location is a network share on a platform that can't
- *  resolve one (Linux/Docker — see resolveNetworkLibraryPath), by design:
- *  every other caller of this function is about to read or write the
- *  library, and silently falling back to some other path there would risk
- *  touching the wrong location. A caller that only wants a human-readable
- *  description of the *current* location, network-unsupported-platform
- *  included (e.g. to log or display it before resetting away from it), wants
- *  describeLibraryLocation() below instead. */
+ *  For network-share configs, delegates to resolveNetworkLibraryPath() which
+ *  is a pure string builder on all platforms (see its own doc comment — it no
+ *  longer throws on Linux/Docker since chore: sync v2.0.2). A caller that
+ *  only wants a human-readable description of the current location (e.g. to
+ *  log it before resetting away from it) can use describeLibraryLocation()
+ *  below, which also handles any future platform-guard changes gracefully. */
 export function getLibraryDir(): string {
   if (LIBRARY_DIR_OVERRIDE) return LIBRARY_DIR_OVERRIDE;
   const cfg = load();
@@ -265,18 +263,16 @@ export function getLibraryDir(): string {
 }
 
 /**
- * Same intent as getLibraryDir(), but never throws — for display/logging
- * only, never for an actual read or write.
+ * Same intent as getLibraryDir(), but guaranteed never to throw — for
+ * display/logging only, never for an actual read or write.
  *
- * A library previously relocated to a network share, then run on a platform
- * that doesn't support connecting to one directly (Linux/Docker), is exactly
- * the "location is gone for good" case the library-location reset route
- * exists to recover from (see POST /storage/library-location/reset) — but
- * that route calls getLibraryDir() first just to describe the location being
- * left behind, and resolveNetworkLibraryPath() throwing there took the whole
- * request down with a 500 before the reset itself ever ran, on exactly the
- * platform (Linux) most likely to need the escape hatch. This falls back to
- * a plain "host/share" description instead of resolving a real, usable path.
+ * resolveNetworkLibraryPath() is currently a pure string builder on all
+ * platforms (chore: sync v2.0.2), so the try/catch here is a safety net for
+ * any future platform-guard reinstatement rather than an active code path.
+ * Use this function (not getLibraryDir()) wherever the goal is describing the
+ * current location for a human-readable response or log line, so a future
+ * change to resolveNetworkLibraryPath() can never accidentally 500 a route
+ * that only needed a label.
  */
 export function describeLibraryLocation(): string {
   if (LIBRARY_DIR_OVERRIDE) return LIBRARY_DIR_OVERRIDE;

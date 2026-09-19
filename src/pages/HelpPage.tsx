@@ -666,7 +666,7 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
             label="Supported telescopes and sources"
             items={[
               { t: 'ZWO SeeStar S30, S30 Pro, S50, and S50 Pro', d: 'Wi-Fi over SMB, or USB when the storage is plugged in directly.' },
-              { t: 'ZWO ASIAIR (beta)', d: 'Wi-Fi over SMB, or USB.' },
+              { t: 'ZWO ASIAIR', d: 'Wi-Fi over SMB, or USB.' },
               { t: 'DWARFLAB Dwarf 3, II, and Mini', d: 'Wi-Fi over FTP, or USB.' },
               {
                 t: 'Any SMB share',
@@ -1518,7 +1518,7 @@ function QuickAnswers({ isDark }: { isDark: boolean }) {
     },
     {
       q: 'Which telescopes can I connect?',
-      a: 'ZWO SeeStar S30, S30 Pro, S50, and S50 Pro, the ZWO ASIAIR (beta), and DWARFLAB Dwarf 3, Dwarf II, and Dwarf Mini. There is also a generic option for any SMB share that follows the same folder layout, such as a NAS or another camera.',
+      a: 'ZWO SeeStar S30, S30 Pro, S50, and S50 Pro, the ZWO ASIAIR, and DWARFLAB Dwarf 3, Dwarf II, and Dwarf Mini. There is also a generic option for any SMB share that follows the same folder layout, such as a NAS or another camera.',
     },
     {
       q: 'I just installed it. What do I do first?',

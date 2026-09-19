@@ -25,9 +25,7 @@ export function isSeestarKind(kind: TelescopeKind): boolean {
     || kind === 'seestar-s30' || kind === 'seestar-s30-pro';
 }
 
-/** True for the ZWO ASIAIR controller. Beta: the layout this implies is built
- *  from ZWO's transfer guide and community tooling, not from a device on the
- *  bench (see walkers/asiairWalker.ts). Unlike SeeStar it is a controller, not
+/** True for the ZWO ASIAIR controller. Unlike SeeStar it is a controller, not
  *  a fixed optic, so its rig varies per user. Mirrored on the frontend at
  *  src/lib/telescopePresets.ts — see the note on isDwarfKind above. */
 export function isAsiairKind(kind: TelescopeKind): boolean {

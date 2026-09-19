@@ -96,29 +96,30 @@ describe('POST /storage/library-location/reset', () => {
     expect(isDefaultLocation()).toBe(true);
   });
 
-  // Regression test: resolveNetworkLibraryPath (libraryNetwork.ts) throws on
-  // any platform other than win32/darwin — by design, since Linux/Docker
-  // can't connect to a network share directly (see its own doc comment). The
-  // route used to call getLibraryDir() (which resolves through that same
-  // function) just to describe the location being left behind, so a network
-  // config configured on, say, macOS and then run under Linux/Docker (or a
-  // test asserting this exact scenario) 500'd here before the reset it
-  // exists to perform ever ran — on precisely the platform most likely to
-  // need this escape hatch. Caught via a real CI failure on Linux; see
-  // describeLibraryLocation()'s doc comment in libraryPath.ts.
+  // Regression test: the route must succeed even when the library is configured
+  // as a network share on Linux/Docker. resolveNetworkLibraryPath() was
+  // previously platform-gated and threw on Linux, which meant the reset route
+  // (which called getLibraryDir() purely to describe the old location) 500'd
+  // before the reset itself ran. resolveNetworkLibraryPath() was later
+  // refactored to be a pure string-builder on all platforms (chore: sync
+  // v2.0.2), so getLibraryDir() no longer throws — but the route must still
+  // return 200 and report the correct previousPath so users can recover from
+  // a network-share config copied from macOS/Windows onto a Linux/Docker host.
   it('clears a network config even on a platform that cannot resolve a real path for it (Linux/Docker)', async () => {
     setNetworkLibraryConfig({
       host: 'nas.local', share: 'Photos', domain: '', username: '', password: 'secret', subpath: 'Nebulis',
     });
     expect(isNetworkLocation()).toBe(true);
     setPlatform('linux');
-    expect(() => getLibraryDir()).toThrow();
+    // resolveNetworkLibraryPath() no longer throws on Linux (it returns a
+    // UNC-style display string); the route must still reset cleanly.
+    expect(() => getLibraryDir()).not.toThrow();
 
     const res = await fetch(`${baseUrl}/storage/library-location/reset`, { method: 'POST' });
     expect(res.status).toBe(200);
     const body = (await res.json()).data as { changed: boolean; previousPath: string };
     expect(body.changed).toBe(true);
-    expect(body.previousPath).toBe('network share nas.local/Photos');
+    expect(body.previousPath).toBe('\\\\nas.local\\Photos\\Nebulis');
     expect(isNetworkLocation()).toBe(false);
     expect(isDefaultLocation()).toBe(true);
   });

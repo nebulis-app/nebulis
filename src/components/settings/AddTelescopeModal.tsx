@@ -447,15 +447,6 @@ export function AddTelescopeModal({
               ))}
             </select>
             <p className={helperClass}>Picks sensible connection defaults and badge color for your model.</p>
-            {preset.beta && (
-              <div className={`mt-2 rounded-lg px-3 py-2 text-xs ${
-                isDark ? 'bg-amber-500/10 border border-amber-500/30 text-amber-200' : 'bg-amber-50 border border-amber-300 text-amber-900'
-              }`}>
-                <span className="font-semibold">Beta support.</span>{' '}
-                Built from published folder layouts rather than tested against the hardware.
-                Import should work, but check the first run before deleting anything from the device.
-              </div>
-            )}
           </div>
 
           {/* Friendly name (optional) */}

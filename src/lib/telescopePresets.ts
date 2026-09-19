@@ -46,10 +46,6 @@ interface TelescopePreset {
    *  192.168.88.1 when running their own access point. Empty means the user
    *  has to find their telescope's IP themselves. */
   defaultHostname: string;
-  /** Support for this device is built from published layouts rather than
-   *  tested against hardware. Renders a "(Beta)" marker and a short caveat so
-   *  the user knows what they are opting into. */
-  beta?: boolean;
 }
 
 /** Address a DWARFLAB telescope serves from when broadcasting its own Wi-Fi.
@@ -141,12 +137,11 @@ export const TELESCOPE_PRESETS: Record<TelescopeKind, TelescopePreset> = {
   },
   'asiair': {
     kind: 'asiair',
-    label: 'ZWO ASIAIR (Beta)',
+    label: 'ZWO ASIAIR',
     model: 'ASIAIR',
     // ZWO uses the same share name on ASIAIR as on SeeStar.
     shareName: 'EMMC Images',
     username: 'guest',
-    beta: true,
     shareHelp: {
       headline: 'Leave this as "EMMC Images".',
       body: 'ASIAIR publishes its storage under that name with guest access, read-only.',

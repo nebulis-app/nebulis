@@ -16,6 +16,7 @@ node_modules
 .claude/
 # AI agent memory bank — per-developer working notes, not project source.
 .ai-agents/
+opencode.jsonc
 # Reasonix tool state/config — local-only, never for project source or public sync.
 .reasonix/
 reasonix.toml

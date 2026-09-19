@@ -21,6 +21,7 @@ import { SitePicker } from '../components/SitePicker';
 import { smoothHours, type DarkWindow } from '../lib/forecastScore';
 import { TonightHero } from '../components/forecast/TonightHero';
 import { HourDetail } from '../components/forecast/HourDetail';
+import { ImagingWindow } from '../components/forecast/ImagingWindow';
 import { NightOutlookCard } from '../components/forecast/NightOutlookCard';
 import { RatingLegend } from '../components/ui/RatingLegend';
 import { hoursForNight } from '../lib/forecastNights';
@@ -235,6 +236,18 @@ export function ForecastPage() {
               windUnit={windUnit}
               timeZone={tz}
               darkWindow={darkWindow}
+            />
+          )}
+
+          {tonightHours.length > 1 && (
+            <ImagingWindow
+              hours={tonightHours}
+              tonight={forecast.tonight}
+              timeZone={tz}
+              darkWindow={darkWindow}
+              tempUnit={tempUnit}
+              windUnit={windUnit}
+              isDark={isDark}
             />
           )}
 

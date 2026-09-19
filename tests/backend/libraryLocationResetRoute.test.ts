@@ -96,29 +96,35 @@ describe('POST /storage/library-location/reset', () => {
     expect(isDefaultLocation()).toBe(true);
   });
 
-  // Regression test: resolveNetworkLibraryPath (libraryNetwork.ts) throws on
-  // any platform other than win32/darwin — by design, since Linux/Docker
-  // can't connect to a network share directly (see its own doc comment). The
-  // route used to call getLibraryDir() (which resolves through that same
-  // function) just to describe the location being left behind, so a network
-  // config configured on, say, macOS and then run under Linux/Docker (or a
-  // test asserting this exact scenario) 500'd here before the reset it
-  // exists to perform ever ran — on precisely the platform most likely to
-  // need this escape hatch. Caught via a real CI failure on Linux; see
-  // describeLibraryLocation()'s doc comment in libraryPath.ts.
+  // Regression test: the reset route must succeed on Linux/Docker even when
+  // the library was previously configured as a network share — the exact
+  // platform that cannot *use* a network share but is most likely to need
+  // this escape hatch. resolveNetworkLibraryPath() used to throw on non-
+  // win32/darwin platforms, and the old route called getLibraryDir() (which
+  // runs through that path) just to describe the previous location, so the
+  // request 500'd before the reset ran. resolveNetworkLibraryPath() was later
+  // updated to return a UNC-style display string on all platforms rather than
+  // throw — the route now succeeds and the previous-path description is that
+  // UNC string. See libraryNetwork.ts's resolveNetworkLibraryPath() doc comment.
   it('clears a network config even on a platform that cannot resolve a real path for it (Linux/Docker)', async () => {
     setNetworkLibraryConfig({
       host: 'nas.local', share: 'Photos', domain: '', username: '', password: 'secret', subpath: 'Nebulis',
     });
     expect(isNetworkLocation()).toBe(true);
     setPlatform('linux');
-    expect(() => getLibraryDir()).toThrow();
+    // resolveNetworkLibraryPath() now returns a UNC-style string on Linux
+    // rather than throwing — getLibraryDir() therefore also does not throw.
+    expect(() => getLibraryDir()).not.toThrow();
+    expect(getLibraryDir()).toContain('nas.local');
 
     const res = await fetch(`${baseUrl}/storage/library-location/reset`, { method: 'POST' });
     expect(res.status).toBe(200);
     const body = (await res.json()).data as { changed: boolean; previousPath: string };
     expect(body.changed).toBe(true);
-    expect(body.previousPath).toBe('network share nas.local/Photos');
+    // previousPath is the UNC-style display string returned by
+    // describeLibraryLocation() / resolveNetworkLibraryPath() — it includes
+    // the host name so the user can identify the share being cleared.
+    expect(body.previousPath).toContain('nas.local');
     expect(isNetworkLocation()).toBe(false);
     expect(isDefaultLocation()).toBe(true);
   });

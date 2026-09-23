@@ -1,4 +1,4 @@
-import type { AstroObject, Session, ProcessedImage, ProjectArchive, SessionCaptureSummary } from '../../types';
+import type { AstroObject, Session, ProcessedImage, ProjectArchive, SessionCaptureSummary, ProcessingStatus } from '../../types';
 export type { ProcessedImage, ProjectArchive };
 import { fetchJSON, authHeaders, BASE } from './client';
 import type { ConnectionType as TransportKind } from './telescopes';

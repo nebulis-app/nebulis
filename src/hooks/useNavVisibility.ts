@@ -1,13 +1,14 @@
 import { createContext, useContext, useState, useCallback, useMemo, createElement, type ReactNode } from 'react';
 
-export type NavItemId = 'gallery' | 'forecast' | 'planner' | 'catalogs' | 'help';
+export type NavItemId = 'gallery' | 'forecast' | 'planner' | 'catalogs' | 'calibrations' | 'help';
 
 export const NAV_ITEMS: { id: NavItemId; label: string }[] = [
-  { id: 'gallery',  label: 'Gallery' },
-  { id: 'forecast', label: 'Forecast' },
-  { id: 'planner',  label: 'Planner' },
-  { id: 'catalogs', label: 'Catalogs' },
-  { id: 'help',     label: 'Help' },
+  { id: 'gallery',      label: 'Gallery' },
+  { id: 'forecast',     label: 'Forecast' },
+  { id: 'planner',      label: 'Planner' },
+  { id: 'catalogs',     label: 'Catalogs' },
+  { id: 'calibrations', label: 'Calibrations' },
+  { id: 'help',         label: 'Help' },
 ];
 
 const STORAGE_KEY = 'nebulis-nav-hidden';

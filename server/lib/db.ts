@@ -554,10 +554,13 @@ db.exec(`
   --
   -- date = '' is the "whole object" sentinel (applies to every session of
   -- the object that has no more specific attachment of its own) rather than
-  -- NULL, so the unique index below actually enforces "at most one flat +
-  -- one flat-dark attachment per (object, date) slot" — SQLite treats every
-  -- NULL in a unique index as distinct from every other NULL, which would
-  -- silently defeat that constraint.
+  -- NULL, so the unique index below enforces "at most one attachment per
+  -- (object, date, calibrationType, bundle)" — settingsKey is included so
+  -- a second flat bundle with different settings (e.g. a second filter)
+  -- can coexist with the first on the same object, while the same bundle
+  -- cannot be attached twice to the same slot. SQLite treats every NULL in
+  -- a unique index as distinct from every other NULL, which would silently
+  -- defeat that constraint — date uses '' instead of NULL for this reason.
   CREATE TABLE IF NOT EXISTS calibrationAttachments (
     id              TEXT PRIMARY KEY,
     objectId        TEXT NOT NULL REFERENCES libraryObjects(objectId) ON DELETE CASCADE,
@@ -569,7 +572,7 @@ db.exec(`
     createdAt       TEXT NOT NULL
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_calibrationAttachments_slot
-    ON calibrationAttachments(objectId, date, calibrationType);
+    ON calibrationAttachments(objectId, date, calibrationType, settingsKey);
   CREATE INDEX IF NOT EXISTS idx_calibrationAttachments_bundle
     ON calibrationAttachments(scope, folderName, settingsKey);
 `);
@@ -979,6 +982,36 @@ db.exec(`
   const asExpiryCols = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
   if (!asExpiryCols.some(c => c.name === 'calibrationExpiryDays')) {
     db.prepare('ALTER TABLE appSettings ADD COLUMN calibrationExpiryDays INTEGER NOT NULL DEFAULT 180').run();
+  }
+}
+
+// ─── calibrationAttachments unique-index widening ────────────────────────────
+// The original index was (objectId, date, calibrationType), which limited each
+// object to exactly one flat bundle and one flat-dark bundle — a real-world
+// multi-filter rig (e.g. H-alpha + SII flats for the same object) hits this
+// immediately. Widening to include settingsKey lets multiple distinct bundles
+// of the same type coexist on the same object/date slot.
+//
+// SQLite cannot ALTER INDEX, so we drop and recreate. The idempotent
+// IF EXISTS / IF NOT EXISTS guards make this safe to run on every boot.
+{
+  const idxRows = db.prepare<[], { name: string }>(
+    "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_calibrationAttachments_slot'"
+  ).all();
+  // If the index still uses the old 3-column definition, drop it so the
+  // CREATE UNIQUE INDEX at the top of this file recreates it with 4 columns.
+  // We detect the old shape by checking whether its column list lacks settingsKey.
+  if (idxRows.length > 0) {
+    const idxInfo = db.prepare<[], { name: string }>(
+      "PRAGMA index_info(idx_calibrationAttachments_slot)"
+    ).all();
+    const hasSettingsKey = idxInfo.some((c: { name: string }) => c.name === 'settingsKey');
+    if (!hasSettingsKey) {
+      db.prepare('DROP INDEX IF EXISTS idx_calibrationAttachments_slot').run();
+      db.prepare(
+        'CREATE UNIQUE INDEX idx_calibrationAttachments_slot ON calibrationAttachments(objectId, date, calibrationType, settingsKey)'
+      ).run();
+    }
   }
 }
 

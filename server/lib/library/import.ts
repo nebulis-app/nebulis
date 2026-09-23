@@ -1766,7 +1766,7 @@ export async function runImport(
       try {
         await migrateRestackedToSharedRootOnce();
         const restackedPath = path.posix.join(walkerBase, RESTACKED_FOLDER);
-        const allCandidates = await collectRemoteArchiveCandidates(profile, walkerBase, [RESTACKED_FOLDER]);
+        const allCandidates = await collectRemoteArchiveCandidates(profile, walkerBase, [RESTACKED_FOLDER], { shouldCancel: () => importCancelRequested });
         const matchedRelPaths = new Set<string>();
         // Derive the subfolder set and each subfolder's file list from
         // allCandidates: collectRemoteArchiveCandidates already walked the
@@ -1876,7 +1876,7 @@ export async function runImport(
         // lists each independently and simply finds nothing for one that's
         // absent (smbListDir returns an empty listing for a missing remote
         // directory rather than throwing, matching SMB/local semantics).
-        const candidates = await collectRemoteArchiveCandidates(profile, archiveBase, archiveFolders);
+        const candidates = await collectRemoteArchiveCandidates(profile, archiveBase, archiveFolders, { shouldCancel: () => importCancelRequested });
         if (candidates.length > 0) {
           const archived = await downloadToArchive(profile, candidates, getArchiveDir(profile.id), {
             shouldCancel: () => importCancelRequested,

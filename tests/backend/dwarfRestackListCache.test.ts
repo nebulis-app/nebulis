@@ -23,6 +23,12 @@ vi.mock('../../server/lib/smb', async (importOriginal) => {
       listDirCalls.push(dirPath);
       return actual.smbListDir(dirPath, profile as never);
     },
+    // smbListDirGuarded delegates to smbListDir internally; mock it the same
+    // way so the listDirCalls spy captures both direct and guarded listings.
+    smbListDirGuarded: (dirPath: string, profile: unknown, session: import('../../server/lib/smb').SmbWalkSession) => {
+      listDirCalls.push(dirPath);
+      return actual.smbListDirGuarded(dirPath, profile as never, session);
+    },
   };
 });
 

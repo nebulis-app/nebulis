@@ -105,8 +105,8 @@ describe('ASIAIR walker', () => {
 
   it('exposes every calibration path the archive pass needs to sweep', () => {
     expect([...ASIAIR_CALIBRATION_PATHS]).toEqual([
-      'Autorun/Dark', 'Autorun/Flat', 'Autorun/Bias',
-      'Plan/Dark', 'Plan/Flat', 'Plan/Bias',
+      'Autorun/Dark', 'Autorun/Flat', 'Autorun/Bias', 'Autorun/FlatDark',
+      'Plan/Dark', 'Plan/Flat', 'Plan/Bias', 'Plan/FlatDark',
     ]);
   });
 

@@ -13,7 +13,7 @@
  * sync and a folder-import wizard run treat a repeat identically.
  */
 import path from 'path';
-import { smbListDir } from '../smb.js';
+import { smbListDir, smbListDirGuarded, SmbWalkSession } from '../smb.js';
 import type { TelescopeProfile } from '../telescopes.js';
 import { resolveArchiveDestination, type ArchiveCopyResult } from './archiveFolders.js';
 import { copyTransportFile } from './importWrite.js';
@@ -21,8 +21,13 @@ import { log } from '../logger.js';
 
 /** Same bounds archiveFolders.ts's local walk uses, so a symlink loop or a
  *  pathological remote tree can't hang a live sync any more than it can hang
- *  the wizard's local walk. */
-const MAX_DEPTH = 12;
+ *  the wizard's local walk.
+ *
+ *  `MAX_DEPTH` is the hard backstop, but a visited-path set (below) is the
+ *  primary defence: the ASIAIR EMMC firmware can present a circular directory
+ *  graph (`Autorun/Dark/Preview/…` cycling back to itself) that MAX_DEPTH
+ *  alone would take minutes to exhaust, one 15-second smbclient call per level. */
+const MAX_DEPTH = 3;   // lowered to 3 — calibration trees are rarely nested deeper than 1-2 levels (e.g. Darks/G100/60s). This strictly bounds the ASIAIR EMMC circular graph explosion.
 const MAX_FILES = 200_000;
 
 export interface RemoteArchiveCandidate {
@@ -43,20 +48,30 @@ export async function collectRemoteArchiveCandidates(
   profile: TelescopeProfile,
   basePath: string,
   folders: readonly string[],
+  opts: { shouldCancel?: () => boolean } = {},
 ): Promise<RemoteArchiveCandidate[]> {
   const out: RemoteArchiveCandidate[] = [];
 
+  // One walk session per collectRemoteArchiveCandidates call — detects
+  // circular directory graphs (ASIAIR EMMC firmware bug) via smbListDirGuarded.
+  const session = SmbWalkSession.create(
+    (cycleDir) => log.warn({ dir: cycleDir }, '[remote-archive] cycle detected — already visited this directory; skipping'),
+  );
+
   const visit = async (dir: string, relPrefix: string, depth: number): Promise<void> => {
     if (out.length >= MAX_FILES || depth > MAX_DEPTH) return;
+    if (opts.shouldCancel?.()) return;
+
     let entries;
     try {
-      entries = await smbListDir(dir, profile);
+      entries = await smbListDirGuarded(dir, profile, session);
     } catch (err) {
       log.warn({ err: err instanceof Error ? err.message : String(err), dir }, '[remote-archive] directory listing failed; skipping');
       return;
     }
     for (const e of entries) {
       if (out.length >= MAX_FILES) return;
+      if (opts.shouldCancel?.()) return;
       if (e.name.startsWith('.')) continue;
       const remotePath = path.posix.join(dir, e.name);
       const relPath = `${relPrefix}/${e.name}`;
@@ -69,6 +84,7 @@ export async function collectRemoteArchiveCandidates(
   };
 
   for (const folder of folders) {
+    if (opts.shouldCancel?.()) break;
     await visit(path.posix.join(basePath, folder), folder, 0);
   }
   return out;

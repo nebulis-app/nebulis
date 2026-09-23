@@ -126,6 +126,87 @@ export async function smbListDir(path: string, profile?: AnyProfile): Promise<Sm
   }, entries => `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`);
 }
 
+/**
+ * A lightweight session object that carries a visited-path set across a
+ * recursive remote directory walk. Pass one to `smbListDirGuarded` at every
+ * level of recursion so a circular filesystem (e.g. the ASIAIR EMMC loop at
+ * `Autorun/Dark/Preview/Preview/…`) is detected and skipped immediately instead
+ * of hanging until MAX_DEPTH is exhausted.
+ *
+ * Constructed once per walk root via `SmbWalkSession.create()` and threaded
+ * through every recursive `smbListDirGuarded` call. Non-recursive callers
+ * (fixed-depth walkers like asiairWalker's light-frame discovery) do not need
+ * this and continue using the plain `smbListDir` directly.
+ *
+ * Designed to be forward-compatible: if SMB symlinks ever become a concern the
+ * same set prevents symlink loops with no additional changes.
+ */
+export class SmbWalkSession {
+  private readonly visited = new Set<string>();
+
+  private constructor(private readonly log: (dir: string) => void) {}
+
+  static create(onCycle?: (dir: string) => void): SmbWalkSession {
+    return new SmbWalkSession(onCycle ?? (() => undefined));
+  }
+
+  /**
+   * Return true if `dir` has already been visited in this session — i.e. this
+   * path is part of a cycle. Records the path as visited on first call so a
+   * subsequent call for the same path detects the cycle.
+   */
+  checkAndMark(dir: string): boolean {
+    const canonical = dir.replace(/[/\\]+/g, '/').replace(/\/$/, '') || '/';
+
+    if (this.visited.has(canonical)) {
+      this.log(canonical);
+      return true;
+    }
+
+    // 2. Exponential explosion / phantom directory detection.
+    // The ASIAIR EMMC corruption presents as nested directories containing the
+    // exact same 9 top-level folders over and over. If we see any segment name
+    // repeated twice in the path (e.g. Plan/Dark/Plan or Preview/Live/Preview),
+    // we are caught in a phantom cycle. A user's legitimate calibration tree
+    // (e.g. Darks/G100/60s) will never repeat a segment name.
+    const segments = canonical.split('/').filter(Boolean);
+    const uniqueSegments = new Set(segments);
+    if (uniqueSegments.size < segments.length) {
+      this.log(canonical);
+      return true;
+    }
+
+    this.visited.add(canonical);
+    return false;
+  }
+}
+
+/**
+ * Drop-in for `smbListDir` inside recursive walkers. Checks `session` for a
+ * directory cycle before issuing the listing: if `dir` has already been visited
+ * in this walk session, returns an empty array and logs a warning rather than
+ * recursing into it.
+ *
+ * Usage:
+ *   ```ts
+ *   const session = SmbWalkSession.create(dir => log.warn({ dir }, 'cycle detected'));
+ *   async function visit(dir: string) {
+ *     const entries = await smbListDirGuarded(dir, profile, session);
+ *     for (const e of entries) {
+ *       if (e.type === 'dir') await visit(`${dir}/${e.name}`);
+ *     }
+ *   }
+ *   ```
+ */
+export async function smbListDirGuarded(
+  path: string,
+  profile: AnyProfile,
+  session: SmbWalkSession,
+): Promise<SmbEntry[]> {
+  if (session.checkAndMark(path)) return [];
+  return smbListDir(path, profile);
+}
+
 export async function smbGetFile(path: string, maxBytes?: number, profile?: AnyProfile): Promise<Buffer> {
   return withDebugLog('getFile', path, profile, async () => {
     if (isLocal(profile)) return local.localGetFile(path, maxBytes, profile);

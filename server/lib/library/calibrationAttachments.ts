@@ -75,8 +75,8 @@ function toAttachment(row: AttachmentRow): CalibrationAttachment {
   };
 }
 
-const selectSlotStmt = db.prepare<[string, string, string], AttachmentRow>(
-  'SELECT * FROM calibrationAttachments WHERE objectId = ? AND date = ? AND calibrationType = ?',
+const selectSlotStmt = db.prepare<[string, string, string, string], AttachmentRow>(
+  'SELECT * FROM calibrationAttachments WHERE objectId = ? AND date = ? AND calibrationType = ? AND settingsKey = ?',
 );
 
 const selectByIdStmt = db.prepare<[string], AttachmentRow>(
@@ -85,6 +85,12 @@ const selectByIdStmt = db.prepare<[string], AttachmentRow>(
 
 const selectForObjectStmt = db.prepare<[string], AttachmentRow>(
   'SELECT * FROM calibrationAttachments WHERE objectId = ? ORDER BY date, calibrationType',
+);
+
+// All bundles attached to (objectId, date, calibrationType) regardless of settingsKey —
+// used by resolveAttachmentsForSession where the settingsKey is not known upfront.
+const selectBySlotTypeStmt = db.prepare<[string, string, string], AttachmentRow>(
+  'SELECT * FROM calibrationAttachments WHERE objectId = ? AND date = ? AND calibrationType = ? ORDER BY createdAt',
 );
 
 // `scope IS ?` rather than `= ?`: scope is nullable (the shared unscoped
@@ -98,10 +104,9 @@ const selectForBundleStmt = db.prepare<[string | null, string, string], Attachme
 const upsertStmt = db.prepare<[string, string, string, string, string | null, string, string, string]>(`
   INSERT INTO calibrationAttachments (id, objectId, date, calibrationType, scope, folderName, settingsKey, createdAt)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  ON CONFLICT(objectId, date, calibrationType) DO UPDATE SET
+  ON CONFLICT(objectId, date, calibrationType, settingsKey) DO UPDATE SET
     scope = excluded.scope,
     folderName = excluded.folderName,
-    settingsKey = excluded.settingsKey,
     createdAt = excluded.createdAt
 `);
 
@@ -110,9 +115,13 @@ const deleteStmt = db.prepare<[string]>('DELETE FROM calibrationAttachments WHER
 /**
  * Attach (or re-attach — "reattach" per the feature request) a calibration
  * bundle to one object, optionally scoped to one specific session date.
- * Idempotent per (objectId, date, calibrationType) slot: attaching a new
- * bundle to an already-occupied slot replaces it, atomically, rather than
- * requiring a separate detach first — the whole point of "reattach".
+ * Idempotent per (objectId, date, calibrationType, settingsKey) slot:
+ * attaching the same bundle twice to the same object/date is a no-op that
+ * refreshes `createdAt`. Attaching a *different* bundle of the same type
+ * (e.g. a second flat bundle for a different filter) creates a new row
+ * rather than replacing the first — multiple distinct flat bundles can
+ * coexist on the same object. To replace a specific attached bundle,
+ * detach it by id first, then attach the replacement.
  *
  * `date` omitted or `null` attaches at the whole-object level. Does not
  * validate that `objectId` exists or that the bundle itself still exists —
@@ -143,7 +152,7 @@ export function attachCalibrationBundle(input: {
   // already-occupied slot keeps that row's original id (ON CONFLICT UPDATE
   // never touches the primary key), which is correct — the slot's identity
   // persists across a reattach, only its target bundle changes.
-  return toAttachment(selectSlotStmt.get(input.objectId, date, input.calibrationType)!);
+  return toAttachment(selectSlotStmt.get(input.objectId, date, input.calibrationType, input.settingsKey)!);
 }
 
 /** True if a row was deleted. */
@@ -164,18 +173,25 @@ export function listAttachmentsForObject(objectId: string): CalibrationAttachmen
 
 /**
  * The attachment that applies to one specific session, per calibration type
- * — a session-specific attachment wins over a whole-object one for the same
- * type, so a user can override just one night's flats without disturbing
- * every other session's. At most one 'flat' and one 'flatDark' come back.
+ * — session-specific attachments win over whole-object ones for the same
+ * type and settingsKey, so a user can override just one night's flats
+ * without disturbing every other session's. Multiple bundles of the same
+ * type (e.g. H-alpha flats + SII flats) are all returned: every flat and
+ * flat-dark bundle attached to this session, whether session-specific or
+ * whole-object, comes back.
  */
 export function resolveAttachmentsForSession(objectId: string, date: string): CalibrationAttachment[] {
   const types: AttachableCalibrationType[] = ['flat', 'flatDark'];
   const out: CalibrationAttachment[] = [];
   for (const type of types) {
-    const specific = date !== WHOLE_OBJECT_DATE ? selectSlotStmt.get(objectId, date, type) : undefined;
-    const wholeObject = specific ? undefined : selectSlotStmt.get(objectId, WHOLE_OBJECT_DATE, type);
-    const row = specific ?? wholeObject;
-    if (row) out.push(toAttachment(row));
+    // Prefer session-specific attachments; fall back to whole-object ones for any
+    // settingsKeys not covered at the session level.
+    const specific = date !== WHOLE_OBJECT_DATE ? selectBySlotTypeStmt.all(objectId, date, type) : [];
+    const specificKeys = new Set(specific.map(r => r.settingsKey));
+    const wholeObject = selectBySlotTypeStmt
+      .all(objectId, WHOLE_OBJECT_DATE, type)
+      .filter(r => !specificKeys.has(r.settingsKey));
+    out.push(...[...specific, ...wholeObject].map(toAttachment));
   }
   return out;
 }

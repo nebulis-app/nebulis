@@ -86,19 +86,33 @@ describe('attachCalibrationBundle / detachCalibrationBundle', () => {
     expect(attachment.date).toBe('2026-09-04');
   });
 
-  it('reattaching the same (object, date, type) slot replaces the previous bundle, keeping the same attachment id', () => {
+  it('attaching two bundles of the same type with different settingsKeys creates two independent rows', () => {
     makeObject('M27', 'M 27');
     const first = attachCalibrationBundle({
       objectId: 'M27', date: '2026-08-01', calibrationType: 'flat',
-      scope: null, folderName: 'Flats', settingsKey: 'A',
+      scope: null, folderName: 'Plan/Flat', settingsKey: 'Ha-key',
     });
     const second = attachCalibrationBundle({
       objectId: 'M27', date: '2026-08-01', calibrationType: 'flat',
-      scope: null, folderName: 'Flats', settingsKey: 'B',
+      scope: null, folderName: 'Plan/Flat', settingsKey: 'SII-key',
+    });
+    // Different settingsKey → two separate rows, not a replacement
+    expect(second.id).not.toBe(first.id);
+    expect(listAttachmentsForObject('M27')).toHaveLength(2);
+  });
+
+  it('attaching the same bundle twice (same settingsKey) is idempotent — same id, no duplicate row', () => {
+    makeObject('M27b', 'M 27b');
+    const first = attachCalibrationBundle({
+      objectId: 'M27b', date: '2026-08-01', calibrationType: 'flat',
+      scope: null, folderName: 'Plan/Flat', settingsKey: 'Ha-key',
+    });
+    const second = attachCalibrationBundle({
+      objectId: 'M27b', date: '2026-08-01', calibrationType: 'flat',
+      scope: null, folderName: 'Plan/Flat', settingsKey: 'Ha-key',
     });
     expect(second.id).toBe(first.id);
-    expect(second.settingsKey).toBe('B');
-    expect(listAttachmentsForObject('M27')).toHaveLength(1);
+    expect(listAttachmentsForObject('M27b')).toHaveLength(1);
   });
 
   it('a flat attachment and a flatDark attachment on the same (object, date) do not collide', () => {

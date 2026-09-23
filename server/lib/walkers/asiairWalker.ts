@@ -12,10 +12,10 @@
  *   <root>/
  *     Autorun/                     unattended capture runs
  *       Light/<Target>/*.fit       the frames
- *       Dark/ Flat/ Bias/          calibration, no target folder
+ *       Dark/ Flat/ Bias/ FlatDark/  calibration, no target folder
  *     Plan/                        same shape, for planned sequences
  *       Light/<Target>/*.fit
- *       Dark/ Flat/ Bias/
+ *       Dark/ Flat/ Bias/ FlatDark/
  *     Live/<Target>/               live-stacked output, when the user ran Live mode
  *     Preview/ Video/ log/         ignored
  *
@@ -69,9 +69,14 @@ export const ASIAIR_LIGHT_FOLDER = 'Light';
  * CALI_FRAME/DWARF_DARK get. Exported as mode-qualified relative paths because
  * that is the shape `collectRemoteArchiveCandidates` wants, and because the
  * `Autorun/`-vs-`Plan/` prefix is worth preserving in the archive.
+ *
+ * `FlatDark` is included alongside `Dark`, `Flat`, and `Bias`: the ASIAIR
+ * writes flat-dark frames into a `FlatDark/` sibling folder under each
+ * capture-mode folder, using the same folder-first layout as the other types.
+ * Omitting it silently dropped every flat-dark frame from live syncs.
  */
 export const ASIAIR_CALIBRATION_PATHS: readonly string[] = ASIAIR_MODE_FOLDERS.flatMap(
-  mode => ['Dark', 'Flat', 'Bias'].map(type => `${mode}/${type}`),
+  mode => ['Dark', 'Flat', 'Bias', 'FlatDark'].map(type => `${mode}/${type}`),
 );
 
 /** Folder the ASIAIR writes at the root of removable storage. ZWO's docs note

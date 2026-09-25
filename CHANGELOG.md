@@ -28,6 +28,7 @@
 - Storage: on macOS, free space now counts purgeable space (like local Time Machine snapshots) as free, matching what Finder and Disk Utility show, instead of reporting hundreds of gigabytes less than what's actually available.
 - Fixed several popups and dialogs not closing on Esc, and the Planner's altitude chart nudging the details dialog as its caption changed length.
 - Navigation bar: labels now stay full size whenever they fit between the logo and the telescope status pill, instead of tightening unnecessarily on windows that had room to spare.
+- Navigation bar: added a hamburger menu for phones and tablets (below 1024 px). The slide-out drawer adapts its layout to the screen orientation — a scrollable single row in landscape, and a column grid that scales with screen width in portrait. (@jjmartres)
 
 ## 2.0.2 (263) - September 15th, 2026
 ### Updated

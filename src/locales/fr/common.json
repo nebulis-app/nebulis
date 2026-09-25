@@ -73,7 +73,9 @@
     "roleAdmin": "Administrateur",
     "roleViewer": "Lecteur",
     "themeHeading": "Thème",
-    "signOut": "Se déconnecter"
+    "signOut": "Se déconnecter",
+    "openNavMenu": "Ouvrir le menu de navigation",
+    "closeNavMenu": "Fermer le menu de navigation"
   },
   "moonPhase": {
     "newMoon": "Nouvelle lune",

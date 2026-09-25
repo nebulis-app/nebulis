@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Sun, Moon, Settings, Library, Sparkles, EyeOff, CloudMoon, Calendar, Crosshair, RefreshCw, HelpCircle, LogOut, ShieldCheck, Eye, Images, BookOpen, Aperture, Telescope, ChevronDown, Star } from 'lucide-react';
+import { Sun, Moon, Settings, Library, Sparkles, EyeOff, CloudMoon, Calendar, Crosshair, RefreshCw, HelpCircle, LogOut, ShieldCheck, Eye, Images, BookOpen, Aperture, Telescope, ChevronDown, Star, Menu, X } from 'lucide-react';
 import { useState, useRef, useLayoutEffect, cloneElement, isValidElement, type ReactElement } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -47,6 +47,7 @@ const NAV_STRIP_CLEARANCE = 24;
  *  nav strip renders from `orderedItems` instead of one hardcoded link per
  *  item — same "third kind of dynamic id" case that file's own doc comment
  *  anticipates (it already does this for SETTINGS_NAV). */
+// eslint-disable-next-line react-refresh/only-export-components
 export const NAV_LINK_CONFIG: Record<NavItemId, {
   to: string;
   icon: ReactNode;
@@ -179,6 +180,10 @@ export function Layout({ children }: LayoutProps) {
 
   useClickOutside(dropdownRef, () => setProfileOpen(false));
 
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const mobileNavRef = useRef<HTMLDivElement>(null);
+  useClickOutside(mobileNavRef, () => setMobileNavOpen(false), { enabled: mobileNavOpen, closeOnEscape: true });
+
   // Sizing and placement pass for the nav strip. Runs in a layout effect so
   // the decision is applied before paint: on a narrow screen the strip renders
   // at full size for one commit, is measured, and tightens without the user
@@ -202,6 +207,7 @@ export function Layout({ children }: LayoutProps) {
       const logoRight = logo.getBoundingClientRect().right;
       const rightLeft = right.getBoundingClientRect().left;
       const needed = Math.ceil(strip.getBoundingClientRect().width);
+      if (needed === 0) return;
       // Every pixel between the logo and the status cluster is room the strip
       // can use. Judging it against the room mirrored about the bar's centre
       // instead spends only the smaller side: the logo is ~120px and the
@@ -340,7 +346,7 @@ export function Layout({ children }: LayoutProps) {
                 `-translate-x-1/2` so the shift composes with the centring. */}
             <div
               ref={navStripRef}
-              className={`absolute left-1/2 flex items-center ${isCompactNav ? 'gap-0.5' : 'gap-1'}`}
+              className={`absolute left-1/2 hidden lg:flex items-center ${isCompactNav ? 'gap-0.5' : 'gap-1'}`}
               style={{ transform: `translateX(calc(-50% + ${navShift}px))` }}
             >
               {visibleNavItems.map(item => {
@@ -536,8 +542,27 @@ export function Layout({ children }: LayoutProps) {
                 );
               })()}
 
-              {/* Mobile & TV apps */}
-              <MobileMenu />
+              {/* Mobile & TV apps — desktop only; the hamburger drawer covers
+                  navigation on phones and tablets, so this button would only
+                  crowd the already-tight right cluster on small screens. */}
+              <div className="hidden lg:block">
+                <MobileMenu />
+              </div>
+
+              {/* Hamburger — phones and tablets only (hidden on desktop).
+                  Opens the slide-down drawer below the nav bar. */}
+              <button
+                onClick={() => setMobileNavOpen(o => !o)}
+                aria-label={mobileNavOpen ? t('layout.closeNavMenu') : t('layout.openNavMenu')}
+                aria-expanded={mobileNavOpen}
+                className={`lg:hidden flex items-center justify-center w-9 h-9 rounded-xl transition-colors ${
+                  mobileNavOpen
+                    ? isNight ? 'bg-red-950/50 text-red-400' : isSpace ? 'bg-violet-900/30 text-violet-300' : isDark ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-700'
+                    : isNight ? 'text-red-600 hover:bg-red-950/30' : isSpace ? 'text-violet-400 hover:bg-violet-900/20' : isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                {mobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
 
               {/* Profile / theme dropdown */}
               <div ref={dropdownRef} className="relative ml-2">
@@ -700,6 +725,74 @@ export function Layout({ children }: LayoutProps) {
           </div>
         </div>
       </nav>
+
+      {/* Mobile / tablet nav drawer — slides down under the nav bar.
+          Only rendered below lg, where the desktop strip is hidden.
+
+          Layout strategy:
+          - Portrait: CSS grid, columns scale with viewport width
+            (2 cols on phones, 3 on sm tablets, 4 on md tablets).
+          - Landscape: single horizontal scrollable row so items never
+            overflow vertically in the constrained height; items are
+            compact (icon + label, smaller padding) to stay readable. */}
+      {mobileNavOpen && (
+        <div
+          ref={mobileNavRef}
+          className={`lg:hidden sticky top-16 z-40 border-b shadow-lg ${
+            isNight
+              ? 'bg-black/98 border-[#2a0808]'
+              : isSpace
+                ? 'bg-[#0d0b1f]/98 border-[#1e1a40]'
+                : isDark
+                  ? 'bg-slate-950/98 border-slate-800'
+                  : 'bg-white/98 border-slate-200'
+          }`}
+        >
+          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 py-2">
+            <div className="portrait:grid portrait:grid-cols-2 portrait:sm:grid-cols-3 portrait:md:grid-cols-4 portrait:gap-1 landscape:flex landscape:flex-nowrap landscape:gap-1 landscape:overflow-x-auto landscape:pb-1 no-scrollbar">
+              {visibleNavItems.map(item => {
+                const cfg = NAV_LINK_CONFIG[item.id];
+                const isActive = cfg.isActive(location.pathname);
+                const linkEl = (
+                  <Link
+                    key={item.id}
+                    to={cfg.to}
+                    onClick={() => setMobileNavOpen(false)}
+                    className={`relative flex items-center gap-2 rounded-xl font-medium transition-all
+                      portrait:px-4 portrait:py-3 portrait:text-sm
+                      landscape:shrink-0 landscape:px-3 landscape:py-1.5 landscape:text-xs
+                      ${
+                        isActive
+                          ? activeNavClass
+                          : isNight
+                            ? 'text-red-700 hover:text-red-500 hover:bg-red-950/20'
+                            : isDark
+                              ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                      }`}
+                  >
+                    {cfg.icon}
+                    <span>{t(item.labelKey)}</span>
+                    {item.id === 'settings' && hasUpdateAvailable && (
+                      <span
+                        aria-hidden
+                        className="ml-auto flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none"
+                      >
+                        1
+                      </span>
+                    )}
+                  </Link>
+                );
+                return cfg.tourAnchorId ? (
+                  <TourAnchor key={item.id} id={cfg.tourAnchorId}>{linkEl}</TourAnchor>
+                ) : (
+                  <span key={item.id}>{linkEl}</span>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main content */}
       <main id="main-content" className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">

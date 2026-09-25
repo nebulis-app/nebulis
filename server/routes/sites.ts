@@ -96,6 +96,7 @@ router.put('/:id', requireAdmin, (req: Request, res: Response) => {
   }
   // isDefault is not settable through the generic update — use PUT /:id/default,
   // whose clear-then-set has to be one transaction (see observingSites.ts).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { isDefault: _ignored, ...rest } = parsed.data;
   const updated = updateSite(id, rest);
   if (!updated) {

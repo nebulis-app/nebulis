@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Sun, Moon, Settings, Library, Sparkles, EyeOff, CloudMoon, Calendar, Crosshair, RefreshCw, HelpCircle, LogOut, ShieldCheck, Eye, Images, BookOpen, Aperture, Telescope, ChevronDown, Star } from 'lucide-react';
+import { Sun, Moon, Settings, Library, Sparkles, EyeOff, CloudMoon, Calendar, Crosshair, RefreshCw, HelpCircle, LogOut, ShieldCheck, Eye, Images, BookOpen, Aperture, Telescope, ChevronDown, Star, Home } from 'lucide-react';
 import { useState, useRef, useLayoutEffect, cloneElement, isValidElement, type ReactElement } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -47,12 +47,16 @@ const NAV_STRIP_CLEARANCE = 24;
  *  nav strip renders from `orderedItems` instead of one hardcoded link per
  *  item — same "third kind of dynamic id" case that file's own doc comment
  *  anticipates (it already does this for SETTINGS_NAV). */
+// eslint-disable-next-line react-refresh/only-export-components
 export const NAV_LINK_CONFIG: Record<NavItemId, {
   to: string;
   icon: ReactNode;
   isActive: (pathname: string) => boolean;
   tourAnchorId?: string;
 }> = {
+  home: {
+    to: '/tonight', icon: <Home className="w-4 h-4" />, isActive: (p) => p === '/tonight',
+  },
   library: {
     to: '/', icon: <Library className="w-4 h-4" />, isActive: (p) => p === '/', tourAnchorId: 'nav-library',
   },

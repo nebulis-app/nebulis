@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useMemo, createElement, type ReactNode } from 'react';
 
 export type NavItemId =
+  | 'home'
   | 'library'
   | 'gallery'
   | 'observations'
@@ -19,6 +20,7 @@ export type NavItemId =
 // order for a browser that has never saved one — see `order` below for the
 // user-editable order.
 export const NAV_ITEMS: { id: NavItemId; labelKey: string }[] = [
+  { id: 'home',          labelKey: 'nav.home' },
   { id: 'library',       labelKey: 'nav.library' },
   { id: 'gallery',       labelKey: 'nav.gallery' },
   { id: 'observations',  labelKey: 'nav.observations' },

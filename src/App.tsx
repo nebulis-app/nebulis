@@ -35,6 +35,7 @@ const CatalogsHub = lazyRoute(() => import('./pages/CatalogsHub').then(m => ({ d
 const CatalogBoard = lazyRoute(() => import('./pages/CatalogBoard').then(m => ({ default: m.CatalogBoard })));
 const CalibrationLibrary = lazyRoute(() => import('./pages/CalibrationLibrary').then(m => ({ default: m.CalibrationLibrary })));
 const WishlistPage = lazyRoute(() => import('./pages/WishlistPage').then(m => ({ default: m.WishlistPage })));
+const HomePage = lazyRoute(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })));
 import { LoginModal } from './components/LoginModal';
 import { ConnectionErrorScreen } from './components/ConnectionErrorScreen';
 import { SyncSubframesProvider } from './contexts/SyncSubframesContext';
@@ -156,6 +157,7 @@ function AppShell({ onboardingDismissed }: { onboardingDismissed: boolean }) {
               <Route path="/catalogs" element={<CatalogsHub />} />
               <Route path="/catalogs/:catalog" element={<CatalogBoard />} />
               <Route path="/calibrations" element={<CalibrationLibrary />} />
+              <Route path="/tonight" element={<HomePage />} />
               <Route path="/backup" element={<BackupStatus />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/image-gallery" element={<ImageGalleryPage />} />

@@ -6,9 +6,10 @@ import { useNavVisibility, type NavItemId } from '../../hooks/useNavVisibility';
 import type { Settings as SettingsType } from '../../types';
 import { Sec, Row, Seg, RadioCard, Toggle, getInputClass } from './SettingsUI';
 import { NightlyMaintenanceSection } from './NightlyMaintenanceSection';
-import { Library, Images, Calendar, CloudMoon, Crosshair, Star, BookOpen, Aperture, Settings as SettingsIcon, HelpCircle, GripVertical, Lock } from 'lucide-react';
+import { Home, Library, Images, Calendar, CloudMoon, Crosshair, Star, BookOpen, Aperture, Settings as SettingsIcon, HelpCircle, GripVertical, Lock } from 'lucide-react';
 
 const NAV_ITEM_ICONS: Record<NavItemId, React.ReactNode> = {
+  home:          <Home className="w-4 h-4" />,
   library:       <Library className="w-4 h-4" />,
   gallery:       <Images className="w-4 h-4" />,
   observations:  <Calendar className="w-4 h-4" />,

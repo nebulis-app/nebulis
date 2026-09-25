@@ -1,4 +1,11 @@
 # Changelog
+## Unreleased
+### New
+- Added a **Tonight** page (accessible from the top navigation) that shows everything you need for tonight's session on a single screen: how many hours of astronomical darkness are available, weather conditions hour by hour across the dark window, moon phase and illumination, light pollution class, and ten deep-sky objects worth imaging tonight — chosen to give a mix of nebulae, galaxies, clusters, and more rather than showing the same object type over and over.
+- The Tonight page detects your site's light pollution level (Bortle scale) automatically from satellite data the first time you visit, and saves the result to your observing site so it also appears in Settings. Admins can refresh the reading at any time with a single button.
+- Each object in the Tonight targets grid has an **Add to Planner** button that adds it to your planner wishlist in one tap. A **Shuffle** button in the section header swaps in a fresh varied mix of objects from tonight's full visible catalog.
+- The Tonight page can be hidden from the navigation bar in **Settings → General → Navigation bar**, the same way every other optional nav item (Gallery, Forecast, Planner, Catalogs, Help) can be.
+
 ## 2.1.0 (274) - September 20th, 2026
 ### New
 - Localization: the web app is now available in German, French, and Spanish (Settings -> General -> Language), AI-translated and not yet checked by a native speaker. If you spot a wrong or awkward phrase, or want to contribute a language that isn't listed, open a pull request against the public GitHub repo (nebulis-app/nebulis) - src/locales/CONTRIBUTING-TRANSLATIONS.md walks through exactly what to change and how. You can also send translation feedback to support@nebulis.app.
@@ -28,7 +35,6 @@
 - Storage: on macOS, free space now counts purgeable space (like local Time Machine snapshots) as free, matching what Finder and Disk Utility show, instead of reporting hundreds of gigabytes less than what's actually available.
 - Fixed several popups and dialogs not closing on Esc, and the Planner's altitude chart nudging the details dialog as its caption changed length.
 - Navigation bar: labels now stay full size whenever they fit between the logo and the telescope status pill, instead of tightening unnecessarily on windows that had room to spare.
-
 ## 2.0.2 (263) - September 15th, 2026
 ### Updated
 - Added a prewarm task for calendar view observation thumbnails to speed up rendering on mobile clients

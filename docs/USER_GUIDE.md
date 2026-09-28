@@ -1,18 +1,21 @@
-# Seestar Hub: User Guide
+# Nebulis User Guide
 
 ---
 
 ## Overview
 
-**Seestar Hub** is a personal observatory management application for owners of ZWO Seestar smart telescopes (S30 and S50 models). It connects to your telescope over your home network, imports your captured images and data, and gives you a full set of tools to browse, analyze, plan, and archive your astronomy sessions.
+**Nebulis** is an observatory and image library management platform for smart telescopes (ZWO Seestar S30/S50, DWARFLAB Dwarf II / Dwarf 3 / Dwarf Mini, and networked astronomy gear). It connects to your telescopes over your home network, imports your captured images and FITS data, and gives you a comprehensive suite of tools to browse, analyze, plan, calibrate, and archive your astronomy sessions.
 
 ### Key Benefits
 
 - Browse all of your captured deep-sky objects in a visual gallery
-- Review image quality metrics for every sub-frame you capture
-- Plan future sessions with tonight's best observable targets
+- Review image quality metrics (HFR, FWHM, star count) for every sub-frame
+- Maintain a dedicated **Calibration Library** for master darks, flats, bias, and flat-darks
+- Seamlessly integrate with **PixInsight** via native PJSR connector and embedded update repository
+- Track working **Processing Projects** and archives (`.xpsm` process icons, `.xisf` master stacks, Siril scripts)
+- Plan future sessions with tonight's best observable targets and altitude curves
 - Check weather and astronomical seeing forecasts before heading outside
-- Upload your own processed images alongside the originals
+- Upload your own processed images alongside raw originals
 - Track every session with notes, ratings, and equipment logs
 - Download or archive your data by object or session
 
@@ -21,9 +24,11 @@
 - Reviewing last night's images after an observing run
 - Checking which objects are worth imaging tonight
 - Comparing image quality between sessions of the same object
+- Automatically matching calibration frames and downloading ready-to-process WBPP workspaces in PixInsight
+- Archiving post-processing workflows, process icons, and master stacks per object
 - Keeping an observing log with notes, seeing conditions, and moon phase
 - Maintaining a wishlist of targets you plan to image in the future
-- Archiving and organizing years of Seestar captures in one place
+- Archiving and organizing years of astrophotography captures in one place
 
 ---
 
@@ -33,23 +38,24 @@
 
 - A modern web browser (Chrome, Firefox, Safari, or Edge; current versions recommended)
 - A supported smart telescope on your local network: a ZWO Seestar S30 or S50, or a DWARFLAB Dwarf II, Dwarf 3, or Dwarf Mini
-- Seestar Hub running on a computer or server that can reach the telescope
+- Nebulis running on a computer or server that can reach the telescope
 - For Seestar: network file sharing (SMB) enabled on the device (enabled by default)
-- For Dwarf: the telescope's Wi-Fi active. Dwarf models share their storage over FTP rather than SMB, so the computer running Seestar Hub must be joined to the telescope's own Wi-Fi, or on the same network as the telescope if you use station mode
+- For Dwarf: the telescope's Wi-Fi active. Dwarf models share their storage over FTP rather than SMB, so the computer running Nebulis must be joined to the telescope's own Wi-Fi, or on the same network as the telescope if you use station mode
+- Optional: PixInsight ($\ge$ 1.8.9 or 1.9.x) for direct workspace integration and process icon sync
 
-> **Note:** Seestar Hub is a self-hosted application. It runs on a computer you control, not in the cloud. Your images never leave your local network unless you choose to download and share them yourself.
+> **Note:** Nebulis is a self-hosted application. It runs on a computer you control, not in the cloud. Your images never leave your local network unless you choose to download and share them yourself.
 
 ### Accessing the Application
 
 1. Open your web browser.
-2. Navigate to the address of the computer running Seestar Hub (for example, `http://192.168.1.100:3000` or a hostname such as `http://nebulis.local:3000`).
+2. Navigate to the address of the computer running Nebulis (for example, `http://192.168.1.100:8080` or a hostname such as `http://nebulis.local:8080`).
 3. The address will be provided by whoever set up the application on your network. If you set it up yourself, check the terminal or server log for the URL.
 
 ### Creating an Account / Signing In
 
 **First-time setup:**
 
-When no user account exists yet, Seestar Hub runs in open mode and lets you get started immediately. An onboarding prompt will appear, guiding you to create the first (admin) account.
+When no user account exists yet, Nebulis runs in open mode and lets you get started immediately. An onboarding prompt will appear, guiding you to create the first (admin) account.
 
 1. Enter your **email address**, **username**, **display name**, and a **password**.
 2. Click **Create Account**.
@@ -100,6 +106,8 @@ When no user account exists yet, Seestar Hub runs in open mode and lets you get 
 5. Use the **Notes** tab to read or add personal observing notes for this object.
 6. Use the **Quality** tab to view an aggregated sub-frame quality dashboard.
 7. Use the **Compare** tab to open a side-by-side comparison of images from different sessions.
+8. Use the **Processing Project** tab to inspect, upload, and download working project files (`.xpsm` process icons, `.xisf` masters, Siril scripts, or `.zip` archives).
+9. Use the **Calibrations** tab to review or attach matched calibration frames (darks, flats, bias) specific to this object.
 
 ---
 
@@ -243,9 +251,101 @@ When no user account exists yet, Seestar Hub runs in open mode and lets you get 
 
 ---
 
+### Calibration Library
+
+**What it does:** Provides a central repository (`/calibrations`) to organize, inspect, and manage master calibration frames—Master Darks, Master Flats, Bias/Offset frames, and Flat-Darks. Displays vital acquisition metadata (camera model, exposure duration, sensor temperature, filter band, gain, binning) and allows attaching calibration sets directly to specific targets or making them available for automated matching across your entire library.
+
+**When to use it:** When building up your calibration master library, inspecting calibration quality, downloading calibration bundles, or associating specific calibration frames with deep-sky objects.
+
+**Step-by-step:**
+
+1. Click **Calibrations** in the navigation menu (or navigate to `/calibrations`).
+2. The page displays your calibration groups divided into:
+   - **Master Darks**: Grouped by camera, exposure duration, gain, and sensor temperature ($\pm^\circ\text{C}$).
+   - **Master Flats**: Grouped by camera, optical filter band (e.g., L, Dual-Band, Ha, OIII), gain, and binning.
+   - **Master Bias / Offset**: Grouped by camera, gain, and binning.
+   - **Flat Darks**: Grouped by camera, flat exposure duration, and gain.
+3. Click any calibration group to expand and view its sub-files, FITS headers, mean ADU levels, and creation timestamps.
+4. **Attaching to Objects**:
+   - Open any deep-sky target's **Object Detail** page and navigate to the **Calibrations** tab.
+   - Search or select compatible calibration masters from your library.
+   - Click **Attach to Object**. Directly attached calibrations are prioritized with 100% confidence by external tools like the PixInsight Connector.
+5. **Downloading Calibrations**:
+   - Select individual or multiple calibration groups.
+   - Click **Download Bundle** to stream a compressed ZIP archive structured with `darks/`, `flats/`, `bias/`, and `flatdarks/` subdirectories.
+
+---
+
+### Processing Projects & Archives
+
+**What it does:** Manages working project files, process workflows, scripts, and archives stored in each object's dedicated `<objectFolder>/processing_project/` directory. Preserves your post-processing pipelines from PixInsight, Siril, AstroPixelProcessor, or Photoshop directly alongside your raw data.
+
+**When to use it:** When saving processing states, backing up PixInsight process icons (`.xpsm`), storing final integrated `.xisf` or 32-bit TIFF stacks, sharing project files across workstations, or archiving complete post-processing sessions into downloadable `.zip` bundles.
+
+**Step-by-step:**
+
+1. Navigate to any object in the **Gallery** and open its **Object Detail** page.
+2. Select the **Processing Project** tab.
+3. The dashboard displays:
+   - Discovered project files with file extensions, file sizes, and last modified dates.
+   - Total folder size and file count.
+4. **Uploading Project Files**:
+   - Click **Upload Project File** to add PixInsight process icons (`.xpsm`), PixInsight projects (`.pxi`), master stacks (`.xisf`), or Siril scripts.
+   - Drag and drop files directly onto the upload area.
+5. **Project Archives**:
+   - Click **Upload Project Archive** to upload a complete `.zip` archive containing your full workspace.
+   - Click **Download Archive** to retrieve a snapshot of the current processing project.
+6. Files in `processing_project/` are also directly synchronized via the PixInsight Connector script without opening the web browser.
+
+---
+
+### PixInsight Integration
+
+**What it does:** Integrates PixInsight ($\ge$ 1.8.9 and 1.9.x) natively with your Nebulis server through an official embedded update repository and a standalone PJSR connector script (`NebulisConnector.js`). Features a streamlined 3-tab architecture (Library Download, Calibration Library, and Project Sync), real-time DSO screenshot previews, flat-to-target object linkage visibility, and two-way process icon synchronization. The plugin version is always synchronized with the Nebulis application version (currently `v2.1.0`).
+
+**When to use it:** Whenever you process your raw subframes in PixInsight and want to automate data transfer, calibration acquisition, and workflow archiving without manual file copying.
+
+**Step-by-step:**
+
+1. **Add the Update Repository to PixInsight (One-Time Setup)**:
+   - In PixInsight, go to **Resources → Updates → Manage Repositories**.
+   - Click **Add** and enter your repository URL (remember the trailing slash):
+     ```text
+     http://<nebulis-host>:<port>/plugins/pixinsight/
+     ```
+     *(For example: `http://localhost:3002/plugins/pixinsight/` or `http://192.168.1.50:8080/plugins/pixinsight/`)*
+   - Click **OK**, then navigate to **Resources → Updates → Check for Updates**.
+   - PixInsight will detect **Nebulis Connector for PixInsight (v2.1.0)**. Click **Apply updates** and restart PixInsight.
+   - *(Note: You can also visit `http://<nebulis-host>:<port>/plugins/pixinsight/` in your web browser for a live landing page with a one-click copy button and direct download options).*
+2. **Launch the Connector**:
+   - In PixInsight, go to **Script → Nebulis → Nebulis Connector**.
+3. **Configure Connection in the Dedicated Settings Dialog**:
+   - Click the **⚙ Settings** tool button in the top header bar or the **⚙ Settings & Preferences...** button at the bottom.
+   - Enter your **Nebulis Server URL** (e.g. `http://localhost:3002`).
+   - Enter your user-linked **API Key** (generated in Nebulis under **Settings → Account → API Keys**, prefixed with `neb-`).
+   - Configure your local **Download Directory / Projects Root** (default: `~/AstroProjects`).
+   - Click **Test Connection** to verify access, then click **Save Settings**.
+4. **Tab 1: Library Download (Lights & Sessions)**:
+   - Browse or filter your DSO targets with real-time DSO image previews and metadata (Catalog ID, Constellation, Type, Sessions, and Observatory folder path).
+   - Review imaging sessions with subframe counts, optical filters (e.g. `H (180.0s)`), and telescope rig attribution.
+   - Click **Download Light Subframes (Sessions)** to download raw light subframes directly into your local workspace.
+5. **Tab 2: Calibration Library (Darks, Flats, Bias, Flat-Darks)**:
+   - Browse your entire calibration library across all telescope rigs.
+   - **Linked Target Object for Flats**: For Flats and Flat-Darks, the **Linked Object** column explicitly displays the target DSO and session date (e.g. `NGC 6888 (2026-09-11)`).
+   - Filter by keyword or calibration type (*All*, *Darks*, *Flats*, *Bias*, *Flat-Darks*).
+   - Expand any calibration group to inspect individual subframe files with file sizes and timestamps.
+   - Select desired calibration bundles and click **Download Selected Calibrations** to download them into your local calibrations folder.
+6. **Tab 3: Project Sync (Process Icons & Archives)**:
+   - After processing, drag process instances onto the PixInsight workspace to create process icons for your workflow.
+   - Switch to the **Project Sync** tab in the Nebulis Connector.
+   - Click **Sync Process Icons (.xpsm) to Nebulis...** to save and automatically upload your workflow to the object's `processing_project/` folder on Nebulis.
+   - Click **Upload Local File to Nebulis Project...** to upload your master integrated `.xisf` images or project archives.
+
+---
+
 ### Backup / Import Status
 
-**What it does:** Shows the progress and history of importing files from your Seestar telescope over the network.
+**What it does:** Shows the progress and history of importing files from your telescope over the network.
 
 **When to use it:** After connecting your telescope and triggering an import, to monitor progress.
 
@@ -257,13 +357,13 @@ When no user account exists yet, Seestar Hub runs in open mode and lets you get 
    - Files transferred vs. total
    - Current transfer speed and estimated time remaining
 3. The **Import History** log shows past imports with timestamps and file counts.
-4. The **Telescope Status** indicator shows whether Seestar Hub can currently reach your device on the network.
+4. The **Telescope Status** indicator shows whether Nebulis can currently reach your device on the network.
 
 ---
 
 ### Settings
 
-**What it does:** Configures how Seestar Hub connects to your telescope, calculates sky positions, displays data, and manages users.
+**What it does:** Configures how Nebulis connects to your telescope, calculates sky positions, displays data, and manages users.
 
 **When to use it:** During initial setup, and any time you need to update your connection details or preferences.
 
@@ -274,13 +374,13 @@ When no user account exists yet, Seestar Hub runs in open mode and lets you get 
 
 **Telescope Connection**
 - **Model:** Select your telescope (Seestar S30/S50, or Dwarf II / Dwarf 3 / Dwarf Mini). This sets sensible defaults for everything below.
-- **Connection:** Choose **Wi-Fi** or **USB cable**. USB is faster and needs no network, but only works while the telescope's storage is plugged into the computer running Seestar Hub.
+- **Connection:** Choose **Wi-Fi** or **USB cable**. USB is faster and needs no network, but only works while the telescope's storage is plugged into the computer running Nebulis.
 - **Hostname or IP:** The network address of the telescope (for example, `seestar.local` or `192.168.1.50`). For a Dwarf on its own Wi-Fi this is `192.168.88.1`; type it in yourself, it is shown as a placeholder hint but not filled in for you.
 - **Share Name:** *Seestar only.* The SMB share name on the device (default: `EMMC Images`). Dwarf telescopes have no share name: they use FTP, and the right storage folder is detected for you.
 - **Username / Password:** Network credentials (often blank for Seestar, and not needed for Dwarf, whose FTP server allows anonymous access).
 - **Test Connection:** Verifies the telescope answers before you save. For a Dwarf it also reports which storage layout was found, which is the quickest way to catch a wrong model selection.
 
-You can configure both Wi-Fi and USB for the same telescope. Seestar Hub then uses whichever is available, preferring the cable when it is plugged in.
+You can configure both Wi-Fi and USB for the same telescope. Nebulis then uses whichever is available, preferring the cable when it is plugged in.
 
 **Observer Location**
 - **Latitude and Longitude:** Your observing site coordinates (required for the Planner and Forecast).
@@ -309,12 +409,61 @@ You can configure both Wi-Fi and USB for the same telescope. Seestar Hub then us
 
 ### How to Import Images from Your Telescope
 
-1. Ensure your Seestar is powered on and connected to the same network as Seestar Hub.
+1. Ensure your telescope is powered on and connected to the same network as Nebulis.
 2. Go to **Settings** and confirm the **Telescope Connection** fields are correct.
 3. Navigate to **Backup** in the navigation menu.
 4. Click **Start Import** (or **Sync Now**) to begin transferring files.
 5. Monitor progress on the Backup page. Import time depends on the number and size of files.
 6. When complete, your new objects and sessions will appear in the Gallery.
+
+---
+
+### How to Manage and Attach Calibration Frames
+
+1. Navigate to **Calibrations** (`/calibrations`) in the main navigation menu.
+2. Review your calibration library groups (Darks, Flats, Bias, Flat-Darks) and filter by frame type or camera.
+3. To attach a calibration set to a specific deep-sky object:
+   - Open the target's **Object Detail** page from the Gallery.
+   - Click the **Calibrations** tab.
+   - Search for compatible library groups or click **Attach Calibration**.
+   - Select the desired master group and confirm. Directly attached calibrations will be flagged with 100% match priority when queried by external tools such as the PixInsight Connector.
+4. To download a local archive of your calibrations, select one or more groups on the `/calibrations` page and click **Download Bundle**.
+
+---
+
+### How to Connect PixInsight to Nebulis
+
+1. Ensure Nebulis is running and note your server address (e.g., `http://192.168.1.50:8080`).
+2. In PixInsight ($\ge$ 1.8.9 or 1.9.x), go to **Resources → Updates → Manage Repositories**.
+3. Click **Add** and paste your repository URL (be sure to include the trailing slash):
+   ```text
+   http://<nebulis-host>:<port>/plugins/pixinsight/
+   ```
+4. Click **OK**, then navigate to **Resources → Updates → Check for Updates**.
+5. Select **Nebulis Connector for PixInsight (v2.1.0)**, click **Apply updates**, and restart PixInsight.
+6. Launch the script from **Script → Nebulis → Nebulis Connector**.
+7. Click the **⚙ Settings** button, enter your server URL and API Key (prefixed with `neb-`), set your download root directory, and click **Test Connection** followed by **Save Settings**.
+
+---
+
+### How to Download Lights and Calibrations in PixInsight
+
+1. Launch **Script → Nebulis → Nebulis Connector**.
+2. On the **Library & Download** tab, select your target object from the list to view its DSO screenshot, catalog metadata, and session subframe counts.
+3. Click **Download Light Subframes (Sessions)** to download your raw session lights into your local workspace (`<DownloadDir>/<ObjectName>/lights/`).
+4. Switch to the **Calibration Library** tab to browse available Darks, Flats, Bias, and Flat-Darks. Notice that for Flats, the linked target object is displayed.
+5. Select the calibration bundles you need and click **Download Selected Calibrations** to download them into your calibrations folder (`<DownloadDir>/<ObjectName>/calibrations/` or dedicated folder).
+6. Open **Script → Batch Processing → WeightedBatchPreprocessing (WBPP)** in PixInsight and add your downloaded lights and calibration files directly.
+
+---
+
+### How to Sync PixInsight Process Icons and Project Archives
+
+1. Once you finish processing an image in PixInsight, save your workflow as process icons by dragging process instances onto the PixInsight desktop.
+2. Open **Script → Nebulis → Nebulis Connector** and switch to the **Project Sync** tab.
+3. Click **Sync Process Icons (.xpsm) to Nebulis...** to export your icons locally and upload them to Nebulis under `library/<ObjectName>/processing_project/`.
+4. To upload master integrated `.xisf` images, processing scripts, or `.zip` archives, click **Upload Local File to Nebulis Project...**.
+5. Stored files are immediately visible under the object's **Processing Project** tab in the Nebulis web interface.
 
 ---
 
@@ -398,7 +547,7 @@ If your observing site has obstructions (trees, a rooftop, hills), you can set p
 
 ### How to Prefetch Catalog Images for Offline Use
 
-Seestar Hub can download catalog images for all objects in advance, so they display instantly even without an internet connection.
+Nebulis can download catalog images for all objects in advance, so they display instantly even without an internet connection.
 
 1. Go to **Settings → Catalog & Display**.
 2. Click **Prefetch Catalog Images**.
@@ -418,6 +567,7 @@ The main navigation appears as a sidebar or top bar (depending on your screen si
 |---------------|----------------------------|----------------------------------------|
 | Gallery       | Home (`/`)                 | Browse all imaged objects              |
 | Observations  | Observations Calendar      | Timeline of all imaging sessions       |
+| Calibrations  | Calibration Library        | Manage master darks, flats, bias, and attachments |
 | Planner       | Planner                    | Tonight's best targets and wishlist    |
 | Forecast      | Forecast                   | Weather and seeing forecast            |
 | Image Gallery | Slideshow                  | Full-screen image presentation         |
@@ -435,9 +585,17 @@ The main navigation appears as a sidebar or top bar (depending on your screen si
 
 **Object Detail**
 - Header: best image, catalog info, Wikipedia description
-- Tabs: Sessions, Notes, Quality, Compare
-- Session list with dates and file counts
+- Tabs: Sessions, Notes, Quality, Compare, Processing Project, Calibrations
+- Session list with dates, exposure details, and file counts
+- Processing Project tab: inspect stored files, upload `.xpsm` / `.xisf` / `.zip`, download project archives
+- Calibrations tab: view auto-matched calibration masters or attach specific calibration groups
 - Clicking a session opens Observation Detail
+
+**Calibrations Library (`/calibrations`)**
+- Master calibration cards grouped by type (darks, flats, bias, flat-darks)
+- Filter by camera model, gain, exposure time, and sensor temperature
+- Group expansion with subframe statistics and ADU metrics
+- Batch selection and bundle download controls
 
 **Observation Detail**
 - File list with quality icons
@@ -464,12 +622,17 @@ The main navigation appears as a sidebar or top bar (depending on your screen si
 | Upload Processed Image   | Observation Detail    | Attach your own processed image to a session   |
 | Stretch / Contrast sliders | FITS Viewer         | Adjust raw image display                       |
 | Add to Wishlist          | Planner → Targets     | Save a target for a future observing run       |
+| Attach Calibration       | Object Detail → Calibrations | Explicitly link a calibration master group to an object |
+| Download Bundle          | Calibrations Library  | Download selected calibration masters as a ZIP |
+| Upload Project File      | Object Detail → Processing Project | Upload `.xpsm`, `.xisf`, `.pxi`, or scripts |
+| Export Workspace Icons   | PixInsight Connector  | Save active PixInsight process icons and sync to Nebulis |
+| Download Workspace       | PixInsight Connector  | Stream light frames and auto-matched calibrations for WBPP |
 | Sync Now / Start Import  | Backup                | Trigger a new import from your telescope       |
 | Prefetch Catalog Images  | Settings              | Download catalog imagery for offline use       |
 
 ### Themes
 
-Seestar Hub supports three display themes, selectable in Settings:
+Nebulis supports three display themes, selectable in Settings:
 
 - **Light**: standard bright interface
 - **Dark**: dark background for general nighttime use
@@ -538,13 +701,54 @@ Seestar Hub supports three display themes, selectable in Settings:
 ### Forecast data is not loading
 
 **Possible causes:**
-- No internet connection on the server running Seestar Hub.
+- No internet connection on the server running Nebulis.
 - Observer location is not set.
 
 **Steps to resolve:**
 1. Go to **Settings → Observer Location** and confirm latitude, longitude, and timezone are filled in.
 2. Verify the server has an active internet connection.
 3. Reload the Forecast page. If the issue persists, the external forecast services (7Timer, Open-Meteo) may be temporarily unavailable. Try again in a few minutes.
+
+---
+
+### PixInsight Update Repository fails to connect or verify
+
+**Possible causes:**
+- Missing trailing slash in repository URL (`http://<host>:<port>/plugins/pixinsight/`).
+- Incorrect port or unreachable server IP.
+- Local firewall blocking TCP traffic.
+
+**Steps to resolve:**
+1. In PixInsight, go to **Resources → Updates → Manage Repositories** and ensure the URL ends with a trailing slash (`/`).
+2. Test the URL in a web browser. The interactive Nebulis PixInsight repository portal should display.
+3. Check that your container or server is listening on the expected port (default `8080`).
+
+---
+
+### PixInsight Connector reports authentication or connection error
+
+**Possible causes:**
+- API Key authentication is enabled in Nebulis but missing or invalid in the connector.
+- Server URL in the connector's **Settings & Connection** tab points to an unreachable IP.
+
+**Steps to resolve:**
+1. Open the connector dialog via **Script → Nebulis → Nebulis Connector**.
+2. Switch to the **Settings & Connection** tab.
+3. In Nebulis, navigate to **Settings → Account** to copy or generate an API key, then paste it into the connector's **API Key** field.
+4. Click **Test Connection**. A confirmation popup will indicate successful authorization.
+
+---
+
+### Calibration frames not auto-matching in PixInsight or Object Detail
+
+**Possible causes:**
+- No calibration masters in the library match the camera model, binning, or gain of the light subframes.
+- Sensor temperature or exposure time exceeds configured tolerances.
+
+**Steps to resolve:**
+1. Navigate to **Calibrations** (`/calibrations`) and verify that Master Darks/Flats exist for the target camera model.
+2. In the PixInsight connector's **Settings & Connection** tab, check the **Sensor Temp Tolerance** (default $\pm 2.0^\circ\text{C}$) and **Dark Exposure Tolerance** (default $15\%$). Increase these tolerances if your dark library was captured under varying ambient temperatures.
+3. Alternatively, open the target's **Object Detail** page, go to the **Calibrations** tab, and explicitly click **Attach to Object** to force a 100% priority match.
 
 ---
 
@@ -597,26 +801,26 @@ FITS raw image data often has a very narrow range of values that renders dark by
 
 ## FAQ
 
-**Q: Do I need an internet connection to use Seestar Hub?**
-A: Not for core features. Browsing your gallery, reviewing sessions, and managing notes all work offline. The Forecast feature, object descriptions, and online catalog images require an internet connection. You can prefetch catalog images in advance for offline use.
+**Q: Do I need an internet connection to use Nebulis?**
+A: Not for core features. Browsing your gallery, reviewing sessions, calibrating frames, downloading PixInsight workspaces, and managing notes all work completely offline on your local network. The Forecast feature, Wikipedia object descriptions, and initial online catalog images require an internet connection. You can prefetch catalog images in advance for offline field use.
 
-**Q: Can multiple people use Seestar Hub at the same time?**
-A: Yes. The administrator can create accounts for multiple users. Each user has their own login, favorites, and watermark presets. All users share the same image library.
+**Q: Can multiple people use Nebulis at the same time?**
+A: Yes. The administrator can create accounts for multiple users. Each user has their own login, favorites, and watermark presets. All users share the same image library and calibration repository.
 
-**Q: What file formats does Seestar Hub support?**
-A: FITS (`.fit`, `.fits`) for raw sub-frames and science data, and JPG/PNG for processed and stacked images. Video files are stored but playback depends on browser support.
+**Q: What file formats does Nebulis support?**
+A: FITS (`.fit`, `.fits`) for raw science subframes and calibration frames, standard images (JPG, PNG) for display and processed results, video files (MP4, AVI), PixInsight process icons (`.xpsm`), PixInsight project and image files (`.pxi`, `.xisf`), and `.zip` project archives.
 
-**Q: Can I use Seestar Hub with a telescope other than the Seestar S30/S50?**
-A: Seestar Hub is specifically designed for ZWO Seestar telescopes and expects the file structure and network sharing behavior of those devices. It is not designed for use with other telescope brands or cameras.
+**Q: Can I use Nebulis with telescopes other than the Seestar S30/S50?**
+A: Yes! Nebulis natively supports ZWO Seestar (S30 and S50) via SMB network sharing as well as DWARFLAB Dwarf (Dwarf II, Dwarf 3, and Dwarf Mini) via FTP. You can also manually upload FITS files and session images from any camera or telescope using manual observation logging.
 
 **Q: Where are my files stored?**
-A: All imported files are stored on the computer running Seestar Hub, in its configured data directory. They are not uploaded to any cloud service unless you explicitly download and share them yourself.
+A: All imported files are stored on the computer running Nebulis, in its configured data directory. They are not uploaded to any cloud service unless you explicitly download and share them yourself.
 
-**Q: What happens if I delete a file in Seestar Hub?**
-A: Deleting a file removes it from Seestar Hub's library. Whether the original file is also removed from the telescope's memory card depends on your configuration. Review your import settings to understand whether files are copied or moved.
+**Q: What happens if I delete a file in Nebulis?**
+A: Deleting a file removes it from Nebulis's library. Whether the original file is also removed from the telescope's memory card depends on your configuration. Review your import settings to understand whether files are copied or moved.
 
-**Q: Can I access Seestar Hub from my phone?**
-A: Yes. The interface is designed to be responsive and works on mobile browsers. For the best experience navigating catalogs and session data, a tablet or larger screen is recommended.
+**Q: Can I access Nebulis from my phone or tablet?**
+A: Yes. The interface is responsive and works smoothly on mobile and tablet browsers. Dedicated companion apps are also available for iOS and tvOS.
 
 **Q: How do I move a session to a different object?**
 A: Open the session in **Observation Detail**. Look for the **Move Session** option in the file management controls. Select the correct target object and confirm. This is useful if a session was attributed to the wrong catalog entry.
@@ -624,7 +828,7 @@ A: Open the session in **Observation Detail**. Look for the **Move Session** opt
 **Q: The image quality scores seem low even though my images look fine. Why?**
 A: Quality scores are calculated from raw FITS header data (HFR, FWHM, star count). Scores can be affected by narrow-field objects with few stars, high atmospheric dispersion at low altitudes, or calibration differences between firmware versions. Use scores as a relative guide, not an absolute standard.
 
-**Q: Can I run a manual observation without connecting to a Seestar?**
+**Q: Can I run a manual observation without connecting to a smart telescope?**
 A: Yes. Navigate to **Observations → New Observation** to create a session manually, upload your own images, and add notes. This lets you log observations from any camera or telescope.
 
 ---
@@ -634,24 +838,29 @@ A: Yes. Navigate to **Observations → New Observation** to create a session man
 | Term             | Definition                                                                                          |
 |------------------|-----------------------------------------------------------------------------------------------------|
 | **Bortle Scale** | A numeric scale (1–9) measuring the darkness of the night sky. Lower is darker.                     |
-| **DSS2**         | Digitized Sky Survey 2: a catalog of sky survey images used as reference images in Seestar Hub.    |
+| **Calibration Masters** | Integrated calibration frames (Master Darks, Flats, Bias) used to subtract thermal noise, hot pixels, and optical vignetting from raw exposures. |
+| **DSS2**         | Digitized Sky Survey 2: a catalog of sky survey images used as reference images in Nebulis.         |
 | **FITS**         | Flexible Image Transport System: the standard file format for scientific astronomical image data.  |
+| **FTP**          | File Transfer Protocol: the protocol Dwarf telescopes use to expose their storage over Wi-Fi.       |
 | **FWHM**         | Full Width at Half Maximum: a measure of star sharpness. Lower values indicate sharper stars.      |
 | **HFR**          | Half-Flux Radius: a measure of star size in image data. Lower values indicate tighter, sharper stars. |
 | **Integration time** | The total accumulated exposure time from all sub-frames combined in a session.                  |
 | **Magnitude**    | A measure of an astronomical object's brightness. Lower numbers are brighter.                       |
-| **mDNS**         | Multicast DNS: a protocol that allows devices to be found by name (e.g., `seestar.local`) on a local network without manual IP entry. |
+| **mDNS**         | Multicast DNS: a protocol that allows devices to be found by name (e.g., `nebulis.local`) on a local network without manual IP entry. |
 | **Moon illumination** | The percentage of the moon's visible face that is lit. High illumination increases sky glow and reduces contrast. |
 | **NGC**          | New General Catalogue: a major catalog of deep-sky objects (galaxies, nebulae, clusters).          |
+| **PJSR**         | PixInsight JavaScript Runtime: PixInsight's native automation scripting environment.               |
 | **RA / Dec**     | Right Ascension and Declination: the celestial coordinate system used to locate objects in the sky. |
 | **Seeing**       | A measure of atmospheric steadiness. Poor seeing causes stars to twinkle and appear blurry.         |
 | **SMB**          | Server Message Block: a network file-sharing protocol used by Seestar to expose its storage.       |
-| **FTP**          | File Transfer Protocol: the protocol Dwarf telescopes use to expose their storage over Wi-Fi. Dwarf models do not offer SMB. |
-| **Station mode** | A Dwarf setting that joins the telescope to your home Wi-Fi instead of it broadcasting its own. In station mode the telescope's address comes from your router rather than being `192.168.88.1`. |
+| **Station mode** | A Dwarf setting that joins the telescope to your home Wi-Fi instead of it broadcasting its own.    |
 | **Sub-frame**    | A single, unprocessed exposure captured by the telescope. Multiple sub-frames are later combined (stacked). |
 | **Transparency** | A measure of atmospheric clarity (absence of haze, dust, and humidity). High transparency improves contrast. |
 | **Transit**      | The moment when an object crosses the meridian and reaches its highest point in the sky.            |
+| **WBPP**         | Weighted Batch Preprocessing: PixInsight's standard calibration, registration, and stacking pipeline. |
 | **Wishlist**     | A personal list of targets you plan to image in a future observing session.                         |
+| **XPSM**         | XML Process State Module: PixInsight's standard format for serialized process icons and pipelines.  |
+| **XRI**          | XML Repository Information: PixInsight's official update repository specification.                 |
 
 ---
 
@@ -661,11 +870,11 @@ A: Yes. Navigate to **Observations → New Observation** to create a session man
 
 - **In-app feedback:** If your administrator has set up a feedback channel, use it to report issues or request features.
 - **Application issues:** Report bugs or feature requests at the project's issue tracker. *(Contact your administrator for the link.)*
-- **Community:** The ZWO Seestar user community (forums, Facebook groups, and Reddit) is an excellent resource for questions about telescope operation, imaging techniques, and Seestar Hub usage.
+- **Community:** The smart telescope and astrophotography user community is an excellent resource for questions about telescope operation, imaging techniques, and Nebulis usage.
 
 ### Contacting Your Administrator
 
-If you are using Seestar Hub on a shared server managed by someone else, they are your first point of contact for:
+If you are using Nebulis on a shared server managed by someone else, they are your first point of contact for:
 - Account creation and password resets
 - Network configuration and telescope connectivity
 - Storage and import settings
@@ -681,5 +890,5 @@ The following assumptions were made while writing this guide, based on the appli
 3. **Move session UI label:** The "Move Session" option is described based on backend route functionality. The exact UI label may differ.
 4. **Custom horizon profile:** The profile uses 36 azimuth buckets of 10° each, based on the data model. The UI for entering this data may present it differently (sliders, a graph, or a table).
 5. **Prefetch option location:** The catalog prefetch option is placed under Settings → Catalog & Display based on logical grouping; its exact placement in the UI may differ.
-6. **Port number:** The example URL `http://nebulis.local:3000` uses port 3000 as a common development default. The actual port in production may differ.
+6. **Port number:** The default port in production and Docker containers is 8080. The example URLs reflect this default.
 7. **Video playback:** Video files are noted as stored but playback capability was not verified; browser support language was used as a caveat.

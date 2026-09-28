@@ -20,7 +20,7 @@ import { looksLikeAssetRequest } from './staticAssets.js';
 export function spaFallback(distPath: string): RequestHandler {
   const indexPath = path.join(distPath, 'index.html');
   return (req, res, next) => {
-    if (req.path.startsWith('/api')) return next();
+    if (req.path.startsWith('/api') || req.path.startsWith('/plugins/pixinsight')) return next();
     if (looksLikeAssetRequest(req.path)) {
       res.status(404).type('text/plain').send('Not found');
       return;

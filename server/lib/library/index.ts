@@ -7,6 +7,7 @@ export * from './gallery.js';
 export * from './processed.js';
 export * from './processingRuns.js';
 export * from './projectArchives.js';
+export * from './processingProject.js';
 export * from './favorites.js';
 export * from './housekeeping.js';
 export * from './objectFilters.js';

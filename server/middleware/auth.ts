@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { timingSafeEqual } from 'crypto';
-import { verifyToken, getUserCount, getUserById, type UserRole } from '../lib/auth.js';
+import { verifyToken, getUserCount, getUserById, verifyApiKey, type UserRole } from '../lib/auth.js';
 import { getApiKey } from '../lib/telescopes.js';
 import { isDeviceActive, touchDevice } from '../lib/devicePairing.js';
 import { verifyDownloadToken } from '../lib/downloadToken.js';
@@ -231,7 +231,14 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
       // Not a valid JWT — try as API key below
     }
 
-    // Try as API key — API key holders get admin access
+    // Try as API key
+    const apiKeyIdentity = verifyApiKey(token);
+    if (apiKeyIdentity) {
+      req.userId = apiKeyIdentity.userId;
+      req.username = apiKeyIdentity.username;
+      req.userRole = apiKeyIdentity.role;
+      return next();
+    }
     const configuredKey = getApiKey();
     if (configuredKey && safeEqual(token, configuredKey)) {
       req.userRole = 'admin';
@@ -243,6 +250,13 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
   const rawHeaderKey = req.headers['x-api-key'];
   const headerKey = typeof rawHeaderKey === 'string' ? rawHeaderKey : undefined;
   if (headerKey) {
+    const apiKeyIdentity = verifyApiKey(headerKey);
+    if (apiKeyIdentity) {
+      req.userId = apiKeyIdentity.userId;
+      req.username = apiKeyIdentity.username;
+      req.userRole = apiKeyIdentity.role;
+      return next();
+    }
     const configuredKey = getApiKey();
     if (configuredKey && safeEqual(headerKey, configuredKey)) {
       req.userRole = 'admin';

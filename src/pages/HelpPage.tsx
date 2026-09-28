@@ -10,6 +10,7 @@ import {
   Download,
   Upload,
   Library,
+  Layers,
   Settings,
   AlertTriangle,
   Wifi,
@@ -101,6 +102,7 @@ type SectionId =
   | 'uploading'
   | 'manual-import'
   | 'mobile-devices'
+  | 'pixinsight'
   | 'troubleshooting';
 
 const NAV: ({ id: SectionId; labelKey: string; icon?: LucideIcon; indent?: boolean })[] = [
@@ -122,6 +124,7 @@ const NAV: ({ id: SectionId; labelKey: string; icon?: LucideIcon; indent?: boole
   { id: 'uploading', labelKey: 'nav.uploading', icon: Upload },
   { id: 'manual-import', labelKey: 'nav.manualImport', icon: HardDrive },
   { id: 'mobile-devices', labelKey: 'nav.mobileDevices', icon: Smartphone },
+  { id: 'pixinsight', labelKey: 'nav.pixinsight', icon: Layers },
   { id: 'troubleshooting', labelKey: 'nav.troubleshooting', icon: AlertTriangle },
 ];
 
@@ -999,6 +1002,9 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
         </GuideCard>
       );
 
+    case 'pixinsight':
+      return <PixInsightHelp isDark={isDark} />;
+
     case 'troubleshooting':
       return (
         <GuideCard icon={AlertTriangle} title={t('troubleshooting.title')} lead={t('troubleshooting.lead')} isDark={isDark}>
@@ -1022,6 +1028,80 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
       return null;
     }
   }
+}
+
+function PixInsightHelp({ isDark }: { isDark: boolean }) {
+  const repoUrl = typeof window !== 'undefined' ? `${window.location.origin}/plugins/pixinsight/` : 'http://<nebulis-host>:3002/plugins/pixinsight/';
+  return (
+    <GuideCard
+      icon={Layers}
+      title="PixInsight integration"
+      lead="Nebulis features an official PixInsight integration via an embedded update repository and a native PJSR connector (v2.1.0). Browse objects, download light subframes, manage calibrations with linked target visibility, and sync your process icons and processing projects."
+      isDark={isDark}
+    >
+      <div className="space-y-6">
+        <div>
+          <h3 className={`text-sm font-semibold mb-2 ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>1. Add the Repository to PixInsight</h3>
+          <p className={`text-sm leading-relaxed mb-3 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+            Nebulis serves an official PixInsight update repository at <code className="px-1.5 py-0.5 rounded text-xs bg-slate-800 text-sky-400 font-mono">/plugins/pixinsight/</code>. Add it once to receive automated updates directly through PixInsight:
+          </p>
+          <div className={`p-3.5 rounded-xl border font-mono text-xs mb-3 flex items-center justify-between ${isDark ? 'bg-slate-950 border-slate-800 text-sky-400' : 'bg-slate-100 border-slate-300 text-sky-700'}`}>
+            <span>{repoUrl}</span>
+          </div>
+          <Bullets
+            isDark={isDark}
+            items={[
+              <>In PixInsight, navigate to <b>Resources → Updates → Manage Repositories</b>.</>,
+              <>Click <b>Add</b>, paste your Nebulis repository URL above (make sure to include the trailing slash <code className="font-mono">/</code>), and click <b>OK</b>.</>,
+              <>Go to <b>Resources → Updates → Check for Updates</b>. PixInsight will find <b>Nebulis Connector for PixInsight (v2.1.0)</b>. Click <b>Apply updates</b> and restart PixInsight.</>,
+              <>Launch the connector from <b>Script → Nebulis → Nebulis Connector</b>.</>,
+            ]}
+          />
+        </div>
+
+        <div>
+          <h3 className={`text-sm font-semibold mb-2 ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>2. Authenticate with an API Key</h3>
+          <p className={`text-sm leading-relaxed mb-3 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+            The connector authenticates using user-linked API keys:
+          </p>
+          <Bullets
+            isDark={isDark}
+            items={[
+              <>In your Nebulis web browser, open <b>Settings → Account → API Keys</b>.</>,
+              <>Click <b>New API Key</b>, give it a descriptive name (e.g. <i>PixInsight Mac Studio</i>), and copy the key (prefixed with <code className="font-mono">neb-</code>).</>,
+              <>In PixInsight, click the <b>⚙ Settings</b> icon in the connector header or bottom bar, paste the key into <b>Nebulis API Key</b>, and click <b>Save Settings</b>.</>,
+            ]}
+          />
+        </div>
+
+        <div>
+          <h3 className={`text-sm font-semibold mb-2 ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>3. Connector Interface Overview</h3>
+          <Terms
+            isDark={isDark}
+            label="Tabbed Architecture"
+            items={[
+              {
+                t: 'Library & Download',
+                d: 'Browse your DSO targets with real-time DSO image previews, catalog identifiers, and session breakdowns (date, filter, subframes, telescope rig). Download raw light subframes directly into your local workspace folder.',
+              },
+              {
+                t: 'Calibration Library',
+                d: 'Dedicated browser for all Master Darks, Flats, Bias, and Flat-Darks across all telescopes and rigs. For Flats, the linked target object (e.g. NGC 6888) is explicitly displayed. Select any calibration sets and batch-download them to your local calibrations folder.',
+              },
+              {
+                t: 'Project Sync',
+                d: 'Two-way synchronization for your processing workflows. Export active PixInsight process icons (.xpsm) or upload master integrated images (.xisf) directly into the object\'s processing_project/ folder on Nebulis.',
+              },
+              {
+                t: '⚙ Settings Window',
+                d: 'Dedicated sub-window for server connection, API key testing, download root directories, and download acceleration options.',
+              },
+            ]}
+          />
+        </div>
+      </div>
+    </GuideCard>
+  );
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */

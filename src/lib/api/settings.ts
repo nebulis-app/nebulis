@@ -1,9 +1,39 @@
 import type { Settings } from '../../types';
 import { fetchJSON, BASE, authHeaders, errorMessage } from './client';
 
+export interface UserApiKey {
+  id: string;
+  userId: string;
+  keyPrefix: string;
+  name: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
 export const getSettings = () => fetchJSON<Settings>('/settings');
 export const updateSettings = (settings: Partial<Settings>) =>
   fetchJSON<Settings>('/settings', { method: 'PUT', body: JSON.stringify(settings) });
+
+// User-linked API Keys (up to 5 keys per user)
+export const getUserApiKeys = () =>
+  fetchJSON<{ keys: UserApiKey[] }>('/settings/api-keys');
+
+export const createUserApiKey = (name: string) =>
+  fetchJSON<{ id: string; apiKey: string; keyPrefix: string; name: string; message: string }>('/settings/api-keys', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+
+export const deleteUserApiKey = (id: string) =>
+  fetchJSON<{ revoked: boolean; id: string }>(`/settings/api-keys/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+
+// Legacy single-key compatibility endpoints
+export const generateApiKey = () =>
+  fetchJSON<{ apiKey: string; message: string }>('/settings/generate-api-key', { method: 'POST' });
+export const revokeApiKey = () =>
+  fetchJSON<{ revoked: boolean }>('/settings/api-key', { method: 'DELETE' });
 export const resetDatabase = () =>
   fetchJSON<{ reset: boolean }>('/settings/reset-database', {
     method: 'DELETE',

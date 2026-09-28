@@ -111,6 +111,25 @@ unreachable address. If clients can't find the server automatically, set
 
 ---
 
+## PixInsight Repository & Integrations
+
+The container includes a built-in PixInsight update repository accessible directly at:
+
+```text
+http://<host>:<port>/plugins/pixinsight/
+```
+
+- **Automated Updates**: Add this URL under **Resources → Updates → Manage Repositories** in PixInsight ($\ge$ 1.8.9 or 1.9.x) to receive automatic updates for the **Nebulis Connector** PJSR script (synchronized with app version `v2.1.0`).
+- **Web Portal**: Visiting the `/plugins/pixinsight/` URL in any web browser displays an interactive landing page with copyable repository URLs and direct package downloads (`updates.xri`, `NebulisConnector.tar.gz`, `NebulisConnector.zip`, and `NebulisConnector.js`).
+- **User Authentication**: Authenticate using user-linked API keys (`Settings → Account → API Keys`, prefixed with `neb-`).
+- **Observatory Integration**:
+  - **Library Download**: Browse deep-sky objects with live DSO screenshot previews, session subframe counts, and optical filters.
+  - **Calibration Library**: Browse all Master Darks, Flats, Bias, and Flat-Darks with explicit linked target object visibility for Flats.
+  - **Project Sync**: Export active workspace process icons (`.xpsm`) or upload `.zip` project archives and master stacks back to Nebulis under the object's `processing_project/` directory.
+  - **Dedicated Settings Dialog**: Configure server URL, user API key, local download root directory, and curl download acceleration.
+
+---
+
 ## Health check
 
 The image ships a built-in healthcheck against:

@@ -444,6 +444,22 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_connectedDevices_user ON connectedDevices(userId);
 
+  -- ─── User-linked API Keys ───────────────────────────────────
+  -- Allows users to generate dedicated API keys for PixInsight,
+  -- CLI scripts, and automated workflows. Hashed with SHA-256 for secure lookup.
+  CREATE TABLE IF NOT EXISTS userApiKeys (
+    id         TEXT PRIMARY KEY,
+    userId     TEXT NOT NULL,
+    keyHash    TEXT NOT NULL UNIQUE,
+    keyPrefix  TEXT NOT NULL,
+    name       TEXT NOT NULL DEFAULT '',
+    createdAt  INTEGER NOT NULL,
+    lastUsedAt INTEGER,
+    revokedAt  INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_userApiKeys_user ON userApiKeys(userId);
+  CREATE INDEX IF NOT EXISTS idx_userApiKeys_hash ON userApiKeys(keyHash);
+
   -- ─── System log (admin audit trail) ───────────────────────────
   -- Security and administrative events: logins (success/failure), user and
   -- telescope management, device pairing, sync summaries, storage and

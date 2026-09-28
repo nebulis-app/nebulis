@@ -16,6 +16,8 @@ export default defineConfig({
       // its own proxy entry here — otherwise Vite's dev server returns its
       // own SPA fallback HTML for these paths instead of the image.
       '/sky-cache': 'http://localhost:3002',
+      // PixInsight update repository endpoint
+      '/plugins': 'http://localhost:3002',
     },
   },
 })

@@ -1,7 +1,7 @@
 /**
  * i18next setup. Resources are bundled as static imports rather than fetched
- * through i18next-http-backend: with four shipped languages (English,
- * German, Spanish, French) there is nothing worth a network round trip for.
+ * through i18next-http-backend: with five shipped languages (English,
+ * German, Spanish, French, Dutch) there is nothing worth a network round trip for.
  * Namespaces are per-feature so a translator can claim one file (see
  * src/locales/CONTRIBUTING-TRANSLATIONS.md); revisit lazy-loading only once
  * a namespace is actually large enough to matter for bundle size.
@@ -54,12 +54,23 @@ import frCatalogs from './locales/fr/catalogs.json';
 import frErrors from './locales/fr/errors.json';
 import frHelp from './locales/fr/help.json';
 import frOnboarding from './locales/fr/onboarding.json';
+import nlCommon from './locales/nl/common.json';
+import nlSettings from './locales/nl/settings.json';
+import nlLibrary from './locales/nl/library.json';
+import nlPlanner from './locales/nl/planner.json';
+import nlForecast from './locales/nl/forecast.json';
+import nlObservations from './locales/nl/observations.json';
+import nlCatalogs from './locales/nl/catalogs.json';
+import nlErrors from './locales/nl/errors.json';
+import nlHelp from './locales/nl/help.json';
+import nlOnboarding from './locales/nl/onboarding.json';
 
 export const SUPPORTED_LANGUAGES = [
   { code: 'en', label: 'English' },
   { code: 'de', label: 'Deutsch' },
   { code: 'es', label: 'Español' },
   { code: 'fr', label: 'Français' },
+  { code: 'nl', label: 'Nederlands' },
 ] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]['code'];
 
@@ -118,6 +129,18 @@ void i18n
         errors: frErrors,
         help: frHelp,
         onboarding: frOnboarding,
+      },
+      nl: {
+        common: nlCommon,
+        settings: nlSettings,
+        library: nlLibrary,
+        planner: nlPlanner,
+        forecast: nlForecast,
+        observations: nlObservations,
+        catalogs: nlCatalogs,
+        errors: nlErrors,
+        help: nlHelp,
+        onboarding: nlOnboarding,
       },
     },
     fallbackLng: 'en',

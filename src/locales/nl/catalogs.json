@@ -1,0 +1,252 @@
+{
+  "catalogBoard": {
+    "loadFailed": "De catalogus kon niet worden geladen. Vernieuw de pagina.",
+    "noSearchMatch": "Geen objecten in deze catalogus komen overeen met je zoekopdracht.",
+    "noneImaged": "Je hebt nog geen van deze objecten gefotografeerd.",
+    "allImaged": "Elk object in deze selectie is gefotografeerd.",
+    "nothingToShow": "Geen objecten om weer te geven met de huidige filters.",
+    "clearFilters": "Filters wissen"
+  },
+  "catalogsHero": {
+    "percentImagedAriaLabel": "{{percent}}% van catalogusobjecten gefotografeerd",
+    "imaged": "Gefotografeerd",
+    "catalogObjects": "Catalogusobjecten",
+    "title": "Catalogi",
+    "subtitle": "Houd bij welke objecten uit klassieke waarneemprogramma's je hebt gefotografeerd."
+  },
+  "catalogMeta": {
+    "messier": {
+      "label": "Messier",
+      "tagline": "110 heldere pronkstukken vastgelegd door een kometenjager die ze steeds voor kometen aanzag.",
+      "blurb": "Messier legde deze 110 nevelachtige objecten vast tijdens zijn zoektocht naar kometen, zodat hij ze niet opnieuw voor een nieuwe komeet zou aanzien. Elk object is helder genoeg voor een kleine telescoop. Daarom is dit vaak de eerste lijst die astrofotografen voltooien."
+    },
+    "caldwell": {
+      "label": "Caldwell",
+      "tagline": "109 bijzondere objecten die bij Messier ontbreken, gerangschikt op declinatie en tot diep aan de zuidelijke hemel.",
+      "blurb": "Patrick Moore koos 109 heldere objecten die bij Messier ontbreken, gerangschikt op declinatie en tot diep aan de zuidelijke hemel. Hieronder vallen de Sluiernevel, de Helixnevel en de Dubbele Sterrenhoop."
+    },
+    "herschel400": {
+      "label": "Herschel 400",
+      "tagline": "400 zwakkere objecten uit William Herschels eigen hemelverkenningen. De logische vervolgstap na Messier.",
+      "blurb": "400 objecten uit William Herschels eigen hemelverkenningen, geselecteerd als de logische uitdaging na Messier. Het zijn zwakkere en kleinere objecten, vooral sterrenstelsels. Een lange totale belichtingstijd en een donkere hemel lonen hier."
+    },
+    "sharpless": {
+      "label": "Sharpless",
+      "tagline": "313 wolken van oplichtende waterstof: de emissienevels achter veel bekende hemelobjecten.",
+      "blurb": "Stewart Sharpless catalogiseerde 313 H II-gebieden op de fotografische platen van de National Geographic-hemelkartering. Dit zijn de nevels die in waterstof-alfa oplichten en geliefd zijn bij smalbandfotografen: groot, zwak en vol structuur. Sommige hebben bekende namen, zoals de Grotnevel, de Tovenaarsnevel en de Pacmannevel. Andere zijn naamloze gebieden die een lange belichting waard zijn."
+    }
+  },
+  "objectClass": {
+    "galaxy": "Sterrenstelsels",
+    "nebula": "Nevels",
+    "cluster": "Sterrenhopen",
+    "other": "Overig"
+  },
+  "catalogHero": {
+    "allCatalogs": "Alle catalogi",
+    "imaged": "gefotografeerd",
+    "programComplete": "Waarneemprogramma voltooid",
+    "stillToImage_one": "{{count}} nog te fotograferen",
+    "stillToImage_other": "{{count}} nog te fotograferen",
+    "planTonightTitle": "Plan vannacht met nog niet gefotografeerde {{label}}-objecten",
+    "planTonight": "Vannacht plannen"
+  },
+  "catalogPanel": {
+    "ariaLabel": "{{label}}-catalogus, {{imaged}} van {{total}} objecten gefotografeerd",
+    "objectsCount_one": "{{count}} object",
+    "objectsCount_other": "{{count}} objecten",
+    "loadingProgress": "Voortgang laden",
+    "imagedOfTotal": "{{imaged}} van {{total}} gefotografeerd",
+    "complete": "Voltooid",
+    "toGo_one": "{{count}} resterend",
+    "toGo_other": "{{count}} resterend",
+    "openBoard": "Overzicht openen"
+  },
+  "catalogTile": {
+    "imagedAriaLabel": "{{id}}, {{name}}, gefotografeerd",
+    "notImagedAriaLabel": "{{id}}, {{name}}, nog niet gefotografeerd",
+    "magnitude": "mag {{value}}",
+    "sessionCount_one": "{{count}} sessie",
+    "sessionCount_other": "{{count}} sessies",
+    "addToWishlist": "Toevoegen aan verlanglijst",
+    "removeFromWishlist": "Verwijderen uit verlanglijst",
+    "addToWishlistAriaLabel": "Voeg {{name}} toe aan verlanglijst",
+    "removeFromWishlistAriaLabel": "Verwijder {{name}} uit verlanglijst"
+  },
+  "catalogToolbar": {
+    "filterAll": "Alles",
+    "filterImaged": "Gefotografeerd",
+    "filterRemaining": "Resterend",
+    "sortCatalogOrder": "Catalogusvolgorde",
+    "sortName": "Naam",
+    "sortBrightestFirst": "Helderste eerst",
+    "sortConstellation": "Sterrenbeeld",
+    "sortFrameFit": "Beste kadrering",
+    "filterByStatus": "Filter op fotografiestatus",
+    "objectsCount_one": "{{count}} object",
+    "objectsCount_other": "{{count}} objecten",
+    "shownOfTotal": "{{shown}} van {{total}} weergegeven",
+    "searchPlaceholder": "Zoek op naam, ID of sterrenbeeld",
+    "searchAriaLabel": "Zoek in deze catalogus",
+    "clearSearch": "Zoekopdracht wissen",
+    "sortObjects": "Sorteer objecten"
+  },
+  "catalogObjectModal": {
+    "maxAltitudeHeading": "Maximale hoogte tijdens duisternis – komende 12 maanden",
+    "bestSingle": "Beste: {{date}}",
+    "bestRange": "Beste: {{start}} – {{end}}",
+    "monthAltitude": "{{label}}: {{deg}}°",
+    "monthBelowHorizon": "{{label}}: onder de horizon",
+    "previousObject": "Vorig object",
+    "nextObject": "Volgend object",
+    "imagedSessions_one": "Gefotografeerd ({{count}} sessie)",
+    "imagedSessions_other": "Gefotografeerd ({{count}} sessies)",
+    "mag": "Mag {{value}}",
+    "raDec": "RA {{ra}}h · Dec {{dec}}°",
+    "close": "Sluiten",
+    "viewLargerImage": "Bekijk grotere afbeelding",
+    "referenceImageAlt": "Referentiebeeld van {{id}}",
+    "noDescription": "Geen beschrijving beschikbaar.",
+    "wikipedia": "Wikipedia",
+    "belowMinimumAltitude": "Vanaf je locatie blijft dit object het hele jaar tijdens de duisternis onder je minimale waarneemhoogte ({{deg}}°).",
+    "setLocationForWindow": "Stel je locatie in via Instellingen om te zien wanneer je dit object het beste kunt fotograferen.",
+    "notVisibleTonight": "Dit object blijft vanaf je locatie de hele nacht onder de horizon, dus je kunt het vannacht niet zien.",
+    "viewObservations": "Bekijk waarnemingen",
+    "notVisibleTitle": "Dit object is vannacht niet zichtbaar vanaf je locatie.",
+    "openInPlanner": "Openen in Planner",
+    "framingButton": "Kadrering en mozaïek",
+    "framingButtonTitle": "Bekijk hoe dit object in het gezichtsveld van je telescoop past en plan een mozaïek",
+    "addToWishlist": "Toevoegen aan verlanglijst",
+    "removeFromWishlist": "Verwijderen uit verlanglijst"
+  },
+  "filterRecommendations": {
+    "heading": "Filteradvies",
+    "colorRig": "Kleur",
+    "monoRig": "Mono",
+    "unknown": {
+      "label": "Breedband LRGB",
+      "short": "LRGB",
+      "rationale": "Voor dit objecttype is geen specifiek filteradvies beschikbaar. Breedband LRGB is daarom een veilige keuze."
+    },
+    "keys": {
+      "no-filter": {
+        "label": "Geen filter",
+        "short": "Geen",
+        "rationale": "Het licht van dit object is verspreid over een breed spectrum. Een filter zou daarom alleen signaal wegnemen."
+      },
+      "no-filter-lrgb": {
+        "label": "Geen filter, breedband LRGB",
+        "short": "LRGB",
+        "rationale": "Breedband LRGB geeft de meest natuurgetrouwe kleuren voor dit objecttype. Een smalbandfilter zou het grootste deel van het licht tegenhouden."
+      },
+      "lrgb": {
+        "label": "Breedband LRGB",
+        "short": "LRGB",
+        "rationale": "Standaard LRGB: luminantie voor detail, RGB voor kleur. Smalband voegt weinig toe voor dit objecttype."
+      },
+      "luminance": {
+        "label": "Luminantie- of clearfilter",
+        "short": "Lum",
+        "rationale": "Begin met luminantie voor detail. Voeg Ha of OIII alleen toe bij sterke lichtvervuiling of als je meer contrast wilt."
+      },
+      "ha-dual": {
+        "label": "Ha of dualbandfilter",
+        "short": "Ha/Dual-NB",
+        "rationale": "Ha maakt details in de emissienevel zichtbaar. Een dualbandfilter zoals L-Extreme of Duo-Band onderdrukt ook lichtvervuiling bij een kleurencamera."
+      },
+      "ha-oiii": {
+        "label": "Ha en OIII",
+        "short": "Ha+OIII",
+        "rationale": "Dit object straalt zowel in Ha als in OIII. Opnamen met beide filters laten de volledige tweekleurenstructuur zien."
+      },
+      "oiii-ha": {
+        "label": "Eerst OIII, dan Ha",
+        "short": "OIII+Ha",
+        "rationale": "OIII is hier de dominante emissielijn. Ha vult de buitenste schil en de filamenten aan."
+      },
+      "sho": {
+        "label": "SHO (Hubble-palet)",
+        "short": "SHO",
+        "rationale": "SII, Ha en OIII laten elk een andere structuur in dit object zien, en het Hubble-palet haalt het beste uit alle drie."
+      }
+    }
+  },
+  "catalogPlanModal": {
+    "tonight": "vannacht",
+    "close": "Sluiten",
+    "title": "Vannacht plannen · {{catalogLabel}}",
+    "subtitle": "De nog niet gefotografeerde {{catalogLabel}}-objecten die het hoogst aan de hemel staan in de nacht van {{nightLabel}}, met voldoende afstand tot de maan ({{moonPct}}% verlicht). Kies het aantal objecten en we verdelen ze over de donkere periode.",
+    "noDarkWindow": "Voor je locatie is momenteel geen donkere periode beschikbaar.",
+    "allImagedNiceWork": "Je hebt alle objecten in deze catalogus al gefotografeerd. Goed gedaan.",
+    "noPlannableCoords": "Geen van de resterende objecten in deze catalogus heeft bruikbare coördinaten voor een planning.",
+    "howManyObjects": "Hoeveel objecten?",
+    "leftCount": "{{count}} van {{total}} resterend",
+    "buildingPlan": "Planning maken...",
+    "buildFailed": "De planning kon niet worden gemaakt. Controleer je verbinding en open dit venster opnieuw.",
+    "nothingClears": "Geen object in deze catalogus staat deze nacht hoog genoeg én voldoende ver van de maan.",
+    "moonDown": "maan onder de horizon",
+    "awayDeg": "{{deg}}° afstand",
+    "cancel": "Annuleren",
+    "creating": "Aanmaken...",
+    "createPlan": "Planning maken ({{count}})"
+  },
+  "framingModal": {
+    "angularSizeUnknown": "Schijnbare grootte onbekend",
+    "fitsInSingleFrame": "Past in één beeldveld",
+    "needsMosaic": "Voor volledige dekking is een mozaïek van {{cols}} × {{rows}} panelen nodig",
+    "fitFits": "Past",
+    "fitFitsLabel": "Past ruim in één beeldveld",
+    "fitTight": "Krappe kadrering",
+    "fitTightLabel": "Past, maar vult het beeldveld grotendeels. Er is weinig ruimte om te draaien of bij te snijden.",
+    "fitTiny": "Klein",
+    "fitTinyLabel": "Past met veel ruimte eromheen. Het object oogt klein in het beeldveld.",
+    "customLabel": "Aangepast",
+    "decreaseLabel": "Verlaag {{label}}",
+    "increaseLabel": "Verhoog {{label}}",
+    "title": "Kadrering en mozaïek",
+    "close": "Sluiten",
+    "skyFieldAlt": "Hemelgebied rond {{objectName}}",
+    "skyImageUnavailable": "Hemelafbeelding niet beschikbaar",
+    "frameRotation": "Beeldveldrotatie",
+    "reset": "Opnieuw instellen",
+    "telescope": "Telescoop",
+    "customOption": "Eigen configuratie (brandpuntsafstand + sensor)...",
+    "opticsMm": "Optiek (mm)",
+    "focal": "Brandpuntsafstand",
+    "sensorW": "Sensorbreedte",
+    "sensorH": "Sensorhoogte",
+    "yourTelescopes": "Je telescopen",
+    "builtInModels": "Standaardmodellen",
+    "savedRigs": "Je opgeslagen opstellingen",
+    "noOpticsWarning": "Voor {{name}} is geen optische configuratie opgeslagen. Het getoonde beeldveld is daarom een algemene benadering. Voeg de brandpuntsafstand en sensorgrootte toe via Instellingen → Telescopen → Bewerken voor een nauwkeurig beeldveld.",
+    "pixelSize": "Pixelgrootte (μm)",
+    "optionalPlaceholder": "optioneel",
+    "customOpticsHint": "Sla deze configuratie hieronder op als voorinstelling om deze later opnieuw te gebruiken. Gebruik je de opstelling ook elders in Nebulis, voeg deze dan toe via Instellingen → Telescopen → Bewerken en selecteer deze in de lijst hierboven. De pixelgrootte is optioneel en wordt alleen gebruikt voor de beeldschaal hieronder.",
+    "rigNamePlaceholder": "Naam van de opstelling",
+    "confirmSaveRig": "Voorinstelling opslaan",
+    "cancel": "Annuleren",
+    "updateRig": "\"{{name}}\" bijwerken",
+    "rigUpdated": "Bijgewerkt",
+    "rigSaved": "Opgeslagen",
+    "saveRigAsNew": "Opslaan als nieuw",
+    "saveRigAs": "Opslaan als voorinstelling…",
+    "deleteRig": "Voorinstelling verwijderen",
+    "deleteRigConfirm": "De opgeslagen voorinstelling \"{{name}}\" verwijderen? Dit kan niet ongedaan worden gemaakt.",
+    "plateScale": "Beeldschaal",
+    "plateScaleValue": "{{value}}″/px",
+    "verdict": "Beoordeling",
+    "mosaic": "Mozaïek",
+    "autoFitTitle": "Kies het kleinste mozaïek dat dit object volledig omvat",
+    "autoFit": "Passend maken",
+    "columns": "Kolommen",
+    "rows": "Rijen",
+    "overlap": "Overlapping",
+    "frameFov": "Gezichtsveld per opname",
+    "coverage": "Totaal gezichtsveld",
+    "tiles": "Panelen",
+    "objectSize": "Schijnbare afmetingen",
+    "saveFraming": "Kadrering opslaan bij deze sessie",
+    "framingSaved": "Opgeslagen",
+    "fovDisclaimer": "Het gezichtsveld is bij benadering. Slimme telescopen hebben een altazimutale montering, waardoor het beeldveld tijdens een sessie draait."
+  }
+}

@@ -10,8 +10,11 @@ Nebulis's UI text lives in per-feature JSON files under `src/locales/<language>/
 | `de` | Deutsch |
 | `fr` | Français |
 | `es` | Español |
+| `nl` | Nederlands |
 
 German, French, and Spanish were produced by AI translation and have **not** been reviewed by a native speaker. If you're fluent in one of these and spot something wrong, awkward, or too literal, please open an issue or a pull request against the relevant files below.
+
+Dutch was translated with AI assistance and reviewed file by file by a contributor.
 
 ## Namespaces
 

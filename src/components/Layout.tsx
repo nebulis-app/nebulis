@@ -50,6 +50,7 @@ const NAV_STRIP_CLEARANCE = 24;
  *  nav strip renders from `orderedItems` instead of one hardcoded link per
  *  item — same "third kind of dynamic id" case that file's own doc comment
  *  anticipates (it already does this for SETTINGS_NAV). */
+// eslint-disable-next-line react-refresh/only-export-components
 export const NAV_LINK_CONFIG: Record<NavItemId, {
   to: string;
   icon: ReactNode;

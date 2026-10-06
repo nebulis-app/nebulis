@@ -8,6 +8,10 @@ import {
   getAllUsers,
   deleteUser,
   updateUserPassword,
+  createApiKeyForUser,
+  getUserApiKeys,
+  revokeApiKeyForUser,
+  verifyApiKey,
 } from '../../server/lib/auth';
 import db from '../../server/lib/db';
 
@@ -187,5 +191,60 @@ describe('auth', () => {
   it('returns false when updating password for unknown user', async () => {
     const result = await updateUserPassword('no-such-id', 'validpass1');
     expect(result).toBe(false);
+  });
+
+  // --- user-linked API keys ---
+
+  it('creates an API key linked to a specific user and verifies it', async () => {
+    const reg = await registerUser('astrodev', 'password123', 'Astro Dev');
+    const created = createApiKeyForUser(reg.user.id, 'PixInsight Workstation');
+
+    expect(created.apiKey).toMatch(/^neb-[0-9a-f]{48}$/);
+    expect(created.keyPrefix).toBe(`${created.apiKey.slice(0, 10)}...`);
+    expect(created.name).toBe('PixInsight Workstation');
+
+    // List keys for user
+    const keys = getUserApiKeys(reg.user.id);
+    expect(keys).toHaveLength(1);
+    expect(keys[0].id).toBe(created.id);
+    expect(keys[0].name).toBe('PixInsight Workstation');
+
+    // Verify key attributes to the linked user
+    const identity = verifyApiKey(created.apiKey);
+    expect(identity).not.toBeNull();
+    expect(identity?.userId).toBe(reg.user.id);
+    expect(identity?.username).toBe('astrodev');
+    expect(identity?.role).toBe('admin');
+
+    // Revoke key
+    const revoked = revokeApiKeyForUser(created.id, reg.user.id);
+    expect(revoked).toBe(true);
+
+    // Verify revoked key returns null
+    expect(verifyApiKey(created.apiKey)).toBeNull();
+    expect(getUserApiKeys(reg.user.id)).toHaveLength(0);
+  });
+
+  it('supports multiple active API keys per user with individual revocation', async () => {
+    const reg = await registerUser('multiuser', 'password123', 'Multi User');
+    const key1 = createApiKeyForUser(reg.user.id, 'PixInsight Office');
+    const key2 = createApiKeyForUser(reg.user.id, 'PixInsight Laptop');
+    const key3 = createApiKeyForUser(reg.user.id, 'CLI Ingestion Script');
+
+    const keys = getUserApiKeys(reg.user.id);
+    expect(keys).toHaveLength(3);
+    expect(keys.map(k => k.name).sort()).toEqual(['CLI Ingestion Script', 'PixInsight Laptop', 'PixInsight Office'].sort());
+
+    // Both keys authenticate to the same user
+    expect(verifyApiKey(key1.apiKey)?.userId).toBe(reg.user.id);
+    expect(verifyApiKey(key2.apiKey)?.userId).toBe(reg.user.id);
+    expect(verifyApiKey(key3.apiKey)?.userId).toBe(reg.user.id);
+
+    // Revoking key2 leaves key1 and key3 valid
+    revokeApiKeyForUser(key2.id, reg.user.id);
+    expect(verifyApiKey(key2.apiKey)).toBeNull();
+    expect(verifyApiKey(key1.apiKey)?.userId).toBe(reg.user.id);
+    expect(verifyApiKey(key3.apiKey)?.userId).toBe(reg.user.id);
+    expect(getUserApiKeys(reg.user.id)).toHaveLength(2);
   });
 });

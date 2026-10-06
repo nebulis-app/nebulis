@@ -9,6 +9,7 @@ import path from 'path';
 import zlib from 'zlib';
 import { getSettingsData, updateSettingsData, getApiKey, setApiKey, getAllProfiles } from '../lib/telescopes.js';
 import { getDefaultSite, updateSite, type ObservingSite } from '../lib/observingSites.js';
+import { createApiKeyForUser, getUserApiKeys, revokeApiKeyForUser } from '../lib/auth.js';
 import { SKY_MAP_BANDS } from '../lib/skyMapConfig.js';
 import { UPDATE_CHANNELS } from '../lib/appUpdate/manifest.js';
 import {
@@ -250,12 +251,13 @@ function settingsValueEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
-router.get('/', (_req: Request, res: Response) => {
+router.get('/', (req: Request, res: Response) => {
   const settings = loadSettings();
+  const userKeys = req.userId ? getUserApiKeys(req.userId) : [];
   res.apiSuccess({
     ...settings,
-    apiKey: settings.apiKey ? `${settings.apiKey.slice(0, 8)}...` : '',
-    hasApiKey: !!settings.apiKey,
+    apiKey: settings.apiKey ? `${settings.apiKey.slice(0, 8)}...` : (userKeys[0]?.keyPrefix || ''),
+    hasApiKey: !!settings.apiKey || userKeys.length > 0,
   });
 });
 
@@ -422,10 +424,11 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
   }
 
   const settings = loadSettings();
+  const userKeys = req.userId ? getUserApiKeys(req.userId) : [];
   res.apiSuccess({
     ...settings,
-    apiKey: settings.apiKey ? `${settings.apiKey.slice(0, 8)}...` : '',
-    hasApiKey: !!settings.apiKey,
+    apiKey: settings.apiKey ? `${settings.apiKey.slice(0, 8)}...` : (userKeys[0]?.keyPrefix || ''),
+    hasApiKey: !!settings.apiKey || userKeys.length > 0,
   });
 });
 
@@ -446,15 +449,87 @@ router.post('/nightly/run', requireAdmin, (_req: Request, res: Response) => {
   res.apiSuccess({ started: true });
 });
 
-// Generate a new API key
-router.post('/generate-api-key', requireAdmin, (req: Request, res: Response) => {
-  const newKey = `shub_${crypto.randomBytes(24).toString('hex')}`;
-  setApiKey(newKey);
+// User-linked API Keys management (max 5 keys per user)
+const MAX_API_KEYS_PER_USER = 5;
+
+router.get('/api-keys', (req: Request, res: Response) => {
+  if (!req.userId) {
+    res.apiError(401, 'UNAUTHORIZED', 'Authentication required');
+    return;
+  }
+  res.apiSuccess({ keys: getUserApiKeys(req.userId) });
+});
+
+router.post('/api-keys', (req: Request, res: Response) => {
+  if (!req.userId) {
+    res.apiError(401, 'UNAUTHORIZED', 'Authentication required');
+    return;
+  }
+  const existing = getUserApiKeys(req.userId);
+  if (existing.length >= MAX_API_KEYS_PER_USER) {
+    res.apiError(
+      400,
+      'LIMIT_REACHED',
+      `Maximum limit of ${MAX_API_KEYS_PER_USER} API keys reached. Please revoke an existing key first.`,
+    );
+    return;
+  }
+
+  const name = typeof req.body?.name === 'string' && req.body.name.trim()
+    ? req.body.name.trim()
+    : `API Key ${existing.length + 1}`;
+  const created = createApiKeyForUser(req.userId, name);
+  logEvent({
+    category: 'auth',
+    event: 'api_key_generated',
+    level: 'info',
+    message: `Generated API key "${created.name}" for user ${req.username || req.userId}.`,
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+  });
+  res.apiSuccess({
+    ...created,
+    message: 'Save this key — it will not be shown again. Use it in X-API-Key header or Authorization: Bearer header.',
+  });
+});
+
+router.delete('/api-keys/:id', (req: Request, res: Response) => {
+  if (!req.userId) {
+    res.apiError(401, 'UNAUTHORIZED', 'Authentication required');
+    return;
+  }
+  const id = String(req.params.id);
+  const ok = revokeApiKeyForUser(id, req.userId);
+  if (!ok) {
+    res.apiError(404, 'NOT_FOUND', 'API key not found');
+    return;
+  }
+  logEvent({
+    category: 'auth',
+    event: 'api_key_revoked',
+    level: 'info',
+    message: `Revoked API key ${id} for user ${req.username || req.userId}.`,
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+  });
+  res.apiSuccess({ revoked: true, id });
+});
+
+// Generate a new API key (backward compatible, now user-linked)
+router.post('/generate-api-key', (req: Request, res: Response) => {
+  if (!req.userId) {
+    res.apiError(401, 'UNAUTHORIZED', 'Authentication required');
+    return;
+  }
+  const created = createApiKeyForUser(req.userId, 'PixInsight & Automation');
+  setApiKey(created.apiKey); // Keep legacy fallback active
   logEvent({
     category: 'auth',
     event: 'api_key_generated',
     level: 'warning',
-    message: 'Generated a new API key.',
+    message: `Generated a new API key for user ${req.username || req.userId}.`,
     userId: req.userId,
     username: req.username,
     ip: req.ip ?? req.socket.remoteAddress,
@@ -462,19 +537,28 @@ router.post('/generate-api-key', requireAdmin, (req: Request, res: Response) => 
 
   // Return the full key once — it won't be shown again
   res.apiSuccess({
-    apiKey: newKey,
+    apiKey: created.apiKey,
     message: 'Save this key — it will not be shown again. Use it in X-API-Key header or Authorization: Bearer header.',
   });
 });
 
 // Revoke API key
-router.delete('/api-key', requireAdmin, (req: Request, res: Response) => {
+router.delete('/api-key', (req: Request, res: Response) => {
+  if (!req.userId) {
+    res.apiError(401, 'UNAUTHORIZED', 'Authentication required');
+    return;
+  }
   setApiKey('');
+  // Revoke user keys
+  const keys = getUserApiKeys(req.userId);
+  for (const k of keys) {
+    revokeApiKeyForUser(k.id, req.userId);
+  }
   logEvent({
     category: 'auth',
     event: 'api_key_revoked',
     level: 'warning',
-    message: 'Revoked the API key.',
+    message: `Revoked all API keys for user ${req.username || req.userId}.`,
     userId: req.userId,
     username: req.username,
     ip: req.ip ?? req.socket.remoteAddress,

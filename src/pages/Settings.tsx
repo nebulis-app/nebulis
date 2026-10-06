@@ -14,6 +14,7 @@ import { LibrarySection } from '../components/settings/LibrarySection';
 import { SoftwareUpdateCard } from '../components/settings/SoftwareUpdateCard';
 import { UsersSection } from '../components/settings/UsersSection';
 import { ConnectedDevicesSection } from '../components/settings/ConnectedDevicesSection';
+import { ApiKeySection } from '../components/settings/ApiKeySection';
 import { ConnectionSection } from '../components/settings/ConnectionSection';
 import { SkySection } from '../components/settings/SkySection';
 import { StorageLocationSection } from '../components/settings/StorageLocationSection';
@@ -145,6 +146,7 @@ export function SettingsPage() {
       case 'updates':
         return <SoftwareUpdateCard isDark={isDark} form={form} setForm={setForm} />;
       case 'account':
+        if (resolvedSection === 'api-key') return <ApiKeySection isDark={isDark} />;
         return resolvedSection === 'devices'
           ? <ConnectedDevicesSection isDark={isDark} />
           : <UsersSection isDark={isDark} />;
@@ -277,6 +279,7 @@ function subtitleKeyFor(groupId: string, sectionId: string | null): string {
     case 'library':  return 'subtitle.library';
     case 'updates':  return 'subtitle.updates';
     case 'account':
+      if (sectionId === 'api-key') return 'subtitle.accountApiKeys';
       return sectionId === 'devices' ? 'subtitle.accountDevices' : 'subtitle.accountUsers';
     case 'hardware': return 'subtitle.hardware';
     case 'sky':      return 'subtitle.sky';

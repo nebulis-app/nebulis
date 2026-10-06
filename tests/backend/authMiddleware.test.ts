@@ -7,6 +7,7 @@ vi.mock('../../server/lib/auth', () => ({
   getUserCount: vi.fn(),
   getUserTokenVersion: vi.fn(),
   getUserById: vi.fn(),
+  verifyApiKey: vi.fn(),
 }));
 
 // isDeviceActive/touchDevice are real DB-backed functions in most of this

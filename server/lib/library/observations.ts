@@ -520,6 +520,8 @@ export function getLocalSessions(objectId: string) {
      *  later replace a costly earlier pick without a second pass. */
     stackedImageIsCheap: boolean;
     anyImageIsCheap: boolean;
+    filters: Set<string>;
+    exposures: Set<string>;
   }>();
 
   // Processed-image counts per session date (separate `sessionProcessedImages`
@@ -612,6 +614,9 @@ export function getLocalSessions(objectId: string) {
       integrationSec: capture?.integrationSec ?? null,
       framesStacked: capture?.framesStacked ?? null,
       hasNote: !!getNote(objectId, date),
+      filter: capture?.filter ?? null,
+      exposureSec: capture?.exposureSec ?? null,
+      gain: capture?.gain ?? null,
     };
   };
   // User-crowned per-session preview: { date → relative library path }.
@@ -626,7 +631,7 @@ export function getLocalSessions(objectId: string) {
   for (const r of sessionRows) {
     if (r.date === 'unknown') continue; // stale rows from old imports — skip
     if (!deletedSessions.has(r.date) && !sessionMap.has(r.date)) {
-      sessionMap.set(r.date, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, videoCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false });
+      sessionMap.set(r.date, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, videoCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false, filters: new Set(), exposures: new Set() });
     }
     if (r.temperature != null) {
       weatherMap.set(r.date, {
@@ -690,7 +695,7 @@ export function getLocalSessions(objectId: string) {
     // line above inserted is really there.
     let s = sessionMap.get(sessionKey);
     if (!s) {
-      s = { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, videoCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false };
+      s = { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, videoCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false, filters: new Set(), exposures: new Set() };
       sessionMap.set(sessionKey, s);
     }
     s.fileCount++;
@@ -725,6 +730,8 @@ export function getLocalSessions(objectId: string) {
       s.anyImageIsCheap = isCheapImage;
     }
     if (parsed.type === 'sub') s.subFrameCount++;
+    if (parsed.filter && parsed.filter.trim().length > 0) s.filters.add(parsed.filter.trim());
+    if (parsed.exposure && parsed.exposure.trim().length > 0) s.exposures.add(parsed.exposure.trim());
     const cat = getFileCategory(fname);
     if (cat === 'fits') s.fitsCount++;
     if (cat === 'image') s.imageCount++;
@@ -845,6 +852,12 @@ export function getLocalSessions(objectId: string) {
       filesUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/files`,
       weather: weatherMap.get(date) || null,
       ...enrich(date),
+      filter: (stats.filters && stats.filters.size > 0)
+        ? Array.from(stats.filters).join(', ')
+        : (captureByDate.get(date)?.filter ?? null),
+      exposure: (stats.exposures && stats.exposures.size > 0)
+        ? Array.from(stats.exposures).join(', ')
+        : (captureByDate.get(date)?.exposureSec ? `${captureByDate.get(date)!.exposureSec}s` : null),
     }));
 }
 

@@ -105,6 +105,8 @@ import {
   getProjectArchivePath,
   isProjectArchiveName,
   projectArchiveMimeType,
+  getProcessingProjectSummary,
+  saveProcessingProjectFile,
   getObjectFolderName,
   scanImportFolder,
   LIBRARY_OBJECT_FILTERS,
@@ -3386,6 +3388,14 @@ const projectArchiveUpload = multer({
   fileFilter: (_req, file, cb) => cb(null, isProjectArchiveName(file.originalname)),
 });
 
+const processingProjectFileUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+    filename: (_req, file, cb) => cb(null, `processingproj_${randomUUID()}_${path.basename(file.originalname)}`),
+  }),
+  limits: { fileSize: 20 * 1024 * 1024 * 1024, fieldSize: 1 * 1024 * 1024 },
+});
+
 /**
  * Free-space preflight for a project-archive upload, keyed off the
  * Content-Length header before multer starts streaming the body anywhere.
@@ -3479,6 +3489,44 @@ router.get('/project-archives/:id', async (req: Request, res: Response) => {
     if (err && !res.headersSent) res.status(500).send('Failed to send file');
   });
 });
+
+// ─── Processing project direct inspection and file synchronization ────────────
+router.get('/objects/:objectId/processing-project', (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  try {
+    const summary = getProcessingProjectSummary(objectId);
+    res.apiSuccess(summary);
+  } catch (err) {
+    res.apiError(500, 'PROJECT_SUMMARY_FAILED', err instanceof Error ? err.message : 'Failed to get processing project');
+  }
+});
+
+router.post(
+  '/objects/:objectId/processing-project/file',
+  requireAdmin,
+  checkArchiveUploadSpace,
+  processingProjectFileUpload.single('file'),
+  (req: Request, res: Response) => {
+    const objectId = String(req.params.objectId);
+    const file = req.file;
+    if (!file) {
+      res.apiError(400, 'NO_FILE', 'No file provided');
+      return;
+    }
+
+    const subPath = typeof req.body?.subPath === 'string' && req.body.subPath.trim()
+      ? req.body.subPath.trim()
+      : file.originalname;
+
+    try {
+      const result = saveProcessingProjectFile(objectId, subPath, file.path);
+      res.apiSuccess(result);
+    } catch (err) {
+      try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+      res.apiError(500, 'UPLOAD_FAILED', err instanceof Error ? err.message : 'Failed to save project file');
+    }
+  },
+);
 
 // ─── Save edited telescope image back into the library folder ─────────────────
 // Writes the canvas export alongside the original telescope files so it

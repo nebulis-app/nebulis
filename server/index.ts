@@ -46,6 +46,7 @@ import { devicesRouter } from './routes/devices.js';
 import { metaRouter } from './routes/meta.js';
 import { catalogsRouter } from './routes/catalogs.js';
 import { systemLogRouter } from './routes/systemLog.js';
+import { pixinsightRepoRouter } from './routes/pixinsightRepo.js';
 import { startPackUpdateChecker } from './lib/catalogPack/updater.js';
 import { startPlannerNightlyScheduler } from './lib/plannerNightlyPrefetch.js';
 import { startArchiveScheduler } from './lib/archive/archiveScheduler.js';
@@ -452,6 +453,27 @@ legacy.use('/meta', metaRouter);
 legacy.use('/system-log', systemLogRouter);
 app.use('/api', legacy);
 
+// --- PixInsight Plugin Update Repository ---
+// Classical PixInsight repository distribution at /plugins/pixinsight/
+// Allows PixInsight to check updates (/plugins/pixinsight/updates.xri), download
+// the NebulisConnector package archive (.tar.gz / .zip), or get the standalone script.
+app.use('/plugins/pixinsight', pixinsightRepoRouter);
+
+// Fail-safe routes if a user registers the repository in PixInsight without a trailing slash
+// (PixInsight concatenates URL + 'updates.xri' directly, and resolves fileName relative to path):
+app.get('/plugins/pixinsightupdates.xri', (req, res, next) => {
+  req.url = '/updates.xri';
+  pixinsightRepoRouter(req, res, next);
+});
+app.get('/plugins/NebulisConnector.tar.gz', (req, res, next) => {
+  req.url = '/NebulisConnector.tar.gz';
+  pixinsightRepoRouter(req, res, next);
+});
+app.get('/plugins/NebulisConnector.zip', (req, res, next) => {
+  req.url = '/NebulisConnector.zip';
+  pixinsightRepoRouter(req, res, next);
+});
+
 // --- Serve static frontend in production ---
 // When running as a pkg-bundled exe, the frontend dist/ lives beside the exe
 // on disk rather than embedded in the snapshot. Fall back to the standard
@@ -664,6 +686,7 @@ function onListening(): void {
   console.log(`Nebulis v${APP_VERSION} running on port ${PORT}`);
   console.log(`  UI:            http://localhost:${PORT}`);
   console.log(`  API (v1):      http://localhost:${PORT}/api/v1`);
+  console.log(`  PixInsight:    http://localhost:${PORT}/plugins/pixinsight/`);
   console.log(`  Health check:  http://localhost:${PORT}/api/v1/health`);
   console.log(`  Data dir:      ${DATA_DIR}`);
   console.log(`  Logs dir:      ${LOGS_DIR}`);

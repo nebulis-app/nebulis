@@ -50,7 +50,7 @@ export type LibraryLayout = 'flat' | 'nested';
  *  mistaken for one by a nested walk. `processed/` holds user-uploaded
  *  post-processing output keyed by (objectId, date) in its own table; it stays
  *  at object level because a processed image can span several sessions. */
-const RESERVED_DIRS = new Set(['processed', 'thumbnails', 'thumbnail']);
+const RESERVED_DIRS = new Set(['processed', 'thumbnails', 'thumbnail', 'project-archives', 'processing_project']);
 
 export function isReservedObjectDir(name: string): boolean {
   return RESERVED_DIRS.has(name.toLowerCase());

@@ -5,11 +5,12 @@
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { randomBytes, randomUUID } from 'crypto';
+import { randomBytes, randomUUID, createHash, timingSafeEqual } from 'crypto';
 import { DATA_DIR } from './paths.js';
 import path from 'path';
 import db from './db.js';
 import { isRecord } from './typeGuards.js';
+import { getApiKey } from './telescopes.js';
 
 function loadJwtSecret(): string {
   if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
@@ -56,6 +57,15 @@ export interface AuthToken {
 type PublicUser = Omit<User, 'passwordHash'>;
 interface CountRow { c: number }
 
+export interface UserApiKeySummary {
+  id: string;
+  userId: string;
+  keyPrefix: string;
+  name: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
 // Typed prepared statements — shapes propagate to `.get()` / `.all()`.
 // SQL trust boundary: column types are enforced by the users CREATE TABLE in db.ts.
 const stmts = {
@@ -73,6 +83,27 @@ const stmts = {
   updateProfile: db.prepare('UPDATE users SET displayName = ?, email = ? WHERE id = ?'),
   bumpTokenVersion: db.prepare('UPDATE users SET tokenVersion = tokenVersion + 1 WHERE id = ?'),
   getTokenVersion: db.prepare<[string], { tokenVersion: number }>('SELECT tokenVersion FROM users WHERE id = ?'),
+  insertApiKey: db.prepare(
+    'INSERT INTO userApiKeys (id, userId, keyHash, keyPrefix, name, createdAt, lastUsedAt, revokedAt) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)'
+  ),
+  getApiKeyByHash: db.prepare<[string], { id: string; userId: string; username: string; role: UserRole; revokedAt: number | null }>(
+    `SELECT k.id, k.userId, u.username, u.role, k.revokedAt
+       FROM userApiKeys k
+       JOIN users u ON k.userId = u.id
+      WHERE k.keyHash = ?`
+  ),
+  getUserApiKeys: db.prepare<[string], UserApiKeySummary>(
+    `SELECT id, userId, keyPrefix, name, createdAt, lastUsedAt
+       FROM userApiKeys
+      WHERE userId = ? AND revokedAt IS NULL
+      ORDER BY createdAt DESC, id DESC`
+  ),
+  revokeApiKey: db.prepare(
+    'UPDATE userApiKeys SET revokedAt = ? WHERE id = ? AND userId = ? AND revokedAt IS NULL'
+  ),
+  touchApiKey: db.prepare(
+    'UPDATE userApiKeys SET lastUsedAt = ? WHERE id = ?'
+  ),
 };
 
 export async function registerUser(
@@ -233,4 +264,79 @@ function generateToken(user: User): AuthToken {
       role: user.role,
     },
   };
+}
+
+/**
+ * Creates a new API key linked to a specific user.
+ * Generates a cryptographically random key with prefix 'neb-', stores its SHA-256 hash,
+ * and returns the raw key once to be presented to the user.
+ */
+export function createApiKeyForUser(
+  userId: string,
+  name = 'API Key',
+): { id: string; apiKey: string; keyPrefix: string; name: string } {
+  const user = getUserById(userId);
+  if (!user) throw new Error('User not found');
+
+  const id = `key_${randomUUID()}`;
+  const rawKey = `neb-${randomBytes(24).toString('hex')}`;
+  const keyHash = createHash('sha256').update(rawKey).digest('hex');
+  const keyPrefix = `${rawKey.slice(0, 10)}...`;
+  const createdAt = Date.now();
+
+  stmts.insertApiKey.run(id, userId, keyHash, keyPrefix, name.trim() || 'API Key', createdAt);
+
+  return { id, apiKey: rawKey, keyPrefix, name: name.trim() || 'API Key' };
+}
+
+/**
+ * Returns all active API keys owned by a specific user.
+ */
+export function getUserApiKeys(userId: string): UserApiKeySummary[] {
+  return stmts.getUserApiKeys.all(userId);
+}
+
+/**
+ * Revokes a user's API key.
+ */
+export function revokeApiKeyForUser(keyId: string, userId: string): boolean {
+  const res = stmts.revokeApiKey.run(Date.now(), keyId, userId);
+  return res.changes > 0;
+}
+
+/**
+ * Verifies an incoming API key against stored user keys (via SHA-256 hash lookup).
+ * Also falls back to legacy appSettings.apiKey for backward compatibility.
+ * Returns the authenticated user's identity ({ userId, username, role }) or null.
+ */
+export function verifyApiKey(key: string): { userId: string; username: string; role: UserRole } | null {
+  if (!key || typeof key !== 'string') return null;
+
+  // 1. Check user-linked API keys via SHA-256 hash lookup
+  const keyHash = createHash('sha256').update(key.trim()).digest('hex');
+  const match = stmts.getApiKeyByHash.get(keyHash);
+  if (match && !match.revokedAt) {
+    try { stmts.touchApiKey.run(Date.now(), match.id); } catch { /* best effort */ }
+    return {
+      userId: match.userId,
+      username: match.username,
+      role: match.role,
+    };
+  }
+
+  // 2. Backward compatibility: check legacy appSettings.apiKey
+  try {
+    const legacyKey = getApiKey();
+    if (legacyKey && legacyKey.length === key.length && timingSafeEqual(Buffer.from(legacyKey), Buffer.from(key))) {
+      const users = getAllUsers();
+      const admin = users.find(u => u.role === 'admin') || users[0];
+      return {
+        userId: admin ? admin.id : 'admin',
+        username: admin ? admin.username : 'admin',
+        role: 'admin',
+      };
+    }
+  } catch { /* ignore */ }
+
+  return null;
 }

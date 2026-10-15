@@ -18,8 +18,6 @@
     "raDec": "RA {{ra}}h · Dek {{dec}}°",
     "closeDetails": "Details schließen",
     "addToTonight": "Zu heute Nacht hinzufügen",
-    "moonOkTonight": "Der Mond wird heute Nacht nicht stören ({{percent}}% beleuchtet).",
-    "moonWarningTonight": "Der Mond kommt um {{time}} bis auf {{deg}}° heran ({{percent}}% beleuchtet) – feine Details könnten überstrahlt werden.",
     "referenceImageAlt": "Referenzbild von {{name}}",
     "referenceImage": "Referenzbild",
     "setLocationForSky": "Legen Sie Ihren Standort in den Einstellungen fest, um zu sehen, wo dies an Ihrem Himmel steht.",
@@ -28,7 +26,20 @@
     "noCatalogDescription": "Für dieses Objekt ist keine Katalogbeschreibung verfügbar.",
     "readMoreWikipedia": "Mehr auf Wikipedia lesen →",
     "altitudeTonight": "Höhe heute Nacht (lokal Mittag bis Mittag)",
-    "setLocationForAltitude": "Legen Sie Ihren Standort in den Einstellungen fest, um die Höhenkurve zu sehen."
+    "setLocationForAltitude": "Legen Sie Ihren Standort in den Einstellungen fest, um die Höhenkurve zu sehen.",
+    "moonTonight": "Mond heute Nacht: {{percent}} % beleuchtet.",
+    "moonBand": {
+      "broadband": "Breitband:",
+      "narrowband": "Schmalband:"
+    },
+    "moonBandOk": "unproblematisch.",
+    "moonBandWarning": "kommt um {{time}} bis auf {{deg}}° heran (nötig ≥ {{min}}°).",
+    "blockFilter": "Filter",
+    "blockFilterOption": {
+      "unset": "Nicht gesetzt",
+      "broadband": "Breitband",
+      "narrowband": "Schmalband"
+    }
   },
   "nightHero": {
     "rises": "Aufgang {{time}}",
@@ -45,7 +56,14 @@
     "hourByHour": "stündlich",
     "moon": "Mond",
     "litPercent": "{{percent}}% beleuchtet",
-    "planMyNight": "Meine Nacht planen"
+    "planMyNight": "Meine Nacht planen",
+    "filterAdviceTitle": "Nach dem Mond in den dunklen Stunden der Nacht",
+    "filterAdvice": {
+      "broadband": "Breitband-Nacht",
+      "narrowband": "Schmalband-Nacht",
+      "broadbandUntil": "Breitband bis {{time}}, dann Schmalband",
+      "broadbandFrom": "Schmalband, Breitband ab {{time}}"
+    }
   },
   "scheduleTimeline": {
     "nightSchedule": "Nachtplan",
@@ -80,7 +98,17 @@
     "removeScheduledBlock": "Geplanten Block entfernen",
     "remove": "Entfernen",
     "resizeTop": "Oben skalieren",
-    "resizeBottom": "Unten skalieren"
+    "resizeBottom": "Unten skalieren",
+    "narrowbandOk": "Schmalband OK",
+    "moonNbOk": "Mond · SB OK",
+    "band": {
+      "broadband": "Breitband (L, RGB, Farbe ohne Filter)",
+      "narrowband": "Schmalband (Ha, OIII, SII, Dualband)"
+    },
+    "bandShort": {
+      "broadband": "BB",
+      "narrowband": "SB"
+    }
   },
   "libraryPanel": {
     "filterAll": "Alle",
@@ -338,7 +366,23 @@
     "replaceTitle": "Plan für {{nightLabel}} ersetzen?",
     "replaceMessage_one": "Dies löscht das {{count}} bereits für {{nightLabel}} geplante Ziel und ersetzt es durch diese {{newCount}}.",
     "replaceMessage_other": "Dies löscht die {{count}} bereits für {{nightLabel}} geplanten Ziele und ersetzt sie durch diese {{newCount}}.",
-    "replace": "Ersetzen"
+    "replace": "Ersetzen",
+    "favorGoals": "Objekte mit offener Belichtungszeit bevorzugen",
+    "goalsComplete": "Ziele erreicht, ausgelassen: {{names}}",
+    "goalFilterTitle": "Filter {{filter}}: noch {{duration}} vor diesem Block",
+    "avoidClouds": "Bewölkte Stunden auslassen (Vorhersage)",
+    "cloudThresholdLabel": "Grenze für Bewölkung",
+    "cloudThreshold": "über {{pct}} % Wolken",
+    "forecastUnavailable": "Für diese Nacht gibt es keine Vorhersage, der Plan berücksichtigt das Wetter daher nicht.",
+    "skippedCloudy": "Leer gelassen: Vorhersage über {{pct}} % Wolken",
+    "skippedRange": "{{start}}–{{end}} ({{pct}} %)",
+    "allCloudy": "Die Vorhersage ist für den ganzen Zeitraum bewölkt.",
+    "cloudPct": "{{pct}} % Wolken",
+    "dewRisk": "Taugefahr: Temperatur nahe am Taupunkt",
+    "seeingExcellent": "Ausgezeichnetes Seeing",
+    "seeingGood": "Gutes Seeing",
+    "seeingAverage": "Mittleres Seeing",
+    "seeingPoor": "Schlechtes Seeing"
   },
   "planShareModal": {
     "observationPlan": "Beobachtungsplan",
@@ -355,5 +399,20 @@
     "preparing": "Wird vorbereitet…",
     "shareImage": "Bild teilen",
     "saveImage": "Bild speichern"
+  },
+  "integrationRemaining": {
+    "left": "noch {{duration}} · {{filter}}",
+    "title": "{{filter}}: {{done}} von {{goal}}",
+    "noFilter": "Ohne Filter",
+    "complete": "Ziele erreicht",
+    "completeTitle": "Alle Integrationsziele für dieses Objekt sind erreicht"
+  },
+  "filterSuggestion": {
+    "complete": "Integrationsziele für dieses Objekt erreicht.",
+    "suggest": "Filter: {{filter}}, noch {{left}}",
+    "noneTonight": "Alle Filter mit Restzeit sind Breitband, und der Mond steht zu nah.",
+    "use": "{{filter}} verwenden",
+    "inUse": "Verwendet",
+    "ruledOut": "Mond zu nah für Breitband: {{filters}}"
   }
 }

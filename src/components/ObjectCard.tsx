@@ -9,6 +9,7 @@ import type { AstroObject } from '../types';
 import { processingStatusLabel } from '../lib/processingStatus';
 import { useTheme } from '../hooks/useTheme';
 import { nightSafeColor } from '../lib/nightSafeColor';
+import { LibraryIntegrationRemainingChips } from './planner/IntegrationRemainingChips';
 
 interface ObjectCardProps {
   object: AstroObject;
@@ -272,6 +273,15 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes,
             </span>
           )}
         </div>
+
+        {/* Campaign progress ("4h left · D2") for objects with integration
+            goals; renders nothing otherwise. Hidden on the compact grid,
+            like the metadata row above. */}
+        {!compact && (
+          <div className="mt-2 flex flex-wrap items-center gap-1 empty:hidden">
+            <LibraryIntegrationRemainingChips libraryObjectId={object.id} isDark={isDark} />
+          </div>
+        )}
 
       </div>
     </Link>

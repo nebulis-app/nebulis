@@ -295,6 +295,18 @@
         "description": "A sensor's dark current and read noise drift as it ages, so a bundle older than this is flagged Expired on the Calibrations page and can be deleted from there. Flats and flat-darks aren't affected, they're matched to a session instead of aged out.",
         "unit": "days"
       }
+    },
+    "filterAliases": {
+      "title": "Filter aliases",
+      "description": "Merge filter names written differently by your capture software, so integration per filter counts them together. Common spellings (Ha, H-alpha, OIII, SII, L, R, G, B) are already merged.",
+      "empty": "No aliases yet.",
+      "aliasPlaceholder": "Name in your files",
+      "canonicalPlaceholder": "Count as",
+      "remove": "Remove alias",
+      "add": "Add alias",
+      "cancel": "Cancel",
+      "save": "Save aliases",
+      "saveFailed": "Could not save the aliases."
     }
   },
   "softwareUpdate": {

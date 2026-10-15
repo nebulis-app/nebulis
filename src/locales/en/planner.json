@@ -18,8 +18,6 @@
     "raDec": "RA {{ra}}h · Dec {{dec}}°",
     "closeDetails": "Close details",
     "addToTonight": "Add to Tonight",
-    "moonOkTonight": "Moon won't interfere tonight ({{percent}}% illuminated).",
-    "moonWarningTonight": "Moon comes within {{deg}}° at {{time}} ({{percent}}% illuminated) — may wash out faint detail.",
     "referenceImageAlt": "Reference image of {{name}}",
     "referenceImage": "Reference image",
     "setLocationForSky": "Set your location in Settings to see where this sits in your sky.",
@@ -28,7 +26,20 @@
     "noCatalogDescription": "No catalog description available for this object.",
     "readMoreWikipedia": "Read more on Wikipedia →",
     "altitudeTonight": "Altitude tonight (local noon to noon)",
-    "setLocationForAltitude": "Set your location in Settings to see the altitude curve."
+    "setLocationForAltitude": "Set your location in Settings to see the altitude curve.",
+    "moonTonight": "Moon tonight: {{percent}}% lit.",
+    "moonBand": {
+      "broadband": "Broadband:",
+      "narrowband": "Narrowband:"
+    },
+    "moonBandOk": "fine.",
+    "moonBandWarning": "comes within {{deg}}° at {{time}} (wants ≥ {{min}}°).",
+    "blockFilter": "Shot through",
+    "blockFilterOption": {
+      "unset": "Not set",
+      "broadband": "Broadband",
+      "narrowband": "Narrowband"
+    }
   },
   "nightHero": {
     "rises": "Rises {{time}}",
@@ -45,7 +56,14 @@
     "hourByHour": "hour by hour",
     "moon": "Moon",
     "litPercent": "{{percent}}% lit",
-    "planMyNight": "Plan my night"
+    "planMyNight": "Plan my night",
+    "filterAdviceTitle": "From the Moon over tonight’s dark hours",
+    "filterAdvice": {
+      "broadband": "Broadband night",
+      "narrowband": "Narrowband night",
+      "broadbandUntil": "Broadband until {{time}}, then narrowband",
+      "broadbandFrom": "Narrowband, broadband from {{time}}"
+    }
   },
   "scheduleTimeline": {
     "nightSchedule": "Night schedule",
@@ -80,7 +98,17 @@
     "removeScheduledBlock": "Remove scheduled block",
     "remove": "Remove",
     "resizeTop": "Resize top",
-    "resizeBottom": "Resize bottom"
+    "resizeBottom": "Resize bottom",
+    "narrowbandOk": "narrowband OK",
+    "moonNbOk": "Moon · NB OK",
+    "band": {
+      "broadband": "Broadband (L, RGB, colour without filter)",
+      "narrowband": "Narrowband (Ha, OIII, SII, dual-band)"
+    },
+    "bandShort": {
+      "broadband": "BB",
+      "narrowband": "NB"
+    }
   },
   "libraryPanel": {
     "filterAll": "All",
@@ -338,7 +366,23 @@
     "replaceTitle": "Replace the plan for {{nightLabel}}?",
     "replaceMessage_one": "This clears the {{count}} target already scheduled for {{nightLabel}} and replaces it with these {{newCount}}.",
     "replaceMessage_other": "This clears the {{count}} targets already scheduled for {{nightLabel}} and replaces them with these {{newCount}}.",
-    "replace": "Replace"
+    "replace": "Replace",
+    "favorGoals": "Favour objects with time left toward their goals",
+    "goalsComplete": "Goals reached, left out: {{names}}",
+    "goalFilterTitle": "Shot through {{filter}}: {{duration}} left before this block",
+    "avoidClouds": "Skip cloudy hours (forecast)",
+    "cloudThresholdLabel": "Cloud cover limit",
+    "cloudThreshold": "above {{pct}}% clouds",
+    "forecastUnavailable": "No forecast available for this night, so the plan ignores the weather.",
+    "skippedCloudy": "Left empty: forecast above {{pct}}% clouds",
+    "skippedRange": "{{start}}–{{end}} ({{pct}}%)",
+    "allCloudy": "The forecast is cloudy for the whole window.",
+    "cloudPct": "{{pct}}% clouds",
+    "dewRisk": "Dew risk: temperature close to the dew point",
+    "seeingExcellent": "Excellent seeing",
+    "seeingGood": "Good seeing",
+    "seeingAverage": "Average seeing",
+    "seeingPoor": "Poor seeing"
   },
   "planShareModal": {
     "observationPlan": "Observation Plan",
@@ -355,5 +399,20 @@
     "preparing": "Preparing…",
     "shareImage": "Share image",
     "saveImage": "Save image"
+  },
+  "integrationRemaining": {
+    "left": "{{duration}} left · {{filter}}",
+    "title": "{{filter}}: {{done}} of {{goal}}",
+    "noFilter": "No filter",
+    "complete": "Goals reached",
+    "completeTitle": "Every integration goal on this object is reached"
+  },
+  "filterSuggestion": {
+    "complete": "Integration goals reached for this object.",
+    "suggest": "Shoot through {{filter}}: {{left}} left",
+    "noneTonight": "Every filter with time left is broadband, and the Moon is too close for it.",
+    "use": "Use {{filter}}",
+    "inUse": "In use",
+    "ruledOut": "Too close to the Moon for broadband: {{filters}}"
   }
 }

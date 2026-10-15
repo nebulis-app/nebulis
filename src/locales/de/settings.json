@@ -295,6 +295,18 @@
         "description": "Dunkelstrom und Ausleserauschen eines Sensors verändern sich mit der Zeit, daher wird ein Bündel, das älter als dieser Wert ist, auf der Kalibrierungsseite als \"Abgelaufen\" markiert und kann von dort gelöscht werden. Flats und Flat-Darks sind davon nicht betroffen, sie werden einer Sitzung zugeordnet statt zu veralten.",
         "unit": "Tage"
       }
+    },
+    "filterAliases": {
+      "title": "Filter-Aliase",
+      "description": "Fasse Filternamen zusammen, die deine Aufnahmesoftware unterschiedlich schreibt, damit die Integration pro Filter sie gemeinsam zählt. Gängige Schreibweisen (Ha, H-alpha, OIII, SII, L, R, G, B) sind bereits zusammengefasst.",
+      "empty": "Noch keine Aliase.",
+      "aliasPlaceholder": "Name in deinen Dateien",
+      "canonicalPlaceholder": "Zählen als",
+      "remove": "Alias entfernen",
+      "add": "Alias hinzufügen",
+      "cancel": "Abbrechen",
+      "save": "Aliase speichern",
+      "saveFailed": "Die Aliase konnten nicht gespeichert werden."
     }
   },
   "softwareUpdate": {

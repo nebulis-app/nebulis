@@ -58,6 +58,7 @@ import { LinkedFilesChoice } from '../components/objectDetail/LinkedFilesChoice'
 import { buildObjectMetrics, summarizeObject } from '../components/objectDetail/objectStats';
 import { ObjectProcessedSection } from '../components/objectDetail/ObjectProcessedSection';
 import { ObjectProjectArchivesSection } from '../components/objectDetail/ObjectProjectArchivesSection';
+import { ObjectIntegrationSection } from '../components/objectDetail/ObjectIntegrationSection';
 import { TourAnchor } from '../components/tour/TourAnchor';
 import { DWARF_STARTRAILS_OBJECT_TYPE, DWARF_STARTRAILS_PLACEHOLDER_IMAGE } from '../lib/dwarfStartrails';
 import { DWARF_VIDEOS_OBJECT_TYPE } from '../lib/dwarfVideos';
@@ -663,7 +664,15 @@ export function ObjectDetail() {
       <div className="grid gap-4 md:grid-cols-2 items-start">
         <ObjectProcessedSection objectId={activeObjectId} isAdmin={isAdmin} />
 
-        <ObjectProjectArchivesSection objectId={activeObjectId} isAdmin={isAdmin} />
+        {/* Right column: integration per filter (with goals) stacked above
+            the project archives. Integration is skipped for Star Trails /
+            Videos, which have no sub-frames to integrate. */}
+        <div className="flex flex-col gap-4 min-w-0">
+          {!isSyntheticDwarfObject && (
+            <ObjectIntegrationSection objectId={activeObjectId} isAdmin={isAdmin} />
+          )}
+          <ObjectProjectArchivesSection objectId={activeObjectId} isAdmin={isAdmin} />
+        </div>
       </div>
 
       <ObservationsSection

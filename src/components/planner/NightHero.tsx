@@ -21,6 +21,7 @@ import { ScoreDial } from '../ui/ScoreDial';
 import { HeroBackdrop } from '../ui/HeroBackdrop';
 import { PAGE_HERO } from '../../lib/heroImagery';
 import { translateMoonPhase } from '../../lib/moonPhaseLabel';
+import type { NightFilterAdvice } from '../../lib/nightFilterAdvice';
 import { formatDate } from '../../lib/formatLocale';
 import { useTheme } from '../../hooks/useTheme';
 
@@ -33,6 +34,9 @@ interface Props {
   moonPhase: string;
   moonRise: Date | null;
   moonSet: Date | null;
+  /** Broadband or narrowband, from the Moon over the dark window. Null when
+   *  there is no location to work it out from. */
+  filterAdvice?: NightFilterAdvice | null;
   timeZone?: string;
   /** Bright accent for the current theme, matching the Forecast hero. */
   accent: string;
@@ -57,6 +61,7 @@ export function NightHero({
   moonPhase,
   moonRise,
   moonSet,
+  filterAdvice,
   timeZone,
   accent,
   canAutoPlan,
@@ -202,6 +207,18 @@ export function NightHero({
               </div>
               {moonTimes && (
                 <div className="mt-1 text-[11px] text-white/40 tabular-nums">{moonTimes}</div>
+              )}
+              {filterAdvice && (
+                <div
+                  className={`mt-1 text-[11px] font-medium ${
+                    filterAdvice.kind === 'broadband' ? 'text-emerald-300/90' : filterAdvice.kind === 'narrowband' ? 'text-violet-300/90' : 'text-sky-300/90'
+                  }`}
+                  title={t('nightHero.filterAdviceTitle')}
+                >
+                  {filterAdvice.kind === 'broadbandUntil' || filterAdvice.kind === 'broadbandFrom'
+                    ? t(`nightHero.filterAdvice.${filterAdvice.kind}`, { time: fmt(filterAdvice.at) })
+                    : t(`nightHero.filterAdvice.${filterAdvice.kind}`)}
+                </div>
               )}
             </div>
           </div>

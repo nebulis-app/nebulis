@@ -12,6 +12,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowUp, CalendarPlus, Check, Search, Sparkles, Star, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { IntegrationRemainingChips } from './IntegrationRemainingChips';
 import { formatObjectName } from '../../lib/utils';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { formatHm } from '../../lib/timeFormat';
@@ -348,6 +349,9 @@ export function WishlistList({
                         <div className={`text-xs truncate ${subtle}`}>
                           {[item.type, item.constellation, item.magnitude != null ? t('wishlistPanel.mag', { value: item.magnitude.toFixed(1) }) : null]
                             .filter(Boolean).join(' · ')}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1 empty:hidden">
+                          <IntegrationRemainingChips objectId={item.objectId} isDark={isDark} />
                         </div>
 
                         <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5">

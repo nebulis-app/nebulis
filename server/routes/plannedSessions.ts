@@ -3,7 +3,7 @@
  *
  * GET    /api/v1/planned-sessions?from=ISO&to=ISO   List sessions overlapping window.
  * POST   /api/v1/planned-sessions                    Create a new scheduled block.
- * PATCH  /api/v1/planned-sessions/:id                Move / resize / edit notes.
+ * PATCH  /api/v1/planned-sessions/:id                Move / resize / edit notes / filter band.
  * DELETE /api/v1/planned-sessions/:id                Remove a block.
  */
 import { Router, Request, Response } from 'express';
@@ -26,6 +26,8 @@ const CreateBodySchema = z.object({
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
   notes: z.string().optional(),
+  filterBand: z.enum(['broadband', 'narrowband']).nullable().optional(),
+  filter: z.string().max(64).nullable().optional(),
 });
 
 const UpdateBodySchema = z.object({
@@ -33,6 +35,9 @@ const UpdateBodySchema = z.object({
   endTime: z.string().datetime().optional(),
   notes: z.string().optional(),
   framingSetup: z.string().optional(),
+  // null clears it.
+  filterBand: z.enum(['broadband', 'narrowband']).nullable().optional(),
+  filter: z.string().max(64).nullable().optional(),
 });
 
 router.get('/', (req: Request, res: Response) => {

@@ -8,6 +8,7 @@ import { memo, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarPlus, Check, EyeOff, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { IntegrationRemainingChips } from './IntegrationRemainingChips';
 import { formatObjectName } from '../../lib/utils';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { formatHm } from '../../lib/timeFormat';
@@ -172,6 +173,9 @@ export const WishlistCard = memo(function WishlistCard({
         <div className={`truncate text-xs ${subtle}`}>
           {[item.type, item.constellation, !target && item.magnitude != null ? t('wishlistPanel.mag', { value: item.magnitude.toFixed(1) }) : null]
             .filter(Boolean).join(' · ')}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-1 empty:hidden">
+          <IntegrationRemainingChips objectId={item.objectId} isDark={isDark} />
         </div>
 
         <div className="mt-2 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>

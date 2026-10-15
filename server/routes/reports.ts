@@ -13,6 +13,7 @@ import { normalizeCatalogId } from '../lib/telescopeFiles.js';
 import { getObjectFolderName } from '../lib/localLibrary.js';
 import { listObjectFiles, getObjectLayout } from '../lib/library/libraryLayout.js';
 import { resolverFor } from '../lib/library/libraryFiles.js';
+import { normalizeFilterName, getFilterAliasMap, NO_FILTER, MAX_HEADER_BLOCKS } from '../lib/library/integration.js';
 import SunCalc from 'suncalc';
 
 const router = Router();
@@ -70,26 +71,38 @@ function computeSessionStats(objectId: string, sessionDate: string): SessionStat
     dateObs: null,
   };
 
+  // Every filter seen that night, not just the first one: a night shot in Ha
+  // then OIII used to be reported as Ha only.
+  const filterAliases = getFilterAliasMap();
+  const filters = new Set<string>();
+
   for (const fname of fitsFiles.slice(0, 200)) {
     const fullPath = path.join(objDir, fname);
     try {
       const fd = fs.openSync(fullPath, 'r');
-      const buf = Buffer.alloc(2880);
+      // Several header blocks, not one: FILTER and friends can sit past the
+      // first 2880 bytes on headers with many cards.
+      const buf = Buffer.alloc(2880 * MAX_HEADER_BLOCKS);
+      let bytesRead = 0;
       try {
-        fs.readSync(fd, buf, 0, 2880, 0);
+        bytesRead = fs.readSync(fd, buf, 0, buf.length, 0);
       } finally {
         fs.closeSync(fd);
       }
-      const header = parseFitsHeader(buf);
+      const header = parseFitsHeader(buf.subarray(0, bytesRead - (bytesRead % 80)));
       const exptime = header.values['EXPTIME'] ?? header.values['EXPOSURE'];
       if (exptime) stats.totalExposureSec += parseFloat(String(exptime));
       if (stats.temperature === null && header.values['CCD-TEMP']) stats.temperature = parseFloat(String(header.values['CCD-TEMP']));
       if (stats.gain === null && header.values['GAIN']) stats.gain = parseFloat(String(header.values['GAIN']));
-      if (stats.filter === null && header.values['FILTER']) stats.filter = String(header.values['FILTER']).trim();
+      if (header.values['FILTER'] !== undefined) {
+        const f = normalizeFilterName(String(header.values['FILTER']), filterAliases);
+        if (f !== NO_FILTER) filters.add(f);
+      }
       if (stats.dateObs === null && header.values['DATE-OBS']) stats.dateObs = String(header.values['DATE-OBS']).trim();
     } catch { /* skip bad files */ }
   }
 
+  if (filters.size > 0) stats.filter = [...filters].sort().join(', ');
   return stats;
 }
 

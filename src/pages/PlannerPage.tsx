@@ -96,7 +96,11 @@ import {
   type BlockVisibilityResult,
   type VisibleSkyMap,
 } from '../lib/visibilityCheck';
-import { checkMoonProximity, type MoonProximityResult } from '../lib/moonProximity';
+import { checkMoonProximity, type FilterBand, type MoonProximityResult } from '../lib/moonProximity';
+import { nightFilterAdvice } from '../lib/nightFilterAdvice';
+import { suggestFilter } from '../lib/filterSuggestion';
+import { useIntegrationProgress } from '../hooks/useIntegrationProgress';
+import { FilterSuggestionPanel } from '../components/planner/FilterSuggestionPanel';
 import { AutoPlanModal } from '../components/planner/AutoPlanModal';
 import { PlanShareModal } from '../components/planner/PlanShareModal';
 import { TourAnchor } from '../components/tour/TourAnchor';
@@ -416,7 +420,7 @@ export function PlannerPage() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['planned-sessions'] }),
   });
   const updateMut = useMutation({
-    mutationFn: (vars: { id: number; patch: { startTime?: string; endTime?: string; framingSetup?: string } }) =>
+    mutationFn: (vars: { id: number; patch: { startTime?: string; endTime?: string; framingSetup?: string; filterBand?: FilterBand | null; filter?: string | null } }) =>
       updatePlannedSession(vars.id, vars.patch),
     onMutate: async (vars) => {
       await queryClient.cancelQueries({ queryKey: ['planned-sessions'] });
@@ -515,6 +519,10 @@ export function PlannerPage() {
     dec: number;
     majorAxisArcmin: number | null;
     framingSetup: string | null;
+    filterBand?: FilterBand | null;
+    filter?: string | null;
+    start?: Date;
+    end?: Date;
   } | null>(null);
   // Jumped straight to from the timeline block's own framing shortcut icon
   // (only shown when that block already has a saved mosaic), bypassing the
@@ -706,6 +714,8 @@ export function PlannerPage() {
             dec: s.dec,
             startTime: newStart.toISOString(),
             endTime: newEnd.toISOString(),
+            filterBand: s.filterBand ?? null,
+            filter: s.filter ?? null,
           });
         }),
       );
@@ -738,7 +748,7 @@ export function PlannerPage() {
     let cancelled = false;
     const timer = setTimeout(() => {
       getBlockVerdicts(
-        sessions.map(s => ({ id: String(s.id), ra: s.ra, dec: s.dec, start: new Date(s.startTime), end: new Date(s.endTime) })),
+        sessions.map(s => ({ id: String(s.id), ra: s.ra, dec: s.dec, start: new Date(s.startTime), end: new Date(s.endTime), band: s.filterBand ?? null })),
         observerLat,
         observerLon,
         illum,
@@ -808,6 +818,15 @@ export function PlannerPage() {
     const last = moonIntervals.find(m => m.end < timelineEnd.getTime() - 60_000);
     return last ? new Date(last.end) : null;
   }, [moonIntervals, timelineEnd]);
+
+  // Broadband or narrowband for the night, from the Moon over the dark window.
+  const nightMoonIllumination = planner?.moonIllumination ?? null;
+  const filterAdvice = useMemo(() => {
+    if (observerLat == null || observerLon == null || !nightStart || !nightEnd || nightMoonIllumination == null) return null;
+    return nightFilterAdvice({
+      darkStart: nightStart, darkEnd: nightEnd, lat: observerLat, lon: observerLon, moonIllumination: nightMoonIllumination,
+    });
+  }, [observerLat, observerLon, nightStart, nightEnd, nightMoonIllumination]);
 
   const twilight = useMemo(
     () => (observerLat != null && observerLon != null ? twilightMarksFor(selectedDate, observerLat, observerLon) : null),
@@ -1028,6 +1047,7 @@ export function PlannerPage() {
   // once at the end rather than firing the optimistic createMut per block,
   // which would thrash the cache and the connection pool. Errors propagate to
   // AutoPlanModal.handleApply, which surfaces them instead of silently closing.
+  const integrationProgressFor = useIntegrationProgress();
   const applyAutoPlan = useCallback(
     async (blocks: PlanBlock[], clearFirst: boolean) => {
       if (clearFirst && timelineStartIso && timelineEndIso) {
@@ -1040,6 +1060,16 @@ export function PlannerPage() {
         await Promise.all(current.filter(s => s.id > 0).map(s => deletePlannedSession(s.id)));
       }
       for (const b of blocks) {
+        // An object with integration goals gets the filter with the most time
+        // left that the Moon allows on this block: the plan's own pick when it
+        // was built favouring goals, else worked out here. Others keep the
+        // plan's band.
+        const pick = b.filter !== undefined
+          ? { filter: b.filter, band: b.filterBand }
+          : suggestFilter(integrationProgressFor(b.target.id), {
+            minSeparation: b.moonSeparation,
+            illumination: nightMoonIllumination ?? 0,
+          });
         await createPlannedSession({
           objectId: b.target.id,
           objectName: b.target.name,
@@ -1047,11 +1077,13 @@ export function PlannerPage() {
           dec: b.target.dec,
           startTime: b.start.toISOString(),
           endTime: b.end.toISOString(),
+          filterBand: pick?.band ?? b.filterBand ?? null,
+          filter: pick?.filter ?? null,
         });
       }
       await queryClient.invalidateQueries({ queryKey: ['planned-sessions'] });
     },
-    [queryClient, timelineStartIso, timelineEndIso],
+    [queryClient, timelineStartIso, timelineEndIso, integrationProgressFor, nightMoonIllumination],
   );
 
   const stepDate = useCallback((days: number) => {
@@ -1099,6 +1131,10 @@ export function PlannerPage() {
       dec: s.dec,
       majorAxisArcmin: planner?.targets.find(t => t.id === s.objectId)?.majorAxisArcmin ?? null,
       framingSetup: s.framingSetup,
+      filterBand: s.filterBand ?? null,
+      filter: s.filter ?? null,
+      start: new Date(s.startTime),
+      end: new Date(s.endTime),
     });
   }, [planner?.targets]);
   // Memoized for the same reason as the other block-row callbacks above:
@@ -1266,6 +1302,7 @@ export function PlannerPage() {
         moonPhase={planner?.moonPhase ?? 'Unknown'}
         moonRise={moonRise}
         moonSet={moonSet}
+        filterAdvice={filterAdvice}
         timeZone={observerTimezone}
         accent={accent}
         canAutoPlan={canAutoPlan}
@@ -1506,6 +1543,23 @@ export function PlannerPage() {
           isAlreadyImaged={detailsTarget?.isAlreadyImaged}
           libraryObjectId={detailsTarget?.libraryObjectId}
           moonIllumination={planner?.moonIllumination}
+          filterBand={detailsSession.filterBand}
+          onSetFilterBand={detailsSession.sessionId != null
+            ? (band: FilterBand | null) => {
+                // A filter picked earlier no longer fits a band set by hand.
+                updateMutate({ id: detailsSession.sessionId!, patch: { filterBand: band, filter: null } });
+                setDetailsSession(d => (d ? { ...d, filterBand: band, filter: null } : d));
+              }
+            : undefined}
+          blockStart={detailsSession.start ?? null}
+          blockEnd={detailsSession.end ?? null}
+          filter={detailsSession.filter}
+          onSetFilter={detailsSession.sessionId != null
+            ? (name: string | null, band: FilterBand) => {
+                updateMutate({ id: detailsSession.sessionId!, patch: { filter: name, filterBand: band } });
+                setDetailsSession(d => (d ? { ...d, filter: name, filterBand: band } : d));
+              }
+            : undefined}
           onClose={() => setDetailsSession(null)}
         />
       )}
@@ -1621,6 +1675,18 @@ interface SessionDetailsModalProps {
   libraryObjectId?: string | null;
   /** Tonight's moon illumination (0-100), for the moon-proximity check. */
   moonIllumination?: number;
+  /** The scheduled block's filter type; undefined for an unscheduled target. */
+  filterBand?: FilterBand | null;
+  /** Sets the block's filter type (null = not set). Absent for an
+   *  unscheduled target, which has no block to set it on. */
+  onSetFilterBand?: (band: FilterBand | null) => void;
+  /** The scheduled block's window, for its own Moon check. */
+  blockStart?: Date | null;
+  blockEnd?: Date | null;
+  /** The filter picked for the block, if any. */
+  filter?: string | null;
+  /** Picks a filter (and its band) for the block. */
+  onSetFilter?: (filter: string | null, band: FilterBand) => void;
   onClose: () => void;
 }
 
@@ -1644,6 +1710,12 @@ function SessionDetailsModal({
   isAlreadyImaged,
   libraryObjectId,
   moonIllumination,
+  filterBand,
+  onSetFilterBand,
+  blockStart,
+  blockEnd,
+  filter,
+  onSetFilter,
   onClose,
 }: SessionDetailsModalProps) {
   const { t } = useTranslation('planner');
@@ -1696,8 +1768,21 @@ function SessionDetailsModal({
     const { start, end } = nightStart && nightEnd
       ? { start: nightStart, end: nightEnd }
       : buildTonightWindow(new Date(), observerTimezone);
-    return checkMoonProximity(ra, dec, observerLat!, observerLon!, start, end, moonIllumination, 10, observerTimezone);
+    const check = (band: FilterBand) =>
+      checkMoonProximity(ra, dec, observerLat!, observerLon!, start, end, moonIllumination, 10, observerTimezone, band);
+    return { broadband: check('broadband'), narrowband: check('narrowband') };
   }, [hasLocation, ra, dec, observerLat, observerLon, nightStart, nightEnd, moonIllumination, observerTimezone]);
+
+  // The block's own closest approach (the night's for an unscheduled target),
+  // for the filter suggestion.
+  const suggestionMoon = useMemo(() => {
+    if (!hasLocation || moonIllumination == null) return null;
+    if (blockStart && blockEnd) {
+      const c = checkMoonProximity(ra, dec, observerLat!, observerLon!, blockStart, blockEnd, moonIllumination, 10, observerTimezone);
+      return { minSeparation: c.minSeparation, illumination: moonIllumination };
+    }
+    return moonCheck ? { minSeparation: moonCheck.broadband.minSeparation, illumination: moonIllumination } : null;
+  }, [hasLocation, moonIllumination, blockStart, blockEnd, ra, dec, observerLat, observerLon, observerTimezone, moonCheck]);
 
   const referenceUrl = getCatalogThumbnailUrl(objectId, majorAxisArcmin);
 
@@ -1848,24 +1933,72 @@ function SessionDetailsModal({
                   window, so "should I even bother with this tonight" has one
                   answer instead of requiring a mental read of the sky tracker
                   at every scrub position. */}
-              {moonCheck && (
-                <div className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs leading-snug ${
-                  moonCheck.verdict === 'ok'
-                    ? isDark ? 'bg-slate-800/50 text-slate-400' : 'bg-slate-100 text-slate-500'
-                    : moonCheck.verdict === 'caution'
-                      ? 'bg-amber-500/10 text-amber-500 border border-amber-500/30'
-                      : 'bg-red-500/10 text-red-400 border border-red-500/30'
-                }`}>
-                  <Moon className="w-3.5 h-3.5 shrink-0" />
-                  <span>
-                    {moonCheck.verdict === 'ok'
-                      ? t('plannerPage.moonOkTonight', { percent: Math.round(moonIllumination ?? 0) })
-                      : t('plannerPage.moonWarningTonight', {
-                          deg: Math.round(moonCheck.minSeparation),
-                          time: moonCheck.worstAt ? formatHm(moonCheck.worstAt, observerTimezone) : '',
-                          percent: Math.round(moonIllumination ?? 0),
-                        })}
-                  </span>
+              {moonCheck && (() => {
+                // The card takes the colour of the block's own filter type, or
+                // of broadband when none is set (the stricter of the two).
+                const shown = moonCheck[filterBand ?? 'broadband'];
+                const line = (band: FilterBand) => {
+                  const c = moonCheck[band];
+                  return (
+                    <div key={band} className={filterBand && filterBand !== band ? 'opacity-60' : ''}>
+                      <span className="font-medium">{t(`plannerPage.moonBand.${band}`)}</span>{' '}
+                      {c.verdict === 'ok'
+                        ? t('plannerPage.moonBandOk')
+                        : t('plannerPage.moonBandWarning', {
+                            deg: Math.round(c.minSeparation),
+                            time: c.worstAt ? formatHm(c.worstAt, observerTimezone) : '',
+                            min: Math.round(c.threshold),
+                          })}
+                    </div>
+                  );
+                };
+                return (
+                  <div className={`flex items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-xs leading-snug ${
+                    shown.verdict === 'ok'
+                      ? isDark ? 'bg-slate-800/50 text-slate-400' : 'bg-slate-100 text-slate-500'
+                      : shown.verdict === 'caution'
+                        ? 'bg-amber-500/10 text-amber-500 border border-amber-500/30'
+                        : 'bg-red-500/10 text-red-400 border border-red-500/30'
+                  }`}>
+                    <Moon className="mt-0.5 w-3.5 h-3.5 shrink-0" />
+                    <div className="space-y-0.5">
+                      <div>{t('plannerPage.moonTonight', { percent: Math.round(moonIllumination ?? 0) })}</div>
+                      {line('broadband')}
+                      {line('narrowband')}
+                    </div>
+                  </div>
+                );
+              })()}
+              <FilterSuggestionPanel
+                objectId={objectId}
+                moon={suggestionMoon}
+                currentFilter={filter}
+                onUse={onSetFilter}
+                isDark={isDark}
+              />
+              {onSetFilterBand && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{t('plannerPage.blockFilter')}</span>
+                  <div className={`inline-flex overflow-hidden rounded-lg border ${isDark ? 'border-slate-700' : 'border-slate-200'}`} role="group" aria-label={t('plannerPage.blockFilter')}>
+                    {([null, 'broadband', 'narrowband'] as const).map(b => {
+                      const active = (filterBand ?? null) === b;
+                      return (
+                        <button
+                          key={b ?? 'unset'}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => onSetFilterBand(b)}
+                          className={`px-2.5 py-1 font-medium transition ${
+                            active
+                              ? isDark ? 'bg-accent-500/15 text-accent-300' : 'bg-accent-50 text-accent-700'
+                              : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                        >
+                          {t(`plannerPage.blockFilterOption.${b ?? 'unset'}`)}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

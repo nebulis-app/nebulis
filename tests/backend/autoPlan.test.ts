@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateNightPlan, type PlanCandidate } from '../../server/lib/autoPlan';
+import { generateNightPlan, generateNightPlanDetailed, goalBonus, type PlanCandidate } from '../../server/lib/autoPlan';
 
 /**
  * Regression coverage for the web/iOS planner divergence: iOS's port of this
@@ -159,5 +159,174 @@ describe('generateNightPlan — deterministic golden output', () => {
 
     expect(second.map(b => b.target.id)).toEqual(first.map(b => b.target.id));
     expect(first.length).toBeGreaterThan(0);
+  });
+});
+
+describe('generateNightPlanDetailed — forecast', () => {
+  const base = {
+    observerLat: OBSERVER_LAT,
+    observerLon: OBSERVER_LON,
+    windowStart: WINDOW_START,
+    windowEnd: WINDOW_END,
+    slotMinutes: 60,
+    maxObjects: 2,
+    minAlt: 30,
+    moonIllumination: 0,
+    visibleSkyMap: null,
+  };
+  const quality = (cloudCover: number, seeing: number | null = 3) => ({
+    cloudCover, seeing, transparency: 3, dewRisk: false, usable: cloudCover <= 60,
+  });
+
+  it('leaves cloudy slots empty and reports them', () => {
+    const targets = [
+      candidate({ id: 'a', ra: 12, dec: HIGH_DEC }),
+      candidate({ id: 'b', ra: 13, dec: HIGH_DEC }),
+    ];
+    const { blocks, skippedSlots } = generateNightPlanDetailed({
+      ...base,
+      targets,
+      skyQuality: (start) => (start.getTime() === WINDOW_START.getTime() ? quality(90) : quality(10)),
+    });
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]!.start.toISOString()).toBe('2026-01-01T03:00:00.000Z');
+    expect(blocks[0]!.sky?.cloudCover).toBe(10);
+    expect(skippedSlots).toEqual([{ start: WINDOW_START, end: new Date('2026-01-01T03:00:00Z'), cloudCover: 90 }]);
+  });
+
+  it('puts the small target in the steadiest slot', () => {
+    // Same coordinates, so altitude is equal: only the seeing term differs.
+    const galaxy = candidate({ id: 'galaxy', ra: 12, dec: HIGH_DEC, type: 'Galaxy', majorAxisArcmin: 5 });
+    const nebula = candidate({ id: 'nebula', ra: 12, dec: HIGH_DEC, type: 'Emission Nebula', majorAxisArcmin: 120 });
+    const { blocks } = generateNightPlanDetailed({
+      ...base,
+      targets: [nebula, galaxy],
+      // first hour: poor seeing, second hour: excellent
+      skyQuality: (start) => (start.getTime() === WINDOW_START.getTime() ? quality(10, 5) : quality(10, 1)),
+    });
+    expect(blocks.map(b => b.target.id)).toEqual(['nebula', 'galaxy']);
+  });
+
+  it('plans exactly as before without a forecast', () => {
+    const targets = [candidate({ id: 'a', ra: 12, dec: HIGH_DEC })];
+    const withNull = generateNightPlanDetailed({ ...base, targets, skyQuality: () => null });
+    const without = generateNightPlanDetailed({ ...base, targets });
+    expect(withNull.blocks.map(b => [b.target.id, b.start.getTime()])).toEqual(without.blocks.map(b => [b.target.id, b.start.getTime()]));
+    expect(without.skippedSlots).toEqual([]);
+  });
+});
+
+describe('generateNightPlan — filter type and the Moon', () => {
+  // 2025-06-21 12:00–13:00 UTC from New York: a target at RA 0h, Dec +30°
+  // sits ~70° high and ~34° from the Moon (see moonProximity.test.ts).
+  const params = (moonIllumination: number, targets: PlanCandidate[]) => ({
+    targets,
+    observerLat: 40.7128,
+    observerLon: -74.006,
+    windowStart: new Date('2025-06-21T12:00:00Z'),
+    windowEnd: new Date('2025-06-21T13:00:00Z'),
+    slotMinutes: 60,
+    maxObjects: 1,
+    minAlt: 30,
+    moonIllumination,
+    visibleSkyMap: null,
+  });
+  // The galaxy has a common name, so it wins whenever the Moon lets it.
+  const galaxy = candidate({ id: 'galaxy', ra: 0, dec: 30, type: 'Spiral Galaxy', commonNames: ['Bright one'] });
+  const nebula = candidate({ id: 'nebula', ra: 0.05, dec: 30, type: 'Emission Nebula' });
+
+  it('turns to a narrowband target when the Moon is too close for a galaxy', () => {
+    const [block] = generateNightPlan(params(60, [galaxy, nebula]));
+    expect(block).toMatchObject({ target: { id: 'nebula' }, filterBand: 'narrowband', moonVerdict: 'ok' });
+  });
+
+  it('keeps the broadband target on a dark night, and says it is broadband', () => {
+    const [block] = generateNightPlan(params(0, [galaxy, nebula]));
+    expect(block).toMatchObject({ target: { id: 'galaxy' }, filterBand: 'broadband', moonVerdict: 'ok' });
+  });
+});
+
+describe('generateNightPlan — integration goals', () => {
+  const base = {
+    observerLat: OBSERVER_LAT,
+    observerLon: OBSERVER_LON,
+    windowStart: WINDOW_START,
+    windowEnd: WINDOW_END,
+    slotMinutes: 60,
+    maxObjects: 1,
+    minAlt: 30,
+    moonIllumination: 0,
+    visibleSkyMap: null,
+  };
+  const h = (hours: number) => hours * 3600;
+  // Same place in the sky: only the popularity and goal terms differ.
+  const popular = candidate({ id: 'popular', ra: 12, dec: HIGH_DEC, commonNames: ['Famous'] });
+  const project = candidate({
+    id: 'project', ra: 12, dec: HIGH_DEC, type: 'Emission Nebula',
+    goals: [{ filter: 'L', goalSec: h(10), remainingSec: h(8) }, { filter: 'Ha', goalSec: h(10), remainingSec: h(3) }],
+  });
+
+  it('puts an object with time left ahead of a better-known one', () => {
+    const [block] = generateNightPlan({ ...base, targets: [popular, project], favorGoals: true });
+    expect(block?.target.id).toBe('project');
+    expect(block).toMatchObject({ filter: 'L', filterRemainingSec: h(8), filterBand: 'broadband' });
+  });
+
+  it('plans exactly as before when the switch is off', () => {
+    const [block] = generateNightPlan({ ...base, targets: [popular, project] });
+    expect(block?.target.id).toBe('popular');
+    expect(block?.filter).toBeUndefined();
+  });
+
+  it('leaves out objects whose goals are all reached, and says which', () => {
+    const done = candidate({
+      id: 'done', ra: 12, dec: HIGH_DEC, commonNames: ['Done'],
+      goals: [{ filter: 'L', goalSec: h(5), remainingSec: 0 }],
+    });
+    const result = generateNightPlanDetailed({ ...base, maxObjects: 2, targets: [done, popular], favorGoals: true });
+    expect(result.blocks.map(b => b.target.id)).toEqual(['popular']);
+    expect(result.goalsComplete.map(t => t.id)).toEqual(['done']);
+    // Off: the finished object competes as usual.
+    expect(generateNightPlanDetailed({ ...base, maxObjects: 2, targets: [done, popular] }).goalsComplete).toEqual([]);
+  });
+
+  describe('with the Moon up', () => {
+    // Same scene as "filter type and the Moon": ~34° from a 60 % Moon, too
+    // close for broadband, fine for narrowband.
+    const moonParams = {
+      observerLat: 40.7128,
+      observerLon: -74.006,
+      windowStart: new Date('2025-06-21T12:00:00Z'),
+      windowEnd: new Date('2025-06-21T13:00:00Z'),
+      slotMinutes: 60,
+      maxObjects: 1,
+      minAlt: 30,
+      moonIllumination: 60,
+      visibleSkyMap: null,
+      favorGoals: true,
+    };
+    const near = (over: Partial<PlanCandidate>) => candidate({ ra: 0, dec: 30, ...over });
+
+    it('picks the narrowband filter with time left when broadband is ruled out', () => {
+      const [block] = generateNightPlan({
+        ...moonParams,
+        targets: [near({ id: 'project', type: 'Emission Nebula', goals: project.goals })],
+      });
+      expect(block).toMatchObject({ filter: 'Ha', filterRemainingSec: h(3), filterBand: 'narrowband', moonVerdict: 'ok' });
+    });
+
+    it('skips an object whose only time left is in broadband', () => {
+      const galaxy = near({ id: 'galaxy', type: 'Spiral Galaxy', goals: [{ filter: 'L', goalSec: h(10), remainingSec: h(9) }] });
+      expect(generateNightPlan({ ...moonParams, targets: [galaxy] })).toEqual([]);
+    });
+  });
+});
+
+describe('goalBonus', () => {
+  it('grows with the share of time left', () => {
+    expect(goalBonus([])).toBe(0);
+    expect(goalBonus([{ filter: 'L', goalSec: 100, remainingSec: 0 }])).toBe(0);
+    expect(goalBonus([{ filter: 'L', goalSec: 100, remainingSec: 100 }])).toBe(50);
+    expect(goalBonus([{ filter: 'L', goalSec: 100, remainingSec: 50 }, { filter: 'R', goalSec: 100, remainingSec: 0 }])).toBe(27.5);
   });
 });

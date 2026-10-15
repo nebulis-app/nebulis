@@ -16,6 +16,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { AlertTriangle, ArrowUp, Frame, GripVertical, Info, Moon, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { IntegrationRemainingChips } from './IntegrationRemainingChips';
 import { formatHm, SNAP_MINUTES, TIMELINE_GUTTER_PX } from './scheduleGeometry';
 import { useTheme } from '../../hooks/useTheme';
 import type { PlannedSession } from '../../lib/api/plannedSessions';
@@ -56,6 +57,9 @@ interface ScheduledImagingBlockProps {
   moonVerdict: MoonVerdict;
   /** Plain-English moon reason, empty when no concern. */
   moonReason: string;
+  /** The same closest approach judged for narrowband, when the block is not
+   *  narrowband already: lets it say a narrowband filter would be fine. */
+  narrowbandVerdict?: MoonVerdict;
   hasOverlap: boolean;
   laneIndex: number;
   laneCount: number;
@@ -86,6 +90,7 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
   maxAlt,
   moonVerdict,
   moonReason,
+  narrowbandVerdict,
   hasOverlap,
   laneIndex,
   laneCount,
@@ -139,6 +144,10 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
   const compact = height < COMPACT_HEIGHT;
   const tiny = height < TINY_HEIGHT;
 
+  const band = session.filterBand ?? null;
+  // The Moon is too close for broadband, but a narrowband filter would cope.
+  const narrowbandWouldDo = moonVerdict !== 'ok' && band !== 'narrowband' && narrowbandVerdict === 'ok';
+
   // One line of warning text, worst first. Below the compact threshold there is
   // no room for it and the tooltip carries the detail instead.
   const warning = belowHorizon
@@ -146,7 +155,7 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
     : verdict === 'none' || verdict === 'partial'
       ? verdictReason
       : moonVerdict !== 'ok'
-        ? moonReason
+        ? narrowbandWouldDo ? `${moonReason} · ${t('scheduledImagingBlock.narrowbandOk')}` : moonReason
         : lowInSky && minAlt != null
           ? t('scheduledImagingBlock.lowInSky', { deg: Math.round(minAlt) })
           : hasOverlap
@@ -215,10 +224,17 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
                   {t('scheduledImagingBlock.altitudeRange', { min: Math.round(minAlt), max: Math.round(maxAlt) })}
                 </Chip>
               )}
+              {(band || session.filter) && (
+                <Chip tone="ok">
+                  <span title={band ? t(`scheduledImagingBlock.band.${band}`) : undefined}>
+                    {session.filter || t(`scheduledImagingBlock.bandShort.${band!}`)}
+                  </span>
+                </Chip>
+              )}
               {moonVerdict !== 'ok' && (
                 <Chip tone={moonVerdict === 'warning' ? 'bad' : 'warn'}>
                   <Moon className="h-2.5 w-2.5" />
-                  {t('scheduledImagingBlock.moon')}
+                  {narrowbandWouldDo ? t('scheduledImagingBlock.moonNbOk') : t('scheduledImagingBlock.moon')}
                 </Chip>
               )}
               {hasOverlap && (
@@ -227,6 +243,7 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
                   {t('scheduledImagingBlock.overlap')}
                 </Chip>
               )}
+              <IntegrationRemainingChips objectId={session.objectId} isDark tone="block" />
             </div>
           )}
 

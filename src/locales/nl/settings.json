@@ -295,6 +295,18 @@
         "description": "De donkerstroom en uitleesruis van een sensor veranderen naarmate deze ouder wordt. Bundels die ouder zijn dan deze termijn krijgen daarom de status Verlopen bij Kalibraties en kunnen daar worden verwijderd. Deze termijn geldt niet voor flats en flat-darks: die worden aan een specifieke sessie gekoppeld.",
         "unit": "dagen"
       }
+    },
+    "filterAliases": {
+      "title": "Filteraliassen",
+      "description": "Voeg filternamen samen die je opnamesoftware verschillend schrijft, zodat de integratie per filter ze samen telt. Gangbare schrijfwijzen (Ha, H-alpha, OIII, SII, L, R, G, B) zijn al samengevoegd.",
+      "empty": "Nog geen aliassen.",
+      "aliasPlaceholder": "Naam in je bestanden",
+      "canonicalPlaceholder": "Tellen als",
+      "remove": "Alias verwijderen",
+      "add": "Alias toevoegen",
+      "cancel": "Annuleren",
+      "save": "Aliassen opslaan",
+      "saveFailed": "De aliassen konden niet worden opgeslagen."
     }
   },
   "softwareUpdate": {

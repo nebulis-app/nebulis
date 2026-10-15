@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import type { Settings as SettingsType } from '../../types';
 import { Sec, Row, Toggle, getInputClass } from './SettingsUI';
 import { Telescope, Globe } from 'lucide-react';
+import { FilterAliasesSection } from './FilterAliasesSection';
 
 function ImageSourceOption({
   value,
@@ -216,6 +217,8 @@ export function LibrarySection({
           </div>
         </Row>
       </Sec>
+
+      <FilterAliasesSection isDark={isDark} />
     </>
   );
 }

@@ -229,6 +229,53 @@ const spec = {
         },
       },
 
+      IntegrationGoal: {
+        type: 'object',
+        properties: {
+          filter:  nullable(strEx('Ha')),
+          goalSec: { type: 'integer', example: 36000 },
+        },
+      },
+      IntegrationBreakdown: {
+        type: 'object',
+        properties: {
+          objectId:         strEx('Sh2-105'),
+          totalFrames:      { type: 'integer' },
+          totalExposureSec: { type: 'integer' },
+          unreadableFrames: { type: 'integer' },
+          filters: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                filter:      nullable(strEx('OIII')),
+                frames:      { type: 'integer' },
+                exposureSec: { type: 'integer' },
+                goalSec:     nullable({ type: 'integer' }),
+                nights: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      date:        strEx('2026-09-20'),
+                      frames:      { type: 'integer' },
+                      exposureSec: { type: 'integer' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      FilterAlias: {
+        type: 'object',
+        properties: {
+          alias:     strEx('H-alpha 7nm'),
+          canonical: strEx('Ha'),
+        },
+      },
+
       // Storage
       StorageObject: {
         type: 'object',
@@ -624,6 +671,81 @@ const spec = {
         tags: ['Library (Local)'],
         parameters: [{ $ref: '#/components/parameters/objectId' }],
         responses: { 200: { description: 'File list across all sessions' } },
+      },
+    },
+    '/library/objects/{objectId}/integration/filters': {
+      get: {
+        summary: 'Integration per filter and per night, with goals',
+        tags: ['Library (Local)'],
+        description: 'Groups light sub-frames (managed and linked folders) by canonical filter name, then by observing night. Filter comes from the FITS FILTER keyword, then the capture sidecar, else the "no filter" bucket (filter: null). Filters that only have a goal are listed after the others.',
+        parameters: [{ $ref: '#/components/parameters/objectId' }],
+        responses: {
+          200: {
+            description: 'Integration breakdown',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/IntegrationBreakdown' } } },
+          },
+        },
+      },
+    },
+    '/library/objects/{objectId}/integration/goals': {
+      put: {
+        summary: 'Replace the integration goals of an object (admin)',
+        tags: ['Library (Local)'],
+        description: 'Replaces every goal on the object. Filter names are normalised with the same aliases as frames; goalSec 0 removes a goal.',
+        parameters: [{ $ref: '#/components/parameters/objectId' }],
+        requestBody: {
+          content: { 'application/json': { schema: {
+            type: 'object',
+            properties: { goals: { type: 'array', items: { $ref: '#/components/schemas/IntegrationGoal' } } },
+          } } },
+        },
+        responses: { 200: { description: 'Goals now stored' }, 422: { description: 'Invalid goal' } },
+      },
+    },
+    '/library/integration/progress': {
+      get: {
+        summary: 'Progress toward integration goals, for every object that has one',
+        tags: ['Library (Local)'],
+        description: 'Used by the Planner and Wishlist to show the time left per filter. Objects without goals are omitted.',
+        responses: {
+          200: {
+            description: 'Progress per object',
+            content: { 'application/json': { schema: { type: 'array', items: {
+              type: 'object',
+              properties: {
+                objectId: strEx('NGC6888'),
+                complete: { type: 'boolean' },
+                filters: { type: 'array', items: {
+                  type: 'object',
+                  properties: {
+                    filter:       nullable(strEx('D2')),
+                    goalSec:      { type: 'integer' },
+                    exposureSec:  { type: 'integer' },
+                    remainingSec: { type: 'integer' },
+                  },
+                } },
+              },
+            } } } },
+          },
+        },
+      },
+    },
+    '/library/filter-aliases': {
+      get: {
+        summary: 'List user-defined filter name aliases',
+        tags: ['Library (Local)'],
+        responses: { 200: { description: 'Aliases', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/FilterAlias' } } } } } },
+      },
+      put: {
+        summary: 'Replace the filter name aliases (admin)',
+        tags: ['Library (Local)'],
+        requestBody: {
+          content: { 'application/json': { schema: {
+            type: 'object',
+            properties: { aliases: { type: 'array', items: { $ref: '#/components/schemas/FilterAlias' } } },
+          } } },
+        },
+        responses: { 200: { description: 'Aliases now stored' }, 422: { description: 'Invalid alias' } },
       },
     },
     '/library/file': {

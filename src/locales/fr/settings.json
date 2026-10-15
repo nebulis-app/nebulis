@@ -295,6 +295,18 @@
         "description": "Le courant d'obscurité et le bruit de lecture d'un capteur dérivent avec le temps, donc un lot plus ancien que cette valeur est marqué Expiré sur la page Calibrations et peut y être supprimé. Les flats et flat-darks ne sont pas concernés, ils sont associés à une session plutôt que soumis à expiration.",
         "unit": "jours"
       }
+    },
+    "filterAliases": {
+      "title": "Alias de filtres",
+      "description": "Regroupez les noms de filtres écrits différemment par votre logiciel d’acquisition, pour que l’intégration par filtre les compte ensemble. Les écritures courantes (Ha, H-alpha, OIII, SII, L, R, G, B) sont déjà regroupées.",
+      "empty": "Aucun alias pour l’instant.",
+      "aliasPlaceholder": "Nom dans vos fichiers",
+      "canonicalPlaceholder": "Compter comme",
+      "remove": "Retirer l’alias",
+      "add": "Ajouter un alias",
+      "cancel": "Annuler",
+      "save": "Enregistrer les alias",
+      "saveFailed": "Impossible d’enregistrer les alias."
     }
   },
   "softwareUpdate": {

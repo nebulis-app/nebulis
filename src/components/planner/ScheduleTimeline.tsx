@@ -446,6 +446,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
                 maxAlt={verdict?.maxAlt ?? null}
                 moonVerdict={moonById.get(s.id)?.verdict ?? 'ok'}
                 moonReason={moonById.get(s.id)?.reason ?? ''}
+                narrowbandVerdict={moonById.get(s.id)?.narrowbandVerdict}
                 hasOverlap={overlapById.get(s.id) ?? false}
                 laneIndex={laneIndex.get(s.id) ?? 0}
                 laneCount={laneCount.get(s.id) ?? 1}

@@ -17,6 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useDraggable } from '@dnd-kit/core';
 import { Search, Eye, EyeOff, Info, MoonStar, ArrowUp, Check, Plus, Shuffle, Star, ChevronRight, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { IntegrationRemainingChips } from './IntegrationRemainingChips';
 import { rankTargets, resultsWithoutTarget, serverResultKeys, targetMatches } from '../../lib/plannerSearch';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { useTheme } from '../../hooks/useTheme';
@@ -586,6 +587,7 @@ const LibraryRow = memo(function LibraryRow({
           )}
           {fit && fitStrings && <FitBadge tag={fit.tag} label={fitStrings.short} title={fitStrings.label} isDark={isDark} />}
           <FilterRecommendationChip recommendations={filterRec} isDark={isDark} />
+          <IntegrationRemainingChips objectId={target.id} isDark={isDark} />
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">

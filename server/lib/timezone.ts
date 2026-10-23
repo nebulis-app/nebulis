@@ -111,6 +111,21 @@ export function zonedDateTimeToUtc(
   timeZone?: string | null,
 ): Date {
   const [year, month, day] = parseDateKey(dateKey);
+  // A non-numeric component (e.g. 'abc', '2026-xx-01') used to reach
+  // Intl.DateTimeFormat as an Invalid Date and surface as an opaque
+  // "RangeError: Invalid time value" from deep inside localParts. Same error
+  // class, same inputs, but now it names the bad argument. Only inputs that
+  // already threw are affected: every finite input keeps its old result.
+  // (Out-of-range-but-numeric keys like '2026-13-40' still roll over via
+  // Date.UTC — routes/planner.ts accepts them through a regex-only schema, so
+  // rejecting them here would turn a 200 into a 500.)
+  const minute = time.minute ?? 0;
+  const second = time.second ?? 0;
+  if (![year, month, day, time.hour, minute, second].every(Number.isFinite)) {
+    throw new RangeError(
+      `zonedDateTimeToUtc: malformed input dateKey=${JSON.stringify(dateKey)} time=${JSON.stringify(time)}`,
+    );
+  }
   const target: Required<LocalDateTimeParts> = {
     year,
     month,

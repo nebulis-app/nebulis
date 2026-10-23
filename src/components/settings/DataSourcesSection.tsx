@@ -129,7 +129,7 @@ export function DataSourcesSection({ isDark }: { isDark: boolean }) {
             {DATA_SOURCE_GROUPS.map(group => (
               <div key={group.titleKey}>
                 <h3
-                  className={`text-[10px] font-semibold uppercase tracking-[0.1em] mb-2 ${
+                  className={`text-[0.625rem] font-semibold uppercase tracking-[0.1em] mb-2 ${
                     isDark ? 'text-slate-500' : 'text-slate-400'
                   }`}
                 >
@@ -152,14 +152,14 @@ export function DataSourcesSection({ isDark }: { isDark: boolean }) {
                             {source.name}
                           </span>
                           <span
-                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium border ${
                               badgeStyles[source.badge]
                             }`}
                           >
                             {badgeLabels[source.badge]}
                           </span>
                           {source.cacheKey && (
-                            <span className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                            <span className={`text-[0.625rem] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                               {t(source.cacheKey)}
                             </span>
                           )}

@@ -82,11 +82,7 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
             setShowNewUserPassword(false);
             setNewUser(EMPTY_NEW_USER);
           }}
-          className={`inline-flex items-center gap-1.5 text-[13px] font-medium px-3.5 py-2 rounded-lg transition-all duration-150 border ${
-            isDark
-              ? 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border-slate-700'
-              : 'bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 border-slate-200 shadow-sm'
-          }`}
+          className="inline-flex items-center gap-1.5 text-[0.8125rem] font-medium px-3.5 py-2 rounded-lg transition-colors bg-accent-500 text-white hover:bg-accent-600 shadow-sm"
         >
           <Plus className="w-3.5 h-3.5" />
           {t('usersSection.addUser')}
@@ -212,14 +208,14 @@ export function UsersSection({ isDark }: { isDark: boolean }) {
                         {user.displayName || user.username}
                       </span>
                       {user.role === 'admin' ? (
-                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.625rem] font-semibold ${
                           isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-50 text-accent-700'
                         }`}>
                           <ShieldCheck className="w-2.5 h-2.5" />
                           {t('usersSection.admin')}
                         </span>
                       ) : (
-                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.625rem] font-semibold ${
                           isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'
                         }`}>
                           <Eye className="w-2.5 h-2.5" />

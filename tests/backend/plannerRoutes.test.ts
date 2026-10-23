@@ -18,6 +18,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 import fs from 'fs';
 import { apiEnvelope } from '../../server/middleware/apiEnvelope';
 import { plannerRouter } from '../../server/routes/planner';
+import { setForecastCacheEntry, _clearForecastCache } from '../../server/lib/forecastCache';
 
 // POST /planner/plan is called by both the web client (TS/JSON, which always
 // sends an explicit `null` for an absent optional field) and the iOS client
@@ -136,5 +137,104 @@ describe('POST /planner/verdict — same schema tolerances as /plan', () => {
       body: JSON.stringify({ items: [verdictItem], observerLat: 40, observerLon: -74, moonIllumination: 0, visibleSkyMap: [] }),
     });
     expect(res.status).toBe(200);
+  });
+});
+
+describe('POST /planner/plan — useForecast', () => {
+  function seedForecast(cloudByHour: Record<string, number>) {
+    _clearForecastCache();
+    const hourly = Object.entries(cloudByHour).map(([time, cloudCover]) => ({
+      time, cloudCover, cloudCoverLow: 0, cloudCoverMid: 0, cloudCoverHigh: 0,
+      seeing: 3, transparency: 3, humidity: 50, temperature: 10, dewPoint: 0,
+      wind: 5, visibility: null, precipProb: 0, jetStream: null, cape: null,
+    }));
+    setForecastCacheEntry({
+      data: { hourly, sources: { weather: 'open-meteo', seeing: '7timer' } },
+      fetchedAt: Date.now(), lat: 40, lon: -74,
+    });
+  }
+
+  async function plan(body: Record<string, unknown>) {
+    const res = await fetch(`${baseUrl}/planner/plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...planRequestBody(baseTarget), targets: [baseTarget, { ...baseTarget, id: 'ngc0002', ra: 13 }], maxObjects: 2, ...body }),
+    });
+    expect(res.status).toBe(200);
+    return res.json();
+  }
+
+  it('skips cloudy slots and reports them in meta.weather', async () => {
+    seedForecast({ '2026-01-01T02:00:00Z': 95, '2026-01-01T03:00:00Z': 5 });
+    const body = await plan({ useForecast: true });
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].start).toBe('2026-01-01T03:00:00.000Z');
+    expect(body.data[0].sky.cloudCover).toBe(5);
+    expect(body.meta.weather).toMatchObject({
+      requested: true, used: true, maxCloudCover: 60,
+      skippedSlots: [{ start: '2026-01-01T02:00:00.000Z', end: '2026-01-01T03:00:00.000Z', cloudCover: 95 }],
+    });
+  });
+
+  it('honours maxCloudCover and leaves the plan unchanged when useForecast is off', async () => {
+    seedForecast({ '2026-01-01T02:00:00Z': 95, '2026-01-01T03:00:00Z': 5 });
+    expect((await plan({ useForecast: true, maxCloudCover: 100 })).data).toHaveLength(2);
+    const off = await plan({});
+    expect(off.data).toHaveLength(2);
+    expect(off.data[0].sky).toBeNull();
+    expect(off.meta.weather).toMatchObject({ requested: false, used: false, skippedSlots: [] });
+  });
+});
+
+describe('POST /planner/verdict — filter band', () => {
+  // ~33.7° from a 60%-lit Moon at this instant (see moonProximity.test.ts).
+  const item = { id: '1', ra: 0, dec: 20, start: '2025-06-21T13:00:00.000Z', end: '2025-06-21T13:00:00.000Z' };
+  const verdict = async (band?: 'broadband' | 'narrowband' | null) => {
+    const res = await fetch(`${baseUrl}/planner/verdict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [{ ...item, ...(band !== undefined ? { band } : {}) }], observerLat: 40.7128, observerLon: -74.006, moonIllumination: 60, timeZone: 'UTC' }),
+    });
+    expect(res.status).toBe(200);
+    return (await res.json()).data[0].moon;
+  };
+
+  it('checks an unset block as broadband and says narrowband would be fine', async () => {
+    expect(await verdict()).toMatchObject({ verdict: 'warning', band: 'broadband', narrowbandVerdict: 'ok' });
+    expect(await verdict(null)).toMatchObject({ verdict: 'warning', band: 'broadband' });
+  });
+
+  it('checks a narrowband block against the narrowband tolerance', async () => {
+    expect(await verdict('narrowband')).toMatchObject({ verdict: 'ok', band: 'narrowband', threshold: 30 });
+  });
+});
+
+describe('POST /planner/plan — favorGoals', () => {
+  const h = (hours: number) => hours * 3600;
+  const done = { ...baseTarget, id: 'ngc0002', goals: [{ filter: 'L', goalSec: h(5), remainingSec: 0 }] };
+  const project = { ...baseTarget, id: 'ngc0003', ra: 13, goals: [{ filter: 'D2', goalSec: h(20), remainingSec: h(12) }, { filter: null, goalSec: h(2), remainingSec: h(1) }] };
+
+  async function plan(body: Record<string, unknown>) {
+    const res = await fetch(`${baseUrl}/planner/plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...planRequestBody(baseTarget), targets: [done, project], maxObjects: 2, ...body }),
+    });
+    expect(res.status).toBe(200);
+    return res.json();
+  }
+
+  it('drops finished objects, picks the filter, and reports both', async () => {
+    const body = await plan({ favorGoals: true });
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]).toMatchObject({ target: { id: 'ngc0003' }, filter: 'D2', filterRemainingSec: h(12), filterBand: 'narrowband' });
+    expect(body.meta.goals).toEqual({ requested: true, complete: [{ id: 'ngc0002', name: baseTarget.name }] });
+  });
+
+  it('ignores goals when the switch is off', async () => {
+    const body = await plan({});
+    expect(body.data).toHaveLength(2);
+    expect(body.data.every((b: Record<string, unknown>) => !('filter' in b))).toBe(true);
+    expect(body.meta.goals).toEqual({ requested: false, complete: [] });
   });
 });

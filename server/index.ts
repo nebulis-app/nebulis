@@ -24,19 +24,24 @@ import { storageRouter } from './routes/storage.js';
 import { notesRouter } from './routes/notes.js';
 import { telescopesRouter } from './routes/telescopes.js';
 import { sitesRouter } from './routes/sites.js';
+import { alertsRouter } from './routes/alerts.js';
 import { forecastRouter } from './routes/forecast.js';
 import { authRouter } from './routes/auth.js';
 import { observationsRouter } from './routes/observations.js';
 import { satelliteRouter } from './routes/satellite.js';
 import { libraryRouter } from './routes/library.js';
-import { repairSpaceDirectories, repairAliasDirectories } from './lib/library/objects.js';
+import { annotateRouter } from './routes/annotate.js';
+import { restoreSpaceStrippedFolders, repairAliasDirectories } from './lib/library/objects.js';
 import { backfillLibraryFiles, rebuildFromManifests } from './lib/library/libraryFiles.js';
 import { reconcileLayoutFromDisk } from './lib/library/libraryLayout.js';
 import { isLibraryAvailable, reconcilePinnedLibraryConfig } from './lib/libraryPath.js';
 import { purgeSampleObject } from './lib/library/sampleLibrary.js';
 import { setDistCacheHeaders } from './lib/staticAssets.js';
-import { spaFallback } from './lib/spaFallback.js';
+import { spaFallback } from './middleware/spaFallback.js';
 import { plannerRouter } from './routes/planner.js';
+import { skyEventsRouter } from './routes/skyEvents.js';
+import { gearRouter } from './routes/gear.js';
+import { journalRouter } from './routes/journal.js';
 import { plannedSessionsRouter } from './routes/plannedSessions.js';
 import { wishlistRouter } from './routes/wishlist.js';
 import { reportsRouter } from './routes/reports.js';
@@ -45,13 +50,19 @@ import { pairRouter } from './routes/pair.js';
 import { devicesRouter } from './routes/devices.js';
 import { metaRouter } from './routes/meta.js';
 import { catalogsRouter } from './routes/catalogs.js';
+import { exploreRouter } from './routes/explore.js';
 import { systemLogRouter } from './routes/systemLog.js';
+import { pixinsightRepoRouter } from './routes/pixinsightRepo.js';
 import { startPackUpdateChecker } from './lib/catalogPack/updater.js';
 import { startPlannerNightlyScheduler } from './lib/plannerNightlyPrefetch.js';
 import { startArchiveScheduler } from './lib/archive/archiveScheduler.js';
 import { prewarmSessionThumbnails } from './lib/library/sessionThumbnailPrewarm.js';
 import { startForecastRefresh } from './lib/forecastCache.js';
 import { startLinkedSourceScheduler } from './lib/library/linkedSourceScheduler.js';
+import { startAutoSolveScheduler } from './lib/annotate/autoSolve.js';
+import { startAutoMeasureScheduler } from './lib/frameAnalysis/autoMeasure.js';
+import { startAlerts } from './lib/alerts/index.js';
+import { backfillSessionFocals } from './lib/library/sessionOptics.js';
 import { startAppUpdateChecker } from './lib/appUpdate/updater.js';
 import { prewarmThumbnails } from './lib/catalogPrefetch.js';
 import { satelliteCatalog } from './lib/satelliteCatalog.js';
@@ -396,7 +407,11 @@ v1.use('/forecast', forecastRouter);
 v1.use('/observations', observationsRouter);
 v1.use('/satellite', satelliteRouter);
 v1.use('/library', libraryRouter);
+v1.use('/annotate', annotateRouter);
 v1.use('/planner', plannerRouter);
+v1.use('/sky-events', skyEventsRouter);
+v1.use('/gear', gearRouter);
+v1.use('/journal', journalRouter);
 v1.use('/dso', plannerRouter);   // alias: /api/v1/dso for catalog browsing
 v1.use('/wishlist', wishlistRouter);
 v1.use('/planned-sessions', plannedSessionsRouter);
@@ -406,7 +421,9 @@ v1.use('/pair', pairRouter);
 v1.use('/devices', devicesRouter);
 v1.use('/meta', metaRouter);
 v1.use('/catalogs', catalogsRouter);
+v1.use('/explore', exploreRouter);
 v1.use('/system-log', systemLogRouter);
+v1.use('/alerts', alertsRouter);
 
 // Mount v1
 app.use('/api/v1', v1);
@@ -439,7 +456,11 @@ legacy.use('/forecast', forecastRouter);
 legacy.use('/observations', observationsRouter);
 legacy.use('/satellite', satelliteRouter);
 legacy.use('/library', libraryRouter);
+legacy.use('/annotate', annotateRouter);
 legacy.use('/planner', plannerRouter);
+legacy.use('/sky-events', skyEventsRouter);
+legacy.use('/gear', gearRouter);
+legacy.use('/journal', journalRouter);
 legacy.use('/dso', plannerRouter);
 legacy.use('/wishlist', wishlistRouter);
 legacy.use('/planned-sessions', plannedSessionsRouter);
@@ -448,9 +469,24 @@ legacy.use('/preferences', preferencesRouter);
 legacy.use('/pair', pairRouter);
 legacy.use('/devices', devicesRouter);
 legacy.use('/catalogs', catalogsRouter);
+legacy.use('/explore', exploreRouter);
 legacy.use('/meta', metaRouter);
 legacy.use('/system-log', systemLogRouter);
+legacy.use('/alerts', alertsRouter);
 app.use('/api', legacy);
+
+// --- PixInsight update repository (Settings → Features → PixInsight integration) ---
+// Public, read-only, and 404 unless the admin enabled it. PixInsight builds the manifest URL as
+// repoUrl + 'updates.xri' and resolves the package relative to it, so a repo added without the
+// trailing slash lands on the two fall-through paths below.
+app.use('/plugins/pixinsight', pixinsightRepoRouter);
+const pixinsightAlias = (target: string) => (req: express.Request, res: express.Response, next: express.NextFunction): void => {
+  req.url = target;
+  pixinsightRepoRouter(req, res, next);
+};
+app.get('/plugins/pixinsightupdates.xri', pixinsightAlias('/updates.xri'));
+app.get('/plugins/NebulisConnector.tar.gz', pixinsightAlias('/NebulisConnector.tar.gz'));
+app.get('/plugins/NebulisConnector.zip', pixinsightAlias('/NebulisConnector.zip'));
 
 // --- Serve static frontend in production ---
 // When running as a pkg-bundled exe, the frontend dist/ lives beside the exe
@@ -681,7 +717,9 @@ function onListening(): void {
       console.log('[library] Skipping boot-time repair/backfill: library unavailable');
       return;
     }
-    repairSpaceDirectories();
+    // Puts back folders an older startup repair renamed ("C 5/" → "C5/") while
+    // leaving their file records behind. Nothing renames folders any more.
+    restoreSpaceStrippedFolders();
     repairAliasDirectories();
     // Fix objects whose stored layout fell out of sync with the disk (a boot
     // migration that rekeyed an objectId used to drop the `layout` column,
@@ -709,10 +747,17 @@ function onListening(): void {
   })();
   if (!TEST_MODE) {
     startPackUpdateChecker(prewarmThumbnails);
+    // Before the update checker, so its first result is announced.
+    startAlerts();
     startAppUpdateChecker();
     startPlannerNightlyScheduler();
     startForecastRefresh();
     startLinkedSourceScheduler();
+    // Read the FITS focal length of nights not looked at yet, so the
+    // observations list can group the whole library by optical train.
+    backfillSessionFocals();
+    startAutoSolveScheduler();
+    startAutoMeasureScheduler();
   }
 
   // Warm the per-session (Nights calendar) thumbnail cache in the background,

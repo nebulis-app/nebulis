@@ -44,10 +44,10 @@ export function apiEnvelope(req: Request, res: Response, next: NextFunction) {
   }
 
   // Override res.json so existing route handlers get automatic wrapping.
-  // Express augments `res.json` with a conditional return type we can't
-  // reconstruct here — wrap the assignment in a helper so the single
-  // unavoidable cast lives on one line with a justification.
-  const wrappedJson = function (body: unknown) {
+  // Express types `res.json` as `Send<any, this>`; a function taking an
+  // optional body and returning the bound original's Response satisfies it
+  // directly, so no assertion is needed.
+  res.json = function (body?: unknown) {
     // If already wrapped (has 'ok' field), pass through
     if (isRecord(body) && 'ok' in body) {
       return originalJson(body);
@@ -71,11 +71,6 @@ export function apiEnvelope(req: Request, res: Response, next: NextFunction) {
     // Wrap success responses
     return originalJson({ ok: true, data: body });
   };
-  // Express types `res.json` as an overloaded function whose conditional
-  // return type depends on the generic body. Our wrapper accepts `unknown`
-  // and returns `Response`, which is compatible at runtime. Single-cast
-  // trust boundary, no `as unknown as T`.
-  res.json = wrappedJson as typeof res.json;
 
   next();
 }

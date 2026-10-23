@@ -9,6 +9,8 @@
  * https://en.wikipedia.org/api/rest_v1/
  */
 
+import { isRecord } from './typeGuards.js';
+
 export interface WikipediaSummary {
   /** 1-3 sentence plain-text extract from the article lead */
   extract: string;
@@ -77,24 +79,27 @@ export async function fetchWikipediaSummary(
     if (res.status === 404) return null;
     if (!res.ok) return null;
 
-    const data = (await res.json()) as {
-      type?: string;
-      extract?: string;
-      content_urls?: { desktop?: { page?: string } };
-      thumbnail?: { source?: string };
-    };
+    const data: unknown = await res.json();
+    if (!isRecord(data)) return null;
 
     // Skip disambiguation pages — their "extract" is usually useless.
     if (data.type === 'disambiguation') return null;
 
-    const extract = (data.extract || '').trim();
+    const extract = (typeof data.extract === 'string' ? data.extract : '').trim();
     if (!extract) return null;
+
+    const desktop = isRecord(data.content_urls) && isRecord(data.content_urls.desktop)
+      ? data.content_urls.desktop
+      : undefined;
+    const thumbnailSource = isRecord(data.thumbnail) && typeof data.thumbnail.source === 'string'
+      ? data.thumbnail.source
+      : undefined;
 
     return {
       extract,
-      wikiUrl: data.content_urls?.desktop?.page ?? '',
-      thumbnailUrl: data.thumbnail?.source
-        ? upsizeThumbnailUrl(data.thumbnail.source, REQUESTED_THUMBNAIL_WIDTH)
+      wikiUrl: typeof desktop?.page === 'string' ? desktop.page : '',
+      thumbnailUrl: thumbnailSource
+        ? upsizeThumbnailUrl(thumbnailSource, REQUESTED_THUMBNAIL_WIDTH)
         : null,
     };
   } catch (err) {

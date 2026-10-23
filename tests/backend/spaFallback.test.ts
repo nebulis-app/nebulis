@@ -1,6 +1,6 @@
 /**
  * Built-asset serving: cache policy and the production SPA fallback
- * (server/lib/staticAssets.ts, server/lib/spaFallback.ts).
+ * (server/lib/staticAssets.ts, server/middleware/spaFallback.ts).
  *
  * Mounts the real handlers on a bare express app (no supertest, matching
  * routeDecoding.test.ts) so status codes, headers, and file resolution are
@@ -20,7 +20,7 @@ import path from 'path';
 import type { AddressInfo } from 'net';
 import express from 'express';
 import { setDistCacheHeaders } from '../../server/lib/staticAssets.js';
-import { spaFallback } from '../../server/lib/spaFallback.js';
+import { spaFallback } from '../../server/middleware/spaFallback.js';
 
 const INDEX_MARKER = '<div id="root">shell</div>';
 const CHUNK_MARKER = 'export const planner = 1;';

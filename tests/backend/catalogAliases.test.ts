@@ -145,11 +145,14 @@ describe('normalizeDesignation', () => {
     // files. A bare designation is the WHOLE string, not just its start.
     for (const id of [
       'M31_mosaic', 'M31_Mosaic', 'IC434_mosaic', 'NGC7000_mosaic',
-      'M31_Ha', 'NGC2244SatelliteCluster', 'B33_panel2',
+      'M31_Ha', 'B33_panel2',
     ]) {
       expect(normalizeDesignation(id)).toBe(id);
       expect(resolveCanonicalId(id)).toBe(id);
     }
+    // A descriptive name is never uppercased in place; it resolves to its designation
+    // ("NGC2244SatelliteCluster" → "NGC2244", covered by foldDescriptiveName below).
+    expect(normalizeDesignation('NGC2244SatelliteCluster')).toBe('NGC2244SatelliteCluster');
   });
 
   it('still normalizes and folds bare designations, incl. component suffixes', () => {
@@ -183,10 +186,11 @@ describe('isDesignationShaped', () => {
 
 describe('cross-catalog lookup coverage', () => {
   // Caldwell numbers with no higher catalog designation (dark nebulae / naked-eye
-  // clusters that were never given an NGC/IC number), plus C37 whose NGC6885 is
-  // filtered out of the Seestar DSO catalog. Anything NEW landing here is a
-  // regression — this is the invariant the IC342 "no description" bug violated.
-  const CALDWELL_EXCEPTIONS = new Set(['C41', 'C99', 'C37']);
+  // clusters that were never given an NGC/IC number). C37 used to be here too:
+  // NGC6885 had no position until its OpenNGC duplicate NGC6882 was folded onto
+  // it. Anything NEW landing here is a regression — this is the invariant the
+  // IC342 "no description" bug violated.
+  const CALDWELL_EXCEPTIONS = new Set(['C41', 'C99']);
   const CALDWELL = Array.from({ length: 109 }, (_, i) => `C${i + 1}`);
 
   it('every Caldwell number (minus known exceptions) resolves to a stable, findable object', () => {
@@ -205,7 +209,7 @@ describe('cross-catalog lookup coverage', () => {
     expect(broken).toEqual([]);
   });
 
-  it('the known Caldwell exceptions are exactly those three (flag new gaps)', () => {
+  it('the known Caldwell exceptions are exactly those two (flag new gaps)', () => {
     const gaps: string[] = [];
     for (const c of CALDWELL) {
       const canonical = resolveCanonicalId(c);
@@ -230,6 +234,33 @@ describe('cross-catalog lookup coverage', () => {
     // M16 = NGC6611, M1 = NGC1952, M45 has no NGC (skipped).
     for (const [a, b] of [['NGC6611', 'M16'], ['NGC1952', 'M1'], ['NGC224', 'M31'], ['NGC5194', 'M51']]) {
       expect(getById(a)?.id).toBe(getById(b)?.id);
+    }
+  });
+});
+
+describe('foldDescriptiveName / resolveCanonicalId with a descriptive tail', () => {
+  it('folds a designation followed by a description', async () => {
+    const { resolveCanonicalId, foldDescriptiveName } = await import('../../server/lib/catalogAliases.js');
+    expect(resolveCanonicalId('NGC2244SatelliteCluster')).toBe('NGC2244');
+    expect(resolveCanonicalId('NGC 2244 Satellite Cluster')).toBe('NGC2244');
+    expect(resolveCanonicalId('10PTempel')).toBe('10P');
+    expect(resolveCanonicalId('10P Tempel')).toBe('10P');
+    expect(foldDescriptiveName('161PHartley-IRAS')).toBe('161P');
+  });
+
+  it('folds a designation with a frame count run onto it, only when out of range', async () => {
+    const { resolveCanonicalId } = await import('../../server/lib/catalogAliases.js');
+    expect(resolveCanonicalId('NGC2244389')).toBe('NGC2244');
+    expect(resolveCanonicalId('NGC7000')).toBe('NGC7000');
+    expect(resolveCanonicalId('NGC7318A')).toBe('NGC7318A');
+  });
+
+  it('leaves variants, comets and free text alone', async () => {
+    const { resolveCanonicalId } = await import('../../server/lib/catalogAliases.js');
+    for (const id of ['M31_mosaic', 'NGC2244SatelliteCluster_mosaic', 'C2023A3', 'C-2023A3', 'Markarian\'sChain', 'ETACarina', 'SuperCoolNebula', '10P',
+      // imaging variants are their own objects, not descriptions of the base
+      'M16Ha', 'M 16 Ha', 'NGC7000Narrowband', 'NGC6992OIII', 'M42Mosaic', 'IC1805Panel2']) {
+      expect(resolveCanonicalId(id)).toBe(id);
     }
   });
 });

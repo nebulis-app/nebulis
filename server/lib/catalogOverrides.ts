@@ -40,7 +40,7 @@ export interface CatalogOverride {
   distanceLy?: number;
 }
 
-// Mirrored on the client at src/lib/api.ts CatalogOverrideRecord — keep in sync.
+// Mirrored on the client at src/lib/api/catalog.ts CatalogOverrideRecord — keep in sync.
 /** Public shape returned to the UI alongside the override data. */
 export interface CatalogOverrideRecord extends CatalogOverride {
   objectId: string;

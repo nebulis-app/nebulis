@@ -183,6 +183,22 @@ describe('parseCalibrationFilename', () => {
     const info = parseCalibrationFilename('raw_30s_60_0000_20250724-234357539_22C.fits');
     expect(info).toMatchObject({ exposureSec: 30, gain: 60, sequence: 0, sensorTempC: 22 });
   });
+
+  // SeeStar's own dark library (`darklibrary/` at the share root), from a real S50.
+  it('parses a SeeStar dark-library master: exposure, sensor temperature and capture time', () => {
+    const info = parseCalibrationFilename('MasterDark_5_30.0s_26.0C_20261014-192837.fit');
+    expect(info).toMatchObject({ exposureSec: 30, sensorTempC: 26 });
+    expect(info?.capturedAt).toBe(new Date('2026-10-14T19:28:37').toISOString());
+    // The leading number's meaning is unconfirmed, so it is not read as gain or a stack count.
+    expect(info?.gain).toBeUndefined();
+    expect(info?.stackCount).toBeUndefined();
+    expect(info?.binning).toBeUndefined();
+  });
+
+  it('reads the SeeStar master preview the same way, and a negative temperature', () => {
+    expect(parseCalibrationFilename('MasterDark_5_30.0s_26.0C_20261014-192837.jpg')).toMatchObject({ exposureSec: 30, sensorTempC: 26 });
+    expect(parseCalibrationFilename('MasterDark_3_10s_-2.5C_20260101-010203.fit')).toMatchObject({ exposureSec: 10, sensorTempC: -2.5 });
+  });
 });
 
 describe('dwarfDarkSessionFolderInfo', () => {

@@ -61,10 +61,20 @@ export function errorMessage(v: unknown, fallback: string): string {
 }
 
 export async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    ...options,
-  });
+  return (await fetchJSONWithMeta<T>(url, options)).data;
+}
+
+/**
+ * Same as fetchJSON, but also returns the envelope's `meta` (undefined when the
+ * response has none). For the few endpoints that put request-level details
+ * there, e.g. POST /planner/plan's weather summary.
+ */
+export async function fetchJSONWithMeta<T>(url: string, options?: RequestInit): Promise<{ data: T; meta: unknown }> {
+  // Merge, don't replace: a caller passing its own `headers` (e.g. Content-Type)
+  // must not silently drop the auth header, which 401s and logs the user out.
+  const headers = new Headers({ 'Content-Type': 'application/json', ...authHeaders() });
+  new Headers(options?.headers).forEach((value, key) => headers.set(key, value));
+  const res = await fetch(`${BASE}${url}`, { ...options, headers });
   if (!res.ok) {
     if (res.status === 401) {
       clearAuthToken();
@@ -89,7 +99,8 @@ export async function fetchJSON<T>(url: string, options?: RequestInit): Promise<
   // Zod-validated server-side. Callers that handle genuinely untrusted or
   // optional data should narrow again at the call site.
   const payload: unknown = isEnvelope(body) ? body.data : body;
-  return payload as T;
+  const meta: unknown = isEnvelope(body) ? body.meta : undefined;
+  return { data: payload as T, meta };
 }
 
 type TFunc = (key: string, opts?: Record<string, unknown>) => string;

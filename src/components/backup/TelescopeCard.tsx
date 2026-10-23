@@ -101,7 +101,7 @@ export function TelescopeCard({
         isDark ? 'text-slate-500' : 'text-slate-400'
       }`}>
         {tel.configured && (
-          <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
+          <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[0.625rem] font-medium ${
             !tel.online
               ? (isDark ? 'bg-slate-800/60 text-slate-500 border-slate-700/60' : 'bg-slate-100 text-slate-400 border-slate-200')
               : tel.transportKind === 'local'
@@ -154,7 +154,7 @@ function StatusPill({ online, configured, isDark }: { online: boolean; configure
   const { t } = useTranslation('library');
   if (!configured) {
     return (
-      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wider ${
         isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-100 text-slate-400'
       }`}>
         {t('telescopeCard.notSetUp')}
@@ -162,7 +162,7 @@ function StatusPill({ online, configured, isDark }: { online: boolean; configure
     );
   }
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wider ${
       online
         ? isDark ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700'
         : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-100 text-slate-500'

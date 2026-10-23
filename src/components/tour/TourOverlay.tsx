@@ -129,7 +129,7 @@ export function TourOverlay() {
     // (scroll/resize) leave the user's scrolling alone.
     if (scrolledStepRef.current !== step.id) {
       scrolledStepRef.current = step.id;
-      el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' as ScrollBehavior });
+      el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
     }
 
     const r = el.getBoundingClientRect();
@@ -407,7 +407,7 @@ export function TourOverlay() {
                 <Icon className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: accent }}>
+                <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.16em]" style={{ color: accent }}>
                   {t('tour.stepIndicator', { current: stepIndex + 1, total: stepCount })}
                 </p>
                 <h3 className={`mt-1 font-display text-lg font-bold tracking-tight ${bodyBubble}`}>
@@ -416,7 +416,7 @@ export function TourOverlay() {
               </div>
             </div>
 
-            <p className={`mt-4 text-[13.5px] leading-relaxed ${bodyBubble}`}>
+            <p className={`mt-4 text-[0.8438rem] leading-relaxed ${bodyBubble}`}>
               {step.body}
             </p>
             {step.hint && (
@@ -520,7 +520,7 @@ function WelcomeCard({
           </div>
         </div>
         <div className="p-7">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: accent }}>
+          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.18em]" style={{ color: accent }}>
             {t('tour.welcome')}
           </p>
           <h2 className={`mt-1.5 font-display text-2xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -554,7 +554,7 @@ function WelcomeCard({
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
-          <p className={`mt-4 text-center text-[10px] uppercase tracking-[0.14em] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+          <p className={`mt-4 text-center text-[0.625rem] uppercase tracking-[0.14em] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
             {t('tour.stepsUnderMinute', { count: total })}
           </p>
         </div>

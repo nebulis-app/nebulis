@@ -62,7 +62,8 @@ function saveSesameCache() {
 
 async function resolveObjectCoords(name: string): Promise<{ ra: number; dec: number } | null> {
   const key = name.toUpperCase().replace(/\s+/g, '');
-  if (sesameCache.has(key)) return sesameCache.get(key)!;
+  const cachedCoords = sesameCache.get(key);
+  if (cachedCoords !== undefined) return cachedCoords;
 
   try {
     const url = `https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-ox/SNV?${encodeURIComponent(name)}`;
@@ -193,14 +194,7 @@ export function clearNegativeImageCache(): void {
 
 // ─── prefetchSkyImage ────────────────────────────────────────────────
 
-/**
- * Fetch and cache a master sky image for an object. Returns the master file
- * path on success, or null if the image could not be resolved. Always writes
- * at MASTER_WIDTH × MASTER_HEIGHT so all clients share one source file.
- */
-export async function prefetchSkyImage(
-  id: string,
-  opts: {
+type PrefetchSkyImageOpts = {
     fov?: number;
     /** RA in decimal degrees (0–360). When provided, skips catalog + Sesame lookup. */
     ra?: number;
@@ -213,7 +207,38 @@ export async function prefetchSkyImage(
      *  something much shorter so a dead network doesn't pin the client's
      *  connection for a minute per thumbnail. */
     timeoutMs?: number;
-  } = {},
+};
+
+/** Fetches in progress, keyed by normalized id. The master image is cached by id
+ *  alone, so every caller asking for the same object wants the same file. */
+const prefetchInFlight = new Map<string, Promise<string | null>>();
+
+/**
+ * Fetch and cache a master sky image for an object. Returns the master file
+ * path on success, or null if the image could not be resolved. Always writes
+ * at MASTER_WIDTH × MASTER_HEIGHT so all clients share one source file.
+ *
+ * Concurrent calls for the same object share one fetch. Without that, a page
+ * that asks for the same image several times (thumbnails, planner, catalog)
+ * started a separate slow CDS request for each, and when CDS is slow they all
+ * timed out together. A `force` call never joins one: it exists to replace the
+ * cached image, so it runs its own fetch.
+ */
+export function prefetchSkyImage(id: string, opts: PrefetchSkyImageOpts = {}): Promise<string | null> {
+  if (opts.force) return fetchSkyImageUncoalesced(id, opts);
+  const key = id.replace(/\s+/g, '').toUpperCase();
+  const running = prefetchInFlight.get(key);
+  if (running) return running;
+  const started = fetchSkyImageUncoalesced(id, opts).finally(() => {
+    if (prefetchInFlight.get(key) === started) prefetchInFlight.delete(key);
+  });
+  prefetchInFlight.set(key, started);
+  return started;
+}
+
+async function fetchSkyImageUncoalesced(
+  id: string,
+  opts: PrefetchSkyImageOpts,
 ): Promise<string | null> {
   const fov = opts.fov || 1.0;
   const cachePath = imageCachePath(id);
@@ -299,8 +324,7 @@ export async function prefetchSkyImage(
     return null;
   }
 
-  const url = `https://alasky.cds.unistra.fr/hips-image-services/hips2fits`
-    + `?hips=CDS/P/DSS2/color`
+  const query = `?hips=CDS/P/DSS2/color`
     + `&width=${MASTER_WIDTH}&height=${MASTER_HEIGHT}`
     + `&fov=${fov}`
     + `&ra=${ra}&dec=${dec}`
@@ -308,7 +332,7 @@ export async function prefetchSkyImage(
     + `&format=jpg`;
 
   try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(opts.timeoutMs ?? 60000) });
+    const resp = await fetchHips2fits(query, opts.timeoutMs ?? 60000);
     if (!resp.ok) {
       // id is request-controlled (catalog id from the URL); keep it out of
       // the format-string position (console.warn %-substitutes its first
@@ -337,6 +361,39 @@ export async function prefetchSkyImage(
     transientNegativeCache.set(normalizedId, Date.now());
     return null;
   }
+}
+
+// ─── CDS hips2fits hosts ─────────────────────────────────────────────────
+
+// CDS serves hips2fits from several hosts and any one can accept the connection
+// then never answer while another responds in about a second. Each host gets a
+// slice of the caller's time budget and the last one that worked goes first next
+// time, so a hanging host costs one short wait instead of the whole timeout.
+const HIPS_HOSTS = ['alaskybis.cds.unistra.fr', 'alasky.cds.unistra.fr', 'alasky.u-strasbg.fr'];
+
+/** GET a hips2fits URL (built from `query`) across the mirrors. A 2xx or 4xx
+ *  answer from any host is final (a 4xx means this request is bad, not the
+ *  host); timeouts, network errors and 5xx move on to the next host. Throws the
+ *  last error only when no host answered at all. */
+async function fetchHips2fits(query: string, totalTimeoutMs: number): Promise<Response> {
+  const perHostMs = Math.max(4000, Math.ceil(totalTimeoutMs / HIPS_HOSTS.length));
+  let lastResp: Response | null = null;
+  let lastErr: unknown = new Error('no hips2fits host answered');
+  for (const host of [...HIPS_HOSTS]) {
+    try {
+      const resp = await fetch(`https://${host}/hips-image-services/hips2fits${query}`, { signal: AbortSignal.timeout(perHostMs) });
+      if (resp.ok || (resp.status >= 400 && resp.status < 500)) {
+        const i = HIPS_HOSTS.indexOf(host);
+        if (i > 0) { HIPS_HOSTS.splice(i, 1); HIPS_HOSTS.unshift(host); }
+        return resp;
+      }
+      lastResp = resp;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  if (lastResp) return lastResp;
+  throw lastErr;
 }
 
 // ─── fetchSkyCutout ──────────────────────────────────────────────────────
@@ -375,8 +432,7 @@ export async function fetchSkyCutout(opts: {
     if (stat.size > 0) return cachePath;
   } catch { /* no cache */ }
 
-  const url = `https://alasky.cds.unistra.fr/hips-image-services/hips2fits`
-    + `?hips=CDS/P/DSS2/color`
+  const query = `?hips=CDS/P/DSS2/color`
     + `&width=${size}&height=${size}`
     + `&fov=${fov}`
     + `&ra=${opts.ra}&dec=${opts.dec}`
@@ -384,7 +440,7 @@ export async function fetchSkyCutout(opts: {
     + `&format=jpg`;
 
   try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(opts.timeoutMs ?? 15000) });
+    const resp = await fetchHips2fits(query, opts.timeoutMs ?? 15000);
     if (!resp.ok) {
       console.warn('[skyImage] cutout fetch failed for %s: HTTP %s (fov=%s)', opts.id, resp.status, fov);
       return null;

@@ -23,26 +23,8 @@ export async function shareImage(
   }
 
   if (blob) {
-    const file = new File([blob], fileName, { type: blob.type || 'image/jpeg' });
-    if (navigator.canShare?.({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title });
-        return 'shared';
-      } catch (err) {
-        // The user dismissing the sheet is a normal outcome, not an error.
-        if (err instanceof DOMException && err.name === 'AbortError') return 'cancelled';
-      }
-    }
-
-    // Clipboard image write only accepts a handful of types, PNG universally.
-    if (blob.type === 'image/png' && navigator.clipboard && 'write' in navigator.clipboard) {
-      try {
-        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-        return 'copied-image';
-      } catch {
-        // Not permitted in this context. Fall through to link copying.
-      }
-    }
+    const outcome = await shareBlob(blob, fileName, title);
+    if (outcome !== 'failed') return outcome;
   }
 
   const absolute = new URL(src, window.location.href).href;
@@ -52,6 +34,43 @@ export async function shareImage(
   } catch {
     return 'failed';
   }
+}
+
+/**
+ * Share a picture already in hand (a burned-in annotated copy), through the share sheet or, failing that, the
+ * clipboard. There is no link to fall back to: the picture exists only in this tab. `asPng` is asked for lazily,
+ * because the clipboard takes PNG only and most shares never need the conversion.
+ */
+export async function shareBlob(
+  blob: Blob,
+  fileName: string,
+  title: string,
+  asPng?: () => Promise<Blob>,
+): Promise<ShareOutcome> {
+  const file = new File([blob], fileName, { type: blob.type || 'image/jpeg' });
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title });
+      return 'shared';
+    } catch (err) {
+      // The user dismissing the sheet is a normal outcome, not an error.
+      if (err instanceof DOMException && err.name === 'AbortError') return 'cancelled';
+    }
+  }
+
+  // Clipboard image write only accepts a handful of types, PNG universally.
+  if (navigator.clipboard && 'write' in navigator.clipboard) {
+    try {
+      const png = blob.type === 'image/png' ? blob : asPng ? await asPng() : null;
+      if (png) {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+        return 'copied-image';
+      }
+    } catch {
+      // Not permitted in this context.
+    }
+  }
+  return 'failed';
 }
 
 /** The three outcomes that need a toast, pre-translated by the caller (this

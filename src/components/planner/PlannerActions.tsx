@@ -1,45 +1,28 @@
 /**
- * The planner's secondary actions, sharing the night-picker's row.
+ * The planner's page-level actions, sharing the night-picker's row.
  *
- * None of these are about tonight in particular, which is why they sit up here
- * with the navigation rather than on the night panel: the visible-sky mask is a
- * property of the observing site, copying a night and sharing a plan are both
- * after-the-fact. "Plan my night" is the only action that belongs to the night
- * itself, and it stays there.
+ * Only the wishlist is left here, since it is not about any one night. The
+ * visible-sky mask belongs to the observing site, so its button
+ * (`VisibleSkyButton`) sits beside the site picker in the page header. Copying
+ * the last night and sharing the plan act on the schedule, so they sit in the
+ * schedule's own header and empty state. "Plan my night" is the one action
+ * that belongs to the night itself, and it stays on the hero.
  *
  * Sized to match the night chips so the whole row reads as one band of
- * controls. Labels and the sky count drop away as the row tightens, so this
- * never wraps onto a line of its own before it has to; the accessible name is
+ * controls. The label drops away as the row tightens; the accessible name is
  * on the button at every width.
  */
 import type { ReactNode } from 'react';
-import { Compass, Copy, Share2, Star } from 'lucide-react';
+import { Compass, Star } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
   isDark: boolean;
-  onEditSky: () => void;
-  /** e.g. "272 / 288", or "not set" when the observer has no mask yet. */
-  skyLabel: string;
-  onCopyPrevious: () => void;
-  isCopying: boolean;
-  canShare: boolean;
-  onShare: () => void;
   wishlistCount: number;
   onOpenWishlist: () => void;
 }
 
-export function PlannerActions({
-  isDark,
-  onEditSky,
-  skyLabel,
-  onCopyPrevious,
-  isCopying,
-  canShare,
-  onShare,
-  wishlistCount,
-  onOpenWishlist,
-}: Props) {
+export function PlannerActions({ isDark, wishlistCount, onOpenWishlist }: Props) {
   const { t } = useTranslation('planner');
   return (
     <div className="flex items-center gap-2">
@@ -51,32 +34,34 @@ export function PlannerActions({
         icon={<Star className="h-4 w-4" />}
         hint={wishlistCount > 0 ? String(wishlistCount) : undefined}
       />
-      <ActionButton
-        isDark={isDark}
-        onClick={onEditSky}
-        label={t('plannerActions.visibleSky')}
-        title={t('plannerActions.visibleSkyTitle', { skyLabel })}
-        icon={<Compass className="h-4 w-4" />}
-        hint={skyLabel}
-      />
-      <ActionButton
-        isDark={isDark}
-        onClick={onCopyPrevious}
-        disabled={isCopying}
-        label={t('plannerActions.copyLastNight')}
-        title={t('plannerActions.copyLastNightTitle')}
-        icon={<Copy className="h-4 w-4" />}
-        hint={isCopying ? t('plannerActions.copying') : undefined}
-      />
-      <ActionButton
-        isDark={isDark}
-        onClick={onShare}
-        disabled={!canShare}
-        label={t('plannerActions.share')}
-        title={canShare ? t('plannerActions.shareTitle') : t('plannerActions.nothingToShare')}
-        icon={<Share2 className="h-4 w-4" />}
-      />
     </div>
+  );
+}
+
+/**
+ * The visible-sky mask belongs to the observing site, so this sits next to the
+ * site picker on the page header. That panel is dark in every theme, so the
+ * button is styled for the dark side. "Not set" is tinted, because until it is
+ * set every target counts as visible.
+ */
+export function VisibleSkyButton({ onClick, skyLabel, isSet }: { onClick: () => void; skyLabel: string; isSet: boolean }) {
+  const { t } = useTranslation('planner');
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={t('plannerActions.visibleSky')}
+      title={t('plannerActions.visibleSkyTitle', { skyLabel })}
+      className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-medium ring-1 ring-inset transition ${
+        isSet
+          ? 'bg-white/[0.06] text-white/70 ring-white/10 hover:bg-white/10 hover:text-white'
+          : 'bg-amber-500/10 text-amber-300 ring-amber-400/25 hover:bg-amber-500/20'
+      }`}
+    >
+      <Compass className="h-3.5 w-3.5" />
+      <span className="hidden md:inline">{t('plannerActions.visibleSky')}</span>
+      <span className="hidden tabular-nums opacity-70 xl:inline">{skyLabel}</span>
+    </button>
   );
 }
 
@@ -112,7 +97,7 @@ function ActionButton({
       {icon}
       <span className="hidden lg:inline">{label}</span>
       {hint && (
-        <span className={`hidden text-[11px] xl:inline ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+        <span className={`hidden text-[0.6875rem] xl:inline ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
           {hint}
         </span>
       )}

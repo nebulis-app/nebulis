@@ -30,8 +30,10 @@ import { parseGalleryCrop, type GalleryCrop } from './galleryCrop.js';
 import { caldwellToNgcId } from '../caldwellCatalog.js';
 import { hubbleImagePath, wikiImagePath, imageCachePath, fovForEntry, findCachedMaster } from '../catalogPrefetch.js';
 import { prefetchSkyImage } from '../skyImage.js';
+import { isMovingObject } from './movingObject.js';
 import { getById as getDsoById } from '../dsoCatalog.js';
 import { getSettingsData } from '../telescopes.js';
+import { parseBuiltinArtSentinel, ensureBuiltinArtFile, type BuiltinArtTheme } from './builtinArt.js';
 
 // ─── Library-wide image listing ─────────────────────────────────────────────
 
@@ -56,6 +58,8 @@ export interface LibraryImageEntry {
    *  false for a raw telescope file. Lets the Gallery page offer a "processed
    *  only" view without a second endpoint. */
   isProcessed: boolean;
+  /** Made or changed in the image editor: an "...E.jpg" variant of a raw file, or a processed picture it created. */
+  isEdited: boolean;
 }
 
 export interface GetAllLibraryImagesOptions {
@@ -126,9 +130,49 @@ function linkedGalleryRows(objectId?: string): Array<{ objectId: string; relPath
   return out;
 }
 
+/** The file name the image editor gives a "Save as new version" copy of a raw picture: `<object>_<date>-<time>E.jpg`. */
+const EDITOR_VARIANT_NAME = /\d{8}-\d{6}E\.[a-z0-9]+$/i;
+/** The note the image editor stamps on a processed picture it creates (see ImageEditorModal). */
+const IMAGE_EDITOR_NOTE = 'Created with image editor';
+
+/**
+ * The three URLs of an image, stamped with the file's mtime. The picture routes let a browser keep a response for
+ * hours, so an image the editor saved over in place would otherwise keep showing its old pixels at the same URL.
+ */
+function stampedUrls(filePath: string, absPath: string): { downloadUrl: string; thumbUrl: string; previewUrl: string } {
+  let version = '';
+  try { version = `&v=${Math.floor(fs.statSync(absPath).mtimeMs)}`; } catch { /* missing file: leave the URLs as they were */ }
+  const q = encodeURIComponent(filePath);
+  const urls = renderUrls(filePath);
+  return {
+    downloadUrl: `${LIBRARY_API_BASE}/file?path=${q}${version}`,
+    thumbUrl: urls.thumbUrl + version,
+    previewUrl: urls.previewUrl + version,
+  };
+}
+
 /** Drop the cached walk so the next call re-scans disk (e.g. after an import). */
 export function invalidateAllImagesCache(): void {
   allImagesWalkCache = null;
+}
+
+/**
+ * Grid and preview URLs for one image. A Dwarf's 32-bit float `.tif` master reads as clipped white through the
+ * generic resize route, so TIFFs go through /tiff-thumbnail, which decodes the true samples and autostretches them
+ * (the same split getLocalSessions makes for an observation's files).
+ */
+function renderUrls(libPath: string): { thumbUrl: string; previewUrl: string } {
+  const q = encodeURIComponent(libPath);
+  if (/\.tiff?$/i.test(libPath)) {
+    return {
+      thumbUrl: `${LIBRARY_API_BASE}/tiff-thumbnail?path=${q}`,
+      previewUrl: `${LIBRARY_API_BASE}/tiff-thumbnail?size=preview&path=${q}`,
+    };
+  }
+  return {
+    thumbUrl: `${LIBRARY_API_BASE}/file/thumbnail?path=${q}`,
+    previewUrl: `${LIBRARY_API_BASE}/file/thumbnail?w=2048&h=2048&path=${q}`,
+  };
 }
 
 function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
@@ -165,10 +209,9 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
         objectName: obj.objectName || obj.objectId,
         objectType: obj.objectType,
         distanceLy: obj.distanceLy ?? null,
-        downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(filePath)}`,
-        thumbUrl: `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(filePath)}`,
-        previewUrl: `${LIBRARY_API_BASE}/file/thumbnail?w=2048&h=2048&path=${encodeURIComponent(filePath)}`,
+        ...stampedUrls(filePath, path.join(objDir, entry.relPath)),
         isProcessed: false,
+        isEdited: EDITOR_VARIANT_NAME.test(file),
       });
     }
   }
@@ -189,9 +232,9 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
       objectType: obj.objectType,
       distanceLy: obj.distanceLy ?? null,
       downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(row.relPath)}`,
-      thumbUrl: `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(row.relPath)}`,
-      previewUrl: `${LIBRARY_API_BASE}/file/thumbnail?w=2048&h=2048&path=${encodeURIComponent(row.relPath)}`,
+      ...renderUrls(row.relPath),
       isProcessed: false,
+      isEdited: EDITOR_VARIANT_NAME.test(row.fileName),
     });
   }
 
@@ -204,8 +247,8 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
   // so every processed image gets its own card, same as every raw one does.
   // Restricted to formats a browser can render inline: an XISF/FITS/PSD/RAW
   // deliverable can't go in an `<img>`, and has nowhere else to show here.
-  for (const r of db.prepare<[], { objectId: string; date: string | null; filename: string }>(
-    'SELECT objectId, date, filename FROM sessionProcessedImages',
+  for (const r of db.prepare<[], { objectId: string; date: string | null; filename: string; notes: string }>(
+    'SELECT objectId, date, filename, notes FROM sessionProcessedImages',
   ).all()) {
     if (!isRenderableProcessedName(r.filename)) continue;
     if (isDwarfThumbnailPreviewName(r.filename)) continue; // Dwarf's own redundant stacked_thumbnail.* preview
@@ -226,10 +269,9 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
       objectName: obj.objectName || obj.objectId,
       objectType: obj.objectType,
       distanceLy: obj.distanceLy ?? null,
-      downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(filePath)}`,
-      thumbUrl: `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(filePath)}`,
-      previewUrl: `${LIBRARY_API_BASE}/file/thumbnail?w=2048&h=2048&path=${encodeURIComponent(filePath)}`,
+      ...stampedUrls(filePath, path.join(LIBRARY_DIR, filePath)),
       isProcessed: true,
+      isEdited: r.notes === IMAGE_EDITOR_NOTE,
     });
   }
 
@@ -517,6 +559,7 @@ export function fileThumbnailDiskCacheKey(
 export async function resolveObjectImagePath(
   objectId: string,
   preferOverride?: 'sky' | 'telescope',
+  theme: BuiltinArtTheme = 'dark',
 ): Promise<string | null> {
   const row = getGalleryImageRow(objectId);
   const settings = getSettingsData();
@@ -530,6 +573,8 @@ export async function resolveObjectImagePath(
   const resolvedId = caldwellToNgcId(catalogId) ?? catalogId;
 
   if (row.userSet && row.galleryImage) {
+    const art = parseBuiltinArtSentinel(row.galleryImage);
+    if (art) return ensureBuiltinArtFile(art, theme);
     const sentinel = resolveCatalogSourceSentinel(row.galleryImage, resolvedId);
     if (sentinel) return sentinel;
     const abs = safeGalleryImagePath(row.galleryImage);
@@ -543,6 +588,16 @@ export async function resolveObjectImagePath(
     if (sentinel) return sentinel;
     const abs = safeGalleryImagePath(row.galleryImage);
     if (abs && fs.existsSync(abs)) return abs;
+  }
+
+  // A comet or asteroid has no catalog picture and no fixed sky position: asking Sesame, NASA or the sky survey can
+  // only fail, slowly. Its own observation image (the galleryImage below) is the only thing it can show.
+  if (isMovingObject(objectId)) {
+    if (row.galleryImage) {
+      const abs = safeGalleryImagePath(row.galleryImage);
+      if (abs && fs.existsSync(abs)) return abs;
+    }
+    return null;
   }
 
   const cached = findCachedMaster(resolvedId);

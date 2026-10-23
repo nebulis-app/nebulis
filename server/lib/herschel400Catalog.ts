@@ -4,7 +4,7 @@
  * original catalog of discoveries.
  *
  * Source: Astronomical League Herschel 400 Observing Program, cross-referenced
- * with the Wikipedia Herschel 400 Catalogue article and openngc.json.
+ * with the Wikipedia Herschel 400 Catalogue article and the OpenNGC rows.
  *
  * All IDs are normalized: uppercase, no whitespace (e.g. "NGC891").
  * Objects in this list may overlap with Messier, Caldwell, or the popular/

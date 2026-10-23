@@ -45,10 +45,12 @@ export function LightPollutionPill({ site }: { site: ObservingSite | null }) {
 
   const detect = useMutation({
     mutationFn: async () => {
-      const result = await lookupSiteBortle(siteId!);
+      // Every trigger is gated on a site being present; this narrows siteId.
+      if (siteId === null) throw new Error('No observing site selected');
+      const result = await lookupSiteBortle(siteId);
       // Written straight back to the site so Settings, the native clients and
       // every later page load see the same value without a second lookup.
-      await updateSite(siteId!, { bortleClass: result.bortleClass });
+      await updateSite(siteId, { bortleClass: result.bortleClass });
       return result;
     },
     onSuccess: () => {

@@ -18,9 +18,9 @@
  *     question that decides whether you shoot it again. The Tonight panel
  *     answers it from your active observing site.
  */
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { AlertTriangle, ArrowLeft, RotateCcw, RotateCw } from 'lucide-react';
 import {
@@ -34,7 +34,7 @@ import { getObservations } from '../lib/api/observations';
 import { listTelescopes } from '../lib/api/telescopes';
 import { getActiveSite } from '../lib/api/sites';
 import { getSettings } from '../lib/api/settings';
-import { getCatalogThumbnailUrl, getCatalogSourceThumbnailUrl, parseSourceSentinel } from '../lib/catalogImage';
+import { getCatalogThumbnailUrl, getCatalogSourceThumbnailUrl, parseSourceSentinel, parseBuiltinSentinel } from '../lib/catalogImage';
 import { parseRaHours, parseDecDegrees } from '../lib/observationDisplay';
 import { formatDate } from '../lib/formatLocale';
 import { useTheme } from '../hooks/useTheme';
@@ -43,12 +43,16 @@ import { useSyncSubframes } from '../contexts/SyncSubframesContext';
 import { GalleryImageModal } from '../components/GalleryImageModal';
 import { CompareSessionsModal } from '../components/CompareSessionsModal';
 import { CombineSubframesModal } from '../components/CombineSubframesModal';
+import { StackingExportModal } from '../components/StackingExportModal';
 import { EditObjectModal } from '../components/EditObjectModal';
 import { ReclassifyModal } from '../components/objectDetail/ReclassifyModal';
 import { FramingModal, FRAMING_MOSAIC_ENABLED } from '../components/catalogs/FramingModal';
 import { filterRecommendations } from '../lib/filterRecommendations';
 import { NewObservationModal } from '../components/NewObservationModal';
-import { ObjectPanel } from '../components/observationDetail/ObjectPanel';
+import { formatDistanceLy } from '../lib/observationDisplay';
+import { FilterRecommendationPanel } from '../components/ui/FilterRecommendationPanel';
+import { ObjectAboutSection } from '../components/objectDetail/ObjectAboutSection';
+import { ObjectProjectPanel } from '../components/objectDetail/ObjectProjectPanel';
 import { ObjectHero } from '../components/objectDetail/ObjectHero';
 import { TonightPanel } from '../components/objectDetail/TonightPanel';
 import { ObservationsSection } from '../components/objectDetail/ObservationsSection';
@@ -58,11 +62,15 @@ import { LinkedFilesChoice } from '../components/objectDetail/LinkedFilesChoice'
 import { buildObjectMetrics, summarizeObject } from '../components/objectDetail/objectStats';
 import { ObjectProcessedSection } from '../components/objectDetail/ObjectProcessedSection';
 import { ObjectProjectArchivesSection } from '../components/objectDetail/ObjectProjectArchivesSection';
+import { ObjectIntegrationSection } from '../components/objectDetail/ObjectIntegrationSection';
+import { ObjectMediaView } from '../components/objectMedia/ObjectMediaView';
 import { TourAnchor } from '../components/tour/TourAnchor';
 import { DWARF_STARTRAILS_OBJECT_TYPE, DWARF_STARTRAILS_PLACEHOLDER_IMAGE } from '../lib/dwarfStartrails';
 import { DWARF_VIDEOS_OBJECT_TYPE } from '../lib/dwarfVideos';
 import type { ObservationCardModel } from '../components/objectDetail/ObservationCard';
 import type { AstroObject, ProcessingStatus } from '../types';
+import { opticsLabel } from '../lib/rigLabel';
+import { formatAliases } from '../lib/formatDesignation';
 
 /**
  * Requested size for the hero's fallback catalog image, when the object has no
@@ -80,13 +88,20 @@ import type { AstroObject, ProcessingStatus } from '../types';
  */
 const HERO_IMAGE_SIZE = 960;
 
+/** "NGC 4039" and "ngc4039" are the same name for comparing catalog ids. */
+function nameKey(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 export function ObjectDetail() {
   const { objectId } = useParams<{ objectId: string }>();
   const { t } = useTranslation('library');
+  const { t: tObs } = useTranslation('observations');
   const { isDark, isNight, isSpace } = useTheme();
   const { isAdmin } = useAuth();
   const { openObjectSync } = useSyncSubframes();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
   // The hero is night-side in every theme, so it takes the bright accent hex
@@ -100,6 +115,7 @@ export function ObjectDetail() {
   const [newObservationOpen, setNewObservationOpen] = useState(false);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [combineSubframesOpen, setCombineSubframesOpen] = useState(false);
+  const [stackingExportOpen, setStackingExportOpen] = useState(false);
   const [editObjectOpen, setEditObjectOpen] = useState(false);
   const [reclassifyOpen, setReclassifyOpen] = useState(false);
   const [framingOpen, setFramingOpen] = useState(false);
@@ -108,6 +124,14 @@ export function ObjectDetail() {
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloadPending, setDownloadPending] = useState(false);
   const [headerImgError, setHeaderImgError] = useState(false);
+  // The collapsed About row at the foot of the page. Owned here so the banner's
+  // "More" link can open it and bring it into view.
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const aboutRef = useRef<HTMLDivElement>(null);
+  const openAbout = useCallback(() => {
+    setAboutOpen(true);
+    requestAnimationFrame(() => aboutRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, []);
   // Tracks how many times we've force-refetched gallery data after an image load
   // failure. Prevents infinite retry loops while still auto-healing stale paths.
   const [galleryErrorRetries, setGalleryErrorRetries] = useState(0);
@@ -341,6 +365,23 @@ export function ObjectDetail() {
     staleTime: Infinity,
   });
 
+  // Which object page to show: Classic (a grid of observations) or Combined (every
+  // picture on one page). Settings → Library → Object pages picks the default;
+  // `?view=` overrides it for this visit, from the toggle in the hero.
+  const viewParam = searchParams.get('view');
+  const layout: 'nights' | 'media' = viewParam === 'media' || viewParam === 'nights'
+    ? viewParam
+    : (settings?.objectPageLayout ?? 'media');
+  const toggleLayout = useCallback(() => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      // The media view's own filters mean nothing on the other page.
+      for (const key of ['tab', 'group', 'sort', 'scope', 'filter', 'night', 'format', 'fav']) next.delete(key);
+      next.set('view', layout === 'media' ? 'nights' : 'media');
+      return next;
+    }, { replace: true });
+  }, [layout, setSearchParams]);
+
   const { data: galleryData } = useQuery({
     queryKey: ['gallery-image', activeObjectId],
     queryFn: () => getGalleryImage(activeObjectId),
@@ -358,7 +399,7 @@ export function ObjectDetail() {
   // branches always recompute to the exact same URL from the exact same
   // inputs, so retrying them is not a second attempt, it is the same 404
   // again — see handleHeaderImgError below.
-  const headerImgHealable = !headerPinnedSource && !!galleryData?.galleryImage;
+  const headerImgHealable = !headerPinnedSource && !parseBuiltinSentinel(galleryData?.galleryImage) && !!galleryData?.galleryImage;
   const headerCrop = galleryData?.galleryCrop ?? null;
   const headerImgSrc = galleryData === undefined
     ? null
@@ -369,6 +410,8 @@ export function ObjectDetail() {
           activeObjectId, HERO_IMAGE_SIZE, HERO_IMAGE_SIZE,
           `${galleryData.galleryImage}#${headerCrop.x},${headerCrop.y},${headerCrop.zoom}${headerCrop.rotated ? 'r' : ''}`,
         )
+    : parseBuiltinSentinel(galleryData.galleryImage)
+      ? getLibraryObjectThumbnailUrl(activeObjectId, HERO_IMAGE_SIZE, HERO_IMAGE_SIZE, galleryData.galleryImage)
     : headerPinnedSource
       ? getCatalogSourceThumbnailUrl(catalogEntry?.id || baseObjectId, headerPinnedSource, HERO_IMAGE_SIZE, HERO_IMAGE_SIZE)
       : galleryData.galleryImage
@@ -494,6 +537,12 @@ export function ObjectDetail() {
         capture: captureByDate?.[s.date] ?? null,
         telescope: telescope ? { name: telescope.name, color: telescope.color } : null,
         hasNote: summary?.hasNotes ?? false,
+        // The object page's own session read has the freshest optics (it
+        // reads a night's FITS focal length the first time); the list's are
+        // the fallback for a server that predates it.
+        opticsLabel: opticsLabel(s.optics ?? summary?.optics),
+        rigKey: s.rigKey ?? summary?.rigKey,
+        integrationSec: captureByDate?.[s.date]?.integrationSec ?? s.integrationSec ?? null,
       };
     });
   }, [allSessions, observationSummaries, telescopes, captureByDate]);
@@ -579,6 +628,64 @@ export function ObjectDetail() {
     );
   }
 
+  // Reference text, last on both layouts. The numbers you check often and
+  // tonight's visibility sit in the hero (see heroFacts / heroTonight).
+  const aboutPanels = (
+    <ObjectAboutSection
+      ref={aboutRef}
+      open={aboutOpen}
+      onToggle={() => setAboutOpen(o => !o)}
+      displayName={displayName}
+      info={{
+        type: catalogEntry?.type || (isSyntheticDwarfObject ? baseObject?.type : undefined),
+        constellation: catalogEntry?.constellation && catalogEntry.constellation !== 'Unknown'
+          ? catalogEntry.constellation
+          : null,
+        size: catalogEntry?.size,
+        ra: catalogEntry?.ra != null ? String(catalogEntry.ra) : null,
+        dec: catalogEntry?.dec != null ? String(catalogEntry.dec) : null,
+        // Star Trails and Videos have no catalog entry (getCatalogEntry
+        // 404s), so their curated description — already sitting on the
+        // library row itself — is the only source of one.
+        description: catalogEntry?.description || (isSyntheticDwarfObject ? baseObject?.description : undefined),
+        wikiUrl: catalogEntry?.wikiUrl,
+      }}
+      magnitude={typeof catalogEntry?.magnitude === 'number' ? catalogEntry.magnitude : null}
+      distanceLy={catalogEntry?.distanceLy ?? null}
+      alsoKnownAs={catalogEntry?.alsoKnownAs ? formatAliases(catalogEntry.alsoKnownAs) : undefined}
+    />
+  );
+
+  // Names the banner already shows (the title and the catalog id in the
+  // eyebrow) add nothing as "also known as" chips.
+  const alreadyShown = new Set(
+    [displayName, catalogEntry?.id, baseObjectId].filter((v): v is string => !!v).map(nameKey),
+  );
+  const heroAlsoKnownAs = formatAliases(catalogEntry?.alsoKnownAs ?? []).filter(name => !alreadyShown.has(nameKey(name)));
+
+  const heroFacts: { label: string; value: string }[] = [];
+  if (typeof catalogEntry?.magnitude === 'number') {
+    heroFacts.push({ label: tObs('observationDetail.objectPanel.magnitude'), value: catalogEntry.magnitude.toFixed(2) });
+  }
+  if (catalogEntry?.distanceLy != null) {
+    heroFacts.push({ label: tObs('observationDetail.objectPanel.distance'), value: formatDistanceLy(catalogEntry.distanceLy) });
+  }
+  if (catalogEntry?.size) {
+    heroFacts.push({ label: tObs('observationDetail.objectPanel.angularSize'), value: catalogEntry.size });
+  }
+
+  // Visibility-tonight math doesn't apply to a non-celestial synthetic target.
+  const heroTonight = isSyntheticDwarfObject
+    ? null
+    : (
+      <TonightPanel variant="hero" raHours={raHours} decDegrees={decDegrees} site={site}>
+        {/* What to shoot it through sits with whether you can shoot it at
+            all: both are planning answers, and the hero is dark in every
+            theme, so the chips take the dark palette with no surface. */}
+        {filterRec && <FilterRecommendationPanel recommendations={filterRec} isDark bare inline />}
+      </TonightPanel>
+    );
+
   return (
     <div className="space-y-6">
       <TourAnchor id="object-processed" className="block">
@@ -600,6 +707,7 @@ export function ObjectDetail() {
         onAddObservation={isAdmin ? () => setNewObservationOpen(true) : null}
         onCompare={allSessions.length >= 2 ? () => setCompareModalOpen(true) : null}
         onCombine={() => setCombineSubframesOpen(true)}
+        onStackingExport={allSessions.some(s => s.subFrameCount > 0) ? () => setStackingExportOpen(true) : null}
         onFraming={FRAMING_MOSAIC_ENABLED ? () => setFramingOpen(true) : null}
         onDownloadAll={handleDownloadAll}
         downloadPending={downloadPending}
@@ -620,8 +728,13 @@ export function ObjectDetail() {
         onReclassify={isAdmin ? () => setReclassifyOpen(true) : null}
         onDelete={isAdmin ? () => setDeleteObjectConfirm(true) : null}
         objectId={activeObjectId}
+        layoutSwitch={{ current: layout, onToggle: toggleLayout }}
         hideTargetActions={isSyntheticDwarfObject}
-        filterRecommendations={filterRec}
+        facts={heroFacts}
+        alsoKnownAs={heroAlsoKnownAs}
+        description={catalogEntry?.description || (isSyntheticDwarfObject ? baseObject?.description : undefined)}
+        onReadMore={openAbout}
+        aside={heroTonight}
       />
       </TourAnchor>
 
@@ -629,54 +742,55 @@ export function ObjectDetail() {
         <p className={`text-sm ${isDark ? 'text-red-300' : 'text-red-600'}`} role="alert">{downloadError}</p>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 items-start">
-        <ObjectPanel
-          displayName={displayName}
-          info={{
-            type: catalogEntry?.type || (isSyntheticDwarfObject ? baseObject?.type : undefined),
-            constellation: catalogEntry?.constellation && catalogEntry.constellation !== 'Unknown'
-              ? catalogEntry.constellation
-              : null,
-            size: catalogEntry?.size,
-            ra: catalogEntry?.ra != null ? String(catalogEntry.ra) : null,
-            dec: catalogEntry?.dec != null ? String(catalogEntry.dec) : null,
-            // Star Trails and Videos have no catalog entry (getCatalogEntry
-            // 404s), so their curated description — already sitting on the
-            // library row itself — is the only source of one.
-            description: catalogEntry?.description || (isSyntheticDwarfObject ? baseObject?.description : undefined),
-            wikiUrl: catalogEntry?.wikiUrl,
-          }}
-          magnitude={typeof catalogEntry?.magnitude === 'number' ? catalogEntry.magnitude : null}
-          distanceLy={catalogEntry?.distanceLy ?? null}
-          alsoKnownAs={catalogEntry?.alsoKnownAs ?? undefined}
+      {layout === 'media' ? (
+        <>
+          <ObjectMediaView
+            objectId={activeObjectId}
+            objectName={displayName}
+            isAdmin={isAdmin}
+            onAddObservation={isAdmin ? () => setNewObservationOpen(true) : null}
+            trashCount={isAdmin ? trashCount : 0}
+            onOpenTrash={isAdmin ? () => setTrashModalOpen(true) : null}
+          />
+          {/* Project archives live on the Projects tab above; what is left here is the integration by filter. */}
+          {!isSyntheticDwarfObject && (
+            <ObjectProjectPanel key={activeObjectId} stacked sharedOpen={false}>
+              <ObjectIntegrationSection objectId={activeObjectId} isAdmin={isAdmin} bare />
+            </ObjectProjectPanel>
+          )}
+          {aboutPanels}
+        </>
+      ) : (
+        <>
+        {/* items-start: without it, grid's default align-items:stretch forces
+            a collapsed section to match the height of its expanded sibling,
+            leaving a tall dead area below the collapsed header that reads as
+            a broken/empty panel rather than simply "closed". */}
+        <div className="grid gap-4 md:grid-cols-2 items-start">
+          <ObjectProcessedSection objectId={activeObjectId} isAdmin={isAdmin} />
+
+          <ObjectProjectPanel key={activeObjectId} stacked>
+            {!isSyntheticDwarfObject && (
+              <ObjectIntegrationSection objectId={activeObjectId} isAdmin={isAdmin} bare />
+            )}
+            <ObjectProjectArchivesSection objectId={activeObjectId} isAdmin={isAdmin} bare />
+          </ObjectProjectPanel>
+        </div>
+
+        <ObservationsSection
+          observations={observationCards}
+          isDark={isDark}
+          loading={sessionsLoading}
+          tempUnit={settings?.temperatureUnit === 'fahrenheit' ? 'fahrenheit' : 'celsius'}
+          onDelete={isAdmin
+            ? o => setDeleteSession({ objectId: o.objectId, date: o.date })
+            : null}
+          trashCount={isAdmin ? trashCount : 0}
+          onOpenTrash={isAdmin ? () => setTrashModalOpen(true) : null}
         />
-
-        {/* Visibility-tonight math doesn't apply to a non-celestial synthetic
-            target, so the row collapses to one column instead. */}
-        {!isSyntheticDwarfObject && <TonightPanel raHours={raHours} decDegrees={decDegrees} site={site} />}
-      </div>
-
-      {/* items-start: without it, grid's default align-items:stretch forces
-          a collapsed section to match the height of its expanded sibling,
-          leaving a tall dead area below the collapsed header that reads as
-          a broken/empty panel rather than simply "closed". */}
-      <div className="grid gap-4 md:grid-cols-2 items-start">
-        <ObjectProcessedSection objectId={activeObjectId} isAdmin={isAdmin} />
-
-        <ObjectProjectArchivesSection objectId={activeObjectId} isAdmin={isAdmin} />
-      </div>
-
-      <ObservationsSection
-        observations={observationCards}
-        isDark={isDark}
-        loading={sessionsLoading}
-        tempUnit={settings?.temperatureUnit === 'fahrenheit' ? 'fahrenheit' : 'celsius'}
-        onDelete={isAdmin
-          ? o => setDeleteSession({ objectId: o.objectId, date: o.date })
-          : null}
-        trashCount={isAdmin ? trashCount : 0}
-        onOpenTrash={isAdmin ? () => setTrashModalOpen(true) : null}
-      />
+        {aboutPanels}
+        </>
+      )}
 
       {trashModalOpen && (
         <ObjectTrashModal
@@ -699,6 +813,10 @@ export function ObjectDetail() {
 
       {combineSubframesOpen && (
         <CombineSubframesModal objectId={activeObjectId} onClose={() => setCombineSubframesOpen(false)} />
+      )}
+
+      {stackingExportOpen && (
+        <StackingExportModal objectId={activeObjectId} onClose={() => setStackingExportOpen(false)} />
       )}
 
       {editObjectOpen && (

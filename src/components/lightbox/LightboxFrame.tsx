@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, ChevronRight, Maximize2, RotateCw, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize2, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { useSwipeDownToClose } from '../../hooks/useSwipeDownToClose';
 import { LightboxThumbStrip, type ThumbEntry } from './LightboxThumbStrip';
@@ -10,6 +10,9 @@ import type { ZoomControls } from './zoomControls';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  /** When set, Escape and a backdrop click run this instead of closing the
+   *  viewer (the open annotation card dismisses itself first). */
+  onEscape?: () => void;
   /** Accessible dialog name. */
   dialogTitle: string;
 
@@ -28,13 +31,8 @@ interface Props {
   extraControls?: ReactNode;
   /** Share / download / edit / delete buttons. */
   actions?: ReactNode;
-
-  /**
-   * View-only rotate-90°-clockwise, never touches the file. Omitting
-   * `onRotate` hides the control (the FITS canvas viewer has no rotate of
-   * its own yet). Available in both windowed and fullscreen chrome.
-   */
-  onRotate?: () => void;
+  /** Buttons that change how the picture is shown (the annotation overlay), grouped with fullscreen. */
+  viewActions?: ReactNode;
 
   /**
    * Fullscreen (AstroBin-style) mode: strips the header, zoom toolbar, and
@@ -108,10 +106,10 @@ function panelMaxWidth(aspect: number | null | undefined): string | undefined {
  * moment you opened a frame.
  */
 export function LightboxFrame({
-  isOpen, onClose, dialogTitle,
+  isOpen, onClose, onEscape, dialogTitle,
   titleIcon, title, subtitle,
   index, count, onPrev, onNext, onSelectIndex,
-  zoom, extraControls, actions, onRotate,
+  zoom, extraControls, actions, viewActions,
   immersive, onToggleImmersive,
   thumbs, swipeDisabled, status, ambientSrc, contentAspect, children,
 }: Props) {
@@ -120,7 +118,7 @@ export function LightboxFrame({
   // While immersive, that should back out to the windowed view rather than
   // tear down the whole viewer — the same one-level-at-a-time behavior the
   // delete confirmation already gets by suspending the outer key handler.
-  const effectiveOnClose = immersive ? (onToggleImmersive ?? onClose) : onClose;
+  const effectiveOnClose = onEscape ?? (immersive ? (onToggleImmersive ?? onClose) : onClose);
   const { handlers: swipe, dy, dragging } = useSwipeDownToClose(onClose, { disabled: swipeDisabled || immersive });
 
   // The keyboard hint used to be permanent, hardcoded white, and positioned
@@ -220,7 +218,7 @@ export function LightboxFrame({
             )}
             <div className="min-w-0">
               <span
-                className="font-display block truncate text-[15px] font-semibold tracking-tight text-white"
+                className="font-display block truncate text-[0.9375rem] font-semibold tracking-tight text-white"
                 title={typeof title === 'string' ? title : undefined}
               >
                 {title}
@@ -230,7 +228,7 @@ export function LightboxFrame({
                 // thing to be truncated once the panel sizes itself to the
                 // picture. Hovering gives it back rather than losing it.
                 <span
-                  className="mt-0.5 block truncate text-[11.5px] text-white/45"
+                  className="mt-0.5 block truncate text-[0.7188rem] text-white/45"
                   title={typeof subtitle === 'string' ? subtitle : undefined}
                 >
                   {subtitle}
@@ -244,18 +242,6 @@ export function LightboxFrame({
               out of the viewer must never be the one that scrolled away. */}
           <div className="flex items-center gap-2">
           <div className="-mx-1 flex min-w-0 items-center gap-2 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0">
-            {/* Position only. Moving between frames happens on the picture's own
-                edges (see below), where the pointer already is, so the header no
-                longer carries a second pair of chevrons. */}
-            {count > 1 && (
-              <span className="inline-flex h-9 flex-shrink-0 items-center gap-1 rounded-full bg-white/[0.06] px-3
-                text-[12px] font-medium tabular-nums text-white/70 ring-1 ring-inset ring-white/10 backdrop-blur-md">
-                {index + 1}
-                <span className="text-white/25">/</span>
-                {count}
-              </span>
-            )}
-
             {zoom && (
               <div className={LB_GROUP}>
                 <button type="button" onClick={zoom.zoomOut} disabled={!zoom.canZoomOut}
@@ -288,35 +274,26 @@ export function LightboxFrame({
               </div>
             )}
 
-            {onRotate && (
+            {(viewActions || onToggleImmersive) && (
               <div className={LB_GROUP}>
-                <button
-                  type="button"
-                  onClick={onRotate}
-                  title={t('lightboxFrame.rotateTitle')}
-                  aria-label={t('lightboxFrame.rotateAria')}
-                  className={LB_ICON_BTN}
-                >
-                  <RotateCw className="h-4 w-4" />
-                </button>
+                {viewActions}
+                {onToggleImmersive && (
+                  <button
+                    type="button"
+                    onClick={onToggleImmersive}
+                    title={t('lightboxFrame.fullscreenTitle')}
+                    aria-label={t('lightboxFrame.fullscreenAria')}
+                    className={LB_ICON_BTN}
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             )}
 
             {extraControls && <div className={LB_GROUP}>{extraControls}</div>}
             {actions && <div className={LB_GROUP}>{actions}</div>}
           </div>
-
-          {onToggleImmersive && (
-            <button
-              type="button"
-              onClick={onToggleImmersive}
-              title={t('lightboxFrame.fullscreenTitle')}
-              aria-label={t('lightboxFrame.fullscreenAria')}
-              className={LB_CLOSE_BTN}
-            >
-              <Maximize2 className="h-4 w-4" />
-            </button>
-          )}
 
           <button type="button" onClick={onClose} aria-label={t('lightboxFrame.closeAria')} className={LB_CLOSE_BTN}>
             <X className="h-4.5 w-4.5" />
@@ -327,17 +304,6 @@ export function LightboxFrame({
 
         {immersive && (
           <div className="absolute right-3 top-3 z-20 flex items-center gap-2 sm:right-4 sm:top-4">
-            {onRotate && (
-              <button
-                type="button"
-                onClick={onRotate}
-                title={t('lightboxFrame.rotateTitle')}
-                aria-label={t('lightboxFrame.rotateAria')}
-                className={LB_CLOSE_BTN}
-              >
-                <RotateCw className="h-4 w-4" />
-              </button>
-            )}
             <button
               type="button"
               onClick={onToggleImmersive}
@@ -362,6 +328,17 @@ export function LightboxFrame({
             </>
           )}
 
+          {/* Position in the list. At the foot of the picture rather than in the toolbar, next to the edge
+              arrows and thumbnails that move through it, which leaves the title room for its file name. */}
+          {count > 1 && !immersive && (
+            <span className="pointer-events-none absolute bottom-3 right-3 z-20 inline-flex h-7 items-center gap-1 rounded-full
+              bg-black/55 px-2.5 text-[0.7188rem] font-medium tabular-nums text-white/75 ring-1 ring-inset ring-white/10 backdrop-blur-md">
+              {index + 1}
+              <span className="text-white/30">/</span>
+              {count}
+            </span>
+          )}
+
           {status && (
             <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2" role="status">
               <span className="rounded-full bg-black/75 px-3.5 py-1.5 text-xs text-white/90
@@ -376,7 +353,7 @@ export function LightboxFrame({
             // is no keyboard to nudge anyone towards, and wrapped onto three
             // lines it covered the bottom of the frame.
             <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 hidden -translate-x-1/2 sm:block">
-              <span className="flex items-center gap-2 whitespace-nowrap rounded-full bg-black/55 px-3 py-1.5 text-[11px]
+              <span className="flex items-center gap-2 whitespace-nowrap rounded-full bg-black/55 px-3 py-1.5 text-[0.6875rem]
                 text-white/70 ring-1 ring-inset ring-white/10 backdrop-blur-md">
                 <Key>←</Key><Key>→</Key> {t('lightboxFrame.browseHint')}
                 <span className="text-white/20">·</span>
@@ -403,7 +380,7 @@ export function LightboxFrame({
 /** One key in the first-run hint. */
 function Key({ children }: { children: ReactNode }) {
   return (
-    <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-sans text-[10px] font-medium text-white/85">
+    <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-sans text-[0.625rem] font-medium text-white/85">
       {children}
     </kbd>
   );
@@ -444,7 +421,7 @@ function EdgeNav({ side, onClick, disabled }: {
 
 /** Pane wrapper that the zoom engine measures. Use inside `LightboxFrame`. */
 export function LightboxPane({
-  zpRef, isPanning, canPan, handlers, flush, children,
+  zpRef, isPanning, canPan, handlers, flush, reserve, children,
 }: {
   /** Callback ref from `useZoomPan`, so the pane is measured whenever it mounts. */
   zpRef: (el: HTMLDivElement | null) => void;
@@ -455,6 +432,9 @@ export function LightboxPane({
    *  fullscreen mode; the windowed view keeps a small margin so the picture
    *  doesn't touch the panel's own rounded corners. */
   flush?: boolean;
+  /** Space kept free along the left or top edge, in px, for a panel that must not sit over the picture. The
+   *  pane itself shrinks, so the picture can neither fit nor zoom under it: the pane clips at its own edge. */
+  reserve?: { left: number; top: number };
   children: ReactNode;
 }) {
   return (
@@ -465,7 +445,12 @@ export function LightboxPane({
       className={`absolute flex touch-none items-center justify-center overflow-hidden ${
         flush ? 'inset-0' : 'inset-2 sm:inset-4'
       }`}
-      style={{ cursor: canPan ? (isPanning ? 'grabbing' : 'grab') : undefined }}
+      style={{
+        cursor: canPan ? (isPanning ? 'grabbing' : 'grab') : undefined,
+        // Margins shrink an absolutely positioned box that has all four insets, whatever the breakpoint's inset is.
+        marginLeft: reserve?.left || undefined,
+        marginTop: reserve?.top || undefined,
+      }}
     >
       {children}
     </div>

@@ -6,20 +6,22 @@
  */
 import { memo, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarPlus, Check, EyeOff, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { CalendarPlus, Check, Compass, Crosshair, EyeOff, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { IntegrationRemainingChips } from './IntegrationRemainingChips';
 import { formatObjectName } from '../../lib/utils';
+import { exploreCategoryForType } from '../../lib/exploreCategory';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { formatHm } from '../../lib/timeFormat';
 import { formatPlannerDate } from '../../lib/nightWindow';
 import { formatDuration } from '../../lib/plannerNight';
 import { StatCell } from '../ui/StatCell';
-import { BestImagingChart } from '../catalogs/BestImagingChart';
+import { BestImagingChart } from '../ui/BestImagingChart';
 import { computeBestImagingWindow } from '../../lib/bestImagingWindow';
-import type { WishlistItem, WishlistPriority } from '../../lib/api/wishlist';
+import { WISHLIST_PRIORITIES, type WishlistItem, type WishlistPriority } from '../../lib/api/wishlist';
 import { searchDsoCatalog, type PlannerTarget } from '../../lib/api/planner';
 
-const PRIORITY_ORDER: readonly WishlistPriority[] = ['high', 'medium', 'low'];
 const PRIORITY_DOT: Record<WishlistPriority, string> = {
   high: 'bg-red-500',
   medium: 'bg-amber-500',
@@ -71,6 +73,9 @@ export const WishlistCard = memo(function WishlistCard({
   onQuickAdd,
 }: Props) {
   const { t } = useTranslation('planner');
+  const navigate = useNavigate();
+  // The Explore tile this object is listed under, for "Find similar".
+  const similarCategory = exploreCategoryForType(item.type);
   const { t: tCatalogs } = useTranslation('catalogs');
   const border = isDark ? 'border-slate-800' : 'border-slate-200';
   const subtle = isDark ? 'text-slate-400' : 'text-slate-600';
@@ -115,7 +120,7 @@ export const WishlistCard = memo(function WishlistCard({
   const hasLocation = observerLat != null && observerLon != null;
   const bestWindow = useMemo(
     () => (!target && hasLocation && ra != null && dec != null
-      ? computeBestImagingWindow(ra, dec, observerLat!, observerLon!, minAlt)
+      ? computeBestImagingWindow(ra, dec, observerLat, observerLon, minAlt)
       : null),
     [target, hasLocation, ra, dec, observerLat, observerLon, minAlt],
   );
@@ -158,9 +163,28 @@ export const WishlistCard = memo(function WishlistCard({
       <div className="flex flex-1 flex-col p-3">
         <div className="flex items-start justify-between gap-2">
           <span className="min-w-0 truncate text-sm font-semibold">{formatObjectName(item.objectId, item.name)}</span>
+          <div className="flex shrink-0 items-center gap-0.5 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate('/planner', { state: { searchQuery: item.objectId } }); }}
+              className={`rounded-lg p-1 transition ${isDark ? 'text-slate-500 hover:text-slate-100 hover:bg-white/5' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'}`}
+              aria-label={t('wishlistPanel.openInPlanner', { name: item.name })}
+              title={t('wishlistPanel.openInPlanner', { name: item.name })}
+            >
+              <Crosshair className="h-3.5 w-3.5" />
+            </button>
+            {similarCategory && (
+              <button
+                onClick={(e) => { e.stopPropagation(); navigate(`/explore/${similarCategory}`); }}
+                className={`rounded-lg p-1 transition ${isDark ? 'text-slate-500 hover:text-slate-100 hover:bg-white/5' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'}`}
+                aria-label={t('wishlistPanel.findSimilar', { name: item.name })}
+                title={t('wishlistPanel.findSimilar', { name: item.name })}
+              >
+                <Compass className="h-3.5 w-3.5" />
+              </button>
+            )}
           <button
             onClick={(e) => { e.stopPropagation(); onRemove(item.id); }}
-            className={`shrink-0 rounded-lg p-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 ${
+            className={`rounded-lg p-1 transition ${
               isDark ? 'text-slate-500 hover:text-red-400 hover:bg-white/5' : 'text-slate-400 hover:text-red-500 hover:bg-slate-100'
             }`}
             aria-label={t('wishlistPanel.remove', { name: item.name })}
@@ -168,14 +192,18 @@ export const WishlistCard = memo(function WishlistCard({
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
+          </div>
         </div>
         <div className={`truncate text-xs ${subtle}`}>
           {[item.type, item.constellation, !target && item.magnitude != null ? t('wishlistPanel.mag', { value: item.magnitude.toFixed(1) }) : null]
             .filter(Boolean).join(' · ')}
         </div>
+        <div className="mt-1 flex flex-wrap items-center gap-1 empty:hidden">
+          <IntegrationRemainingChips objectId={item.objectId} isDark={isDark} />
+        </div>
 
         <div className="mt-2 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          {PRIORITY_ORDER.map(p => (
+          {WISHLIST_PRIORITIES.map(p => (
             <button
               key={p}
               onClick={() => onSetPriority(item.id, p)}
@@ -208,14 +236,14 @@ export const WishlistCard = memo(function WishlistCard({
             <div className="mt-2 flex justify-end" onClick={(e) => e.stopPropagation()}>
               {isScheduled ? (
                 <span className="flex items-center gap-2">
-                  <span className={`flex items-center gap-1 text-[10px] font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                  <span className={`flex items-center gap-1 text-[0.625rem] font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
                     <Check className="h-3 w-3" />
                     {t('wishlistPanel.scheduled')}
                   </span>
                   {onQuickAdd && (
                 <button
                   onClick={() => onQuickAdd(target)}
-                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border border-accent-500/50 text-accent-400 hover:bg-accent-500/10 transition"
+                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] font-medium border border-accent-500/50 text-accent-400 hover:bg-accent-500/10 transition"
                   title={scheduleNightLabel ? t('wishlistPanel.scheduleAtHighestOn', { date: scheduleNightLabel }) : t('wishlistPanel.scheduleAtHighest')}
                 >
                   <CalendarPlus className="h-2.5 w-2.5" />
@@ -226,7 +254,7 @@ export const WishlistCard = memo(function WishlistCard({
               ) : onQuickAdd ? (
                 <button
                   onClick={() => onQuickAdd(target)}
-                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-accent-500 text-white hover:bg-accent-600 transition"
+                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] font-medium bg-accent-500 text-white hover:bg-accent-600 transition"
                   title={scheduleNightLabel ? t('wishlistPanel.scheduleAtHighestOn', { date: scheduleNightLabel }) : t('wishlistPanel.scheduleAtHighest')}
                 >
                   <CalendarPlus className="h-2.5 w-2.5" />
@@ -246,11 +274,11 @@ export const WishlistCard = memo(function WishlistCard({
                 chart carries the shape of the year. */}
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
               <EyeOff className={`h-3 w-3 shrink-0 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
-              <span className={`min-w-0 truncate text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              <span className={`min-w-0 truncate text-[0.625rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                 {t('wishlistPanel.notVisibleTonight')}
               </span>
               {bestWindow?.windowStart && bestWindow.windowEnd && (
-                <span className="ml-auto shrink-0 text-[10px] font-semibold" style={{ color: accentColor }}>
+                <span className="ml-auto shrink-0 text-[0.625rem] font-semibold" style={{ color: accentColor }}>
                   {bestWindow.windowStart === bestWindow.windowEnd
                     ? tCatalogs('catalogObjectModal.bestSingle', { date: bestWindow.windowStart })
                     : tCatalogs('catalogObjectModal.bestRange', { start: bestWindow.windowStart, end: bestWindow.windowEnd })}
@@ -261,7 +289,7 @@ export const WishlistCard = memo(function WishlistCard({
                 no season to chart, and one that never rises at all draws twelve
                 zero-height bars, i.e. an empty box. Say it in words instead. */}
             {bestWindow && !bestWindow.everVisible ? (
-              <p className={`mt-1 text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              <p className={`mt-1 text-[0.625rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                 {t('wishlistPanel.neverAboveMinimum', { deg: minAlt })}
               </p>
             ) : bestWindow ? (
@@ -284,7 +312,7 @@ export const WishlistCard = memo(function WishlistCard({
         )}
 
         {item.notes && (
-          <p className={`mt-2 truncate text-[11px] italic ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+          <p className={`mt-2 truncate text-[0.6875rem] italic ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
             {item.notes}
           </p>
         )}

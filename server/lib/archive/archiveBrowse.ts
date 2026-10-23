@@ -81,8 +81,8 @@ export async function listArchivedObjects(config: ArchiveConfig): Promise<Archiv
         }
       }
 
-      const localAbs = objDir !== null
-        ? localPathFor(objectId as string, objDir, file.relPath)
+      const localAbs = objectId !== null && objDir !== null
+        ? localPathFor(objectId, objDir, file.relPath)
         : entry.objectId === '' ? rootFolderPathFor(folderName, file.relPath) : null;
       if (!isFile(localAbs)) missingLocally++;
     }
@@ -130,8 +130,8 @@ export async function listArchivedFiles(
         // rather than failing the whole listing.
       }
     }
-    const localAbs = objDir !== null
-      ? localPathFor(objectId as string, objDir, file.relPath)
+    const localAbs = objectId !== null && objDir !== null
+      ? localPathFor(objectId, objDir, file.relPath)
       : entry.objectId === '' ? rootFolderPathFor(folderName, file.relPath) : null;
     return { relPath: file.relPath, isSubframe: file.isSubframe, bytes, presentLocally: isFile(localAbs) };
   });

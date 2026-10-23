@@ -146,7 +146,7 @@ describe('moonUpSpans', () => {
     expect(moonUpSpans(t0, t1, at('08:00'), at('17:00'))).toEqual([]);
   });
 
-  it('handles a known rise with no set, and a known set with no rise', () => {
+  it('clips to the window edge when only the rise or only the set is known', () => {
     expect(moonUpSpans(t0, t1, at('23:00'), null)).toEqual([[Date.parse(at('23:00')), t1]]);
     expect(moonUpSpans(t0, t1, null, at('22:00'))).toEqual([[t0, Date.parse(at('22:00'))]]);
   });

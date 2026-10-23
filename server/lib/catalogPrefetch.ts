@@ -4,7 +4,7 @@
  *
  * Runs in two phases:
  *   1. Images   — CDS DSS2 via the existing `prefetchSkyImage()` helper.
- *                 Concurrency 3 (alasky.cds.unistra.fr is not fast).
+ *                 Concurrency 3 (CDS hips2fits is not fast; skyImage.ts falls back across its mirrors).
  *   2. Wikipedia — summaries + canonical URLs stored in `catalogCache`.
  *                 Concurrency 5 (Wikipedia is quick and rate-limit-tolerant).
  *
@@ -24,6 +24,7 @@ import path from 'path';
 import sharp from './sharp-optional.js';
 import db from './db.js';
 import { getCatalog, getById as getDsoById } from './dsoCatalog.js';
+import { exploreCoreEntries } from './explore/core.js';
 import { DATA_DIR } from './paths.js';
 import { prefetchSkyImage, clearNegativeImageCache } from './skyImage.js';
 import { fetchWikipediaSummary } from './wikipedia.js';
@@ -898,6 +899,13 @@ async function runJob(
       POPULAR_DSO_IDS.has(e.id) ||           // ~100 popular non-Messier non-Caldwell DSOs
       libraryIds.has(e.id),                  // user's imported objects
     );
+    // The front of Explore (showpieces + top of each category), so those
+    // pictures are on disk before the internet goes away. Includes curated
+    // objects OpenNGC does not carry (the Horsehead, Sharpless nebulae).
+    const have = new Set(entries.map(e => e.id));
+    for (const e of exploreCoreEntries()) {
+      if (!have.has(e.id)) { entries.push(e); have.add(e.id); }
+    }
   }
 
   const catalogTotal = entries.length;

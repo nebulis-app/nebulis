@@ -103,7 +103,7 @@ describe('devicePairing', () => {
     it('normalizes the input before lookup', () => {
       const r = startPairing('Den TV');
       // Lower-cased input should still find the pairing.
-      expect(lookupPairing(r.userCode.toLowerCase())).not.toBeNull();
+      expect(lookupPairing(r.userCode.toLowerCase())).toMatchObject({ tvName: 'Den TV', expiresAt: r.expiresAt });
     });
 
     it('returns null for a malformed userCode', () => {

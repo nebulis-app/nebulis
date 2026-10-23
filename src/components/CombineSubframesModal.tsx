@@ -65,6 +65,7 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
   const [jobStatus, setSubframesArchiveStatus] = useState<SubframesArchiveStatus | null>(null);
   const [selectedFilters, setSelectedFilters] = useState<Set<string>>(new Set());
   const [sirilLayout, setSirilLayout] = useState(false);
+  const [keptOnly, setKeptOnly] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cancelledRef = useRef(false);
   // The in-flight ZIP job id, so cancel / unmount can stop the server-side
@@ -216,7 +217,7 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
     setSubframesArchiveStatus(null);
 
     try {
-      const { jobId, filesTotal } = await startSubframesArchive(objectId, Array.from(selected), filters, true, sirilLayout);
+      const { jobId, filesTotal } = await startSubframesArchive(objectId, Array.from(selected), filters, true, sirilLayout, keptOnly);
       if (cancelledRef.current) {
         void cancelSubframesArchive(jobId).catch(() => {});
         return;
@@ -493,6 +494,24 @@ export function CombineSubframesModal({ objectId, onClose }: Props) {
         {/* Siril layout option — session select phase */}
         {phase === 'select' && sessionsWithSubs.length > 0 && (
           <div className={`px-5 pt-3 pb-1 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+            <button
+              onClick={() => setKeptOnly(v => !v)}
+              className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-xl text-sm text-left transition ${
+                keptOnly
+                  ? isDark ? 'bg-accent-500/10 text-slate-100' : 'bg-accent-300 text-accent-700'
+                  : isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700'
+              }`}
+            >
+              {keptOnly
+                ? <CheckSquare className="w-4 h-4 text-accent-500 shrink-0 mt-0.5" />
+                : <Square className={`w-4 h-4 shrink-0 mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />}
+              <span className="flex-1">
+                <span className="block font-medium">{t('observationDetail.combineSubframesModal.keptOnlyOption')}</span>
+                <span className={`block text-xs mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                  {t('observationDetail.combineSubframesModal.keptOnlyHint')}
+                </span>
+              </span>
+            </button>
             <button
               onClick={() => setSirilLayout(v => !v)}
               className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-xl text-sm text-left transition ${

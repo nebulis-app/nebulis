@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockAllRoutes, mockAdminAuth } from './fixtures/mocks';
+import { mockAllRoutes, mockAdminAuth, mockRoute, MOCK } from './fixtures/mocks';
 
 /**
  * The object page: what you have shot of one target.
@@ -25,22 +25,27 @@ test.describe('Object Detail', () => {
     await expect(page.getByText(/M42 · Emission Nebula · Orion/i)).toBeVisible();
   });
 
-  test('shows the catalog facts panel', async ({ page }) => {
+  test('shows the headline catalog facts in the hero', async ({ page }) => {
     await expect(page.getByText('Magnitude')).toBeVisible();
     await expect(page.getByText('4.00')).toBeVisible();
+  });
+
+  test('shows the full catalog facts once About is opened', async ({ page }) => {
+    await page.getByRole('button', { name: /About Orion Nebula/ }).click();
     await expect(page.getByText('05h 35m 17s')).toBeVisible();
   });
 
   test('renders declination without dropping its arcminutes', async ({ page }) => {
     // Regression: an already-sexagesimal value was re-parsed with parseFloat and
     // reformatted, turning "-05° 23′ 28″" into "-05° 00′ 0.0″".
+    await page.getByRole('button', { name: /About Orion Nebula/ }).click();
     await expect(page.getByText('-05° 23′ 28″')).toBeVisible();
   });
 
   test('totals the object across its observations', async ({ page }) => {
     await expect(page.getByText('Observations', { exact: true })).toBeVisible();
     // Integration comes from the capture sidecar: 5400s on the mocked night.
-    await expect(page.getByText('Integration', { exact: true })).toBeVisible();
+    await expect(page.getByText('Integration', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('1h 30m').first()).toBeVisible();
   });
 
@@ -207,5 +212,35 @@ test.describe('Object Detail — Processed Images .fit toggle', () => {
     await page.reload();
     await expect(page.getByRole('button', { name: 'FIT (1)' })).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByText('stacked-16.fits')).toHaveCount(0);
+  });
+});
+
+test.describe('Object Detail — banner description', () => {
+  const LONG = Array.from({ length: 12 }, (_, i) => `Sentence number ${i + 1} about the Orion Nebula and what makes it worth a long look.`).join(' ');
+
+  test('a short description has no More link', async ({ page }) => {
+    await mockAdminAuth(page);
+    await mockAllRoutes(page);
+    await page.goto('/object/M42');
+    // First: a hidden copy of the text sits beside it to measure whether it fits.
+    await expect(page.getByText('The Orion Nebula is the nearest region of massive star formation.').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
+  });
+
+  test('a long description is clamped and More opens the About section', async ({ page }) => {
+    await mockAdminAuth(page);
+    await mockAllRoutes(page);
+    // Registered after the shared mocks, so it wins for this one entry.
+    await mockRoute(page, '**/api/catalog/M42', { ...MOCK.catalogEntry, description: LONG });
+    await page.goto('/object/M42');
+
+    const more = page.getByRole('button', { name: 'More', exact: true });
+    await expect(more).toBeVisible();
+    // Collapsed by default: the last sentence is cut off and no About body shows.
+    await expect(page.getByText('05h 35m 17s')).toHaveCount(0);
+
+    await more.click();
+    await expect(page.getByRole('button', { name: /About Orion Nebula/ })).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByText('05h 35m 17s')).toBeVisible();
   });
 });

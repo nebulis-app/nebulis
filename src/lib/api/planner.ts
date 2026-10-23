@@ -1,5 +1,5 @@
-import { fetchJSON } from './client';
-import type { AutoPlanFocus, PlanBlock, PlanCandidate } from '../planTypes';
+import { fetchJSON, fetchJSONWithMeta } from './client';
+import type { AutoPlanFocus, PlanBlock, PlanCandidate, PlanGoalsSummary, PlanWeatherSummary } from '../planTypes';
 import type { VisibleSkyMap } from '../visibilityCheck';
 import type { BlockVisibilityResult } from '../visibilityCheck';
 import type { MoonProximityResult } from '../moonProximity';
@@ -58,9 +58,6 @@ interface ForecastData {
   sources: { weather: string | null; seeing: string | null };
 }
 
-export const getForecast = (lat: number, lon: number, refresh = false) =>
-  fetchJSON<ForecastData>(`/forecast?lat=${lat}&lon=${lon}${refresh ? '&refresh=1' : ''}`);
-
 /** Forecast for an explicit observing site rather than raw coordinates. */
 export const getForecastForSite = (siteId: string, refresh = false) =>
   fetchJSON<ForecastData>(`/forecast?siteId=${encodeURIComponent(siteId)}${refresh ? '&refresh=1' : ''}`);
@@ -93,6 +90,11 @@ export interface PlannerTarget {
    *  transit/size), computed server-side so every client ranks the same way.
    *  Absent on older servers. */
   bestTonightScore?: number;
+  /** How rewarding the object is to shoot at all (the showpiece score). Absent on older servers. */
+  showpiece?: number;
+  /** The shared "Best tonight" order: the blend of `bestTonightScore` and `showpiece` (server/lib/explore/rank.ts).
+   *  Absent on older servers, which fall back to `bestTonightScore`. */
+  tonightRank?: number;
 }
 
 interface PlannerResponse {
@@ -154,26 +156,6 @@ export const searchDsoCatalog = (q: string, limit = 20) =>
 
 export type DsoSort = 'name' | 'magnitude';
 
-/** The `/dso` endpoint's fuller browse/search mode: optional free-text `q`
- *  alongside a `type` filter, a `lat`/`minAlt` "ever visible from here"
- *  filter, a `sort` override, and real offset/limit pagination with an
- *  honest `total` — used by the "Find things to image" browser
- *  (WishlistAddSearch), which needs to page through and filter hundreds of
- *  results rather than a fixed top-N. `searchDsoCatalog` above stays as the
- *  simple, unfiltered "top N for this query" call other (smaller) search
- *  boxes in the app use. */
-export const browseDsoCatalog = (opts: { q?: string; type?: string; lat?: number; minAlt?: number; sort?: DsoSort; limit?: number; offset?: number }) => {
-  const params = new URLSearchParams();
-  if (opts.q) params.set('q', opts.q);
-  if (opts.type) params.set('type', opts.type);
-  if (opts.lat != null) params.set('lat', String(opts.lat));
-  if (opts.minAlt != null) params.set('minAlt', String(opts.minAlt));
-  if (opts.sort) params.set('sort', opts.sort);
-  params.set('limit', String(opts.limit ?? 60));
-  params.set('offset', String(opts.offset ?? 0));
-  return fetchJSON<{ results: DsoEntry[]; total: number }>(`/dso?${params.toString()}`);
-};
-
 // Auto-plan ("Plan My Night") — the scheduling algorithm runs server-side so
 // every client (web, iOS, and eventually Android) produces the same plan for
 // the same inputs. See server/lib/autoPlan.ts for the canonical algorithm.
@@ -192,6 +174,13 @@ export interface AutoPlanRequest {
   focus?: AutoPlanFocus;
   unimagedOnly?: boolean;
   jitter?: number;
+  /** Skip cloudy slots and favour steady seeing for small targets. */
+  useForecast?: boolean;
+  /** Cloud cover (%) above which a slot is skipped (server default 60). */
+  maxCloudCover?: number;
+  /** Favour objects with time left toward their goals (candidates' `goals`)
+   *  and leave out finished ones. */
+  favorGoals?: boolean;
 }
 
 interface WirePlanBlock {
@@ -201,10 +190,38 @@ interface WirePlanBlock {
   meanAlt: number;
   moonSeparation: number | null;
   moonVerdict: PlanBlock['moonVerdict'];
+  filterBand?: PlanBlock['filterBand'];
+  filter?: PlanBlock['filter'];
+  filterRemainingSec?: PlanBlock['filterRemainingSec'];
+  sky?: PlanBlock['sky'];
+}
+
+interface WireWeatherSummary {
+  requested: boolean;
+  used: boolean;
+  forecastFetchedAt: string | null;
+  maxCloudCover: number;
+  skippedSlots: { start: string; end: string; cloudCover: number }[];
+}
+
+function isWireWeather(v: unknown): v is WireWeatherSummary {
+  return typeof v === 'object' && v !== null && 'used' in v && Array.isArray((v as { skippedSlots?: unknown }).skippedSlots);
+}
+
+function isWireGoals(v: unknown): v is PlanGoalsSummary {
+  return typeof v === 'object' && v !== null && Array.isArray((v as { complete?: unknown }).complete);
 }
 
 export async function generateNightPlan(req: AutoPlanRequest): Promise<PlanBlock[]> {
-  const wire = await fetchJSON<WirePlanBlock[]>('/planner/plan', {
+  return (await generateNightPlanWithWeather(req)).blocks;
+}
+
+/** The plan plus the server's weather and goals summaries (null when it sent
+ *  none). */
+export async function generateNightPlanWithWeather(
+  req: AutoPlanRequest,
+): Promise<{ blocks: PlanBlock[]; weather: PlanWeatherSummary | null; goals: PlanGoalsSummary | null }> {
+  const { data: wire, meta } = await fetchJSONWithMeta<WirePlanBlock[]>('/planner/plan', {
     method: 'POST',
     body: JSON.stringify({
       ...req,
@@ -212,7 +229,15 @@ export async function generateNightPlan(req: AutoPlanRequest): Promise<PlanBlock
       windowEnd: req.windowEnd.toISOString(),
     }),
   });
-  return wire.map(b => ({
+  const rawWeather = typeof meta === 'object' && meta !== null ? (meta as { weather?: unknown }).weather : undefined;
+  const rawGoals = typeof meta === 'object' && meta !== null ? (meta as { goals?: unknown }).goals : undefined;
+  const weather: PlanWeatherSummary | null = isWireWeather(rawWeather)
+    ? {
+      ...rawWeather,
+      skippedSlots: rawWeather.skippedSlots.map(s => ({ start: new Date(s.start), end: new Date(s.end), cloudCover: s.cloudCover })),
+    }
+    : null;
+  const blocks = wire.map(b => ({
     ...b,
     start: new Date(b.start),
     end: new Date(b.end),
@@ -220,6 +245,7 @@ export async function generateNightPlan(req: AutoPlanRequest): Promise<PlanBlock
     // block", which is exactly what Infinity has always meant here.
     moonSeparation: b.moonSeparation ?? Infinity,
   }));
+  return { blocks, weather, goals: isWireGoals(rawGoals) ? rawGoals : null };
 }
 
 // Batch moon-proximity + sky-visibility verdicts for placed blocks. Used for
@@ -231,6 +257,8 @@ export interface VerdictRequestItem {
   dec: number;
   start: Date;
   end: Date;
+  /** The block's filter type; omitted or null = broadband. */
+  band?: 'broadband' | 'narrowband' | null;
 }
 
 interface WireBlockVerdict {
@@ -242,6 +270,8 @@ interface WireBlockVerdict {
     worstAt: string | null;
     moonAltAtWorst: number;
     reason: string;
+    band?: 'broadband' | 'narrowband';
+    narrowbandVerdict?: MoonProximityResult['verdict'];
   };
   visibility: {
     verdict: BlockVisibilityResult['verdict'];
@@ -270,7 +300,7 @@ export async function getBlockVerdicts(
   const wire = await fetchJSON<WireBlockVerdict[]>('/planner/verdict', {
     method: 'POST',
     body: JSON.stringify({
-      items: items.map(i => ({ id: i.id, ra: i.ra, dec: i.dec, start: i.start.toISOString(), end: i.end.toISOString() })),
+      items: items.map(i => ({ id: i.id, ra: i.ra, dec: i.dec, start: i.start.toISOString(), end: i.end.toISOString(), band: i.band ?? null })),
       observerLat,
       observerLon,
       moonIllumination,
@@ -287,6 +317,8 @@ export async function getBlockVerdicts(
       worstAt: v.moon.worstAt ? new Date(v.moon.worstAt) : null,
       moonAltAtWorst: v.moon.moonAltAtWorst,
       reason: v.moon.reason,
+      band: v.moon.band,
+      narrowbandVerdict: v.moon.narrowbandVerdict,
     },
     visibility: {
       verdict: v.visibility.verdict,

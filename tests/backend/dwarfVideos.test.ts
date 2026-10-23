@@ -17,7 +17,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 });
 
 import { discoverDwarfObjects } from '../../server/lib/walkers/dwarfWalker';
-import { VIDEOS_TARGET_NAME, VIDEOS_OBJECT_TYPE, getVideosObjectId, patchVideosObjectMeta } from '../../server/lib/library/dwarfVideos';
+import { VIDEOS_TARGET_NAME, VIDEOS_OBJECT_TYPE, VIDEOS_DESCRIPTION, getVideosObjectId, patchVideosObjectMeta } from '../../server/lib/library/dwarfVideos';
 import { runImport, claimImportLock, getImportStatus } from '../../server/lib/library/import';
 import { createProfile } from '../../server/lib/telescopes';
 import { stmts } from '../../server/lib/library/objects';
@@ -46,8 +46,9 @@ describe('discoverDwarfObjects — Videos folding', () => {
     });
 
     const discovered = await discoverDwarfObjects(profile);
-    const videos = discovered.find(o => o.folderName === VIDEOS_TARGET_NAME);
-    expect(videos).toBeDefined();
+    // Astronomy/ is empty, so the folded Videos object is the only one, and
+    // there is exactly one of it however many clips the folder holds.
+    expect(discovered).toEqual([expect.objectContaining({ folderName: VIDEOS_TARGET_NAME, subFolderName: null })]);
 
     fs.rmSync(deviceRoot, { recursive: true, force: true });
   });
@@ -162,7 +163,7 @@ describe('runImport — Dwarf Videos end-to-end', () => {
     expect(row).toBeDefined();
     expect(row?.objectName).toBe(VIDEOS_TARGET_NAME);
     expect(row?.objectType).toBe(VIDEOS_OBJECT_TYPE);
-    expect(row?.description).toBeTruthy();
+    expect(row?.description).toBe(VIDEOS_DESCRIPTION);
 
     // Each video is its own session (mirrors STARTRAILS: one capture, one session).
     const sessions = stmts.getSessions.all(objectId);
@@ -205,6 +206,6 @@ describe('patchVideosObjectMeta — boot-time self-heal', () => {
     expect(after?.objectName).toBe(VIDEOS_TARGET_NAME);
     expect(after?.objectType).toBe(VIDEOS_OBJECT_TYPE);
     expect(after?.constellation).toBe('');
-    expect(after?.description).toBeTruthy();
+    expect(after?.description).toBe(VIDEOS_DESCRIPTION);
   });
 });

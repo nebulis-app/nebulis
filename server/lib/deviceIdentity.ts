@@ -17,7 +17,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { smbGetFile, smbPutFile } from './smb.js';
-import { parseJsonRecord } from './typeGuards.js';
+import { isRecord, parseJsonRecord } from './typeGuards.js';
 import type { TelescopeTransport, TransportKind } from './telescopeTransports.js';
 
 export interface DeviceIdentity {
@@ -49,8 +49,8 @@ function getAppVersion(): string {
     try {
       if (!fs.existsSync(pkgPath)) continue;
       const pkg: unknown = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-      if (pkg && typeof pkg === 'object' && 'version' in pkg && typeof (pkg as { version: unknown }).version === 'string') {
-        cachedAppVersion = (pkg as { version: string }).version;
+      if (isRecord(pkg) && typeof pkg.version === 'string') {
+        cachedAppVersion = pkg.version;
         return cachedAppVersion;
       }
     } catch {

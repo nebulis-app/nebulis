@@ -24,6 +24,7 @@ import db from '../db.js';
 import { decrypt, encrypt } from '../crypto/secretBox.js';
 import { sanitizePath, validatePathNoTraversal } from '../smb.shared.js';
 import { parseCron } from './archiveCron.js';
+import { isRecord } from '../typeGuards.js';
 
 export type ArchiveScope = 'all' | 'selected';
 
@@ -256,7 +257,7 @@ function assertStringArray(field: string, value: unknown): asserts value is stri
 
 /** Whether a stored or supplied value is one of the three schedule modes. */
 function isScheduleMode(value: unknown): value is ArchiveScheduleMode {
-  return typeof value === 'string' && (ARCHIVE_SCHEDULE_MODES as readonly string[]).includes(value);
+  return ARCHIVE_SCHEDULE_MODES.some(mode => mode === value);
 }
 
 function assertScheduleMode(value: unknown): asserts value is ArchiveScheduleMode {
@@ -275,6 +276,28 @@ function parseSelection(raw: unknown): string[] {
   } catch {
     return [];
   }
+}
+
+/** The single appSettings row a SELECT returns, as a record to read field by field,
+ *  or undefined when there is no row. better-sqlite3 types `.get()` as `unknown`;
+ *  the guard, not an assertion, is what makes it a record. */
+function readSettingsRow(sql: string): Record<string, unknown> | undefined {
+  const row: unknown = db.prepare(sql).get();
+  return isRecord(row) ? row : undefined;
+}
+
+/** A TEXT column's value, or '' when absent or not a string. */
+function stringField(row: Record<string, unknown> | undefined, key: string): string {
+  const value = row?.[key];
+  return typeof value === 'string' ? value : '';
+}
+
+function isScalarSetting(key: string): key is ScalarSetting {
+  return Object.prototype.hasOwnProperty.call(COLUMN_FOR, key);
+}
+
+function isNetworkColumnKey(key: string): key is keyof typeof NETWORK_COLUMN_FOR {
+  return Object.prototype.hasOwnProperty.call(NETWORK_COLUMN_FOR, key);
 }
 
 function normalizeArchiveConfig(row: Record<string, unknown> | undefined): ArchiveConfig {
@@ -348,10 +371,7 @@ export function getArchiveConfig(): ArchiveConfig {
     ...Object.values(NETWORK_COLUMN_FOR),
     PASSWORD_COLUMN,
   ].join(', ');
-  const row = db.prepare(`SELECT ${columns} FROM appSettings WHERE id = 1`).get() as
-    | Record<string, unknown>
-    | undefined;
-  return normalizeArchiveConfig(row);
+  return normalizeArchiveConfig(readSettingsRow(`SELECT ${columns} FROM appSettings WHERE id = 1`));
 }
 
 /**
@@ -366,10 +386,8 @@ export function getArchiveConfig(): ArchiveConfig {
  */
 export function getArchiveNetworkCredentials(): ArchiveNetworkCredentials {
   const columns = [...Object.values(NETWORK_COLUMN_FOR), PASSWORD_COLUMN].join(', ');
-  const row = db.prepare(`SELECT ${columns} FROM appSettings WHERE id = 1`).get() as
-    | Record<string, unknown>
-    | undefined;
-  const str = (key: string): string => (typeof row?.[key] === 'string' ? (row[key] as string) : '');
+  const row = readSettingsRow(`SELECT ${columns} FROM appSettings WHERE id = 1`);
+  const str = (key: string): string => stringField(row, key);
 
   let password = '';
   const sealed = str(PASSWORD_COLUMN);
@@ -413,15 +431,13 @@ function storedConfigShape(): {
   copyMinAgeEnabled: boolean;
   copyMinAgeDays: number;
 } {
-  const row = db
-    .prepare(
-      `SELECT archiveLocationType, archiveNetworkHost, archiveNetworkShare, archiveScheduleMode,
-              archiveScheduleCron, archiveRetentionEnabled, archiveRetentionDays,
-              archiveCopyMinAgeEnabled, archiveCopyMinAgeDays
-         FROM appSettings WHERE id = 1`,
-    )
-    .get() as Record<string, unknown> | undefined;
-  const str = (key: string): string => (typeof row?.[key] === 'string' ? (row[key] as string) : '');
+  const row = readSettingsRow(
+    `SELECT archiveLocationType, archiveNetworkHost, archiveNetworkShare, archiveScheduleMode,
+            archiveScheduleCron, archiveRetentionEnabled, archiveRetentionDays,
+            archiveCopyMinAgeEnabled, archiveCopyMinAgeDays
+       FROM appSettings WHERE id = 1`,
+  );
+  const str = (key: string): string => stringField(row, key);
   const flag = (key: string): boolean => row?.[key] === 1 || row?.[key] === true;
   const days = typeof row?.archiveRetentionDays === 'number' ? row.archiveRetentionDays : 0;
   const minAgeDays = typeof row?.archiveCopyMinAgeDays === 'number' ? row.archiveCopyMinAgeDays : 0;
@@ -490,8 +506,13 @@ function assertNetworkField(key: keyof ArchiveNetworkPatch, value: string): void
  * Every field is validated before any SQL runs, so a patch that is rejected
  * half-way through leaves the stored configuration exactly as it was. A caller
  * cannot end up with the destination saved and the retention period not.
+ *
+ * Also accepts an unvalidated record straight from a request body: every key is
+ * checked against the known settings and every value by an assertion below, so
+ * the static `ArchiveConfigPatch` type is a convenience for internal callers,
+ * not the guarantee.
  */
-export function setArchiveConfig(patch: ArchiveConfigPatch): void {
+export function setArchiveConfig(patch: ArchiveConfigPatch | Readonly<Record<string, unknown>>): void {
   const assignments: Array<{ column: string; value: string | number }> = [];
   const assign = (column: string, value: string | number): void => {
     assignments.push({ column, value });
@@ -510,10 +531,10 @@ export function setArchiveConfig(patch: ArchiveConfigPatch): void {
   let nextCopyMinAgeEnabled = stored.copyMinAgeEnabled;
   let nextCopyMinAgeDays = stored.copyMinAgeDays;
 
-  for (const key of Object.keys(patch) as Array<keyof ArchiveConfigPatch>) {
+  for (const key of Object.keys(patch)) {
     if (key === 'network') continue;
-    if (!Object.prototype.hasOwnProperty.call(COLUMN_FOR, key)) {
-      throw new ArchiveConfigError(String(key), `unknown archive setting "${String(key)}"`);
+    if (!isScalarSetting(key)) {
+      throw new ArchiveConfigError(key, `unknown archive setting "${key}"`);
     }
     const value = patch[key];
     // `undefined` means "not provided", not "set to undefined".
@@ -603,11 +624,13 @@ export function setArchiveConfig(patch: ArchiveConfigPatch): void {
 
   const network = patch.network;
   if (network !== undefined) {
-    if (network === null || typeof network !== 'object' || Array.isArray(network)) {
+    // The patch arrives from a request body, so `network` is only typed, not known,
+    // to be an object; isRecord is the real check (null, arrays and scalars refused).
+    if (!isRecord(network)) {
       throw new ArchiveConfigError('network', 'network must be an object');
     }
-    for (const key of Object.keys(network) as Array<keyof ArchiveNetworkPatch>) {
-      const value = network[key];
+    for (const key of Object.keys(network)) {
+      const value: unknown = network[key];
       if (value === undefined) continue;
 
       if (key === 'password') {
@@ -628,10 +651,10 @@ export function setArchiveConfig(patch: ArchiveConfigPatch): void {
       // so a config read can be handed back unchanged.
       if (key === 'hasPassword') continue;
 
-      if (!Object.prototype.hasOwnProperty.call(NETWORK_COLUMN_FOR, key)) {
-        throw new ArchiveConfigError(`network.${String(key)}`, `unknown network setting "${String(key)}"`);
+      if (!isNetworkColumnKey(key)) {
+        throw new ArchiveConfigError(`network.${key}`, `unknown network setting "${key}"`);
       }
-      assertString(`network.${String(key)}`, value);
+      assertString(`network.${key}`, value);
       assertNetworkField(key, value);
       if (key === 'host') nextHost = value;
       if (key === 'share') nextShare = value;

@@ -100,8 +100,8 @@ function tick(): void {
   // master is on, every task runs.
   if (!settings.nightlyMaintenanceEnabled) return;
 
-  const timeStr = (settings.plannerPrefetchTime as string | undefined) ?? '03:00';
-  const tz = (settings.timezone as string | undefined) || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const timeStr = typeof settings.plannerPrefetchTime === 'string' ? settings.plannerPrefetchTime : '03:00';
+  const tz = (typeof settings.timezone === 'string' ? settings.timezone : '') || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const now = new Date();
 
   // `!isRunning` guards against this tick firing twice while an attempt is
@@ -207,7 +207,7 @@ export async function runPlannerNightlyPrefetch(): Promise<void> {
 
   for (let i = 0; i < catalog.length; i++) {
     if (i > 0 && i % 100 === 0) await new Promise<void>(r => setImmediate(r));
-    const entry = catalog[i]!;
+    const entry = catalog[i];
     const w = visibilityWindow(entry.ra, entry.dec, lat, lon, nightStart, nightEnd, minAlt, horizonProfile);
     if (w.maxAlt >= minAlt && w.rises) visibleIds.push(entry.id);
   }

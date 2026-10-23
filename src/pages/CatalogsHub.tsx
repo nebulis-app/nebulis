@@ -33,7 +33,7 @@ export function CatalogsHub() {
   const uniqueObjects = new Map<string, boolean>();
   if (allLoaded) {
     for (const r of results) {
-      for (const o of r.data!.objects) {
+      for (const o of r.data?.objects ?? []) {
         const key = o.ngcName ?? o.id;
         uniqueObjects.set(key, (uniqueObjects.get(key) ?? false) || o.isImaged);
       }

@@ -257,15 +257,20 @@ describe('moonUpIntervals', () => {
   it('finds a rise crossing to within a couple of minutes of SunCalc', () => {
     const day = new Date(Date.UTC(2026, 0, 15, 0, 0, 0));
     const times = SunCalc.getMoonTimes(day, LAT, LON, true);
-    if (!times.rise) return; // no rise that day at this latitude
+    // The moon does rise that day here (~12:08 UTC); an early return on a
+    // missing rise would turn this test into a silent no-op.
+    expect(times.rise).toBeInstanceOf(Date);
     const intervals = moonUpIntervals(
       new Date(times.rise.getTime() - 2 * 3_600_000),
       new Date(times.rise.getTime() + 2 * 3_600_000),
       LAT,
       LON,
     );
-    const found = intervals.find(i => Math.abs(i.start - times.rise!.getTime()) < 5 * 60_000);
-    expect(found).toBeDefined();
+    // Window is rise ± 2h: the moon is down before the rise and up after it,
+    // so exactly one interval, starting at the rise and running to window end.
+    expect(intervals).toHaveLength(1);
+    expect(Math.abs(intervals[0].start - times.rise!.getTime())).toBeLessThan(5 * 60_000);
+    expect(intervals[0].end).toBe(times.rise!.getTime() + 2 * 3_600_000);
   });
 
   it('returns nothing for an inverted window', () => {

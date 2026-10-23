@@ -13,7 +13,7 @@
  * left as dead space. The canvas is dark in every theme: it is a picture of
  * the night, like the Sky Forecast hero.
  */
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Moon, Plus } from 'lucide-react';
 import { Trans, useTranslation } from 'react-i18next';
@@ -79,6 +79,10 @@ interface ScheduleTimelineProps {
    *  its saved mosaic. Passed through to ScheduledImagingBlock, which only
    *  shows the shortcut icon when a block actually has one saved. */
   onShowFraming?: (session: PlannedSession) => void;
+  /** Buttons for the end of the header: what you do with the plan as a whole (copy, share). */
+  headerActions?: ReactNode;
+  /** Shown under the header while the night has no blocks, in place of a bare empty canvas. */
+  emptyState?: ReactNode;
   /** Reports the runtime pixels-per-minute scale so the page's drag/drop math
    *  (which converts pointer pixels to times) matches what's rendered here. */
   onScaleChange?: (pxPerMinute: number) => void;
@@ -170,6 +174,8 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
     onResize,
     onShowDetails,
     onShowFraming,
+    headerActions,
+    emptyState,
     onScaleChange,
     observerTimezone,
   },
@@ -270,7 +276,6 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
 
   const background = twilightGradientCss(twilight, startMs, totalMs, 'to bottom', isNight);
   const darkMinutes = darkStart && darkEnd ? Math.max(0, Math.round(minutesBetween(darkStart, darkEnd))) : 0;
-  const darkHours = darkMinutes / 60;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -282,7 +287,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
         <div className="flex items-baseline gap-2.5">
           <span className="text-sm font-medium text-white">{t('scheduleTimeline.nightSchedule')}</span>
           {darkMinutes > 0 && (
-            <span className="text-[11px] text-white/45 tabular-nums">
+            <span className="text-[0.6875rem] text-white/45 tabular-nums">
               <Trans
                 i18nKey="scheduleTimeline.plannedOfDark"
                 ns="planner"
@@ -293,7 +298,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3 text-[11px] text-white/45 tabular-nums">
+        <div className="flex items-center gap-3 text-[0.6875rem] text-white/45 tabular-nums">
           {bestWindow && (
             <span className="hidden md:inline">
               {t('scheduleTimeline.clearest', { start: fmtHm(bestWindow.start), end: fmtHm(bestWindow.end) })}
@@ -301,11 +306,13 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
           )}
           {darkStart && darkEnd && (
             <span>
-              {t('scheduleTimeline.dark', { start: fmtHm(darkStart), end: fmtHm(darkEnd), hours: Math.round(darkHours * 10) / 10 })}
+              {t('scheduleTimeline.dark', { start: fmtHm(darkStart), end: fmtHm(darkEnd), duration: formatDuration(darkMinutes) })}
             </span>
           )}
+          {headerActions}
         </div>
       </div>
+      {emptyState}
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" style={{ background }}>
         <div
@@ -369,7 +376,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
                 className="pointer-events-none absolute right-0 flex items-center gap-1 pr-3"
                 style={{ top: `${yFor(e.at)}px`, transform: 'translateY(-50%)' }}
               >
-                <span className="rounded-full bg-slate-950/70 px-2 py-0.5 text-[10px] text-amber-200/80 tabular-nums ring-1 ring-inset ring-amber-200/20">
+                <span className="rounded-full bg-slate-950/70 px-2 py-0.5 text-[0.625rem] text-amber-200/80 tabular-nums ring-1 ring-inset ring-amber-200/20">
                   <Moon className="mr-1 inline h-2.5 w-2.5" />
                   {e.label} {fmtHm(new Date(e.at))}
                 </span>
@@ -386,7 +393,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
                 className="absolute left-0 right-0 border-t border-white/[0.07]"
                 style={{ top: `${top}px` }}
               >
-                <span className="absolute -top-2 left-2 px-1 text-[10px] text-white/40 tabular-nums">
+                <span className="absolute -top-2 left-2 px-1 text-[0.625rem] text-white/40 tabular-nums">
                   {fmtHm(t)}
                 </span>
               </div>
@@ -412,7 +419,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
                 }}
                 title={t('scheduleTimeline.fillGapTitle', { duration: formatDuration(gap.minutes), time: fmtHm(new Date(gap.start)) })}
               >
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium">
+                <span className="inline-flex items-center gap-1.5 text-[0.6875rem] font-medium">
                   <Plus className="h-3.5 w-3.5" />
                   {t('scheduleTimeline.freeDuration', { duration: formatDuration(gap.minutes) })}
                   <span className="hidden opacity-0 transition group-hover:opacity-100 sm:inline">{t('scheduleTimeline.fillIt')}</span>
@@ -446,6 +453,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
                 maxAlt={verdict?.maxAlt ?? null}
                 moonVerdict={moonById.get(s.id)?.verdict ?? 'ok'}
                 moonReason={moonById.get(s.id)?.reason ?? ''}
+                narrowbandVerdict={moonById.get(s.id)?.narrowbandVerdict}
                 hasOverlap={overlapById.get(s.id) ?? false}
                 laneIndex={laneIndex.get(s.id) ?? 0}
                 laneCount={laneCount.get(s.id) ?? 1}
@@ -480,7 +488,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
               {/* Dark label rather than text-white: the night theme remaps
                   text-white to red, which would vanish against the pill. */}
               <span
-                className="mr-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-950"
+                className="mr-2 rounded-full px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.12em] text-slate-950"
                 style={{ backgroundColor: isNight ? '#dd3333' : '#fb7185' }}
               >
                 {t('scheduleTimeline.now')}

@@ -1,8 +1,9 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation, useMutationState } from '@tanstack/react-query';
+import { isImageFavoriteVars, type ImageFavoriteVars } from '../lib/favoriteMutations';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, X, Loader2, Columns } from 'lucide-react';
+import { ArrowLeft, ChevronRight, X, Loader2, Columns } from 'lucide-react';
 import { getObservationDetail, getObjectInfo } from '../lib/api/observations';
 import {
   deleteSessionSubFrames,
@@ -24,7 +25,7 @@ import { getTelescopeStatus, listTelescopes } from '../lib/api/telescopes';
 import { fetchLocationName } from '../lib/api/catalog';
 import { getNote } from '../lib/api/notes';
 import { formatObjectTitle } from '../lib/dsoSearch';
-import { formatObservationDate } from '../lib/observationDisplay';
+import { formatObservationDate, parseRaHours, parseDecDegrees } from '../lib/observationDisplay';
 import { formatDate, formatTime24 } from '../lib/formatLocale';
 import { previewSrcFor, thumbSrcFor, isPoorHeroCandidate } from '../lib/sessionImageSrc';
 import { isRenderableProcessed } from '../lib/processedFormats';
@@ -39,10 +40,13 @@ import { ImageCompareModal, type CompareFile } from '../components/ImageCompareM
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useSyncSubframes } from '../contexts/SyncSubframesContext';
 import { SatelliteTrailScanModal } from '../components/SatelliteTrailScanModal';
+import { FrameAnalysisModal } from '../components/FrameAnalysisModal';
 import { SessionHero, type HeroBadge, type HeroMedia } from '../components/observationDetail/SessionHero';
 import { buildCaptureMetrics } from '../lib/captureMetrics';
 import { ObjectPanel } from '../components/observationDetail/ObjectPanel';
 import { ConditionsPanel } from '../components/observationDetail/ConditionsPanel';
+import { cloudVerdict } from '../lib/cloudVerdict';
+import { SessionNightPanel } from '../components/observationDetail/SessionNightPanel';
 import { SitePanel } from '../components/observationDetail/SitePanel';
 import { ObservationTabs, type ObservationTab } from '../components/observationDetail/ObservationTabs';
 import { VideoPanel } from '../components/observationDetail/VideoPanel';
@@ -56,6 +60,16 @@ import type { CompareItem } from '../components/observationDetail/types';
 
 /** `YYYYMMDD-HHMMSS` (what the telescope writes) or an ISO timestamp, as
  *  `HH:MM` in 24-hour time. */
+/** A capture timestamp ("20260330-201431", else anything `Date` reads) as a
+ *  Date, or null when it is neither. */
+function parseCaptureTime(timestamp: string): Date | null {
+  const m = timestamp.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})?/);
+  const d = m
+    ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] ?? 0))
+    : new Date(timestamp);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function formatClock(timestamp: string): string {
   try {
     const m = timestamp.match(/^\d{8}-(\d{2})(\d{2})/);
@@ -141,6 +155,7 @@ export function ObservationDetail() {
   const [compareItems, setCompareItems] = useState<[CompareItem | null, CompareItem | null]>([null, null]);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [satelliteScanOpen, setSatelliteScanOpen] = useState(false);
+  const [frameAnalysisOpen, setFrameAnalysisOpen] = useState(false);
   const [confirmDeleteSubframes, setConfirmDeleteSubframes] = useState(false);
   const [archiveState, setArchiveState] = useState<{ done: number; total: number } | 'idle' | 'error'>('idle');
   const archiveAbortRef = useRef(false);
@@ -148,6 +163,15 @@ export function ObservationDetail() {
   // just the client poll.
   const archiveJobIdRef = useRef<string | null>(null);
   const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(() => {
+    try { return localStorage.getItem('nebulis.observationDetails') === 'open'; } catch { return false; }
+  });
+  const toggleDetails = () => {
+    setDetailsOpen(open => {
+      try { localStorage.setItem('nebulis.observationDetails', open ? 'closed' : 'open'); } catch { /* not persisted */ }
+      return !open;
+    });
+  };
   const [locationName, setLocationName] = useState<string | null>(null);
   // `null` until the user picks a tab; the shown tab is then derived (see
   // `activeTab` below, after the file tallies it depends on).
@@ -168,7 +192,6 @@ export function ObservationDetail() {
     sourceKind: 'telescope' | 'processed',
     overwriteTarget?: OverwriteTarget,
   ) => {
-    setGalleryOpen(false);
     setEditorSrc({ url, name, sourceKind, overwriteTarget });
     setEditorOpen(true);
   };
@@ -265,13 +288,14 @@ export function ObservationDetail() {
   // Unifying Lens: derive the favorite set by overlaying in-flight mutations
   // on the server cache. No setQueryData, no rollback — when each mutation
   // settles, its overlay entry disappears and the invalidated query takes over.
-  const pendingFavorites = useMutationState<{ imagePath: string; isFavorite: boolean }>({
+  const pendingFavorites = useMutationState<ImageFavoriteVars | null>({
     filters: { mutationKey: ['toggle-image-favorite'], status: 'pending' },
-    select: m => m.state.variables as { imagePath: string; isFavorite: boolean },
+    select: m => (isImageFavoriteVars(m.state.variables) ? m.state.variables : null),
   });
   const imageFavoriteSet = useMemo(() => {
     const set = new Set(imageFavoritePaths);
     for (const p of pendingFavorites) {
+      if (!p) continue;
       if (p.isFavorite) set.add(p.imagePath);
       else set.delete(p.imagePath);
     }
@@ -283,6 +307,31 @@ export function ObservationDetail() {
   // and read by the galleryItems derivation below — a fresh array reference
   // every render would defeat any memoization those children rely on.
   const subFrames = useMemo(() => files.filter(f => f.fileType === 'sub'), [files]);
+  // With subframes synced, each frame's own timestamp and exposure say when the
+  // telescope was actually capturing. Frames closer than a few minutes belong to
+  // one run, so a night with a cloud break or a meridian flip shows its gap.
+  const captureSpans = useMemo(() => {
+    const frames = subFrames
+      .map(f => {
+        const at = f.timestamp ? parseCaptureTime(f.timestamp) : null;
+        return at ? { at, seconds: Math.max(0, parseFloat(f.exposure ?? '') || 0) } : null;
+      })
+      .filter((f): f is { at: Date; seconds: number } => f !== null)
+      .sort((a, b) => a.at.getTime() - b.at.getTime());
+    if (frames.length === 0) return null;
+    const GAP_MS = 5 * 60_000;
+    const spans: { start: Date; end: Date }[] = [];
+    for (const f of frames) {
+      const endMs = f.at.getTime() + f.seconds * 1000;
+      const last = spans[spans.length - 1];
+      if (last && f.at.getTime() - last.end.getTime() <= GAP_MS) {
+        if (endMs > last.end.getTime()) last.end = new Date(endMs);
+      } else {
+        spans.push({ start: f.at, end: new Date(endMs) });
+      }
+    }
+    return spans;
+  }, [subFrames]);
   const filteredFiles = useMemo(() => files.filter(f => {
     if (f.fileType === 'sub') return false;
     if (viewMode === 'fits') return f.type === 'fits';
@@ -679,6 +728,44 @@ if (isLoading) {
     );
   }
 
+  // The facts worth seeing without opening the section: how clear it was,
+  // where, and how warm.
+  const cloudNow = observation?.weather?.cloudCover;
+  const tempNow = observation?.weather?.temperature;
+  const detailsSummary = [
+    cloudNow != null ? `${cloudVerdict(cloudNow, t, isNight).label} · ${Math.round(cloudNow)}%` : null,
+    locationName,
+    tempNow != null
+      ? (tempUnit === 'fahrenheit' ? `${Math.round(tempNow * 9 / 5 + 32)}°F` : `${Math.round(tempNow)}°C`)
+      : null,
+  ].filter(Boolean).join(' · ');
+  // The night's sky beside the title. Needs everything the chart needs: where
+  // the object is, where you stood, and when the first frame was taken.
+  const nightCoords = observation?.coordinates ?? observation?.fileCoordinates ?? null;
+  const nightRa = parseRaHours(objectInfo?.ra ?? observation?.ra);
+  const nightDec = parseDecDegrees(objectInfo?.dec ?? observation?.dec);
+  const nightStart = observation?.startTime ? parseCaptureTime(observation.startTime) : null;
+  const nightEnd = observation?.endTime ? parseCaptureTime(observation.endTime) : null;
+  const showSubframesTab = () => {
+    setPinnedTab('subframes');
+    tabsSectionRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
+  const nightPanel = nightCoords && nightRa != null && nightDec != null && nightStart ? (
+    <SessionNightPanel
+      raHours={nightRa}
+      decDegrees={nightDec}
+      lat={nightCoords.lat}
+      lon={nightCoords.lon}
+      start={nightStart}
+      end={nightEnd}
+      captureSpans={captureSpans}
+      onSyncSubframes={isAdmin && subFrames.length === 0 ? showSubframesTab : null}
+      timeRange={timeRange}
+      cloudCover={observation?.weather?.cloudCover}
+      moonIllumination={observation?.note?.moonIllumination}
+    />
+  ) : null;
+
   if (observationError) {
     return (
       <div className="max-w-lg mx-auto pt-20 text-center">
@@ -711,11 +798,15 @@ if (isLoading) {
         onOpenMedia={openHeroMedia}
         onResetCrown={canResetCrown && !settingSessionImage ? () => handleSetSessionImage(null) : null}
         emptyReason={files.some(f => f.type === 'fits') ? t('observationDetail.page.rawFitsOnly') : t('observationDetail.page.noImagesCaptured')}
-        telescope={showTelescopeUI ? telescopeForObs : null}
+        // One telescope with several optical trains still needs the chip, to
+        // say (and pick) which train shot the night.
+        telescope={showTelescopeUI || (telescopeForObs?.opticalConfigs?.length ?? 0) >= 2 ? telescopeForObs : null}
         telescopes={telescopes}
+        optics={observation?.optics}
         isAdmin={isAdmin}
         captureMetrics={captureMetrics}
         accent={accent}
+        sidePanel={nightPanel}
         onOpenNotes={observation && (isAdmin || !!existingNote) ? () => setNotesModalOpen(true) : null}
         hasNote={!!existingNote}
         onMove={observation && isAdmin ? () => setShowMoveModal(true) : null}
@@ -738,38 +829,6 @@ if (isLoading) {
           </button>
         </div>
       )}
-
-      {/* The three questions an observation raises once you have looked at the
-          picture: what is it, what was the sky doing, and where were you. These
-          lived in a Details tab, next to a Capture Settings card whose numbers
-          the hero now carries, so they were a click away from a page that had
-          room for them. */}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)]">
-        <ObjectPanel
-          displayName={displayName}
-          info={objectInfo}
-          magnitude={observation?.magnitude}
-          distanceLy={observation?.distanceLy}
-        />
-
-        <ConditionsPanel
-          weather={observation?.weather}
-          sky={observation?.note}
-          tempUnit={tempUnit}
-        />
-
-        {observation && (
-          <SitePanel
-            objectId={objectId}
-            date={date}
-            siteId={observation.siteId}
-            coordinates={observation.coordinates}
-            fileCoordinates={observation.fileCoordinates}
-            locationName={locationName}
-            isAdmin={isAdmin}
-          />
-        )}
-      </div>
 
       {/* The session's files. One grid at a time, each with the full page
           width, so a new file category becomes a tab rather than another band
@@ -820,7 +879,6 @@ if (isLoading) {
           settingSessionImage={settingSessionImage}
           imageFavoriteSet={imageFavoriteSet}
           onToggleFavorite={(imagePath, isFavorite) => imageFavoriteMutation.mutate({ imagePath, isFavorite })}
-          date={date}
           openGallery={openGallery}
           isAdmin={isAdmin}
           onMarkProcessed={setConfirmMarkProcessedPath}
@@ -835,6 +893,9 @@ if (isLoading) {
 
         {activeTab === 'subframes' && (
         <SubframesPanel
+          objectId={objectId ?? ''}
+          objectName={displayName}
+          date={date ?? ''}
           subFrames={subFrames}
           isAdmin={isAdmin}
           telescopeOnline={telescopeOnline}
@@ -842,8 +903,12 @@ if (isLoading) {
           onDownloadToComputer={handleDownloadToComputer}
           onOpenSync={() => objectId && date && openSync(objectId, date)}
           onScanTrails={() => setSatelliteScanOpen(true)}
+          onAnalyzeFrames={() => setFrameAnalysisOpen(true)}
           onDeleteAllSubframes={() => setConfirmDeleteSubframes(true)}
-          onOpenGallery={openGallery}
+          onFramesDeleted={() => {
+            queryClient.invalidateQueries({ queryKey: ['observation', objectId, date] });
+            queryClient.invalidateQueries({ queryKey: ['observation-files', objectId, date] });
+          }}
         />
         )}
 
@@ -872,6 +937,59 @@ if (isLoading) {
 
         </div>
       </div>
+
+      {/* What the object is, what the sky was doing and where you were. The
+          pictures come first because they are what a session page is for; this
+          is reference, so it folds away (and its map is not loaded) until
+          opened. The choice is remembered. */}
+      <section>
+        <button
+          type="button"
+          onClick={toggleDetails}
+          aria-expanded={detailsOpen}
+          className={`flex w-full items-center gap-2 rounded-xl px-1 py-2 text-left text-sm font-medium transition ${
+            isDark ? 'text-slate-300 hover:text-slate-100' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <ChevronRight className={`h-4 w-4 transition-transform ${detailsOpen ? 'rotate-90' : ''}`} />
+          {t('observationDetail.page.sessionDetails')}
+          {!detailsOpen && detailsSummary && (
+            <span className={`truncate font-normal ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              {detailsSummary}
+            </span>
+          )}
+        </button>
+        {detailsOpen && (
+          <div className="pt-2">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                  <ObjectPanel
+                    displayName={displayName}
+                    info={objectInfo}
+                    magnitude={observation?.magnitude}
+                    distanceLy={observation?.distanceLy}
+                  />
+          
+                  <ConditionsPanel
+                    weather={observation?.weather}
+                    sky={observation?.note}
+                    tempUnit={tempUnit}
+                  />
+          
+                  {observation && (
+                    <SitePanel
+                      objectId={objectId}
+                      date={date}
+                      siteId={observation.siteId}
+                      coordinates={observation.coordinates}
+                      fileCoordinates={observation.fileCoordinates}
+                      locationName={locationName}
+                      isAdmin={isAdmin}
+                    />
+                  )}
+                </div>
+          </div>
+        )}
+      </section>
 
       <UploadProcessedModal
         isOpen={showUploadModal}
@@ -915,6 +1033,22 @@ if (isLoading) {
         settingGalleryId={settingGalleryId}
         deletingProcessedId={deletingProcessedId}
       />
+
+      {/* Frame quality analysis: clouds, star trails, soft focus, streaks */}
+      {frameAnalysisOpen && objectId && date && (
+        <FrameAnalysisModal
+          isOpen={frameAnalysisOpen}
+          onClose={() => setFrameAnalysisOpen(false)}
+          objectId={objectId}
+          nights={[{ date, count: subFrames.length }]}
+          initialDate={date}
+          onFilesDeleted={() => {
+            queryClient.invalidateQueries({ queryKey: ['observation', objectId, date] });
+            queryClient.invalidateQueries({ queryKey: ['observation-files', objectId, date] });
+          }}
+          isDark={isDark}
+        />
+      )}
 
       {/* Satellite Trail Scan Modal */}
       {satelliteScanOpen && (
@@ -1053,6 +1187,7 @@ if (isLoading) {
           overwriteTarget={editorSrc.overwriteTarget}
           onClose={() => { setEditorOpen(false); setEditorSrc(null); }}
           onSaved={() => {
+            setGalleryOpen(false);
             if (editorSrc.sourceKind === 'telescope') {
               queryClient.invalidateQueries({ queryKey: ['observation', objectId, date] });
               queryClient.invalidateQueries({ queryKey: ['observation-files', objectId, date] });

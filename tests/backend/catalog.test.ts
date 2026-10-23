@@ -81,11 +81,14 @@ describe('catalog data', () => {
     it('searches by constellation', () => {
       const results = searchCatalog('Cygnus');
       expect(results.length).toBeGreaterThanOrEqual(3);
+      // A search that ignored its argument would return other constellations.
+      expect(results.filter(r => r.constellation !== 'Cygnus')).toEqual([]);
     });
 
     it('searches by type', () => {
       const results = searchCatalog('Spiral Galaxy');
-      expect(results.length).toBeGreaterThanOrEqual(5);
+      expect(results.filter(r => r.type === 'Spiral Galaxy').length).toBeGreaterThanOrEqual(5);
+      expect(results.every(r => /galaxy/i.test(r.type))).toBe(true);
     });
 
     it('returns empty for no match', () => {
@@ -96,7 +99,8 @@ describe('catalog data', () => {
     it('is case-insensitive', () => {
       const r1 = searchCatalog('orion');
       const r2 = searchCatalog('ORION');
-      expect(r1.length).toBe(r2.length);
+      expect(r1.length).toBeGreaterThan(0);
+      expect(r1).toEqual(r2);
     });
 
     it('finds an object by any of its designations, ranked first', () => {

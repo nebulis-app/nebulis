@@ -2,10 +2,11 @@
  * Library analysis: find records that no longer match what is on disk.
  *
  * Read-only by default. `analyzeLibrary` only reports; each `fix*` function
- * repairs exactly one category, so the user decides what to touch. Nothing here
- * deletes a real file: the fixes drop records that point at nothing, retire
- * objects whose folder is gone (into the existing trash, so restorable), and
- * correct the stored flat/nested flag.
+ * repairs exactly one category, so the user decides what to touch. The fixes drop
+ * records that point at nothing, retire objects whose folder is gone (into the
+ * existing trash, so restorable), correct the stored flat/nested flag, and, for
+ * duplicate session files only, delete the second copy of a file once its bytes
+ * are proven identical to the first (see duplicateSessions.ts).
  *
  * Callers must confirm the library is reachable first. An unmounted drive makes
  * every file look missing, and "fixing" that would wipe good records.
@@ -22,6 +23,7 @@ import { getLibraryDir } from '../libraryPath.js';
 import { probePath } from '../fsProbe.js';
 import { findLayoutDrift, reconcileLayoutFromDisk } from './libraryLayout.js';
 import { countFlatObjects } from './libraryRenest.js';
+import { findDuplicateSessionFiles, fixDuplicateSessionFiles, type DuplicateRepair } from './duplicateSessions.js';
 import { deleteLibraryFileRow } from './libraryFiles.js';
 import { refreshObjectFileCount } from './observations.js';
 import { invalidateAllImagesCache } from './gallery.js';
@@ -41,6 +43,8 @@ export interface LibraryAnalysis {
   missingObjectCount: number;
   layoutDrift: number;
   flatObjects: number;
+  /** The same capture stored in two session folders of one object. */
+  duplicateFiles: { count: number; objects: number; bytes: number };
   /** Processed-image records (the Gallery's "Processed" cards) whose file is gone. */
   missingProcessed: { count: number; objects: number };
   /** Paths that could not be checked, so are excluded from every count above. A
@@ -148,6 +152,7 @@ export async function analyzeLibrary(): Promise<LibraryAnalysis> {
     missingObjectCount: missing.length,
     layoutDrift: findLayoutDrift().length,
     flatObjects: countFlatObjects(),
+    duplicateFiles: (({ count, objects, bytes }) => ({ count, objects, bytes }))(findDuplicateSessionFiles()),
     missingProcessed: {
       count: processedResult.missing.length,
       objects: new Set(processedResult.missing.map(r => r.objectId)).size,
@@ -196,4 +201,9 @@ export async function fixMissingObjects(): Promise<{ retired: number }> {
 
 export function fixLayoutDrift(): { fixed: number } {
   return { fixed: reconcileLayoutFromDisk() };
+}
+
+/** Delete the second copy of each file stored twice, after verifying the bytes match. */
+export function fixDuplicateFiles(): Promise<DuplicateRepair> {
+  return fixDuplicateSessionFiles();
 }

@@ -127,7 +127,7 @@ export const HERO_IMAGES: Record<HeroImageId, HeroImage> = {
  * banners that carries one gets its own.
  */
 export const PAGE_HERO: Record<
-  'library' | 'gallery' | 'observations' | 'planner' | 'forecast' | 'backup' | 'settings' | 'help' | 'catalogs' | 'calibrations' | 'wishlist',
+  'library' | 'gallery' | 'observations' | 'planner' | 'forecast' | 'backup' | 'settings' | 'help' | 'catalogs' | 'calibrations' | 'wishlist' | 'explore',
   HeroImage
 > = {
   library: HERO_IMAGES['cosmic-cliffs'],
@@ -164,4 +164,9 @@ export const PAGE_HERO: Record<
   // 2's dense star field also fits a page about targets not yet caught better
   // than the softer pillar-of-gas shots.
   wishlist: HERO_IMAGES.westerlund,
+  // Explore sits next to Wishlist and Catalogs in the nav, whose banners use
+  // westerlund and southern-ring, so it can't share either. The Pillars are the
+  // classic "look what's out there" picture; Gallery (the only other page
+  // using them) is at the far end of the bar.
+  explore: HERO_IMAGES['pillars-of-creation'],
 };

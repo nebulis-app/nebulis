@@ -25,10 +25,6 @@ export const VIDEOS_DESCRIPTION =
   'deep-sky imaging sessions. These are not observations of a celestial target, so each entry ' +
   'here groups a period of recorded video rather than a specific object in the sky.';
 
-export function isVideosFolder(name: string): boolean {
-  return name.toLowerCase() === VIDEOS_FOLDER.toLowerCase();
-}
-
 /** Deterministic id for the one shared synthetic object, derived through the
  *  same normalize/resolve pipeline every real target goes through rather
  *  than a hand-picked literal, so it can never drift from what the import

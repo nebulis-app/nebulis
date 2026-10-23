@@ -52,9 +52,9 @@ export function ObjectTrashModal({
 }: Props) {
   const { t } = useTranslation('library');
   const rowBase = 'flex items-center justify-between gap-3 py-2.5';
-  const nameClass = `text-[13px] font-medium truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`;
-  const metaClass = `text-[12px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`;
-  const restoreBtn = `shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+  const nameClass = `text-[0.8125rem] font-medium truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`;
+  const metaClass = `text-[0.75rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`;
+  const restoreBtn = `shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[0.75rem] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
     isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
   }`;
 
@@ -83,13 +83,13 @@ export function ObjectTrashModal({
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 max-h-96">
-        <p className={`text-[12px] leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+        <p className={`text-[0.75rem] leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
           {t('objectDetail.trashModal.hint')}
         </p>
 
         {deletedObjects.length > 0 && (
           <div>
-            <h4 className={`text-[11px] font-semibold uppercase tracking-widest mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            <h4 className={`text-[0.6875rem] font-semibold uppercase tracking-widest mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
               {t('objectDetail.trashModal.object')}
             </h4>
             <ul className={`divide-y ${isDark ? 'divide-slate-800' : 'divide-slate-100'}`}>
@@ -118,7 +118,7 @@ export function ObjectTrashModal({
 
         {deletedSessions.length > 0 && (
           <div>
-            <h4 className={`text-[11px] font-semibold uppercase tracking-widest mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            <h4 className={`text-[0.6875rem] font-semibold uppercase tracking-widest mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
               {t('objectDetail.trashModal.observations')}
             </h4>
             <ul className={`divide-y ${isDark ? 'divide-slate-800' : 'divide-slate-100'}`}>
@@ -148,7 +148,7 @@ export function ObjectTrashModal({
         )}
 
         {error && (
-          <div className={`rounded-lg px-3.5 py-3 text-[12px] ${isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'}`}>
+          <div className={`rounded-lg px-3.5 py-3 text-[0.75rem] ${isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'}`}>
             {error}
           </div>
         )}

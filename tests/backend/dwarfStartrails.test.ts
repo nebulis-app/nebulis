@@ -17,7 +17,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 });
 
 import { discoverDwarfObjects } from '../../server/lib/walkers/dwarfWalker';
-import { STARTRAILS_TARGET_NAME, STARTRAILS_OBJECT_TYPE, getStartrailsObjectId, patchStartrailsObjectMeta } from '../../server/lib/library/dwarfStartrails';
+import { STARTRAILS_TARGET_NAME, STARTRAILS_OBJECT_TYPE, STARTRAILS_DESCRIPTION, getStartrailsObjectId, patchStartrailsObjectMeta } from '../../server/lib/library/dwarfStartrails';
 import { runImport, claimImportLock, getImportStatus } from '../../server/lib/library/import';
 import { createProfile } from '../../server/lib/telescopes';
 import { stmts } from '../../server/lib/library/objects';
@@ -122,7 +122,7 @@ describe('runImport — Dwarf STARTRAILS end-to-end', () => {
     expect(row).toBeDefined();
     expect(row?.objectName).toBe(STARTRAILS_TARGET_NAME);
     expect(row?.objectType).toBe(STARTRAILS_OBJECT_TYPE);
-    expect(row?.description).toBeTruthy();
+    expect(row?.description).toBe(STARTRAILS_DESCRIPTION);
 
     const sessions = stmts.getSessions.all(objectId);
     expect(sessions.length).toBeGreaterThanOrEqual(1);
@@ -164,6 +164,6 @@ describe('patchStartrailsObjectMeta — boot-time self-heal', () => {
     expect(after?.objectName).toBe(STARTRAILS_TARGET_NAME);
     expect(after?.objectType).toBe(STARTRAILS_OBJECT_TYPE);
     expect(after?.constellation).toBe('');
-    expect(after?.description).toBeTruthy();
+    expect(after?.description).toBe(STARTRAILS_DESCRIPTION);
   });
 });

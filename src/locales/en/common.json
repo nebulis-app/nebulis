@@ -13,6 +13,7 @@
     "forecast": "Forecast",
     "planner": "Planner",
     "wishlist": "Wishlist",
+    "explore": "Explore",
     "catalogs": "Catalogs",
     "calibrations": "Calibrations",
     "settings": "Settings",
@@ -207,6 +208,9 @@
     "manageLocations": "Manage locations..."
   },
   "altitudeChart": {
+    "peakAt": "Peak tonight, {{time}}",
+    "atTimePeak": "At {{time}} · peak {{peak}}° at {{peakTime}}",
+    "peakAtTime": "Peak at {{time}}",
     "currentAltitude": "Current Altitude",
     "moonLabel": "Moon",
     "moonStripSpan": "Moon interference, {{start}} to {{end}}"
@@ -325,5 +329,9 @@
     "title": "Something went wrong",
     "description": "An unexpected error occurred. Refresh the page to continue.",
     "reloadPage": "Reload page"
+  },
+  "heroToggle": {
+    "collapse": "Collapse banner",
+    "expand": "Expand banner"
   }
 }

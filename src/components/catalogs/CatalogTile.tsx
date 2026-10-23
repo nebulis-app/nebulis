@@ -142,7 +142,7 @@ export const CatalogTile = memo(function CatalogTile({ object, isDark, accent, f
       {(object.magnitude != null || fitStrings) && (
         <div className="absolute top-9 left-2 flex flex-col items-start gap-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
           {object.magnitude != null && (
-            <div className="rounded-full bg-slate-950/60 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white/80 ring-1 ring-inset ring-white/15 backdrop-blur-md">
+            <div className="rounded-full bg-slate-950/60 px-1.5 py-0.5 text-[0.625rem] font-medium tabular-nums text-white/80 ring-1 ring-inset ring-white/15 backdrop-blur-md">
               {t('catalogTile.magnitude', { value: object.magnitude.toFixed(1) })}
             </div>
           )}
@@ -156,28 +156,28 @@ export const CatalogTile = memo(function CatalogTile({ object, isDark, accent, f
       <div className="absolute inset-x-0 bottom-0 p-2.5">
         <div className="flex items-baseline gap-1.5">
           <span
-            className="font-display text-[13px] font-bold leading-none tracking-wide"
+            className="font-display text-[0.8125rem] font-bold leading-none tracking-wide"
             style={{ color: imaged ? accent : 'rgba(255,255,255,0.92)' }}
           >
             {object.id}
           </span>
           {object.constellation && (
-            <span className="ml-auto truncate text-[10px] uppercase tracking-wider text-white/45">
+            <span className="ml-auto truncate text-[0.625rem] uppercase tracking-wider text-white/45">
               {object.constellation}
             </span>
           )}
         </div>
-        <div className={`mt-1 truncate text-[11px] leading-tight ${imaged ? 'text-white/85' : 'text-white/55'}`}>
+        <div className={`mt-1 truncate text-[0.6875rem] leading-tight ${imaged ? 'text-white/85' : 'text-white/55'}`}>
           {subtitle}
         </div>
         {inFrameHost && (
-          <div className="mt-1 flex items-center gap-1 truncate text-[11px] font-medium text-white/85">
+          <div className="mt-1 flex items-center gap-1 truncate text-[0.6875rem] font-medium text-white/85">
             <Layers className="w-3 h-3 shrink-0" style={{ color: accent }} aria-hidden="true" />
             <span className="truncate">{t('catalogTile.inFrame', { host: inFrameHost })}</span>
           </div>
         )}
         {imaged && object.sessionCount > 0 && (
-          <div className="mt-1 text-[10px] tabular-nums text-white/45">
+          <div className="mt-1 text-[0.625rem] tabular-nums text-white/45">
             {t('catalogTile.sessionCount', { count: object.sessionCount })}
           </div>
         )}

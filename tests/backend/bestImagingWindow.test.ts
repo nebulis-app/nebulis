@@ -34,9 +34,16 @@ describe('computeBestImagingWindow', () => {
     // >= minAlt run straddles Dec -> Jan rather than splitting into two.
     const w = computeBestImagingWindow(5.5, -5, 40, -100, 20, NOW);
     expect(w.everVisible).toBe(true);
-    const visibleCount = w.months.filter(m => m.aboveMinAlt).length;
-    expect(visibleCount).toBeGreaterThan(0);
-    expect(visibleCount).toBeLessThan(12);
+    // NOW is mid-January, so months[0] is Jan and months[11] is Dec.
+    const flags = w.months.map(m => m.aboveMinAlt);
+    expect(flags[0]).toBe(true);
+    expect(flags[11]).toBe(true);
+    // One circular run: exactly one not-visible -> visible edge.
+    const risingEdges = flags.filter((f, i) => f && !flags[(i + 11) % 12]).length;
+    expect(risingEdges).toBe(1);
+    // The reported window spans the wrap (starts in autumn, ends in spring).
+    expect(w.windowStart).toBe('Sep');
+    expect(w.windowEnd).toBe('Mar');
   });
 });
 

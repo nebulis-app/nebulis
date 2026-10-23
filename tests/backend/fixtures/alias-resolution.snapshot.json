@@ -32,13 +32,13 @@
     ]
   },
   "C102": {
-    "canonical": "NGC2070",
+    "canonical": "IC2602",
     "aliases": [
       "C102"
     ]
   },
   "C103": {
-    "canonical": "NGC2547",
+    "canonical": "NGC2070",
     "aliases": [
       "C103"
     ]
@@ -1560,8 +1560,10 @@
     "aliases": []
   },
   "Sh2-131": {
-    "canonical": "SH2-131",
-    "aliases": []
+    "canonical": "IC1396",
+    "aliases": [
+      "Sh2-131"
+    ]
   },
   "Sh2-132": {
     "canonical": "SH2-132",
@@ -1833,8 +1835,10 @@
     "aliases": []
   },
   "Sh2-190": {
-    "canonical": "SH2-190",
-    "aliases": []
+    "canonical": "IC1805",
+    "aliases": [
+      "Sh2-190"
+    ]
   },
   "Sh2-191": {
     "canonical": "SH2-191",
@@ -1907,8 +1911,10 @@
     "aliases": []
   },
   "Sh2-206": {
-    "canonical": "SH2-206",
-    "aliases": []
+    "canonical": "NGC1491",
+    "aliases": [
+      "Sh2-206"
+    ]
   },
   "Sh2-207": {
     "canonical": "SH2-207",
@@ -2040,16 +2046,20 @@
     "aliases": []
   },
   "Sh2-234": {
-    "canonical": "SH2-234",
-    "aliases": []
+    "canonical": "IC417",
+    "aliases": [
+      "Sh2-234"
+    ]
   },
   "Sh2-235": {
     "canonical": "SH2-235",
     "aliases": []
   },
   "Sh2-236": {
-    "canonical": "SH2-236",
-    "aliases": []
+    "canonical": "IC410",
+    "aliases": [
+      "Sh2-236"
+    ]
   },
   "Sh2-237": {
     "canonical": "NGC1931",
@@ -2132,8 +2142,10 @@
     "aliases": []
   },
   "Sh2-252": {
-    "canonical": "SH2-252",
-    "aliases": []
+    "canonical": "NGC2174",
+    "aliases": [
+      "Sh2-252"
+    ]
   },
   "Sh2-253": {
     "canonical": "SH2-253",
@@ -2234,8 +2246,10 @@
     "aliases": []
   },
   "Sh2-275": {
-    "canonical": "SH2-275",
-    "aliases": []
+    "canonical": "NGC2237",
+    "aliases": [
+      "Sh2-275"
+    ]
   },
   "Sh2-276": {
     "canonical": "SH2-276",
@@ -2319,8 +2333,10 @@
     "aliases": []
   },
   "Sh2-292": {
-    "canonical": "SH2-292",
-    "aliases": []
+    "canonical": "IC2177",
+    "aliases": [
+      "Sh2-292"
+    ]
   },
   "Sh2-293": {
     "canonical": "SH2-293",

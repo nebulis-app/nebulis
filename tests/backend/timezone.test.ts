@@ -40,10 +40,11 @@ describe('timezone helpers', () => {
   });
 
   it('uses the coordinate timezone for Franklin planner windows even when saved timezone is stale', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(
-      JSON.stringify({ timezone: 'America/Chicago' }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    )));
+    // The coordinate lookup is offline (bundled tz data). This used to stub a
+    // fetch that answered 'America/Chicago', which the code never called, so
+    // the stub only made the test look network-dependent. Pin that instead.
+    const fetchSpy = vi.fn(async () => new Response('{}', { status: 500 }));
+    vi.stubGlobal('fetch', fetchSpy);
 
     const lat = 35.904;
     const lon = -86.831;
@@ -58,6 +59,7 @@ describe('timezone helpers', () => {
     }).format(d);
 
     expect(timezone).toBe('America/Chicago');
+    expect(fetchSpy).not.toHaveBeenCalled();
     expect(fmt(night.nightStart!)).toBe('21:57');
     expect(fmt(night.nightEnd!)).toBe('03:42');
   });

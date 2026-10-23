@@ -43,6 +43,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  vi.unstubAllGlobals();
   await new Promise<void>(resolve => server.close(() => resolve()));
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
   for (const r of roots) fs.rmSync(r, { recursive: true, force: true });

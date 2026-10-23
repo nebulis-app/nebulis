@@ -10,7 +10,7 @@
  * detail can never disagree about what a number means.
  */
 import { useMemo, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, skipToken } from '@tanstack/react-query';
 import { AlertCircle, RefreshCw, RotateCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getForecastForSite, type ForecastHour } from '../lib/api/planner';
@@ -73,8 +73,11 @@ export function ForecastPage() {
 
   const { data: forecast, isLoading, error } = useQuery({
     queryKey: ['forecast', effectiveSiteId],
-    queryFn: () => getForecastForSite(effectiveSiteId!),
-    enabled: effectiveSiteId != null && lat !== null && lon !== null,
+    // skipToken (rather than `enabled` + a non-null assertion) disables the
+    // query until a site with coordinates exists, with the id already narrowed.
+    queryFn: effectiveSiteId != null && lat !== null && lon !== null
+      ? () => getForecastForSite(effectiveSiteId)
+      : skipToken,
     staleTime: 600_000,
   });
 
@@ -280,7 +283,7 @@ export function ForecastPage() {
             </div>
           )}
 
-          <p className={`text-[11px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+          <p className={`text-[0.6875rem] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
             {t('forecastPage.source', { sources: [forecast.sources.weather, forecast.sources.seeing].filter(Boolean).join(', ') })}
           </p>
         </>

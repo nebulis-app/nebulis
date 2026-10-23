@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { mockAllRoutes, mockAdminAuth, MOCK } from './fixtures/mocks';
 
 function ok<T>(data: T) {
@@ -71,22 +71,24 @@ test.describe('Image Gallery', () => {
     await page.goto('/image-gallery');
 
     const favBtn = page.getByRole('button', { name: 'Favorites', exact: true });
-    if (await favBtn.isVisible()) {
-      await favBtn.click();
-      // Only M31 (isFavorite: true) should remain
-      await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
-      await expect(page.getByText('Orion Nebula')).not.toBeVisible();
-    }
+    await expect(favBtn).toHaveAttribute('aria-pressed', 'false');
+    await favBtn.click();
+    await expect(favBtn).toHaveAttribute('aria-pressed', 'true');
+    // Only M31 (isFavorite: true) should remain
+    await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
+    await expect(page.getByText('Orion Nebula')).not.toBeVisible();
+    await expect(page.getByText('North America Nebula')).not.toBeVisible();
   });
 
   test('clearing favorites filter restores all images', async ({ page }) => {
     const favBtn = page.getByRole('button', { name: 'Favorites', exact: true });
-    if (await favBtn.isVisible()) {
-      await favBtn.click(); // enable filter
-      await favBtn.click(); // disable filter
-      await expect(page.getByText('Orion Nebula')).toBeVisible();
-      await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
-    }
+    await favBtn.click(); // enable filter
+    await expect(page.getByText('Orion Nebula')).not.toBeVisible();
+    await favBtn.click(); // disable filter
+    await expect(favBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByText('Orion Nebula')).toBeVisible();
+    await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
+    await expect(page.getByText('North America Nebula')).toBeVisible();
   });
 
   // ─── Processed only ───────────────────────────────────────────────────────
@@ -125,15 +127,27 @@ test.describe('Image Gallery', () => {
     ).toBeVisible();
   });
 
-  test('sort dropdown shows sort options', async ({ page }) => {
-    const sortBtn = page.getByRole('button', { name: /sort/i });
-    if (await sortBtn.isVisible()) {
-      await sortBtn.click();
-      await expect(
-        page.getByText(/name.*a.*z|a.*z/i)
-          .or(page.getByText(/newest|oldest/i))
-      ).toBeVisible();
+  test('sort dropdown lists all four sort options when opened', async ({ page }) => {
+    // The sort trigger is labelled with the current choice; the default (no
+    // stored preference) is name-asc, i.e. "Name (A–Z)".
+    const sortBtn = page.getByRole('button', { name: 'Name (A–Z)', exact: true });
+    await expect(sortBtn).toBeVisible();
+    await sortBtn.click();
+    for (const label of ['Name (Z–A)', 'Newest first', 'Oldest first']) {
+      await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
     }
+  });
+
+  test('choosing "Newest first" orders cards by date descending', async ({ page }) => {
+    await page.getByRole('button', { name: 'Name (A–Z)', exact: true }).click();
+    await page.getByRole('button', { name: 'Newest first', exact: true }).click();
+    // Card titles are the object-detail links. Dates: M42 2024-03-15,
+    // M31 2024-02-20, NGC7000 2024-01-10.
+    await expect(page.locator('a[href^="/object/"] p.font-semibold')).toHaveText([
+      'Orion Nebula',
+      'Andromeda Galaxy',
+      'North America Nebula',
+    ]);
   });
 
   // ─── Type filter ──────────────────────────────────────────────────────────
@@ -147,11 +161,11 @@ test.describe('Image Gallery', () => {
   test('filtering by type shows only matching images', async ({ page }) => {
     await page.getByRole('button', { name: /^Filters/ }).click();
     const galaxyFilter = page.getByRole('button', { name: /^galaxy\b/i });
-    if (await galaxyFilter.isVisible()) {
-      await galaxyFilter.click();
-      await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
-      await expect(page.getByText('Orion Nebula')).not.toBeVisible();
-    }
+    await expect(galaxyFilter).toBeVisible();
+    await galaxyFilter.click();
+    await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
+    await expect(page.getByText('Orion Nebula')).not.toBeVisible();
+    await expect(page.getByText('North America Nebula')).not.toBeVisible();
   });
 
   // ─── Search ───────────────────────────────────────────────────────────────
@@ -165,61 +179,56 @@ test.describe('Image Gallery', () => {
   });
 
   test('search filters images by object name', async ({ page }) => {
-    const searchInput = page.getByRole('searchbox')
-      .or(page.getByPlaceholder(/search/i))
-      .or(page.locator('input[type="text"], input[type="search"]').first());
-
-    if (await searchInput.isVisible()) {
-      await searchInput.fill('Orion');
-      await expect(page.getByText('Orion Nebula')).toBeVisible();
-      await expect(page.getByText('Andromeda Galaxy')).not.toBeVisible();
-    }
+    const searchInput = page.getByPlaceholder('Search by object name...');
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill('Orion');
+    await expect(page.getByText('Orion Nebula')).toBeVisible();
+    await expect(page.getByText('Andromeda Galaxy')).not.toBeVisible();
+    await expect(page.getByText('North America Nebula')).not.toBeVisible();
   });
 
   test('clearing search restores all images', async ({ page }) => {
-    const searchInput = page.getByRole('searchbox')
-      .or(page.getByPlaceholder(/search/i))
-      .or(page.locator('input[type="text"], input[type="search"]').first());
-
-    if (await searchInput.isVisible()) {
-      await searchInput.fill('Orion');
-      await searchInput.clear();
-      await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
-    }
+    const searchInput = page.getByPlaceholder('Search by object name...');
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill('Orion');
+    await expect(page.getByText('Andromeda Galaxy')).not.toBeVisible();
+    await searchInput.clear();
+    await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
+    await expect(page.getByText('Orion Nebula')).toBeVisible();
+    await expect(page.getByText('North America Nebula')).toBeVisible();
   });
 
   // ─── Image viewer ─────────────────────────────────────────────────────────
 
-  test('clicking an image card opens the viewer', async ({ page }) => {
-    const firstCard = page.locator('[class*="card"], [class*="image"]')
-      .filter({ has: page.getByText('Orion Nebula') })
+  // ImageCard = [open button (thumbnail)] [favorite button] [object link].
+  // The open button's name comes from the <img alt>, which disappears when the
+  // mocked thumbnail fails to decode, so anchor on the card's object link and
+  // take the card's first button.
+  function openButtonFor(page: Page, objectName: string) {
+    return page.getByRole('link', { name: new RegExp(`^${objectName}\\b`) })
+      .locator('xpath=..')
+      .getByRole('button')
       .first();
+  }
 
-    if (await firstCard.isVisible()) {
-      await firstCard.click();
-      // Viewer typically shows the image in a modal/overlay
-      await expect(
-        page.locator('[role="dialog"]')
-          .or(page.locator('[class*="modal"], [class*="overlay"], [class*="viewer"]'))
-          .or(page.getByText('Orion Nebula').nth(1))
-      ).toBeVisible();
-    }
+  test('clicking an image card opens the viewer', async ({ page }) => {
+    const thumb = openButtonFor(page, 'Orion Nebula');
+    await expect(thumb).toBeVisible();
+    await thumb.click();
+    // ImageViewer renders a Modal: role="dialog" labelled by "Image viewer: {name}".
+    await expect(page.getByRole('dialog', { name: 'Image viewer: Orion Nebula' })).toBeVisible();
   });
 
   test('viewer title links to the image\'s object', async ({ page }) => {
-    const firstCard = page.locator('[class*="card"], [class*="image"]')
-      .filter({ has: page.getByText('Orion Nebula') })
-      .first();
+    await openButtonFor(page, 'Orion Nebula').click();
+    const dialog = page.getByRole('dialog', { name: 'Image viewer: Orion Nebula' });
+    await expect(dialog).toBeVisible();
+    const titleLink = dialog.getByRole('link', { name: 'Orion Nebula', exact: true });
+    await expect(titleLink).toBeVisible();
+    await expect(titleLink).toHaveAttribute('href', '/object/M42');
 
-    if (await firstCard.isVisible()) {
-      await firstCard.click();
-      const titleLink = page.getByRole('link', { name: /orion nebula/i });
-      await expect(titleLink).toBeVisible();
-      await expect(titleLink).toHaveAttribute('href', '/object/M42');
-
-      await titleLink.click();
-      await expect(page).toHaveURL(/\/object\/M42/);
-    }
+    await titleLink.click();
+    await expect(page).toHaveURL(/\/object\/M42$/);
   });
 
   // ─── Empty state ──────────────────────────────────────────────────────────

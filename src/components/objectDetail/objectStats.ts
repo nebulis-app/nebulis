@@ -141,17 +141,6 @@ export function buildObjectMetrics(totals: ObjectTotals, t: TFunc): CaptureMetri
     hint: totals.nights !== totals.observations ? t('objectDetail.captureStats.nightsHint', { count: totals.nights }) : undefined,
   });
 
-  if (totals.lastNight) {
-    metrics.push({
-      key: 'last',
-      value: nightsAgo(totals.lastNight, t),
-      label: t('objectDetail.captureStats.lastShot'),
-      hint: totals.firstNight && totals.firstNight !== totals.lastNight
-        ? t('objectDetail.captureStats.sinceHint', { month: monthYear(totals.firstNight) })
-        : undefined,
-    });
-  }
-
   if (totals.integrationSec != null) {
     metrics.push({
       key: 'integration',

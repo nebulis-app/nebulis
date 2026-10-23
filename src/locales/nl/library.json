@@ -98,6 +98,53 @@
     "changeStatus": "Bewerkingsstatus wijzigen",
     "status": "Bewerkingsstatus"
   },
+  "mosaic": {
+    "layout": "Weergave",
+    "grid": "Raster",
+    "mosaic": "Mozaïek",
+    "names": "Namen tonen",
+    "zoomIn": "Inzoomen",
+    "zoomOut": "Uitzoomen",
+    "fit": "Aanpassen aan venster",
+    "objectsLabel": "Mozaïek van je objecten",
+    "picturesLabel": "Mozaïek van je afbeeldingen",
+    "processed_one": "{{count}} bewerkt",
+    "processed_other": "{{count}} bewerkt",
+    "stacks_one": "{{count}} stack",
+    "stacks_other": "{{count}} stacks",
+    "subs_one": "{{count}} sub",
+    "subs_other": "{{count}} subs",
+    "nothing": "Nog niets vastgelegd",
+    "estimated": "De werktotalen konden niet worden geladen, dus de groottes volgen uit het aantal nachten.",
+    "showing": "{{shown}} van {{total}} afbeeldingen getoond. Favorieten en bewerkte afbeeldingen komen eerst.",
+    "hint": "Scrol of knijp om te zoomen, sleep om te verschuiven.",
+    "hiddenNoPicture_one": "{{count}} object zonder eigen afbeelding wordt niet getoond.",
+    "hiddenNoPicture_other": "{{count}} objecten zonder eigen afbeelding worden niet getoond.",
+    "fullscreen": "Volledig scherm",
+    "exitFullscreen": "Volledig scherm sluiten",
+    "share": {
+      "open": "Afbeelding delen",
+      "title": "Afbeelding delen",
+      "close": "Sluiten",
+      "previewAlt": "Voorbeeld van het mozaïek",
+      "format": "Formaat",
+      "formats": {
+        "shown": "Zoals getoond",
+        "wide": "Breed 4K",
+        "square": "Vierkant",
+        "story": "Story"
+      },
+      "jpeg": "Opslaan als JPG in plaats van PNG",
+      "download": "Downloaden",
+      "rendering": "Bezig met maken…",
+      "copy": "Afbeelding kopiëren",
+      "share": "Delen…",
+      "downloaded": "Afbeelding opgeslagen.",
+      "copied": "Gekopieerd naar het klembord.",
+      "shareFallback": "Bestanden delen is hier niet beschikbaar, dus de afbeelding is gedownload.",
+      "failed": "De afbeelding kon niet worden gemaakt. Probeer een kleiner formaat."
+    }
+  },
   "gallery": {
     "searchPlaceholder": "Zoek objecten, sterrenbeelden...",
     "uploadFiles": "Bestanden uploaden",
@@ -267,7 +314,13 @@
       "deletedTooltip": "Bekijk verwijderde waarnemingen waarvoor je opnieuw synchroniseren kunt toestaan",
       "count_one": "{{count}} waarneming",
       "count_other": "{{count}} waarnemingen",
-      "empty": "Er is nog niets vastgelegd voor dit object."
+      "empty": "Er is nog niets vastgelegd voor dit object.",
+      "noRig": "Geen telescoop",
+      "groupBy": "Nachten groeperen",
+      "groupBy_year": "Per jaar",
+      "groupBy_rig": "Per opstelling",
+      "rigSummary_one": "{{count}} nacht · {{integration}}",
+      "rigSummary_other": "{{count}} nachten · {{integration}}"
     },
     "observationCard": {
       "noPreview": "Geen voorbeeld",
@@ -343,6 +396,34 @@
       "dropHint": "Sleep je afbeelding hierheen of klik om te bladeren",
       "formatsHint": "JPG, PNG, TIFF, FITS, XISF, PSD, RAW. Tot 2 GB."
     },
+    "integrationSection": {
+      "heading": "Integratie",
+      "noneYet": "Nog niets",
+      "summary_one": "{{total}} · {{count}} filter",
+      "summary_other": "{{total}} · {{count}} filters",
+      "emptyHint": "Nog geen subframes. Importeer of koppel je lights om de integratie per filter te zien, of stel doelen in om een campagne te plannen.",
+      "editGoals": "Doelen",
+      "editHint": "Gewenste uren per filter. Laat leeg of vul 0 in om een doel te verwijderen.",
+      "noFiltersYet": "Nog geen filters. Voeg er een toe om vóór het fotograferen een doel in te stellen.",
+      "noFilter": "Geen filter",
+      "frames_one": "{{count}} opname",
+      "frames_other": "{{count}} opnamen",
+      "remaining": "nog {{duration}} · {{pct}}%",
+      "goalReached": "Doel bereikt",
+      "unknownNight": "Onbekende nacht",
+      "unreadable_one": "{{count}} subframe kon niet worden gelezen en telt niet mee.",
+      "unreadable_other": "{{count}} subframes konden niet worden gelezen en tellen niet mee.",
+      "filterPlaceholder": "Filternaam",
+      "goalHoursFor": "Doel in uren voor {{filter}}",
+      "hoursUnit": "u",
+      "removeRow": "Verwijderen",
+      "addFilter": "Filter toevoegen",
+      "cancel": "Annuleren",
+      "save": "Opslaan",
+      "invalidHours": "Voer een aantal uren tussen 0 en 1000 in.",
+      "missingFilterName": "Geef het nieuwe filter een naam.",
+      "saveFailed": "De doelen konden niet worden opgeslagen."
+    },
     "projectArchivesSection": {
       "heading": "Bewerkingsprojecten",
       "countArchived_one": "{{count}} gearchiveerd",
@@ -379,10 +460,14 @@
       "progressStatus": "{{pct}}% · {{loaded}} van {{total}}"
     },
     "hero": {
+      "layoutSwitch": "Weergave objectpagina",
+      "layoutByNight": "Klassiek",
+      "layoutAllPhotos": "Gecombineerd",
       "breadcrumb": "Navigatiepad",
       "library": "Bibliotheek",
       "chooseImageTitle": "Kies de afbeelding die dit object vertegenwoordigt",
       "changeImage": "Afbeelding wijzigen",
+      "readMore": "Meer",
       "noImageYet": "Nog geen afbeelding",
       "chooseImage": "Kies een afbeelding",
       "removeFromFavorites": "Verwijderen uit favorieten",
@@ -414,7 +499,9 @@
       "editObjectDetails": "Objectdetails bewerken",
       "reclassifyObject": "Object opnieuw classificeren",
       "reclassifyObjectTitle": "Verplaats alles hier naar een ander catalogusobject",
-      "deleteObject": "Object verwijderen"
+      "deleteObject": "Object verwijderen",
+      "stackingExport": "Exporteren om te stacken",
+      "stackingExportTitle": "Bewaarde lights + passende darks, flats en bias, voor WBPP of Siril"
     }
   },
   "galleryPage": {
@@ -499,6 +586,7 @@
   },
   "imageCard": {
     "processedImage": "Bewerkte afbeelding",
+    "editedImage": "Bewerkt in Nebulis",
     "removeFromFavorites": "Verwijderen uit favorieten",
     "addToFavorites": "Toevoegen aan favorieten",
     "unknownDate": "Onbekende datum"
@@ -677,7 +765,8 @@
     "cancellingProgress": "Annuleren…",
     "importingProgress": "Importeren...",
     "progressOf": "{{done}} van {{total}}",
-    "progressObject": " · object {{current}} van {{total}}"
+    "progressObject": " · object {{current}} van {{total}}",
+    "finishingProgress": "Afronden. Catalogusgegevens toevoegen en miniaturen voorbereiden..."
   },
   "objectReviewCard": {
     "sourceFits": "uit de FITS-header",
@@ -788,9 +877,11 @@
       "emptyLayerLabel": "(leeg)"
     },
     "textPanel": {
+      "addText": "Tekst toevoegen",
+      "defaultText": "Tekst",
+      "noSelection": "Selecteer een tekst op de afbeelding of in de lijst om hem te wijzigen, of voeg nieuwe tekst toe.",
       "content": "Inhoud",
       "contentPlaceholder": "Je tekst…",
-      "clickToPlaceHint": "Klik op de afbeelding om tekst te plaatsen",
       "font": "Lettertype",
       "size": "Grootte",
       "sizeValue": "{{size}}px",
@@ -821,7 +912,8 @@
       "hint": "Sleep om een uitsnede te tekenen. Versleep de randen of hoeken om de afmetingen te wijzigen. Sleep binnen de uitsnede om deze te verplaatsen. Druk op Enter of klik op Bijsnijden toepassen om te bevestigen.",
       "applyCrop": "Bijsnijden toepassen",
       "cropApplied": "Bijsnijden toegepast",
-      "resetCrop": "Uitsnede herstellen"
+      "resetCrop": "Uitsnede herstellen",
+      "cancel": "Annuleren"
     },
     "adjustPanel": {
       "brightness": "Helderheid",
@@ -833,10 +925,15 @@
       "flip": "Spiegelen",
       "horizontal": "Horizontaal",
       "vertical": "Verticaal",
-      "resetAll": "Alles herstellen"
+      "resetAll": "Alles herstellen",
+      "auto": "Automatisch",
+      "autoHint": "Helderheid, contrast en verzadiging instellen op basis van de afbeelding",
+      "compare": "Ingedrukt houden om te vergelijken",
+      "compareHint": "Ingedrukt houden om het origineel zonder aanpassingen te zien (of houd \\ ingedrukt)"
     },
     "save": {
       "title": "Titel",
+      "titleHint": "Wordt gebruikt voor een nieuwe versie. Opslaan behoudt de huidige naam.",
       "saving": "Opslaan…",
       "save": "Opslaan",
       "saveAsNewVersion": "Opslaan als nieuwe versie",
@@ -900,10 +997,18 @@
     "deleteImageMessage": "Hiermee wordt de bewerkte afbeelding definitief verwijderd. Dit kan niet ongedaan worden gemaakt.",
     "deleting": "Verwijderen…",
     "deleteFailed": "Verwijderen is mislukt",
-    "deleteLinkedFileMessage": "{{name}} staat in een gekoppelde map. Het bestand wordt van je schijf verwijderd en Nebulis heeft geen andere kopie. Dit kan niet ongedaan worden gemaakt."
+    "deleteLinkedFileMessage": "{{name}} staat in een gekoppelde map. Het bestand wordt van je schijf verwijderd en Nebulis heeft geen andere kopie. Dit kan niet ongedaan worden gemaakt.",
+    "keepFrame": "Dit beeld bewaren (K)",
+    "rejectFrame": "Dit beeld afwijzen (X)"
   },
   "galleryImageModal": {
     "title": "Galerijafbeelding kiezen",
+    "otherHeading": "Overig",
+    "otherHint": "Voor mappen en alles zonder hemelbeeld. De kleuren volgen je thema.",
+    "art_folder": "Map",
+    "art_drive": "Schijf",
+    "art_telescope": "Telescoop",
+    "art_starfield": "Sterrenveld",
     "referenceImage": "Referentiebeeld",
     "cachedCount_one": "{{count}} in cache opgeslagen",
     "cachedCount_other": "{{count}} in cache opgeslagen",
@@ -977,9 +1082,7 @@
     "nextImageAria": "Volgende afbeelding",
     "fullscreenTitle": "Op volledig scherm weergeven",
     "fullscreenAria": "Op volledig scherm weergeven",
-    "exitFullscreenAria": "Volledig scherm afsluiten",
-    "rotateTitle": "90° draaien",
-    "rotateAria": "90° draaien"
+    "exitFullscreenAria": "Volledig scherm afsluiten"
   },
   "compareSessionsModal": {
     "title": "Sessies vergelijken",
@@ -1088,7 +1191,10 @@
     "titleLink": "Map koppelen",
     "reviewLink": "Controleren",
     "step3NameLink": "Controleren en koppelen",
-    "close": "Sluiten"
+    "close": "Sluiten",
+    "opticalTrain": "Optische opstelling",
+    "opticalTrainAuto": "Herkennen uit de brandpuntsafstand in de FITS",
+    "opticalTrainHint": "Met welke configuratie van deze telescoop deze bestanden zijn gemaakt, bijvoorbeeld met de reducer. Automatisch leest de brandpuntsafstand uit de FITS van elke nacht."
   },
   "linkFolderWizard": {
     "modalTitle": "Map koppelen",
@@ -1155,5 +1261,206 @@
     "label_one": "Ook {{count}} oorspronkelijk bestand ({{size}}) van de schijf verwijderen",
     "label_other": "Ook {{count}} oorspronkelijke bestanden ({{size}}) van de schijf verwijderen",
     "help": "Zonder vinkje verwijder je alleen de registratie in Nebulis. Je bestanden blijven in {{folders}} staan. Met een vinkje worden de bestanden ook van je schijf verwijderd. Nebulis heeft geen andere kopie, dus dit kan niet ongedaan worden gemaakt."
+  },
+  "objectMedia": {
+    "nights": {
+      "col": {
+        "night": "Nacht",
+        "pictures": "Afbeeldingen",
+        "frames": "Frames",
+        "integration": "Integratie",
+        "quality": "Kwaliteit"
+      },
+      "pictures_one": "{{count}} afbeelding",
+      "pictures_other": "{{count}} afbeeldingen",
+      "open": "Nacht openen"
+    },
+    "subNights": {
+      "open": "Frames openen",
+      "back": "Alle nachten",
+      "empty": "Nog geen subframes.",
+      "emptyHint": "Gebruik “Synchroniseer alle subframes” in het …-menu bovenaan de pagina om ze van je telescoop te halen."
+    },
+    "featured": {
+      "title": "Je bewerkte foto's",
+      "seeAll": "Alle {{count}} bekijken"
+    },
+    "heading": "Media van {{name}}",
+    "tabsLabel": "Mediatype",
+    "tab": {
+      "all": "Alles",
+      "processed": "Bewerkt",
+      "telescope": "Telescoop",
+      "nights": "Nachten",
+      "sub": "Subframes",
+      "project": "Projecten",
+      "video": "Video's"
+    },
+    "kind": {
+      "processed": "Bewerkte afbeelding",
+      "telescope": "Telescoopafbeelding",
+      "sub": "Subframe",
+      "project": "Project",
+      "video": "Video"
+    },
+    "groupBy": {
+      "night": "Nacht",
+      "telescope": "Telescoop",
+      "filter": "Filter",
+      "type": "Type",
+      "none": "Geen"
+    },
+    "sort": {
+      "newest": "Nieuwste eerst",
+      "oldest": "Oudste eerst",
+      "time": "Opnametijd"
+    },
+    "size": {
+      "small": "S",
+      "medium": "M",
+      "large": "L"
+    },
+    "sizeName": {
+      "small": "Kleine tegels",
+      "medium": "Middelgrote tegels",
+      "large": "Grote tegels"
+    },
+    "toolbar": {
+      "view": "Weergave",
+      "groupBy": "Groeperen op",
+      "sort": "Sorteren",
+      "filters": "Filters",
+      "tileSize": "Tegelgrootte",
+      "reviewFrames": "Subframes beoordelen",
+      "addImage": "Afbeelding toevoegen"
+    },
+    "filters": {
+      "telescope": "Telescoop",
+      "lightFilter": "Filter",
+      "format": "Formaat",
+      "night": "Nacht",
+      "favoritesOnly": "Alleen favorieten",
+      "favorites": "Favorieten",
+      "clear": "Filters wissen",
+      "remove": "Filter {{name}} verwijderen"
+    },
+    "group": {
+      "hideFits": "FITS-bestanden verbergen",
+      "showFits": "FITS-bestanden tonen",
+      "hideFitsShort": "Verbergen",
+      "showFitsShort": "Tonen",
+      "fitsFiles": "FITS-bestanden",
+      "across": "Over meerdere nachten",
+      "projects": "Projecten",
+      "all": "Alle afbeeldingen",
+      "noNight": "Geen nacht",
+      "noTelescope": "Onbekende telescoop",
+      "noFilter": "Geen filter",
+      "openNight": "Nacht",
+      "showAllSubs": "Alles tonen",
+      "frames_one": "{{count}} frame",
+      "frames_other": "{{count}} frames",
+      "framesExposure": "{{count}} × {{exposure}}",
+      "integration": "{{time}} integratie"
+    },
+    "tile": {
+      "markUnprocessed": "Markeren als onbewerkt",
+      "markUnprocessedTitle": "Markeren als onbewerkt?",
+      "markUnprocessedMessage": "Hiermee wordt de afbeelding van Bewerkt terug naar Telescoop verplaatst. Er wordt niets verwijderd.",
+      "markUnprocessedFailed": "Markeren als onbewerkt is mislukt",
+      "markProcessed": "Markeren als bewerkt",
+      "markProcessedTitle": "Markeren als bewerkt?",
+      "markProcessedMessage": "Hiermee wordt de afbeelding van Telescoop naar Bewerkt verplaatst. Er wordt niets verwijderd.",
+      "markProcessedFailed": "Markeren als bewerkt is mislukt",
+      "favorite": "Favoriet",
+      "unfavorite": "Favoriet verwijderen",
+      "download": "Downloaden"
+    },
+    "loading": "Media laden",
+    "loadingMore": "Meer laden",
+    "loadMore": "Meer laden",
+    "error": "De media konden niet worden geladen.",
+    "retry": "Opnieuw proberen",
+    "noMatch": "Geen afbeeldingen komen overeen met deze filters.",
+    "empty": {
+      "title": "Nog geen afbeeldingen",
+      "hint": "Voeg een waarneming toe of synchroniseer vanaf je telescoop, dan verschijnen je afbeeldingen hier.",
+      "add": "Waarneming toevoegen"
+    },
+    "deletedItems_one": "{{count}} verwijderd item",
+    "deletedItems_other": "{{count}} verwijderde items",
+    "analyzeFrames": "Opnames analyseren",
+    "analyzeFramesTitle": "Elke ruwe opname van een nacht meten en wolken, sterstrepen, onscherpte, strepen en ruis markeren",
+    "subsView": {
+      "listTitle": "Nacht na nacht, met hoe de frames zijn gemeten",
+      "gridTitle": "Elk frame als miniatuur",
+      "label": "Weergave van subopnames",
+      "grid": "Raster",
+      "list": "Lijst"
+    }
+  },
+  "annotate": {
+    "all": "Alle",
+    "noneShown": "Geen",
+    "target": "Doel",
+    "toggle": "Objecten in deze afbeelding benoemen",
+    "toggleHide": "Objectnamen verbergen",
+    "title": "Objectnamen",
+    "loading": "Objecten zoeken...",
+    "quality": {
+      "solved": "Plate solving gelukt",
+      "header": "Positie uit FITS-gegevens",
+      "approximate": "Bij benadering",
+      "unavailable": "Niet beschikbaar"
+    },
+    "zoomedToast": "De ringen zijn schattingen. Zoom uit voor de beste pasvorm of haal exacte posities op.",
+    "zoomedHint": "Geschatte posities kunnen enkele boogminuten afwijken, wat zichtbaar wordt zodra je inzoomt. Zoom uit naar het hele beeld of haal exacte posities op.",
+    "approximateHelp": "Geplaatst op basis van de positie van het doel en het beeldveld van je telescoop. De ringen kunnen afwijken als het beeld gedraaid, niet gecentreerd of samengesteld uit een mozaïek was.",
+    "foundCount_one": "{{count}} object in beeld",
+    "foundCount_other": "{{count}} objecten in beeld",
+    "none": "Geen catalogusobjecten gevonden in dit beeld.",
+    "reason": {
+      "edited": "Deze afbeelding is na de opname bijgesneden of gedraaid, dus de opgeslagen positie klopt niet meer. Plate solving kan hem nog steeds plaatsen.",
+      "mosaic": "Mozaïekafbeeldingen beslaan meer hemel dan één opname, dus hun posities kunnen niet worden geschat. Plate solving kan ze wel plaatsen.",
+      "no-position": "Nebulis weet niet waar deze afbeelding naartoe wijst en kan dus niet schatten waar objecten liggen.",
+      "no-sky": "Deze afbeelding heeft geen sterren om mee te vergelijken, zoals de zon, de maan, een planeet, landschap of sterrensporen, dus er valt niets te annoteren.",
+      "unknown-field": "Het beeldveld van deze telescoop is onbekend, dus posities kunnen niet worden geschat."
+    },
+    "solving": "Verfijnen met plate solving...",
+    "solveFailed": "Plate solving vond geen match, dus de schatting wordt getoond.",
+    "retry": "Opnieuw proberen",
+    "install": {
+      "cta": "Exacte posities ophalen",
+      "detail": "Downloadt eenmalig de plate solver ASTAP en een sterrendatabase van 100 MB.",
+      "downloading": "Plate solver en sterrendatabase downloaden...",
+      "extracting": "Uitpakken...",
+      "failed": "De plate solver kon niet worden geïnstalleerd: {{error}}"
+    },
+    "info": {
+      "open": "Details van {{name}}",
+      "close": "Details sluiten",
+      "loading": "Details laden...",
+      "noDescription": "Voor dit object is nog geen beschrijving beschikbaar.",
+      "alsoKnownAs": "Ook bekend als",
+      "magnitude": "Magnitude {{value}}",
+      "size": "Grootte {{value}}",
+      "distance": "{{value}} verderop",
+      "openInNebulis": "Openen in Nebulis",
+      "wikipedia": "Wikipedia",
+      "simbad": "SIMBAD",
+      "beyondFrame": "Reikt voorbij dit beeld",
+      "target": "Doel · deze foto is hieronder ingedeeld",
+      "morePhotos": "Meer foto's"
+    },
+    "export": {
+      "downloadTitle": "Deze afbeelding opslaan",
+      "shareTitle": "Deze afbeelding delen",
+      "question": "De objectnamen worden getoond. Wil je ze opnemen in de afbeelding die je opslaat?",
+      "withNames": "Met namen erin getekend",
+      "withNamesHint": "Een JPEG-kopie met de ringen en namen ingebrand.",
+      "original": "Originele bestand",
+      "originalHint": "Precies zoals vastgelegd, zonder de namen.",
+      "failed": "De geannoteerde afbeelding kon niet worden gemaakt. Probeer het origineel."
+    }
   }
 }

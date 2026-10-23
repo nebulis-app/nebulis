@@ -12,12 +12,13 @@
 import { useMemo, useState } from 'react';
 import { ArrowUp, CalendarPlus, Check, Search, Sparkles, Star, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { IntegrationRemainingChips } from './IntegrationRemainingChips';
 import { formatObjectName } from '../../lib/utils';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { formatHm } from '../../lib/timeFormat';
 import { formatPlannerDate } from '../../lib/nightWindow';
 import { useLibraryIdByObjectId } from '../../hooks/useLibraryIdByObjectId';
-import type { WishlistItem, WishlistPriority } from '../../lib/api/wishlist';
+import { WISHLIST_PRIORITIES, type WishlistItem, type WishlistPriority } from '../../lib/api/wishlist';
 import type { PlannerTarget } from '../../lib/api/planner';
 import { WishlistObjectModal } from './WishlistObjectModal';
 import { WishlistCard } from './WishlistCard';
@@ -60,7 +61,6 @@ export interface WishlistListProps {
 
 type SortKey = 'priority' | 'name' | 'magnitude' | 'added';
 
-const PRIORITY_ORDER: readonly WishlistPriority[] = ['high', 'medium', 'low'];
 const PRIORITY_RANK: Record<WishlistPriority, number> = { high: 0, medium: 1, low: 2 };
 const PRIORITY_DOT: Record<WishlistPriority, string> = {
   high: 'bg-red-500',
@@ -349,15 +349,18 @@ export function WishlistList({
                           {[item.type, item.constellation, item.magnitude != null ? t('wishlistPanel.mag', { value: item.magnitude.toFixed(1) }) : null]
                             .filter(Boolean).join(' · ')}
                         </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1 empty:hidden">
+                          <IntegrationRemainingChips objectId={item.objectId} isDark={isDark} />
+                        </div>
 
                         <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5">
                           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                            {PRIORITY_ORDER.map(p => (
+                            {WISHLIST_PRIORITIES.map(p => (
                               <button
                                 key={p}
                                 onClick={() => onSetPriority(item.id, p)}
                                 aria-pressed={item.priority === p}
-                                className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition ${
+                                className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] font-medium transition ${
                                   item.priority === p
                                     ? isDark ? 'bg-slate-700 text-slate-100' : 'bg-slate-200 text-slate-900'
                                     : isDark ? 'text-slate-500 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
@@ -371,12 +374,12 @@ export function WishlistList({
 
                           <div className="flex items-center gap-2">
                             {target ? (
-                              <span className="flex items-center gap-1 text-[10px] tabular-nums text-emerald-500">
+                              <span className="flex items-center gap-1 text-[0.625rem] tabular-nums text-emerald-500">
                                 <ArrowUp className="h-2.5 w-2.5" />
                                 {peakAt ? t('wishlistPanel.visibleTonightAt', { deg: Math.round(target.maxAlt), time: peakAt }) : t('wishlistPanel.visibleTonight', { deg: Math.round(target.maxAlt) })}
                               </span>
                             ) : (
-                              <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                              <span className={`text-[0.625rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                                 {t('wishlistPanel.notVisibleTonight')}
                               </span>
                             )}
@@ -384,14 +387,14 @@ export function WishlistList({
                             {target && (
                               isScheduled ? (
                                 <span className="flex items-center gap-2">
-                                  <span className={`flex items-center gap-1 text-[10px] font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                                  <span className={`flex items-center gap-1 text-[0.625rem] font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
                                     <Check className="h-3 w-3" />
                                     {t('wishlistPanel.scheduled')}
                                   </span>
                                   {onQuickAdd && (
                                     <button
                                       onClick={(e) => { e.stopPropagation(); onQuickAdd(target); }}
-                                      className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border border-accent-500/50 text-accent-400 hover:bg-accent-500/10 transition"
+                                      className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] font-medium border border-accent-500/50 text-accent-400 hover:bg-accent-500/10 transition"
                                       title={scheduleNightLabel ? t('wishlistPanel.scheduleAtHighestOn', { date: scheduleNightLabel }) : t('wishlistPanel.scheduleAtHighest')}
                                     >
                                       <CalendarPlus className="h-2.5 w-2.5" />
@@ -402,7 +405,7 @@ export function WishlistList({
                               ) : onQuickAdd ? (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); onQuickAdd(target); }}
-                                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-accent-500 text-white hover:bg-accent-600 transition"
+                                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] font-medium bg-accent-500 text-white hover:bg-accent-600 transition"
                                   title={scheduleNightLabel ? t('wishlistPanel.scheduleAtHighestOn', { date: scheduleNightLabel }) : t('wishlistPanel.scheduleAtHighest')}
                                 >
                                   <CalendarPlus className="h-2.5 w-2.5" />

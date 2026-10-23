@@ -65,6 +65,7 @@ const OBJECT_ID_TABLES = [
   'sessionProcessedImages',
   'processingRuns',
   'plannedSessions',
+  'objectIntegrationGoals',
   'sessionImportLog',
   'catalogCache',
   'catalogOverrides',

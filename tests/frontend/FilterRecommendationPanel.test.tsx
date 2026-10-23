@@ -5,7 +5,7 @@ import i18n from '../../src/i18n';
 import {
   FilterRecommendationPanel,
   FilterRecommendationChip,
-} from '../../src/components/catalogs/FilterRecommendationPanel';
+} from '../../src/components/ui/FilterRecommendationPanel';
 import enCatalogs from '../../src/locales/en/catalogs.json';
 import type { FilterRecommendation } from '../../src/lib/filterRecommendations';
 

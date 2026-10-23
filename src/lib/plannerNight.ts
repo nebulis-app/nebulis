@@ -10,6 +10,7 @@
  */
 import SunCalc from 'suncalc';
 import { altAz } from './altaz';
+import { observerNoonAnchor } from './nightWindow';
 import { calculateVisibilityScore, type DarkWindow, type TFunc } from './forecastScore';
 import { checkMoonProximity, type MoonVerdict } from './moonProximity';
 import type { ForecastHour } from './api/planner';
@@ -108,6 +109,10 @@ export function twilightGradientCss(
     [100, '#2a3d63'],
   ];
 
+  // The 0%/100% horizon stops always exist, so require at least one real
+  // twilight mark; otherwise a window the marks missed paints flat blue.
+  if (!phases.some(([p], i) => i > 0 && i < phases.length - 1 && p != null)) return fallback;
+
   const stops = phases
     .filter((p): p is [number, string] => p[0] != null)
     .sort((a, b) => a[0] - b[0])
@@ -122,16 +127,8 @@ export function twilightGradientCss(
  * day's, which is what makes the returned list monotonic across midnight.
  */
 export function twilightMarksFor(date: Date, lat: number, lon: number): TwilightMarks {
-  const evening = SunCalc.getTimes(
-    new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0),
-    lat,
-    lon,
-  );
-  const morning = SunCalc.getTimes(
-    new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 12, 0, 0),
-    lat,
-    lon,
-  );
+  const evening = SunCalc.getTimes(observerNoonAnchor(date, lon, 0), lat, lon);
+  const morning = SunCalc.getTimes(observerNoonAnchor(date, lon, 1), lat, lon);
   return {
     sunset: validDate(evening.sunset),
     civilEnd: validDate(evening.dusk),

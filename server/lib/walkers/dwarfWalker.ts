@@ -156,8 +156,9 @@ export async function discoverDwarfObjects(profile: TelescopeProfile): Promise<D
   for (const folder of sessionFolders) {
     const target = extractTargetFromSessionFolder(folder.name);
     if (!target) { skipped.push(folder.name); continue; }
-    if (!byTarget.has(target)) byTarget.set(target, []);
-    byTarget.get(target)!.push(folder.name);
+    const folders = byTarget.get(target);
+    if (folders) folders.push(folder.name);
+    else byTarget.set(target, [folder.name]);
   }
   if (skipped.length > 0) debugLog('walker:dwarf', `${skipped.length} folder(s) skipped (could not extract target): ${skipped.join(', ')}`);
 

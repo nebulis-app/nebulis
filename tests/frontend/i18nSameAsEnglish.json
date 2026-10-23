@@ -32,5 +32,16 @@
   "settings:addTelescopeModal.wifiSmb": "Connection type names",
   "settings:transportEditor.kindLabel.ftp": "Connection type names",
   "settings:archive.destinationPlaceholder": "Example path",
-  "settings:usersSection.emailPlaceholder": "Example email address"
+  "settings:usersSection.emailPlaceholder": "Example email address",
+  "library:annotate.info.simbad": "Name of an astronomy database, the same in every language",
+  "library:annotate.info.wikipedia": "Name of a website; spelled the same in German, Spanish and Dutch",
+  "observations:stackingExport.wbpp": "Product name, the same in every language",
+  "observations:stackingExport.row.flatDark": "Calibration term kept as written in the Calibration Library",
+  "settings:alerts.namePlaceholder.webhook": "Product name",
+  "settings:alerts.urlPlaceholder.ntfy": "Example URL",
+  "settings:alerts.urlPlaceholder.discord": "Example URL",
+  "settings:alerts.urlPlaceholder.slack": "Example URL",
+  "settings:alerts.urlPlaceholder.webhook": "Example URL",
+  "settings:alerts.phones.title": "Product name, the same in every language",
+  "settings:siteManager.bortle": "Bortle is a proper name; the scale is written the same in every language"
 }

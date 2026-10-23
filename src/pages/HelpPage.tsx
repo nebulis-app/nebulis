@@ -16,21 +16,26 @@ import {
   Usb,
   Server,
   Smartphone,
+  Puzzle,
   HardDrive,
   UserCog,
   Link2,
   Archive as ArchiveIcon,
+  Bell,
+  ScanSearch,
+  Activity,
+  Hourglass,
   type LucideIcon,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useTour } from '../components/tour/TourProvider';
-import { HeroBackdrop } from '../components/ui/HeroBackdrop';
+import { CollapsibleHero } from '../components/ui/CollapsibleHero';
 import { PAGE_HERO } from '../lib/heroImagery';
 import settingsTelescopesShot from '../assets/help/getting-started/settings-telescopes.webp';
 import addTelescopeModalShot from '../assets/help/getting-started/add-telescope-modal.webp';
 import settingsSkyShot from '../assets/help/getting-started/settings-sky.webp';
 import syncDropdownShot from '../assets/help/getting-started/sync-dropdown.webp';
-import tourLibraryOverviewShot from '../assets/help/tour/library/overview.webp';
+import tourLibraryMosaicShot from '../assets/help/tour/library/mosaic.webp';
 import wifiHostnameTestShot from '../assets/help/telescopes/wifi-hostname-test.webp';
 import usbPathTypedShot from '../assets/help/telescopes/usb-path-typed.webp';
 import otherSmbShareShot from '../assets/help/telescopes/other-smb-share.webp';
@@ -47,8 +52,9 @@ import libraryObjectActionBarShot from '../assets/help/tour/library/object-actio
 import libraryStorageBreakdownShot from '../assets/help/tour/library/storage-breakdown.webp';
 import tourObjectsOverviewShot from '../assets/help/tour/objects/overview.webp';
 import tourObjectsTonightShot from '../assets/help/tour/objects/tonight.webp';
-import tourObjectsProcessedShot from '../assets/help/tour/objects/processed.webp';
-import tourObjectsSessionsShot from '../assets/help/tour/objects/sessions.webp';
+import tourObjectsCombinedShot from '../assets/help/tour/objects/combined.webp';
+import tourObjectsNightsShot from '../assets/help/tour/objects/nights.webp';
+import tourObjectsIntegrationShot from '../assets/help/tour/objects/integration.webp';
 import tourGalleryOverviewShot from '../assets/help/tour/gallery/overview.webp';
 import tourGalleryViewerShot from '../assets/help/tour/gallery/viewer.webp';
 import tourGalleryManageShot from '../assets/help/tour/gallery/manage.webp';
@@ -63,10 +69,31 @@ import tourPlannerScheduleShot from '../assets/help/tour/planner/schedule.webp';
 import tourPlannerCurvesShot from '../assets/help/tour/planner/curves.webp';
 import tourPlannerConflictsShot from '../assets/help/tour/planner/conflicts.webp';
 import tourPlannerConditionsShot from '../assets/help/tour/planner/conditions.webp';
+import tourPlannerPlanMyNightShot from '../assets/help/tour/planner/plan-my-night.webp';
+import tourPlannerPlanVsActualShot from '../assets/help/tour/planner/plan-vs-actual.webp';
+import tourExploreOverviewShot from '../assets/help/tour/explore/overview.webp';
+import tourExploreCategoryShot from '../assets/help/tour/explore/category.webp';
+import tourExploreCardShot from '../assets/help/tour/explore/card.webp';
 import tourCatalogsLandingShot from '../assets/help/tour/catalogs/landing.webp';
 import tourCatalogsBoardShot from '../assets/help/tour/catalogs/board.webp';
 import tourCatalogsPopupShot from '../assets/help/tour/catalogs/popup.webp';
 import tourCatalogsProgressShot from '../assets/help/tour/catalogs/progress.webp';
+import tourCatalogsInFrameShot from '../assets/help/tour/catalogs/in-frame.webp';
+import tourCatalogsMyCatalogShot from '../assets/help/tour/catalogs/my-catalog.webp';
+import tourSettingsSearchShot from '../assets/help/tour/settings/search.webp';
+import settingsLibraryShot from '../assets/help/settings/library.webp';
+import settingsAlertsShot from '../assets/help/settings/alerts.webp';
+import framesListShot from '../assets/help/frames/list.webp';
+import framesPreviewShot from '../assets/help/frames/preview.webp';
+import framesSelectShot from '../assets/help/frames/select.webp';
+import framesAnalyzeShot from '../assets/help/frames/analyze.webp';
+import framesExportShot from '../assets/help/frames/export-stacking.webp';
+import integrationCardShot from '../assets/help/integration/card.webp';
+import integrationAliasesShot from '../assets/help/integration/filter-aliases.webp';
+import integrationRigShot from '../assets/help/integration/rig.webp';
+import integrationGroupByRigShot from '../assets/help/integration/group-by-rig.webp';
+import annotateRingsShot from '../assets/help/annotate/rings.webp';
+import annotateDownloadShot from '../assets/help/annotate/download.webp';
 import mobileMenuShot from '../assets/help/mobile/menu.webp';
 import mobileQrShot from '../assets/help/mobile/qr.webp';
 import mobileEnterCodeShot from '../assets/help/mobile/enter-code.webp';
@@ -107,8 +134,12 @@ type SectionId =
   | 'tour-observations'
   | 'tour-forecast'
   | 'tour-planner'
+  | 'tour-explore'
   | 'tour-catalogs'
   | 'tour-settings'
+  | 'frames'
+  | 'integration'
+  | 'annotate'
   | 'telescopes'
   | 'custom-smb'
   | 'importing'
@@ -117,6 +148,8 @@ type SectionId =
   | 'linked-folders'
   | 'archive'
   | 'mobile-devices'
+  | 'alerts'
+  | 'pixinsight'
   | 'troubleshooting';
 
 const NAV: ({ id: SectionId; labelKey: string; icon?: LucideIcon; indent?: boolean })[] = [
@@ -130,8 +163,12 @@ const NAV: ({ id: SectionId; labelKey: string; icon?: LucideIcon; indent?: boole
   { id: 'tour-observations', labelKey: 'nav.tourObservations', indent: true },
   { id: 'tour-forecast', labelKey: 'nav.tourForecast', indent: true },
   { id: 'tour-planner', labelKey: 'nav.tourPlanner', indent: true },
+  { id: 'tour-explore', labelKey: 'nav.tourExplore', indent: true },
   { id: 'tour-catalogs', labelKey: 'nav.tourCatalogs', indent: true },
   { id: 'tour-settings', labelKey: 'nav.tourSettings', indent: true },
+  { id: 'frames', labelKey: 'nav.frames', icon: Activity },
+  { id: 'integration', labelKey: 'nav.integration', icon: Hourglass },
+  { id: 'annotate', labelKey: 'nav.annotate', icon: ScanSearch },
   { id: 'telescopes', labelKey: 'nav.telescopes', icon: Telescope },
   { id: 'custom-smb', labelKey: 'nav.customSmb', icon: Server },
   { id: 'importing', labelKey: 'nav.importing', icon: Download },
@@ -140,6 +177,8 @@ const NAV: ({ id: SectionId; labelKey: string; icon?: LucideIcon; indent?: boole
   { id: 'linked-folders', labelKey: 'nav.linkedFolders', icon: Link2 },
   { id: 'archive', labelKey: 'nav.archive', icon: ArchiveIcon },
   { id: 'mobile-devices', labelKey: 'nav.mobileDevices', icon: Smartphone },
+  { id: 'alerts', labelKey: 'nav.alerts', icon: Bell },
+  { id: 'pixinsight', labelKey: 'nav.pixinsight', icon: Puzzle },
   { id: 'troubleshooting', labelKey: 'nav.troubleshooting', icon: AlertTriangle },
 ];
 
@@ -186,7 +225,7 @@ export function HelpPage() {
             so it scrolls inside its own box (hidden scrollbar, and overscroll-contain
             so reaching the end doesn't hand the wheel to the page). */}
         <nav className="hidden lg:block sticky top-24 w-60 shrink-0 max-h-[calc(100dvh-7rem)] overflow-y-auto overscroll-contain no-scrollbar">
-          <p className={`px-2.5 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+          <p className={`px-2.5 pb-2 text-[0.625rem] font-semibold uppercase tracking-[0.14em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
             {t('page.guidesHeading')}
           </p>
           <ul className="space-y-0.5">
@@ -197,7 +236,7 @@ export function HelpPage() {
                 <li key={n.id}>
                   <button
                     onClick={() => select(n.id)}
-                    className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium transition-colors ${
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.8125rem] font-medium transition-colors ${
                       n.indent ? 'pl-9' : ''
                     } ${
                       isActive
@@ -225,45 +264,41 @@ export function HelpPage() {
 /* ────────────────────────────────────────────────────────────────────────── */
 
 function HelpHero({ accent, onStartTour, t }: { accent: string; onStartTour: () => void; t: TFunc }) {
+  const tourButton = (
+      <button
+        onClick={onStartTour}
+        className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-accent-500 hover:bg-accent-600 transition-all duration-150 hover:scale-[1.02] active:scale-[0.99] shadow-sm shadow-accent-500/20"
+      >
+        <Compass className="h-4 w-4" />
+        {t('page.startTour')}
+      </button>
+  );
+
   return (
-    <section className="relative overflow-hidden rounded-3xl bg-slate-950 hero-panel">
-      <HeroBackdrop image={PAGE_HERO.help} />
-
-      <div
-        className="pointer-events-none absolute inset-0 opacity-70"
-        style={{ background: `radial-gradient(90% 140% at 8% 0%, ${accent}1f 0%, transparent 60%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 opacity-50"
-        style={{ background: `radial-gradient(70% 130% at 95% 100%, ${accent}14 0%, transparent 62%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 rounded-3xl"
-        style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10)' }}
-      />
-
-      <div className="relative flex hero-min-h flex-col justify-center p-4 sm:p-6">
+    <CollapsibleHero
+      page="help"
+      image={PAGE_HERO.help}
+      accent={accent}
+      icon={<HelpCircle className="h-5 w-5 sm:h-7 sm:w-7" style={{ color: accent }} />}
+      title={t('page.title')}
+      summary={t('page.subtitle')}
+      actions={tourButton}
+      contentClassName="flex hero-min-h flex-col justify-center p-4 sm:p-6"
+    >
         <div className="flex flex-wrap items-center gap-5">
           <div className="min-w-0 lg:max-w-[56%]">
             <h1 className="font-display flex items-center gap-2.5 text-xl font-bold tracking-tight text-white sm:text-4xl">
               <HelpCircle className="h-5 w-5 sm:h-7 sm:w-7" style={{ color: accent }} />
               {t('page.title')}
             </h1>
-            <p className="mt-2 hidden text-[13px] text-white/55 sm:block">
+            <p className="mt-2 hidden text-[0.8125rem] text-white/55 sm:block">
               {t('page.subtitle')}
             </p>
           </div>
 
-          <button
-            onClick={onStartTour}
-            className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-accent-500 hover:bg-accent-600 transition-all duration-150 hover:scale-[1.02] active:scale-[0.99] shadow-sm shadow-accent-500/20"
-          >
-            <Compass className="h-4 w-4" />
-            {t('page.startTour')}
-          </button>
+          {tourButton}
         </div>
-      </div>
-    </section>
+    </CollapsibleHero>
   );
 }
 
@@ -345,7 +380,7 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
               {
                 title: t('tourLibrary.step2Title'),
                 body: t('tourLibrary.step2Body'),
-                img: tourLibraryOverviewShot,
+                img: tourLibraryMosaicShot,
                 alt: t('tourLibrary.step2Alt'),
                 caption: t('tourLibrary.step2Caption'),
               },
@@ -398,23 +433,30 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
               {
                 title: t('tourObjects.step3Title'),
                 body: t('tourObjects.step3Body'),
-                img: tourObjectsProcessedShot,
+                img: tourObjectsCombinedShot,
                 alt: t('tourObjects.step3Alt'),
                 caption: t('tourObjects.step3Caption'),
               },
               {
                 title: t('tourObjects.step4Title'),
                 body: t('tourObjects.step4Body'),
-                img: tourObjectsSessionsShot,
+                img: tourObjectsNightsShot,
                 alt: t('tourObjects.step4Alt'),
                 caption: t('tourObjects.step4Caption'),
               },
               {
                 title: t('tourObjects.step5Title'),
                 body: t('tourObjects.step5Body'),
-                img: librarySessionNotesShot,
+                img: tourObjectsIntegrationShot,
                 alt: t('tourObjects.step5Alt'),
                 caption: t('tourObjects.step5Caption'),
+              },
+              {
+                title: t('tourObjects.step6Title'),
+                body: t('tourObjects.step6Body'),
+                img: librarySessionNotesShot,
+                alt: t('tourObjects.step6Alt'),
+                caption: t('tourObjects.step6Caption'),
               },
             ]}
           />
@@ -570,6 +612,13 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
                 alt: t('tourPlanner.step4Alt'),
                 caption: t('tourPlanner.step4Caption'),
               },
+              ...[5, 6].map(n => ({
+                title: t(`tourPlanner.step${n}Title`),
+                body: t(`tourPlanner.step${n}Body`),
+                img: n === 5 ? tourPlannerPlanMyNightShot : tourPlannerPlanVsActualShot,
+                alt: t(`tourPlanner.step${n}Alt`),
+                caption: t(`tourPlanner.step${n}Caption`),
+              })),
             ]}
           />
           <div className="mt-8">
@@ -587,7 +636,7 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
                 { t: t('tourPlanner.rankSizeTerm'), d: t('tourPlanner.rankSizeBody') },
               ]}
             />
-            <p className={`px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            <p className={`px-1 pb-2 text-[0.625rem] font-semibold uppercase tracking-[0.14em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
               {t('tourPlanner.moonLabel')}
             </p>
             <p className={`px-1 text-sm leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
@@ -634,6 +683,13 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
                 alt: t('tourCatalogs.step4Alt'),
                 caption: t('tourCatalogs.step4Caption'),
               },
+              ...[5, 6].map(n => ({
+                title: t(`tourCatalogs.step${n}Title`),
+                body: t(`tourCatalogs.step${n}Body`),
+                img: n === 5 ? tourCatalogsInFrameShot : tourCatalogsMyCatalogShot,
+                alt: t(`tourCatalogs.step${n}Alt`),
+                caption: t(`tourCatalogs.step${n}Caption`),
+              })),
             ]}
           />
           <Note isDark={isDark}>
@@ -651,7 +707,7 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
               {
                 title: t('tourSettings.step1Title'),
                 body: t('tourSettings.step1Body'),
-                img: settingsAdvancedShot,
+                img: tourSettingsSearchShot,
                 alt: t('tourSettings.step1Alt'),
                 caption: t('tourSettings.step1Caption'),
               },
@@ -697,11 +753,49 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
                 alt: t('tourSettings.step7Alt'),
                 caption: t('tourSettings.step7Caption'),
               },
+              ...[8, 9].map(n => ({
+                title: t(`tourSettings.step${n}Title`),
+                body: t(`tourSettings.step${n}Body`),
+                img: n === 8 ? settingsLibraryShot : settingsAlertsShot,
+                alt: t(`tourSettings.step${n}Alt`),
+                caption: t(`tourSettings.step${n}Caption`),
+              })),
             ]}
           />
           <Note isDark={isDark}>
             {t('tourSettings.note')}
           </Note>
+        </GuideCard>
+      );
+
+    case 'tour-explore':
+      return (
+        <GuideCard icon={Compass} title={t('tourExplore.title')} lead={t('tourExplore.lead')} isDark={isDark}>
+          <TourSteps isDark={isDark} steps={stepsFor('tourExplore', 3, t, [tourExploreOverviewShot, tourExploreCategoryShot, tourExploreCardShot])} />
+          <Note isDark={isDark}>{t('tourExplore.note')}</Note>
+        </GuideCard>
+      );
+
+    case 'frames':
+      return (
+        <GuideCard icon={Activity} title={t('frames.title')} lead={t('frames.lead')} isDark={isDark}>
+          <TourSteps isDark={isDark} steps={stepsFor('frames', 5, t, [framesListShot, framesPreviewShot, framesSelectShot, framesAnalyzeShot, framesExportShot])} />
+          <Note isDark={isDark}>{t('frames.note')}</Note>
+        </GuideCard>
+      );
+
+    case 'integration':
+      return (
+        <GuideCard icon={Hourglass} title={t('integration.title')} lead={t('integration.lead')} isDark={isDark}>
+          <TourSteps isDark={isDark} steps={stepsFor('integration', 4, t, [integrationCardShot, integrationAliasesShot, integrationRigShot, integrationGroupByRigShot])} />
+        </GuideCard>
+      );
+
+    case 'annotate':
+      return (
+        <GuideCard icon={ScanSearch} title={t('annotate.title')} lead={t('annotate.lead')} isDark={isDark}>
+          <TourSteps isDark={isDark} steps={stepsFor('annotate', 3, t, [annotateRingsShot, settingsLibraryShot, annotateDownloadShot])} />
+          <Note isDark={isDark}>{t('annotate.note')}</Note>
         </GuideCard>
       );
 
@@ -737,7 +831,7 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
               },
             ]}
           />
-          <p className={`px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+          <p className={`px-1 pb-2 text-[0.625rem] font-semibold uppercase tracking-[0.14em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
             {t('telescopes.addItLabel')}
           </p>
           <Steps
@@ -770,7 +864,12 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
               },
               {
                 title: t('telescopes.step3Title'),
-                body: <ConnectionMethodTabs isDark={isDark} t={t} />,
+                body: (
+                  <>
+                    <p className="mb-3">{t('telescopes.step3Body')}</p>
+                    <ConnectionMethodTabs isDark={isDark} t={t} />
+                  </>
+                ),
               },
             ]}
           />
@@ -823,6 +922,8 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
               <>{t('importing.bullet1')}</>,
               <>{t('importing.bullet2')}</>,
               <>{t('importing.bullet3')}</>,
+              <>{t('importing.bullet4')}</>,
+              <>{t('importing.bullet5')}</>,
             ]}
           />
           <ScreenshotPair>
@@ -1186,6 +1287,22 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
         </div>
       );
 
+    case 'pixinsight':
+      return (
+        <GuideCard icon={Puzzle} title={t('pixinsight.title')} lead={t('pixinsight.lead')} isDark={isDark}>
+          <Steps
+            isDark={isDark}
+            steps={[
+              { title: t('pixinsight.step1Title'), body: t('pixinsight.step1Body') },
+              { title: t('pixinsight.step2Title'), body: t('pixinsight.step2Body') },
+              { title: t('pixinsight.step3Title'), body: t('pixinsight.step3Body') },
+              { title: t('pixinsight.step4Title'), body: t('pixinsight.step4Body') },
+            ]}
+          />
+          <p className={`text-xs mt-4 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>{t('pixinsight.troubleshooting')}</p>
+        </GuideCard>
+      );
+
     case 'mobile-devices':
       return (
         <GuideCard icon={Smartphone} title={t('mobileDevices.title')} lead={t('mobileDevices.lead')} isDark={isDark}>
@@ -1283,6 +1400,14 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
               },
             ]}
           />
+          <Note isDark={isDark}>{t('mobileDevices.note')}</Note>
+        </GuideCard>
+      );
+
+    case 'alerts':
+      return (
+        <GuideCard icon={Bell} title={t('alerts.title')} lead={t('alerts.lead')} isDark={isDark}>
+          <TourSteps isDark={isDark} steps={stepsFor('alerts', 3, t, [settingsAlertsShot])} />
         </GuideCard>
       );
 
@@ -1371,11 +1496,23 @@ function Steps({ steps, isDark }: { steps: { title: string; body?: ReactNode }[]
   );
 }
 
+/** Builds TourSteps rows from `<ns>.stepNTitle/Body/Alt/Caption` keys. `imgs[i]` is the
+ *  screenshot for step i + 1; a guide whose screenshots are not captured yet passes none. */
+function stepsFor(ns: string, count: number, t: TFunc, imgs: (string | undefined)[] = []) {
+  return Array.from({ length: count }, (_, i) => ({
+    title: t(`${ns}.step${i + 1}Title`),
+    body: t(`${ns}.step${i + 1}Body`),
+    img: imgs[i],
+    alt: t(`${ns}.step${i + 1}Alt`),
+    caption: t(`${ns}.step${i + 1}Caption`),
+  }));
+}
+
 function TourSteps({
   steps,
   isDark,
 }: {
-  steps: { title: string; body: string; img: string; alt: string; caption: string }[];
+  steps: { title: string; body: string; img?: string; alt: string; caption: string }[];
   isDark: boolean;
 }) {
   const heading = isDark ? 'text-slate-100' : 'text-slate-800';
@@ -1395,7 +1532,7 @@ function TourSteps({
           <div className="pb-8 pt-0.5 flex-1 min-w-0">
             <p className={`text-sm font-semibold ${heading}`}>{step.title}</p>
             <div className={`text-sm mt-1.5 leading-relaxed ${body}`}>{step.body}</div>
-            <Screenshot src={step.img} alt={step.alt} caption={step.caption} isDark={isDark} />
+            {step.img && <Screenshot src={step.img} alt={step.alt} caption={step.caption} isDark={isDark} />}
           </div>
         </li>
       ))}
@@ -1423,7 +1560,7 @@ function Terms({ items, label, isDark }: { items: { t: string; d: ReactNode }[];
   return (
     <div className="mb-8">
       {label && (
-        <p className={`px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+        <p className={`px-1 pb-2 text-[0.625rem] font-semibold uppercase tracking-[0.14em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
           {label}
         </p>
       )}
@@ -1460,7 +1597,7 @@ function Note({ children, isDark }: { children: ReactNode; isDark: boolean }) {
 function ChromeBar({ caption, isDark }: { caption: string; isDark: boolean }) {
   return (
     <div
-      className={`flex items-center gap-2 px-3 py-2 border-b text-[11px] font-medium tracking-wide ${
+      className={`flex items-center gap-2 px-3 py-2 border-b text-[0.6875rem] font-medium tracking-wide ${
         isDark ? 'border-slate-700 bg-slate-800 text-slate-400' : 'border-slate-200 bg-slate-100 text-slate-500'
       }`}
     >
@@ -1769,6 +1906,10 @@ function QuickAnswers({ isDark, t }: { isDark: boolean; t: TFunc }) {
     { key: 'whichTelescopes', q: t('quickAnswers.whichTelescopes.q'), a: t('quickAnswers.whichTelescopes.a') },
     { key: 'firstSteps', q: t('quickAnswers.firstSteps.q'), a: t('quickAnswers.firstSteps.a') },
     { key: 'newImages', q: t('quickAnswers.newImages.q'), a: t('quickAnswers.newImages.a') },
+    { key: 'findTarget', q: t('quickAnswers.findTarget.q'), a: t('quickAnswers.findTarget.a') },
+    { key: 'bestTonight', q: t('quickAnswers.bestTonight.q'), a: t('quickAnswers.bestTonight.a') },
+    { key: 'badFrames', q: t('quickAnswers.badFrames.q'), a: t('quickAnswers.badFrames.a') },
+    { key: 'classicPage', q: t('quickAnswers.classicPage.q'), a: t('quickAnswers.classicPage.a') },
     { key: 'viewOnPhone', q: t('quickAnswers.viewOnPhone.q'), a: t('quickAnswers.viewOnPhone.a') },
     // Reference rather than "how do I start", so it sits last: the answer is a
     // mapping table in prose, and you only want it once a filter has surprised

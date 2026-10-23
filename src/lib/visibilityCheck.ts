@@ -17,7 +17,6 @@
  * band, the first 10° east of North starts at index SKY_MAP_BANDS, and so on.
  */
 import { altAz } from './altaz';
-import { formatHm } from './timeFormat';
 
 export const SKY_MAP_AZ_SLICES = 36;
 export const SKY_MAP_BANDS = 8;
@@ -56,12 +55,12 @@ function locateCell(az: number, alt: number): { azSlice: number; band: number } 
 
 /** Look up whether a single (az, alt) point lies in a visible cell. */
 function isPointVisible(map: VisibleSkyMap | null | undefined, az: number, alt: number): boolean {
-  if (isEmptyMap(map)) return true;            // no map set = treat everything as visible
+  if (!map || isEmptyMap(map)) return true;    // no map set = treat everything as visible
   if (alt < 0) return false;                    // below horizon
   if (alt >= 80) return true;                   // zenith always visible
   const cell = locateCell(az, alt);
   if (!cell) return false;
-  return map![cellIndex(cell.azSlice, cell.band)];
+  return map[cellIndex(cell.azSlice, cell.band)];
 }
 
 export type VisibilityVerdict = 'all' | 'partial' | 'none';
@@ -78,70 +77,6 @@ export interface BlockVisibilityResult {
   minAlt: number;
   /** Maximum altitude (degrees) the object reaches during the block. */
   maxAlt: number;
-}
-
-/**
- * Check whether an object is visible across a time range, given the observer's
- * sky map. Samples at `stepMinutes` cadence (5 minutes by default — fine
- * enough that a 30-minute block gets 7 samples).
- */
-export function checkBlockVisibility(
-  ra: number,
-  dec: number,
-  lat: number,
-  lon: number,
-  start: Date,
-  end: Date,
-  map: VisibleSkyMap | null | undefined,
-  stepMinutes = 5,
-  /** Observer's IANA timezone, used to render the reason string's time-of-day
-   *  in the observer's local time rather than the viewing device's. */
-  timeZone?: string,
-): BlockVisibilityResult {
-  const stepMs = Math.max(1, stepMinutes) * 60 * 1000;
-  let visible = 0;
-  let total = 0;
-  let firstBlockedAt: Date | null = null;
-  let firstBlockedAz = 0;
-  let firstBlockedAlt = 0;
-  let minAlt = Infinity;
-  let maxAlt = -Infinity;
-
-  for (let t = start.getTime(); t <= end.getTime(); t += stepMs) {
-    const when = new Date(t);
-    const { alt, az } = altAz(ra, dec, lat, lon, when);
-    total += 1;
-    if (alt < minAlt) minAlt = alt;
-    if (alt > maxAlt) maxAlt = alt;
-    if (isPointVisible(map, az, alt)) {
-      visible += 1;
-    } else if (firstBlockedAt === null) {
-      firstBlockedAt = when;
-      firstBlockedAz = az;
-      firstBlockedAlt = alt;
-    }
-  }
-
-  if (total === 0) {
-    return { verdict: 'all', fractionVisible: 1, firstBlockedAt: null, reason: '', minAlt: 0, maxAlt: 0 };
-  }
-  if (isEmptyMap(map)) {
-    // Skip the visibility verdict (no map configured) but keep the alt range.
-    return { verdict: 'all', fractionVisible: 1, firstBlockedAt: null, reason: '', minAlt, maxAlt };
-  }
-  const fractionVisible = visible / total;
-  let verdict: VisibilityVerdict;
-  if (visible === total) verdict = 'all';
-  else if (visible === 0) verdict = 'none';
-  else verdict = 'partial';
-
-  let reason = '';
-  if (firstBlockedAt) {
-    const compass = compassFromAzimuth(firstBlockedAz);
-    const altLabel = firstBlockedAlt < 0 ? 'below horizon' : `${Math.round(firstBlockedAlt)}°`;
-    reason = `Outside your viewable sky to the ${compass} (${altLabel}) from ${formatHm(firstBlockedAt, timeZone)}`;
-  }
-  return { verdict, fractionVisible, firstBlockedAt, reason, minAlt, maxAlt };
 }
 
 /** Does the object ever pass through a visible cell across [start, end]? */
@@ -162,11 +97,4 @@ export function objectEverVisible(
     if (isPointVisible(map, az, alt)) return true;
   }
   return false;
-}
-
-function compassFromAzimuth(az: number): string {
-  const az360 = ((az % 360) + 360) % 360;
-  const labels = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-  const i = Math.round(az360 / 22.5) % 16;
-  return labels[i];
 }

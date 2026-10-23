@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseJsonRecord } from '../typeGuards.js';
 
 export type UpdatePlatform = 'win-x64' | 'mac-arm64' | 'mac-x64';
 
@@ -55,8 +56,8 @@ export interface CurrentVersion {
 export function getCurrentVersion(): CurrentVersion {
   for (const p of PKG_CANDIDATES) {
     try {
-      const pkg = JSON.parse(fs.readFileSync(p, 'utf8')) as { version?: string; buildNumber?: number };
-      if (typeof pkg.version === 'string') {
+      const pkg = parseJsonRecord(fs.readFileSync(p, 'utf8'));
+      if (pkg && typeof pkg.version === 'string') {
         return { version: pkg.version, build: typeof pkg.buildNumber === 'number' ? pkg.buildNumber : 0, known: true };
       }
     } catch { /* try next */ }

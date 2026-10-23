@@ -25,6 +25,21 @@
     "export": "CatalogBoard"
   },
   {
+    "path": "/catalogs/:catalog/mine",
+    "module": "./pages/MyCatalogWall",
+    "export": "MyCatalogWall"
+  },
+  {
+    "path": "/explore",
+    "module": "./pages/ExplorePage",
+    "export": "ExplorePage"
+  },
+  {
+    "path": "/explore/:category",
+    "module": "./pages/ExploreCategoryPage",
+    "export": "ExploreCategoryPage"
+  },
+  {
     "path": "/forecast",
     "module": "./pages/ForecastPage",
     "export": "ForecastPage"

@@ -14,7 +14,7 @@ import { formatBytes } from '../../lib/utils';
 import { activeLocale } from '../../lib/formatLocale';
 import { REFRESH_CHOICES, DEFAULT_REFRESH_MINUTES } from '../../lib/linkRefresh';
 import { Modal } from '../ui/Modal';
-import { LinkRefreshChoice } from '../folderImport/LinkRefreshChoice';
+import { LinkRefreshChoice } from '../ui/LinkRefreshChoice';
 import { Sec, getInputClass } from './SettingsUI';
 
 /** The edit dialog's working copy of one source. */
@@ -91,7 +91,7 @@ export function LinkedFoldersSection({ isDark }: { isDark: boolean }) {
     });
   };
 
-  const btn = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+  const btn = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[0.8125rem] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
   const neutral = isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700';
   const subtle = isDark ? 'text-slate-400' : 'text-slate-600';
   const faint = isDark ? 'text-slate-500' : 'text-slate-400';
@@ -108,25 +108,25 @@ export function LinkedFoldersSection({ isDark }: { isDark: boolean }) {
   return (
     <Sec title={t('linkedFolders.title')} description={t('linkedFolders.description')} isDark={isDark}>
       <div className="px-5 py-5 space-y-4">
-        <p className={`text-[13px] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+        <p className={`text-[0.8125rem] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
           {t('linkedFolders.explanation')}
         </p>
 
         {actionError && (
-          <div className={`rounded-lg px-3.5 py-3 text-[12px] ${isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'}`}>
+          <div className={`rounded-lg px-3.5 py-3 text-[0.75rem] ${isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'}`}>
             {actionError}
           </div>
         )}
         {error && (
-          <div className={`rounded-lg px-3.5 py-3 text-[12px] ${isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'}`}>
+          <div className={`rounded-lg px-3.5 py-3 text-[0.75rem] ${isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'}`}>
             {error instanceof Error ? error.message : t('linkedFolders.loadFailed')}
           </div>
         )}
 
         {isLoading ? (
-          <p className={`text-[13px] ${subtle}`}>{t('linkedFolders.loading')}</p>
+          <p className={`text-[0.8125rem] ${subtle}`}>{t('linkedFolders.loading')}</p>
         ) : sources.length === 0 ? (
-          <p className={`text-[13px] ${subtle}`}>{t('linkedFolders.empty')}</p>
+          <p className={`text-[0.8125rem] ${subtle}`}>{t('linkedFolders.empty')}</p>
         ) : (
           <ul className={`rounded-lg border divide-y ${isDark ? 'border-slate-800 divide-slate-800' : 'border-slate-200 divide-slate-100'}`}>
             {sources.map((s: LinkedSource) => {
@@ -138,9 +138,9 @@ export function LinkedFoldersSection({ isDark }: { isDark: boolean }) {
                   <div className="flex items-start gap-3">
                     <Link2 className={`w-4 h-4 mt-0.5 shrink-0 ${faint}`} />
                     <div className="min-w-0 flex-1">
-                      <p className={`text-[13px] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{s.label}</p>
-                      <p className={`mt-0.5 text-[11px] font-mono break-all ${faint}`}>{s.rootPath}</p>
-                      <p className={`mt-0.5 text-[11.5px] ${subtle}`}>
+                      <p className={`text-[0.8125rem] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{s.label}</p>
+                      <p className={`mt-0.5 text-[0.6875rem] font-mono break-all ${faint}`}>{s.rootPath}</p>
+                      <p className={`mt-0.5 text-[0.7188rem] ${subtle}`}>
                         {t('linkedFolders.counts', {
                           objects: t('linkedFolders.objectsCount', { count: s.objectCount }),
                           files: t('linkedFolders.filesCount', { count: s.fileCount }),
@@ -151,20 +151,20 @@ export function LinkedFoldersSection({ isDark }: { isDark: boolean }) {
                           ? t('linkedFolders.lastScan', { when: new Date(s.lastScanAt).toLocaleString(activeLocale()) })
                           : t('linkedFolders.neverScanned')}
                       </p>
-                      <p className={`mt-0.5 text-[11.5px] ${subtle}`}>
+                      <p className={`mt-0.5 text-[0.7188rem] ${subtle}`}>
                         {t('linkedFolders.refreshSummary', { value: scheduleOf(s) })}
                       </p>
                       {s.offline && (
-                        <p className={`mt-1 inline-flex items-center gap-1.5 text-[12px] ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>
+                        <p className={`mt-1 inline-flex items-center gap-1.5 text-[0.75rem] ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>
                           <AlertTriangle className="w-3.5 h-3.5" /> {t('linkedFolders.offline')}
                         </p>
                       )}
                       {s.missingCount > 0 && !s.offline && (
-                        <p className={`mt-1 text-[12px] ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>
+                        <p className={`mt-1 text-[0.75rem] ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>
                           {t('linkedFolders.missingFiles', { count: s.missingCount })}
                         </p>
                       )}
-                      {result && <p className={`mt-1 text-[12px] ${subtle}`}>{summaryOf(result)}</p>}
+                      {result && <p className={`mt-1 text-[0.75rem] ${subtle}`}>{summaryOf(result)}</p>}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
@@ -194,7 +194,7 @@ export function LinkedFoldersSection({ isDark }: { isDark: boolean }) {
                   </div>
 
                   {confirmingId === s.id && (
-                    <div className={`rounded-lg px-3.5 py-3 text-[12px] leading-relaxed ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-50 text-slate-700'}`}>
+                    <div className={`rounded-lg px-3.5 py-3 text-[0.75rem] leading-relaxed ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-50 text-slate-700'}`}>
                       <p>{t('linkedFolders.unlinkConfirm')}</p>
                       <div className="mt-2 flex gap-2">
                         <button
@@ -214,7 +214,7 @@ export function LinkedFoldersSection({ isDark }: { isDark: boolean }) {
           </ul>
         )}
 
-        <p className={`text-[12px] ${faint}`}>{t('linkedFolders.howToLink')}</p>
+        <p className={`text-[0.75rem] ${faint}`}>{t('linkedFolders.howToLink')}</p>
       </div>
 
       {draft && (

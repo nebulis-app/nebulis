@@ -8,7 +8,10 @@
  * latitude/longitude/locationName/timezone/minAlt/horizonProfile/visibleSkyMap
  * fields on GET /settings.
  */
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
+import multer from 'multer';
+import os from 'os';
+import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
 import {
@@ -23,7 +26,19 @@ import {
   type ObservingSite,
 } from '../lib/observingSites.js';
 import { SKY_MAP_CELLS } from '../lib/skyMapConfig.js';
+import {
+  SITE_PHOTO_LIMITS,
+  SitePhotoError,
+  addSitePhoto,
+  deleteSitePhoto,
+  getSitePhotoFile,
+  getSitePhotoPreview,
+  listSitePhotos,
+  setSitePhotoCaption,
+} from '../lib/sitePhotos.js';
+import { contentDispositionHeader } from '../lib/queryHelpers.js';
 import { log } from '../lib/logger.js';
+import { isRecord } from '../lib/typeGuards.js';
 
 const router = Router();
 
@@ -66,6 +81,111 @@ router.put('/active', requireAdmin, (req: Request, res: Response) => {
     return;
   }
   res.apiSuccess(present(getActiveSite()));
+});
+
+// ─── Site pictures ──────────────────────────────────────────────────────────
+// Declared before the /:id routes so "photos" is never read as a site id.
+
+const photoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+    filename: (_req, _file, cb) => cb(null, `nebulis_sitephoto_${randomUUID()}`),
+  }),
+  limits: { fileSize: SITE_PHOTO_LIMITS.bytes, files: 1 },
+});
+
+function photoFail(res: Response, err: unknown): void {
+  if (err instanceof SitePhotoError) {
+    res.apiError(err.code === 'NOT_FOUND' ? 404 : 422, err.code, err.message);
+    return;
+  }
+  throw err;
+}
+
+// GET /api/v1/sites/photos/:photoId?w=480   The picture; `w` asks for a JPEG preview no wider than that.
+router.get('/photos/:photoId', async (req: Request, res: Response) => {
+  const id = String(req.params.photoId);
+  const width = Number(req.query.w);
+  if (Number.isFinite(width) && width > 0) {
+    const preview = await getSitePhotoPreview(id, width);
+    if (preview) {
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      res.sendFile(preview.filePath, { dotfiles: 'allow' }, (err) => {
+        if (err && !res.headersSent) res.apiError(404, 'NOT_FOUND', 'Picture not found');
+      });
+      return;
+    }
+  }
+  const found = getSitePhotoFile(id);
+  if (!found) {
+    res.apiError(404, 'NOT_FOUND', 'Picture not found');
+    return;
+  }
+  res.setHeader('Content-Type', found.photo.mimeType);
+  res.setHeader('Content-Disposition', contentDispositionHeader(req.query.download === '1' ? 'attachment' : 'inline', found.photo.fileName));
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'; img-src 'self'");
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  // The data folder may sit under a dot-folder (a Docker volume, ~/.nebulis), which sendFile refuses by default.
+  res.sendFile(found.filePath, { dotfiles: 'allow' }, (err) => {
+    if (err && !res.headersSent) res.apiError(404, 'NOT_FOUND', 'Picture not found');
+  });
+});
+
+// PUT /api/v1/sites/photos/:photoId   { caption }
+router.put('/photos/:photoId', requireAdmin, (req: Request, res: Response) => {
+  const parsed = z.object({ caption: z.string().max(SITE_PHOTO_LIMITS.caption) }).safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
+    return;
+  }
+  try { res.apiSuccess(setSitePhotoCaption(String(req.params.photoId), parsed.data.caption)); } catch (err) { photoFail(res, err); }
+});
+
+// DELETE /api/v1/sites/photos/:photoId
+router.delete('/photos/:photoId', requireAdmin, (req: Request, res: Response) => {
+  if (!deleteSitePhoto(String(req.params.photoId))) {
+    res.apiError(404, 'NOT_FOUND', 'Picture not found');
+    return;
+  }
+  res.apiSuccess({ deleted: true });
+});
+
+// GET /api/v1/sites/:id/photos
+router.get('/:id/photos', (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  if (!getSite(id)) {
+    res.apiError(404, 'NOT_FOUND', 'Observing site not found');
+    return;
+  }
+  res.apiSuccess(listSitePhotos(id));
+});
+
+// POST /api/v1/sites/:id/photos   multipart: one picture in "file", optional "caption"
+router.post('/:id/photos', requireAdmin, (req: Request, res: Response, next: NextFunction) => {
+  photoUpload.single('file')(req, res, (err: unknown) => {
+    if (err) {
+      const tooBig = err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE';
+      res.apiError(tooBig ? 413 : 400, tooBig ? 'FILE_TOO_LARGE' : 'UPLOAD_FAILED',
+        tooBig ? `Pictures can be up to ${SITE_PHOTO_LIMITS.bytes / 1024 / 1024} MB` : 'The upload could not be read');
+      return;
+    }
+    next();
+  });
+}, (req: Request, res: Response) => {
+  const file = req.file;
+  if (!file) {
+    res.apiError(400, 'VALIDATION_ERROR', 'No picture was sent');
+    return;
+  }
+  const caption = typeof req.body?.caption === 'string' ? req.body.caption : '';
+  try {
+    res.apiSuccess(addSitePhoto(String(req.params.id), {
+      tempPath: file.path, fileName: file.originalname, mimeType: file.mimetype, size: file.size, caption,
+    }));
+  } catch (err) { photoFail(res, err); }
 });
 
 router.get('/:id', (req: Request, res: Response) => {
@@ -213,10 +333,9 @@ router.post('/:id/bortle-lookup', requireAdmin, async (req: Request, res: Respon
       return;
     }
 
-    const body = await upstream.json() as {
-      payload?: { metrics?: { bortleClass?: unknown; sqm?: unknown } };
-    };
-    const metrics = body?.payload?.metrics;
+    const body: unknown = await upstream.json();
+    const payload = isRecord(body) ? body.payload : undefined;
+    const metrics = isRecord(payload) && isRecord(payload.metrics) ? payload.metrics : undefined;
     const rawClass = metrics?.bortleClass;
     const sqm = metrics?.sqm;
     const bortleClass = typeof rawClass === 'number' ? Math.round(rawClass) : NaN;

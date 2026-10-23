@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { mockAllRoutes, ok } from './fixtures/mocks';
+import { mockAllRoutes, json, ok } from './fixtures/mocks';
 
 /**
  * End-to-end regression guard for the guided product tour.
@@ -70,6 +70,10 @@ test.describe('Guided tour: full walkthrough', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => localStorage.removeItem('nebulis-tour-seen-v1'));
     await mockAllRoutes(page);
+    // The tour visits /explore, whose endpoints the shared mocks do not cover. Empty answers are enough to render its banner.
+    await page.route('**/api/wishlist', r => r.fulfill(json(ok([]))));
+    await page.route('**/api/explore/categories**', r => r.fulfill(json(ok({ locationSet: true, siteId: 'site-1', siteName: 'Home', categories: [] }))));
+    await page.route('**/api/explore/best-tonight**', r => r.fulfill(json(ok({ results: [], locationSet: true }))));
   });
 
   test('every step resolves at the default desktop viewport', async ({ page }) => {

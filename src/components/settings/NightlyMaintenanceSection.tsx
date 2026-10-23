@@ -41,7 +41,12 @@ const TASKS = [
     descriptionKey: 'nightlyMaintenance.tasks.forecast.description',
     lastRunKey: 'nightlyForecastLastRun',
   },
-] as const;
+] as const satisfies ReadonlyArray<{
+  labelKey: string;
+  descriptionKey: string;
+  /** A Settings field holding the task's last-run epoch ms, or null if none. */
+  lastRunKey: { [K in keyof SettingsType]: SettingsType[K] extends number | null ? K : never }[keyof SettingsType] | null;
+}>;
 
 export function NightlyMaintenanceSection({
   isDark,
@@ -94,7 +99,7 @@ export function NightlyMaintenanceSection({
         } ${isDark ? 'border-slate-800/70' : 'border-slate-100'}`}
       >
         <div className="min-w-0 flex items-center gap-1.5">
-          <div className={`text-[13px] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+          <div className={`text-[0.8125rem] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
             {t('nightlyMaintenance.runNightly')}
           </div>
           <button
@@ -120,19 +125,19 @@ export function NightlyMaintenanceSection({
             maintenanceEnabled ? 'border-b' : ''
           } ${isDark ? 'border-slate-800/70 bg-slate-950/40' : 'border-slate-100 bg-slate-50/70'}`}
         >
-          <div className={`text-[10px] font-semibold uppercase tracking-[0.1em] mb-2 ${
+          <div className={`text-[0.625rem] font-semibold uppercase tracking-[0.1em] mb-2 ${
             isDark ? 'text-slate-500' : 'text-slate-400'
           }`}>
             {t('nightlyMaintenance.runsEachNight')}
           </div>
           <ul className="space-y-2.5">
             {TASKS.map(task => {
-              const lastRun = task.lastRunKey ? (form[task.lastRunKey] as number | undefined) ?? null : null;
+              const lastRun = task.lastRunKey ? form[task.lastRunKey] ?? null : null;
               return (
                 <li key={task.labelKey} className="flex items-start gap-2.5">
                   <span className={`mt-1 h-1 w-1 shrink-0 rounded-full ${isDark ? 'bg-accent-400' : 'bg-accent-500'}`} />
                   <div className="min-w-0">
-                    <div className={`text-[13px] font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                    <div className={`text-[0.8125rem] font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
                       {t(task.labelKey)}
                     </div>
                     <div className={`text-xs mt-0.5 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>

@@ -15,26 +15,23 @@
  * it takes the bright `accent` hex rather than `accent-*` utilities.
  */
 import { Link } from 'react-router-dom';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  CalendarDays, Columns, Download, FolderOpen, Frame, Image as ImageIcon, Layers, Loader2, MoreHorizontal,
-  Pencil, PlusCircle, RefreshCw, Shuffle, Star, Telescope, Trash2,
+  CalendarDays, ChevronDown, Columns, Download, FolderOpen, Frame, Image as ImageIcon, Layers, Loader2, MoreHorizontal,
+  LayoutGrid, PackageCheck, Pencil, PlusCircle, RefreshCw, Shuffle, Star, Telescope, Trash2,
 } from 'lucide-react';
 import { useClickOutside } from '../../hooks/useClickOutside';
 import { useImageFocalPoint } from '../../hooks/useImageFocalPoint';
-import { FileLocationModal } from '../library/FileLocationModal';
+import { FileLocationModal } from '../ui/FileLocationModal';
 import { DownloadConfirmModal } from './DownloadConfirmModal';
 import { HeroBackdrop } from '../ui/HeroBackdrop';
 import { useTheme } from '../../hooks/useTheme';
 import { nightSafeColor } from '../../lib/nightSafeColor';
 import { HERO_IMAGES } from '../../lib/heroImagery';
-import { CaptureRail } from '../ui/CaptureRail';
 import type { CaptureMetric } from '../../lib/captureMetrics';
 import { PROCESSING_STATUS_ORDER, processingStatusLabel } from '../../lib/processingStatus';
-import { FilterRecommendationPanel } from '../catalogs/FilterRecommendationPanel';
-import type { FilterRecommendation } from '../../lib/filterRecommendations';
 import type { ConnectionType } from '../../lib/api/telescopes';
 import type { ProcessingStatus } from '../../types';
 
@@ -74,10 +71,23 @@ interface Props {
   metrics: CaptureMetric[];
   accent: string;
 
-  /** Filter guidance for this object's catalog type. Null or absent renders
-   *  nothing, which is the case for an object with no known type and for the
-   *  synthetic Star Trails target. */
-  filterRecommendations?: FilterRecommendation | null;
+  /** Catalog numbers worth reading beside the title (magnitude, distance,
+   *  angular size), as ready-made label/value pairs. Empty or absent renders
+   *  nothing. */
+  facts?: { label: string; value: string }[];
+  /** Other catalog names for the target, shown as quiet chips under the facts. */
+  alsoKnownAs?: string[];
+  /** The catalog's description, shown clamped to three lines under the meta
+   *  line. Absent for an object with no write-up, in which case the column
+   *  keeps its text at the top instead of leaving a gap. */
+  description?: string | null;
+  /** Opens the full write-up. When set, a "More" link appears under the
+   *  description if (and only if) the three-line clamp cut text off. */
+  onReadMore?: (() => void) | null;
+  /** A panel for the third column on wide screens, stacked under the picture
+   *  and text on narrower ones. The page passes tonight's visibility and the
+   *  filter guidance, the two planning answers. */
+  aside?: ReactNode;
 
   isFavorite: boolean;
   onToggleFavorite: () => void;
@@ -94,6 +104,9 @@ interface Props {
    *  `hideTargetActions` for the case where it should disappear entirely. */
   onCompare: (() => void) | null;
   onCombine: () => void;
+  /** Opens the stacking export (kept lights + matching calibration). Null when the object has no FITS
+   *  sub-frames to export. */
+  onStackingExport: (() => void) | null;
   /** Opens the Framing & Mosaic planner. Null when the feature flag is off,
    *  in which case the button is omitted rather than shown disabled. */
   onFraming: (() => void) | null;
@@ -116,6 +129,9 @@ interface Props {
   onReclassify: (() => void) | null;
   /** Library object id, for the "Show file location" panel. */
   objectId: string;
+  /** Switches this page between the By-night layout and the All-media layout.
+   *  `current` is the layout showing now. Null hides the menu item. */
+  layoutSwitch?: { current: 'nights' | 'media'; onToggle: () => void } | null;
   /** True for the synthetic Star Trails object: it isn't a celestial target,
    *  so "Plan a night", "Compare" and "Combine subs" (which all assume one
    *  target shot across nights, with coordinates to plan against) don't apply
@@ -143,14 +159,15 @@ const FRAME_PLACEHOLDER = `${FRAME_HEIGHT} aspect-square`;
 export function ObjectHero({
   displayName, eyebrow, imageSrc, imageFill = false, imageFailed, onImageError, onEditImage,
   telescopes, metrics, accent,
-  filterRecommendations = null,
+  facts = [], alsoKnownAs = [], description = null, onReadMore = null, aside = null,
   isFavorite, onToggleFavorite,
   processingStatus, onChangeProcessingStatus,
-  onAddObservation, onCompare, onCombine, onFraming, onDownloadAll, downloadPending = false, onSyncAllSubframes,
-  onPlan, onEditDetails, onDelete, onReclassify,
+  onAddObservation, onCompare, onCombine, onStackingExport, onFraming, onDownloadAll, downloadPending = false, onSyncAllSubframes,
+  onPlan, onEditDetails, onDelete, onReclassify, layoutSwitch = null,
   objectId, hideTargetActions = false,
 }: Props) {
   const { t } = useTranslation('library');
+  const { t: tObs } = useTranslation('observations');
   const { isNight } = useTheme();
   const [showLocation, setShowLocation] = useState(false);
   const [showDownloadConfirm, setShowDownloadConfirm] = useState(false);
@@ -219,13 +236,48 @@ export function ObjectHero({
             the true upper-left of the panel rather than starting wherever
             the text column happens to start (which, beside a wide picture,
             was well right of the panel's own left edge). */}
-        <nav aria-label={t('objectDetail.hero.breadcrumb')} className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
-          <Link to="/" className="text-white/45 transition hover:text-white">{t('objectDetail.hero.library')}</Link>
-          <span className="text-white/20">/</span>
-          <span className="truncate text-white/70">{displayName}</span>
-        </nav>
+        <div className="flex items-start justify-between gap-3">
+          <nav aria-label={t('objectDetail.hero.breadcrumb')} className="flex min-w-0 flex-wrap items-center gap-1.5 text-[0.7812rem]">
+            <Link to="/" className="text-white/45 transition hover:text-white">{t('objectDetail.hero.library')}</Link>
+            <span className="text-white/20">/</span>
+            <span className="truncate text-white/70">{displayName}</span>
+          </nav>
+          {layoutSwitch && (
+            <div
+              role="group"
+              aria-label={t('objectDetail.hero.layoutSwitch')}
+              className="inline-flex shrink-0 rounded-lg border border-white/10 bg-black/30 p-0.5 backdrop-blur-sm"
+            >
+              {([
+                { id: 'nights', icon: CalendarDays, label: t('objectDetail.hero.layoutByNight') },
+                { id: 'media', icon: LayoutGrid, label: t('objectDetail.hero.layoutAllPhotos') },
+              ] as const).map(({ id, icon: Icon, label }) => {
+                const active = layoutSwitch.current === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={active}
+                    title={label}
+                    onClick={() => { if (!active) layoutSwitch.onToggle(); }}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[0.75rem] font-medium transition ${
+                      active ? 'bg-white/15 text-white shadow-sm' : 'text-white/55 hover:text-white'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span className="hidden sm:inline">{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:gap-9">
+        {/* Picture | identity, and a third column for the aside from 1440px. Below that
+            the aside spans both columns underneath instead of squeezing them. */}
+        <div className={`grid gap-6 lg:items-start lg:gap-9 lg:grid-cols-[auto_minmax(0,1fr)] ${
+          aside ? 'hero:grid-cols-[auto_minmax(380px,1fr)_minmax(320px,400px)]' : ''
+        }`}>
         {/* The picture, standing on the panel rather than sitting in a box.
             It was a bordered mat with the picture shadowed inside it, which on
             a wide export read as a frame inside a frame: the mat's ring drew
@@ -243,8 +295,11 @@ export function ObjectHero({
             edge instead of a fraction that assumes a particular aspect
             ratio. Below `lg` it stays full width: stacked above the text,
             there is no "beside it" gap to create. */}
-        <div className="w-full shrink-0 lg:w-auto lg:max-w-[58%]">
-          <div className={`flex ${FRAME_HEIGHT} w-full items-center justify-center lg:w-auto`}>
+        <div className={`w-full shrink-0 lg:w-auto lg:max-w-[45vw] ${aside ? 'hero:max-w-[min(30vw,calc(100vw_-_916px))] 2xl:max-w-[34vw]' : ''}`}>
+          {/* Top-anchored on lg: a wide picture capped by width is shorter than
+              the frame, and centring it left its top edge halfway down the
+              title block beside it. */}
+          <div className={`flex ${FRAME_HEIGHT} w-full items-center justify-center lg:w-auto lg:items-start`}>
             {showImage ? (
               <>
                 {!imgLoaded && (
@@ -293,7 +348,7 @@ export function ObjectHero({
                       onClick={onEditImage}
                       title={t('objectDetail.hero.chooseImageTitle')}
                       className="absolute right-2.5 top-2.5 inline-flex items-center gap-1.5 rounded-lg bg-black/45 px-2.5 py-1.5
-                        text-[11px] font-medium text-white opacity-0 backdrop-blur-md transition hover:bg-black/70
+                        text-[0.6875rem] font-medium text-white opacity-0 backdrop-blur-md transition hover:bg-black/70
                         group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none
                         focus-visible:ring-2 focus-visible:ring-white/70"
                     >
@@ -319,7 +374,7 @@ export function ObjectHero({
                   <button
                     onClick={onEditImage}
                     className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-white/[0.07] px-2.5 py-1.5
-                      text-[11px] font-medium text-white/80 ring-1 ring-inset ring-white/15 transition
+                      text-[0.6875rem] font-medium text-white/80 ring-1 ring-inset ring-white/15 transition
                       hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2
                       focus-visible:ring-white/70"
                   >
@@ -337,16 +392,24 @@ export function ObjectHero({
             Seestar stack) centring stranded the eyebrow/title mid-picture
             instead of at the top where they belong. Matches SessionHero's
             identical fix. */}
-        <div className="flex min-w-0 flex-1 flex-col gap-5 lg:self-start">
+        {/* Four blocks, one style each: name, a quiet meta line, the numbers,
+            then the actions. These were nine stacked rows in as many
+            treatments (pill, stat tiles, label-left facts, chips, telescope
+            row, filter grid), which read as a pile rather than a header. */}
+        {/* As tall as the picture's frame on lg (FRAME_HEIGHT's lg step), with
+            the numbers and actions pushed to the bottom: the name sits level
+            with the top of the picture and the buttons with its bottom, so the
+            column has no dead band under them. */}
+        <div className="flex min-w-0 flex-1 flex-col gap-6 lg:min-h-[360px]">
             <div className="min-w-0">
               {eyebrow.length > 0 && (
-                <div className="truncate text-[11px] font-medium uppercase tracking-[0.18em] text-white/50">
+                <div className="truncate text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-white/50">
                   {eyebrow.join(' · ')}
                 </div>
               )}
 
               <div className="mt-1.5 flex items-start gap-3">
-                <h1 className="font-display min-w-0 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-[42px] lg:leading-[1.05]">
+                <h1 className="font-display min-w-0 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-[2.625rem] lg:leading-[1.05]">
                   {displayName}
                 </h1>
                 <button
@@ -362,19 +425,18 @@ export function ObjectHero({
                 </button>
               </div>
 
-              <ProcessingStatusPill
-                status={processingStatus}
-                onChange={onChangeProcessingStatus}
-                className="mt-1.5"
-              />
-
-              {telescopes.length > 0 && (
-                <div className="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-white/65">
-                  <span className="inline-flex items-center gap-1.5">
-                    <Telescope className="h-3.5 w-3.5 text-white/40" />
+              {/* Status and the telescopes that have shot it on one line of small
+                  text; its other names get their own line below, so the block
+                  has the same shape on every object. */}
+              <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[0.8125rem] text-white/60">
+                <ProcessingStatusPill status={processingStatus} onChange={onChangeProcessingStatus} />
+                {telescopes.length > 0 && (
+                  <>
+                    <span aria-hidden="true" className="text-white/25">·</span>
                     {/* Which telescopes have been on this target. A target shot on
                         two rigs is worth knowing about before comparing nights. */}
                     <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <Telescope className="h-3.5 w-3.5 text-white/40" />
                       {telescopes.map((tel, i) => (
                         <span key={tel.id} className="inline-flex items-center gap-1.5">
                           <span className="h-1.5 w-1.5 rounded-full" style={{ background: nightSafeColor(tel.color, isNight, i) }} />
@@ -382,16 +444,51 @@ export function ObjectHero({
                         </span>
                       ))}
                     </span>
-                  </span>
-                </div>
+                  </>
+                )}
+              </div>
+
+              {alsoKnownAs.length > 0 && (
+                <p className="mt-1.5 min-w-0 text-[0.8125rem] text-white/60">
+                  <span className="text-white/40">{tObs('observationDetail.objectPanel.alsoKnownAs')}</span>{' '}
+                  <span className="text-white/75">{alsoKnownAs.slice(0, 4).join(', ')}</span>
+                </p>
+              )}
+
+              {/* Fills the room the picture's height leaves between the name
+                  and the numbers, and answers "what is this" before anything
+                  else on the page does. The full text lives in About. */}
+              {description && (
+                <HeroDescription text={description} onReadMore={onReadMore} />
               )}
             </div>
+
+            {/* Every number in one style: the object's totals (they used to be
+                a strip of wide, mostly empty cells along the base of the
+                banner) and its catalog figures alike. */}
+            {(metrics.length > 0 || facts.length > 0) && (
+              <dl className="flex flex-wrap items-start gap-x-6 gap-y-4 lg:mt-auto">
+                {[
+                  ...metrics.map(m => ({ key: m.key, value: m.value, label: m.label, hint: m.hint })),
+                  ...facts.map(f => ({ key: `fact-${f.label}`, value: f.value, label: f.label, hint: undefined })),
+                ].map(({ key, value, label, hint }) => (
+                  <div key={key} className="flex min-w-0 flex-col-reverse" title={hint ?? undefined}>
+                    <dt className="mt-1.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-white/50">
+                      {label}
+                    </dt>
+                    <dd className="font-display text-xl font-bold leading-none tracking-tight text-white tabular-nums">
+                      {value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
 
           <div className="flex flex-wrap items-center gap-2">
             {onAddObservation && (
               <button
                 onClick={onAddObservation}
-                className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-semibold text-slate-950
+                className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-[0.8125rem] font-semibold text-slate-950
                   transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                 style={{ background: accent, boxShadow: `0 8px 24px -12px ${accent}` }}
               >
@@ -411,6 +508,7 @@ export function ObjectHero({
               onPlan={hideTargetActions ? null : onPlan}
               onCompare={hideTargetActions ? null : onCompare}
               onCombine={hideTargetActions ? null : onCombine}
+              onStackingExport={hideTargetActions ? null : onStackingExport}
               onFraming={onFraming}
               onSyncAllSubframes={hideTargetActions ? null : onSyncAllSubframes}
               // Explains what the action actually does (reach out to the
@@ -432,18 +530,11 @@ export function ObjectHero({
             />
           </div>
 
-          {/* Filter guidance for this object's type. It sits with the identity
-              rather than in a section of its own, and the hero is dark in every
-              theme, so the panel takes the dark chip palette and drops its own
-              surface instead of punching a lighter box into the artwork. */}
-          {filterRecommendations && (
-            <FilterRecommendationPanel recommendations={filterRecommendations} isDark bare />
-          )}
         </div>
+
+        {aside && <div className="@container min-w-0 lg:col-span-2 hero:col-span-1">{aside}</div>}
         </div>
       </div>
-
-      <CaptureRail metrics={metrics} accent={accent} />
 
       {showLocation && (
         <FileLocationModal
@@ -465,18 +556,88 @@ export function ObjectHero({
   );
 }
 
+/** The description, cut to three lines with "More" at the end of the third
+ *  when something was hidden: a one-sentence blurb has nothing more to read.
+ *  The cut is made at a word boundary, found by measuring a hidden copy, so
+ *  "More" sits inline instead of on a row of its own. */
+function HeroDescription({ text, onReadMore }: { text: string; onReadMore: (() => void) | null }) {
+  const { t } = useTranslation('library');
+  const probeRef = useRef<HTMLParagraphElement>(null);
+  const [shown, setShown] = useState(text);
+  const [truncated, setTruncated] = useState(false);
+  const readMore = t('objectDetail.hero.readMore');
+
+  useLayoutEffect(() => {
+    const probe = probeRef.current;
+    if (!probe) return;
+    const fit = () => {
+      const lineHeight = parseFloat(getComputedStyle(probe).lineHeight);
+      const maxHeight = lineHeight * 3 + 1;
+      const fits = (n: number, cut: boolean) => {
+        probe.textContent = `${text.slice(0, n).trimEnd()}${cut ? '… ' : ''}${cut && onReadMore ? readMore : ''}`;
+        return probe.scrollHeight <= maxHeight;
+      };
+      if (fits(text.length, false)) { setShown(text); setTruncated(false); return; }
+      let lo = 0;
+      let hi = text.length;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (fits(mid, true)) lo = mid; else hi = mid - 1;
+      }
+      const space = text.lastIndexOf(' ', lo);
+      setShown(text.slice(0, space > 0 && lo < text.length ? space : lo).trimEnd());
+      setTruncated(true);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(probe);
+    // The cut depends on glyph widths, so measure again once the fonts land.
+    // `ready` can resolve before a face has even been requested, so also listen for loads.
+    const fonts = document.fonts;
+    fonts?.addEventListener('loadingdone', fit);
+    void fonts?.ready.then(fit);
+    return () => { ro.disconnect(); fonts?.removeEventListener('loadingdone', fit); };
+  }, [text, readMore, onReadMore]);
+
+  return (
+    <div className="relative mt-4 max-w-prose">
+      <p className="text-[0.8438rem] leading-relaxed text-white/60">
+        {shown}
+        {truncated && (
+          <>
+            {'… '}
+            {onReadMore && (
+              <button
+                type="button"
+                onClick={onReadMore}
+                className="rounded font-medium text-white/80 underline-offset-2 transition hover:text-white hover:underline
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              >
+                {readMore}
+              </button>
+            )}
+          </>
+        )}
+      </p>
+      {/* Same box as the visible text, never shown: measures what fits in three lines. */}
+      <p ref={probeRef} aria-hidden="true" className="invisible absolute inset-x-0 top-0 -z-10 text-[0.8438rem] leading-relaxed" />
+    </div>
+  );
+}
+
 /** Every action that isn't Add observation or Download: the occasional target
  *  actions (Plan a night, Compare, sub-frames, Framing & Mosaic) grouped above
  *  a divider from the rare, hard-to-undo ones (edit, delete). Drops back onto
  *  a solid surface once open: a translucent menu over a photograph is
  *  unreadable. */
 function OverflowMenu({
-  onPlan, onCompare, onCombine, onFraming, onSyncAllSubframes, syncAllSubframesTitle,
+  onPlan, onCompare, onCombine, onStackingExport, onFraming, onSyncAllSubframes, syncAllSubframesTitle,
   onEditDetails, onReclassify, onDelete, onShowLocation, showCompareDisabled,
 }: {
   onPlan: (() => void) | null;
   onCompare: (() => void) | null;
   onCombine: (() => void) | null;
+  onStackingExport: (() => void) | null;
   onFraming: (() => void) | null;
   onSyncAllSubframes: (() => void) | null;
   syncAllSubframesTitle: string;
@@ -517,7 +678,7 @@ function OverflowMenu({
     };
   }, [open]);
 
-  const hasTargetActions = onPlan || onCompare || showCompareDisabled || onCombine || onFraming || onSyncAllSubframes;
+  const hasTargetActions = onPlan || onCompare || showCompareDisabled || onCombine || onStackingExport || onFraming || onSyncAllSubframes;
 
   return (
     <div ref={wrapRef} className="relative">
@@ -526,7 +687,7 @@ function OverflowMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         title={t('objectDetail.hero.moreActions')}
-        className="inline-flex items-center gap-2 rounded-full bg-white/[0.07] px-3 py-2 text-[13px] font-medium
+        className="inline-flex items-center gap-2 rounded-full bg-white/[0.07] px-3 py-2 text-[0.8125rem] font-medium
           text-white/85 ring-1 ring-inset ring-white/15 backdrop-blur-md transition-colors hover:bg-white/15
           hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
       >
@@ -538,15 +699,21 @@ function OverflowMenu({
         <div
           ref={menuRef}
           role="menu"
-          style={{ position: 'fixed', top: menuPos.top, right: menuPos.right }}
-          className="z-20 w-56 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 py-1 shadow-2xl"
+          // Fixed to the viewport, so a menu taller than the room under the
+          // button is cut off and cannot be scrolled to. Cap it to what is
+          // left and let it scroll instead.
+          style={{
+            position: 'fixed', top: menuPos.top, right: menuPos.right,
+            maxHeight: Math.max(160, window.innerHeight - menuPos.top - 12),
+          }}
+          className="z-20 w-56 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 py-1 shadow-2xl"
         >
           {onPlan && (
             <button
               role="menuitem"
               onClick={() => { setOpen(false); onPlan(); }}
               title={t('objectDetail.hero.planANightTitle')}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] text-slate-200 transition hover:bg-slate-800"
+              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.8125rem] text-slate-200 transition hover:bg-slate-800"
             >
               <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
               {t('objectDetail.hero.planANight')}
@@ -558,7 +725,7 @@ function OverflowMenu({
               onClick={onCompare ? () => { setOpen(false); onCompare(); } : undefined}
               aria-disabled={!onCompare}
               title={onCompare ? t('objectDetail.hero.compareTitle') : t('objectDetail.hero.compareDisabledTitle')}
-              className={`flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] transition ${
+              className={`flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.8125rem] transition ${
                 onCompare ? 'text-slate-200 hover:bg-slate-800' : 'cursor-not-allowed text-slate-500'
               }`}
             >
@@ -575,12 +742,12 @@ function OverflowMenu({
             >
               <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
               <span className="flex flex-col">
-                <span className="text-[13px] text-slate-200">{t('objectDetail.hero.syncAllSubframes')}</span>
+                <span className="text-[0.8125rem] text-slate-200">{t('objectDetail.hero.syncAllSubframes')}</span>
                 {/* A visible caption, not just a hover title: this is the one
                     item in the menu that depends on a network device still
                     being reachable, and that's easy to miss on a touch device
                     where nothing ever hovers. */}
-                <span className="text-[11px] text-slate-500">{syncAllSubframesTitle}</span>
+                <span className="text-[0.6875rem] text-slate-500">{syncAllSubframesTitle}</span>
               </span>
             </button>
           )}
@@ -589,10 +756,21 @@ function OverflowMenu({
               role="menuitem"
               onClick={() => { setOpen(false); onCombine(); }}
               title={t('objectDetail.hero.combineSubsTitle')}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] text-slate-200 transition hover:bg-slate-800"
+              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.8125rem] text-slate-200 transition hover:bg-slate-800"
             >
               <Layers className="h-3.5 w-3.5 text-slate-400" />
               {t('objectDetail.hero.combineSubs')}
+            </button>
+          )}
+          {onStackingExport && (
+            <button
+              role="menuitem"
+              onClick={() => { setOpen(false); onStackingExport(); }}
+              title={t('objectDetail.hero.stackingExportTitle')}
+              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.8125rem] text-slate-200 transition hover:bg-slate-800"
+            >
+              <PackageCheck className="h-3.5 w-3.5 text-slate-400" />
+              {t('objectDetail.hero.stackingExport')}
             </button>
           )}
           {onFraming && (
@@ -600,7 +778,7 @@ function OverflowMenu({
               role="menuitem"
               onClick={() => { setOpen(false); onFraming(); }}
               title={t('objectDetail.framingMosaicTitle')}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] text-slate-200 transition hover:bg-slate-800"
+              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.8125rem] text-slate-200 transition hover:bg-slate-800"
             >
               <Frame className="h-3.5 w-3.5 text-slate-400" />
               {t('objectDetail.framingMosaic')}
@@ -612,7 +790,7 @@ function OverflowMenu({
           <button
             role="menuitem"
             onClick={() => { setOpen(false); onShowLocation(); }}
-            className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] text-slate-200 transition hover:bg-slate-800"
+            className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.8125rem] text-slate-200 transition hover:bg-slate-800"
           >
             <FolderOpen className="h-3.5 w-3.5 text-slate-400" />
             {t('objectDetail.hero.showFileLocation')}
@@ -621,7 +799,7 @@ function OverflowMenu({
             <button
               role="menuitem"
               onClick={() => { setOpen(false); onEditDetails(); }}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] text-slate-200 transition hover:bg-slate-800"
+              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.8125rem] text-slate-200 transition hover:bg-slate-800"
             >
               <Pencil className="h-3.5 w-3.5 text-slate-400" />
               {t('objectDetail.hero.editObjectDetails')}
@@ -632,7 +810,7 @@ function OverflowMenu({
               role="menuitem"
               onClick={() => { setOpen(false); onReclassify(); }}
               title={t('objectDetail.hero.reclassifyObjectTitle')}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] text-slate-200 transition hover:bg-slate-800"
+              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.8125rem] text-slate-200 transition hover:bg-slate-800"
             >
               <Shuffle className="h-3.5 w-3.5 text-slate-400" />
               {t('objectDetail.hero.reclassifyObject')}
@@ -644,7 +822,7 @@ function OverflowMenu({
               <button
                 role="menuitem"
                 onClick={() => { setOpen(false); onDelete(); }}
-                className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] text-red-300 transition hover:bg-red-500/10"
+                className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.8125rem] text-red-300 transition hover:bg-red-500/10"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 {t('objectDetail.hero.deleteObject')}
@@ -681,10 +859,11 @@ function ProcessingStatusPill({ status, onChange, className = '' }: {
 
   const pill = (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[0.6875rem] font-medium
         leading-none ring-1 ring-inset backdrop-blur-sm ${TONE_CLASSES[status]}`}
     >
       {processingStatusLabel(status, t)}
+      {onChange && <ChevronDown className="-mr-0.5 h-3 w-3 opacity-70" aria-hidden="true" />}
     </span>
   );
 
@@ -713,7 +892,7 @@ function ProcessingStatusPill({ status, onChange, className = '' }: {
               key={s}
               role="menuitem"
               onClick={() => { setOpen(false); onChange(s); }}
-              className={`flex w-full items-center gap-2 px-3.5 py-2 text-left text-[13px] transition hover:bg-slate-800 ${
+              className={`flex w-full items-center gap-2 px-3.5 py-2 text-left text-[0.8125rem] transition hover:bg-slate-800 ${
                 s === status ? 'text-white' : 'text-slate-300'
               }`}
             >
@@ -740,7 +919,7 @@ function HeroAction({ onClick, href, icon: Icon, label, title, danger }: {
   danger?: boolean;
 }) {
   const disabled = !onClick && !href;
-  const className = `inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[13px] font-medium
+  const className = `inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[0.8125rem] font-medium
     ring-1 ring-inset backdrop-blur-md transition-colors
     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
     disabled

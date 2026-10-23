@@ -84,6 +84,14 @@ export interface Settings {
   /** Catalog boards also credit objects that sat inside the frame of an object
    *  you imaged (M43 when M42 was shot). Default on. */
   groupCatalogCompanions: boolean;
+  /** Solve new stacked pictures in the background so Annotate has exact positions waiting. Default on. */
+  annotateAutoSolve: boolean;
+  /** Analyze new raw frames in the background once an import has finished. Default off. */
+  autoMeasureFrames: boolean;
+  /** Admin opt-in: serve the PixInsight update repository at /plugins/pixinsight/. Default off. */
+  pixinsightEnabled: boolean;
+  /** Object page layout: 'nights' (grid of observations) or 'media' (every picture on one page). Default 'nights'. */
+  objectPageLayout: 'nights' | 'media';
 }
 
 export interface CatalogEntry {
@@ -142,6 +150,9 @@ export interface AstroObject {
   isFavorite?: boolean;
   galleryImage?: string | null;
   galleryImageUserSet?: boolean;
+  /** False when the object can show no picture at all (a comet or asteroid with no image of its own), so the card
+   *  skips the thumbnail request. Absent on an older server response; treat a missing value as true. */
+  hasThumbnail?: boolean;
   /** Cache-buster string that changes when the gallery image OR its underlying
    *  bytes change (combines galleryImage with the source file's mtime). Use as
    *  the `version` arg to getLibraryObjectThumbnailUrl so re-uploads to the
@@ -191,6 +202,27 @@ export interface Session {
   thumbnailUrl: string;
   filesUrl: string;
   weather: SessionWeather | null;
+  /** Telescope that shot the night (per-file attribution first). */
+  telescopeId?: string | null;
+  /** Integration the device recorded for the night, when it records it. */
+  integrationSec?: number | null;
+  /** Optical train of the night; absent from servers that predate it. */
+  optics?: SessionOptics;
+  /** Groups nights shot through the same telescope + optical train. */
+  rigKey?: string;
+}
+
+/** Which optical configuration of its telescope shot a night. Mirrors
+ *  server/lib/library/sessionOptics.ts. */
+export interface SessionOptics {
+  configId: string | null;
+  configName: string | null;
+  /** The configuration's focal length, else the one the FITS recorded. */
+  focalLengthMm: number | null;
+  /** 'manual' = chosen by the user, 'fits' = matched from the FITS focal
+   *  length, 'only' = the telescope's only configuration, null = none. */
+  source: 'manual' | 'fits' | 'only' | null;
+  fileFocalMm: number | null;
 }
 
 /** Rolled-up view of what the telescope recorded for one observing night.

@@ -5,7 +5,7 @@
  */
 import { Star } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { HeroBackdrop } from '../ui/HeroBackdrop';
+import { CollapsibleHero, HeroSummary } from '../ui/CollapsibleHero';
 import { PAGE_HERO } from '../../lib/heroImagery';
 import { formatNumber } from '../../lib/formatLocale';
 
@@ -25,19 +25,16 @@ export function WishlistHero({ total, visibleTonight, highPriority, accent }: Pr
   ];
 
   return (
-    <section className="relative overflow-hidden rounded-3xl bg-slate-950 hero-panel">
-      <HeroBackdrop image={PAGE_HERO.wishlist} />
-
-      <div
-        className="pointer-events-none absolute inset-0 opacity-70"
-        style={{ background: `radial-gradient(90% 140% at 8% 0%, ${accent}1f 0%, transparent 60%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 rounded-3xl"
-        style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10)' }}
-      />
-
-      <div className="relative flex hero-min-h flex-col justify-center gap-6 p-4 sm:p-6">
+    <CollapsibleHero
+      page="wishlist"
+      image={PAGE_HERO.wishlist}
+      accent={accent}
+      bottomBloom={false}
+      icon={<Star className="h-5 w-5 sm:h-7 sm:w-7 fill-current" style={{ color: accent }} />}
+      title={t('wishlistHero.title')}
+      summary={<HeroSummary stats={stats} />}
+      contentClassName="flex hero-min-h flex-col justify-center gap-6 p-4 sm:p-6"
+    >
         <div className="min-w-0">
           <h1 className="font-display flex items-center gap-2.5 text-xl font-bold tracking-tight text-white sm:text-4xl">
             <Star className="h-5 w-5 sm:h-7 sm:w-7 fill-current" style={{ color: accent }} />
@@ -50,7 +47,7 @@ export function WishlistHero({ total, visibleTonight, highPriority, accent }: Pr
               this banner 19px taller than every sibling page's. Hidden on a
               phone along with the stat row below, same reasoning as Library's
               banner: it repeats what the list underneath already shows. */}
-          <p className="mt-2 hidden text-[13px] text-white/55 sm:block">
+          <p className="mt-2 hidden text-[0.8125rem] text-white/55 sm:block">
             {t('wishlistHero.subtitle')}
           </p>
 
@@ -60,14 +57,13 @@ export function WishlistHero({ total, visibleTonight, highPriority, accent }: Pr
                 <div className="font-display text-2xl font-bold leading-none tracking-tight text-white tabular-nums">
                   {value}
                 </div>
-                <div className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/45">
+                <div className="mt-1.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-white/45">
                   {label}
                 </div>
               </div>
             ))}
           </div>
         </div>
-      </div>
-    </section>
+    </CollapsibleHero>
   );
 }

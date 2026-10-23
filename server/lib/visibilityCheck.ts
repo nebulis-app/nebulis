@@ -47,12 +47,12 @@ function locateCell(az: number, alt: number): { azSlice: number; band: number } 
 }
 
 function isPointVisible(map: VisibleSkyMap | null | undefined, az: number, alt: number): boolean {
-  if (isEmptyMap(map)) return true; // no map set = treat everything as visible
+  if (isEmptyMap(map) || !map) return true; // no map set = treat everything as visible
   if (alt < 0) return false; // below horizon
   if (alt >= 80) return true; // zenith always visible
   const cell = locateCell(az, alt);
   if (!cell) return false;
-  return map![cellIndex(cell.azSlice, cell.band)];
+  return map[cellIndex(cell.azSlice, cell.band)];
 }
 
 export type VisibilityVerdict = 'all' | 'partial' | 'none';
@@ -83,7 +83,7 @@ function compassFromAzimuth(az: number): string {
   const az360 = ((az % 360) + 360) % 360;
   const labels = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
   const i = Math.round(az360 / 22.5) % 16;
-  return labels[i]!;
+  return labels[i];
 }
 
 /**

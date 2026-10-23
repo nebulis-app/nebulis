@@ -37,6 +37,7 @@ import { randomUUID } from 'crypto';
 
 import { DATA_DIR } from '../paths.js';
 import { parseJsonRecord } from '../typeGuards.js';
+import { errnoCode } from '../errors.js';
 
 export const ARCHIVE_MARKER_FILENAME = '.nebulisarchive';
 
@@ -112,7 +113,7 @@ export function readArchiveMarker(dir: string, expectedArchiveId: string): Archi
     // Only ENOENT means "no archive here". Anything else (permissions, the path
     // being a directory, an I/O error on a failing disk) is a refusal, so a
     // transient fault cannot be mistaken for an empty disk.
-    const code = (err as NodeJS.ErrnoException)?.code;
+    const code = errnoCode(err);
     return code === 'ENOENT' ? { state: 'absent' } : { state: 'unreadable' };
   }
 

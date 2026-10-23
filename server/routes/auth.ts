@@ -4,6 +4,7 @@ import { registerUser, loginUser, verifyToken, getUserById, getUserCount, getAll
 import { requireAdmin } from '../middleware/auth.js';
 import { isDeviceActive, touchDevice, revokeAllDevicesForUser } from '../lib/devicePairing.js';
 import { logEvent } from '../lib/systemLog.js';
+import { isRecord } from '../lib/typeGuards.js';
 
 const router = Router();
 
@@ -45,7 +46,8 @@ function noteFailure(req: Request): void {
   const bucket = rateBuckets.get(ip);
   if (!bucket || now - bucket.firstFailureAt > RATE_WINDOW_MS) {
     if (rateBuckets.size >= MAX_BUCKETS) {
-      rateBuckets.delete(rateBuckets.keys().next().value!);
+      const oldest = rateBuckets.keys().next();
+      if (!oldest.done) rateBuckets.delete(oldest.value);
     }
     rateBuckets.set(ip, { failures: 1, firstFailureAt: now, blockedUntil: 0 });
     return;
@@ -194,7 +196,7 @@ router.post('/login', rateLimit, async (req: Request, res: Response) => {
     res.apiSuccess(result);
   } catch (err: unknown) {
     noteFailure(req);
-    const username = (req.body as { username?: unknown })?.username;
+    const username = isRecord(req.body) ? req.body.username : undefined;
     const usernameStr = typeof username === 'string' ? username : 'unknown';
     const message = err instanceof Error ? err.message : 'Login failed';
     console.warn('[auth] login_attempt outcome=failure username=%s ip=%s ua=%s error=%s', usernameStr, ip, userAgent, message);

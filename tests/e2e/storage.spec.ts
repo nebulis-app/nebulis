@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { mockAllRoutes } from './fixtures/mocks';
 
 test.describe('Storage Dashboard', () => {
@@ -34,15 +34,13 @@ test.describe('Storage Dashboard', () => {
   });
 
   test('shows disk usage information', async ({ page }) => {
-    // System storage: 50% used, 500 GB total. Scope each figure to its own tile:
-    // "500 GB", "250 GB" and "free" all repeat elsewhere on the page, so an
-    // unscoped text match is a strict-mode violation.
-    await expect(page.getByText('Disk Total', { exact: true }).locator('..')).toContainText('500 GB');
+    // System storage: 50% used, 500 GB total, 250 GB free, shown on the disk bar.
+    await expect(page.getByText('500 GB total', { exact: true })).toBeVisible();
     await expect(page.getByText('50%', { exact: true })).toBeVisible();
   });
 
   test('shows free disk space', async ({ page }) => {
-    await expect(page.getByText('Disk Free', { exact: true }).locator('..')).toContainText('250 GB');
+    await expect(page.getByText('250 GB free', { exact: true })).toBeVisible();
   });
 
   test('telescope online status is shown', async ({ page }) => {
@@ -58,31 +56,40 @@ test.describe('Storage Dashboard', () => {
     await expect(page.getByText(/2024-01-15|2024-03-15|oldest|newest/i).first()).toBeVisible();
   });
 
-  test('sort by size button works', async ({ page }) => {
-    const sortBtn = page.getByRole('button', { name: /size/i });
-    if (await sortBtn.isVisible()) {
-      await sortBtn.click();
-      // Orion Nebula is largest (500 MB), should appear first after sort
-      const items = page.getByText(/orion nebula|andromeda galaxy/i);
-      await expect(items.first()).toBeVisible();
-    }
+  // The telescope table's column headers are clickable <th> sort controls
+  // (role columnheader, not button). Default order is Total Size descending;
+  // picking a new column sorts it descending, re-clicking the active column
+  // flips direction. Row order is read from the object-name links.
+  function telescopeTable(page: Page) {
+    return page.locator('table').filter({
+      has: page.getByRole('columnheader', { name: 'Sub-frames', exact: true }),
+    });
+  }
+
+  test('should sort by size ascending when the active Total Size header is clicked', async ({ page }) => {
+    const table = telescopeTable(page);
+    // Default: largest first (M42 524 MB, M31 210 MB)
+    await expect(table.getByRole('link')).toHaveText(['Orion Nebula', 'Andromeda Galaxy']);
+    await table.getByRole('columnheader', { name: 'Total Size', exact: true }).click();
+    await expect(table.getByRole('link')).toHaveText(['Andromeda Galaxy', 'Orion Nebula']);
   });
 
-  test('sort by name button works', async ({ page }) => {
-    const sortBtn = page.getByRole('button', { name: /name/i });
-    if (await sortBtn.isVisible()) {
-      await sortBtn.click();
-      // "Andromeda" comes before "Orion" alphabetically
-      await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
-    }
+  test('should sort by name A-Z when the Name header is clicked twice', async ({ page }) => {
+    const table = telescopeTable(page);
+    const nameHeader = table.getByRole('columnheader', { name: 'Name', exact: true });
+    await nameHeader.click(); // new column -> descending (Z-A)
+    await expect(table.getByRole('link')).toHaveText(['Orion Nebula', 'Andromeda Galaxy']);
+    await nameHeader.click(); // flip -> ascending (A-Z)
+    await expect(table.getByRole('link')).toHaveText(['Andromeda Galaxy', 'Orion Nebula']);
   });
 
-  test('sort by date button works', async ({ page }) => {
-    const sortBtn = page.getByRole('button', { name: /date/i });
-    if (await sortBtn.isVisible()) {
-      await sortBtn.click();
-      await expect(page.getByText('Orion Nebula')).toBeVisible();
-    }
+  test('should sort by newest file date when the Newest header is clicked', async ({ page }) => {
+    const table = telescopeTable(page);
+    const newestHeader = table.getByRole('columnheader', { name: 'Newest', exact: true });
+    await newestHeader.click(); // descending: M42 2024-03-15 before M31 2024-02-20
+    await expect(table.getByRole('link')).toHaveText(['Orion Nebula', 'Andromeda Galaxy']);
+    await newestHeader.click(); // ascending
+    await expect(table.getByRole('link')).toHaveText(['Andromeda Galaxy', 'Orion Nebula']);
   });
 
   test('shows data directory path', async ({ page }) => {

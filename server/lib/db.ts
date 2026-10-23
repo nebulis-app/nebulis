@@ -404,6 +404,55 @@ db.exec(`
     ON libraryFiles(objectId, captureDate);
   CREATE INDEX IF NOT EXISTS idx_libraryFiles_role ON libraryFiles(objectId, role);
 
+  -- Plate solutions (WCS) for image files, from ASTAP or a FITS header, so each
+  -- image is solved once. Keyed on relPath with the file's mtime: an in-place
+  -- overwrite changes the pixels, so the old solution must not be reused.
+  -- 'wcsJson' is a server/lib/annotate/wcs.ts Wcs, on the pixel grid it records.
+  CREATE TABLE IF NOT EXISTS fileWcs (
+    relPath   TEXT PRIMARY KEY,
+    mtimeMs   INTEGER NOT NULL,
+    source    TEXT NOT NULL,
+    wcsJson   TEXT NOT NULL,
+    solvedAt  TEXT NOT NULL
+  );
+
+  -- Pictures whose frame was cropped, rotated or flipped after they were captured, with the file's mtime at that
+  -- moment. Their FITS header position and the telescope's field no longer describe the picture, so Annotate must
+  -- not use them. A later change to the file (new mtime, e.g. a restored original) ends the mark.
+  CREATE TABLE IF NOT EXISTS fileGeometryEdits (
+    relPath  TEXT PRIMARY KEY,
+    mtimeMs  REAL NOT NULL
+  );
+
+  -- A solve that found nothing, remembered with the file's mtime so the background job does not
+  -- retry a frame with too few stars every night. A changed file (new mtime) is tried again.
+  CREATE TABLE IF NOT EXISTS fileSolveFailures (
+    relPath   TEXT PRIMARY KEY,
+    mtimeMs   INTEGER NOT NULL,
+    message   TEXT NOT NULL,
+    failedAt  TEXT NOT NULL
+  );
+
+  -- What the sub-frame analyzer measured in a raw frame (star count, sharpness, roundness, sky level, streak), so
+  -- each frame is read once. Keyed on relPath with the file's size and mtime: a replaced file is measured again.
+  -- 'version' is FRAME_METRICS_VERSION; a row from an older measurement is ignored and overwritten.
+  CREATE TABLE IF NOT EXISTS frameMetrics (
+    relPath     TEXT PRIMARY KEY,
+    size        INTEGER NOT NULL,
+    mtimeMs     INTEGER NOT NULL,
+    version     INTEGER NOT NULL,
+    metricsJson TEXT NOT NULL,
+    measuredAt  TEXT NOT NULL
+  );
+
+  -- The user's own keep / reject call on a raw frame, which wins over the grade the analyzer computed. Keyed on
+  -- relPath like frameMetrics. keep = 1 forces the frame in, 0 forces it out; no row = follow the grade.
+  CREATE TABLE IF NOT EXISTS frameReview (
+    relPath   TEXT PRIMARY KEY,
+    keep      INTEGER NOT NULL,
+    decidedAt TEXT NOT NULL
+  );
+
   -- ─── Linked library sources (folders indexed in place, never copied) ─────
   -- A folder the user already has on their own disk, indexed in place: rows in
   -- libraryFiles can point at a source's files (sourceId set, relPath in the
@@ -506,6 +555,22 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_connectedDevices_user ON connectedDevices(userId);
 
+  -- ─── Personal API keys ──────────────────────────────────────
+  -- One row per key a user created for an external tool (PixInsight, scripts).
+  -- Only the SHA-256 of the key is stored; the key itself is shown once. A key
+  -- acts as its owner, with the owner's *current* role.
+  CREATE TABLE IF NOT EXISTS userApiKeys (
+    id         TEXT PRIMARY KEY,
+    userId     TEXT NOT NULL,
+    keyHash    TEXT NOT NULL UNIQUE,
+    keyPrefix  TEXT NOT NULL,
+    name       TEXT NOT NULL DEFAULT '',
+    createdAt  INTEGER NOT NULL,
+    lastUsedAt INTEGER,
+    revokedAt  INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_userApiKeys_user ON userApiKeys(userId);
+
   -- ─── System log (admin audit trail) ───────────────────────────
   -- Security and administrative events: logins (success/failure), user and
   -- telescope management, device pairing, sync summaries, storage and
@@ -567,6 +632,93 @@ db.exec(`
     updatedAt          TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  -- ─── Gear ────────────────────────────────────────────────────
+  -- What the user brings to a night, beyond the telescopes (those stay in telescopeProfiles, with their optical trains in
+  -- telescopeOpticalConfigs). specsJson holds the per-kind figures, validated in lib/gear.ts. A kit is a packing list: gear ids
+  -- (and telescope ids) plus free-text lines. gearKitChecks is the tick state for one kit on one night and is pruned after 30 days.
+  CREATE TABLE IF NOT EXISTS gearItems (
+    id          TEXT PRIMARY KEY,
+    kind        TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    brand       TEXT NOT NULL DEFAULT '',
+    model       TEXT NOT NULL DEFAULT '',
+    specsJson   TEXT NOT NULL DEFAULT '{}',
+    telescopeId TEXT,
+    notes       TEXT NOT NULL DEFAULT '',
+    archivedAt  TEXT,
+    createdAt   TEXT NOT NULL,
+    updatedAt   TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS gearKits (
+    id             TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    itemIdsJson    TEXT NOT NULL DEFAULT '[]',
+    extraItemsJson TEXT NOT NULL DEFAULT '[]',
+    siteId         TEXT,
+    createdAt      TEXT NOT NULL,
+    updatedAt      TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS gearKitChecks (
+    kitId     TEXT NOT NULL,
+    night     TEXT NOT NULL,
+    itemKey   TEXT NOT NULL,
+    checkedAt TEXT NOT NULL,
+    PRIMARY KEY (kitId, night, itemKey)
+  );
+
+  -- ─── Journal ─────────────────────────────────────────────────
+  -- What the user writes about a night: notes, packing lists, comments on one picture, and files they attach. Every entry
+  -- belongs to a night; objectId narrows it to one object imaged that night and filePath (a library-relative path) to one
+  -- file of it. Attachments are stored under {DATA_DIR}/journal/<entryId>/<storedName>; see lib/journal.ts.
+  CREATE TABLE IF NOT EXISTS journalEntries (
+    id            TEXT PRIMARY KEY,
+    night         TEXT NOT NULL,
+    objectId      TEXT,
+    filePath      TEXT,
+    title         TEXT NOT NULL DEFAULT '',
+    body          TEXT NOT NULL DEFAULT '',
+    checklistJson TEXT NOT NULL DEFAULT '[]',
+    createdAt     TEXT NOT NULL,
+    updatedAt     TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_journalEntries_night ON journalEntries(night);
+  CREATE TABLE IF NOT EXISTS journalAttachments (
+    id         TEXT PRIMARY KEY,
+    entryId    TEXT NOT NULL,
+    fileName   TEXT NOT NULL,
+    mimeType   TEXT NOT NULL,
+    size       INTEGER NOT NULL,
+    storedName TEXT NOT NULL,
+    createdAt  TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_journalAttachments_entry ON journalAttachments(entryId);
+
+  -- ─── Weather on the night (logbook) ──────────────────────────
+  -- One row per forecast grid cell and observing night: the hourly weather from
+  -- sunset to sunrise as it was predicted, kept so the logbook can set a past
+  -- night's results against its conditions. 7Timer seeing is forecast-only (it
+  -- has no history), so a night nobody snapshotted has no seeing, ever.
+  -- siteKey is forecastSiteKey(lat, lon): the forecast is grid-cell resolution,
+  -- so two sites in one cell share a row. hourlyJson is ForecastHour[] merged
+  -- hour by hour across fetches. The summary columns are derived from it once
+  -- so queries never parse the JSON.
+  CREATE TABLE IF NOT EXISTS nightConditions (
+    siteKey       TEXT NOT NULL,
+    night         TEXT NOT NULL,
+    source        TEXT NOT NULL,
+    hourlyJson    TEXT NOT NULL,
+    avgCloud      REAL NOT NULL,
+    maxWind       REAL NOT NULL,
+    minDewGap     REAL NOT NULL,
+    avgHumidity   REAL NOT NULL,
+    medianSeeing  REAL,
+    moonIllum     INTEGER NOT NULL,
+    darkHours     REAL NOT NULL,
+    nightScore    INTEGER NOT NULL,
+    fetchedAt     TEXT NOT NULL,
+    PRIMARY KEY (siteKey, night, source)
+  );
+
   -- ─── Planned imaging sessions (planner v2) ───────────────────
   -- One row per scheduled block on the planner timeline. ra/dec are
   -- denormalized so a catalog rename does not orphan a plan. start_time
@@ -618,6 +770,21 @@ db.exec(`
     ON observingSites(isDefault) WHERE isDefault = 1;
   CREATE INDEX IF NOT EXISTS idx_observingSites_sort ON observingSites(sortOrder, createdAt);
 
+  -- Pictures of an observing site (the garden, the horizon, the mount's spot). The files live under
+  -- {DATA_DIR}/site-photos/<siteId>/<storedName>; see lib/sitePhotos.ts. No foreign key: the folder is
+  -- removed together with the site by deleteSite.
+  CREATE TABLE IF NOT EXISTS siteImages (
+    id         TEXT PRIMARY KEY,
+    siteId     TEXT NOT NULL,
+    fileName   TEXT NOT NULL,
+    mimeType   TEXT NOT NULL,
+    size       INTEGER NOT NULL,
+    storedName TEXT NOT NULL,
+    caption    TEXT NOT NULL DEFAULT '',
+    createdAt  TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_siteImages_site ON siteImages(siteId, createdAt);
+
   -- Links a flat/flat-dark calibration bundle (server/lib/library/
   -- calibrationScan.ts) to the object/session it was captured for. Unlike
   -- bias/darks — stable across sessions on a cooled camera, safely reused
@@ -657,6 +824,80 @@ db.exec(`
     ON calibrationAttachments(objectId, date, calibrationType, COALESCE(scope, ''), folderName, settingsKey);
   CREATE INDEX IF NOT EXISTS idx_calibrationAttachments_bundle
     ON calibrationAttachments(scope, folderName, settingsKey);
+
+  -- ─── Alerts ────────────────────────────────────────────────────
+  -- Where alerts go (see server/lib/alerts). The URL and the signing secret
+  -- are stored encrypted (secretBox): webhook URLs commonly embed a token
+  -- (Discord, Slack, a private ntfy topic).
+  CREATE TABLE IF NOT EXISTS alertChannels (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    url         TEXT NOT NULL,
+    secret      TEXT,
+    events      TEXT NOT NULL DEFAULT '[]',
+    details     TEXT NOT NULL DEFAULT '{}',
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    createdAt   TEXT NOT NULL,
+    lastSentAt  TEXT,
+    lastStatus  TEXT,
+    lastError   TEXT
+  );
+  -- Alert options and bookkeeping (the night a clear-night alert last went
+  -- out, the last update version announced), as JSON values by key.
+  CREATE TABLE IF NOT EXISTS alertState (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
+  );
+  -- iPhones that asked to get alerts as push notifications (see server/lib/alerts/delivery.ts, sendToDevice). The Apple
+  -- device token and the relay credential are stored encrypted (secretBox): either one lets someone push to the phone.
+  CREATE TABLE IF NOT EXISTS alertDevices (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    apnsEnv     TEXT NOT NULL,
+    token       TEXT NOT NULL,
+    credential  TEXT NOT NULL,
+    language    TEXT,
+    events      TEXT NOT NULL DEFAULT '[]',
+    details     TEXT NOT NULL DEFAULT '{}',
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    createdAt   TEXT NOT NULL,
+    lastSentAt  TEXT,
+    lastStatus  TEXT,
+    lastError   TEXT
+  );
+
+  -- ─── Integration per filter (see server/lib/library/integration.ts) ──────
+  -- How much integration the user wants on an object, per filter. filter is
+  -- the canonical (alias-normalised) name; '' is the "no filter" bucket
+  -- (one-shot colour cameras without a wheel, or frames with no FILTER key).
+  CREATE TABLE IF NOT EXISTS objectIntegrationGoals (
+    objectId  TEXT NOT NULL,
+    filter    TEXT NOT NULL DEFAULT '',
+    goalSec   INTEGER NOT NULL,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (objectId, filter)
+  );
+
+  -- User-defined filter name aliases ("H-alpha 7nm" → "Ha"), applied before
+  -- the built-in ones. Case-insensitive on the alias side.
+  CREATE TABLE IF NOT EXISTS filterAliases (
+    alias     TEXT PRIMARY KEY COLLATE NOCASE,
+    canonical TEXT NOT NULL
+  );
+
+  -- Per-file cache of the two header values the integration breakdown needs,
+  -- so opening an object does not re-read every sub-frame. Keyed by the
+  -- libraryFiles relPath and invalidated by size/mtime. rawFilter is stored
+  -- before alias normalisation so editing aliases never needs a re-read.
+  CREATE TABLE IF NOT EXISTS subFrameHeaderCache (
+    relPath     TEXT PRIMARY KEY,
+    bytes       INTEGER NOT NULL,
+    mtimeMs     INTEGER NOT NULL,
+    rawFilter   TEXT,
+    exposureSec REAL,
+    cachedAt    TEXT NOT NULL
+  );
 `);
 
 // ─── Column migrations for existing databases ────────────────────────────────
@@ -1067,6 +1308,23 @@ db.exec(`
   }
   db.prepare('CREATE INDEX IF NOT EXISTS idx_librarySessions_site ON librarySessions(siteId)').run();
 
+  // Which optical train shot the session (see library/sessionOptics.ts).
+  // `opticalConfigId` is the user's explicit choice, NULL meaning "let the
+  // files decide"; `fileFocalMm` caches the FOCALLEN the session's FITS
+  // recorded (an immutable fact about bytes on disk), `focalResolved` saying
+  // the lookup was done even when it found nothing. No foreign key, like
+  // siteId: deleting a config must degrade its sessions to "not set", never
+  // touch observation history.
+  if (!lsCols.some(c => c.name === 'opticalConfigId')) {
+    db.prepare('ALTER TABLE librarySessions ADD COLUMN opticalConfigId TEXT').run();
+  }
+  if (!lsCols.some(c => c.name === 'fileFocalMm')) {
+    db.prepare('ALTER TABLE librarySessions ADD COLUMN fileFocalMm REAL').run();
+  }
+  if (!lsCols.some(c => c.name === 'focalResolved')) {
+    db.prepare('ALTER TABLE librarySessions ADD COLUMN focalResolved INTEGER NOT NULL DEFAULT 0').run();
+  }
+
   // Audit 4 (indexes): `getAllFavorites` filters by userId; the table's
   // primary key is (objectId, userId) which doesn't help. Same shape for
   // `getAllImageFavorites`. Both queries fire on every /library/objects load.
@@ -1086,6 +1344,13 @@ db.exec(`
   const tpArchiveCols = db.prepare<[], { name: string }>('PRAGMA table_info(telescopeProfiles)').all();
   if (!tpArchiveCols.some(c => c.name === 'archiveAllFiles')) {
     db.prepare('ALTER TABLE telescopeProfiles ADD COLUMN archiveAllFiles INTEGER NOT NULL DEFAULT 0').run();
+  }
+  // Per-telescope switch for copying the device's calibration frames (dark
+  // libraries, CALI_FRAME, ASIAIR Dark/Flat/Bias) into the archive. Defaults on:
+  // Dwarf and ASIAIR already did this unconditionally, so existing rows keep
+  // the behavior they had.
+  if (!tpArchiveCols.some(c => c.name === 'syncCalibrationFrames')) {
+    db.prepare('ALTER TABLE telescopeProfiles ADD COLUMN syncCalibrationFrames INTEGER NOT NULL DEFAULT 1').run();
   }
   const asArchiveCols = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
   if (!asArchiveCols.some(c => c.name === 'archiveAllFiles')) {
@@ -1120,6 +1385,43 @@ db.exec(`
   const companionCols = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
   if (!companionCols.some(c => c.name === 'groupCatalogCompanions')) {
     db.prepare('ALTER TABLE appSettings ADD COLUMN groupCatalogCompanions INTEGER NOT NULL DEFAULT 1').run();
+  }
+}
+
+// Settings → Features → "PixInsight integration". Off by default: it exposes the
+// /plugins/pixinsight update feed and the connector script, so an admin opts in.
+{
+  const pixinsightCols = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
+  if (!pixinsightCols.some(c => c.name === 'pixinsightEnabled')) {
+    db.prepare('ALTER TABLE appSettings ADD COLUMN pixinsightEnabled INTEGER NOT NULL DEFAULT 0').run();
+  }
+}
+
+// Settings → Library → "Object pages". 'nights' is the long-standing page (a grid
+// of observations); 'media' shows every picture of an object on one page. Defaults
+// to 'nights' so nothing changes for anyone who has not opted in.
+{
+  const layoutCols = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
+  if (!layoutCols.some(c => c.name === 'objectPageLayout')) {
+    db.prepare("ALTER TABLE appSettings ADD COLUMN objectPageLayout TEXT NOT NULL DEFAULT 'media'").run();
+  }
+}
+
+// Settings → Sky data → "Solve new pictures automatically". On by default: a plate solution is what makes
+// Annotate exact and instant, and the background job only ever works while the library is otherwise idle.
+{
+  const solveCols = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
+  if (!solveCols.some(c => c.name === 'annotateAutoSolve')) {
+    db.prepare('ALTER TABLE appSettings ADD COLUMN annotateAutoSolve INTEGER NOT NULL DEFAULT 1').run();
+  }
+}
+
+// Settings → Library → "Analyze frames after import". Off by default: measuring reads every FITS frame, so it is
+// opt-in. Opening a night's frame list still measures that night on demand.
+{
+  const measureCols = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
+  if (!measureCols.some(c => c.name === 'autoMeasureFrames')) {
+    db.prepare('ALTER TABLE appSettings ADD COLUMN autoMeasureFrames INTEGER NOT NULL DEFAULT 0').run();
   }
 }
 
@@ -1167,6 +1469,16 @@ db.exec(`
   const silCols = db.prepare<[], { name: string }>('PRAGMA table_info(sessionImportLog)').all();
   if (!silCols.some(c => c.name === 'deviceId')) {
     db.prepare('ALTER TABLE sessionImportLog ADD COLUMN deviceId TEXT').run();
+  }
+}
+
+// ─── Extra lines per alert destination ──────────────────────────────────────
+// alertChannels.details / alertDevices.details: JSON switches for the optional lines of the clear-night alert (dew risk, tonight's plan),
+// chosen separately for each channel and each phone. '{}' means none, which is how every existing destination keeps reading as it did.
+for (const table of ['alertChannels', 'alertDevices']) {
+  const cols = db.prepare<[], { name: string }>(`PRAGMA table_info(${table})`).all();
+  if (!cols.some(c => c.name === 'details')) {
+    db.prepare(`ALTER TABLE ${table} ADD COLUMN details TEXT NOT NULL DEFAULT '{}'`).run();
   }
 }
 
@@ -1632,6 +1944,31 @@ db.exec(`
   const cols = db.prepare<[], { name: string }>('PRAGMA table_info(plannedSessions)').all();
   if (!cols.some(c => c.name === 'framingSetup')) {
     db.prepare('ALTER TABLE plannedSessions ADD COLUMN framingSetup TEXT').run();
+  }
+}
+
+// ─── plannedSessions: filterBand ('broadband' | 'narrowband' | NULL) ────────
+// What the block will be shot through, so its Moon check uses the right
+// tolerance (server/lib/moonProximity.ts). NULL = not set, checked as
+// broadband like before.
+{
+  const cols = db.prepare<[], { name: string }>('PRAGMA table_info(plannedSessions)').all();
+  if (!cols.some(c => c.name === 'filterBand')) {
+    db.prepare('ALTER TABLE plannedSessions ADD COLUMN filterBand TEXT').run();
+  }
+  // The filter itself ("D2", "Ha"), when one was picked for the block.
+  if (!cols.some(c => c.name === 'filter')) {
+    db.prepare('ALTER TABLE plannedSessions ADD COLUMN filter TEXT').run();
+  }
+}
+
+// ─── plannedSessions: user's "skipped" mark for plan vs actual ──────────────
+// Everything else about a block's outcome is computed on read (planOutcome.ts);
+// only the user's own decision that a block was deliberately skipped is stored.
+{
+  const cols = db.prepare<[], { name: string }>('PRAGMA table_info(plannedSessions)').all();
+  if (!cols.some(c => c.name === 'skipped')) {
+    db.prepare('ALTER TABLE plannedSessions ADD COLUMN skipped INTEGER NOT NULL DEFAULT 0').run();
   }
 }
 

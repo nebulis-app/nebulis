@@ -41,6 +41,7 @@
 import fs from 'fs';
 import path from 'path';
 import { DATA_DIR } from './paths.js';
+import { isRecord } from './typeGuards.js';
 
 /** The slice of a better-sqlite3 connection this module touches. Declared
  *  structurally so nothing here has to import db.ts (it runs during that
@@ -59,6 +60,14 @@ const RESTORE_DOC_PATH = path.join(BACKUPS_DIR, 'RESTORE.txt');
 export const MAX_RETAINED = 3;
 
 export type BackupKind = 'upgrade' | 'manual';
+
+/** Every BackupKind, in retention-pool order. The runtime source of truth that
+ *  `isBackupKind` checks against, so the union and the check cannot drift. */
+const BACKUP_KINDS = ['upgrade', 'manual'] as const satisfies readonly BackupKind[];
+
+function isBackupKind(value: unknown): value is BackupKind {
+  return BACKUP_KINDS.some(kind => kind === value);
+}
 
 // nebulis-db-<compact-utc-timestamp>-v<version>-<kind>.db
 // e.g. nebulis-db-20260903T140512.481Z-v2.0.0-upgrade.db
@@ -137,7 +146,11 @@ function buildBackupName(version: string, kind: BackupKind, when = new Date()): 
 export function parseBackupName(name: string): { version: string; kind: BackupKind } | null {
   const m = BACKUP_NAME_RE.exec(name);
   if (!m) return null;
-  return { version: m[2], kind: m[3] as BackupKind };
+  // The regex already limits group 3 to the two kinds; the guard makes the
+  // compiler see that instead of being told it.
+  const kind = m[3];
+  if (!isBackupKind(kind)) return null;
+  return { version: m[2], kind };
 }
 
 // ─── Listing / pruning ──────────────────────────────────────────────────────
@@ -189,7 +202,7 @@ export function pruneDatabaseBackups(keep = MAX_RETAINED): number {
   for (const b of listDatabaseBackups()) byKind[b.kind].push(b);
 
   let removed = 0;
-  for (const kind of Object.keys(byKind) as BackupKind[]) {
+  for (const kind of BACKUP_KINDS) {
     const stale = byKind[kind].slice(keep); // already newest-first
     for (const b of stale) {
       try {
@@ -267,8 +280,8 @@ function databaseHasSchema(db: DbLike): boolean {
   try {
     const row = db
       .prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-      .get() as { n: number } | undefined;
-    return (row?.n ?? 0) > 0;
+      .get();
+    return isRecord(row) && Number(row.n) > 0;
   } catch {
     return false;
   }
@@ -283,11 +296,32 @@ function recordAttempt(attempt: LastBackupAttempt): void {
   }
 }
 
+/** The attempt record exactly as recordAttempt() writes it, or null when the file
+ *  holds anything else. Built field by field so a hand-edited or truncated file
+ *  can never reach the settings UI typed as a valid attempt. */
+function parseLastBackupAttempt(raw: unknown): LastBackupAttempt | null {
+  if (!isRecord(raw)) return null;
+  const { at, fromVersion, toVersion, status, error, backupName } = raw;
+  if (typeof at !== 'number') return null;
+  if (fromVersion !== null && typeof fromVersion !== 'string') return null;
+  if (typeof toVersion !== 'string') return null;
+  if (status !== 'created' && status !== 'failed') return null;
+  if (error !== undefined && typeof error !== 'string') return null;
+  if (backupName !== undefined && typeof backupName !== 'string') return null;
+  return {
+    at,
+    fromVersion,
+    toVersion,
+    status,
+    ...(error !== undefined ? { error } : {}),
+    ...(backupName !== undefined ? { backupName } : {}),
+  };
+}
+
 export function readLastAttempt(): LastBackupAttempt | null {
   try {
-    const raw = JSON.parse(fs.readFileSync(LAST_ATTEMPT_PATH, 'utf8')) as unknown;
-    if (raw && typeof raw === 'object' && 'status' in raw) return raw as LastBackupAttempt;
-    return null;
+    const raw: unknown = JSON.parse(fs.readFileSync(LAST_ATTEMPT_PATH, 'utf8'));
+    return parseLastBackupAttempt(raw);
   } catch {
     return null;
   }

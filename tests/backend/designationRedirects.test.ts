@@ -78,7 +78,7 @@ describe('reclassifyObject', () => {
 
     expect(result).toEqual({ mode: 'rename', objectId: 'IC5070' });
     expect(db.prepare('SELECT objectId FROM libraryObjects WHERE objectId = ?').get('NGC6992')).toBeUndefined();
-    expect(db.prepare('SELECT objectId FROM libraryObjects WHERE objectId = ?').get('IC5070')).toBeTruthy();
+    expect(db.prepare('SELECT objectId FROM libraryObjects WHERE objectId = ?').get('IC5070')).toEqual({ objectId: 'IC5070' });
     expect(getDesignationRedirect('NGC6992')).toBe('IC5070');
   });
 

@@ -73,6 +73,16 @@ test.describe('Image viewer fullscreen mode', () => {
   test('the fullscreen button expands the picture edge-to-edge and hides the toolbar', async ({ page }) => {
     const { dialog, img } = await openViewer(page);
 
+    // The dialog animates open. Compare the pane with the dialog only once it has stopped, or the two boxes are read at
+    // different moments of the animation and disagree.
+    let last = '';
+    await expect.poll(async () => {
+      const box = JSON.stringify(await dialog.boundingBox());
+      const same = box === last;
+      last = box;
+      return same;
+    }, { timeout: 5000 }).toBe(true);
+
     const windowedPane = dialog.locator('[data-lightbox-pane]');
     const windowedPaneBox = await windowedPane.boundingBox();
     const windowedDialogBox = await dialog.boundingBox();

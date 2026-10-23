@@ -203,7 +203,7 @@ describe('resolveContainedArchivePath — containment inside the archive root', 
     const real = path.join(root, 'real');
     fs.mkdirSync(real, { recursive: true });
     fs.symlinkSync(real, path.join(root, 'link'), 'dir');
-    expect(resolveContainedArchivePath(root, 'link', 'file.jpg')).not.toBeNull();
+    expect(resolveContainedArchivePath(root, 'link', 'file.jpg')).toBe(path.join(root, 'link', 'file.jpg'));
   });
 
   it('does not treat the root itself as a contained path', () => {

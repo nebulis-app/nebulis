@@ -21,6 +21,10 @@ export interface ObservationSummary {
   dec: string | null;
   hasNotes: boolean;
   telescopeId: string | null;
+  /** Optical train of the night; absent from servers that predate it. */
+  optics?: import('../../types').SessionOptics;
+  /** Groups nights shot through the same telescope + optical train. */
+  rigKey?: string;
 }
 
 export interface ObservationDetail extends ObservationSummary {

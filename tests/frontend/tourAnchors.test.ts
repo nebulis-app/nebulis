@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ALL_TOUR_STEPS } from '../../src/components/tour/steps';
-import { SETTINGS_NAV } from '../../src/components/settings/SettingsNav';
+import { SETTINGS_NAV } from '../../src/components/settings/settingsNavItems';
 import { NAV_LINK_CONFIG } from '../../src/components/Layout';
 
 /**

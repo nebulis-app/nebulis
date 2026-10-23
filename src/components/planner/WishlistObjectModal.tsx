@@ -12,14 +12,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { X, ExternalLink, Telescope, CalendarDays, MapPin, ZoomIn, EyeOff, Plus, Trash2, Star, ChevronLeft, ChevronRight, Frame } from 'lucide-react';
+import { X, ExternalLink, Telescope, CalendarDays, CalendarPlus, MapPin, ZoomIn, EyeOff, Plus, Trash2, Star, ChevronLeft, ChevronRight, Frame } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { getCatalogObjectInfo } from '../../lib/api/catalog';
 import { computeBestImagingWindow, isUpTonight } from '../../lib/bestImagingWindow';
 import { filterRecommendations } from '../../lib/filterRecommendations';
-import { FilterRecommendationPanel } from '../catalogs/FilterRecommendationPanel';
-import { BestImagingChart } from '../catalogs/BestImagingChart';
+import { FilterRecommendationPanel } from '../ui/FilterRecommendationPanel';
+import { BestImagingChart } from '../ui/BestImagingChart';
 import { AltitudeChart } from '../AltitudeChart';
 import { FramingModal, FRAMING_MOSAIC_ENABLED } from '../catalogs/FramingModal';
 import { useResolvedFov } from '../../hooks/useResolvedFov';
@@ -28,9 +28,8 @@ import { FitBadge } from '../FitBadge';
 import { formatHm } from '../../lib/timeFormat';
 import { searchDsoCatalog, type PlannerTarget } from '../../lib/api/planner';
 import type { WishlistCandidate } from '../../hooks/useWishlist';
-import type { WishlistItem, WishlistPriority } from '../../lib/api/wishlist';
+import { WISHLIST_PRIORITIES, type WishlistItem, type WishlistPriority } from '../../lib/api/wishlist';
 
-const PRIORITY_ORDER: readonly WishlistPriority[] = ['high', 'medium', 'low'];
 const PRIORITY_DOT: Record<WishlistPriority, string> = {
   high: 'bg-red-500',
   medium: 'bg-amber-500',
@@ -77,6 +76,10 @@ interface Props {
   onSetPriority?: (id: string, priority: WishlistPriority) => void;
   onSetNotes?: (id: string, notes: string) => void;
   onRemove?: (id: string) => void;
+  /** When set, adds a "Plan a night…" action that opens the caller's night
+   *  picker (Explore supplies one). Omitted by every other caller, so the
+   *  Wishlist and Planner popups are unchanged. */
+  onPlanNight?: () => void;
   onClose: () => void;
   hasPrev: boolean;
   hasNext: boolean;
@@ -102,6 +105,7 @@ export function WishlistObjectModal({
   onSetPriority,
   onSetNotes,
   onRemove,
+  onPlanNight,
   onClose,
   hasPrev,
   hasNext,
@@ -183,7 +187,7 @@ export function WishlistObjectModal({
 
   const bestWindow = useMemo(() => {
     if (!hasLocation || ra == null || dec == null) return null;
-    return computeBestImagingWindow(ra, dec, observerLat!, observerLon!, minAlt);
+    return computeBestImagingWindow(ra, dec, observerLat, observerLon, minAlt);
   }, [ra, dec, observerLat, observerLon, minAlt, hasLocation]);
 
   const upTonight = useMemo(
@@ -248,7 +252,7 @@ export function WishlistObjectModal({
                   </span>
                 )}
                 {isImaged && (
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium text-white ${accentBg}`}>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.6875rem] font-medium text-white ${accentBg}`}>
                     {t('wishlistObjectModal.imaged')}
                   </span>
                 )}
@@ -265,12 +269,12 @@ export function WishlistObjectModal({
                 )}
               </div>
               <div className="flex items-center gap-1 mt-2">
-                {PRIORITY_ORDER.map(p => (
+                {WISHLIST_PRIORITIES.map(p => (
                   <button
                     key={p}
                     onClick={() => { if (isPreview) setPreviewPriority(p); else onSetPriority?.(item.id, p); }}
                     aria-pressed={currentPriority === p}
-                    className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition ${
+                    className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium transition ${
                       currentPriority === p
                         ? isDark ? 'bg-slate-700 text-slate-100' : 'bg-slate-200 text-slate-900'
                         : isDark ? 'text-slate-500 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
@@ -347,10 +351,10 @@ export function WishlistObjectModal({
                 {filterRec && <FilterRecommendationPanel recommendations={filterRec} isDark={isDark} />}
                 {tonightAltitudeAvailable && (
                   <AltitudeChart
-                    ra={ra!}
-                    dec={dec!}
-                    lat={observerLat!}
-                    lon={observerLon!}
+                    ra={ra}
+                    dec={dec}
+                    lat={observerLat}
+                    lon={observerLon}
                     minAlt={minAlt}
                     moonIllumination={moonIllumination}
                     timeZone={observerTimezone}
@@ -456,6 +460,17 @@ export function WishlistObjectModal({
                 <CalendarDays className="w-4 h-4" />
                 {tCatalogs('catalogObjectModal.openInPlanner')}
               </button>
+              {onPlanNight && (
+                <button
+                  onClick={onPlanNight}
+                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition border ${
+                    isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <CalendarPlus className="w-4 h-4" />
+                  {t('wishlistObjectModal.planNight')}
+                </button>
+              )}
               {FRAMING_MOSAIC_ENABLED && (
                 <button
                   onClick={() => setFramingOpen(true)}

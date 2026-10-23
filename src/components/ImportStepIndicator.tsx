@@ -16,7 +16,7 @@ export function ImportStepIndicator({ step, linking, isDark }: { step: 1 | 2 | 3
         return (
           <li key={key} className="flex items-center gap-2" aria-current={active ? 'step' : undefined}>
             <span
-              className={`flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-semibold ${
+              className={`flex items-center justify-center w-5 h-5 rounded-full text-[0.6875rem] font-semibold ${
                 active
                   ? 'bg-accent-500 text-white'
                   : done

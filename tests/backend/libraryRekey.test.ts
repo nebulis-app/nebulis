@@ -153,4 +153,44 @@ describe('reconcileLayoutFromDisk', () => {
     // No disk presence at all.
     expect(reconcileLayoutFromDisk()).toBe(0);
   });
+
+  // A RESTACKED import used to leave exactly this behind: a flat row with no
+  // folder and no files, which raised the "one-time update" prompt for an
+  // object with nothing to convert.
+  it('flips an empty flat object with no folder on disk to nested', () => {
+    seedObject('NGC6888', 'NGC6888', 'flat');
+
+    expect(reconcileLayoutFromDisk()).toBe(1);
+    expect(getObjectLayout('NGC6888')).toBe('nested');
+  });
+
+  it('flips a flat object whose folder holds only processed images to nested', () => {
+    seedObject('NGC6888', 'NGC6888', 'flat');
+    const processed = path.join(LIBRARY_DIR, 'NGC6888', 'processed');
+    fs.mkdirSync(processed, { recursive: true });
+    fs.writeFileSync(path.join(processed, 'stacked.jpg'), 'x');
+
+    expect(reconcileLayoutFromDisk()).toBe(1);
+    expect(getObjectLayout('NGC6888')).toBe('nested');
+  });
+
+  it('keeps a flat object whose folder is missing but still has copied-file rows (drive not where expected)', () => {
+    seedObject('M31', 'M31', 'flat');
+    db.prepare(
+      `INSERT INTO libraryFiles (objectId, relPath, fileName, originalName, role, captureDate, bytes, importedAt)
+       VALUES ('M31', 'M31/a.jpg', 'a.jpg', 'a.jpg', 'stack', '2025-01-01', 1, '2025-01-01T00:00:00Z')`,
+    ).run();
+
+    expect(reconcileLayoutFromDisk()).toBe(0);
+    expect(getObjectLayout('M31')).toBe('flat');
+  });
+
+  it('keeps a flat object whose files are on disk with no rows yet (legacy, pre-backfill)', () => {
+    seedObject('M42', 'M42', 'flat');
+    fs.mkdirSync(path.join(LIBRARY_DIR, 'M42'), { recursive: true });
+    fs.writeFileSync(path.join(LIBRARY_DIR, 'M42', 'b.jpg'), 'x');
+
+    expect(reconcileLayoutFromDisk()).toBe(0);
+    expect(getObjectLayout('M42')).toBe('flat');
+  });
 });

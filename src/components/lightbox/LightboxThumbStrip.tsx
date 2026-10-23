@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export interface ThumbEntry {
@@ -21,6 +21,8 @@ interface Props {
 
 /** Tile width (`w-16` = 64px) plus the row's `gap-2` (8px). */
 const TILE_SLOT_PX = 72;
+/** What the row adds beyond its tiles' slots: its 16px of padding less the gap after the last tile. */
+const ROW_EXTRA_PX = 8;
 /** An overflow marker is narrower than a tile, but budgeting it a full slot
  *  keeps the fit math simple and guarantees the row never overflows. */
 const MARKER_SLOTS = 1;
@@ -65,11 +67,20 @@ export function LightboxThumbStrip({
     return () => observer.disconnect();
   }, []);
 
+  // The observer reports after the fact, and the panel resizes (it eases its width as the frame changes), so the
+  // width is also read on every commit: a window counted against a stale, wider strip overflowed it.
+  useLayoutEffect(() => {
+    const width = stripRef.current?.clientWidth ?? 0;
+    if (width > 0) setContainerWidth(prev => (Math.abs(prev - width) < 1 ? prev : width));
+  }, [index, entries.length]);
+
   // Before the first ResizeObserver callback lands, fall back to the `window`
   // prop rather than a guessed width, so there's no flash of an under-filled
   // strip while measurement spins up.
+  // The row is `n` tiles with a gap between each, plus its own padding, so it needs `n * 72 + 8`: counting a bare
+  // `width / 72` let a full row run a few pixels past the strip and show a scrollbar.
   const maxTiles = containerWidth > 0
-    ? Math.max(MIN_SIDE * 2 + 1, Math.floor(containerWidth / TILE_SLOT_PX))
+    ? Math.max(MIN_SIDE * 2 + 1, Math.floor((containerWidth - ROW_EXTRA_PX) / TILE_SLOT_PX))
     : fallbackSide * 2 + 1;
 
   /**
@@ -125,7 +136,7 @@ export function LightboxThumbStrip({
 
   if (entries.length <= 1) return null;
 
-  const markerClass = 'flex-shrink-0 rounded-full px-2.5 py-1.5 text-[10px] font-medium tabular-nums '
+  const markerClass = 'flex-shrink-0 rounded-full px-2.5 py-1.5 text-[0.625rem] font-medium tabular-nums '
     + 'text-white/45 outline-none transition hover:bg-white/10 hover:text-white '
     + 'focus-visible:ring-2 focus-visible:ring-white/60';
 
@@ -142,7 +153,7 @@ export function LightboxThumbStrip({
           does. The rail also no longer paints its own darker band: with the
           tiles centred there is nothing to separate, and the band was drawing
           a box around mostly empty space. */}
-      <div ref={stripRef} className="overflow-x-auto pb-1">
+      <div ref={stripRef} className="overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div className="mx-auto flex w-max items-center gap-2 rounded-2xl bg-white/[0.04] p-2
           ring-1 ring-inset ring-white/[0.08] backdrop-blur-md">
         {start > 0 && (

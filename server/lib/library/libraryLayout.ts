@@ -42,6 +42,7 @@ import path from 'path';
 import db from '../db.js';
 import { getLibraryDir } from '../libraryPath.js';
 import { isRealFile } from '../telescopeFiles.js';
+import { errnoCode } from '../errors.js';
 import { ILLEGAL_FS_CHARS } from './importNaming.js';
 
 export type LibraryLayout = 'flat' | 'nested';
@@ -50,7 +51,7 @@ export type LibraryLayout = 'flat' | 'nested';
  *  mistaken for one by a nested walk. `processed/` holds user-uploaded
  *  post-processing output keyed by (objectId, date) in its own table; it stays
  *  at object level because a processed image can span several sessions. */
-const RESERVED_DIRS = new Set(['processed', 'thumbnails', 'thumbnail']);
+const RESERVED_DIRS = new Set(['processed', 'thumbnails', 'thumbnail', 'project-archives']);
 
 export function isReservedObjectDir(name: string): boolean {
   return RESERVED_DIRS.has(name.toLowerCase());
@@ -230,11 +231,6 @@ function collectSessionFiles(
   }
 }
 
-/** Convenience wrapper resolving the object directory from a folder name. */
-export function listObjectFilesByFolder(folderName: string, layout: LibraryLayout): ObjectFileEntry[] {
-  return listObjectFiles(path.join(getLibraryDir(), folderName), layout);
-}
-
 /**
  * Repair objects whose stored `layout` disagrees with what is actually on disk.
  *
@@ -245,7 +241,12 @@ export function listObjectFilesByFolder(folderName: string, layout: LibraryLayou
  *
  * Only the flat → nested direction is repaired, and only when the evidence is
  * unambiguous: a session-style subdirectory holds a real file and nothing real
- * sits loose at the object root. The reverse (nested row, loose root files) is
+ * sits loose at the object root. An object with nothing to lay out at all (no
+ * real file anywhere in its folder, or no folder, and no managed file rows) is
+ * also flipped: there is nothing to move, and nested is the shape the next
+ * import into it should use. A RESTACKED import used to create exactly these
+ * (flat, empty), which raised the one-time-update prompt and made the first raw
+ * sync of that target take the flat, renaming path. The reverse (nested row, loose root files) is
  * left alone: it can only be a leftover from the now-removed manual reorganize
  * tool, not something newly-imported objects ever produce.
  *
@@ -270,25 +271,36 @@ export function findLayoutDrift(): string[] {
     )
     .all();
 
+  const hasManagedFiles = db.prepare<[string], { one: number }>(
+    'SELECT 1 AS one FROM libraryFiles WHERE objectId = ? AND sourceId IS NULL LIMIT 1',
+  );
+
   const drifted: string[] = [];
   for (const { objectId, folderName } of flatObjects) {
     const objDir = path.join(libraryDir, folderName || objectId);
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(objDir, { withFileTypes: true });
-    } catch {
-      continue;
+    } catch (err) {
+      // No folder at all is "nothing to lay out". Any other error (permissions,
+      // a share timing out) is not evidence of anything, so leave it alone.
+      if (errnoCode(err) !== 'ENOENT') continue;
+      entries = [];
     }
     if (entries.some(e => e.isFile() && isRealFile(e.name))) continue; // loose root files → still flat
+    let sessionDirUnreadable = false;
     const hasNestedRealFile = entries.some(e => {
       if (!e.isDirectory() || !isSessionFolderEntry(e.name)) return false;
       try {
         return fs.readdirSync(path.join(objDir, e.name)).some(f => isRealFile(f));
       } catch {
+        sessionDirUnreadable = true;
         return false;
       }
     });
-    if (hasNestedRealFile) drifted.push(objectId);
+    if (hasNestedRealFile) { drifted.push(objectId); continue; }
+    // Empty: no real file anywhere we could read, and no copied file on record.
+    if (!sessionDirUnreadable && !hasManagedFiles.get(objectId)) drifted.push(objectId);
   }
   return drifted;
 }

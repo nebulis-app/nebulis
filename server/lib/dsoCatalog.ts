@@ -1,15 +1,15 @@
 /**
- * DSO catalog — loads the OpenNGC-derived catalog from server/data/openngc.json.
- * Provides search, filtering, and lookup for the ~3,200 Seestar-appropriate objects.
+ * DSO catalog — the browse list (the listed records of server/data/dso-catalog.json,
+ * originally OpenNGC filtered to what a smart telescope can image). Provides
+ * search, filtering, and lookup for those ~4,400 objects.
  *
- * Search and getById also consult the curated catalog (catalog-curated.json) for
+ * Search and getById also consult the curated layer for
  * entries the OpenNGC filter drops: OpenNGC classifies some famous objects in a
  * way the Seestar whitelist excludes (IC1318 "Sadr Region" is the star Gamma
  * Cygni there, B33 is a dark nebula), so without this fallback searching those
  * ids returns nothing even though the rest of the app knows them.
  */
-// Inlined at bundle time by tsup/esbuild — no runtime file access needed.
-import openNgcJson from '../data/openngc.json';
+import { LISTED_ROWS } from './dsoCatalogData.js';
 import { expandSearchAliases, resolveCanonicalId, normalizeDesignation, getAliasesFor } from './catalogAliases.js';
 import { getAllCuratedRecords } from './catalogStore.js';
 import { SHARPLESS_CATALOG } from './sharplessCatalog.js';
@@ -62,7 +62,7 @@ function isDsoEntry(value: unknown): value is DsoEntry {
 
 function parseDsoCatalog(data: unknown): DsoEntry[] {
   if (!Array.isArray(data)) {
-    throw new Error('[dsoCatalog] openngc.json: expected top-level array');
+    throw new Error('[dsoCatalog] listed rows: expected an array');
   }
   // Every entry is validated, not just the first. This used to spot-check
   // data[0] and then assert the whole array as DsoEntry[]: a bundle whose
@@ -71,17 +71,17 @@ function parseDsoCatalog(data: unknown): DsoEntry[] {
   // entries, checked once per process, so the filter costs a few milliseconds.
   const entries = data.filter(isDsoEntry);
   if (data.length > 0 && entries.length === 0) {
-    throw new Error('[dsoCatalog] openngc.json: entry shape does not match DsoEntry');
+    throw new Error('[dsoCatalog] listed rows: entry shape does not match DsoEntry');
   }
   if (entries.length < data.length) {
-    console.warn(`[dsoCatalog] dropped ${data.length - entries.length} openngc.json entr(ies) that did not match DsoEntry`);
+    console.warn(`[dsoCatalog] dropped ${data.length - entries.length} listed row(s) that did not match DsoEntry`);
   }
   return entries;
 }
 
 function loadCatalog(): DsoEntry[] {
   if (_catalog) return _catalog;
-  _catalog = parseDsoCatalog(openNgcJson);
+  _catalog = parseDsoCatalog(LISTED_ROWS);
   return _catalog;
 }
 
@@ -126,7 +126,7 @@ function typeCodeForLabel(type: string): string {
 /**
  * Curated store records the OpenNGC-derived catalog does not name, converted to
  * DsoEntry shape. This is the seam that used to be dsoCatalog's own reparse of
- * catalog-curated.json plus a hand-rolled shadow filter — it now reads the one
+ * the curated JSON plus a hand-rolled shadow filter — it now reads the one
  * catalog store. An entry is included when OpenNGC has no real name for its id
  * (bare "NGC5866" vs the store's "Spindle Galaxy"), so curated names stay
  * searchable without shadowing real OpenNGC rows.
@@ -170,7 +170,7 @@ let _sharplessExtras: DsoEntry[] | null = null;
 
 /**
  * The Sharpless HII regions that are not already an OpenNGC or curated object.
- * sharpless.json holds 313; about 60 of them are objects the other two lists
+ * The Sharpless catalog holds 313; about 70 of them are objects the other two lists
  * carry under an NGC/Messier/curated id (Sh2-6 is NGC 6302), and the other ~250
  * were in neither search nor the Planner, so "Sh2-1" found nothing. They have
  * coordinates and sizes but no constellation or magnitude, which the app treats
@@ -220,6 +220,12 @@ function loadSearchable(): DsoEntry[] {
     _searchable = Array.from(byId.values());
   }
   return _searchable;
+}
+
+/** Every entry search sees: OpenNGC, curated extras and Sharpless, one row per id. A superset of the planner catalog, since search
+ *  also finds a curated twin that the planner folds into its OpenNGC id. Exported for the native clients' baked copy. */
+export function getSearchable(): DsoEntry[] {
+  return loadSearchable();
 }
 
 export function getCatalog(): DsoEntry[] {
@@ -505,13 +511,21 @@ function dedupeByCanonical(rows: Array<{ entry: DsoEntry; score: number }>): Arr
     const canon = resolveCanonicalId(row.entry.id).toUpperCase().replace(/\s+/g, '');
     const at = seen.get(canon);
     if (at === undefined) { seen.set(canon, out.length); out.push(row); continue; }
-    if (row.entry.id.toUpperCase().replace(/\s+/g, '') === canon) out[at] = { entry: row.entry, score: out[at]!.score };
+    const kept = out[at];
+    if (kept && row.entry.id.toUpperCase().replace(/\s+/g, '') === canon) out[at] = { entry: row.entry, score: kept.score };
   }
   return out;
 }
 
 export function search(query: string, limit = 30): DsoEntry[] {
   return scoreMatches(query).slice(0, limit).map(r => r.entry);
+}
+
+/** Every match for `query` with its relevance score, best first, and no paging.
+ *  Explore uses the score to break ties with its own ranking instead of
+ *  re-implementing designation matching. */
+export function searchScored(query: string): Array<{ entry: DsoEntry; score: number }> {
+  return scoreMatches(query);
 }
 
 export type DsoSort = 'name' | 'magnitude';

@@ -1,0 +1,106 @@
+{
+  "version": 3,
+  "files": {
+    "clean.fits": {
+      "sha256": "07b93c699e6aa996405af20272b2484c3f63111daad2e7c5c12dc0ecf8c27a42",
+      "metrics": {
+        "width": 320,
+        "height": 240,
+        "starCount": 65,
+        "fwhm": 3.8264873560208645,
+        "elongation": 1.0534527581188293,
+        "orientation": null,
+        "background": 1000,
+        "noise": 6.764844645881652,
+        "gradient": 0.002,
+        "peakSNR": 249.45267994135182,
+        "streak": null,
+        "saturatedFraction": 0,
+        "ra": null,
+        "dec": null
+      }
+    },
+    "trailed.fits": {
+      "sha256": "60425bb69bc12477eeae82ce36277f7961e7c330dd8bde6e866089da527d80bb",
+      "metrics": {
+        "width": 320,
+        "height": 240,
+        "starCount": 57,
+        "fwhm": 5.232034419714865,
+        "elongation": 2.373283227640081,
+        "orientation": 0.1653522613142161,
+        "background": 1000,
+        "noise": 7.488722353935241,
+        "gradient": 0.003,
+        "peakSNR": 313.22334637611993,
+        "streak": {
+          "angle": 71,
+          "strength": 0.23
+        },
+        "saturatedFraction": 0,
+        "ra": null,
+        "dec": null
+      }
+    },
+    "streak.fits": {
+      "sha256": "16a4ab15382aa85a72abb72135f069b7d42f41100c6bf432fc051ad9370c14fb",
+      "metrics": {
+        "width": 320,
+        "height": 240,
+        "starCount": 65,
+        "fwhm": 3.8264873560208645,
+        "elongation": 1.0601724123339773,
+        "orientation": null,
+        "background": 1000,
+        "noise": 7.053305740070343,
+        "gradient": 0.002,
+        "peakSNR": 255.1733920019868,
+        "streak": {
+          "angle": 117,
+          "strength": 1
+        },
+        "saturatedFraction": 0,
+        "ra": null,
+        "dec": null
+      }
+    },
+    "sparse.fits": {
+      "sha256": "9f39646ff7daf98ded11891129e295986924630ed9d26bf89d6eadabe1f87aa9",
+      "metrics": {
+        "width": 320,
+        "height": 240,
+        "starCount": 9,
+        "fwhm": 3.8264873560208645,
+        "elongation": 1.0457648287296377,
+        "orientation": null,
+        "background": 999,
+        "noise": 6.268618266391754,
+        "gradient": 0.001001001001001001,
+        "peakSNR": 176.28236846460106,
+        "streak": null,
+        "saturatedFraction": 0,
+        "ra": null,
+        "dec": null
+      }
+    },
+    "bayer-pointed.fits": {
+      "sha256": "a57a426e617bf2189d99fa948b5cbee6e5b666c6c087714060f299b89b454693",
+      "metrics": {
+        "width": 200,
+        "height": 150,
+        "starCount": 88,
+        "fwhm": 2.2567391238947865,
+        "elongation": 1.112335490599723,
+        "orientation": null,
+        "background": 1000,
+        "noise": 2.246616175961494,
+        "gradient": 0.0004583740234375,
+        "peakSNR": 718.5924050683808,
+        "streak": null,
+        "saturatedFraction": 0,
+        "ra": 83.82,
+        "dec": -5.39
+      }
+    }
+  }
+}

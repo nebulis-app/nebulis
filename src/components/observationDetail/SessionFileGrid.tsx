@@ -7,11 +7,10 @@ import type { CompareItem } from './types';
 import type { CompareFile } from '../ImageCompareModal';
 import { thumbSrcFor, canPreviewImage } from '../../lib/sessionImageSrc';
 import { processedFormatLabel as formatLabel } from '../../lib/processedFormats';
-import { formatDate } from '../../lib/formatLocale';
 import { formatBytes } from '../../lib/utils';
 import { SESSION_FILE_DRAG_TYPE } from './ObservationTabs';
 
-const GALLERY_PAGE_SIZE = 12; // 3 rows × 4 columns (md breakpoint)
+const GALLERY_PAGE_SIZE = 24;
 
 /** The "Images" panel: telescope-captured files (stacked + individual, not
  *  subframes), with view-mode filtering, pagination, compare-mode selection,
@@ -32,7 +31,6 @@ export function SessionFileGrid({
   settingSessionImage,
   imageFavoriteSet,
   onToggleFavorite,
-  date,
   openGallery,
   isAdmin,
   onMarkProcessed,
@@ -54,7 +52,6 @@ export function SessionFileGrid({
   settingSessionImage: boolean;
   imageFavoriteSet: Set<string>;
   onToggleFavorite: (imagePath: string, isFavorite: boolean) => void;
-  date: string;
   openGallery: (index: number) => void;
   isAdmin: boolean;
   /** Admin action: mark this image as processed (moves it to the Processed tab). */
@@ -109,7 +106,12 @@ export function SessionFileGrid({
 
       {files.length > 0 ? (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 p-4">
+          {/* auto-fill, not auto-fit: a night with two files keeps two tile-sized
+              columns instead of stretching each across half the page. */}
+          <div
+            className="grid gap-3 p-4"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 200px), 1fr))' }}
+          >
             {files.slice(galleryPage * GALLERY_PAGE_SIZE, (galleryPage + 1) * GALLERY_PAGE_SIZE).map((file, localIdx) => {
               const globalIdx = galleryPage * GALLERY_PAGE_SIZE + localIdx;
               const isSessionImage = sessionImagePath
@@ -145,7 +147,7 @@ export function SessionFileGrid({
                   <div className="relative aspect-square">
                     <button
                       onClick={() => (compareMode && !isFitsInCompareMode) ? toggleCompareItem(file.path, { name: file.name, downloadUrl: file.downloadUrl, thumbUrl: file.thumbUrl, previewUrl: file.previewUrl, exposure: file.exposure, frameCount: file.frameCount, filter: file.filter }) : openGallery(globalIdx)}
-                      className="w-full h-full block cursor-pointer"
+                      className="w-full h-full block cursor-pointer [&_canvas]:object-cover"
                     >
                       {file.type === 'fits' ? (
                         <FitsThumbnail url={file.downloadUrl} thumbUrl={file.thumbUrl} stretch={1.0} isDark={isDark} />
@@ -158,10 +160,10 @@ export function SessionFileGrid({
                           isDark ? 'bg-slate-800/60 text-slate-400' : 'bg-slate-100 text-slate-500'
                         }`}>
                           <FileImage className="w-6 h-6" />
-                          <span className="text-[10px] font-medium tracking-wide">
+                          <span className="text-[0.625rem] font-medium tracking-wide">
                             {formatLabel(file.name)}
                           </span>
-                          <span className="text-[10px] opacity-70">{t('observationDetail.sessionFileGrid.noPreview')}</span>
+                          <span className="text-[0.625rem] opacity-70">{t('observationDetail.sessionFileGrid.noPreview')}</span>
                         </div>
                       ) : (
                         <img
@@ -248,7 +250,7 @@ export function SessionFileGrid({
                       else if (ext === 'TIFF' || ext === 'TIF') label = 'TIFF';
                       if (!label) return null;
                       return (
-                        <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide bg-black/60 text-white/80 pointer-events-none">
+                        <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[0.5625rem] font-bold tracking-wide bg-black/60 text-white/80 pointer-events-none">
                           {label}
                         </div>
                       );
@@ -264,18 +266,19 @@ export function SessionFileGrid({
                     )}
                   </div>
 
-                  {/* Footer — name + date, never darkened by hover */}
+                  {/* Footer — name + size (every tile shares the page's date), never darkened by hover */}
                   <div className={`px-2 py-1.5 ${isDark ? 'bg-slate-900/80' : 'bg-white/90'}`}>
-                    <p className={`text-xs font-medium truncate ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      {file.name}
-                    </p>
-                    <p className={`flex items-center justify-between gap-2 text-[10px] mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                      <span>
-                        {date && date !== 'unknown'
-                          ? formatDate(new Date(date + 'T12:00:00'), { month: 'short', day: 'numeric', year: 'numeric' })
-                          : ''}
+                    <p className={`flex items-center justify-between gap-2 text-[0.6875rem] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <span className="truncate font-medium" title={file.name}>
+                        {/* A stack's filename is mostly the same for every
+                            file of the night; say what the file is instead. */}
+                        {file.fileType === 'stacked' && file.frameCount
+                          ? `${t('observationDetail.page.stacked')} · ${file.frameCount}${file.exposure ? ` × ${file.exposure}` : ''}`
+                          : file.name}
                       </span>
-                      {file.size > 0 && <span className="tabular-nums">{formatBytes(file.size)}</span>}
+                      {file.size > 0 && (
+                        <span className={`shrink-0 tabular-nums text-[0.625rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{formatBytes(file.size)}</span>
+                      )}
                     </p>
                   </div>
                 </div>

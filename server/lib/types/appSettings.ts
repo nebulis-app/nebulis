@@ -12,7 +12,14 @@ export type PreferredCatalog = (typeof PREFERRED_CATALOGS)[number];
  *  the same guard covers both the TEXT column read and the settings-patch
  *  write, neither of which is typed on the way in. */
 export function isPreferredCatalog(value: unknown): value is PreferredCatalog {
-  return typeof value === 'string' && (PREFERRED_CATALOGS as readonly string[]).includes(value);
+  return typeof value === 'string' && PREFERRED_CATALOGS.some((entry) => entry === value);
+}
+
+export const OBJECT_PAGE_LAYOUTS = ['nights', 'media'] as const;
+export type ObjectPageLayout = (typeof OBJECT_PAGE_LAYOUTS)[number];
+
+export function isObjectPageLayout(value: unknown): value is ObjectPageLayout {
+  return typeof value === 'string' && OBJECT_PAGE_LAYOUTS.some((entry) => entry === value);
 }
 
 export const TEMPERATURE_UNITS = ['celsius', 'fahrenheit'] as const;

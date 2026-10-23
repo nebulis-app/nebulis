@@ -16,6 +16,7 @@
  */
 import type { TelescopeKind } from './telescopePresets';
 import type { TelescopeProfile, TelescopeOpticalConfig } from './api/telescopes';
+import { isRecord } from './typeGuards';
 
 export interface FovProfile {
   id: string;
@@ -32,8 +33,17 @@ export interface FovProfile {
  * The catalog value used to pick a sensible default view zoom. Ordered so the
  * first entry is the most common starter scope.
  */
+export const DEFAULT_FOV_PROFILE_ID = 'seestar-s50';
+
+/** The generic fallback profile, held by name so callers that need "some
+ *  profile, always" get a `FovProfile` rather than a `find()` result plus a
+ *  non-null assertion. Same object as `FOV_PROFILES[0]`. */
+const DEFAULT_FOV_PROFILE: FovProfile = {
+  id: DEFAULT_FOV_PROFILE_ID, label: 'ZWO SeeStar S50', widthDeg: 1.28, heightDeg: 0.73, vendor: 'ZWO',
+};
+
 export const FOV_PROFILES: FovProfile[] = [
-  { id: 'seestar-s50', label: 'ZWO SeeStar S50', widthDeg: 1.28, heightDeg: 0.73, vendor: 'ZWO' },
+  DEFAULT_FOV_PROFILE,
   { id: 'seestar-s50-pro', label: 'ZWO SeeStar S50 Pro', widthDeg: 2.45, heightDeg: 1.38, vendor: 'ZWO' },
   { id: 'seestar-s30', label: 'ZWO SeeStar S30', widthDeg: 2.14, heightDeg: 1.22, vendor: 'ZWO' },
   { id: 'seestar-s30-pro', label: 'ZWO SeeStar S30 Pro', widthDeg: 3.99, heightDeg: 2.24, vendor: 'ZWO' },
@@ -47,8 +57,6 @@ export const FOV_PROFILES: FovProfile[] = [
   { id: 'evscope-2', label: 'Unistellar eVscope 2', widthDeg: 0.75, heightDeg: 0.56, vendor: 'Unistellar' },
   { id: 'equinox-2', label: 'Unistellar eQuinox 2', widthDeg: 0.76, heightDeg: 0.57, vendor: 'Unistellar' },
 ];
-
-export const DEFAULT_FOV_PROFILE_ID = 'seestar-s50';
 
 /** Map an owned telescope's `kind` to the matching framing profile id. */
 export function fovProfileIdForKind(kind: TelescopeKind | null | undefined): string {
@@ -294,6 +302,16 @@ export interface FovSetup {
 
 const FOV_SETUP_KEY = 'nebulis-fov-setup';
 
+/** Validates a stored `CustomOptics` blob: the three dimensions must be
+ *  numbers; a missing/non-numeric pixel pitch reads as `null` (the field is
+ *  optional for the arcsec/pixel readout only). */
+function parseCustomOptics(v: unknown): CustomOptics | null {
+  if (!isRecord(v)) return null;
+  const { focalMm, sensorWMm, sensorHMm, pixelSizeUm } = v;
+  if (typeof focalMm !== 'number' || typeof sensorWMm !== 'number' || typeof sensorHMm !== 'number') return null;
+  return { focalMm, sensorWMm, sensorHMm, pixelSizeUm: typeof pixelSizeUm === 'number' ? pixelSizeUm : null };
+}
+
 const DEFAULT_FOV_SETUP: FovSetup = { profileId: null, custom: DEFAULT_CUSTOM_OPTICS };
 
 /** Reads the user's saved Framing & Mosaic setup (the Framing modal writes
@@ -307,19 +325,13 @@ export function readFovSetup(): FovSetup {
   try {
     const raw = localStorage.getItem(FOV_SETUP_KEY);
     if (!raw) return DEFAULT_FOV_SETUP;
-    const parsed = JSON.parse(raw) as Partial<FovSetup>;
-    const custom = parsed.custom;
-    const validCustom: CustomOptics = custom && typeof custom.focalMm === 'number' && typeof custom.sensorWMm === 'number' && typeof custom.sensorHMm === 'number'
-      ? {
-          focalMm: custom.focalMm,
-          sensorWMm: custom.sensorWMm,
-          sensorHMm: custom.sensorHMm,
-          pixelSizeUm: typeof custom.pixelSizeUm === 'number' ? custom.pixelSizeUm : null,
-        }
-      : DEFAULT_CUSTOM_OPTICS;
+    const parsed: unknown = JSON.parse(raw);
+    // A non-object payload (`null`, a bare number/string) carries no fields,
+    // so it resolves to the same value as the defaults.
+    if (!isRecord(parsed)) return DEFAULT_FOV_SETUP;
     return {
       profileId: typeof parsed.profileId === 'string' ? parsed.profileId : null,
-      custom: validCustom,
+      custom: parseCustomOptics(parsed.custom) ?? DEFAULT_CUSTOM_OPTICS,
     };
   } catch {
     return DEFAULT_FOV_SETUP;
@@ -357,15 +369,11 @@ export function readSavedCustomRigs(): SavedCustomRig[] {
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((r): r is SavedCustomRig => (
-      !!r && typeof r === 'object'
-      && typeof (r as SavedCustomRig).id === 'string'
-      && typeof (r as SavedCustomRig).name === 'string'
-      && !!(r as SavedCustomRig).optics
-      && typeof (r as SavedCustomRig).optics.focalMm === 'number'
-      && typeof (r as SavedCustomRig).optics.sensorWMm === 'number'
-      && typeof (r as SavedCustomRig).optics.sensorHMm === 'number'
-    ));
+    return parsed.flatMap((r: unknown): SavedCustomRig[] => {
+      if (!isRecord(r) || typeof r.id !== 'string' || typeof r.name !== 'string') return [];
+      const optics = parseCustomOptics(r.optics);
+      return optics ? [{ id: r.id, name: r.name, optics }] : [];
+    });
   } catch {
     return [];
   }
@@ -480,7 +488,7 @@ function fovForTelescopeProfile(
       return { widthDeg, heightDeg, arcsecPerPixel: arcsecPx, configId: config.id, configName: config.name };
     }
   }
-  const p = fovProfileById(fovProfileIdForKind(t.kind)) ?? fovProfileById(DEFAULT_FOV_PROFILE_ID)!;
+  const p = fovProfileById(fovProfileIdForKind(t.kind)) ?? DEFAULT_FOV_PROFILE;
   return { widthDeg: p.widthDeg, heightDeg: p.heightDeg, arcsecPerPixel: null, configId: null, configName: null };
 }
 
@@ -518,8 +526,9 @@ export function resolveFov(setup: FovSetup, telescopes: TelescopeProfileLike[] |
       );
       const arcsecPx = setup.custom.pixelSizeUm ? arcsecPerPixel(setup.custom.focalMm, setup.custom.pixelSizeUm) : null;
       let label = 'Custom';
-      if (setup.profileId.startsWith(CUSTOM_RIG_PREFIX)) {
-        const rig = readSavedCustomRigs().find(r => r.id === setup.profileId!.slice(CUSTOM_RIG_PREFIX.length));
+      const pickedId = setup.profileId;
+      if (pickedId.startsWith(CUSTOM_RIG_PREFIX)) {
+        const rig = readSavedCustomRigs().find(r => r.id === pickedId.slice(CUSTOM_RIG_PREFIX.length));
         if (rig) label = rig.name;
       }
       return { widthDeg, heightDeg, label, arcsecPerPixel: arcsecPx, profileId: setup.profileId };
@@ -550,6 +559,6 @@ export function resolveFov(setup: FovSetup, telescopes: TelescopeProfileLike[] |
     return { widthDeg: fov.widthDeg, heightDeg: fov.heightDeg, label, arcsecPerPixel: fov.arcsecPerPixel, profileId: telescopeProfileOptionId(owned.id, fov.configId) };
   }
 
-  const fallback = fovProfileById(DEFAULT_FOV_PROFILE_ID)!;
+  const fallback = DEFAULT_FOV_PROFILE;
   return { widthDeg: fallback.widthDeg, heightDeg: fallback.heightDeg, label: fallback.label, arcsecPerPixel: null, profileId: fallback.id };
 }

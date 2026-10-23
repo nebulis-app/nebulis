@@ -7,7 +7,7 @@
  *   - Magnitude ≤ 12, or no-magnitude objects that are well-known targets
  *     (e.g. Flame Nebula NGC 2024)
  *   - Excludes all Messier, Caldwell, and Popular-tier objects
- *   - Validated against openngc.json — all IDs are confirmed present
+ *   - Validated against the OpenNGC rows — all IDs are confirmed present
  *
  * Breakdown: 203 galaxies, 126 clusters (open + globular), 25 nebulae/PN
  *
@@ -24,7 +24,7 @@
  * numbers — OpenNGC treats them as the same physical object as NGC2520,
  * NGC3189, and NGC3899 respectively and only resolves via the commonNames
  * fallback added to dsoCatalog.ts/catalog.ts alongside this. NGC6885
- * (= Caldwell 37) is NOT included: it has no entry anywhere in openngc.json
+ * (= Caldwell 37) is NOT included: it has no entry anywhere in the OpenNGC rows
  * (not even as a commonNames alias), so there's no RA/Dec to fetch an image
  * against — a data gap, not something this list can paper over.
  */

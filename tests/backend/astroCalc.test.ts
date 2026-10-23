@@ -115,8 +115,9 @@ describe('getNightWindow', () => {
     ];
     for (const { lat, lon } of locations) {
       const nw = getNightWindow(DATE, lat, lon);
-      expect(nw.nightStart).not.toBeNull();
-      expect(nw.nightEnd).not.toBeNull();
+      expect(nw.nightStart).toBeInstanceOf(Date);
+      expect(nw.nightEnd).toBeInstanceOf(Date);
+      expect(nw.nightEnd!.getTime()).toBeGreaterThan(nw.nightStart!.getTime());
     }
   });
 });

@@ -69,7 +69,7 @@ describe('variedMix', () => {
     expect(ids(variedMix(input))).toEqual(['g1', 'g2', 'g3']);
   });
 
-  it('handles an empty list', () => {
+  it('returns an empty list when given an empty list', () => {
     expect(variedMix([])).toEqual([]);
   });
 

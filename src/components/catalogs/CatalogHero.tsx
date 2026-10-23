@@ -11,12 +11,13 @@
  * and styles its own text white instead of branching on isDark.
  */
 import { Link } from 'react-router-dom';
-import { ChevronLeft, Sparkles } from 'lucide-react';
+import { ChevronLeft, Images, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ByTypeStats, ObjectClass } from '../../lib/api/catalogs';
 import type { CatalogMeta } from '../../lib/catalogMeta';
 import { CatalogHeroImage } from './CatalogHeroImage';
 import { useTheme } from '../../hooks/useTheme';
+import { everyMember } from '../unionList';
 
 interface Props {
   /** Undefined for a catalog slug we carry no editorial copy for. */
@@ -32,6 +33,8 @@ interface Props {
   onTypeFilterChange: (cls: ObjectClass | null) => void;
   /** Null when the observer has no location set, or nothing is left to plan. */
   onPlan: (() => void) | null;
+  /** Catalog slug, for the link to the user's own wall. */
+  catalogId?: string;
 }
 
 const TYPE_META: Record<ObjectClass, { labelKey: string; dot: string }> = {
@@ -51,7 +54,7 @@ const NIGHT_TYPE_DOT: Record<ObjectClass, string> = {
   other: '#4d1414',
 };
 
-const TYPE_ORDER: ObjectClass[] = ['galaxy', 'nebula', 'cluster', 'other'];
+const TYPE_ORDER = everyMember<ObjectClass>()(['galaxy', 'nebula', 'cluster', 'other']);
 
 /**
  * Column count for the type strip. Written out as whole class names so
@@ -89,7 +92,7 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 export function CatalogHero({
   meta, label, total, imagedCount, imagedInFrameCount = 0, byType,
-  accent, typeFilter, onTypeFilterChange, onPlan,
+  accent, typeFilter, onTypeFilterChange, onPlan, catalogId,
 }: Props) {
   const { t } = useTranslation('catalogs');
   const { isNight } = useTheme();
@@ -135,7 +138,7 @@ export function CatalogHero({
           <Link
             to="/catalogs"
             className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.07] py-1 pl-1.5 pr-3
-              text-[11px] font-medium text-white/70 ring-1 ring-inset ring-white/15 backdrop-blur-md
+              text-[0.6875rem] font-medium text-white/70 ring-1 ring-inset ring-white/15 backdrop-blur-md
               transition-colors hover:bg-white/15 hover:text-white
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
           >
@@ -144,7 +147,7 @@ export function CatalogHero({
           </Link>
 
           {meta && (
-            <div className="mt-4 text-[11px] font-medium uppercase tracking-[0.18em] text-white/55">
+            <div className="mt-4 text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-white/55">
               {meta.credit}
             </div>
           )}
@@ -152,7 +155,7 @@ export function CatalogHero({
             {label}
           </h1>
           {meta && (
-            <p className="mt-3 text-[13px] sm:text-sm leading-relaxed text-white/70">
+            <p className="mt-3 text-[0.8125rem] sm:text-sm leading-relaxed text-white/70">
               {t(meta.taglineKey)}
             </p>
           )}
@@ -185,7 +188,7 @@ export function CatalogHero({
               >
                 {pct}%
               </span>
-              <span className="mt-1 text-[10px] uppercase tracking-[0.14em] text-white/50">
+              <span className="mt-1 text-[0.625rem] uppercase tracking-[0.14em] text-white/50">
                 {t('catalogHero.imaged')}
               </span>
             </div>
@@ -196,20 +199,33 @@ export function CatalogHero({
               {imagedCount}
               <span className="text-xl sm:text-2xl font-medium text-white/40"> / {total}</span>
             </div>
-            <div className="mt-2 text-[13px] text-white/65">
+            <div className="mt-2 text-[0.8125rem] text-white/65">
               {remaining === 0 ? t('catalogHero.programComplete') : t('catalogHero.stillToImage', { count: remaining })}
             </div>
             {imagedInFrameCount > 0 && (
-              <div className="mt-1 text-[12px] text-white/45">
+              <div className="mt-1 text-[0.75rem] text-white/45">
                 {t('catalogHero.inFrameNote', { count: imagedInFrameCount })}
               </div>
             )}
 
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+            {catalogId && imagedCount > 0 && (
+              <Link
+                to={`/catalogs/${catalogId}/mine`}
+                className="inline-flex items-center gap-2 rounded-full bg-white/[0.07] px-4 py-2
+                  text-[0.8125rem] font-semibold text-white ring-1 ring-inset ring-white/15 backdrop-blur-md
+                  transition-colors hover:bg-white/15
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              >
+                <Images className="w-4 h-4" style={{ color: accent }} />
+                {t('catalogHero.myCatalog', { label })}
+              </Link>
+            )}
             {onPlan && (
               <button
                 onClick={onPlan}
-                className="mt-4 inline-flex items-center gap-2 rounded-full bg-white/[0.07] px-4 py-2
-                  text-[13px] font-semibold text-white ring-1 ring-inset ring-white/15 backdrop-blur-md
+                className="inline-flex items-center gap-2 rounded-full bg-white/[0.07] px-4 py-2
+                  text-[0.8125rem] font-semibold text-white ring-1 ring-inset ring-white/15 backdrop-blur-md
                   transition-colors hover:bg-white/15
                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                 title={t('catalogHero.planTonightTitle', { label })}
@@ -218,6 +234,7 @@ export function CatalogHero({
                 {t('catalogHero.planTonight')}
               </button>
             )}
+            </div>
           </div>
         </div>
       </div>
@@ -244,10 +261,10 @@ export function CatalogHero({
             >
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 shrink-0 rounded-full" style={{ background: dot }} />
-                <span className={`text-[11px] font-medium ${active ? 'text-white' : 'text-white/60'}`}>
+                <span className={`text-[0.6875rem] font-medium ${active ? 'text-white' : 'text-white/60'}`}>
                   {typeLabel}
                 </span>
-                <span className="ml-auto text-[11px] tabular-nums text-white/45">
+                <span className="ml-auto text-[0.6875rem] tabular-nums text-white/45">
                   {stats.imaged}/{stats.total}
                 </span>
               </div>

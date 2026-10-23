@@ -25,6 +25,7 @@ import { getLocalSessions, getLocalFiles } from '../../server/lib/library/observ
 const SETTINGS = { importJpg: true, importFits: true, importSubFrames: true };
 
 afterAll(() => {
+  vi.unstubAllGlobals();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
 });
 

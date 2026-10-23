@@ -138,13 +138,16 @@ test.describe('Admin — Settings page', () => {
   });
 
   test('shows Users section accessible in sidebar', async ({ page }) => {
+    // Users lives inside the Account group, which opens on click.
+    await page.getByRole('button', { name: 'Account', exact: true }).click();
     await expect(page.getByRole('button', { name: /^users$/i })).toBeVisible();
   });
 
   test('shows user list in Users section', async ({ page }) => {
     // The sidebar button auto-waits for the settings query to resolve, unlike
     // the old `if (await isVisible())` check, which raced the initial load and
-    // skipped the click.
+    // skipped the click. Users lives inside the Account group, which opens on click.
+    await page.getByRole('button', { name: 'Account', exact: true }).click();
     await page.getByRole('button', { name: /^users$/i }).click();
     await expect(page.getByText('Test User')).toBeVisible();
   });

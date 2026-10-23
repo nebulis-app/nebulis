@@ -11,6 +11,8 @@
  * import it.
  */
 
+import { isRecord } from '../typeGuards.js';
+
 export interface GalleryCrop {
   x: number;
   y: number;
@@ -41,8 +43,8 @@ export function parseGalleryCrop(raw: unknown): GalleryCrop | null {
   if (typeof raw === 'string') {
     try { v = JSON.parse(raw); } catch { return null; }
   }
-  if (!v || typeof v !== 'object') return null;
-  const { x, y, zoom, rotated: rawRotated } = v as Record<string, unknown>;
+  if (!isRecord(v)) return null;
+  const { x, y, zoom, rotated: rawRotated } = v;
   const rotated = rawRotated === true;
   if (typeof x !== 'number' || typeof y !== 'number' || typeof zoom !== 'number') return null;
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(zoom)) return null;

@@ -32,7 +32,7 @@ import { fetchJSON } from '../../lib/api/client';
 import { formatRelativeShort } from '../../lib/timeFormat';
 import { formatNumber } from '../../lib/formatLocale';
 import { formatBytesCompact } from '../../lib/utils';
-import { HeroBackdrop } from '../ui/HeroBackdrop';
+import { CollapsibleHero, HeroSummary } from '../ui/CollapsibleHero';
 import { PAGE_HERO } from '../../lib/heroImagery';
 import { ChangelogModal } from '../ChangelogModal';
 
@@ -104,26 +104,39 @@ export function SettingsHero({ accent, subtitle, isAdmin }: Props) {
     stats.push({ value: formatRelativeShort(importStatus.lastRun), label: t('hero.lastSync') });
   }
 
+  const releaseNotesButton = isAdmin && versionInfo ? (
+        <button
+          type="button"
+          onClick={() => setShowChangelog(true)}
+          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs font-medium text-white/60 transition hover:border-white/20 hover:text-white/80 hover:bg-white/5"
+        >
+          <FileText className="h-3.5 w-3.5" />
+          {t('hero.releaseNotes')}
+        </button>
+  ) : null;
+
+  // The slim bar has no room for the big version figure the expanded banner shows, so it carries the number beside the button instead.
+  const collapsedActions = isAdmin && versionInfo ? (
+    <>
+      <span className="text-xs font-medium tabular-nums text-white/45" title={t('hero.build', { number: versionInfo.build })}>
+        v{versionInfo.version}
+      </span>
+      {releaseNotesButton}
+    </>
+  ) : null;
+
   return (
-    <section
-      className="relative overflow-hidden rounded-3xl bg-slate-950 hero-panel"
+    <>
+    <CollapsibleHero
+      page="settings"
+      image={PAGE_HERO.settings}
+      accent={accent}
+      icon={<SettingsIcon className="h-5 w-5 sm:h-7 sm:w-7" style={{ color: accent }} />}
+      title={t('hero.title')}
+      summary={stats.length > 0 ? <HeroSummary stats={stats} /> : subtitle}
+      actions={collapsedActions}
+      contentClassName="flex hero-min-h flex-col justify-center gap-6 p-4 sm:p-6"
     >
-      <HeroBackdrop image={PAGE_HERO.settings} />
-
-      <div
-        className="pointer-events-none absolute inset-0 opacity-70"
-        style={{ background: `radial-gradient(90% 140% at 8% 0%, ${accent}1f 0%, transparent 60%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 opacity-50"
-        style={{ background: `radial-gradient(70% 130% at 95% 100%, ${accent}14 0%, transparent 62%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 rounded-3xl"
-        style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10)' }}
-      />
-
-      <div className="relative flex hero-min-h flex-col justify-center gap-6 p-4 sm:p-6">
         {/* Release notes rides in the title row, same spot Backup's Sync
             button and Gallery's Planetarium button live: it's the one action
             that belongs to the whole hero, not another stat. Keeping it out
@@ -135,19 +148,10 @@ export function SettingsHero({ accent, subtitle, isAdmin }: Props) {
               <SettingsIcon className="h-5 w-5 sm:h-7 sm:w-7" style={{ color: accent }} />
               {t('hero.title')}
             </h1>
-            <p className="mt-2 text-[13px] text-white/55">{subtitle}</p>
+            <p className="mt-2 text-[0.8125rem] text-white/55">{subtitle}</p>
           </div>
 
-          {isAdmin && versionInfo && (
-            <button
-              type="button"
-              onClick={() => setShowChangelog(true)}
-              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs font-medium text-white/60 transition hover:border-white/20 hover:text-white/80 hover:bg-white/5"
-            >
-              <FileText className="h-3.5 w-3.5" />
-              {t('hero.releaseNotes')}
-            </button>
-          )}
+          {releaseNotesButton}
         </div>
 
         {/* System stats (users, telescopes online, storage, last sync, build)
@@ -165,7 +169,7 @@ export function SettingsHero({ accent, subtitle, isAdmin }: Props) {
                     }`}>
                       {value}
                     </div>
-                    <div className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/45">
+                    <div className="mt-1.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-white/45">
                       {label}
                     </div>
                   </div>
@@ -183,16 +187,16 @@ export function SettingsHero({ accent, subtitle, isAdmin }: Props) {
                 <div className="font-display text-2xl font-bold leading-none tracking-tight text-white tabular-nums">
                   v{versionInfo.version}
                 </div>
-                <div className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/45">
+                <div className="mt-1.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-white/45">
                   {t('hero.build', { number: versionInfo.build })}
                 </div>
               </div>
             )}
           </div>
         )}
-      </div>
+    </CollapsibleHero>
 
       <ChangelogModal isOpen={showChangelog} onClose={() => setShowChangelog(false)} />
-    </section>
+    </>
   );
 }

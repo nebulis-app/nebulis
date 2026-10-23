@@ -19,6 +19,10 @@ import {
   getCatalogSourceThumbnailUrl,
   makeSourceSentinel,
   parseSourceSentinel,
+  BUILTIN_ART_IDS,
+  makeBuiltinSentinel,
+  parseBuiltinSentinel,
+  getBuiltinArtUrl,
 } from '../lib/catalogImage';
 import { Modal } from './ui/Modal';
 import { ImageFramer } from './ImageFramer';
@@ -210,7 +214,10 @@ export function GalleryImageModal({
 
   // The picture the framer shows: the selected image at preview size. Null for
   // Auto (no explicit pick), and while a freshly chosen upload is still saving.
-  const framingSrc = effectivePinnedSource
+  const effectiveBuiltin = parseBuiltinSentinel(effectiveSelection);
+  const framingSrc = effectiveBuiltin
+    ? null
+    : effectivePinnedSource
     ? getCatalogSourceThumbnailUrl(catalogId, effectivePinnedSource, 1200, 1200)
     : effectiveSelection
       ? getLibraryFileThumbnailUrl(effectiveSelection, 1200, 1200)
@@ -417,6 +424,31 @@ export function GalleryImageModal({
               <p className="text-sm">{t('galleryImageModal.noObservationImages')}</p>
             </div>
           )}
+          {/* Built-in artwork for objects with no sky match (data folders etc.).
+              Kept small and last: a fallback, not a headline choice. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2" title={t('galleryImageModal.otherHint')}>
+            <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              {t('galleryImageModal.otherHeading')}
+            </span>
+            {BUILTIN_ART_IDS.map(id => (
+              <button
+                key={id}
+                onClick={() => chooseImage(makeBuiltinSentinel(id))}
+                disabled={selectMutation.isPending}
+                title={t(`galleryImageModal.art_${id}`)}
+                aria-label={t(`galleryImageModal.art_${id}`)}
+                className={`relative w-10 h-10 rounded-lg overflow-hidden border transition ${
+                  effectiveBuiltin === id
+                    ? 'border-accent-500 ring-2 ring-accent-500/30'
+                    : isDark
+                      ? 'border-slate-800 opacity-70 hover:opacity-100 hover:border-slate-600'
+                      : 'border-slate-200 opacity-70 hover:opacity-100 hover:border-slate-300'
+                }`}
+              >
+                <img src={getBuiltinArtUrl(id)} alt="" className="w-full h-full object-cover" />
+              </button>
+            ))}
+          </div>
         </div>
         </div>
         )}
@@ -494,7 +526,7 @@ export function GalleryImageModal({
 function FramedBadge() {
   const { t } = useTranslation('library');
   return (
-    <div className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-accent-300">
+    <div className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[0.625rem] font-medium text-accent-300">
       <Crop className="w-3 h-3" />
       {t('galleryImageModal.framedTag')}
     </div>
@@ -563,7 +595,7 @@ function ImageOption({
 
       {/* Date label */}
       <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5">
-        <span className="text-[10px] text-white/90 font-medium">{label}</span>
+        <span className="text-[0.625rem] text-white/90 font-medium">{label}</span>
       </div>
 
       {framed && <FramedBadge />}
@@ -630,7 +662,7 @@ function SkySourceTile({
       }`}
     >
       {showFailedFallback ? (
-        <div className={`w-full h-full flex items-center justify-center text-[10px] text-center px-2 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+        <div className={`w-full h-full flex items-center justify-center text-[0.625rem] text-center px-2 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
           {t('galleryImageModal.notCachedLine1')}<br />{t('galleryImageModal.notCachedLine2')}
         </div>
       ) : (
@@ -643,8 +675,8 @@ function SkySourceTile({
         />
       )}
       <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5">
-        <div className="text-[11px] text-white font-semibold leading-tight">{label}</div>
-        {sublabel && <div className="text-[9px] text-white/70 leading-tight mt-0.5">{sublabel}</div>}
+        <div className="text-[0.6875rem] text-white font-semibold leading-tight">{label}</div>
+        {sublabel && <div className="text-[0.5625rem] text-white/70 leading-tight mt-0.5">{sublabel}</div>}
       </div>
       {framed && <FramedBadge />}
       {isSelected && (

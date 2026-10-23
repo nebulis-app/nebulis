@@ -144,7 +144,8 @@ export function SatelliteTrailScanModal({ isOpen, onClose, files, onFilesDeleted
     // not something a bulk scan does automatically for every frame it flags.
     const runSlot = async () => {
       while (queue.length > 0 && !cancelRef.current) {
-        const file = queue.shift()!;
+        const file = queue.shift();
+        if (!file) break;
         setActiveFileName(file.name);
         const controller = new AbortController();
         abortControllersRef.current.add(controller);

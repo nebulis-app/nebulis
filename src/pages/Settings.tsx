@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -7,14 +7,21 @@ import { getSettings, updateSettings } from '../lib/api/settings';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/AuthContext';
 import type { Settings as SettingsType } from '../types';
-import { SettingsNav, SETTINGS_NAV } from '../components/settings/SettingsNav';
+import { SettingsNav } from '../components/settings/SettingsNav';
+import { SETTINGS_NAV, visibleSettingsNav } from '../components/settings/settingsNavItems';
 import { SettingsHero } from '../components/settings/SettingsHero';
 import { GeneralSection } from '../components/settings/GeneralSection';
-import { LibrarySection } from '../components/settings/LibrarySection';
+import { LibrarySection, type LibraryPane } from '../components/settings/LibrarySection';
 import { SoftwareUpdateCard } from '../components/settings/SoftwareUpdateCard';
 import { UsersSection } from '../components/settings/UsersSection';
 import { ConnectedDevicesSection } from '../components/settings/ConnectedDevicesSection';
+import { ApiKeySection } from '../components/settings/ApiKeySection';
+import { FeaturesSection } from '../components/settings/FeaturesSection';
 import { ConnectionSection } from '../components/settings/ConnectionSection';
+import { NightlyMaintenanceSection } from '../components/settings/NightlyMaintenanceSection';
+import { CatalogSection } from '../components/settings/CatalogSection';
+import type { SettingsSearchTarget } from '../components/settings/SettingsSearch';
+import { DebugLoggingSection } from '../components/settings/DebugLoggingSection';
 import { SkySection } from '../components/settings/SkySection';
 import { StorageLocationSection } from '../components/settings/StorageLocationSection';
 import { DatabaseBackupsSection } from '../components/settings/DatabaseBackupsSection';
@@ -22,6 +29,7 @@ import { LibraryCleanupSection } from '../components/settings/LibraryCleanupSect
 import { LinkedFoldersSection } from '../components/settings/LinkedFoldersSection';
 import { ArchiveSection } from '../components/settings/ArchiveSection';
 import { SystemLogSection } from '../components/settings/SystemLogSection';
+import { AlertsSection } from '../components/settings/AlertsSection';
 import { DangerSection } from '../components/settings/DangerSection';
 import { AboutSection } from '../components/settings/AboutSection';
 
@@ -51,11 +59,36 @@ export function SettingsPage() {
   // elsewhere); invalid ids are harmless since resolvedActive falls back to
   // the first tab. `section` is the same idea one level down, for the two
   // groups (Account, Storage) dense enough to carry sub-navigation.
-  const [activeGroup, setActiveGroup] = useState(() => searchParams.get('tab') || SETTINGS_NAV[0].id);
-  const [activeSection, setActiveSection] = useState(() => searchParams.get('section') || '');
+  // `?tab=api-keys` predates API keys moving under Account; keep old links working.
+  const legacyApiKeys = searchParams.get('tab') === 'api-keys';
+  const [activeGroup, setActiveGroup] = useState(() => (legacyApiKeys ? 'account' : searchParams.get('tab')) || SETTINGS_NAV[0].id);
+  const [activeSection, setActiveSection] = useState(() => (legacyApiKeys ? 'api-keys' : searchParams.get('section')) || '');
   const [justSaved, setJustSaved] = useState(false);
+  const [searchHighlight, setSearchHighlight] = useState<SettingsSearchTarget | null>(null);
 
-  const visibleGroups = SETTINGS_NAV.filter(g => !g.adminOnly || isAdmin);
+  // After a search jump, scroll to the matching row and flash it. Panes that
+  // load data render their rows late, so poll briefly rather than look once.
+  useEffect(() => {
+    if (!searchHighlight) return;
+    const wanted = searchHighlight.label.trim().toLowerCase();
+    let tries = 0;
+    const timer = window.setInterval(() => {
+      tries += 1;
+      const el = Array.from(document.querySelectorAll<HTMLElement>('[data-setting-label]'))
+        .find(n => n.dataset.settingLabel?.trim().toLowerCase() === wanted);
+      if (el) {
+        window.clearInterval(timer);
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el.classList.add('settings-flash');
+        window.setTimeout(() => el.classList.remove('settings-flash'), 2000);
+      } else if (tries >= 15) {
+        window.clearInterval(timer);
+      }
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [searchHighlight]);
+
+  const visibleGroups = visibleSettingsNav(isAdmin);
   const resolvedGroup = visibleGroups.find(g => g.id === activeGroup) ? activeGroup : (visibleGroups[0]?.id ?? 'general');
   const activeMeta = visibleGroups.find(g => g.id === resolvedGroup) ?? visibleGroups[0];
   const resolvedSection = activeMeta.items?.find(i => i.id === activeSection)?.id ?? activeMeta.items?.[0]?.id ?? null;
@@ -104,9 +137,14 @@ export function SettingsPage() {
   }
   function navigateGroup(id: string) {
     const group = SETTINGS_NAV.find(g => g.id === id);
-    if (group?.adminOnly && isViewer) return;
+    if (group?.adminOnly && !isAdmin) return;
     setActiveGroup(id);
     setActiveSection('');
+  }
+  function handleSearchSelect(target: SettingsSearchTarget) {
+    setActiveGroup(target.group);
+    setActiveSection(target.section ?? '');
+    setSearchHighlight({ ...target });
   }
   function navigateSection(id: string) {
     // The sidebar now shows every group's sub-items at once (not just the
@@ -115,7 +153,7 @@ export function SettingsPage() {
     // navigateGroup.
     const owningGroup = SETTINGS_NAV.find(g => g.items?.some(i => i.id === id));
     if (owningGroup && owningGroup.id !== activeGroup) {
-      if (owningGroup.adminOnly && isViewer) return;
+      if (owningGroup.adminOnly && !isAdmin) return;
       setActiveGroup(owningGroup.id);
     }
     setActiveSection(id);
@@ -141,27 +179,41 @@ export function SettingsPage() {
       case 'general':
         return <GeneralSection isDark={isDark} form={form} setForm={setForm} />;
       case 'library':
-        return <LibrarySection isDark={isDark} form={form} setForm={setForm} />;
+        return <LibrarySection isDark={isDark} form={form} setForm={setForm} pane={(resolvedSection ?? 'display') as LibraryPane} />;
       case 'updates':
         return <SoftwareUpdateCard isDark={isDark} form={form} setForm={setForm} />;
       case 'account':
+        if (resolvedSection === 'api-keys') return <ApiKeySection isDark={isDark} />;
         return resolvedSection === 'devices'
           ? <ConnectedDevicesSection isDark={isDark} />
           : <UsersSection isDark={isDark} />;
       case 'hardware':
-        return <ConnectionSection isDark={isDark} />;
+        return (
+          <ConnectionSection isDark={isDark} form={form} setForm={setForm} />
+        );
       case 'sky':
-        return <SkySection isDark={isDark} form={form} setForm={setForm} />;
+        if (resolvedSection === 'catalogs') return <CatalogSection isDark={isDark} form={form} setForm={setForm} />;
+        return <SkySection isDark={isDark} />;
+      case 'integrations':
+        return <FeaturesSection isDark={isDark} form={form} setForm={setForm} onOpenApiKeys={() => navigateSection('api-keys')} />;
       case 'storage':
         if (resolvedSection === 'archive') return <ArchiveSection isDark={isDark} />;
         if (resolvedSection === 'linked') return <LinkedFoldersSection isDark={isDark} />;
         if (resolvedSection === 'cleanup') return <LibraryCleanupSection isDark={isDark} />;
+        if (resolvedSection === 'maintenance') return <NightlyMaintenanceSection isDark={isDark} form={form} setForm={setForm} />;
         if (resolvedSection === 'backups') return <DatabaseBackupsSection isDark={isDark} />;
         return <StorageLocationSection isDark={isDark} />;
+      case 'alerts':
+        return <AlertsSection isDark={isDark} />;
       case 'log':
         return <SystemLogSection isDark={isDark} />;
       case 'danger':
-        return <DangerSection isDark={isDark} />;
+        return (
+          <>
+            <DebugLoggingSection isDark={isDark} />
+            <DangerSection isDark={isDark} />
+          </>
+        );
       case 'about':
         return <AboutSection isDark={isDark} />;
       default:
@@ -171,12 +223,12 @@ export function SettingsPage() {
 
   return (
     <div className={`-mt-8 ${showSaveBar ? 'pb-24' : ''}`} data-screen-label="Settings">
-      <div className="max-w-[1800px] mx-auto px-1 pt-8">
+      <div className="max-w-[112.5rem] mx-auto px-1 pt-8">
         <SettingsHero accent={accent} subtitle={subtitleKey ? t(subtitleKey) : ''} isAdmin={isAdmin} />
       </div>
 
       {isViewer && (
-        <div className="max-w-[1800px] mx-auto px-1 pt-4">
+        <div className="max-w-[112.5rem] mx-auto px-1 pt-4">
           <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium ${
             isDark ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-amber-50 text-amber-700 border border-amber-200'
           }`}>
@@ -185,18 +237,19 @@ export function SettingsPage() {
         </div>
       )}
 
-      {/* The outer frame matches every other page (max-w-[1800px], same as
+      {/* The outer frame matches every other page (max-w-[112.5rem], same as
           Layout's <main>) so switching to Settings doesn't shift the page
           edges. A form can't sensibly fill that width, though, so the
-          sidebar + content group is capped at 1240px and centred under the
+          sidebar + content group is capped at 77.5rem and centred under the
           full-width hero rather than left-aligned against a wide empty gutter. */}
-      <div className="max-w-[1800px] mx-auto px-1 pt-8 pb-16">
-        <div className="mx-auto max-w-[1240px] lg:flex lg:items-start lg:gap-10">
+      <div className="max-w-[112.5rem] mx-auto px-1 pt-8 pb-16">
+        <div className="mx-auto max-w-[77.5rem] lg:flex lg:items-start lg:gap-10">
           <SettingsNav
             activeGroupId={resolvedGroup}
             activeItemId={resolvedSection}
             onNavigateGroup={navigateGroup}
             onNavigateItem={navigateSection}
+            onSearchSelect={handleSearchSelect}
             isDark={isDark}
             isAdmin={isAdmin}
           />
@@ -274,14 +327,22 @@ export function SettingsPage() {
 function subtitleKeyFor(groupId: string, sectionId: string | null): string {
   switch (groupId) {
     case 'general':  return 'subtitle.general';
-    case 'library':  return 'subtitle.library';
+    case 'library':
+      if (sectionId === 'organization') return 'subtitle.libraryOrganization';
+      if (sectionId === 'processing') return 'subtitle.libraryProcessing';
+      return 'subtitle.library';
     case 'updates':  return 'subtitle.updates';
     case 'account':
+      if (sectionId === 'api-keys') return 'subtitle.apiKeys';
       return sectionId === 'devices' ? 'subtitle.accountDevices' : 'subtitle.accountUsers';
     case 'hardware': return 'subtitle.hardware';
-    case 'sky':      return 'subtitle.sky';
+    case 'sky':      return sectionId === 'catalogs' ? 'subtitle.catalogs' : 'subtitle.sky';
+    case 'integrations': return 'subtitle.features';
     case 'storage':
-      return sectionId === 'cleanup' ? 'subtitle.libraryCleanup' : 'subtitle.storage';
+      if (sectionId === 'cleanup') return 'subtitle.libraryCleanup';
+      if (sectionId === 'maintenance') return 'subtitle.maintenance';
+      return 'subtitle.storage';
+    case 'alerts':   return 'subtitle.alerts';
     case 'log':      return 'subtitle.log';
     case 'danger':   return 'subtitle.danger';
     case 'about':    return 'subtitle.about';

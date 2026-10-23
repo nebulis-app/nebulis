@@ -18,19 +18,42 @@
     "raDec": "RA {{ra}}h · Dec {{dec}}°",
     "closeDetails": "Close details",
     "addToTonight": "Add to Tonight",
-    "moonOkTonight": "Moon won't interfere tonight ({{percent}}% illuminated).",
-    "moonWarningTonight": "Moon comes within {{deg}}° at {{time}} ({{percent}}% illuminated) — may wash out faint detail.",
     "referenceImageAlt": "Reference image of {{name}}",
     "referenceImage": "Reference image",
     "setLocationForSky": "Set your location in Settings to see where this sits in your sky.",
-    "skyShownAt": "Sky shown at {{time}}. Scrub the curve below to retime.",
-    "skyShownAtHighest": "Sky shown at {{time}} (highest tonight). Scrub the curve below to retime.",
+    "skyShownAt": "Shown at {{time}} · drag the chart to retime",
+    "skyShownAtHighest": "Shown at {{time}} (highest tonight) · drag the chart to retime",
+    "altSummary": "Peak {{alt}}° at {{peakTime}} · above {{min}}° from {{from}} to {{to}} ({{duration}})",
+    "altSummaryNever": "Peak {{alt}}° at {{peakTime}} · not above the minimum tonight",
+    "moonAllFine": "Moon {{percent}}% lit tonight: fine for broadband and narrowband.",
+    "descMore": "Show more",
+    "descLess": "Show less",
+    "statPeak": "Peak",
+    "statAbove": "Above {{min}}°",
+    "statNeverAbove": "Not above the minimum tonight",
+    "statAboveRange": "{{from}} to {{to}} · {{duration}}",
+    "scheduledWindow": "Scheduled {{start}} to {{end}}",
     "noCatalogDescription": "No catalog description available for this object.",
     "readMoreWikipedia": "Read more on Wikipedia →",
     "altitudeTonight": "Altitude tonight (local noon to noon)",
-    "setLocationForAltitude": "Set your location in Settings to see the altitude curve."
+    "setLocationForAltitude": "Set your location in Settings to see the altitude curve.",
+    "moonTonight": "Moon tonight: {{percent}}% lit.",
+    "moonBand": {
+      "broadband": "Broadband:",
+      "narrowband": "Narrowband:"
+    },
+    "moonBandOk": "fine.",
+    "moonBandWarning": "comes within {{deg}}° at {{time}} (wants ≥ {{min}}°).",
+    "blockFilter": "Shot through",
+    "blockFilterOption": {
+      "unset": "Not set",
+      "broadband": "Broadband",
+      "narrowband": "Narrowband"
+    }
   },
   "nightHero": {
+    "collapse": "Collapse header",
+    "expand": "Expand header",
     "rises": "Rises {{time}}",
     "sets": "Sets {{time}}",
     "averageCloud": "{{percent}}% average cloud.",
@@ -45,15 +68,25 @@
     "hourByHour": "hour by hour",
     "moon": "Moon",
     "litPercent": "{{percent}}% lit",
-    "planMyNight": "Plan my night"
+    "planMyNight": "Plan my night",
+    "filterAdviceTitle": "From the Moon over tonight’s dark hours",
+    "filterAdvice": {
+      "broadband": "Broadband night",
+      "narrowband": "Narrowband night",
+      "broadbandUntil": "Broadband until {{time}}, then narrowband",
+      "broadbandFrom": "Narrowband, broadband from {{time}}"
+    }
   },
   "scheduleTimeline": {
+    "emptyNight": "Nothing planned for this night yet.",
+    "copyLastNightCount_one": "Copy last night ({{count}} block)",
+    "copyLastNightCount_other": "Copy last night ({{count}} blocks)",
     "nightSchedule": "Night schedule",
     "plannedOfDark": "<1>{{planned}}</1> of {{dark}} planned",
     "targetCount_one": "{{count}} target",
     "targetCount_other": "{{count}} targets",
     "clearest": "Clearest {{start}} to {{end}}",
-    "dark": "Dark {{start}} to {{end}} ({{hours}}h)",
+    "dark": "Dark {{start}} to {{end}} ({{duration}})",
     "forecastFor": "Forecast for {{time}}",
     "weatherTitle": "{{time}} · {{label}} {{score}} · {{cloud}}% cloud{{tail}}",
     "clickForForecast": ". Click for the full forecast.",
@@ -80,7 +113,17 @@
     "removeScheduledBlock": "Remove scheduled block",
     "remove": "Remove",
     "resizeTop": "Resize top",
-    "resizeBottom": "Resize bottom"
+    "resizeBottom": "Resize bottom",
+    "narrowbandOk": "narrowband OK",
+    "moonNbOk": "Moon · NB OK",
+    "band": {
+      "broadband": "Broadband (L, RGB, colour without filter)",
+      "narrowband": "Narrowband (Ha, OIII, SII, dual-band)"
+    },
+    "bandShort": {
+      "broadband": "BB",
+      "narrowband": "NB"
+    }
   },
   "libraryPanel": {
     "filterAll": "All",
@@ -93,16 +136,25 @@
     "peaksBelowMinimum": "Peaks at only {{maxAlt}}°, below your {{minAlt}}° minimum",
     "peaksTonight": "Peaks at only {{maxAlt}}° tonight",
     "targets": "Targets",
-    "upThisNight_one": "{{count}} up this night",
-    "upThisNight_other": "{{count}} up this night",
-    "searchPlaceholder": "Search M81, NGC 7000, Orion...",
+    "countOfUp_one": "{{shown}} of {{count}} up this night",
+    "countOfUp_other": "{{shown}} of {{count}} up this night",
+    "searchPlaceholderAll": "Search all {{total}}: M81, NGC 7000...",
+    "viewLabel": "View options",
+    "viewButton": "View",
+    "viewShow": "Show",
+    "scopeAll": "All targets",
+    "scopeAllHint": "Everything up on this night",
+    "scopeWishlistHint": "Only targets you starred",
+    "scopeNotImaged": "Not imaged yet",
+    "scopeNotImagedHint": "Hide targets already in your library",
+    "viewTitle": "Sort and list options",
+    "viewSort": "Sort",
+    "viewList": "List",
     "clearSearch": "Clear search",
     "matches_one": "{{count}} match",
     "matches_other": "{{count}} matches",
     "matchesOf_one": "{{shown}} of {{count}} match",
     "matchesOf_other": "{{shown}} of {{count}} matches",
-    "popularPicks_one": "{{count}} popular pick. Search to reach the rest.",
-    "popularPicks_other": "{{count}} popular picks. Search to reach the rest.",
     "hideBlockedTitle": "Hide objects that never enter a visible cell tonight",
     "hideBlocked": "Hide blocked",
     "noTargetsMatch": "No targets match your filters.",
@@ -112,7 +164,7 @@
     "alreadyInLibrary": "Already in your library",
     "notInVisibleSky": "Not in your visible sky this night",
     "peaksAt": "{{deg}}°",
-    "peaksAtAround": "{{deg}}° · {{time}}",
+    "peaksAtAround": "{{deg}}° · peak {{time}}",
     "peaksAtTitle": "Peaks at {{deg}}° tonight",
     "peaksAtAroundTitle": "Peaks at {{deg}}° around {{time}}",
     "showDetailsFor": "Show details for {{name}}",
@@ -128,12 +180,27 @@
     "removeFromWishlist": "Remove from wishlist",
     "addToWishlistFor": "Add {{name}} to wishlist",
     "removeFromWishlistFor": "Remove {{name}} from wishlist",
-    "showAltitudeChart": "Show altitude tonight",
-    "hideAltitudeChart": "Hide altitude tonight",
-    "showAltitudeChartFor": "Show altitude tonight for {{name}}",
-    "hideAltitudeChartFor": "Hide altitude tonight for {{name}}"
+    "showMore": "Show altitude and filters",
+    "hideMore": "Hide altitude and filters",
+    "showMoreFor": "Show altitude and filters for {{name}}",
+    "hideDetailsFor": "Hide altitude and filters for {{name}}",
+    "orderLabel": "Order",
+    "orderBest": "Best tonight",
+    "orderConditions": "Best conditions",
+    "orderBestTitle": "Ordered by Best tonight: how well placed a target is, and how rewarding it is to shoot",
+    "orderConditionsTitle": "Ordered by Best conditions: how well placed a target is tonight",
+    "openExploreTitle": "Find more targets for this night in Explore",
+    "findMoreInExplore": "Find more in Explore"
   },
   "nightStrip": {
+    "legendLabel": "Rating key",
+    "legendTitle": "What the bars and dots mean",
+    "legendRating": "Forecast rating",
+    "legendRatingHint": "Bar length and color",
+    "legendPlanned": "Blocks planned",
+    "legendPlannedHint": "You already have a plan on this night",
+    "legendMoon": "Moon phase",
+    "legendMoonHint": "Moon on the night",
     "previousNight": "Previous night",
     "nextNight": "Next night",
     "pickADate": "Pick a date",
@@ -204,7 +271,9 @@
     "scheduleAtHighestOn": "Schedule at its highest free point on {{date}}",
     "loadingWindow": "Checking when this is visible...",
     "windowUnavailable": "Couldn't find this object's coordinates.",
-    "setLocationForWindow": "Set your location in Settings to see the best imaging window."
+    "setLocationForWindow": "Set your location in Settings to see the best imaging window.",
+    "openInPlanner": "Open {{name}} in the Planner",
+    "findSimilar": "Find more like {{name}} in Explore"
   },
   "wishlistHero": {
     "title": "Wishlist",
@@ -257,7 +326,8 @@
     "removeFromWishlist": "Remove from wishlist",
     "addToWishlist": "Add to wishlist",
     "viewLargerImage": "View larger image",
-    "referenceImageAlt": "Reference image of {{id}}"
+    "referenceImageAlt": "Reference image of {{id}}",
+    "planNight": "Plan a night"
   },
   "planCalendar": {
     "previousMonth": "Previous month",
@@ -291,10 +361,7 @@
   },
   "skyChart": {
     "moon": "Moon",
-    "dirText": "{{compass}} · {{az}}° · alt {{alt}}°",
-    "moonLitAway": "Moon {{percent}}% lit · {{deg}}° away",
-    "tooClose": " · too close",
-    "moonBelowHorizon": "Moon below the horizon",
+    "dirText": "{{compass}} · {{az}}°",
     "looking": "Looking {{dir}}",
     "belowHorizonNow": " · below the horizon now"
   },
@@ -338,7 +405,23 @@
     "replaceTitle": "Replace the plan for {{nightLabel}}?",
     "replaceMessage_one": "This clears the {{count}} target already scheduled for {{nightLabel}} and replaces it with these {{newCount}}.",
     "replaceMessage_other": "This clears the {{count}} targets already scheduled for {{nightLabel}} and replaces them with these {{newCount}}.",
-    "replace": "Replace"
+    "replace": "Replace",
+    "favorGoals": "Favour objects with time left toward their goals",
+    "goalsComplete": "Goals reached, left out: {{names}}",
+    "goalFilterTitle": "Shot through {{filter}}: {{duration}} left before this block",
+    "avoidClouds": "Skip cloudy hours (forecast)",
+    "cloudThresholdLabel": "Cloud cover limit",
+    "cloudThreshold": "above {{pct}}% clouds",
+    "forecastUnavailable": "No forecast available for this night, so the plan ignores the weather.",
+    "skippedCloudy": "Left empty: forecast above {{pct}}% clouds",
+    "skippedRange": "{{start}}–{{end}} ({{pct}}%)",
+    "allCloudy": "The forecast is cloudy for the whole window.",
+    "cloudPct": "{{pct}}% clouds",
+    "dewRisk": "Dew risk: temperature close to the dew point",
+    "seeingExcellent": "Excellent seeing",
+    "seeingGood": "Good seeing",
+    "seeingAverage": "Average seeing",
+    "seeingPoor": "Poor seeing"
   },
   "planShareModal": {
     "observationPlan": "Observation Plan",
@@ -355,5 +438,38 @@
     "preparing": "Preparing…",
     "shareImage": "Share image",
     "saveImage": "Save image"
+  },
+  "integrationRemaining": {
+    "left": "{{duration}} left · {{filter}}",
+    "title": "{{filter}}: {{done}} of {{goal}}",
+    "noFilter": "No filter",
+    "complete": "Goals reached",
+    "completeTitle": "Every integration goal on this object is reached"
+  },
+  "planOutcome": {
+    "status": {
+      "upcoming": "Upcoming",
+      "in_progress": "In progress",
+      "awaiting_import": "Waiting for images",
+      "done": "Done",
+      "partial": "Partly done",
+      "missed": "Missed",
+      "skipped": "Skipped"
+    },
+    "achieved": "{{achieved}} / {{planned}}",
+    "awaitingImportHint": "This block's time has passed. Import the telescope's images to confirm it.",
+    "title_one": "{{status}} · {{count}} sub-frame in the library",
+    "title_other": "{{status}} · {{count}} sub-frames in the library",
+    "repeatTomorrow": "Plan again the next night",
+    "markSkipped": "Mark as skipped",
+    "unskip": "Unmark skipped"
+  },
+  "filterSuggestion": {
+    "complete": "Integration goals reached for this object.",
+    "suggest": "Shoot through {{filter}}: {{left}} left",
+    "noneTonight": "Every filter with time left is broadband, and the Moon is too close for it.",
+    "use": "Use {{filter}}",
+    "inUse": "In use",
+    "ruledOut": "Too close to the Moon for broadband: {{filters}}"
   }
 }

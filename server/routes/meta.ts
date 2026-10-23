@@ -83,8 +83,13 @@ function parseChangelog(): ChangelogEntry[] {
         sections[current] = [];
         continue;
       }
-      if (current && line.startsWith('- ')) {
+      if (!current) continue;
+      if (line.startsWith('- ')) {
         sections[current].push(line.slice(2).trim());
+      } else if (/^\s+- /.test(line) && sections[current].length > 0) {
+        // Indented sub-bullet: fold into its parent as a new line, so the
+        // API shape stays string[] and older clients still show the text.
+        sections[current][sections[current].length - 1] += '\n' + line.replace(/^\s+- /, '').trim();
       }
     }
 

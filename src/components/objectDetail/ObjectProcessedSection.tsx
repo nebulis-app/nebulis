@@ -6,6 +6,8 @@ import { useTheme } from '../../hooks/useTheme';
 import { isRenderableProcessed, isFitsProcessed, processedFormatLabel, PROCESSED_UPLOAD_EXTENSIONS } from '../../lib/processedFormats';
 import { getAllProcessedImagesForObject, deleteObjectProcessedImage, setGalleryImage, uploadObjectProcessedImage } from '../../lib/api/library';
 import { GalleryModal, type GalleryItem } from '../GalleryModal';
+import { ObjectImageEditor } from './ObjectImageEditor';
+import { editRequestFor, type ObjectEditRequest } from './objectEditRequest';
 import { FitsThumbnail } from '../FitsThumbnail';
 import { formatDate } from '../../lib/formatLocale';
 import type { ProcessedImage } from '../../types';
@@ -26,9 +28,17 @@ import type { ProcessedImage } from '../../types';
 export function ObjectProcessedSection({
   objectId,
   isAdmin,
+  openClassName = '',
+  closedClassName = '',
 }: {
   objectId: string;
   isAdmin: boolean;
+  /** Classes for the card when open (e.g. to fill its grid row); the
+   *  collapsed card is styled by closedClassName. */
+  openClassName?: string;
+  /** Classes for the card when collapsed (e.g. `self-start` in a stretched
+   *  grid row, so a closed card keeps its own height). */
+  closedClassName?: string;
 }) {
   const { isDark } = useTheme();
   const { t } = useTranslation('library');
@@ -106,8 +116,17 @@ export function ObjectProcessedSection({
 
   const galleryItems: GalleryItem[] = images.map(img => ({ kind: 'processed', img }));
 
+  const [editRequest, setEditRequest] = useState<ObjectEditRequest | null>(null);
+  const openEditor = (
+    url: string, name: string, sourceKind: 'telescope' | 'processed', overwriteTarget?: Parameters<typeof editRequestFor>[5],
+  ) => {
+    setEditRequest(editRequestFor(galleryItems, objectId, url, name, sourceKind, overwriteTarget));
+  };
+
   return (
-    <div className={`rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
+    <div className={`flex flex-col rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'} ${
+      isOpen ? openClassName : closedClassName
+    }`}>
       <div className={`flex items-center gap-2 p-4 ${isOpen ? `border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}` : ''}`}>
         <button
           type="button"
@@ -130,7 +149,7 @@ export function ObjectProcessedSection({
             onClick={() => setShowFits(v => !v)}
             aria-pressed={showFits}
             title={showFits ? t('objectDetail.processedSection.hideFits') : t('objectDetail.processedSection.showFits')}
-            className={`shrink-0 text-[11px] font-mono font-semibold tracking-wide px-2 py-1 rounded-full border transition-colors ${
+            className={`shrink-0 text-[0.6875rem] font-mono font-semibold tracking-wide px-2 py-1 rounded-full border transition-colors ${
               showFits
                 ? isDark ? 'bg-accent-500/15 border-accent-500/40 text-accent-400' : 'bg-accent-50 border-accent-300 text-accent-700'
                 : isDark ? 'bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-400 hover:text-slate-600'
@@ -179,7 +198,7 @@ export function ObjectProcessedSection({
                       ) : (
                         <div className={`w-full h-full flex flex-col items-center justify-center gap-2 ${isDark ? 'bg-slate-800/60' : 'bg-slate-100'}`}>
                           <FileDown className={`w-6 h-6 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
-                          <span className={`font-mono text-[10px] font-bold tracking-wide ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                          <span className={`font-mono text-[0.625rem] font-bold tracking-wide ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                             {processedFormatLabel(img.originalName) ?? t('objectDetail.processedSection.genericFile')}
                           </span>
                         </div>
@@ -222,7 +241,7 @@ export function ObjectProcessedSection({
                       </div>
 
                       {(canRender || isFits) && processedFormatLabel(img.originalName) && (
-                        <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide bg-black/60 text-white/80 pointer-events-none">
+                        <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[0.5625rem] font-bold tracking-wide bg-black/60 text-white/80 pointer-events-none">
                           {processedFormatLabel(img.originalName)}
                         </div>
                       )}
@@ -239,7 +258,7 @@ export function ObjectProcessedSection({
                         <p className={`text-xs truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{img.originalName}</p>
                       )}
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <p className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                        <p className={`text-[0.625rem] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                           {img.date
                             ? formatDate(new Date(img.date + 'T12:00:00'), { month: 'short', day: 'numeric', year: 'numeric' })
                             : t('objectDetail.processedSection.noSpecificSession')}
@@ -247,7 +266,7 @@ export function ObjectProcessedSection({
                         {img.runDates && img.runDates.length > 1 && (
                           <span
                             title={t('objectDetail.processedSection.combinesNights', { count: img.runDates.length, list: img.runDates.join(', ') })}
-                            className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium ${
+                            className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[0.5625rem] font-medium ${
                               isDark ? 'bg-accent-500/10 text-accent-400' : 'bg-accent-50 text-accent-600'
                             }`}
                           >
@@ -282,13 +301,21 @@ export function ObjectProcessedSection({
         date=""
         isAdmin={isAdmin}
         onClose={() => setGalleryOpen(false)}
-        onEditImage={() => {}}
+        onEditImage={openEditor}
         onHeaderFileClick={() => {}}
         onSetAsGallery={handleSetAsGallery}
         onDeleteProcessed={handleDelete}
         settingGalleryId={settingGalleryId}
         deletingProcessedId={deletingId}
-        hideEditButton
+      />
+
+      <ObjectImageEditor
+        request={editRequest}
+        onClose={() => setEditRequest(null)}
+        onSaved={() => {
+          void queryClient.invalidateQueries({ queryKey: ['processed-images-all', objectId] });
+          setGalleryOpen(false);
+        }}
       />
     </div>
   );

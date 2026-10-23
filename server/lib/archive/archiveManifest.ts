@@ -25,7 +25,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { parseJsonRecord } from '../typeGuards.js';
+import { isRecord, parseJsonRecord } from '../typeGuards.js';
 import { resolveContainedArchivePath } from './archivePath.js';
 import type { ArchiveCandidate } from './archiveSelect.js';
 
@@ -91,8 +91,8 @@ export interface ArchiveManifest {
 export const EMPTY_ARCHIVE_MANIFEST: ArchiveManifest = { version: MANIFEST_VERSION, updatedAt: '', objects: {} };
 
 function parseManifestFile(value: unknown): ArchiveManifestFile | null {
-  if (!value || typeof value !== 'object') return null;
-  const { relPath, isSubframe, bytes, mtimeMs, sha256 } = value as Record<string, unknown>;
+  if (!isRecord(value)) return null;
+  const { relPath, isSubframe, bytes, mtimeMs, sha256 } = value;
   if (typeof relPath !== 'string' || relPath.length === 0) return null;
   if (typeof isSubframe !== 'boolean') return null;
   const entry: ArchiveManifestFile = { relPath, isSubframe };
@@ -108,8 +108,8 @@ function parseManifestFile(value: unknown): ArchiveManifestFile | null {
 }
 
 function parseManifestObject(value: unknown): ArchiveManifestObject | null {
-  if (!value || typeof value !== 'object') return null;
-  const { objectId, firstArchivedAt, lastArchivedAt, files } = value as Record<string, unknown>;
+  if (!isRecord(value)) return null;
+  const { objectId, firstArchivedAt, lastArchivedAt, files } = value;
   if (typeof firstArchivedAt !== 'string' || firstArchivedAt.length === 0) return null;
   if (typeof lastArchivedAt !== 'string' || lastArchivedAt.length === 0) return null;
   if (!Array.isArray(files)) return null;
@@ -126,10 +126,10 @@ function parseManifestObject(value: unknown): ArchiveManifestObject | null {
 function parseManifestText(text: string): ArchiveManifest | null {
   const parsed = parseJsonRecord(text);
   if (!parsed || !READABLE_VERSIONS.includes(parsed.version)) return null;
-  if (!parsed.objects || typeof parsed.objects !== 'object' || Array.isArray(parsed.objects)) return null;
+  if (!isRecord(parsed.objects)) return null;
 
   const objects: Record<string, ArchiveManifestObject> = {};
-  for (const [folderName, value] of Object.entries(parsed.objects as Record<string, unknown>)) {
+  for (const [folderName, value] of Object.entries(parsed.objects)) {
     const entry = parseManifestObject(value);
     if (!entry) return null;
     objects[folderName] = entry;
@@ -180,7 +180,7 @@ export function readArchiveManifestResult(root: string, expectedArchiveId?: stri
     }
     reason = 'the archive record is not valid';
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { status: 'absent' };
+    if (isRecord(err) && err.code === 'ENOENT') return { status: 'absent' };
     reason = err instanceof Error ? err.message : 'the archive record could not be read';
   }
 

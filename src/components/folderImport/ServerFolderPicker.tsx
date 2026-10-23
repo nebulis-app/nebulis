@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, skipToken } from '@tanstack/react-query';
 import { HardDrive, FolderOpen, ChevronRight, ArrowUp, RefreshCw, Telescope, CornerDownLeft, Clock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { listVolumes, browseDirectory, type VolumeInfo, type DirectoryEntry } from '../../lib/api/storage';
@@ -66,7 +66,7 @@ export function ServerFolderPicker({ isDark, onChange, suggestedPath }: {
 
   const { data: browseData } = useQuery({
     queryKey: ['storage-browse', browsePath],
-    queryFn: () => browseDirectory(browsePath as string),
+    queryFn: browsePath ? () => browseDirectory(browsePath) : skipToken,
     enabled: !!browsePath,
   });
 

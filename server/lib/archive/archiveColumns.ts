@@ -22,6 +22,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { isRecord } from '../typeGuards.js';
 
 export interface ArchiveSettingsColumn {
   name: string;
@@ -131,8 +132,8 @@ export const ARCHIVE_SETTINGS_COLUMNS: ReadonlyArray<ArchiveSettingsColumn> = [
  * that already meant "keep everything".
  */
 export function ensureArchiveColumns(db: Database): void {
-  const existing = db.prepare('PRAGMA table_info(appSettings)').all() as Array<{ name: string }>;
-  const present = new Set(existing.map(c => c.name));
+  const existing: unknown[] = db.prepare('PRAGMA table_info(appSettings)').all();
+  const present = new Set(existing.map(c => (isRecord(c) ? String(c.name) : '')));
   const added = new Set<string>();
   for (const column of ARCHIVE_SETTINGS_COLUMNS) {
     if (present.has(column.name)) continue;

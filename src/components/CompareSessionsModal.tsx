@@ -83,9 +83,11 @@ export function CompareSessionsModal({ objectId, onClose }: Props) {
     const el = viewportRef.current;
     if (!el) return;
 
-    function onWheel(e: WheelEvent) {
+    // An arrow const (not a hoisted function declaration) so `el`'s null
+    // check above still narrows inside the handler.
+    const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const rect = el!.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
       const W = rect.width;
       const H = rect.height;
       const cx = e.clientX - rect.left;
@@ -117,7 +119,7 @@ export function CompareSessionsModal({ objectId, onClose }: Props) {
       panRef.current = { x: newX, y: newY };
       setZoom(newZoom);
       setPan({ x: newX, y: newY });
-    }
+    };
 
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -209,7 +211,7 @@ export function CompareSessionsModal({ objectId, onClose }: Props) {
       <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-800 bg-slate-950 shrink-0">
         {/* Session selectors */}
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <span className="w-5 h-5 rounded-full bg-accent-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+          <span className="w-5 h-5 rounded-full bg-accent-500 flex items-center justify-center text-white text-[0.625rem] font-bold shrink-0">
             1
           </span>
           <select
@@ -226,7 +228,7 @@ export function CompareSessionsModal({ objectId, onClose }: Props) {
 
           <span className="text-slate-600 text-xs shrink-0 hidden sm:block">{t('compareSessionsModal.vs')}</span>
 
-          <span className="w-5 h-5 rounded-full bg-violet-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+          <span className="w-5 h-5 rounded-full bg-violet-500 flex items-center justify-center text-white text-[0.625rem] font-bold shrink-0">
             2
           </span>
           <select
@@ -430,7 +432,7 @@ function SideBySidePanel({
       {/* Session label */}
       <div className="absolute top-3 left-3 z-10 pointer-events-none flex items-center gap-1.5">
         <span
-          className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 ${
+          className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[0.625rem] font-bold shrink-0 ${
             badge === 1 ? 'bg-accent-500' : 'bg-violet-500'
           }`}
         >

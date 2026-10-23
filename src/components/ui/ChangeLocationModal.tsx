@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, skipToken } from '@tanstack/react-query';
 import { Trans, useTranslation } from 'react-i18next';
 import {
   HardDrive, FolderOpen, ChevronRight, ArrowUp, Check,
@@ -10,7 +10,7 @@ import {
   startLibraryMigration, startNetworkLibraryMigration, testNetworkLibraryConnection,
   type VolumeInfo, type DirectoryEntry, type LibraryLocation, type NetworkLibraryConfig,
 } from '../../lib/api/storage';
-import { getInputClass } from '../settings/SettingsUI';
+import { getInputClass } from './formClasses';
 import { looksLikeShareAddress, parseShareAddress } from '../../lib/uncInput';
 import { formatBytes } from '../../lib/utils';
 import { Modal } from './Modal';
@@ -47,7 +47,7 @@ export function ChangeLocationModal({
 
   const { data: browseData } = useQuery({
     queryKey: ['storage-browse', browsePath],
-    queryFn: () => browseDirectory(browsePath as string),
+    queryFn: browsePath ? () => browseDirectory(browsePath) : skipToken,
     enabled: tab === 'drive' && !!browsePath,
   });
 

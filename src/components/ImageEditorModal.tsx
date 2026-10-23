@@ -2,12 +2,13 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  X, Type, Crop, SlidersHorizontal, MousePointer,
+  X, Type, Crop, SlidersHorizontal,
   AlignLeft, AlignCenter, AlignRight,
   Check, RotateCcw, RotateCw, Save, Trash2, Loader2, Pencil,
-  FlipHorizontal2, FlipVertical2, BookmarkCheck, Plus,
+  FlipHorizontal2, FlipVertical2, BookmarkCheck, Plus, Wand2, Eye,
 } from 'lucide-react';
-import { uploadProcessedImage, uploadLibraryFile, overwriteProcessedImage } from '../lib/api/library';
+import { computeAutoAdjust } from '../lib/autoAdjust';
+import { uploadProcessedImage, uploadObjectProcessedImage, uploadLibraryFile, overwriteProcessedImage } from '../lib/api/library';
 import { getWatermarkPresets, saveWatermarkPresets, type WatermarkPreset } from '../lib/api/auth';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -41,9 +42,17 @@ interface Adjustments {
 }
 
 /** Clockwise rotation applied to the image, in degrees. */
-type Rotation = 0 | 90 | 180 | 270;
+const ROTATIONS = [0, 90, 180, 270] as const;
+type Rotation = typeof ROTATIONS[number];
 
-type Tool = 'select' | 'text' | 'crop' | 'adjust';
+/** Next quarter-turn in the cycle; indexing the canonical tuple keeps the
+ *  result a `Rotation` without asserting modular arithmetic into the union. */
+function nextRotation(prev: Rotation, deltaDeg: 90 | -90): Rotation {
+  const step = deltaDeg === 90 ? 1 : ROTATIONS.length - 1;
+  return ROTATIONS[(ROTATIONS.indexOf(prev) + step) % ROTATIONS.length];
+}
+
+type Tool = 'text' | 'adjust';
 
 /**
  * Identifies the exact file being edited so "Save" can overwrite it in place.
@@ -57,7 +66,9 @@ interface Props {
   imageUrl: string;
   imageName: string;
   objectId: string;
-  date: string;
+  /** The night the picture belongs to. Null for one that belongs to no single night (opened from an object page):
+   *  "Save as new" then adds a processed image to the object itself. */
+  date: string | null;
   isDark: boolean;
   /** Where the saved result lands: 'telescope' → library folder, 'processed' → processed images. */
   sourceKind: 'telescope' | 'processed';
@@ -163,10 +174,12 @@ function applyPixelAdjustments(
 }
 
 // Pixel coords from a mouse event relative to the canvas element
-function eventToCanvasPx(e: React.MouseEvent<HTMLCanvasElement>): { x: number; y: number } {
-  const r = e.currentTarget.getBoundingClientRect();
-  const scaleX = e.currentTarget.width  / r.width;
-  const scaleY = e.currentTarget.height / r.height;
+function eventToCanvasPx(
+  canvas: HTMLCanvasElement, e: { clientX: number; clientY: number },
+): { x: number; y: number } {
+  const r = canvas.getBoundingClientRect();
+  const scaleX = canvas.width  / r.width;
+  const scaleY = canvas.height / r.height;
   return { x: (e.clientX - r.left) * scaleX, y: (e.clientY - r.top) * scaleY };
 }
 
@@ -177,13 +190,17 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef       = useRef<HTMLImageElement | null>(null);
+  const rootRef      = useRef<HTMLDivElement | null>(null);
 
   // Image loading
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError,  setImgError]  = useState(false);
 
   // Active tool
-  const [activeTool, setActiveTool] = useState<Tool>('select');
+  const [activeTool, setActiveTool] = useState<Tool>('adjust');
+  // Crop is a mode of the Adjust tab: while on, the canvas draws and drags the crop box instead of selecting text.
+  const [cropping, setCropping] = useState(false);
+  const cropMode = activeTool === 'adjust' && cropping;
 
   // Text layers
   const [textLayers, setTextLayers] = useState<TextLayer[]>([]);
@@ -212,6 +229,8 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
 
   // Adjustments
   const [adj, setAdj] = useState<Adjustments>({ brightness: 0, contrast: 0, saturation: 0 });
+  // While held, the preview shows the picture without the Adjust sliders, to judge what they did.
+  const [comparing, setComparing] = useState(false);
   const [flipH, setFlipH] = useState(false);
   const [flipV, setFlipV] = useState(false);
   const [rotation, setRotation] = useState<Rotation>(0);
@@ -434,7 +453,7 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
     ctx.restore();
 
     // pixel-based adjustments (works in all browsers)
-    if (adj.brightness !== 0 || adj.contrast !== 0 || adj.saturation !== 0) {
+    if (!comparing && (adj.brightness !== 0 || adj.contrast !== 0 || adj.saturation !== 0)) {
       const id = ctx.getImageData(0, 0, cw, ch);
       applyPixelAdjustments(id.data, adj.brightness, adj.contrast, adj.saturation);
       ctx.putImageData(id, 0, 0);
@@ -444,23 +463,28 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
     textLayers.forEach(l => drawTextLayer(ctx, l, cw, ch, l.id === selectedId));
 
     // ── crop overlay ──
-    if (cropDraft && activeTool === 'crop') {
+    if (cropDraft && cropMode) {
       drawCropOverlay(ctx, cropDraft, cw, ch);
     }
-  }, [imgLoaded, flipH, flipV, rotation, appliedCrop, adj, textLayers, selectedId, cropDraft, activeTool, drawTextLayer, drawCropOverlay]);
+  }, [imgLoaded, flipH, flipV, rotation, appliedCrop, adj, comparing, textLayers, selectedId, cropDraft, cropMode, drawTextLayer, drawCropOverlay]);
 
   // Coalesce redraws into one animation frame. Slider onChange fires at pointer
   // rate (60-120Hz) and each draw() runs a full-frame getImageData/pixel-loop/
   // putImageData pass, so without this a retina drag queues dozens of redundant
   // passes per visible frame.
   const drawRafRef = useRef<number | null>(null);
+  // The frame runs the newest draw, not the one that scheduled it. A change that arrives while a frame is already
+  // waiting (a slider also updates the selected text layer one render later) is not scheduled again, so a draw
+  // captured at scheduling time would paint the previous values and the preview would trail the controls.
+  const drawRef = useRef(draw);
+  useEffect(() => { drawRef.current = draw; });
   const scheduleDraw = useCallback(() => {
     if (drawRafRef.current != null) return;
     drawRafRef.current = requestAnimationFrame(() => {
       drawRafRef.current = null;
-      draw();
+      drawRef.current();
     });
-  }, [draw]);
+  }, []);
   useEffect(() => () => {
     if (drawRafRef.current != null) cancelAnimationFrame(drawRafRef.current);
   }, []);
@@ -473,7 +497,7 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
   }, [imgLoaded, sizeCanvas, draw]);
 
   // Redraw on every state change (coalesced to one frame)
-  useEffect(() => { scheduleDraw(); }, [scheduleDraw]);
+  useEffect(() => { scheduleDraw(); }, [scheduleDraw, draw]);
 
   // ── Crop hit-testing ──────────────────────────────────────────────────────
 
@@ -551,22 +575,23 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
     return map[handle];
   };
 
-  const [canvasCursor, setCanvasCursor] = useState<string>('default');
+  const [canvasCursor, setCanvasCursor] = useState<string>('crosshair');
 
   const onMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const { x: px, y: py } = eventToCanvasPx(e);
+    const { x: px, y: py } = eventToCanvasPx(canvas, e);
     const { width: cw, height: ch } = canvas;
 
     // ── crop mode ──
-    if (activeTool === 'crop') {
+    if (cropMode) {
       if (cropDraft) {
         const handle = getCropHandle(px, py, cropDraft, cw, ch);
         cropHandleRef.current     = handle;
         cropDragStartRef.current  = { mouseX: px, mouseY: py, crop: { ...cropDraft } };
       } else {
         cropHandleRef.current     = 'new';
+        setCanvasCursor('crosshair');
         cropDragStartRef.current  = { mouseX: px, mouseY: py, crop: { x1: px / cw, y1: py / ch, x2: px / cw, y2: py / ch } };
         setCropDraft({ x1: px / cw, y1: py / ch, x2: px / cw, y2: py / ch });
       }
@@ -584,30 +609,18 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
       return;
     }
 
-    // ── text tool: place new text ──
-    if (activeTool === 'text') {
-      const layer: TextLayer = {
-        id: crypto.randomUUID(),
-        text: tText || 'Text',
-        x: px / cw, y: py / ch,
-        fontSize: tSize, fontFamily: tFont, color: tColor,
-        bold: tBold, italic: tItalic, opacity: tOpacity, align: tAlign, angle: tAngle,
-      };
-      setTextLayers(prev => [...prev, layer]);
-      setSelectedId(layer.id);
-    } else {
-      setSelectedId(null);
-    }
+    // Text is only added from the panel's Add buttons, so a click on empty picture just deselects.
+    setSelectedId(null);
   };
 
-  const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const onMouseMove = (e: { clientX: number; clientY: number }) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const { x: px, y: py } = eventToCanvasPx(e);
+    const { x: px, y: py } = eventToCanvasPx(canvas, e);
     const { width: cw, height: ch } = canvas;
 
     // Update cursor during crop hover
-    if (activeTool === 'crop') {
+    if (cropMode) {
       if (cropDraft && !cropDragStartRef.current) {
         const h = getCropHandle(px, py, cropDraft, cw, ch);
         setCanvasCursor(getCropCursor(h));
@@ -615,7 +628,7 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
     }
 
     // ── crop drag ──
-    if (activeTool === 'crop' && cropDragStartRef.current) {
+    if (cropMode && cropDragStartRef.current) {
       const { mouseX: mx0, mouseY: my0, crop: c0 } = cropDragStartRef.current;
       const handle = cropHandleRef.current;
       const dx = (px - mx0) / cw, dy = (py - my0) / ch;
@@ -671,6 +684,28 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
     dragId.current     = null;
   };
 
+  // The editor opens over the viewer it was launched from. Take focus off that viewer's toolbar, and hand it
+  // back on close so keyboard users land where they were.
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    rootRef.current?.focus();
+    return () => previous?.focus?.();
+  }, []);
+
+  // Move and release are tracked on the window, not the canvas: a fast drag leaves the canvas
+  // before the next mousemove lands on it, and a mouseup outside it would never arrive, leaving
+  // the crop box or text label stuck to the cursor's last position.
+  useEffect(() => {
+    const move = (e: MouseEvent) => onMouseMove(e);
+    const up = () => onMouseUp();
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+  });
+
   // ── Sidebar → selected layer sync ─────────────────────────────────────────
 
   useEffect(() => {
@@ -703,15 +738,16 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
       x: (l.x - crop.x1) / (crop.x2 - crop.x1),
       y: (l.y - crop.y1) / (crop.y2 - crop.y1),
     })));
-    setActiveTool('select');
+    setCropping(false);
   }, [cropDraft]);
 
   const resetCrop = () => { setCropDraft(null); setAppliedCrop(null); };
+  const cancelCrop = () => { setCropDraft(null); setCropping(false); };
 
   // ── Rotate ────────────────────────────────────────────────────────────────
 
   const rotateBy = (deltaDeg: 90 | -90) => {
-    setRotation(prev => ((((prev + deltaDeg) % 360) + 360) % 360) as Rotation);
+    setRotation(prev => nextRotation(prev, deltaDeg));
     // A crop rect is stored in the pre-rotation on-screen space; rotating would
     // reinterpret it against the new axes. Drop it rather than smear the image.
     setCropDraft(null);
@@ -719,6 +755,21 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
   };
 
   // ── Watermark helpers ─────────────────────────────────────────────────────
+
+  // New text in the middle of the picture, styled like the last text edited but always starting with the placeholder
+  // (the sidebar's own text is whatever label was last selected, such as a © watermark). Selecting it opens its controls.
+  const addText = () => {
+    const layer: TextLayer = {
+      id: crypto.randomUUID(),
+      text: t('imageEditorModal.textPanel.defaultText'),
+      x: 0.5, y: 0.5,
+      fontSize: tSize, fontFamily: tFont, color: tColor,
+      bold: tBold, italic: tItalic, opacity: tOpacity, align: 'center', angle: tAngle,
+    };
+    setTextLayers(prev => [...prev, layer]);
+    setSelectedId(layer.id);
+    loadLayerIntoSidebar(layer);
+  };
 
   const addWatermark = () => {
     const layer: TextLayer = {
@@ -821,7 +872,8 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
       const rot90 = rotation === 90 || rotation === 270;
       offscreen.width  = Math.round(rot90 ? sh : sw);
       offscreen.height = Math.round(rot90 ? sw : sh);
-      const ctx = offscreen.getContext('2d')!;
+      const ctx = offscreen.getContext('2d');
+      if (!ctx) throw new Error(t('imageEditorModal.save.exportFailed'));
 
       // Image
       ctx.save();
@@ -875,9 +927,14 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
       if (mode === 'overwrite' && overwriteTarget) {
         if (overwriteTarget.kind === 'processed') {
           await overwriteProcessedImage(objectId, overwriteTarget.id, file);
+        } else if (date) {
+          await uploadLibraryFile(objectId, date, file, overwriteTarget.path, !!appliedCrop || rotation !== 0 || flipH || flipV);
         } else {
-          await uploadLibraryFile(objectId, date, file, overwriteTarget.path);
+          // An original can only be replaced inside its own night; callers do not offer this without one.
+          throw new Error(t('imageEditorModal.save.saveFailed'));
         }
+      } else if (!date) {
+        await uploadObjectProcessedImage(objectId, file);
       } else if (sourceKind === 'telescope') {
         await uploadLibraryFile(objectId, date, file);
       } else {
@@ -903,24 +960,37 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
         setTextLayers(prev => prev.filter(l => l.id !== selectedId));
         setSelectedId(null);
       }
-      if (e.key === 'Enter' && activeTool === 'crop' && cropDraft) {
+      if (e.key === 'Enter' && cropMode && cropDraft) {
         confirmCrop();
       }
     };
+    const isTyping = (e: KeyboardEvent) =>
+      e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+    const onCompareDown = (e: KeyboardEvent) => { if (e.key === '\\' && !isTyping(e)) setComparing(true); };
+    const onCompareUp = (e: KeyboardEvent) => { if (e.key === '\\') setComparing(false); };
+    const stopComparing = () => setComparing(false);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, selectedId, activeTool, cropDraft, confirmCrop]);
+    window.addEventListener('keydown', onCompareDown);
+    window.addEventListener('keyup', onCompareUp);
+    window.addEventListener('blur', stopComparing);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onCompareDown);
+      window.removeEventListener('keyup', onCompareUp);
+      window.removeEventListener('blur', stopComparing);
+    };
+  }, [onClose, selectedId, cropMode, cropDraft, confirmCrop]);
 
   // ── Dynamic cursor for crop mode ──────────────────────────────────────────
 
-  const canvasCursorStyle = activeTool === 'crop'
-    ? canvasCursor
-    : activeTool === 'text' ? 'cell' : 'default';
+  const canvasCursorStyle = cropMode
+    ? (cropDraft ? canvasCursor : 'crosshair')
+    : 'default';
 
   // ── Shared Tailwind helpers ───────────────────────────────────────────────
 
   const toolBtn = (active: boolean) =>
-    `flex flex-col items-center gap-0.5 p-2 rounded-lg text-[10px] font-medium transition ${
+    `flex flex-col items-center gap-0.5 p-2 rounded-lg text-[0.625rem] font-medium transition ${
       active
         ? isDark ? 'bg-accent-500/20 text-accent-400' : 'bg-accent-300 text-accent-700'
         : isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'
@@ -939,7 +1009,28 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
       : 'bg-white border-slate-300 text-slate-700 placeholder-slate-400'
   }`;
 
+  // Mirrors handleSave: a new version becomes a titled processed picture unless it is a raw file with a night.
+  const titleUsed = sourceKind === 'processed' || !date;
+
   const label = `block text-xs font-medium mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`;
+
+  // Measures the picture as it will be saved (rotation and crop included, adjustments not) on a
+  // small copy, so the analysis is instant even for a 50 MP stack.
+  const autoAdjust = () => {
+    const img = imgRef.current;
+    if (!img) return;
+    const src = appliedCrop ? cropToSourceRect(appliedCrop, rotation) : { x1: 0, y1: 0, x2: 1, y2: 1 };
+    const sx = src.x1 * img.naturalWidth, sy = src.y1 * img.naturalHeight;
+    const sw = (src.x2 - src.x1) * img.naturalWidth, sh = (src.y2 - src.y1) * img.naturalHeight;
+    const scale = Math.min(1, 512 / Math.max(sw, sh));
+    const w = Math.max(1, Math.round(sw * scale)), h = Math.max(1, Math.round(sh * scale));
+    const probe = document.createElement('canvas');
+    probe.width = w; probe.height = h;
+    const pctx = probe.getContext('2d', { willReadFrequently: true });
+    if (!pctx) return;
+    pctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+    setAdj(computeAutoAdjust(pctx.getImageData(0, 0, w, h).data));
+  };
 
   const adjRow = (key: keyof Adjustments, display: string) => (
     <div key={key}>
@@ -959,7 +1050,15 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center">
+    <div
+      ref={rootRef}
+      data-image-editor=""
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('imageEditorModal.header.title')}
+      tabIndex={-1}
+      className="image-editor-fade-in fixed inset-0 z-[95] bg-black/90 flex items-center justify-center outline-none"
+    >
       <div className={`relative w-full max-w-[1400px] h-[96vh] mx-4 flex flex-col rounded-2xl overflow-hidden shadow-2xl ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
 
         {/* Header */}
@@ -990,9 +1089,6 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
               <canvas
                 ref={canvasRef}
                 onMouseDown={onMouseDown}
-                onMouseMove={onMouseMove}
-                onMouseUp={onMouseUp}
-                onMouseLeave={onMouseUp}
                 className="rounded-xl shadow-2xl select-none"
                 style={{ maxWidth: '100%', maxHeight: '100%', cursor: canvasCursorStyle }}
               />
@@ -1004,18 +1100,12 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
 
             {/* Tool selector */}
             <div className={`flex-shrink-0 p-3 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-              <div className="grid grid-cols-4 gap-1">
-                <button onClick={() => setActiveTool('select')} className={toolBtn(activeTool === 'select')} title={t('imageEditorModal.tools.select')}>
-                  <MousePointer className="w-4 h-4" />{t('imageEditorModal.tools.select')}
-                </button>
-                <button onClick={() => setActiveTool('text')} className={toolBtn(activeTool === 'text')} title={t('imageEditorModal.tools.text')}>
-                  <Type className="w-4 h-4" />{t('imageEditorModal.tools.text')}
-                </button>
-                <button onClick={() => setActiveTool('crop')} className={toolBtn(activeTool === 'crop')} title={t('imageEditorModal.tools.crop')}>
-                  <Crop className="w-4 h-4" />{t('imageEditorModal.tools.crop')}
-                </button>
+              <div className="grid grid-cols-2 gap-1">
                 <button onClick={() => setActiveTool('adjust')} className={toolBtn(activeTool === 'adjust')} title={t('imageEditorModal.tools.adjust')}>
                   <SlidersHorizontal className="w-4 h-4" />{t('imageEditorModal.tools.adjust')}
+                </button>
+                <button onClick={() => { cancelCrop(); setActiveTool('text'); }} className={toolBtn(activeTool === 'text')} title={t('imageEditorModal.tools.text')}>
+                  <Type className="w-4 h-4" />{t('imageEditorModal.tools.text')}
                 </button>
               </div>
             </div>
@@ -1023,20 +1113,22 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
             {/* Tool options */}
             <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
 
-              {/* ── SELECT ── */}
-              {activeTool === 'select' && (
+              {/* ── TEXT ── */}
+              {activeTool === 'text' && (
                 <>
-                  <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                    {t('imageEditorModal.selectPanel.hint')}
-                  </p>
-                  <button onClick={addWatermark} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
-                    <Type className="w-3.5 h-3.5 opacity-60" />{t('imageEditorModal.selectPanel.addWatermark')}
-                  </button>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button onClick={addText} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
+                      <Plus className="w-3.5 h-3.5 opacity-60" />{t('imageEditorModal.textPanel.addText')}
+                    </button>
+                    <button onClick={addWatermark} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
+                      <Type className="w-3.5 h-3.5 opacity-60" />{t('imageEditorModal.selectPanel.addWatermark')}
+                    </button>
+                  </div>
                   {textLayers.length > 0 && (
                     <div className="space-y-1">
-                      <p className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>{t('imageEditorModal.selectPanel.textLayers')}</p>
+                      <p className={`text-[0.625rem] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>{t('imageEditorModal.selectPanel.textLayers')}</p>
                       {textLayers.map(l => (
-                        <button key={l.id} onClick={() => { setSelectedId(l.id); loadLayerIntoSidebar(l); setActiveTool('text'); }}
+                        <button key={l.id} onClick={() => { setSelectedId(l.id); loadLayerIntoSidebar(l); }}
                           className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition ${
                             l.id === selectedId
                               ? isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-300 text-accent-700'
@@ -1049,23 +1141,20 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
                       ))}
                     </div>
                   )}
-                </>
-              )}
+                  {textLayers.length > 0 && (
+                    <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                      {t('imageEditorModal.selectPanel.hint')}
+                    </p>
+                  )}
 
-              {/* ── TEXT ── */}
-              {activeTool === 'text' && (
-                <>
-                  <button onClick={addWatermark} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
-                    <Type className="w-3.5 h-3.5 opacity-60" />{t('imageEditorModal.selectPanel.addWatermark')}
-                  </button>
-
+                  {selectedId ? (
+                    <>
                   <div>
                     <label className={label}>{t('imageEditorModal.textPanel.content')}</label>
                     <textarea value={tText} onChange={e => setTText(e.target.value)}
                       placeholder={t('imageEditorModal.textPanel.contentPlaceholder')} rows={3}
                       className={`${inputCls} resize-none`}
                     />
-                    {!selectedId && <p className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>{t('imageEditorModal.textPanel.clickToPlaceHint')}</p>}
                   </div>
 
                   <div>
@@ -1133,11 +1222,17 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
                       <Trash2 className="w-3.5 h-3.5" />{t('imageEditorModal.textPanel.deleteSelectedText')}
                     </button>
                   )}
+                    </>
+                  ) : (
+                    <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                      {t('imageEditorModal.textPanel.noSelection')}
+                    </p>
+                  )}
 
                   {/* Watermark presets */}
                   <div className={`border-t pt-3 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
                     <div className="flex items-center justify-between mb-2">
-                      <span className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{t('imageEditorModal.presets.savedPresets')}</span>
+                      <span className={`text-[0.625rem] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{t('imageEditorModal.presets.savedPresets')}</span>
                       <button onClick={() => setShowSavePreset(s => !s)} title={t('imageEditorModal.presets.saveAsPresetTitle')}
                         className={`p-1 rounded transition ${isDark ? 'hover:bg-slate-800 text-slate-500' : 'hover:bg-slate-100 text-slate-400'}`}>
                         <Plus className="w-3.5 h-3.5" />
@@ -1162,11 +1257,11 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
                     {presetsLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin text-slate-500 mx-auto" />
                     ) : presetsQueryError ? (
-                      <p className="text-[10px] text-red-400">
+                      <p className="text-[0.625rem] text-red-400">
                         {t('imageEditorModal.presets.loadFailed')}
                       </p>
                     ) : presets.length === 0 ? (
-                      <p className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                      <p className={`text-[0.625rem] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                         {t('imageEditorModal.presets.empty')}
                       </p>
                     ) : (
@@ -1191,7 +1286,8 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
               )}
 
               {/* ── CROP ── */}
-              {activeTool === 'crop' && (
+              {/* ── ADJUST ── */}
+              {cropMode && (
                 <>
                   <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                     {t('imageEditorModal.cropPanel.hint')}
@@ -1202,24 +1298,55 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
                       <Check className="w-3.5 h-3.5" />{t('imageEditorModal.cropPanel.applyCrop')}
                     </button>
                   )}
-                  {appliedCrop && (
-                    <>
-                      <div className={`text-xs rounded-lg px-3 py-2 ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>{t('imageEditorModal.cropPanel.cropApplied')}</div>
-                      <button onClick={resetCrop}
-                        className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
-                        <RotateCcw className="w-3.5 h-3.5" />{t('imageEditorModal.cropPanel.resetCrop')}
-                      </button>
-                    </>
-                  )}
+                  <button onClick={cancelCrop}
+                    className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
+                    <X className="w-3.5 h-3.5" />{t('imageEditorModal.cropPanel.cancel')}
+                  </button>
                 </>
               )}
 
-              {/* ── ADJUST ── */}
-              {activeTool === 'adjust' && (
+              {activeTool === 'adjust' && !cropMode && (
                 <>
+                  <button onClick={autoAdjust} title={t('imageEditorModal.adjustPanel.autoHint')}
+                    className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      isDark ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25' : 'bg-accent-500/10 text-accent-600 hover:bg-accent-500/20'
+                    }`}>
+                    <Wand2 className="w-3.5 h-3.5" />{t('imageEditorModal.adjustPanel.auto')}
+                  </button>
+                  <button
+                    onPointerDown={() => setComparing(true)}
+                    onPointerUp={() => setComparing(false)}
+                    onPointerLeave={() => setComparing(false)}
+                    onPointerCancel={() => setComparing(false)}
+                    onContextMenu={e => e.preventDefault()}
+                    aria-pressed={comparing}
+                    title={t('imageEditorModal.adjustPanel.compareHint')}
+                    className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium select-none touch-none transition-colors ${
+                      comparing
+                        ? 'bg-accent-500 text-white'
+                        : isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}>
+                    <Eye className="w-3.5 h-3.5" />{t('imageEditorModal.adjustPanel.compare')}
+                  </button>
                   {adjRow('brightness', t('imageEditorModal.adjustPanel.brightness'))}
                   {adjRow('contrast',   t('imageEditorModal.adjustPanel.contrast'))}
                   {adjRow('saturation', t('imageEditorModal.adjustPanel.saturation'))}
+
+                  <div>
+                    <p className={`text-xs font-medium mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('imageEditorModal.tools.crop')}</p>
+                    <div className="flex gap-1">
+                      <button onClick={() => setCropping(true)}
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-medium transition ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
+                        <Crop className="w-3.5 h-3.5" />{appliedCrop ? t('imageEditorModal.cropPanel.cropApplied') : t('imageEditorModal.tools.crop')}
+                      </button>
+                      {appliedCrop && (
+                        <button onClick={resetCrop} title={t('imageEditorModal.cropPanel.resetCrop')} aria-label={t('imageEditorModal.cropPanel.resetCrop')}
+                          className={`flex items-center justify-center px-2.5 py-2 rounded-lg text-xs transition ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
+                          <RotateCcw className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
                   <div>
                     <p className={`flex justify-between text-xs font-medium mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -1276,10 +1403,18 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
 
             {/* Save */}
             <div className={`flex-shrink-0 p-3 border-t space-y-2 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-              <div>
-                <label className={label}>{t('imageEditorModal.save.title')}</label>
-                <input type="text" value={saveTitle} onChange={e => setSaveTitle(e.target.value)} className={inputCls} />
-              </div>
+              {/* Only a new processed picture is stored with a title. A new copy of a raw file is named by the
+                  server (<object>_<date>-<time>E.jpg, a free-form name would stop it being recognised), and a
+                  Save keeps the existing name. */}
+              {titleUsed && (
+                <div>
+                  <label className={label}>{t('imageEditorModal.save.title')}</label>
+                  <input type="text" value={saveTitle} onChange={e => setSaveTitle(e.target.value)} className={inputCls} />
+                  {overwriteTarget && (
+                    <p className={`text-[0.625rem] mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>{t('imageEditorModal.save.titleHint')}</p>
+                  )}
+                </div>
+              )}
               {saveError && <p className="text-xs text-red-400">{saveError}</p>}
 
               {overwriteTarget && (
@@ -1302,7 +1437,7 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
                 {savingMode === 'new' ? t('imageEditorModal.save.saving') : t('imageEditorModal.save.saveAsNewVersion')}
               </button>
 
-              <p className={`text-[10px] text-center ${isDark ? 'text-slate-700' : 'text-slate-400'}`}>
+              <p className={`text-[0.625rem] text-center ${isDark ? 'text-slate-700' : 'text-slate-400'}`}>
                 {overwriteTarget
                   ? sourceKind === 'telescope'
                     ? t('imageEditorModal.save.footerOverwriteTelescope')

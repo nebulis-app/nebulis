@@ -12,8 +12,8 @@ import type { FitAssessment } from '../../lib/telescopeFov';
 import { fitDisplayStrings } from '../../lib/telescopeFov';
 import { FitBadge } from '../FitBadge';
 import { FramingModal, FRAMING_MOSAIC_ENABLED } from './FramingModal';
-import { FilterRecommendationPanel } from './FilterRecommendationPanel';
-import { BestImagingChart } from './BestImagingChart';
+import { FilterRecommendationPanel } from '../ui/FilterRecommendationPanel';
+import { BestImagingChart } from '../ui/BestImagingChart';
 
 interface Props {
   object: CatalogProgressObject;
@@ -107,8 +107,8 @@ export function CatalogObjectModal({
     return computeBestImagingWindow(
       object.ra,
       object.dec,
-      observerLat!,
-      observerLon!,
+      observerLat,
+      observerLon,
       minAlt,
     );
   }, [object.ra, object.dec, observerLat, observerLon, minAlt, hasLocation]);
@@ -198,12 +198,12 @@ export function CatalogObjectModal({
                 </span>
               )}
               {object.isImaged && (object.imagedVia?.[0] ? (
-                <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] font-semibold leading-none ${inFrameBadge}`}>
+                <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[0.8125rem] font-semibold leading-none ${inFrameBadge}`}>
                   <Layers className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   {t('catalogObjectModal.imagedInFrame', { host: object.imagedVia[0].name })}
                 </span>
               ) : (
-                <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[13px] font-semibold leading-none text-slate-950 ${accentBg}`}>
+                <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[0.8125rem] font-semibold leading-none text-slate-950 ${accentBg}`}>
                   {t('catalogObjectModal.imagedSessions', { count: object.sessionCount })}
                 </span>
               ))}

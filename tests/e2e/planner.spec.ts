@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockAllRoutes, ok } from './fixtures/mocks';
+import { mockAllRoutes, ok, json } from './fixtures/mocks';
 
 // The planner is a split-pane layout: a searchable object library on the left
 // and a dusk-to-dawn schedule timeline on the right. Targets are dragged from
@@ -26,7 +26,11 @@ test.describe('Planner Page', () => {
     for (const label of ['All', 'Galaxies', 'Nebulae', 'Clusters']) {
       await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
     }
-    await expect(page.getByRole('button', { name: /hide blocked/i })).toBeVisible();
+    // Hide blocked, the sort order and the scope (wishlist / not imaged) live in the View menu.
+    await page.getByRole('button', { name: /view options/i }).click();
+    await expect(page.getByRole('menuitemcheckbox', { name: /hide blocked/i })).toBeVisible();
+    await expect(page.getByRole('menuitemradio', { name: /not imaged yet/i })).toBeVisible();
+    await expect(page.getByRole('menuitemradio', { name: /wishlist/i })).toBeVisible();
   });
 
   test('search narrows the library to matching targets', async ({ page }) => {
@@ -66,32 +70,32 @@ test.describe('Planner Page', () => {
     test('expands an inline altitude chart without opening the details modal', async ({ page }) => {
       await expect(page.locator('svg.cursor-crosshair')).toHaveCount(0);
 
-      await page.getByRole('button', { name: 'Show altitude tonight for Orion Nebula', exact: true }).click();
+      await page.getByRole('button', { name: 'Show altitude and filters for Orion Nebula', exact: true }).click();
 
       await expect(page.locator('svg.cursor-crosshair')).toHaveCount(1);
       await expect(page.getByRole('dialog')).not.toBeVisible();
     });
 
     test('is a toggle: clicking again collapses the chart', async ({ page }) => {
-      const toggle = page.getByRole('button', { name: 'Show altitude tonight for Orion Nebula', exact: true });
+      const toggle = page.getByRole('button', { name: 'Show altitude and filters for Orion Nebula', exact: true });
       await toggle.click();
       await expect(page.locator('svg.cursor-crosshair')).toHaveCount(1);
 
-      await page.getByRole('button', { name: 'Hide altitude tonight for Orion Nebula', exact: true }).click();
+      await page.getByRole('button', { name: 'Hide altitude and filters for Orion Nebula', exact: true }).click();
       await expect(page.locator('svg.cursor-crosshair')).toHaveCount(0);
     });
 
     test('expanding one row leaves the others collapsed', async ({ page }) => {
-      await page.getByRole('button', { name: 'Show altitude tonight for Orion Nebula', exact: true }).click();
+      await page.getByRole('button', { name: 'Show altitude and filters for Orion Nebula', exact: true }).click();
       await expect(page.locator('svg.cursor-crosshair')).toHaveCount(1);
 
-      await page.getByRole('button', { name: 'Show altitude tonight for Pleiades', exact: true }).click();
+      await page.getByRole('button', { name: 'Show altitude and filters for Pleiades', exact: true }).click();
       await expect(page.locator('svg.cursor-crosshair')).toHaveCount(2);
 
-      await page.getByRole('button', { name: 'Hide altitude tonight for Orion Nebula', exact: true }).click();
+      await page.getByRole('button', { name: 'Hide altitude and filters for Orion Nebula', exact: true }).click();
       await expect(page.locator('svg.cursor-crosshair')).toHaveCount(1);
       // Pleiades' chart is the one still open.
-      await expect(page.getByRole('button', { name: 'Hide altitude tonight for Pleiades', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Hide altitude and filters for Pleiades', exact: true })).toBeVisible();
     });
   });
 
@@ -116,9 +120,9 @@ test.describe('Planner Page', () => {
     expect(chartBox).not.toBeNull();
     await page.mouse.move(chartBox!.x + chartBox!.width * 0.5, chartBox!.y + chartBox!.height * 0.5);
 
-    // The caption did switch to the scrubbed wording (the period right after
-    // the time is what the default "(highest tonight)" variant lacks)...
-    await expect(page.getByText(/Sky shown at \d{2}:\d{2}\./)).toBeVisible();
+    // The caption did switch to the scrubbed wording ("Shown at 03:00 · drag…";
+    // the default variant reads "Shown at 03:00 (highest tonight) · drag…")...
+    await expect(page.getByText(/Shown at \d{2}:\d{2} · drag the chart/)).toBeVisible();
 
     // ...and the modal's box is unchanged.
     const scrubbed = await panel.boundingBox();
@@ -191,6 +195,50 @@ test.describe('Planner Page', () => {
     // WishlistObjectModal/CatalogObjectModal), so match it by accessible name.
     await expect(page.getByRole('img', { name: /reference image/i })).toBeVisible();
     });
+  });
+
+  test('the hero collapses to one row and stays collapsed after a reload', async ({ page }) => {
+    await page.getByRole('button', { name: 'Collapse header', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Expand header', exact: true })).toBeVisible();
+    // The title and the verdict survive the collapse; only the long form goes.
+    await expect(page.getByRole('heading', { name: 'Planner', level: 1 })).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Expand header', exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Expand header', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Collapse header', exact: true })).toBeVisible();
+  });
+
+  test('an empty night offers the two ways to start, and sharing waits for a plan', async ({ page }) => {
+    await expect(page.getByText('Nothing planned for this night yet.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Share', exact: true })).toBeDisabled();
+    // No "More" menu any more: nothing to copy here, so no copy button either.
+    await expect(page.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /copy last night/i })).toHaveCount(0);
+  });
+
+  test('a planned night puts copy and share in the schedule header', async ({ page }) => {
+    const now = new Date().toISOString();
+    await page.route('**/api/planned-sessions**', route => {
+      if (route.request().method() !== 'GET') return route.fulfill(json(ok({ id: 1 })));
+      return route.fulfill(json(ok([{
+        id: 1, objectId: 'M42', objectName: 'Orion Nebula', ra: 83.8, dec: -5.4,
+        startTime: now, endTime: now, notes: '', framingSetup: null, createdAt: now, updatedAt: now,
+      }])));
+    });
+    await page.reload();
+    await expect(page.getByRole('button', { name: /copy last night/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Share', exact: true })).toBeEnabled();
+    await expect(page.getByText('Nothing planned for this night yet.')).toHaveCount(0);
+  });
+
+  test('the rating key explains the night strip', async ({ page }) => {
+    await page.getByRole('button', { name: 'Rating key', exact: true }).click();
+    const key = page.getByRole('dialog', { name: 'Rating key' });
+    await expect(key).toContainText('Forecast rating');
+    await expect(key).toContainText('Blocks planned');
+    await expect(key).toContainText('Moon phase');
   });
 
   test('prompts for location when none is set', async ({ page }) => {

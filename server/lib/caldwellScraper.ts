@@ -20,7 +20,7 @@ const BASE_URL =
 const USER_AGENT = 'Nebulis/1.0 (astronomy companion app)';
 const TIMEOUT_MS = 12_000;
 // Request images at a thumbnail-friendly width via WordPress's CDN resize param.
-const IMAGE_WIDTH = 600;
+const IMAGE_WIDTH = 1200;
 
 export interface CaldwellEntry {
   /** Caldwell number (1-109) */

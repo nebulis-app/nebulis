@@ -1,8 +1,8 @@
 import { useState, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Heart, Images, Sparkles } from 'lucide-react';
-import { getLibraryFileThumbnailUrl, type LibraryImage } from '../../lib/api/library';
+import { Heart, Images, Pencil, Sparkles } from 'lucide-react';
+import type { LibraryImage } from '../../lib/api/library';
 import { formatDate } from '../../lib/formatLocale';
 
 interface ImageCardProps {
@@ -29,16 +29,28 @@ export const ImageCard = memo(function ImageCard({ image, isDark, onOpen, onTogg
             <Images className={`w-10 h-10 opacity-30 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
           </div>
         ) : (
-          <img src={getLibraryFileThumbnailUrl(image.path, 400, 400)} alt={image.name} loading="lazy"
+          <img src={image.thumbUrl} alt={image.name} loading="lazy"
             onError={() => setImgError(true)}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
         )}
-        {image.isProcessed && (
-          <div
-            title={t('imageCard.processedImage')}
-            className="absolute top-2 left-2 p-1 rounded-full bg-accent-500/90 text-white shadow"
-          >
-            <Sparkles className="w-3 h-3" />
+        {(image.isProcessed || image.isEdited) && (
+          <div className="absolute top-2 left-2 flex gap-1">
+            {image.isProcessed && (
+              <div
+                title={t('imageCard.processedImage')}
+                className="p-1 rounded-full bg-accent-500/90 text-white shadow"
+              >
+                <Sparkles className="w-3 h-3" />
+              </div>
+            )}
+            {image.isEdited && (
+              <div
+                title={t('imageCard.editedImage')}
+                className="p-1 rounded-full bg-sky-500/90 text-white shadow"
+              >
+                <Pencil className="w-3 h-3" />
+              </div>
+            )}
           </div>
         )}
       </button>

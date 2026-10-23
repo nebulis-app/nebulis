@@ -1,0 +1,390 @@
+{
+  "version": 1,
+  "entries": {
+    "Amalthea": {
+      "image": {
+        "file": "Amalthea.webp",
+        "credit": "NASA/JPL (Galileo)",
+        "licenseUrl": "https://www.nasa.gov/multimedia/guidelines/index.html",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Amalthea_PIA02532.png"
+      },
+      "waive": [
+        "small"
+      ],
+      "note": "best public-domain picture available; small by necessity (user decision)"
+    },
+    "Ariel": {
+      "image": {
+        "file": "Ariel.webp",
+        "credit": "Kevin M. Gill, from NASA/JPL-Caltech Voyager 2 data",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Ariel_in_monochrome.jpg"
+      },
+      "waive": [
+        "text"
+      ],
+      "note": "text check read a false word; looked at it by eye, no text in the picture"
+    },
+    "Deimos": {
+      "image": {
+        "file": "Deimos.webp",
+        "credit": "NASA/JPL/University of Arizona (HiRISE)",
+        "licenseUrl": "https://www.nasa.gov/multimedia/guidelines/index.html",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:NASA-Deimos-MarsMoon-20090221.jpg"
+      },
+      "waive": [
+        "small"
+      ],
+      "note": "best public-domain picture available; small by necessity (user decision)"
+    },
+    "Enceladus": {
+      "image": {
+        "file": "Enceladus.webp",
+        "credit": "NASA/JPL (Cassini)",
+        "licenseUrl": "https://www.nasa.gov/multimedia/guidelines/index.html",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:PIA17202_-_Approaching_Enceladus.jpg"
+      }
+    },
+    "Europa": {
+      "image": {
+        "file": "Europa.webp",
+        "credit": "NASA/JPL-Caltech/SwRI/MSSS/Kevin M. Gill",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Europa_-_Perijove_45_(cropped).png"
+      },
+      "waive": [
+        "text"
+      ],
+      "note": "text check read a false word; looked at it by eye, no text in the picture"
+    },
+    "Ganymede": {
+      "image": {
+        "file": "Ganymede.webp",
+        "credit": "NASA/JPL-Caltech/SwRI/MSSS/Kevin M. Gill",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Ganymede_-_Perijove_34_Composite.png"
+      }
+    },
+    "Hyperion": {
+      "image": {
+        "file": "Hyperion.webp",
+        "credit": "NASA/JPL/SSI/Gordan Ugarkovic (Cassini)",
+        "licenseUrl": "https://www.nasa.gov/multimedia/guidelines/index.html",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Hyperion_true.jpg"
+      }
+    },
+    "IC2602": {
+      "image": {
+        "file": "IC2602.webp",
+        "credit": "Tel Lekatsas",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:The_Southern_Pleiades_(IC_2602).jpg"
+      },
+      "waive": [
+        "text"
+      ],
+      "note": "text check read a false word; looked at it by eye, no text in the picture"
+    },
+    "IC2944": {
+      "image": {
+        "file": "IC2944.webp",
+        "credit": "ESO",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:IC_2944,_Nicknamed_the_Running_Chicken_Nebula.jpg"
+      }
+    },
+    "Io": {
+      "image": {
+        "file": "Io.webp",
+        "credit": "NASA/JPL (Galileo)",
+        "licenseUrl": "https://www.nasa.gov/multimedia/guidelines/index.html",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Io_highest_resolution_natural_color.png"
+      }
+    },
+    "M4": {
+      "image": {
+        "file": "M4.webp",
+        "credit": "ESO. Acknowledgement: ESO Imaging Survey",
+        "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:The_globular_star_cluster_Messier_4.jpg"
+      }
+    },
+    "M5": {
+      "hubble": "drop"
+    },
+    "M10": {
+      "hubble": "drop"
+    },
+    "M20": {
+      "hubble": "drop"
+    },
+    "M27": {
+      "image": {
+        "file": "M27.webp",
+        "credit": "T.A. Rector (University of Alaska Anchorage) and H. Schweiker (WIYN and NOIRLab/NSF/AURA)",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:M27_-_Noao-m27-kpno-mayall-4-m.jpg"
+      },
+      "waive": [
+        "text"
+      ],
+      "note": "text check read a false word; looked at it by eye, no text in the picture"
+    },
+    "M31": {
+      "hubble": "drop"
+    },
+    "M32": {
+      "hubble": "drop"
+    },
+    "M33": {
+      "image": {
+        "file": "M33.webp",
+        "credit": "ESO",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:VST_snaps_a_very_detailed_view_of_the_Triangulum_Galaxy.jpg"
+      }
+    },
+    "M44": {
+      "hubble": "drop"
+    },
+    "M48": {
+      "hubble": "drop"
+    },
+    "M53": {
+      "waive": [
+        "text"
+      ],
+      "note": "text check read star fields as words; picture is clean"
+    },
+    "M58": {
+      "image": {
+        "file": "M58.webp",
+        "credit": "Adam Block/Mount Lemmon SkyCenter/University of Arizona",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:M58s_(visible).jpg"
+      }
+    },
+    "M64": {
+      "image": {
+        "file": "M64.webp",
+        "credit": "NASA and The Hubble Heritage Team (AURA/STScI)",
+        "licenseUrl": "https://hubblesite.org/copyright",
+        "sourceUrl": "https://www.messier-objects.com/messier-64/"
+      }
+    },
+    "M65": {
+      "hubble": "drop"
+    },
+    "M67": {
+      "hubble": "drop"
+    },
+    "M68": {
+      "waive": [
+        "text"
+      ],
+      "note": "text check read star fields as words; picture is clean"
+    },
+    "M70": {
+      "waive": [
+        "text"
+      ],
+      "note": "text check read star fields as words; picture is clean"
+    },
+    "M78": {
+      "image": {
+        "file": "M78.webp",
+        "credit": "ESO/Igor Chekalin",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Messier_78.jpg"
+      }
+    },
+    "M101": {
+      "image": {
+        "file": "M101.webp",
+        "credit": "ESA/Hubble & NASA (processing: Davide De Martin)",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:M101_hires_STScI-PRC2006-10a.jpg"
+      }
+    },
+    "Mercury": {
+      "image": {
+        "file": "Mercury.webp",
+        "credit": "NASA/JHUAPL/ASU/CIW (MESSENGER)",
+        "licenseUrl": "https://www.nasa.gov/multimedia/guidelines/index.html",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Mercury_in_true_color.jpg"
+      }
+    },
+    "Mimas": {
+      "image": {
+        "file": "Mimas.webp",
+        "credit": "NASA/JPL/Space Science Institute (Cassini)",
+        "licenseUrl": "https://www.nasa.gov/multimedia/guidelines/index.html",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Mimas_Masked.jpg"
+      }
+    },
+    "NGC40": {
+      "hubble": "drop"
+    },
+    "NGC188": {
+      "hubble": "drop"
+    },
+    "NGC246": {
+      "hubble": "drop"
+    },
+    "NGC253": {
+      "hubble": "drop"
+    },
+    "NGC869": {
+      "hubble": "drop"
+    },
+    "NGC1973": {
+      "dss2": {
+        "fovArcmin": 45
+      },
+      "waive": [
+        "notch"
+      ],
+      "note": "wide sky plate; dark nebulosity and a saturated core, not missing data"
+    },
+    "NGC2392": {
+      "waive": [
+        "notch"
+      ],
+      "note": "Eskimo Nebula: a planetary nebula on a black field, not a mosaic hole; checked by eye"
+    },
+    "NGC2403": {
+      "hubble": "drop"
+    },
+    "NGC2477": {
+      "hubble": "drop"
+    },
+    "NGC2516": {
+      "hubble": "drop"
+    },
+    "NGC3115": {
+      "hubble": "drop"
+    },
+    "NGC3132": {
+      "waive": [
+        "notch"
+      ],
+      "note": "Eight-Burst Nebula: a planetary nebula on a black field, not a mosaic hole; checked by eye"
+    },
+    "NGC3201": {
+      "waive": [
+        "text"
+      ],
+      "note": "text check read star fields as words; picture is clean"
+    },
+    "NGC4236": {
+      "image": {
+        "file": "NGC4236.webp",
+        "credit": "Matt Smith",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:NGC_4236_by_Matt_Smith.jpg"
+      }
+    },
+    "NGC4244": {
+      "hubble": "drop"
+    },
+    "NGC4565": {
+      "hubble": "drop"
+    },
+    "NGC4631": {
+      "hubble": "drop"
+    },
+    "NGC4945": {
+      "hubble": "drop"
+    },
+    "NGC6231": {
+      "hubble": "drop"
+    },
+    "NGC6822": {
+      "image": {
+        "file": "NGC6822.webp",
+        "credit": "ESO",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Barnard's_Galaxy.jpg"
+      }
+    },
+    "NGC6888": {
+      "image": {
+        "file": "NGC6888.webp",
+        "credit": "Chuck Ayoub",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:NGC_6888.png"
+      }
+    },
+    "NGC7000": {
+      "hubble": "drop"
+    },
+    "NGC7006": {
+      "waive": [
+        "text"
+      ],
+      "note": "text check read star fields as words; picture is clean"
+    },
+    "Rhea": {
+      "image": {
+        "file": "Rhea.webp",
+        "credit": "NASA/JPL/Space Science Institute (Cassini)",
+        "licenseUrl": "https://www.nasa.gov/multimedia/guidelines/index.html",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:PIA07763_Rhea_full_globe5.jpg"
+      }
+    },
+    "SH2-31": {
+      "dss2": {
+        "survey": "dss2"
+      },
+      "note": "reflection nebula: the photographic plate shows its blue light, VPHAS+ loses it"
+    },
+    "SH2-32": {
+      "dss2": {
+        "survey": "dss2"
+      },
+      "note": "reflection nebula: the photographic plate shows its blue light, VPHAS+ loses it"
+    },
+    "SH2-50": {
+      "dss2": {
+        "survey": "dss2"
+      },
+      "note": "VPHAS+ plate has unfilled green and orange tiles that the automatic check does not catch"
+    },
+    "SH2-155": {
+      "image": {
+        "file": "SH2-155.webp",
+        "credit": "Hewholooks",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:CaveHunterWilson.jpg"
+      }
+    },
+    "Sun": {
+      "image": {
+        "file": "Sun.webp",
+        "credit": "NASA/SDO (AIA)",
+        "licenseUrl": "https://www.nasa.gov/multimedia/guidelines/index.html",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:The_Sun_by_the_Atmospheric_Imaging_Assembly_of_NASA%27s_Solar_Dynamics_Observatory_-_20100819.jpg"
+      }
+    },
+    "Titania": {
+      "image": {
+        "file": "Titania.webp",
+        "credit": "zelario12 (colourised from NASA/JPL Voyager 2 data), CC BY-SA 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Titania_VGR2_C2684315.png"
+      },
+      "waive": [
+        "small"
+      ],
+      "note": "best public-domain picture available; small by necessity (user decision)"
+    },
+    "Triton": {
+      "image": {
+        "file": "Triton.webp",
+        "credit": "NASA/JPL/USGS (Voyager 2)",
+        "licenseUrl": "https://www.nasa.gov/multimedia/guidelines/index.html",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Triton_moon_mosaic_Voyager_2_(large).jpg"
+      }
+    }
+  }
+}

@@ -69,7 +69,7 @@ export function YearActivity({
             <YearStep direction="next" target={nextYear} onClick={() => onYearChange(nextYear)} />
           )}
         </div>
-        <span className="text-[11px] tabular-nums text-white/40">
+        <span className="text-[0.6875rem] tabular-nums text-white/40">
           {yearTotal === 0
             ? t('yearActivity.nothingRecorded')
             : t('yearActivity.sessionsThisYear', { count: yearTotal })}
@@ -104,7 +104,7 @@ export function YearActivity({
                 outline-none transition-colors hover:bg-white/[0.04]
                 focus-visible:ring-2 focus-visible:ring-white/50"
             >
-              <span className={`text-[10px] tabular-nums transition-colors ${
+              <span className={`text-[0.625rem] tabular-nums transition-colors ${
                 nights === 0 ? 'text-transparent' : active ? 'text-white' : 'text-white/45 group-hover:text-white/75'
               }`}>
                 {nights || 0}
@@ -137,7 +137,7 @@ export function YearActivity({
                 style={{ background: active ? accent : 'rgba(255,255,255,0.22)' }}
               />
 
-              <span className={`text-[10px] font-medium transition-colors ${
+              <span className={`text-[0.625rem] font-medium transition-colors ${
                 active ? 'text-white' : 'text-white/40 group-hover:text-white/70'
               }`}>
                 {monthInitials[month]}

@@ -1,30 +1,19 @@
 /**
- * Catalog store — the single seam every catalog reader resolves through.
+ * Catalog store — the curated layer (description, Wikipedia link, reviewed
+ * flag) of server/data/dso-catalog.json, as a validated record set with the
+ * alias index derived from it.
  *
- * Catalog identity and text used to live in five places (catalog-curated.json,
- * curated-descriptions.json, catalogAliases' ALIASES map, OpenNGC's own
- * cross-references, the Sharpless refs) read through two parallel lookup chains
- * (server/data/catalog.ts and server/lib/dsoCatalog.ts). A description added to
- * one file could not be relied on to show up, because the path that next read
- * it might consult a different file.
- *
- * curated-descriptions.json has been merged into catalog-curated.json (see
- * scripts/merge-curated-descriptions.ts), which now carries a `designations`
- * array on every entry. This module presents that file as a validated record
- * set and derives the alias index from it, so a fix lands once and the alias
- * map is not hand-maintained alongside the entries.
+ * The catalog used to live in five places read through two parallel lookup
+ * chains (server/data/catalog.ts and server/lib/dsoCatalog.ts), so a fix added
+ * to one file could not be relied on to show up. All five are now one file,
+ * read through dsoCatalogData.ts; this module keeps the curated view and the
+ * derived alias index it always exposed.
  *
  * Consumed by: curatedDescriptions.ts (getCuratedDescription), dsoCatalog.ts
- * (curated extras), catalog.ts (getAlsoKnownAs). The catalogAliases ALIASES
- * map is derived from the same sources, so resolveCanonicalId and
- * resolveToCanonical agree.
- *
- * Imported (not readFileSync'd) so esbuild/tsup inlines the JSON into the
- * server bundle — the native Windows/macOS builds ship a single bundle with no
- * data/ folder on disk, so a runtime read would throw ENOENT there.
+ * (curated extras), catalog.ts. The catalogAliases map is read off the same
+ * records, so resolveCanonicalId and resolveToCanonical agree.
  */
-import curatedJson from '../data/catalog-curated.json';
-import openNgcJson from '../data/openngc.json';
+import { CURATED_ROWS, LISTED_ROWS } from './dsoCatalogData.js';
 import { isRecord } from './typeGuards.js';
 import { normalizeDesignation, resolveCanonicalId, getAliasesFor } from './catalogAliases.js';
 import { SHARPLESS_CATALOG } from './sharplessCatalog.js';
@@ -88,14 +77,48 @@ interface CuratedFileEntry {
   reviewedAt?: string | null;
 }
 
-function isCuratedFileEntry(value: unknown): value is CuratedFileEntry {
-  return (
-    isRecord(value) &&
-    typeof value.id === 'string' &&
-    typeof value.name === 'string' &&
-    typeof value.type === 'string' &&
-    typeof value.constellation === 'string'
-  );
+/** Every string in an unknown array, in order; non-strings are dropped. */
+function stringsIn(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const items: readonly unknown[] = value;
+  return items.filter((v): v is string => typeof v === 'string');
+}
+
+const optString = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+const optNumber = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
+/** `null` is a meaningful stored value ("explicitly none") distinct from absent. */
+const optStringOrNull = (v: unknown): string | null | undefined => (v === null ? null : optString(v));
+const optNumberOrNull = (v: unknown): number | null | undefined => (v === null ? null : optNumber(v));
+
+/**
+ * One curated entry, field by field, or null when a required field is missing.
+ *
+ * Replaces a type guard that checked the four required fields and then vouched
+ * for the optional ones too: a wrongly-typed `magnitude` or `designations` would
+ * have flowed through typed as valid. Here an optional field of the wrong type
+ * reads as absent, which is how every consumer already treats a missing one.
+ */
+function parseCuratedFileEntry(value: unknown): CuratedFileEntry | null {
+  if (!isRecord(value)) return null;
+  const { id, name, type, constellation } = value;
+  if (typeof id !== 'string' || typeof name !== 'string' || typeof type !== 'string' || typeof constellation !== 'string') {
+    return null;
+  }
+  return {
+    id,
+    name,
+    type,
+    constellation,
+    magnitude: optNumber(value.magnitude),
+    description: optString(value.description),
+    ra: optString(value.ra),
+    dec: optString(value.dec),
+    distanceLy: optNumber(value.distanceLy),
+    majorAxisArcmin: optNumberOrNull(value.majorAxisArcmin),
+    wikiUrl: optStringOrNull(value.wikiUrl),
+    designations: value.designations === undefined ? undefined : stringsIn(value.designations),
+    reviewedAt: optStringOrNull(value.reviewedAt),
+  };
 }
 
 const norm = (id: string): string => normalizeDesignation(id).toUpperCase().replace(/\s+/g, '');
@@ -117,9 +140,41 @@ interface OpenNgcRow {
   commonNames?: string[];
 }
 
-const openNgcRows: OpenNgcRow[] = Array.isArray(openNgcJson)
-  ? (openNgcJson as unknown[]).filter((r): r is OpenNgcRow => isRecord(r) && typeof r.id === 'string')
-  : [];
+/** One OpenNGC row, field by field, or null without a string `id`. An optional
+ *  field of the wrong type reads as absent rather than being vouched for. */
+function parseOpenNgcRow(value: unknown): OpenNgcRow | null {
+  if (!isRecord(value) || typeof value.id !== 'string') return null;
+  const { messier } = value;
+  return {
+    id: value.id,
+    name: optString(value.name),
+    type: optString(value.type),
+    constellation: optStringOrNull(value.constellation),
+    messier: messier === null ? null : typeof messier === 'number' || typeof messier === 'string' ? messier : undefined,
+    ngcName: optString(value.ngcName),
+    ra: optNumberOrNull(value.ra),
+    dec: optNumberOrNull(value.dec),
+    magnitude: optNumberOrNull(value.magnitude),
+    majorAxisArcmin: optNumberOrNull(value.majorAxisArcmin),
+    commonNames: value.commonNames === undefined ? undefined : stringsIn(value.commonNames),
+  };
+}
+
+/** Parse every element of a bundled JSON array, dropping the ones that fail.
+ *  Assigning the import to `unknown` first (a widening, not a cast) is what makes
+ *  the parser, rather than the inferred JSON type, the authority on its shape. */
+function parseAll<T>(json: unknown, parse: (value: unknown) => T | null): { parsed: T[]; total: number } {
+  if (!Array.isArray(json)) return { parsed: [], total: 0 };
+  const items: readonly unknown[] = json;
+  const parsed: T[] = [];
+  for (const item of items) {
+    const p = parse(item);
+    if (p !== null) parsed.push(p);
+  }
+  return { parsed, total: items.length };
+}
+
+const openNgcRows: OpenNgcRow[] = parseAll(LISTED_ROWS, parseOpenNgcRow).parsed;
 
 const primaryNgcIds = new Set(openNgcRows.map(r => norm(r.id)));
 const openNgcByNorm = new Map<string, OpenNgcRow>();
@@ -192,17 +247,6 @@ function crossRefDesignations(canonicalId: string, ownedElsewhere: ReadonlySet<s
   return [...out];
 }
 
-/**
- * Designations that are genuinely ambiguous in the literature and cannot be
- * derived. Each entry earns its place with a one-line reason.
- */
-const AMBIGUOUS_DESIGNATIONS: ReadonlyArray<readonly [string, string]> = [
-  // M102 is a historical dispute, not a fact; NGC 5866 is the modern consensus.
-  ['M102', 'NGC5866'],
-  // IC 2118 and NGC 1909 are both in live use for the Witch Head Nebula.
-  ['NGC1909', 'IC2118'],
-];
-
 // ─── Build the record set + alias index ─────────────────────────────────────
 
 interface BuildResult {
@@ -214,11 +258,9 @@ interface BuildResult {
 
 function buildStore(): BuildResult {
   const warnings: string[] = [];
-  const fileEntries: CuratedFileEntry[] = Array.isArray(curatedJson)
-    ? (curatedJson as unknown[]).filter(isCuratedFileEntry)
-    : [];
-  if (Array.isArray(curatedJson) && fileEntries.length < curatedJson.length) {
-    warnings.push(`catalog-curated.json: dropped ${curatedJson.length - fileEntries.length} entr(ies) missing required fields`);
+  const { parsed: fileEntries, total: curatedTotal } = parseAll(CURATED_ROWS, parseCuratedFileEntry);
+  if (fileEntries.length < curatedTotal) {
+    warnings.push(`dso-catalog.json curated rows: dropped ${curatedTotal - fileEntries.length} entr(ies) missing required fields`);
   }
 
   const byCanonical = new Map<string, CuratedRecord>();
@@ -262,8 +304,9 @@ function buildStore(): BuildResult {
   }
 
   // Derive the alias index. Precedence: curated record designations first
-  // (authoritative), then OpenNGC / Sharpless cross-references for skeleton
-  // objects with no curated record, then the hand-written exception list.
+  // (authoritative), then the listed rows and Sharpless cross-references for
+  // objects with no curated record. Ambiguous designations (M102, NGC1909) are
+  // settled on their records in dso-catalog.json.
   const aliasIndex = new Map<string, string>();
   const claim = (designation: string, canonicalId: string, sourceLabel: string) => {
     const d = norm(designation);
@@ -291,9 +334,6 @@ function buildStore(): BuildResult {
     claim(e.id, canonical, 'sharpless');
     if (e.ngcRef) claim(e.ngcRef, canonical, 'sharpless ngcRef');
     if (e.messierRef) claim(e.messierRef, canonical, 'sharpless messierRef');
-  }
-  for (const [designation, canonicalId] of AMBIGUOUS_DESIGNATIONS) {
-    aliasIndex.set(norm(designation), canonicalId); // exception list always wins
   }
 
   return { records: [...byCanonical.values()], byCanonical, aliasIndex, warnings };

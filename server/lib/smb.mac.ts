@@ -21,6 +21,7 @@ import {
   withSmbGuards,
 } from './smb.shared.js';
 import type { TelescopeProfile } from './telescopes.js';
+import { childProcessOutput } from './errors.js';
 
 type ProfileArg = Partial<Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'>> | null | undefined;
 
@@ -201,7 +202,7 @@ function extractMountReason(err: unknown): string {
   // The raw line is the only breadcrumb when a mount fails; keep logging it
   // (scrubbed) even though classification now lives in smb.shared.ts.
   if (err instanceof Error) {
-    const stderr = (err as { stderr?: string }).stderr ?? '';
+    const stderr = childProcessOutput(err, 'stderr') ?? '';
     console.warn('[smb] mount_smbfs raw error:', scrubUrl(`${err.message} ${stderr}`));
   }
   return classifySmbError(err, 'mount');

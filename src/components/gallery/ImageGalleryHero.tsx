@@ -14,7 +14,7 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Images, Clapperboard } from 'lucide-react';
-import { HeroBackdrop } from '../ui/HeroBackdrop';
+import { CollapsibleHero, HeroSummary } from '../ui/CollapsibleHero';
 import { PAGE_HERO } from '../../lib/heroImagery';
 import type { LibraryImage } from '../../lib/api/library';
 import { formatDate, formatNumber } from '../../lib/formatLocale';
@@ -70,33 +70,35 @@ export function ImageGalleryHero({ images, accent, onLaunchPlanetarium, canLaunc
   if (processed > 0) stats.push({ value: formatNumber(processed), label: t('galleryHero.processed') });
   if (favorites > 0) stats.push({ value: formatNumber(favorites), label: t('galleryHero.favorites') });
 
-  return (
-    <section
-      className="relative overflow-hidden rounded-3xl bg-slate-950 hero-panel"
+  const planetariumButton = canLaunchPlanetarium ? (
+    <button
+      onClick={onLaunchPlanetarium}
+      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold text-slate-950 transition hover:brightness-110 sm:px-4 sm:py-2.5 sm:text-sm"
+      style={{ background: accent, boxShadow: `0 8px 24px -12px ${accent}` }}
     >
-      <HeroBackdrop image={PAGE_HERO.gallery} />
+      <Clapperboard className="h-4 w-4" />
+      {t('galleryHero.planetarium')}
+    </button>
+  ) : null;
 
-      <div
-        className="pointer-events-none absolute inset-0 opacity-70"
-        style={{ background: `radial-gradient(90% 140% at 8% 0%, ${accent}1f 0%, transparent 60%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 opacity-50"
-        style={{ background: `radial-gradient(70% 130% at 95% 100%, ${accent}14 0%, transparent 62%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 rounded-3xl"
-        style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10)' }}
-      />
-
-      <div className="relative flex hero-min-h flex-col justify-center gap-6 p-4 sm:p-6">
+  return (
+    <CollapsibleHero
+      page="gallery"
+      image={PAGE_HERO.gallery}
+      accent={accent}
+      icon={<Images className="h-5 w-5 sm:h-7 sm:w-7" style={{ color: accent }} />}
+      title={t('galleryHero.title')}
+      summary={empty ? undefined : <HeroSummary stats={stats} />}
+      actions={planetariumButton}
+      contentClassName="flex hero-min-h flex-col justify-center gap-6 p-4 sm:p-6"
+    >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="font-display flex items-center gap-2.5 text-xl font-bold tracking-tight text-white sm:text-4xl">
               <Images className="h-5 w-5 sm:h-7 sm:w-7" style={{ color: accent }} />
               {t('galleryHero.title')}
             </h1>
-            <p className="mt-2 hidden text-[13px] text-white/55 sm:block">
+            <p className="mt-2 hidden text-[0.8125rem] text-white/55 sm:block">
               {empty ? t('galleryHero.empty') : (
                 <>
                   {t('galleryHero.everyFrame')}
@@ -106,16 +108,7 @@ export function ImageGalleryHero({ images, accent, onLaunchPlanetarium, canLaunc
             </p>
           </div>
 
-          {canLaunchPlanetarium && (
-            <button
-              onClick={onLaunchPlanetarium}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold text-slate-950 transition hover:brightness-110 sm:px-4 sm:py-2.5 sm:text-sm"
-              style={{ background: accent, boxShadow: `0 8px 24px -12px ${accent}` }}
-            >
-              <Clapperboard className="h-4 w-4" />
-              {t('galleryHero.planetarium')}
-            </button>
-          )}
+          {planetariumButton}
         </div>
 
         {!empty && (
@@ -125,14 +118,13 @@ export function ImageGalleryHero({ images, accent, onLaunchPlanetarium, canLaunc
                 <div className="font-display text-2xl font-bold leading-none tracking-tight text-white tabular-nums">
                   {value}
                 </div>
-                <div className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/45">
+                <div className="mt-1.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-white/45">
                   {label}
                 </div>
               </div>
             ))}
           </div>
         )}
-      </div>
-    </section>
+    </CollapsibleHero>
   );
 }

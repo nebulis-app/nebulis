@@ -227,10 +227,38 @@ function updateCache(updates: Record<string, CachedResult | null> | 'clear'): vo
   });
 }
 
+/** Shared empty candidate list for the detect-only result. Annotated rather than
+ *  asserted; never mutated (each response serializes it). */
+const NO_CANDIDATES: readonly unknown[] = [];
+
+/**
+ * The /detect body's fields, each still `unknown`. Express types `req.body` as
+ * `any`, so destructuring it directly made every field `any`; reading through
+ * isRecord keeps them `unknown` and each use below does its own typeof check.
+ * A missing or non-object body reads as all-absent, which the filePath check
+ * turns into the same 400 a body without `filePath` gets.
+ */
+function parseDetectBody(body: unknown): {
+  filePath: unknown;
+  skipCache: unknown;
+  identifyOnly: unknown;
+  overrideLat: unknown;
+  overrideLon: unknown;
+} {
+  const fields: Record<string, unknown> = isRecord(body) ? body : {};
+  return {
+    filePath: fields.filePath,
+    skipCache: fields.skipCache,
+    identifyOnly: fields.identifyOnly,
+    overrideLat: fields.overrideLat,
+    overrideLon: fields.overrideLon,
+  };
+}
+
 // ─── Detect satellite trail in a FITS file ──────────────────────────
 router.post('/detect', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { filePath, skipCache, identifyOnly, overrideLat, overrideLon } = req.body;
+    const { filePath, skipCache, identifyOnly, overrideLat, overrideLon } = parseDetectBody(req.body);
     if (!filePath || typeof filePath !== 'string') {
       res.apiError(400, 'MISSING_PATH', 'filePath is required');
       return;
@@ -381,7 +409,7 @@ router.post('/detect', requireAdmin, async (req: Request, res: Response) => {
         profileWidth: detection.profileWidth,
         exposureStart: dateObs ? normalizeObservationTimestamp(dateObs).toISOString() : undefined,
         exposureSeconds: expTime ?? undefined,
-        candidates: [] as unknown[],
+        candidates: NO_CANDIDATES,
         nearMissFallback: false,
       };
       updateCache({ [filePath]: detectOnlyResult });

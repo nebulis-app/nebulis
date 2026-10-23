@@ -49,7 +49,7 @@ export function LibraryCleanupSection({ isDark }: { isDark: boolean }) {
   const strong = isDark ? 'text-slate-100' : 'text-slate-900';
   const stat = (label: string, value: string) => (
     <div className={`rounded-xl px-4 py-3 ${isDark ? 'bg-slate-800/60' : 'bg-slate-50'}`}>
-      <div className={`text-[11px] uppercase tracking-wide ${subtle}`}>{label}</div>
+      <div className={`text-[0.6875rem] uppercase tracking-wide ${subtle}`}>{label}</div>
       <div className={`mt-0.5 text-xl font-semibold tabular-nums ${strong}`}>{value}</div>
     </div>
   );
@@ -63,20 +63,20 @@ export function LibraryCleanupSection({ isDark }: { isDark: boolean }) {
     >
       <div className="px-5 py-5 space-y-4">
         {notice && (
-          <div className={`rounded-lg px-3.5 py-3 text-[12px] ${isDark ? 'bg-emerald-500/10 text-emerald-200/90' : 'bg-emerald-50 text-emerald-900'}`}>
+          <div className={`rounded-lg px-3.5 py-3 text-[0.75rem] ${isDark ? 'bg-emerald-500/10 text-emerald-200/90' : 'bg-emerald-50 text-emerald-900'}`}>
             {notice}
           </div>
         )}
         {error && (
-          <div className={`rounded-lg px-3.5 py-3 text-[12px] ${isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'}`}>
+          <div className={`rounded-lg px-3.5 py-3 text-[0.75rem] ${isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'}`}>
             {error}
           </div>
         )}
 
         {isLoading || !usage ? (
-          <p className={`text-[13px] ${subtle}`}>{t('libraryCleanup.loading')}</p>
+          <p className={`text-[0.8125rem] ${subtle}`}>{t('libraryCleanup.loading')}</p>
         ) : usage.files === 0 ? (
-          <p className={`text-[13px] ${subtle}`}>{t('libraryCleanup.none')}</p>
+          <p className={`text-[0.8125rem] ${subtle}`}>{t('libraryCleanup.none')}</p>
         ) : (
           <>
             <div className="grid grid-cols-3 gap-3">
@@ -86,16 +86,16 @@ export function LibraryCleanupSection({ isDark }: { isDark: boolean }) {
             </div>
 
             <div>
-              <div className={`mb-1.5 text-[11px] uppercase tracking-wide ${subtle}`}>
+              <div className={`mb-1.5 text-[0.6875rem] uppercase tracking-wide ${subtle}`}>
                 {t('libraryCleanup.largest')}
               </div>
               <ul className={`rounded-lg border divide-y ${isDark ? 'border-slate-800 divide-slate-800' : 'border-slate-200 divide-slate-100'}`}>
                 {usage.topObjects.map(o => (
-                  <li key={o.objectId} className="flex items-center gap-3 px-3.5 py-2.5 text-[13px]">
+                  <li key={o.objectId} className="flex items-center gap-3 px-3.5 py-2.5 text-[0.8125rem]">
                     <span className={`min-w-0 flex-1 truncate font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                       {o.objectId}
                     </span>
-                    <span className={`text-[12px] ${subtle}`}>
+                    <span className={`text-[0.75rem] ${subtle}`}>
                       {t('libraryCleanup.fileCount', { count: o.files })}
                     </span>
                     <span className={`w-20 text-right tabular-nums ${strong}`}>{formatBytes(o.bytes)}</span>
@@ -107,17 +107,17 @@ export function LibraryCleanupSection({ isDark }: { isDark: boolean }) {
         )}
 
         {usage && usage.staleRecords > 0 && (
-          <div className={`rounded-lg px-3.5 py-3 text-[12px] leading-relaxed ${isDark ? 'bg-amber-500/10 text-amber-200/90' : 'bg-amber-50 text-amber-900'}`}>
+          <div className={`rounded-lg px-3.5 py-3 text-[0.75rem] leading-relaxed ${isDark ? 'bg-amber-500/10 text-amber-200/90' : 'bg-amber-50 text-amber-900'}`}>
             {t('libraryCleanup.stale', { count: usage.staleRecords })}
           </div>
         )}
 
-        <p className={`text-[12px] leading-relaxed ${subtle}`}>{t('libraryCleanup.note')}</p>
+        <p className={`text-[0.75rem] leading-relaxed ${subtle}`}>{t('libraryCleanup.note')}</p>
 
         <button
           onClick={onPurge}
           disabled={purge.isPending || !usage || (usage.files === 0 && usage.staleRecords === 0)}
-          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
             isDark ? 'bg-red-500/10 hover:bg-red-500/20 text-red-300' : 'bg-red-50 hover:bg-red-100 text-red-700'
           }`}
         >

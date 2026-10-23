@@ -177,15 +177,17 @@ describe('syncObjectSubFrames — every night in one pass', () => {
     });
     stmts.setObjectPrimaryTelescopeIfNull.run(profile.id, 'NGC6960');
 
-    expect(claimImportLock()).toBe(true);
-    await syncObjectSubFrames('NGC6960');
+    try {
+      expect(claimImportLock()).toBe(true);
+      await syncObjectSubFrames('NGC6960');
 
-    const status = getImportStatus();
-    expect(status.running).toBe(false);
-    expect(status.filesDone).toBe(0);
-    expect(status.error).toBeTruthy();
-
-    fs.chmodSync(frame, 0o644);
+      const status = getImportStatus();
+      expect(status.running).toBe(false);
+      expect(status.filesDone).toBe(0);
+      expect(status.error).toBe('2026-06-21: 1 of 1 sub-frame downloads failed. Check that Test SeeStar all-fail stayed reachable and try the sync again.');
+    } finally {
+      fs.chmodSync(frame, 0o644);
+    }
   });
 
   it('reports a finished empty run when the object has no nights', async () => {

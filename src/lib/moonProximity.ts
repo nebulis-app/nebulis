@@ -16,6 +16,16 @@
  *
  * = 25 + (illum × 0.6). Matches common DSO imaging guidance.
  *
+ * That is the broadband (L/RGB, one-shot colour without a filter) threshold.
+ * Narrowband filters (Ha, OIII, SII, dual/tri-band) pass a few nanometres
+ * around the emission lines and reject most of the moonlight, so they hold up
+ * much closer to the Moon:
+ *
+ *     New (0%) 15°   Quarter (50%) 27.5°   Full (100%) 40°
+ *
+ * = 15 + (illum × 0.25). Conservative for 3 nm mono filters, about right for
+ * the 7 nm dual-band filters used on colour cameras.
+ *
  * Verdicts:
  *   ok       — min separation ≥ threshold, OR moon below horizon the whole block
  *   caution  — within 15° of threshold (yellow)
@@ -41,10 +51,26 @@ export interface MoonProximityResult {
   moonAltAtWorst: number;
   /** Plain-English explanation, empty when verdict is 'ok'. */
   reason: string;
+  /** Filter type the verdict was computed for (server verdicts only). */
+  band?: FilterBand;
+  /** The same closest approach against the narrowband tolerance (server
+   *  verdicts only), so an unset or broadband block can say narrowband
+   *  would be fine. */
+  narrowbandVerdict?: MoonVerdict;
 }
 
-export function moonThresholdForIllumination(illumPercent: number): number {
-  return 25 + Math.max(0, Math.min(100, illumPercent)) * 0.6;
+/** What a block is shot through. */
+export type FilterBand = 'broadband' | 'narrowband';
+
+export function moonThresholdForIllumination(illumPercent: number, band: FilterBand = 'broadband'): number {
+  const illum = Math.max(0, Math.min(100, illumPercent));
+  return band === 'narrowband' ? 15 + illum * 0.25 : 25 + illum * 0.6;
+}
+
+/** Verdict for a separation against a threshold (bands described above). */
+export function moonVerdictFor(minSeparation: number, threshold: number): MoonVerdict {
+  if (minSeparation >= threshold) return 'ok';
+  return minSeparation >= threshold - 15 ? 'caution' : 'warning';
 }
 
 /**
@@ -99,8 +125,10 @@ export function checkMoonProximity(
   /** Observer's IANA timezone, used to render the reason string's time-of-day
    *  in the observer's local time rather than the viewing device's. */
   timeZone?: string,
+  /** Filter type of the block; decides the threshold. */
+  band: FilterBand = 'broadband',
 ): MoonProximityResult {
-  const threshold = moonThresholdForIllumination(illumPercent);
+  const threshold = moonThresholdForIllumination(illumPercent, band);
   const stepMs = Math.max(1, stepMinutes) * 60_000;
 
   let minSep = Infinity;
@@ -126,15 +154,15 @@ export function checkMoonProximity(
     return { verdict: 'ok', minSeparation: Infinity, threshold, worstAt: null, moonAltAtWorst: 0, reason: '' };
   }
 
-  let verdict: MoonVerdict;
-  if (minSep >= threshold) verdict = 'ok';
-  else if (minSep >= threshold - 15) verdict = 'caution';
-  else verdict = 'warning';
+  const verdict = moonVerdictFor(minSep, threshold);
 
+  // A non-'ok' verdict means minSep dropped below a finite threshold, which
+  // only happens on an iteration that also set worstAt; the null test just
+  // lets the compiler see that.
   const reason =
-    verdict === 'ok'
+    verdict === 'ok' || worstAt === null
       ? ''
-      : `Moon ${Math.round(minSep)}° away at ${formatHm(worstAt!, timeZone)} (recommended ≥ ${Math.round(threshold)}° at ${Math.round(illumPercent)}% illumination)`;
+      : `Moon ${Math.round(minSep)}° away at ${formatHm(worstAt, timeZone)} (recommended ≥ ${Math.round(threshold)}° at ${Math.round(illumPercent)}% illumination${band === 'narrowband' ? ', narrowband' : ''})`;
 
   return { verdict, minSeparation: minSep, threshold, worstAt, moonAltAtWorst, reason };
 }

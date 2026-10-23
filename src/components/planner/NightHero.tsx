@@ -12,7 +12,7 @@
  * stays theme-driven while this stays night-side.
  */
 import type { ReactNode } from 'react';
-import { ChevronRight, CloudSun, Crosshair, Droplets, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, CloudSun, Crosshair, Droplets, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatTime, scoreHex, scoreLabel } from '../../lib/forecastScore';
 import type { NightConditions } from '../../lib/plannerNight';
@@ -21,8 +21,10 @@ import { ScoreDial } from '../ui/ScoreDial';
 import { HeroBackdrop } from '../ui/HeroBackdrop';
 import { PAGE_HERO } from '../../lib/heroImagery';
 import { translateMoonPhase } from '../../lib/moonPhaseLabel';
+import type { NightFilterAdvice } from '../../lib/nightFilterAdvice';
 import { formatDate } from '../../lib/formatLocale';
 import { useTheme } from '../../hooks/useTheme';
+import { useCollapsedHero } from '../../hooks/useCollapsedHero';
 
 interface Props {
   date: Date;
@@ -33,6 +35,9 @@ interface Props {
   moonPhase: string;
   moonRise: Date | null;
   moonSet: Date | null;
+  /** Broadband or narrowband, from the Moon over the dark window. Null when
+   *  there is no location to work it out from. */
+  filterAdvice?: NightFilterAdvice | null;
   timeZone?: string;
   /** Bright accent for the current theme, matching the Forecast hero. */
   accent: string;
@@ -57,6 +62,7 @@ export function NightHero({
   moonPhase,
   moonRise,
   moonSet,
+  filterAdvice,
   timeZone,
   accent,
   canAutoPlan,
@@ -67,6 +73,7 @@ export function NightHero({
 }: Props) {
   const { t } = useTranslation('planner');
   const { isNight } = useTheme();
+  const [collapsed, setCollapsed] = useCollapsedHero('planner');
   const hex = conditions ? scoreHex(conditions.score, isNight) : (isNight ? '#661a1a' : '#64748b');
   const fmt = (d: Date | null) => (d ? formatTime(d.toISOString(), timeZone) : null);
 
@@ -79,6 +86,93 @@ export function NightHero({
   const advice = conditions
     ? conditions.advice ?? t('nightHero.averageCloud', { percent: conditions.cloudCover })
     : t('nightHero.pastForecast');
+
+  const toggleButton = (
+    <button
+      type="button"
+      onClick={() => setCollapsed(!collapsed)}
+      aria-expanded={!collapsed}
+      aria-label={collapsed ? t('nightHero.expand') : t('nightHero.collapse')}
+      title={collapsed ? t('nightHero.expand') : t('nightHero.collapse')}
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/50 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+    >
+      {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+    </button>
+  );
+
+  if (collapsed) {
+    // One slim row: the same two facts and the one action, so the schedule below gets the room.
+    return (
+      <section className="relative overflow-hidden rounded-2xl bg-slate-950 hero-panel">
+        <HeroBackdrop image={PAGE_HERO.planner} intensity={0.2} rounded="rounded-2xl" />
+        <div
+          className="pointer-events-none absolute inset-0 rounded-2xl"
+          style={{ boxShadow: `inset 0 0 0 1px ${isNight ? 'rgba(204,51,51,0.10)' : 'rgba(255,255,255,0.10)'}` }}
+        />
+        <div className="relative flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5 sm:px-5">
+          <h1 className="font-display flex items-center gap-2 text-lg font-bold tracking-tight text-white">
+            <Crosshair className="h-4 w-4" style={{ color: accent }} />
+            {t('nightHero.title')}
+          </h1>
+          <div
+            role={onOpenWeather ? 'button' : undefined}
+            tabIndex={onOpenWeather ? 0 : undefined}
+            onClick={onOpenWeather}
+            onKeyDown={onOpenWeather
+              ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenWeather(); } }
+              : undefined}
+            title={onOpenWeather ? t('nightHero.openForecastTitle') : undefined}
+            aria-label={onOpenWeather ? t('nightHero.openForecastTitle') : undefined}
+            className={`flex min-w-0 items-center gap-2.5 rounded-lg ${
+              onOpenWeather ? 'cursor-pointer outline-none transition hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:ring-white/30' : ''
+            }`}
+          >
+            {conditions ? (
+              <ScoreDial score={conditions.score} size={36} showLabel={false} />
+            ) : (
+              <CloudSun className="h-5 w-5 text-white/25" />
+            )}
+            <div className="min-w-0 leading-tight">
+              <div
+                className="text-sm font-bold"
+                style={conditions ? { color: hex } : { color: isNight ? '#882222' : '#e2e8f0' }}
+              >
+                {conditions ? scoreLabel(conditions.score, t) : t('nightHero.noForecastYet')}
+              </div>
+              <div className="flex items-center gap-1.5 text-[0.6875rem] text-white/45">
+                {isToday ? t('nightHero.tonight') : t('nightHero.planning')}
+                <span className="text-white/30">{dateLabel}</span>
+                {status}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <MoonDisk illumination={moonIllumination} phase={moonPhase} size={28} />
+            <div className="leading-tight">
+              <div className="text-xs font-semibold text-white">{translateMoonPhase(t, moonPhase)}</div>
+              <div className="text-[0.6875rem] text-white/45 tabular-nums">
+                {t('nightHero.litPercent', { percent: Math.round(moonIllumination) })}
+              </div>
+            </div>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            {siteControl}
+            {canAutoPlan && (
+              <button
+                onClick={onAutoPlan}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold text-slate-950 transition hover:brightness-110"
+                style={{ background: accent }}
+              >
+                <Sparkles className="h-4 w-4" />
+                {t('nightHero.planMyNight')}
+              </button>
+            )}
+            {toggleButton}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section
@@ -111,7 +205,10 @@ export function NightHero({
             <Crosshair className="h-6 w-6 sm:h-7 sm:w-7" style={{ color: accent }} />
             {t('nightHero.title')}
           </h1>
-          {siteControl}
+          <div className="flex items-center gap-2">
+            {siteControl}
+            {toggleButton}
+          </div>
         </div>
 
         {/* Column on a phone: at that width the three parts cannot share a row
@@ -144,13 +241,13 @@ export function NightHero({
               </div>
             )}
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[10.5px] font-medium uppercase tracking-[0.18em] text-white/40">
+              <div className="flex items-center gap-2 text-[0.6562rem] font-medium uppercase tracking-[0.18em] text-white/40">
                 {isToday ? t('nightHero.tonight') : t('nightHero.planning')}
                 <span className="normal-case tracking-normal text-white/30">{dateLabel}</span>
                 {status}
               </div>
               <h2
-                className="mt-1 flex items-center gap-1 font-display text-[28px] font-bold leading-none tracking-tight"
+                className="mt-1 flex items-center gap-1 font-display text-[1.75rem] font-bold leading-none tracking-tight"
                 style={conditions ? { color: hex, textShadow: `0 0 28px ${hex}4d` } : { color: isNight ? '#882222' : '#e2e8f0' }}
               >
                 {conditions ? scoreLabel(conditions.score, t) : t('nightHero.noForecastYet')}
@@ -158,7 +255,7 @@ export function NightHero({
                   <ChevronRight className="h-5 w-5 opacity-0 transition group-hover:opacity-60" />
                 )}
               </h2>
-              <p className="mt-1.5 truncate text-[13px] text-white/60">
+              <p className="mt-1.5 truncate text-[0.8125rem] text-white/60">
                 {advice}
                 {onOpenWeather && (
                   <span className="ml-1.5 hidden text-white/35 underline decoration-white/20 underline-offset-2 group-hover:text-white/60 sm:inline">
@@ -195,13 +292,25 @@ export function NightHero({
           <div className="flex w-full shrink-0 items-center gap-3 sm:w-64">
             <MoonDisk illumination={moonIllumination} phase={moonPhase} size={50} />
             <div className="min-w-0 leading-tight">
-              <div className="text-[10.5px] font-medium uppercase tracking-[0.18em] text-white/40">{t('nightHero.moon')}</div>
+              <div className="text-[0.6562rem] font-medium uppercase tracking-[0.18em] text-white/40">{t('nightHero.moon')}</div>
               <div className="mt-1 truncate text-sm font-semibold text-white">{translateMoonPhase(t, moonPhase)}</div>
               <div className="mt-0.5 text-xs text-white/45 tabular-nums">
                 {t('nightHero.litPercent', { percent: Math.round(moonIllumination) })}
               </div>
               {moonTimes && (
-                <div className="mt-1 text-[11px] text-white/40 tabular-nums">{moonTimes}</div>
+                <div className="mt-1 text-[0.6875rem] text-white/40 tabular-nums">{moonTimes}</div>
+              )}
+              {filterAdvice && (
+                <div
+                  className={`mt-1 text-[0.6875rem] font-medium ${
+                    filterAdvice.kind === 'broadband' ? 'text-emerald-300/90' : filterAdvice.kind === 'narrowband' ? 'text-violet-300/90' : 'text-sky-300/90'
+                  }`}
+                  title={t('nightHero.filterAdviceTitle')}
+                >
+                  {filterAdvice.kind === 'broadbandUntil' || filterAdvice.kind === 'broadbandFrom'
+                    ? t(`nightHero.filterAdvice.${filterAdvice.kind}`, { time: fmt(filterAdvice.at) })
+                    : t(`nightHero.filterAdvice.${filterAdvice.kind}`)}
+                </div>
               )}
             </div>
           </div>
@@ -237,7 +346,7 @@ function StatChip({
     ? 'bg-amber-500/15 text-amber-300 ring-amber-400/25'
     : 'bg-white/[0.06] text-white/60 ring-white/10';
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${cls}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ring-1 ring-inset ${cls}`}>
       <Icon className="h-3 w-3" />
       {children}
     </span>

@@ -42,7 +42,7 @@ function fileThumbRelPath(thumbnailUrl: string): string | null {
   const m = /\/library\/file\/thumbnail\?path=([^&]+)/.exec(thumbnailUrl);
   if (!m) return null;
   try {
-    return decodeURIComponent(m[1]!);
+    return decodeURIComponent(m[1]);
   } catch {
     return null;
   }
@@ -53,7 +53,7 @@ function objectThumbId(thumbnailUrl: string): string | null {
   const m = /\/library\/objects\/([^/]+)\/thumbnail(?:$|\?)/.exec(thumbnailUrl);
   if (!m) return null;
   try {
-    return decodeURIComponent(m[1]!);
+    return decodeURIComponent(m[1]);
   } catch {
     return null;
   }
@@ -114,7 +114,7 @@ export async function prewarmSessionThumbnails(reason = 'manual'): Promise<Prewa
     for (let i = 0; i < observations.length; i++) {
       if (i % 10 === 0) await new Promise<void>(r => setImmediate(r));
 
-      const url = observations[i]!.thumbnailUrl;
+      const url = observations[i].thumbnailUrl;
       try {
         let outcome: 'warmed' | 'cached' | null = null;
 

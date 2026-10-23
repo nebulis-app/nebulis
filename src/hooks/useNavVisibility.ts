@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useMemo, createElement, type ReactNode } from 'react';
+import { isOneOf } from '../lib/typeGuards';
 
 export type NavItemId =
   | 'library'
@@ -7,6 +8,7 @@ export type NavItemId =
   | 'forecast'
   | 'planner'
   | 'wishlist'
+  | 'explore'
   | 'catalogs'
   | 'calibrations'
   | 'settings'
@@ -25,6 +27,7 @@ export const NAV_ITEMS: { id: NavItemId; labelKey: string }[] = [
   { id: 'forecast',      labelKey: 'nav.forecast' },
   { id: 'planner',       labelKey: 'nav.planner' },
   { id: 'wishlist',      labelKey: 'nav.wishlist' },
+  { id: 'explore',       labelKey: 'nav.explore' },
   { id: 'catalogs',      labelKey: 'nav.catalogs' },
   { id: 'calibrations',  labelKey: 'nav.calibrations' },
   { id: 'settings',      labelKey: 'nav.settings' },
@@ -32,6 +35,12 @@ export const NAV_ITEMS: { id: NavItemId; labelKey: string }[] = [
 ];
 
 const NAV_ITEM_IDS = NAV_ITEMS.map(item => item.id);
+
+/** Narrows a stored (untrusted) value to a known nav id; anything else —
+ *  a removed id, a non-string — is dropped by the readers below. */
+function isNavItemId(value: unknown): value is NavItemId {
+  return typeof value === 'string' && isOneOf(NAV_ITEM_IDS, value);
+}
 
 /** Settings can never be hidden: it's the only way back to this very screen,
  *  and to sign-out/account management. Its position in the bar is still
@@ -109,10 +118,10 @@ function getInitialHidden(): Set<NavItemId> {
   if (typeof window === 'undefined') return defaultHidden();
   try {
     const raw = localStorage.getItem(VISIBILITY_STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as string[]) : [];
-    const valid = parsed.filter((id): id is NavItemId =>
-      NAV_ITEM_IDS.includes(id as NavItemId) && id !== LOCKED_VISIBLE_ID
-    );
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    // A non-array payload used to throw on `.filter` and land in the catch.
+    if (!Array.isArray(parsed)) return defaultHidden();
+    const valid = parsed.filter((id: unknown): id is NavItemId => isNavItemId(id) && id !== LOCKED_VISIBLE_ID);
     const { hidden, changed } = applyDefaultSeeds(new Set(valid), localStorage);
     if (changed) localStorage.setItem(VISIBILITY_STORAGE_KEY, JSON.stringify([...hidden]));
 
@@ -134,8 +143,10 @@ function getInitialOrder(): NavItemId[] {
   try {
     const raw = localStorage.getItem(ORDER_STORAGE_KEY);
     if (!raw) return NAV_ITEM_IDS;
-    const parsed = JSON.parse(raw) as string[];
-    const valid = parsed.filter((id): id is NavItemId => NAV_ITEM_IDS.includes(id as NavItemId));
+    const parsed: unknown = JSON.parse(raw);
+    // A non-array payload used to throw on `.filter` and land in the catch.
+    if (!Array.isArray(parsed)) return NAV_ITEM_IDS;
+    const valid = parsed.filter(isNavItemId);
     return insertMissing(valid);
   } catch {
     return NAV_ITEM_IDS;

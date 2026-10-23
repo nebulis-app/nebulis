@@ -41,7 +41,7 @@ import { pickDefaultTarget } from '../lib/telescopes.js';
 import { logEvent } from '../lib/systemLog.js';
 import { isRecord } from '../lib/typeGuards.js';
 import { createManualDatabaseBackup } from '../lib/db.js';
-import { analyzeLibrary, fixStaleRecords, fixMissingObjects, fixLayoutDrift, fixMissingProcessed, LibraryUnreadableError } from '../lib/library/analyze.js';
+import { analyzeLibrary, fixStaleRecords, fixMissingObjects, fixLayoutDrift, fixMissingProcessed, fixDuplicateFiles, LibraryUnreadableError } from '../lib/library/analyze.js';
 import { getSubframeUsage, purgeAllSubframes } from '../lib/library/cleanup.js';
 import { getCurrentVersion } from '../lib/appUpdate/platform.js';
 import os from 'os';
@@ -54,7 +54,6 @@ import {
   getArchiveNetworkCredentials,
   setArchiveConfig,
   type ArchiveConfig,
-  type ArchiveConfigPatch,
   type ArchiveNetworkConfig,
   type ArchiveNetworkCredentials,
 } from '../lib/archive/archiveConfig.js';
@@ -647,7 +646,7 @@ router.get('/volumes', requireAdmin, async (_req: Request, res: Response) => {
  * read that folder" with no hint at the cause or the fix.
  */
 function browseErrorMessage(target: string, err: unknown): string {
-  const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+  const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : '';
   const onWindows = process.platform === 'win32';
   const looksUnc = target.startsWith('\\\\') || target.startsWith('//');
   const looksDriveLetter = /^[A-Za-z]:[\\/]/.test(target);
@@ -1010,7 +1009,7 @@ router.get('/analyze', requireAdmin, async (_req: Request, res: Response) => {
 router.post('/analyze/fix', requireAdmin, strictRateLimiter, async (req: Request, res: Response) => {
   const body: Record<string, unknown> = isRecord(req.body) ? req.body : {};
   const category = body.category;
-  if (category !== 'staleRecords' && category !== 'missingObjects' && category !== 'layoutDrift' && category !== 'missingProcessed') {
+  if (category !== 'staleRecords' && category !== 'missingObjects' && category !== 'layoutDrift' && category !== 'missingProcessed' && category !== 'duplicateFiles') {
     res.apiError(400, 'BAD_CATEGORY', 'Unknown repair category.');
     return;
   }
@@ -1029,6 +1028,7 @@ router.post('/analyze/fix', requireAdmin, strictRateLimiter, async (req: Request
       category === 'staleRecords' ? await fixStaleRecords()
       : category === 'missingObjects' ? await fixMissingObjects()
       : category === 'missingProcessed' ? await fixMissingProcessed()
+      : category === 'duplicateFiles' ? await fixDuplicateFiles()
       : fixLayoutDrift();
     logEvent({
       category: 'storage',
@@ -1192,9 +1192,9 @@ interface ArchiveDestinationView {
  * passive read instead of waiting out that cache's TTL.
  */
 async function archiveDestinationState(config: ArchiveConfig): Promise<ArchiveDestinationView> {
-  const base = {
+  const base: Omit<ArchiveDestinationView, 'state'> = {
     path: config.path,
-    foundArchiveId: null as string | null,
+    foundArchiveId: null,
     locationType: config.locationType,
     network: config.network,
     networkSupported: networkArchiveSupported(),
@@ -1328,7 +1328,7 @@ router.put('/archive', requireAdmin, strictRateLimiter, async (req: Request, res
   // Safe to hand the remaining keys straight to setArchiveConfig: it rejects
   // unknown keys and type-checks every value, so nothing is trusted merely
   // because it arrived in a request body.
-  const patch = { ...rest } as ArchiveConfigPatch;
+  const patch: Record<string, unknown> = { ...rest };
 
   if ('path' in req.body) {
     if (typeof rawPath !== 'string') {
@@ -1498,8 +1498,10 @@ router.post('/archive/destination/test', requireAdmin, strictRateLimiter, async 
   }
 
   const stored = getArchiveNetworkCredentials();
-  const str = (key: string, fallback: string): string =>
-    typeof network[key] === 'string' ? (network[key] as string) : fallback;
+  const str = (key: string, fallback: string): string => {
+    const value = network[key];
+    return typeof value === 'string' ? value : fallback;
+  };
   const typedPassword = typeof network.password === 'string' ? network.password : '';
 
   const result = await testArchiveNetworkConnection({
@@ -1561,8 +1563,10 @@ router.post('/archive/destination/browse', requireAdmin, async (req: Request, re
   } else {
     // The picker's case: the share the user is describing, not the one that is saved.
     const stored = getArchiveNetworkCredentials();
-    const str = (key: string, fallback: string): string =>
-      typeof candidate[key] === 'string' ? (candidate[key] as string) : fallback;
+    const str = (key: string, fallback: string): string => {
+      const value = candidate[key];
+      return typeof value === 'string' ? value : fallback;
+    };
     const typedPassword = typeof candidate.password === 'string' ? candidate.password : '';
     const network: ArchiveNetworkCredentials = {
       host: str('host', ''),

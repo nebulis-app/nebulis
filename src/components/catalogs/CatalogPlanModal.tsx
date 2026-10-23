@@ -12,7 +12,7 @@
  */
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, skipToken } from '@tanstack/react-query';
 import SunCalc from 'suncalc';
 import { Sparkles, Moon, ArrowUp, X, Telescope } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -24,7 +24,7 @@ import { nightWindowFor, formatPlannerDate, plannerToday, localDateKey } from '.
 import { formatHm } from '../../lib/timeFormat';
 import { createPlannedSession, deletePlannedSession, listPlannedSessions, type PlannedSession } from '../../lib/api/plannedSessions';
 import type { CatalogProgressObject } from '../../lib/api/catalogs';
-import { PlanConflictDialog } from '../planner/PlanConflictDialog';
+import { PlanConflictDialog } from '../ui/PlanConflictDialog';
 
 interface CatalogPlanModalProps {
   catalogLabel: string;
@@ -75,19 +75,19 @@ export function CatalogPlanModal({
   const candidates = useMemo<PlanCandidate[]>(
     () =>
       objects
-        .filter(o => !o.isImaged && o.ra != null && o.dec != null)
-        .map(o => ({
+        // flatMap so the ra/dec null check narrows the values it returns.
+        .flatMap(o => (o.isImaged || o.ra == null || o.dec == null ? [] : [{
           id: o.id,
           name: o.name,
           type: o.type,
-          ra: o.ra as number,
-          dec: o.dec as number,
+          ra: o.ra,
+          dec: o.dec,
           magnitude: o.magnitude,
           majorAxisArcmin: o.majorAxisArcmin,
           constellation: o.constellation,
           commonNames: [],
           isAlreadyImaged: false,
-        })),
+        }])),
     [objects],
   );
 
@@ -128,22 +128,22 @@ export function CatalogPlanModal({
     queryKey: ['catalog-night-plan', planKey[0], planKey[1], n, candidateIds, observerLat, observerLon, minAlt, moonPct],
     enabled: !!planWindow && candidates.length > 0,
     staleTime: 30_000,
-    queryFn: () => {
-      const windowMinutes = (planWindow!.end.getTime() - planWindow!.start.getTime()) / 60_000;
+    queryFn: planWindow ? () => {
+      const windowMinutes = (planWindow.end.getTime() - planWindow.start.getTime()) / 60_000;
       const slotMinutes = Math.max(15, Math.floor(windowMinutes / Math.max(1, n)));
       return generateNightPlan({
         targets: candidates,
         observerLat,
         observerLon,
-        windowStart: planWindow!.start,
-        windowEnd: planWindow!.end,
+        windowStart: planWindow.start,
+        windowEnd: planWindow.end,
         slotMinutes,
         maxObjects: n,
         minAlt,
         moonIllumination: moonPct,
         visibleSkyMap: null,
       });
-    },
+    } : skipToken,
   });
   const blocks = useMemo<PlanBlock[]>(() => planQuery.data ?? [], [planQuery.data]);
   const blocksLoading = planQuery.isFetching;
@@ -309,7 +309,7 @@ export function CatalogPlanModal({
                           {b.target.type}
                           {b.target.constellation ? ` · ${b.target.constellation}` : ''}
                         </div>
-                        <div className="flex items-center gap-3 mt-1 text-[11px]">
+                        <div className="flex items-center gap-3 mt-1 text-[0.6875rem]">
                           <span className="inline-flex items-center gap-1 text-amber-500">
                             <ArrowUp className="w-3 h-3" />
                             {Math.round(b.meanAlt)}°

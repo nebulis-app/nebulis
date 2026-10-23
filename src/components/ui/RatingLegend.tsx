@@ -18,7 +18,7 @@ const BANDS = [
 export function RatingLegend({ isDark }: { isDark: boolean }) {
   const { t } = useTranslation('common');
   return (
-    <div className={`flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border px-4 py-3 text-[11px] ${
+    <div className={`flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border px-4 py-3 text-[0.6875rem] ${
       isDark ? 'bg-slate-900/60 border-slate-800 text-slate-500' : 'bg-white border-slate-200 text-slate-400'
     }`}>
       <span className={`font-medium uppercase tracking-[0.14em] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>

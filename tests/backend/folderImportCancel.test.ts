@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
@@ -60,6 +60,9 @@ describe('commitFolderImport — cancellation', () => {
       // @ts-expect-error — forwarding whatever args this call received
       return realCopyFile(...args);
     });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('stops mid-object on cancel: the in-flight file lands, the rest do not', async () => {

@@ -98,12 +98,15 @@ test.describe('New Observation Form', () => {
   });
 
   test('submit creates observation and redirects', async ({ page }) => {
-    await page.route('**/api/library/manual-observations', r =>
-      r.fulfill({
+    let postBody = '';
+    await page.route('**/api/library/manual-observations', r => {
+      postBody = r.request().postData() ?? '';
+      return r.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ ok: true, data: { objectId: 'M101', date: '2024-03-20' } }),
-      }));
+      });
+    });
 
     const nameInput = page.getByLabel(/object name/i)
       .or(page.getByPlaceholder(/object name/i))
@@ -111,12 +114,15 @@ test.describe('New Observation Form', () => {
     await nameInput.fill('M101');
 
     const dateInput = page.locator('input[type="date"]');
-    if (await dateInput.isVisible()) {
-      await dateInput.fill('2024-03-20');
-    }
+    await expect(dateInput).toBeVisible();
+    await dateInput.fill('2024-03-20');
 
     await page.getByRole('button', { name: /create|save|submit/i }).click();
     await expect(page).toHaveURL(/\/observations\/M101\/2024-03-20/);
+    // The redirect target comes from the mocked response, so also prove the
+    // form actually sent what was typed.
+    expect(postBody).toContain('M101');
+    expect(postBody).toContain('2024-03-20');
   });
 });
 
@@ -155,11 +161,13 @@ test.describe('Observation Detail', () => {
   });
 
   test('shows file listing', async ({ page }) => {
-    await expect(page.getByText('Stacked_M42_2024-03-15.fit')).toBeVisible();
+    await expect(page.getByTitle('Stacked_M42_2024-03-15.fit', { exact: true })).toBeVisible();
     await expect(page.getByText('M42_2024-03-15.jpg')).toBeVisible();
   });
 
   test('shows RA/Dec coordinates', async ({ page }) => {
+    // Reference facts live in the Session details section, closed until asked.
+    await page.getByRole('button', { name: /session details/i }).click();
     await expect(page.getByText(/05h 35m/i)).toBeVisible();
   });
 
@@ -171,11 +179,12 @@ test.describe('Observation Detail', () => {
   });
 
   test('clicking FITS filter shows only FITS files', async ({ page }) => {
-    const fitsFilter = page.getByRole('button', { name: /fits/i });
-    if (await fitsFilter.isVisible()) {
-      await fitsFilter.click();
-      await expect(page.getByText('Stacked_M42_2024-03-15.fit')).toBeVisible();
-    }
+    const fitsFilter = page.getByRole('button', { name: 'FITS', exact: true });
+    await expect(fitsFilter).toBeVisible();
+    await expect(page.getByText('M42_2024-03-15.jpg')).toBeVisible();
+    await fitsFilter.click();
+    await expect(page.getByTitle('Stacked_M42_2024-03-15.fit', { exact: true })).toBeVisible();
+    await expect(page.getByText('M42_2024-03-15.jpg')).toHaveCount(0);
   });
 
   test('notes panel is visible', async ({ page }) => {

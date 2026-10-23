@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { slotReducer, type SlotState } from '../../src/components/gallery/galleryReducer';
-import type { LibraryImage } from '../../src/lib/api';
+import type { LibraryImage } from '../../src/lib/api/library';
 
 function img(path: string, isFavorite = false): LibraryImage {
   return {

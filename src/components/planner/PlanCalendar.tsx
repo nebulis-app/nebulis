@@ -110,7 +110,7 @@ export function PlanCalendar({ selectedDate, observerTimezone, onSelect, onClose
 
         <div className="grid grid-cols-7 gap-0.5 mb-1">
           {dayLabels.map((d, i) => (
-            <div key={i} className={`text-[10px] text-center py-1 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+            <div key={i} className={`text-[0.625rem] text-center py-1 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
               {d}
             </div>
           ))}
@@ -158,7 +158,7 @@ export function PlanCalendar({ selectedDate, observerTimezone, onSelect, onClose
           >
             {t('planCalendar.tonight')}
           </button>
-          <div className="text-[10px] opacity-60">{t('planCalendar.dotHint')}</div>
+          <div className="text-[0.625rem] opacity-60">{t('planCalendar.dotHint')}</div>
         </div>
       </div>
     </div>

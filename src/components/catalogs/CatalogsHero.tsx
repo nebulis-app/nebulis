@@ -13,7 +13,7 @@
  */
 import { BookOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { HeroBackdrop } from '../ui/HeroBackdrop';
+import { CollapsibleHero, HeroSummary } from '../ui/CollapsibleHero';
 import { PAGE_HERO } from '../../lib/heroImagery';
 import { formatNumber } from '../../lib/formatLocale';
 import { useTheme } from '../../hooks/useTheme';
@@ -83,29 +83,21 @@ export function CatalogsHero({ imaged, total, pct, loaded, accent }: Props) {
   ];
 
   return (
-    <section className="relative overflow-hidden rounded-3xl bg-slate-950 hero-panel">
-      <HeroBackdrop image={PAGE_HERO.catalogs} />
-
-      <div
-        className="pointer-events-none absolute inset-0 opacity-70"
-        style={{ background: `radial-gradient(90% 140% at 8% 0%, ${accent}1f 0%, transparent 60%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 opacity-50"
-        style={{ background: `radial-gradient(70% 130% at 95% 100%, ${accent}14 0%, transparent 62%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 rounded-3xl"
-        style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10)' }}
-      />
-
-      <div className="relative flex hero-min-h flex-col justify-center gap-6 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+    <CollapsibleHero
+      page="catalogs"
+      image={PAGE_HERO.catalogs}
+      accent={accent}
+      icon={<BookOpen className="h-5 w-5 sm:h-7 sm:w-7" style={{ color: accent }} />}
+      title={t('catalogsHero.title')}
+      summary={loaded ? <HeroSummary stats={stats} /> : undefined}
+      contentClassName="flex hero-min-h flex-col justify-center gap-6 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6"
+    >
         <div className="min-w-0">
           <h1 className="font-display flex items-center gap-2.5 text-xl font-bold tracking-tight text-white sm:text-4xl">
             <BookOpen className="h-5 w-5 sm:h-7 sm:w-7" style={{ color: accent }} />
             {t('catalogsHero.title')}
           </h1>
-          <p className="mt-2 text-[13px] text-white/55">
+          <p className="mt-2 text-[0.8125rem] text-white/55">
             {t('catalogsHero.subtitle')}
           </p>
 
@@ -116,7 +108,7 @@ export function CatalogsHero({ imaged, total, pct, loaded, accent }: Props) {
                   <div className="font-display text-2xl font-bold leading-none tracking-tight text-white tabular-nums">
                     {value}
                   </div>
-                  <div className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/45">
+                  <div className="mt-1.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-white/45">
                     {label}
                   </div>
                 </div>
@@ -126,7 +118,6 @@ export function CatalogsHero({ imaged, total, pct, loaded, accent }: Props) {
         </div>
 
         {loaded && <ProgressRing pct={pct} accent={accent} className="hidden sm:block" />}
-      </div>
-    </section>
+    </CollapsibleHero>
   );
 }

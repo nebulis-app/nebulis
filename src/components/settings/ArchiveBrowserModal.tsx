@@ -89,7 +89,7 @@ export function ArchiveBrowserModal({
                     <div className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                       {t(f.fileCount === 1 ? 'archiveBrowserModal.fileCount_one' : 'archiveBrowserModal.fileCount_other', { count: f.fileCount })} · {formatBytes(f.bytes)}
                     </div>
-                    <div className={`text-[11px] font-mono truncate mt-1 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} title={f.path}>
+                    <div className={`text-[0.6875rem] font-mono truncate mt-1 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} title={f.path}>
                       {f.path}
                     </div>
                   </div>

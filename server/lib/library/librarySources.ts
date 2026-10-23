@@ -32,6 +32,8 @@ import { DATA_DIR } from '../paths.js';
 import { getArchiveConfig } from '../archive/archiveConfig.js';
 import { resolveArchiveDestination } from '../archive/archiveDestination.js';
 import { pathsOverlap } from '../archive/archivePath.js';
+import { isRecord, parseJsonRecord } from '../typeGuards.js';
+import { errnoCode } from '../errors.js';
 
 export interface LibrarySourceRow {
   id: string;
@@ -73,7 +75,8 @@ export interface LinkImportOptions {
 function parseImportOptions(raw: string | null): LinkImportOptions {
   if (!raw) return {};
   try {
-    const v = JSON.parse(raw) as Record<string, unknown>;
+    const v = parseJsonRecord(raw);
+    if (!v) return {};
     const out: LinkImportOptions = {};
     if (typeof v.importSubFrames === 'boolean') out.importSubFrames = v.importSubFrames;
     if (typeof v.importFits === 'boolean') out.importFits = v.importFits;
@@ -101,8 +104,8 @@ export function parseStoredOverrides(raw: string | null): Map<string, Attributio
   try { rows = JSON.parse(raw); } catch { return out; }
   if (!Array.isArray(rows)) return out;
   for (const row of rows) {
-    if (!row || typeof row !== 'object') continue;
-    const { dirPath, action, objectId } = row as Record<string, unknown>;
+    if (!isRecord(row)) continue;
+    const { dirPath, action, objectId } = row;
     if (typeof dirPath !== 'string') continue;
     if (action === 'ignore') out.set(dirPath, { action: 'ignore' });
     else if (action === 'assign' && typeof objectId === 'string' && objectId) out.set(dirPath, { action: 'assign', objectId });
@@ -351,8 +354,8 @@ export function deleteLinkedFilesFromDisk(rows: LibraryFileRow[]): { deleted: nu
       try {
         fs.unlinkSync(resolved.abs);
       } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-          throw new LinkedDeleteError('LINKED_DELETE_FAILED', `Could not delete "${row.fileName}" from ${source.rootPath}: ${(err as Error).message}`);
+        if (errnoCode(err) !== 'ENOENT') {
+          throw new LinkedDeleteError('LINKED_DELETE_FAILED', `Could not delete "${row.fileName}" from ${source.rootPath}: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
       deleteLibraryFileRow(row.relPath);
@@ -653,7 +656,7 @@ export function scanSource(rootPath: string, settings: Record<string, unknown>):
 export const REFRESH_INTERVALS_MIN = [60, 360, 1440, 10080] as const;
 
 export function isValidRefreshInterval(v: unknown): v is number {
-  return typeof v === 'number' && (REFRESH_INTERVALS_MIN as readonly number[]).includes(v);
+  return typeof v === 'number' && REFRESH_INTERVALS_MIN.some((entry) => entry === v);
 }
 
 export interface CommitSourceOptions {
@@ -992,7 +995,8 @@ export function rescanSource(id: string, baseSettings: Record<string, unknown>):
   const stored = db.prepare<[string], StoredLinkedRow>(
     'SELECT relPath, objectId, sourcePath, bytes, mtimeMs, missingSince, captureDate FROM libraryFiles WHERE sourceId = ?',
   ).all(id);
-  const storedByPath = new Map(stored.filter(r => r.sourcePath).map(r => [r.sourcePath as string, r]));
+  const storedByPath = new Map<string, StoredLinkedRow>();
+  for (const r of stored) if (r.sourcePath) storedByPath.set(r.sourcePath, r);
 
   const toRecord: RecordLinkedFileInput[] = [];
   const stillPresent = new Set<string>();
@@ -1081,7 +1085,7 @@ export function rescanSource(id: string, baseSettings: Record<string, unknown>):
 
 function safeStats(raw: string | null): Record<string, unknown> {
   if (!raw) return {};
-  try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; }
+  return parseJsonRecord(raw) ?? {};
 }
 
 // ── Remove ──────────────────────────────────────────────────────────────────

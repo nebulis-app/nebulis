@@ -7,6 +7,8 @@
  *   and others plug in by adding an entry to CATALOG_CONFIGS below.
  */
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
+import { requireAdmin } from '../middleware/auth.js';
 import { getLocalObjects } from '../lib/library/objects.js';
 import { getCatalogEntry } from '../data/catalog.js';
 import { prewarmThumbnails, findCachedMaster, startPrefetch, getPrefetchStatus } from '../lib/catalogPrefetch.js';
@@ -19,6 +21,10 @@ import { classOfType } from '../lib/objectCategories.js';
 import { hostsOf } from '../lib/companions.js';
 import { companionKey, frameRadiusDeg } from '../lib/companionGeometry.js';
 import { getAllProfiles, getSettingsData } from '../lib/telescopes.js';
+import { getById as getDsoById } from '../lib/dsoCatalog.js';
+import { getWallOverrides, applyWallOverrides, resetWallOverrides } from '../lib/catalogWallOverrides.js';
+import { listWallImageChoices, isOwnImagePath } from '../lib/catalogWall.js';
+import { resolveWallImage, autoSpan, type WallImage, type WallSpan } from '../lib/catalogWall.js';
 
 const router = Router();
 
@@ -106,7 +112,7 @@ interface FrameHost { objectId: string; name: string; sessionCount: number; kind
  *  each. A member's frame test needs the host's telescope (a Dwarf 3 frame holds
  *  more than a S50 frame), so kinds ride along. Variants of one catalog id merge. */
 function loadFrameHosts(localObjects: ReturnType<typeof getLocalObjects>): Map<string, FrameHost> {
-  const kindByProfile = new Map(getAllProfiles().map(p => [p.id, p.kind as string]));
+  const kindByProfile = new Map<string, string>(getAllProfiles().map(p => [p.id, p.kind]));
   const hosts = new Map<string, FrameHost>();
   for (const o of localObjects) {
     const catId = typeof o.catalogId === 'string' ? o.catalogId : null;
@@ -152,14 +158,8 @@ router.get('/best-window', (req: Request, res: Response) => {
   res.apiSuccess({ ...window, upTonight });
 });
 
-router.get('/:catalog/progress', (req: Request, res: Response) => {
-  const catalogKey = String(req.params.catalog).toLowerCase();
-  const def = CATALOG_CONFIGS[catalogKey];
-  if (!def) {
-    res.apiError(404, 'UNKNOWN_CATALOG', `Catalog '${catalogKey}' is not supported`);
-    return;
-  }
-
+/** Per-object progress for one catalog, shared by the board and the "My Catalog" wall. */
+export function computeCatalogProgress(catalogKey: string, def: CatalogDef) {
   const ids = def.buildIds();
   const localObjects = getLocalObjects();
   const libraryMap = loadLibraryMap(localObjects);
@@ -225,8 +225,12 @@ router.get('/:catalog/progress', (req: Request, res: Response) => {
 
     // Resolve a user-friendly name: prefer the first common name, then the
     // catalog name, then fall back to the raw id.
+    // CatalogEntry does not declare commonNames, but entries merged from the
+    // curated JSON can carry it, so read it with a runtime check.
+    const commonNames: unknown = entry && 'commonNames' in entry ? entry.commonNames : undefined;
+    const firstCommonName = Array.isArray(commonNames) && typeof commonNames[0] === 'string' ? commonNames[0] : undefined;
     const commonName =
-      (entry as { commonNames?: string[] } | undefined)?.commonNames?.[0] ??
+      firstCommonName ??
       entry?.name ??
       rawId;
 
@@ -240,7 +244,7 @@ router.get('/:catalog/progress', (req: Request, res: Response) => {
       constellation: entry?.constellation ?? null,
       magnitude: entry?.magnitude ?? null,
       majorAxisArcmin:
-        (entry as { majorAxisArcmin?: number | null } | undefined)?.majorAxisArcmin ?? null,
+        entry?.majorAxisArcmin ?? null,
       // RA in decimal HOURS — the catalog board, object modal ("RA …h"),
       // best-imaging-window math, and plan-to-session flow all expect hours.
       // raToDegs would (inconsistently) return degrees for curated sexagesimal
@@ -257,7 +261,7 @@ router.get('/:catalog/progress', (req: Request, res: Response) => {
     };
   });
 
-  res.apiSuccess({
+  return {
     catalog: catalogKey,
     label: def.label,
     total: ids.length,
@@ -267,7 +271,172 @@ router.get('/:catalog/progress', (req: Request, res: Response) => {
     imagedInFrameCount,
     byType,
     objects,
-  });
+  };
+}
+
+/** Looks up a catalog definition, answering 404 itself when the key is unknown. */
+function resolveCatalog(req: Request, res: Response): { catalogKey: string; def: CatalogDef } | null {
+  const catalogKey = String(req.params.catalog).toLowerCase();
+  const def = Object.hasOwn(CATALOG_CONFIGS, catalogKey) ? CATALOG_CONFIGS[catalogKey] : undefined;
+  if (!def) {
+    res.apiError(404, 'UNKNOWN_CATALOG', `Catalog '${catalogKey}' is not supported`);
+    return null;
+  }
+  return { catalogKey, def };
+}
+
+export interface WallTile {
+  id: string;
+  number: number | null;
+  name: string;
+  typeClass: ObjectClass;
+  majorAxisArcmin: number | null;
+  /** The library object whose photo this tile shows (the host, for an in-frame credit). */
+  libraryObjectId: string | null;
+  /** True when the tile shows the user's own picture. False renders a number cell. */
+  imaged: boolean;
+  /** Imaged only through another object's frame (M43 inside an M42 shot). */
+  inFrame: boolean;
+  /** Other catalog ids that share this tile's frame ("M42 · M43"). */
+  mergedIds: string[];
+  image: WallImage | null;
+  span: WallSpan;
+  lastSessionDate: string | null;
+  sessionCount: number;
+}
+
+/**
+ * GET /api/v1/catalogs/:catalog/wall
+ *
+ * The user's own pictures laid out for the "My Catalog" mosaic. Never returns a
+ * sky-survey or reference image: an object without a photo of the user's own
+ * comes back with `image: null`.
+ */
+router.get('/:catalog/wall', async (req: Request, res: Response) => {
+  const resolved = resolveCatalog(req, res);
+  if (!resolved) return;
+  const { catalogKey, def } = resolved;
+  try {
+    const progress = computeCatalogProgress(catalogKey, def);
+    const lastByObject = new Map<string, string | null>(
+      getLocalObjects().map(o => [o.id, o.lastSessionDate ?? null]),
+    );
+
+    // An in-frame member folds into its host's tile when the host is also in this
+    // catalog and imaged directly (M43 into M42), so one picture is not shown twice.
+    const directHosts = new Set(
+      progress.objects.flatMap(o => (o.isImaged && !o.imagedVia && o.libraryObjectId ? [o.libraryObjectId] : [])),
+    );
+    const mergedInto = new Map<string, string[]>();
+    const foldedIds = new Set<string>();
+    for (const o of progress.objects) {
+      const host = o.imagedVia?.[0]?.objectId;
+      if (host && directHosts.has(host)) {
+        foldedIds.add(o.id);
+        mergedInto.set(host, [...(mergedInto.get(host) ?? []), o.id]);
+      }
+    }
+
+    const imageByLibraryId = new Map<string, Promise<WallImage | null>>();
+    const imageFor = (libId: string) => {
+      let p = imageByLibraryId.get(libId);
+      if (!p) { p = resolveWallImage(libId).catch(() => null); imageByLibraryId.set(libId, p); }
+      return p;
+    };
+
+    const tiles = await Promise.all(
+      progress.objects.filter(o => !foldedIds.has(o.id)).map(async (o): Promise<WallTile> => {
+        const libId = o.isImaged ? o.libraryObjectId : null;
+        const image = libId ? await imageFor(libId) : null;
+        // The progress rows carry no size for the Messier/Caldwell entries, but the
+        // DSO catalog (OpenNGC) does; the wall sizes tiles by apparent size.
+        const sizeArcmin = o.majorAxisArcmin
+          ?? getDsoById(o.id)?.majorAxisArcmin
+          ?? (o.ngcName ? getDsoById(o.ngcName)?.majorAxisArcmin : null)
+          ?? null;
+        return {
+          id: o.id,
+          number: o.number,
+          name: o.name,
+          typeClass: o.typeClass,
+          majorAxisArcmin: sizeArcmin,
+          libraryObjectId: libId,
+          imaged: image != null,
+          inFrame: o.imagedVia != null,
+          mergedIds: libId && !o.imagedVia ? mergedInto.get(libId) ?? [] : [],
+          image,
+          span: autoSpan(sizeArcmin, image?.aspect ?? 1),
+          lastSessionDate: libId ? lastByObject.get(libId) ?? null : null,
+          sessionCount: o.sessionCount,
+        };
+      }),
+    );
+
+    res.apiSuccess({
+      catalog: catalogKey,
+      label: def.label,
+      total: progress.total,
+      imagedCount: tiles.filter(t => t.imaged).length + tiles.reduce((n, t) => n + (t.imaged ? t.mergedIds.length : 0), 0),
+      tiles,
+      overrides: getWallOverrides(catalogKey),
+    });
+  } catch (err) {
+    console.error('[catalogs] wall failed:', err);
+    res.apiError(500, 'WALL_FAILED', 'Could not build the catalog wall');
+  }
+});
+
+const WallOverrideSchema = z.object({
+  span: z.object({ cols: z.number().int().min(1).max(4), rows: z.number().int().min(1).max(4) }).optional(),
+  imagePath: z.string().min(1).max(1024).optional(),
+  focus: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).optional(),
+  zoom: z.number().min(1).max(8).optional(),
+});
+const TileIdSchema = z.string().regex(/^[A-Za-z0-9_.-]{1,40}$/);
+const WallEditSchema = z.object({
+  set: z.record(TileIdSchema, WallOverrideSchema).default({}),
+  clear: z.array(TileIdSchema).default([]),
+});
+
+// PUT /api/v1/catalogs/:catalog/wall/overrides: save a whole edit session at once.
+router.put('/:catalog/wall/overrides', requireAdmin, (req: Request, res: Response) => {
+  const resolved = resolveCatalog(req, res);
+  if (!resolved) return;
+  const parsed = WallEditSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
+    return;
+  }
+  // A chosen picture must be one of the user's own files, never an arbitrary path.
+  for (const o of Object.values(parsed.data.set)) {
+    if (o.imagePath && !isOwnImagePath(o.imagePath)) {
+      res.apiError(422, 'VALIDATION_ERROR', 'imagePath must be an image in your library');
+      return;
+    }
+  }
+  applyWallOverrides(resolved.catalogKey, parsed.data.set, parsed.data.clear);
+  res.apiSuccess({ overrides: getWallOverrides(resolved.catalogKey) });
+});
+
+// DELETE /api/v1/catalogs/:catalog/wall/overrides: reset the whole wall to automatic.
+router.delete('/:catalog/wall/overrides', requireAdmin, (req: Request, res: Response) => {
+  const resolved = resolveCatalog(req, res);
+  if (!resolved) return;
+  resetWallOverrides(resolved.catalogKey);
+  res.apiSuccess({ overrides: {} });
+});
+
+// GET /api/v1/catalogs/wall/images/:objectId: the object's own pictures, for the tile image chooser.
+router.get('/wall/images/:objectId', async (req: Request, res: Response) => {
+  res.apiSuccess({ images: await listWallImageChoices(String(req.params.objectId)) });
+});
+
+router.get('/:catalog/progress', (req: Request, res: Response) => {
+  const resolved = resolveCatalog(req, res);
+  if (!resolved) return;
+  const { catalogKey, def } = resolved;
+  const ids = def.buildIds();
+  res.apiSuccess(computeCatalogProgress(catalogKey, def));
 
   // Fire-and-forget: pre-warm thumbnails for objects that already have a
   // cached master, and — for Caldwell — trigger the image download phase if

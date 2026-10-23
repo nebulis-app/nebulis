@@ -122,3 +122,10 @@ verify-report.html
 tests/fixtures/import-lab/generated/
 tests/fixtures/import-lab/runtime/
 lab-report/
+
+# Python bytecode from local security tooling
+__pycache__/
+*.pyc
+
+# Help screenshot capture: saved browser session and unreviewed output.
+.help-shots/

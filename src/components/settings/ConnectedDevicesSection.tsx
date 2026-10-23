@@ -115,7 +115,7 @@ export function ConnectedDevicesSection({ isDark }: { isDark: boolean }) {
         <button
           type="button"
           onClick={() => setShowConnect(true)}
-          className="shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[13px] font-medium bg-accent-500 text-white hover:bg-accent-600 transition-colors shadow-sm"
+          className="shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium bg-accent-500 text-white hover:bg-accent-600 transition-colors shadow-sm"
         >
           <QrCode className="w-4 h-4" />
           {t('connectedDevices.connectDevice')}

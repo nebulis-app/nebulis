@@ -47,39 +47,38 @@ test.describe('Compare Sessions', () => {
     await expect(selects.first()).toBeVisible();
   });
 
-  test('switching to slider mode activates that button', async ({ page }) => {
-    const sliderBtn = page.getByRole('button', { name: /slider/i });
-    const sbsBtn = page.getByRole('button', { name: /side.by.side/i });
+  // Observable mode contract (CompareView): slider mode overlays the two
+  // sessions and adds a range input (role slider, 5-95, starting at 50) that
+  // drives the split; side-by-side mode has no slider.
+  test('should show the comparison slider when Slider mode is selected', async ({ page }) => {
+    const sliderBtn = page.getByRole('button', { name: 'Slider', exact: true });
+    await expect(sliderBtn).toBeVisible();
+    await expect(page.getByRole('slider')).toHaveCount(0);
 
-    if (await sliderBtn.isVisible() && await sbsBtn.isVisible()) {
-      // Capture the side-by-side button's initial class to detect active state changes
-      const sbsClassBefore = await sbsBtn.getAttribute('class') ?? '';
-      await sliderBtn.click();
-      // After switching, the side-by-side button should no longer have the same active styling
-      const sbsClassAfter = await sbsBtn.getAttribute('class') ?? '';
-      expect(sbsClassAfter).not.toBe(sbsClassBefore);
-    }
+    await sliderBtn.click();
+    const range = page.getByRole('slider');
+    await expect(range).toHaveCount(1);
+    await expect(range).toHaveValue('50');
   });
 
-  test('switching back to side-by-side works', async ({ page }) => {
-    // Switch to slider then back
-    const sliderBtn = page.getByRole('button', { name: /slider/i });
-    const sbsBtn = page.getByRole('button', { name: /side.by.side/i });
+  test('should remove the slider when switching back to Side by Side', async ({ page }) => {
+    await page.getByRole('button', { name: 'Slider', exact: true }).click();
+    await expect(page.getByRole('slider')).toHaveCount(1);
 
-    if (await sliderBtn.isVisible() && await sbsBtn.isVisible()) {
-      await sliderBtn.click();
-      await sbsBtn.click();
-      await expect(sbsBtn).toBeVisible();
-    }
+    await page.getByRole('button', { name: 'Side by Side', exact: true }).click();
+    await expect(page.getByRole('slider')).toHaveCount(0);
   });
 
-  test('shows session date options from mock data', async ({ page }) => {
-    // Session selectors should be populated from the mocked sessions (2024-03-15, 2024-02-10).
-    // Either the selected label or an option in the dropdown should contain the date.
+  test('should list each mocked session as an option in the session selectors', async ({ page }) => {
+    // MOCK.sessions: 2024-03-15 (1 stacked, 12 files), 2024-02-10 (1 stacked, 8 files)
     const selects = page.locator('select');
-    if (await selects.count() > 0) {
-      const firstSelectText = await selects.first().textContent();
-      expect(firstSelectText).toMatch(/2024-03|march|feb/i);
+    await expect(selects).toHaveCount(2);
+    for (const i of [0, 1]) {
+      await expect(selects.nth(i).locator('option')).toHaveText([
+        'Select session...',
+        'Mar 15, 2024 (1 stacked, 12 files)',
+        'Feb 10, 2024 (1 stacked, 8 files)',
+      ]);
     }
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ImageOff, Loader2 } from 'lucide-react';
 import type { ZoomPan } from './useZoomPan';
@@ -9,6 +9,9 @@ interface Props {
   thumbSrc?: string;
   alt: string;
   zp: ZoomPan;
+  /** Drawn on top of the image and carried with it through zoom, pan and
+   *  rotation (the annotation rings). Sized to exactly the image's box. */
+  overlay?: ReactNode;
 }
 
 /**
@@ -19,7 +22,7 @@ interface Props {
  * already in cache from the page behind the viewer), and the real image fades
  * in over it. The result reads as the image sharpening rather than appearing.
  */
-export function LightboxImage({ src, thumbSrc, alt, zp }: Props) {
+export function LightboxImage({ src, thumbSrc, alt, zp, overlay }: Props) {
   const { t } = useTranslation('library');
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -53,20 +56,26 @@ export function LightboxImage({ src, thumbSrc, alt, zp }: Props) {
         />
       )}
 
-      <img
-        src={src}
-        alt={alt}
-        draggable={false}
-        onLoad={e => { zp.onImageLoad(e); setLoaded(true); }}
-        onError={() => setFailed(true)}
-        // Sized and translated by the zoom engine once natural dimensions are
-        // known. Until then it is laid out but invisible, which is what lets
-        // the browser report those dimensions in the first place.
+      {/* The zoom engine's size and transform live on this wrapper rather than
+          the <img>, so anything inside it (the overlay) tracks the picture
+          exactly. It is always rendered, measured or not, so the <img> is never
+          re-parented when the engine finishes measuring. */}
+      <div
         style={zp.imageStyle}
-        className={`relative select-none rounded-xl transition-opacity duration-200 ${
-          loaded ? 'opacity-100' : 'opacity-0'
-        } ${zp.imageStyle ? '' : 'absolute inset-0 w-full h-full object-contain'}`}
-      />
+        className={`select-none ${zp.imageStyle ? 'relative flex-none' : 'absolute inset-0'}`}
+      >
+        <img
+          src={src}
+          alt={alt}
+          draggable={false}
+          onLoad={e => { zp.onImageLoad(e); setLoaded(true); }}
+          onError={() => setFailed(true)}
+          className={`block h-full w-full select-none rounded-xl transition-opacity duration-200 ${
+            zp.imageStyle ? '' : 'object-contain'
+          } ${loaded ? 'opacity-100' : 'opacity-0'}`}
+        />
+        {loaded && overlay}
+      </div>
 
       {!loaded && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

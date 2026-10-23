@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import sharp from './sharp-optional.js';
 import { computeAutoStretch, applyStretch } from './mtfStretch.js';
+import { renderReducedFits } from './fitsReducedRender.js';
 
 // Bumped when the rendering pipeline changes so stale thumbnails regenerate.
 // v2: color (RGB cubes + debayered CFA mosaics) with MTF autostretch.
@@ -11,6 +12,12 @@ import { computeAutoStretch, applyStretch } from './mtfStretch.js';
 //     inflated the MAD estimate enough to collapse the shadow-clip point to 0
 //     and leave Bayer-mosaic thumbnails looking washed out next to the
 //     full-resolution viewer's bilinear-smoothed stats.
+// v4: large frames are rendered by averaging blocks of source pixels as the
+//     file streams past (fitsReducedRender.ts) instead of decoding every plane
+//     at full size and sampling pixels back out. About 1 s to ~0.1 s for a
+//     50 MB frame, and the picture is block-averaged rather than point-sampled,
+//     so faint stars are no longer dropped between sample points. Frames not
+//     much larger than the thumbnail still take the full-resolution path.
 //
 // Two size tiers share the same pipeline:
 //   - 'thumb'   256px, for grid/list previews (generated eagerly on import).
@@ -23,7 +30,7 @@ export type FitsThumbnailTier = 'thumb' | 'preview';
 // pipeline change that doesn't also change the *request URL* never reaches a
 // client that already has the old image cached — it'll keep serving the
 // stale render indefinitely regardless of what regenerates on disk.
-export const FITS_THUMBNAIL_PIPELINE_VERSION = 'v3';
+export const FITS_THUMBNAIL_PIPELINE_VERSION = 'v4';
 
 const TIERS: Record<FitsThumbnailTier, { size: number; suffix: string }> = {
   thumb: { size: 256, suffix: `.${FITS_THUMBNAIL_PIPELINE_VERSION}.jpg` },
@@ -38,6 +45,35 @@ export function fitsThumbnailPath(fitsPath: string, tier: FitsThumbnailTier = 't
 /** Thumbnail filename relative to the object folder, for URL building. */
 export function fitsThumbnailRelName(fileName: string, tier: FitsThumbnailTier = 'thumb'): string {
   return fileName + TIERS[tier].suffix;
+}
+
+/**
+ * Remove the thumbnails of a FITS file that an older pipeline version left in its `.thumbs/` folder. A version
+ * bump changes the file name, so the old renders are never read again and would otherwise stay forever. Only this
+ * file's own `.v<N>.jpg` / `.preview.v<N>.jpg` renders of another version are touched. Best-effort: a thumbnail
+ * that cannot be removed is a few kilobytes, never a reason to fail the render that just succeeded.
+ */
+export function purgeStaleFitsThumbnails(fitsPath: string): number {
+  const dir = path.join(path.dirname(fitsPath), '.thumbs');
+  const base = path.basename(fitsPath);
+  let removed = 0;
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return 0;
+  }
+  const prefix = `${base}.`;
+  for (const name of entries) {
+    if (!name.startsWith(prefix)) continue;
+    const m = /^(?:preview\.)?v(\d+)\.jpg$/.exec(name.slice(prefix.length));
+    if (!m || `v${m[1]}` === FITS_THUMBNAIL_PIPELINE_VERSION) continue;
+    try {
+      fs.unlinkSync(path.join(dir, name));
+      removed++;
+    } catch { /* leave it */ }
+  }
+  return removed;
 }
 
 /**
@@ -59,6 +95,20 @@ export async function generateFitsThumbnail(
   fs.mkdirSync(path.dirname(thumbPath), { recursive: true });
 
   const nodeBuffer = fs.readFileSync(fitsPath);
+  const size = TIERS[tier].size;
+
+  // Large frames: average blocks while the file streams past, never holding the picture at full size.
+  // A file whose name says "stack" is looked at, so it is averaged in full; anything else is a raw sub-frame and
+  // is read sparsely.
+  const reduced = renderReducedFits(nodeBuffer, size, !/stack/i.test(path.basename(fitsPath)));
+  if (reduced) {
+    await sharp(reduced.rgb, { raw: { width: size, height: size, channels: 3 } })
+      .jpeg({ quality: 85 })
+      .toFile(thumbPath);
+    purgeStaleFitsThumbnails(fitsPath);
+    return;
+  }
+
   // Node.js Buffer may share its underlying ArrayBuffer with an offset, so copy
   // the bytes out to get a clean, offset-free ArrayBuffer before handing it to
   // DataView. Copying through Uint8Array (rather than `buffer.slice(...)`)
@@ -71,12 +121,12 @@ export async function generateFitsThumbnail(
     throw new Error('FITS file has zero dimensions or no pixel data');
   }
 
-  const size = TIERS[tier].size;
   const rgb = renderToRgbBuffer(parsed, size);
 
   await sharp(rgb, { raw: { width: size, height: size, channels: 3 } })
     .jpeg({ quality: 85 })
     .toFile(thumbPath);
+  purgeStaleFitsThumbnails(fitsPath);
 }
 
 // ─── FITS pixel parser (mirrors src/lib/fits.ts — browser DataView works in Node too) ───

@@ -17,7 +17,19 @@
     "about": "Over",
     "archive": "Archief",
     "linked": "Gekoppelde mappen",
-    "cleanup": "Opruimen"
+    "cleanup": "Opruimen",
+    "apiKeys": "API-sleutels",
+    "features": "Integraties",
+    "alerts": "Meldingen",
+    "display": "Weergave",
+    "organization": "Indeling",
+    "processing": "Verwerking",
+    "maintenance": "Onderhoud",
+    "catalogs": "Catalogusgegevens",
+    "sites": "Waarnemingslocaties",
+    "sectionEquipment": "Apparatuur",
+    "sectionSystem": "Systeem",
+    "sectionAdvanced": "Geavanceerd"
   },
   "page": {
     "viewOnlyBanner": "Alleen-lezen-modus. Neem contact op met een beheerder om wijzigingen aan te brengen.",
@@ -61,6 +73,15 @@
     "nebulaBackdrop": {
       "label": "Nevelachtergrond",
       "description": "Toont een subtiel deepsky-beeld en sterrenveld achter de app, zichtbaar tussen de panelen. Werkt met het thema Donker. Het thema Heelal heeft al een eigen achtergrond."
+    },
+    "uiScale": {
+      "label": "Interfacegrootte",
+      "description": "Maakt alles groter of kleiner op dit apparaat. 100% is de automatische grootte voor je scherm.",
+      "reset": "Herstellen"
+    },
+    "compactBanners": {
+      "label": "Compacte paginabanners",
+      "description": "Klapt de banner bovenaan elke pagina in tot één smalle rij met de belangrijkste cijfers. Met de pijl op een banner open je hem nog steeds. Aan- of uitzetten stelt elke pagina dienovereenkomstig opnieuw in."
     }
   },
   "navigation": {
@@ -244,17 +265,21 @@
     "display": {
       "title": "Weergave",
       "description": "Hoe objectkaarten en diavoorstellingen afbeeldingen en informatie tonen.",
-      "referenceImage": {
-        "label": "Referentiebeeld",
-        "description": "Catalogusafbeeldingen van Hubble, DSS2, NASA en Caldwell. Rijke kleuren, ruime beschikbaarheid."
-      },
-      "myTelescopeImages": {
-        "label": "Mijn telescoopbeelden",
-        "description": "Je eigen opnamen voor elk object dat je hebt gefotografeerd."
+      "cardPictures": {
+        "label": "Afbeeldingen op objectkaarten",
+        "description": "Referentie gebruikt catalogusbeelden van Hubble, DSS2, NASA en Caldwell: rijke kleuren, voor elk object beschikbaar. Mijn telescoop gebruikt je eigen opnamen, voor objecten die je hebt vastgelegd.",
+        "reference": "Referentie",
+        "telescope": "Mijn telescoop"
       },
       "galleryProcessedOnly": {
         "label": "Galerij: alleen bewerkte afbeeldingen tonen",
         "description": "De galerij opent standaard met het filter \"Alleen bewerkt\" ingeschakeld."
+      },
+      "objectPages": {
+        "label": "Objectpagina's",
+        "description": "Gecombineerd toont alle afbeeldingen van een object op één pagina. Klassiek toont een raster van waarnemingen die je één voor één opent. Klassiek verdwijnt mogelijk in een toekomstige versie, laat ons dus weten wat je zou missen.",
+        "nights": "Klassiek",
+        "media": "Gecombineerd"
       },
       "slideshowShowInfo": {
         "label": "Diavoorstelling: objectinformatie weergeven",
@@ -285,6 +310,14 @@
       "groupCompanions": {
         "label": "Objecten in hetzelfde beeld meetellen",
         "description": "Andere catalogusobjecten die ook in het beeld stonden van iets wat je hebt gefotografeerd, tellen ook als gefotografeerd. Voorbeeld: M42 fotograferen telt ook M43 mee. Zet dit uit om alleen de objecten te tellen waarop je hebt gericht."
+      },
+      "autoSolve": {
+        "label": "Nieuwe foto's automatisch oplossen",
+        "description": "De server bepaalt op de achtergrond waar elke gestackte foto naartoe wijst, alleen als de bibliotheek verder niets te doen heeft, zodat objectnamen direct en nauwkeurig verschijnen wanneer je op Annoteren tikt. De eerste keer downloadt hij de gratis ASTAP-platesolver (ongeveer 100 MB). Foto's die zich niet laten oplossen worden onthouden en met rust gelaten."
+      },
+      "autoMeasure": {
+        "label": "Frames analyseren na import",
+        "description": "Beoordeelt elke nieuwe ruwe frame op de achtergrond zodra een import klaar is, zodat de lijst met subframes al gevuld is als je een nacht opent. Elk FITS-bestand wordt gelezen, daarom staat dit standaard uit. Een nacht openen analyseert hem nog steeds op aanvraag."
       }
     },
     "calibration": {
@@ -295,6 +328,22 @@
         "description": "De donkerstroom en uitleesruis van een sensor veranderen naarmate deze ouder wordt. Bundels die ouder zijn dan deze termijn krijgen daarom de status Verlopen bij Kalibraties en kunnen daar worden verwijderd. Deze termijn geldt niet voor flats en flat-darks: die worden aan een specifieke sessie gekoppeld.",
         "unit": "dagen"
       }
+    },
+    "filterAliases": {
+      "title": "Filteraliassen",
+      "description": "Voeg filternamen samen die je opnamesoftware verschillend schrijft, zodat de integratie per filter ze samen telt. Gangbare schrijfwijzen (Ha, H-alpha, OIII, SII, L, R, G, B) zijn al samengevoegd.",
+      "empty": "Nog geen aliassen.",
+      "aliasPlaceholder": "Naam in je bestanden",
+      "canonicalPlaceholder": "Tellen als",
+      "remove": "Alias verwijderen",
+      "add": "Alias toevoegen",
+      "cancel": "Annuleren",
+      "save": "Aliassen opslaan",
+      "saveFailed": "De aliassen konden niet worden opgeslagen."
+    },
+    "processing": {
+      "title": "Verwerking",
+      "description": "Wat er na het importeren op je beelden wordt uitgevoerd."
     }
   },
   "softwareUpdate": {
@@ -462,6 +511,9 @@
     "skyMapped": "hemel in kaart gebracht",
     "setVisibleSky": "Zichtbare hemel instellen",
     "setAsDefault": "Als standaard instellen",
+    "skyNotMapped": "Hemel niet in kaart gebracht",
+    "bortle": "Bortle {{class}}",
+    "mapAria": "Kaart van je waarneemlocaties",
     "edit": "Bewerken",
     "cannotDeleteLast": "Kan de laatste waarneemlocatie niet verwijderen. Voeg eerst nog een toe.",
     "modal": {
@@ -631,7 +683,8 @@
     "connected": "Verbonden",
     "localServer": {
       "title": "Lokale server",
-      "description": "De computer waarop dit dashboard draait."
+      "description": "De computer waarop dit dashboard draait.",
+      "appDataNote": "Alles wat Nebulis op deze schijf bewaart: de database, miniaturen, back-ups en caches, plus je bibliotheek als die niet is verplaatst. De rest van de gebruikte ruimte zijn andere bestanden op deze schijf."
     },
     "libraryDrive": {
       "title": "Bibliotheekschijf",
@@ -658,6 +711,12 @@
       "oldest": "Oudste",
       "newest": "Nieuwste",
       "noData": "Geen opslaggegevens beschikbaar"
+    },
+    "showAll": "Alle {{count}} tonen",
+    "showFewer": "Minder tonen",
+    "libraryContents": {
+      "title": "Bibliotheekinhoud",
+      "description": "Ruimte die elk object in je bibliotheek inneemt."
     }
   },
   "connectionSection": {
@@ -688,6 +747,7 @@
     "syncingNow": "Deze telescoop wordt nu gesynchroniseerd",
     "anotherImportRunning": "Er loopt al een andere import",
     "syncNow": "Nu synchroniseren (nieuwe bestanden van deze telescoop ophalen)",
+    "autoImportLabel": "Automatisch importeren",
     "autoImportOn": "Automatisch importeren aan: klik om uit te schakelen",
     "autoImportOff": "Automatisch importeren uit: klik om in te schakelen",
     "moveSessions": "Verplaats alle sessies naar een andere telescoop",
@@ -819,6 +879,10 @@
         "label": "Video's (.avi, .mp4)",
         "description": "Video-opnamen van de maan en planeten."
       },
+      "calibration": {
+        "label": "Kalibratieframes synchroniseren",
+        "description": "Kopieert bij elke synchronisatie de kalibratieframes van het apparaat (SeeStar-darkbibliotheek, Dwarf CALI_FRAME, ASIAIR Dark, Flat en Bias) naar de kalibratiebibliotheek. Ze verschijnen op de pagina Kalibraties."
+      },
       "archiveAll": {
         "label": "Alles archiveren",
         "description": "Kopieert alle bestanden op het apparaat en vervangt de vijf keuzes hierboven. Omvat subframes, miniaturen per frame, werk- en kalibratiebeelden, afgewezen frames, logbestanden en onbekende bestandstypen. De mapstructuur van het apparaat blijft behouden. Bestanden die Nebulis niet kan weergeven, worden wel opgeslagen en kunnen worden gedownload. Dit kan veel ruimte innemen."
@@ -879,7 +943,14 @@
       "lights": "uiteindelijke gestapelde of afzonderlijke opnamen (vereist)",
       "subframes": "afzonderlijke subframes (optioneel)",
       "metaJson": "optionele metadata per sessie"
-    }
+    },
+    "photoTitle": "Foto",
+    "photoHelp": "Je eigen foto van deze telescoop. Alleen jij en de mensen met wie je Nebulis deelt, zien hem. Een uitgeknipte foto op een transparante achtergrond ziet er het mooist uit.",
+    "photoChoose": "Foto kiezen",
+    "photoChange": "Foto wijzigen",
+    "photoRemove": "Verwijderen",
+    "photoUploading": "Uploaden…",
+    "photoAlt": "Foto van {{name}}"
   },
   "subtitle": {
     "general": "Uiterlijk en eenheden.",
@@ -888,12 +959,19 @@
     "accountDevices": "Telefoons en Apple TV's die aan je account zijn gekoppeld.",
     "accountUsers": "De mensen die zich kunnen aanmelden bij deze bibliotheek.",
     "hardware": "Telescopen en camera-aansluitingen.",
-    "sky": "Waarneemlocatie, catalogi en externe gegevensbronnen.",
+    "sky": "Vanwaar je waarneemt.",
     "storage": "Waar bibliotheekgegevens zich bevinden en hoe deze gesynchroniseerd blijven.",
     "log": "Aanmeldingen, gebruikers- en telescoopwijzigingen, synchronisaties en andere beheerdersactiviteiten.",
     "danger": "Diagnostiek, opruimtools en destructieve acties.",
     "about": "Waarom Nebulis bestaat en wie het heeft gebouwd.",
-    "libraryCleanup": "Maak schijfruimte vrij door bestanden te verwijderen die je niet meer nodig hebt."
+    "libraryCleanup": "Maak schijfruimte vrij door bestanden te verwijderen die je niet meer nodig hebt.",
+    "apiKeys": "Persoonlijke sleutels voor PixInsight en andere tools. Een sleutel handelt namens jou.",
+    "features": "Optionele integraties. Elke blijft uit tot je hem aanzet.",
+    "alerts": "Krijg bericht als er een heldere nacht aankomt of een import klaar is.",
+    "libraryOrganization": "Hoe objecten worden benoemd, gegroepeerd en geteld.",
+    "libraryProcessing": "Wat Nebulis met beelden doet nadat ze zijn binnengekomen.",
+    "maintenance": "Taken die de server elke nacht zelf uitvoert.",
+    "catalogs": "Offline beelden en satellietgegevens die op deze server staan."
   },
   "transportEditor": {
     "kindLabel": {
@@ -961,7 +1039,17 @@
     "searchPlaceholder": "Stad, regio, land…",
     "clearLocation": "Locatie wissen",
     "searchHelp": "Typ een stad om de coördinaten en tijdzone automatisch in te vullen",
-    "noMatches": "Geen overeenkomsten gevonden"
+    "noMatches": "Geen overeenkomsten gevonden",
+    "photosLabel": "Foto's",
+    "photosHelp": "Afbeeldingen van deze locatie, als eigen geheugensteun. Je kunt ze ook toevoegen vanuit de iPhone- en iPad-app.",
+    "photosAdd": "Foto's toevoegen",
+    "photosUploading": "{{done}} van {{total}} worden geüpload",
+    "photosSaveFirst": "Sla eerst de locatie op, daarna kun je foto's toevoegen.",
+    "photosEmpty": "Nog geen foto's.",
+    "photosRemove": "Foto verwijderen",
+    "photosOpen": "Foto openen",
+    "photosCaptionPlaceholder": "Voeg een bijschrift toe",
+    "photosUploadFailed": "{{name}} kon niet worden geüpload: {{reason}}"
   },
   "enterCodeModal": {
     "title": "Apple TV koppelen",
@@ -1383,7 +1471,7 @@
     "repaired": "{{count}} item(s) hersteld.",
     "unreadable_one": "1 bestand of map kon niet worden gecontroleerd. Dit wordt hierboven niet meegeteld en de herstelacties hierboven zijn uitgeschakeld. Controleer of je bibliotheekschijf goed werkt en scan opnieuw.",
     "unreadable_other": "{{count}} bestanden of mappen konden niet worden gecontroleerd. Deze worden hierboven niet meegeteld en de herstelacties hierboven zijn uitgeschakeld. Controleer of je bibliotheekschijf goed werkt en scan opnieuw.",
-    "note": "Herstelacties verwijderen nooit afbeeldingsbestanden. Objecten waarvan de map ontbreekt, gaan naar de prullenbak en kunnen worden teruggezet.",
+    "note": "Reparaties verwijderen alleen records, met één uitzondering: Dubbelen verwijderen wist de tweede kopie van een bestand nadat is bevestigd dat die identiek is aan de bewaarde. Objecten waarvan de map weg is gaan naar de prullenbak en kunnen worden hersteld.",
     "stale": {
       "title": "Ontbrekende bestanden",
       "detail": "Databasevermeldingen voor bestanden die niet meer op schijf staan, verdeeld over {{objects}} object(en).",
@@ -1405,11 +1493,231 @@
       "detail": "Geregistreerd als één map, terwijl de bestanden per waarneemnacht zijn ingedeeld. Dezelfde correctie wordt ook bij elke start uitgevoerd.",
       "fix": "Indelingskenmerken corrigeren"
     },
+    "duplicates": {
+      "title": "Dubbele bestanden",
+      "detail": "Dezelfde opname staat in twee mappen van één object, bij {{objects}} objecten. Opruimen behoudt de door de telescoop benoemde kopie en verwijdert de andere zodra de bytes aantoonbaar identiek zijn.",
+      "fix": "Dubbelen verwijderen"
+    },
     "flat": {
       "title": "Objecten zonder indeling per nacht",
       "detail": "Bestanden die nog niet in mappen per waarneemnacht zijn ingedeeld. Opnieuw indelen verplaatst de bestanden.",
       "progress": "Opnieuw indelen… {{done}} / {{total}}",
       "fix": "Opnieuw indelen"
     }
+  },
+  "apiKeys": {
+    "title": "API-sleutels",
+    "description": "Laat PixInsight en andere tools Nebulis namens jou gebruiken, zonder je wachtwoord.",
+    "note": "{{used}} van {{max}} sleutels in gebruik. Een sleutel heeft jouw rechten: een beheerderssleutel kan wijzigen, een kijkersleutel alleen lezen.",
+    "allNote": "Alle sleutels op deze server. Een sleutel intrekken logt die tool meteen uit.",
+    "mine": "Mijn",
+    "all": "Iedereen",
+    "newKey": "Nieuwe sleutel",
+    "nameLabel": "Naam van de sleutel",
+    "namePlaceholder": "Noem hem naar de computer, bijv. Studio-iMac",
+    "create": "Sleutel maken",
+    "cancel": "Annuleren",
+    "createFailed": "De sleutel kon niet worden gemaakt",
+    "loading": "Sleutels laden",
+    "createdTitle": "Sleutel gemaakt: {{name}}",
+    "copyOnce": "Kopieer hem nu. Hij wordt maar één keer getoond en is niet te herstellen; kwijt? Trek hem in en maak een nieuwe.",
+    "copy": "Kopiëren",
+    "copied": "Gekopieerd",
+    "dismiss": "Sluiten",
+    "none": "Nog geen API-sleutels",
+    "noneHint": "Maak er een om PixInsight te koppelen.",
+    "created": "Gemaakt {{when}}",
+    "lastUsed": "gebruikt {{when}}",
+    "neverUsed": "nooit gebruikt",
+    "justNow": "zojuist",
+    "deletedUser": "verwijderde gebruiker",
+    "revoke": "Intrekken",
+    "revokeAria": "{{name}} intrekken",
+    "revokeTitle": "“{{name}}” intrekken?",
+    "revokeMessage": "De tool die de sleutel die begint met {{prefix}} gebruikt, verliest meteen toegang. Dit kan niet ongedaan worden gemaakt.",
+    "revokeConfirm": "Sleutel intrekken"
+  },
+  "featuresSection": {
+    "title": "Integraties",
+    "description": "Zet de extra's aan die je gebruikt. Uitgeschakelde functies voegen niets toe aan je server.",
+    "pixinsight": {
+      "label": "PixInsight-integratie",
+      "description": "Biedt het Nebulis Connector-script aan zodat PixInsight het kan installeren en bijwerken, en je bibliotheek vanuit PixInsight kunt doorbladeren.",
+      "repoLabel": "PixInsight-repository-URL",
+      "repoDescription": "Voeg deze toe in PixInsight onder Resources > Updates > Manage Repositories (met de slash aan het eind). Sla eerst op.",
+      "copy": "URL kopiëren",
+      "setup": "Volgende stap: maak een sleutel en volg de PixInsight-handleiding in Help.",
+      "createKey": "API-sleutel maken"
+    }
+  },
+  "alerts": {
+    "title": "Meldingskanalen",
+    "description": "Telefoons en diensten die krijgen wat Nebulis zelf opmerkt.",
+    "add": "Kanaal toevoegen",
+    "actionFailed": "Dat lukte niet. Probeer het opnieuw.",
+    "saveFailed": "Kanaal kon niet worden opgeslagen.",
+    "loadFailed": "Meldingen konden niet worden geladen.",
+    "loading": "Laden…",
+    "empty": "Nog geen meldingskanaal.",
+    "emptyHint": "Voeg een ntfy-onderwerp of een Discord-, Slack- of webhook-URL toe. Een iPhone verschijnt hier vanzelf zodra je meldingen aanzet in de Nebulis-app.",
+    "noEvents": "Geen gebeurtenissen gekozen, dus er wordt niets verstuurd.",
+    "lastSent": "Laatst verstuurd {{when}}",
+    "lastFailed": "Laatste poging {{when}} mislukt: {{error}}",
+    "testSent": "Testmelding verstuurd.",
+    "testFailed": "Test mislukt: {{error}}",
+    "enabledLabel": "Meldingen naar {{name}} sturen",
+    "test": "Testen",
+    "edit": "Bewerken",
+    "delete": "Verwijderen",
+    "deleteConfirm": "“{{name}}” verwijderen? Er wordt niets meer naartoe gestuurd.",
+    "cancel": "Annuleren",
+    "save": "Opslaan",
+    "addTitle": "Meldingskanaal toevoegen",
+    "editTitle": "Meldingskanaal bewerken",
+    "kindLabel": "Sturen naar",
+    "kindHelp": {
+      "ntfy": "Pushmeldingen op je telefoon met de gratis ntfy-app: abonneer je in de app op een onderwerp en plak hier de URL ervan. Kies een moeilijk te raden naam, of voeg ?auth=… toe voor een beveiligde server.",
+      "discord": "In Discord: kanaalinstellingen → Integraties → Webhooks → Nieuwe webhook → Webhook-URL kopiëren.",
+      "slack": "In Slack: maak een app met Incoming Webhooks, voeg er een toe aan een kanaal en kopieer de URL.",
+      "webhook": "Nebulis stuurt JSON (gebeurtenis, titel, bericht, gegevens) naar deze URL, voor Home Assistant, n8n of je eigen scripts."
+    },
+    "nameLabel": "Naam",
+    "namePlaceholder": {
+      "ntfy": "Mijn telefoon",
+      "discord": "Astro-server",
+      "slack": "Sterrenwachtkanaal",
+      "webhook": "Home Assistant"
+    },
+    "urlLabel": "URL",
+    "urlPlaceholder": {
+      "ntfy": "https://ntfy.sh/my-nebulis-topic",
+      "discord": "https://discord.com/api/webhooks/…",
+      "slack": "https://hooks.slack.com/services/…",
+      "webhook": "https://homeassistant.local:8123/api/webhook/nebulis"
+    },
+    "urlKeep": "Laat leeg om de huidige URL te houden.",
+    "secretLabel": "Ondertekeningsgeheim (optioneel)",
+    "secretHelp": "Indien ingesteld draagt elk verzoek X-Nebulis-Signature: sha256=HMAC van de inhoud, zodat de ontvanger kan controleren dat het van Nebulis komt.",
+    "secretClear": "Geheim verwijderen",
+    "eventsLabel": "Gebeurtenissen",
+    "event": {
+      "night": {
+        "clear": {
+          "short": "Heldere nacht",
+          "label": "Heldere nacht op komst",
+          "help": "Elke avond, als de verwachting genoeg heldere donkere uren geeft op de actieve locatie."
+        },
+        "dew": {
+          "short": "Dauwwaarschuwing",
+          "label": "Dauwwaarschuwing",
+          "help": "Wordt vlak voor de verwachte dauw verstuurd, één keer per nacht, alleen op nachten die helder genoeg zijn om te fotograferen. Kies hieronder hoe ver van tevoren."
+        }
+      },
+      "import": {
+        "finished": {
+          "short": "Import klaar",
+          "label": "Import voltooid",
+          "help": "Als een import nieuwe bestanden oplevert, met de betrokken objecten."
+        },
+        "failed": {
+          "short": "Import mislukt",
+          "label": "Import mislukt",
+          "help": "Als een import stopt op een fout."
+        }
+      },
+      "update": {
+        "available": {
+          "short": "Update",
+          "label": "Update beschikbaar",
+          "help": "Eén keer per nieuwe Nebulis-versie."
+        }
+      }
+    },
+    "language": "Taal van de meldingen",
+    "languageHelp": "Taal van de meldingsteksten, voor alle kanalen.",
+    "kind": {
+      "ntfy": "ntfy",
+      "discord": "Discord",
+      "slack": "Slack",
+      "webhook": "Webhook"
+    },
+    "clearNight": {
+      "title": "Heldere nacht op komst",
+      "description": "De avondcontrole achter de melding “Heldere nacht op komst”, voor de actieve locatie.",
+      "checkTime": "Controleren om",
+      "checkTimeHelp": "Lokale tijd op de actieve locatie. De controle draait één keer per nacht.",
+      "minClearHours": "Versturen vanaf",
+      "minClearHoursHelp": "Heldere donkere uren die na de controle nog komen.",
+      "hours_one": "{{count}} helder uur",
+      "hours_other": "{{count}} heldere uren",
+      "maxCloud": "Een uur is helder tot",
+      "maxCloudHelp": "Bewolking volgens de verwachting. Uren met waarschijnlijk regen tellen nooit.",
+      "cloudPct": "{{pct}}% bewolking",
+      "preview": "Vannacht nu controleren",
+      "noListener": "Geen kanaal of iPhone heeft “Heldere nacht” aangevinkt, dus de controle draait niet.",
+      "listeners_one": "Wordt naar {{count}} kanaal of iPhone gestuurd.",
+      "listeners_other": "Wordt naar {{count}} kanalen en iPhones gestuurd.",
+      "tonight": "Vannacht:",
+      "lastCheck": "Laatste controle {{when}}:",
+      "summary": "{{clear}} u helder van {{dark}} u duisternis, het best van {{start}} tot {{end}}, Maan {{moon}}%",
+      "reason": {
+        "sent": "melding verstuurd",
+        "not_clear_enough": "onder het minimum, niet verstuurd",
+        "no_forecast": "geen verwachting beschikbaar",
+        "no_dark_window": "vannacht geen astronomische duisternis",
+        "no_site": "stel eerst de positie van de actieve locatie in",
+        "preview": "alleen voorbeeld"
+      },
+      "sendToPhones": "Naar iPhones sturen",
+      "sendToPhonesHelp": "Stuurt de melding van vanavond nu naar je iPhones, zoals hij verstuurd zou worden, ook als de nacht de drempel niet haalt.",
+      "sentToPhones_one": "Verstuurd naar {{count}} iPhone.",
+      "sentToPhones_other": "Verstuurd naar {{count}} iPhones.",
+      "phoneFailed": "Versturen naar {{name}} mislukt: {{error}}",
+      "phoneNoExtras": "Op geen van je iPhones staat een extra regel aan, dus dit was de basismelding. Gebruik het potlood bij een iPhone om het plan voor vanavond of dauwrisico toe te voegen en stuur opnieuw.",
+      "next": {
+        "now": "De avondcontrole is nu aan de beurt. Ze stuurt alleen als er minstens {{hours}} heldere uren komen.",
+        "today": "Volgende controle: vanavond om {{time}}. Ze stuurt alleen als er minstens {{hours}} heldere uren komen.",
+        "tomorrow": "De controle van vanavond is gedaan. Volgende controle: morgen om {{time}}."
+      },
+      "sendDew": "Dauwwaarschuwing naar iPhones sturen",
+      "sendDewHelp": "Stuurt de dauwwaarschuwing nu naar je iPhones. Is er vannacht geen dauwrisico, dan worden voorbeeldtijden gebruikt.",
+      "sentDew_one": "Dauwwaarschuwing naar {{count}} iPhone gestuurd.",
+      "sentDew_other": "Dauwwaarschuwing naar {{count}} iPhones gestuurd.",
+      "dewSample": "Vannacht is er geen dauwrisico, dus er zijn voorbeeldtijden gebruikt."
+    },
+    "phones": {
+      "testBuild": "Testversie",
+      "removeConfirm": "“{{name}}” verwijderen? Hij krijgt geen meldingen meer tot je ze in de app weer aanzet.",
+      "removedByApple": "Deze telefoon accepteert geen meldingen van Nebulis meer en is daarom verwijderd. Zet meldingen in de app aan om hem opnieuw toe te voegen.",
+      "extras": "Heldere nacht voegt toe: {{list}}",
+      "edit": "Meldingen kiezen",
+      "editLabel": "Meldingen kiezen voor {{name}}",
+      "editTitle": "Meldingen voor {{name}}",
+      "kind": "iPhone"
+    },
+    "detail": {
+      "group": "Extra regels voor de melding heldere nacht",
+      "plan": {
+        "label": "Plan voor vanavond",
+        "help": "Voegt toe wat je voor vanavond gepland hebt. Op de iPhone opent een tik op de melding dan de Planner."
+      },
+      "dew": {
+        "label": "Dauwrisico",
+        "help": "Voegt toe wanneer de lucht het dauwpunt naar verwachting bereikt en de laagste temperatuur van de nacht, zodat je weet of een dauwverwarming nodig is."
+      },
+      "leadLabel": "Versturen",
+      "lead": "{{time}} van tevoren",
+      "leadHours_one": "{{count}} uur",
+      "leadHours_other": "{{count}} uur",
+      "leadMinutes_one": "{{count}} minuut",
+      "leadMinutes_other": "{{count}} minuten",
+      "dewRow": "Dauwwaarschuwing: {{time}} voor de dauw"
+    }
+  },
+  "search": {
+    "label": "Instelling zoeken",
+    "placeholder": "Instellingen zoeken…",
+    "clear": "Zoekopdracht wissen",
+    "noResults": "Geen passende instellingen"
   }
 }

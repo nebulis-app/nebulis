@@ -23,7 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import openNgcJson from '../server/data/openngc.json' with { type: 'json' };
+import { LISTED_ROWS } from '../server/lib/dsoCatalogData.js';
 import { getAllCatalogEntries, getCatalogEntry } from '../server/data/catalog.js';
 import { HERSCHEL400_IDS } from '../server/lib/herschel400Catalog.js';
 import { SHARPLESS_CATALOG } from '../server/lib/sharplessCatalog.js';
@@ -69,7 +69,7 @@ function boardIds(): string[] {
 
 function allIds(): string[] {
   const ids = new Set<string>(boardIds());
-  for (const row of openNgcJson as Array<{ id?: string }>) if (row.id) ids.add(row.id);
+  for (const row of LISTED_ROWS) ids.add(row.id);
   for (const e of getAllCatalogEntries()) ids.add(e.id);
   return [...ids];
 }

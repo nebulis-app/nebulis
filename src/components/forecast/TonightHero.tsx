@@ -23,7 +23,7 @@ import {
 import { MoonDisk } from '../ui/MoonDisk';
 import { NightRibbon } from './NightRibbon';
 import { ScoreDial } from '../ui/ScoreDial';
-import { HeroBackdrop } from '../ui/HeroBackdrop';
+import { CollapsibleHero } from '../ui/CollapsibleHero';
 import { PAGE_HERO } from '../../lib/heroImagery';
 import { useTheme } from '../../hooks/useTheme';
 
@@ -114,7 +114,7 @@ export function StatPill({ icon, label, value, sub, action, valueClass }: {
 }) {
   return (
     <div className="rounded-2xl bg-white/[0.06] px-4 py-3 ring-1 ring-inset ring-white/10 backdrop-blur-md">
-      <div className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-[0.14em] text-white/45">
+      <div className="flex items-center gap-1.5 text-[0.6562rem] font-medium uppercase tracking-[0.14em] text-white/45">
         {icon}
         {label}
         {action && <span className="ml-auto">{action}</span>}
@@ -122,7 +122,7 @@ export function StatPill({ icon, label, value, sub, action, valueClass }: {
       <div className={`mt-1.5 font-display text-lg font-semibold leading-none tabular-nums ${valueClass ?? 'text-white'}`}>
         {value}
       </div>
-      {sub && <div className="mt-1.5 text-[11px] leading-tight text-white/45">{sub}</div>}
+      {sub && <div className="mt-1.5 text-[0.6875rem] leading-tight text-white/45">{sub}</div>}
     </div>
   );
 }
@@ -170,36 +170,32 @@ export function TonightHero({
   const astroDawn = fmt(tonight.astronomicalTwilightStart) ?? fmt(tonight.nauticalTwilightStart);
 
   return (
-    <section
-      className="relative overflow-hidden rounded-3xl bg-slate-950"
-      style={{ boxShadow: '0 24px 60px -30px rgba(0,0,0,0.9)' }}
+    <CollapsibleHero
+      page="forecast"
+      image={PAGE_HERO.forecast}
+      intensity={0.24}
+      accent={accent}
+      bloom={hex}
+      bottomBloom={false}
+      icon={<CloudSun className="h-6 w-6 sm:h-7 sm:w-7" style={{ color: accent }} />}
+      title={t('tonightHero.title')}
+      summary={(
+        <>
+          <span className="font-semibold" style={{ color: hex }}>{scoreLabel(nightScore, t)}</span>
+          <span className="text-white/25"> · </span>
+          {translateMoonPhase(t, tonight.moonPhase)} {t('tonightHero.illuminated', { percent: Math.round(tonight.moonIllumination) })}
+        </>
+      )}
+      actions={siteControl}
+      contentClassName="p-6 sm:p-8"
     >
-      {/* Kept low: the score dial, the Moon and the night ribbon all read over
-          this panel, and the ribbon in particular is a fine-grained chart. */}
-      <HeroBackdrop image={PAGE_HERO.forecast} intensity={0.24} />
-
-      {/* Accent bloom, tinted to the score so a bad night does not glow gold. */}
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-64 opacity-60"
-        style={{ background: `radial-gradient(120% 100% at 18% 0%, ${hex}26 0%, transparent 68%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-64 opacity-50"
-        style={{ background: `radial-gradient(90% 90% at 88% 0%, ${accent}1f 0%, transparent 70%)` }}
-      />
-      <div className="pointer-events-none absolute inset-0 rounded-3xl" style={{ boxShadow: `inset 0 0 0 1px ${isNight ? 'rgba(204,51,51,0.10)' : 'rgba(255,255,255,0.10)'}` }} />
-
-      {/* One padded panel, title and content together, rather than two
-          stacked boxes with a hard rule between them — matching how the
-          Observations hero reads as a single card. */}
-      <div className="relative p-6 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="font-display flex items-center gap-2.5 text-3xl font-bold tracking-tight text-white sm:text-4xl">
               <CloudSun className="h-6 w-6 sm:h-7 sm:w-7" style={{ color: accent }} />
               {t('tonightHero.title')}
             </h1>
-            <p className="mt-2 text-[13px] text-white/55">
+            <p className="mt-2 text-[0.8125rem] text-white/55">
               {t('tonightHero.subtitle')}
             </p>
           </div>
@@ -211,7 +207,7 @@ export function TonightHero({
           <div className="flex items-center gap-5 sm:gap-6">
             <ScoreDial score={nightScore} size={132} showLabel={false} />
             <div className="min-w-0">
-              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/45">
+              <div className="text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-white/45">
                 {t('tonightHero.tonight')}
               </div>
               <h2
@@ -239,7 +235,7 @@ export function TonightHero({
               size={88}
             />
             <div className="min-w-0 leading-tight">
-              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/45">
+              <div className="text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-white/45">
                 {t('tonightHero.moon')}
               </div>
               <div className="mt-1 truncate font-display text-lg font-semibold text-white">
@@ -251,7 +247,7 @@ export function TonightHero({
               {/* Allowed to wrap rather than truncate: a half-printed
                   "Sets 4:0" reads as a real time. */}
               {(tonight.moonRise || tonight.moonSet) && (
-                <div className="mt-1.5 text-[11px] text-white/40 tabular-nums">
+                <div className="mt-1.5 text-[0.6875rem] text-white/40 tabular-nums">
                   {fmt(tonight.moonRise) && t('tonightHero.rises', { time: fmt(tonight.moonRise) })}
                   {fmt(tonight.moonRise) && fmt(tonight.moonSet) && ' · '}
                   {fmt(tonight.moonSet) && t('tonightHero.sets', { time: fmt(tonight.moonSet) })}
@@ -304,7 +300,6 @@ export function TonightHero({
             onSelect={onSelect}
           />
         </div>
-      </div>
-    </section>
+    </CollapsibleHero>
   );
 }

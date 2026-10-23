@@ -14,6 +14,7 @@ import { Cloud, Moon } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { MoonDisk } from '../ui/MoonDisk';
 import { Fact, FactGrid, PanelEmpty, SessionPanel } from '../ui/Panel';
+import { cloudVerdict } from '../../lib/cloudVerdict';
 import type { SessionWeather } from '../../types';
 
 export interface SkyConditions {
@@ -22,24 +23,6 @@ export interface SkyConditions {
   transparencyRating?: number | null;
   moonPhase?: string | null;
   moonIllumination?: number | null;
-}
-
-/**
- * Cloud cover, coloured as a verdict. Less is better, so this runs the opposite
- * way to most bars: clear is the good end. The three steps are the same
- * traffic-light the planner uses for a scheduled block.
- */
-function cloudVerdict(pct: number, t: (key: string) => string, isNight: boolean): { label: string; hex: string } {
-  if (isNight) {
-    if (pct <= 15) return { label: t('observationDetail.conditionsPanel.cloudClear'), hex: '#cc3333' };
-    if (pct <= 40) return { label: t('observationDetail.conditionsPanel.cloudMostlyClear'), hex: '#a02828' };
-    if (pct <= 70) return { label: t('observationDetail.conditionsPanel.cloudBroken'), hex: '#882222' };
-    return { label: t('observationDetail.conditionsPanel.cloudOvercast'), hex: '#661a1a' };
-  }
-  if (pct <= 15) return { label: t('observationDetail.conditionsPanel.cloudClear'), hex: '#10b981' };
-  if (pct <= 40) return { label: t('observationDetail.conditionsPanel.cloudMostlyClear'), hex: '#34d399' };
-  if (pct <= 70) return { label: t('observationDetail.conditionsPanel.cloudBroken'), hex: '#f59e0b' };
-  return { label: t('observationDetail.conditionsPanel.cloudOvercast'), hex: '#ef4444' };
 }
 
 export function ConditionsPanel({ weather, sky, tempUnit }: {
@@ -89,15 +72,15 @@ export function ConditionsPanel({ weather, sky, tempUnit }: {
           {verdict && cloud != null && (
             <div className="min-w-0 flex-1">
               <div
-                className="font-display text-[34px] font-bold leading-none tracking-tight tabular-nums"
+                className="font-display text-[2.125rem] font-bold leading-none tracking-tight tabular-nums"
                 style={{ color: verdict.hex }}
               >
                 {Math.round(cloud)}<span className="text-xl align-top">%</span>
               </div>
-              <div className={`mt-1.5 text-[13px] font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              <div className={`mt-1.5 text-[0.8125rem] font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                 {verdict.label}
               </div>
-              <div className={`text-[10.5px] font-medium uppercase tracking-[0.12em] ${
+              <div className={`text-[0.6562rem] font-medium uppercase tracking-[0.12em] ${
                 isDark ? 'text-slate-500' : 'text-slate-400'
               }`}>
                 {t('observationDetail.conditionsPanel.cloudCover')}
@@ -121,17 +104,17 @@ export function ConditionsPanel({ weather, sky, tempUnit }: {
                 />
               </div>
               <div className="min-w-0 leading-tight">
-                <div className={`flex items-center gap-1 text-[10.5px] font-medium uppercase tracking-[0.12em] ${
+                <div className={`flex items-center gap-1 text-[0.6562rem] font-medium uppercase tracking-[0.12em] ${
                   isDark ? 'text-slate-500' : 'text-slate-400'
                 }`}>
                   <Moon className="h-3 w-3" />
                   {t('observationDetail.conditionsPanel.moon')}
                 </div>
-                <div className={`mt-1 text-[13px] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                <div className={`mt-1 text-[0.8125rem] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                   {sky.moonPhase}
                 </div>
                 {sky.moonIllumination != null && (
-                  <div className={`text-[11.5px] tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                  <div className={`text-[0.7188rem] tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                     {t('observationDetail.conditionsPanel.moonLit', { percent: Math.round(sky.moonIllumination) })}
                   </div>
                 )}

@@ -55,8 +55,8 @@ function ToggleField({
   return (
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <div className={`text-[13px] font-medium ${s.strongText}`}>{label}</div>
-        {description && <p className={`mt-1 text-[12px] leading-relaxed ${s.subText}`}>{description}</p>}
+        <div className={`text-[0.8125rem] font-medium ${s.strongText}`}>{label}</div>
+        {description && <p className={`mt-1 text-[0.75rem] leading-relaxed ${s.subText}`}>{description}</p>}
       </div>
       <Toggle checked={checked} onChange={onChange} disabled={disabled} label={label} />
     </div>
@@ -91,7 +91,7 @@ function NumberField({
   return (
     <div>
       <div className="flex items-center justify-between gap-4">
-        <label htmlFor={id} className={`text-[13px] font-medium ${s.strongText}`}>
+        <label htmlFor={id} className={`text-[0.8125rem] font-medium ${s.strongText}`}>
           {label}
         </label>
         <div className="flex items-center gap-2">
@@ -110,7 +110,7 @@ function NumberField({
           <span className={`text-sm ${s.subText}`}>{unit}</span>
         </div>
       </div>
-      {description && <p className={`mt-1 text-[12px] leading-relaxed ${s.subText}`}>{description}</p>}
+      {description && <p className={`mt-1 text-[0.75rem] leading-relaxed ${s.subText}`}>{description}</p>}
     </div>
   );
 }
@@ -202,7 +202,7 @@ export function DiskFields({
         </div>
       )}
 
-      <p className={`text-[12px] leading-relaxed ${s.subText}`}>{t('archive.destinationDescription')}</p>
+      <p className={`text-[0.75rem] leading-relaxed ${s.subText}`}>{t('archive.destinationDescription')}</p>
     </FieldStack>
   );
 }
@@ -264,12 +264,12 @@ export function ScheduleFields({ isDark, form, edit, busy }: FieldsProps) {
       </div>
 
       {choice === 'manual' && (
-        <p className={`text-[12px] leading-relaxed ${s.subText}`}>{t('archive.schedule.manualNote')}</p>
+        <p className={`text-[0.75rem] leading-relaxed ${s.subText}`}>{t('archive.schedule.manualNote')}</p>
       )}
 
       {choice === 'daily' && (
         <div className="flex items-center justify-between gap-4">
-          <label htmlFor="archive-time" className={`text-[13px] font-medium ${s.strongText}`}>
+          <label htmlFor="archive-time" className={`text-[0.8125rem] font-medium ${s.strongText}`}>
             {t('archive.schedule.timeLabel')}
           </label>
           <div className="w-36">
@@ -319,12 +319,12 @@ export function ScheduleFields({ isDark, form, edit, busy }: FieldsProps) {
             disabled={busy}
             className={`font-mono ${getInputClass(isDark)}`}
           />
-          <p className={`mt-1.5 text-[12px] leading-relaxed ${s.subText}`}>{t('archive.schedule.cronDescription')}</p>
+          <p className={`mt-1.5 text-[0.75rem] leading-relaxed ${s.subText}`}>{t('archive.schedule.cronDescription')}</p>
         </div>
       )}
 
       {choice !== 'manual' && (
-        <p className={`text-[12px] leading-relaxed ${s.subText}`}>{t('archive.schedule.description')}</p>
+        <p className={`text-[0.75rem] leading-relaxed ${s.subText}`}>{t('archive.schedule.description')}</p>
       )}
     </FieldStack>
   );
@@ -360,10 +360,10 @@ export function CleanupFields({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
-              <div className={`text-[13px] font-medium ${s.strongText}`}>{t('archive.retention.enabledLabel')}</div>
+              <div className={`text-[0.8125rem] font-medium ${s.strongText}`}>{t('archive.retention.enabledLabel')}</div>
               <AlertTriangle className={`h-3.5 w-3.5 shrink-0 ${iconColor}`} aria-hidden="true" />
             </div>
-            <p className={`mt-1 text-[12px] leading-relaxed ${s.subText}`}>{t('archive.retention.enabledDescription')}</p>
+            <p className={`mt-1 text-[0.75rem] leading-relaxed ${s.subText}`}>{t('archive.retention.enabledDescription')}</p>
           </div>
           <Toggle
             checked={form.retentionEnabled}
@@ -389,7 +389,7 @@ export function CleanupFields({
             {/* Mutually exclusive, which a pair of switches cannot express, so a
                 segmented control says which one. */}
             <div className="flex items-center justify-between gap-4">
-              <div className={`text-[13px] font-medium ${s.strongText}`}>{t('archive.retention.modeLabel')}</div>
+              <div className={`text-[0.8125rem] font-medium ${s.strongText}`}>{t('archive.retention.modeLabel')}</div>
               <Seg<'everything' | 'subframes'>
                 value={form.retentionSubframesOnly ? 'subframes' : 'everything'}
                 onChange={mode => edit({ retentionSubframesOnly: mode === 'subframes' })}
@@ -408,10 +408,10 @@ export function CleanupFields({
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <div className={`text-[13px] font-medium ${s.strongText}`}>{t('archive.removeLocal.label')}</div>
+                <div className={`text-[0.8125rem] font-medium ${s.strongText}`}>{t('archive.removeLocal.label')}</div>
                 <AlertTriangle className={`h-3.5 w-3.5 shrink-0 ${iconColor}`} aria-hidden="true" />
               </div>
-              <p className={`mt-1 text-[12px] leading-relaxed ${s.subText}`}>{t('archive.removeLocal.description')}</p>
+              <p className={`mt-1 text-[0.75rem] leading-relaxed ${s.subText}`}>{t('archive.removeLocal.description')}</p>
             </div>
             <Toggle
               checked={form.removeLocalAfter}

@@ -9,11 +9,15 @@ import path from 'path';
 import zlib from 'zlib';
 import { getSettingsData, updateSettingsData, getApiKey, setApiKey, getAllProfiles } from '../lib/telescopes.js';
 import { getDefaultSite, updateSite, type ObservingSite } from '../lib/observingSites.js';
+import {
+  createApiKeyForUser, getUserApiKeys, getAllApiKeys, revokeApiKey, MAX_API_KEYS_PER_USER,
+} from '../lib/auth.js';
 import { SKY_MAP_BANDS } from '../lib/skyMapConfig.js';
 import { UPDATE_CHANNELS } from '../lib/appUpdate/manifest.js';
 import {
   GALLERY_IMAGE_SOURCES,
   PREFERRED_CATALOGS,
+  OBJECT_PAGE_LAYOUTS,
   TEMPERATURE_UNITS,
   WIND_SPEED_UNITS,
 } from '../lib/types/appSettings.js';
@@ -91,6 +95,14 @@ const SettingsUpdateBodySchema = z.object({
   // Settings → Library → "Credit objects in the same frame". Whether the catalog
   // boards count an object as imaged when it sat inside another object's frame.
   groupCatalogCompanions: z.boolean().optional(),
+  // Settings → Features → "PixInsight integration". Serves the PixInsight update
+  // repository at /plugins/pixinsight/ while on.
+  pixinsightEnabled: z.boolean().optional(),
+  // Settings → Library → "Object pages". 'media' shows every picture of an object
+  // on one page instead of a grid of observations.
+  objectPageLayout: z.enum(OBJECT_PAGE_LAYOUTS).optional(),
+  annotateAutoSolve: z.boolean().optional(),
+  autoMeasureFrames: z.boolean().optional(),
 });
 
 const ResetDatabaseBodySchema = z.object({
@@ -175,6 +187,10 @@ const SettingsSchema = z.object({
   nightlyForecastLastRun: z.number().nullable(), // Unix ms, read-only
   calibrationExpiryDays: z.number(),
   groupCatalogCompanions: z.boolean(),
+  pixinsightEnabled: z.boolean(),
+  objectPageLayout: z.enum(OBJECT_PAGE_LAYOUTS),
+  annotateAutoSolve: z.boolean(),
+  autoMeasureFrames: z.boolean(),
 });
 
 type Settings = z.infer<typeof SettingsSchema>;
@@ -226,6 +242,10 @@ const defaultSettings: Settings = {
   nightlyForecastLastRun: null,
   calibrationExpiryDays: 180,
   groupCatalogCompanions: true,
+  pixinsightEnabled: false,
+  objectPageLayout: 'media',
+  annotateAutoSolve: true,
+  autoMeasureFrames: false,
 };
 
 // The persistable field list is the request schema's own key set, read off the
@@ -279,7 +299,7 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
   // implicit index signature), so the loop can walk the schema-derived key
   // list directly.
   const submitted: Record<string, unknown> = { ...updates };
-  const currentRecord = current as Record<string, unknown>;
+  const currentRecord: Record<string, unknown> = { ...current };
   const filtered: Record<string, unknown> = {};
   for (const key of appFields) {
     if (!(key in submitted)) continue;
@@ -444,6 +464,90 @@ router.post('/nightly/run', requireAdmin, (_req: Request, res: Response) => {
     return;
   }
   res.apiSuccess({ started: true });
+});
+
+// ─── Personal API keys ───────────────────────────────────────────────────────
+// A key acts as its owner with the owner's role (a viewer's key is read-only).
+// Any signed-in user manages their own keys; admins can also list and revoke
+// everyone's. Keys cannot mint or revoke keys themselves: a leaked key must not
+// be able to plant a longer-lived replacement, so these need a sign-in session.
+
+const ApiKeyCreateSchema = z.object({ name: z.string().max(50).optional() });
+
+/** The signed-in user's id, or null after sending the 401/403 response. */
+function requireSignedInSession(req: Request, res: Response): string | null {
+  if (!req.userId) {
+    res.apiError(401, 'UNAUTHORIZED', 'Sign in to manage API keys');
+    return null;
+  }
+  if (req.viaApiKey) {
+    res.apiError(403, 'API_KEY_NOT_ALLOWED', 'API keys cannot manage API keys. Sign in to the web app instead.');
+    return null;
+  }
+  return req.userId;
+}
+
+router.get('/api-keys', (req: Request, res: Response) => {
+  if (!req.userId) {
+    res.apiError(401, 'UNAUTHORIZED', 'Sign in to manage API keys');
+    return;
+  }
+  if (req.query.scope === 'all') {
+    if (req.userRole !== 'admin') {
+      res.apiError(403, 'FORBIDDEN', 'Only admins can list every key');
+      return;
+    }
+    res.apiSuccess({ keys: getAllApiKeys(), max: MAX_API_KEYS_PER_USER });
+    return;
+  }
+  res.apiSuccess({ keys: getUserApiKeys(req.userId), max: MAX_API_KEYS_PER_USER });
+});
+
+router.post('/api-keys', strictRateLimiter, (req: Request, res: Response) => {
+  const userId = requireSignedInSession(req, res);
+  if (userId === null) return;
+  const parsed = ApiKeyCreateSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.apiError(400, 'INVALID_BODY', 'name must be at most 50 characters');
+    return;
+  }
+  if (getUserApiKeys(userId).length >= MAX_API_KEYS_PER_USER) {
+    res.apiError(409, 'LIMIT_REACHED', `You can have up to ${MAX_API_KEYS_PER_USER} API keys. Revoke one first.`);
+    return;
+  }
+  const created = createApiKeyForUser(userId, parsed.data.name ?? '');
+  logEvent({
+    category: 'auth',
+    event: 'api_key_created',
+    level: 'info',
+    message: `${req.username ?? userId} created API key "${created.name}" (${created.keyPrefix}).`,
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+  });
+  // The full key is returned once; only its hash is stored.
+  res.apiSuccess(created);
+});
+
+router.delete('/api-keys/:id', (req: Request, res: Response) => {
+  const userId = requireSignedInSession(req, res);
+  if (userId === null) return;
+  const id = String(req.params.id);
+  const asAdmin = req.userRole === 'admin';
+  if (!revokeApiKey(id, userId, asAdmin)) {
+    res.apiError(404, 'NOT_FOUND', 'API key not found');
+    return;
+  }
+  logEvent({
+    category: 'auth',
+    event: 'api_key_revoked',
+    level: 'info',
+    message: `${req.username ?? req.userId} revoked API key ${id}.`,
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+  });
+  res.apiSuccess({ revoked: true, id });
 });
 
 // Generate a new API key

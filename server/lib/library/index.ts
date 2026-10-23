@@ -4,6 +4,7 @@ export * from './objectLocation.js';
 export * from './import.js';
 export * from './folderScan.js';
 export * from './gallery.js';
+export * from './builtinArt.js';
 export * from './processed.js';
 export * from './processingRuns.js';
 export * from './projectArchives.js';

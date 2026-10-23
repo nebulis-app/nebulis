@@ -71,18 +71,22 @@ test.describe('Navigation', () => {
     await expect(page).toHaveURL('/settings');
   });
 
-  test('theme switcher is present and clickable', async ({ page }) => {
+  test('should apply the night theme when Night is picked from the profile menu', async ({ page }) => {
     await mockAllRoutes(page);
     await page.goto('/');
 
-    const themeBtn = page.getByRole('button', { name: /light|dark|space|night|theme/i });
-    if (await themeBtn.isVisible()) {
-      await themeBtn.click();
-      // Dropdown or options should appear
-      await expect(
-        page.getByText(/dark|space|night/i).first()
-      ).toBeVisible();
+    // The theme picker lives in the avatar dropdown ("Profile & settings").
+    const profileBtn = page.getByTitle('Profile & settings');
+    await expect(profileBtn).toBeVisible();
+    await profileBtn.click();
+    for (const label of ['Light', 'Dark', 'Space', 'Night']) {
+      await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
     }
+
+    await page.getByRole('button', { name: 'Night', exact: true }).click();
+    // useTheme puts the theme id on <html> and persists it.
+    await expect(page.locator('html')).toHaveClass(/(^|\s)night(\s|$)/);
+    expect(await page.evaluate(() => localStorage.getItem('nebulis-theme'))).toBe('night');
   });
 
   test('object detail → session detail → back to object', async ({ page }) => {

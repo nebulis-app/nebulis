@@ -115,19 +115,24 @@ export function weekdayLabels(style: 'narrow' | 'short' | 'long' = 'short'): str
 /**
  * 0 = Sunday, 1 = Monday: the first day of the week for the active locale.
  * `Intl.Locale#getWeekInfo()` is recent (Chrome/Safari 17+; not yet in
- * Firefox) and not in TypeScript's lib.dom types, hence the cast. Falls back
+ * Firefox) and not in TypeScript's lib.dom types, hence the feature
+ * detection. Falls back
  * to Sunday, today's hardcoded assumption, when unsupported.
  */
 export function weekStartsOn(): number {
   try {
-    const locale = new Intl.Locale(activeLocale()) as Intl.Locale & {
-      getWeekInfo?: () => { firstDay: number };
-      weekInfo?: { firstDay: number };
-    };
-    const info = locale.getWeekInfo?.() ?? locale.weekInfo;
+    const locale = new Intl.Locale(activeLocale());
+    // Feature-detected rather than cast: the method form is current, the
+    // `weekInfo` getter is the older shape some engines shipped first.
+    let info: unknown = 'getWeekInfo' in locale && typeof locale.getWeekInfo === 'function'
+      ? locale.getWeekInfo()
+      : undefined;
+    if (info == null && 'weekInfo' in locale) info = locale.weekInfo;
     // Intl reports 1-7 for Mon-Sun; Date#getDay()'s scale is 0-6 for Sun-Sat.
     // 7 % 7 === 0 folds Sunday back to 0; 1-6 pass through unchanged.
-    if (info && typeof info.firstDay === 'number') return info.firstDay % 7;
+    if (typeof info === 'object' && info !== null && 'firstDay' in info && typeof info.firstDay === 'number') {
+      return info.firstDay % 7;
+    }
   } catch {
     // Intl.Locale or weekInfo unsupported in this runtime.
   }

@@ -48,6 +48,12 @@ export interface ObservationCardModel {
   capture: SessionCaptureSummary | null;
   telescope: { name: string; color: string } | null;
   hasNote: boolean;
+  /** Optical train ("Reducer 0.75x · 456 mm"), shown after the telescope. */
+  opticsLabel?: string | null;
+  /** Groups nights shot through the same telescope + optical train. */
+  rigKey?: string;
+  /** Integration the night recorded, for the per-rig totals. */
+  integrationSec?: number | null;
 }
 
 interface Props {
@@ -129,7 +135,7 @@ export function ObservationCard({ observation: o, isDark, tempUnit, onDelete }: 
         <div className={`relative h-44 overflow-hidden ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
           {o.variantLabel && (
             <span className={`absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-full px-2 py-0.5
-              text-[11px] font-semibold ${variantBadgeClass(o.variantLabel)}`}>
+              text-[0.6875rem] font-semibold ${variantBadgeClass(o.variantLabel)}`}>
               {o.variantLabel.toLowerCase().includes('mosaic') && <Layers className="h-3 w-3" />}
               {o.variantLabel}
             </span>
@@ -168,7 +174,7 @@ export function ObservationCard({ observation: o, isDark, tempUnit, onDelete }: 
 
         <div className="space-y-2.5 p-4">
           <div className="flex items-baseline gap-2">
-            <span className={`font-display text-[15px] font-semibold tracking-tight ${
+            <span className={`font-display text-[0.9375rem] font-semibold tracking-tight ${
               isDark ? 'text-slate-100' : 'text-slate-800'
             }`}>
               {parts ? parts.day : t('objectDetail.observationCard.unknownDate')}
@@ -186,10 +192,14 @@ export function ObservationCard({ observation: o, isDark, tempUnit, onDelete }: 
             )}
           </div>
 
-          {o.telescope && (
+          {(o.telescope || o.opticsLabel) && (
             <div className={`flex items-center gap-1.5 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: nightSafeColor(o.telescope.color, isNight) }} />
-              <span className="truncate">{o.telescope.name}</span>
+              {o.telescope && (
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: nightSafeColor(o.telescope.color, isNight) }} />
+              )}
+              <span className="truncate">
+                {[o.telescope?.name, o.opticsLabel].filter(Boolean).join(' · ')}
+              </span>
             </div>
           )}
 

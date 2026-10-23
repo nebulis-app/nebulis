@@ -40,7 +40,7 @@ export function FitBadge({ tag, label, title, isDark, className = '' }: FitBadge
   return (
     <span
       title={title}
-      className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none whitespace-nowrap ${
+      className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[0.625rem] font-medium leading-none whitespace-nowrap ${
         isDark ? style.dark : style.light
       } ${className}`}
     >

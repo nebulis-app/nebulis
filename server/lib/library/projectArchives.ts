@@ -31,13 +31,16 @@ import {
 // user's project genuinely could be a bare folder, but Nebulis has no way to
 // receive a folder over this upload route, only a single file.
 const PROJECT_ARCHIVE_EXT = /\.zip$/i;
+// PixInsight's own single-file project formats, uploaded by the PixInsight connector:
+// `.xpsm` (process icons) and `.pxiproject`. They are stored and served as opaque files.
+const PIXINSIGHT_PROJECT_EXT = /\.(xpsm|pxiproject)$/i;
 
 export function isProjectArchiveName(name: string): boolean {
-  return PROJECT_ARCHIVE_EXT.test(name);
+  return PROJECT_ARCHIVE_EXT.test(name) || PIXINSIGHT_PROJECT_EXT.test(name);
 }
 
-export function projectArchiveMimeType(): string {
-  return 'application/zip';
+export function projectArchiveMimeType(name?: string): string {
+  return name && PIXINSIGHT_PROJECT_EXT.test(name) ? 'application/octet-stream' : 'application/zip';
 }
 
 /** Resolve `<LIBRARY_DIR>/<folder for objectId>[/...extra]`, throwing rather

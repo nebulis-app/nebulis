@@ -25,7 +25,9 @@ describe('nightHourIndices', () => {
       process.env.TZ = 'Asia/Tokyo';
       expect(nightHourIndices(times)).toEqual([0, 1, 2, 3, 20, 21, 22, 23]);
     } finally {
-      process.env.TZ = before;
+      // Assigning undefined to process.env stores the string "undefined".
+      if (before === undefined) delete process.env.TZ;
+      else process.env.TZ = before;
     }
   });
 

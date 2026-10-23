@@ -1,14 +1,14 @@
 /**
  * Sharpless HII region catalog — 313 emission nebulae from the 1959 Sharpless catalog.
  *
- * Static data built by scripts/build-sharpless-catalog.ts (run to refresh).
+ * Read from the Sharpless members of server/data/dso-catalog.json.
  * Provides ID lookup and conversion to CatalogEntry for the lookup chain in
  * server/data/catalog.ts. Raw entries (with their NGC/Messier cross-refs)
  * are also exported for scripting / pack-building — see build-catalog-pack.ts.
  */
 
 import type { CatalogEntry } from './types/catalog.js';
-import sharplessJson from '../data/sharpless.json';
+import { SHARPLESS_ROWS } from './dsoCatalogData.js';
 import { isRecord } from './typeGuards.js';
 
 interface SharplessEntry {
@@ -43,11 +43,11 @@ function isSharplessEntry(value: unknown): value is SharplessEntry {
  */
 function parseSharplessJson(data: unknown): SharplessEntry[] {
   if (!Array.isArray(data)) {
-    throw new Error('[sharpless] sharpless.json: expected top-level array');
+    throw new Error('[sharpless] dso-catalog.json Sharpless rows: expected top-level array');
   }
   const entries = data.filter(isSharplessEntry);
   if (data.length > 0 && entries.length === 0) {
-    throw new Error('[sharpless] sharpless.json: no entries matched the expected shape');
+    throw new Error('[sharpless] dso-catalog.json Sharpless rows: no entries matched the expected shape');
   }
   if (entries.length < data.length) {
     console.warn(`[sharpless] dropped ${data.length - entries.length} entr(ies) that did not match SharplessEntry`);
@@ -55,7 +55,7 @@ function parseSharplessJson(data: unknown): SharplessEntry[] {
   return entries;
 }
 
-const sharplessData = parseSharplessJson(sharplessJson);
+const sharplessData = parseSharplessJson(SHARPLESS_ROWS);
 
 // Primary key: "SH2-25" (uppercase, no spaces)
 const byId = new Map<string, SharplessEntry>();

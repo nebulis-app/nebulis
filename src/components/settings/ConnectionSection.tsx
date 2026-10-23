@@ -3,13 +3,11 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  Plus,
   Telescope as TelescopeIcon,
   Trash2,
-  Pencil,
   Archive,
   ArchiveRestore,
-  Move,
+  ArrowRightLeft,
   Usb,
   Network,
   RefreshCw,
@@ -24,6 +22,7 @@ import {
   archiveTelescope,
   unarchiveTelescope,
   getAllTelescopeStatus,
+  telescopePhotoUrl,
   type TelescopeProfile,
   type ConnectionType,
 } from '../../lib/api/telescopes';
@@ -34,7 +33,9 @@ import { ReassignTelescopeModal } from './ReassignTelescopeModal';
 import { useTheme } from '../../hooks/useTheme';
 import { nightSafeColor } from '../../lib/nightSafeColor';
 import { TransportEditorModal } from './TransportEditorModal';
-import { Sec } from './SettingsUI';
+import { Sec, AddListButton } from './SettingsUI';
+import { CalibrationValidityRow } from './CalibrationSettingsSection';
+import type { Settings as SettingsType } from '../../types';
 import { ConfirmModal } from '../ConfirmModal';
 
 /**
@@ -54,7 +55,15 @@ import { ConfirmModal } from '../ConfirmModal';
  * any code path that hasn't been threaded through with an explicit
  * `telescopeId`, but users no longer pick it.
  */
-export function ConnectionSection({ isDark }: { isDark: boolean }) {
+export function ConnectionSection({
+  isDark,
+  form,
+  setForm,
+}: {
+  isDark: boolean;
+  form: Partial<SettingsType>;
+  setForm: React.Dispatch<React.SetStateAction<Partial<SettingsType>>>;
+}) {
   const { t } = useTranslation('settings');
   const queryClient = useQueryClient();
   const [showAddModal, setShowAddModal] = useState(false);
@@ -237,29 +246,24 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
         ))}
       </div>
 
-      <button
-        onClick={() => setShowAddModal(true)}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition w-full justify-center ${
-          isDark
-            ? 'bg-slate-900 border-slate-700 text-slate-300 hover:border-teal-500/50 hover:bg-slate-800/50'
-            : 'bg-white border-slate-200 text-slate-700 hover:border-teal-300 hover:bg-teal-50/50'
-        }`}
-      >
-        <Plus className="w-4 h-4" />
+      <AddListButton isDark={isDark} onClick={() => setShowAddModal(true)}>
         {t('connectionSection.addTelescope')}
-      </button>
+      </AddListButton>
 
       {/* Calibration frames are archived by the telescopes listed above and
           live on their own page, so give them a visible destination here
           rather than leaving the top nav as the only way in. The title and
           subtitle are the Calibration page's own strings, so the link can
           never drift out of step with where it lands. */}
+      <div
+        className={`mt-3 rounded-xl border overflow-hidden ${
+          isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
+        }`}
+      >
       <Link
         to="/calibrations"
-        className={`mt-3 flex items-center gap-3 px-4 py-3 rounded-xl border group transition-colors ${
-          isDark
-            ? 'bg-slate-900 border-slate-700 hover:border-accent-500/40 hover:bg-slate-800/50'
-            : 'bg-white border-slate-200 hover:border-accent-400 hover:bg-accent-50/40'
+        className={`flex items-center gap-3 px-4 py-3 group transition-colors ${
+          isDark ? 'hover:bg-slate-800/50' : 'hover:bg-accent-50/40'
         }`}
       >
         <span
@@ -283,16 +287,20 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
           }`}
         />
       </Link>
+        <div className={`border-t ${isDark ? 'border-slate-800/70' : 'border-slate-100'}`}>
+          <CalibrationValidityRow isDark={isDark} form={form} setForm={setForm} />
+        </div>
+      </div>
 
       {archived.length > 0 && (
         <div className="mt-7">
           {/* Same label + description typography as RowGroup (the sub-header
               strip used inside Sec elsewhere), for a consistent look even
               though this section isn't part of that bordered-row flow. */}
-          <h3 className={`text-[10px] font-semibold uppercase tracking-[0.1em] mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+          <h3 className={`text-[0.625rem] font-semibold uppercase tracking-[0.1em] mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
             {t('connectionSection.archivedHeading')}
           </h3>
-          <p className={`text-[12px] leading-relaxed mb-3 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+          <p className={`text-[0.75rem] leading-relaxed mb-3 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
             {t('connectionSection.archivedDescription')}
           </p>
           <div className="space-y-2">
@@ -318,6 +326,12 @@ export function ConnectionSection({ isDark }: { isDark: boolean }) {
     </Sec>
   );
 }
+
+/** Archive folder names that hold calibration frames. Mirrors the dark and
+ *  mixed entries of CALIBRATION_FOLDER_TYPE in server/lib/library/calibrationFolders.ts. */
+const CALIBRATION_ARCHIVE_FOLDERS = new Set([
+  'cali_frame', 'dwarf_dark', 'darklibrary', 'dark_library', 'dark-library',
+]);
 
 /**
  * Single row in the active telescope list. The whole row is the click target
@@ -359,18 +373,20 @@ function TelescopeRow({
   const { isNight } = useTheme();
   const sessions = telescope.sessionCount ?? 0;
   const transports = telescope.transports ?? [];
+  // Older profiles carry the mount path in the name ("Dwarf Mini (/Volumes/X)")
+  // while the line below already shows it. Trim it for display only.
+  const displayName = telescope.name.replace(/\s*\(\/[^)]*\)\s*$/, '') || telescope.name;
 
-  // Calibration frames/darks pulled in from CALI_FRAME/DWARF_DARK — never
-  // library objects, scoped to this telescope (see archiveFolders.ts). Only
-  // Dwarf profiles ever have any.
+  // Calibration frames/darks pulled in from CALI_FRAME/DWARF_DARK (Dwarf) or
+  // the on-device dark library (SeeStar), never library objects, scoped to
+  // this telescope (see archiveFolders.ts). Any telescope kind can have some.
   const { data: archiveData } = useQuery({
     queryKey: ['telescope-archive', telescope.id],
     queryFn: () => getLibraryArchive(telescope.id),
-    enabled: isDwarfKind(telescope.kind),
     staleTime: 60_000,
   });
   const calFileCount = (archiveData?.folders ?? [])
-    .filter(f => f.name === 'CALI_FRAME' || f.name === 'DWARF_DARK')
+    .filter(f => CALIBRATION_ARCHIVE_FOLDERS.has(f.name.toLowerCase()))
     .reduce((sum, f) => sum + f.fileCount, 0);
 
   // Wi-Fi covers both network protocols, matching the pills. Counting only
@@ -407,11 +423,20 @@ function TelescopeRow({
         style={{ backgroundColor: nightSafeColor(telescope.color || '#8b5cf6', isNight) }}
         aria-hidden="true"
       />
-      <TelescopeIcon className={`w-4 h-4 shrink-0 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+      {telescope.photoVersion ? (
+        <img
+          src={telescopePhotoUrl(telescope.id, telescope.photoVersion)}
+          alt={t('addTelescopeModal.photoAlt', { name: telescope.name })}
+          className="w-10 h-8 shrink-0 object-contain"
+          loading="lazy"
+        />
+      ) : (
+        <TelescopeIcon className={`w-4 h-4 shrink-0 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+      )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <div className={`text-sm font-medium truncate ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-            {telescope.name}
+            {displayName}
           </div>
           <button
             onClick={(e) => { e.stopPropagation(); onManageTransports(); }}
@@ -426,6 +451,27 @@ function TelescopeRow({
           {calFileCount > 0 && ` · ${t('connectionSection.calibrationFileCount', { count: calFileCount })}`}
         </div>
       </div>
+      <span className={`hidden sm:inline text-[0.6875rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+        {t('connectionSection.autoImportLabel')}
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={telescope.autoImportEnabled}
+        onClick={(e) => { e.stopPropagation(); onToggleAutoImport(); }}
+        disabled={isPending}
+        title={telescope.autoImportEnabled ? t('connectionSection.autoImportOn') : t('connectionSection.autoImportOff')}
+        className={`relative inline-flex h-4 w-7 items-center rounded-full transition shrink-0 ${
+          telescope.autoImportEnabled
+            ? 'bg-teal-500'
+            : isDark ? 'bg-slate-700' : 'bg-slate-300'
+        } ${isPending ? 'opacity-50' : ''}`}
+      >
+        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition ${
+          telescope.autoImportEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
+        }`} />
+      </button>
+      <span className={`hidden sm:block w-px h-5 shrink-0 ${isDark ? 'bg-slate-700/70' : 'bg-slate-200'}`} aria-hidden="true" />
       {calFileCount > 0 && (
         <Link
           to={`/calibrations?scope=${encodeURIComponent(telescope.id)}`}
@@ -453,23 +499,6 @@ function TelescopeRow({
         <RefreshCw className={`w-3.5 h-3.5 ${isSyncingThis ? 'animate-spin text-emerald-500' : ''}`} />
       </button>
       <button
-        type="button"
-        role="switch"
-        aria-checked={telescope.autoImportEnabled}
-        onClick={(e) => { e.stopPropagation(); onToggleAutoImport(); }}
-        disabled={isPending}
-        title={telescope.autoImportEnabled ? t('connectionSection.autoImportOn') : t('connectionSection.autoImportOff')}
-        className={`relative inline-flex h-4 w-7 items-center rounded-full transition shrink-0 ${
-          telescope.autoImportEnabled
-            ? 'bg-teal-500'
-            : isDark ? 'bg-slate-700' : 'bg-slate-300'
-        } ${isPending ? 'opacity-50' : ''}`}
-      >
-        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition ${
-          telescope.autoImportEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
-        }`} />
-      </button>
-      <button
         onClick={(e) => { e.stopPropagation(); onReassign(); }}
         disabled={!canReassign || isPending}
         title={canReassign
@@ -479,17 +508,7 @@ function TelescopeRow({
           isDark ? 'hover:bg-slate-800 text-slate-400 hover:text-violet-400' : 'hover:bg-slate-100 text-slate-500 hover:text-violet-600'
         }`}
       >
-        <Move className="w-3.5 h-3.5" />
-      </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); onEdit(); }}
-        disabled={isPending}
-        title={t('connectionSection.editTelescope')}
-        className={`p-1.5 rounded-lg transition disabled:opacity-30 disabled:cursor-not-allowed ${
-          isDark ? 'hover:bg-slate-800 text-slate-400 hover:text-teal-400' : 'hover:bg-slate-100 text-slate-500 hover:text-teal-600'
-        }`}
-      >
-        <Pencil className="w-3.5 h-3.5" />
+        <ArrowRightLeft className="w-3.5 h-3.5" />
       </button>
       <button
         onClick={(e) => { e.stopPropagation(); onArchive(); }}
@@ -561,7 +580,7 @@ function ArchivedTelescopeRow({
           isDark ? 'hover:bg-slate-800 text-slate-400 hover:text-violet-400' : 'hover:bg-slate-100 text-slate-500 hover:text-violet-600'
         }`}
       >
-        <Move className="w-3.5 h-3.5" />
+        <ArrowRightLeft className="w-3.5 h-3.5" />
       </button>
       <button
         onClick={onUnarchive}
@@ -675,7 +694,7 @@ function TransportPill({ kind, active, pinned, offline, isDark, noun }: { kind: 
         ? t('connectionSection.pillActive', { detail, noun })
         : t('connectionSection.pillInactive', { detail });
   return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${tone}`} title={title}>
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[0.625rem] font-medium border ${tone}`} title={title}>
       {pinned && <Pin className="w-2.5 h-2.5" />}
       <Icon className="w-2.5 h-2.5" />
       {label}

@@ -55,6 +55,11 @@ const CALIBRATION_FOLDER_TYPE: Readonly<Record<string, CalibrationFrameType>> = 
   dark: 'dark',
   darks: 'dark',
   dwarf_dark: 'dark',
+  // SeeStar's on-device dark library, written at the share root beside
+  // MyWorks. One frame type, files named by the firmware.
+  darklibrary: 'dark',
+  dark_library: 'dark',
+  'dark-library': 'dark',
   flat: 'flat',
   flats: 'flat',
   flatdark: 'flatDark',
@@ -70,6 +75,9 @@ const CALIBRATION_FOLDER_TYPE: Readonly<Record<string, CalibrationFrameType>> = 
   'dark-flat': 'flatDark',
   'dark-flats': 'flatDark',
 };
+
+/** SeeStar's on-device dark library folder, at the share root. */
+export const SEESTAR_DARK_LIBRARY_FOLDER = 'darklibrary';
 
 /** Dwarf's mixed-content calibration folder — handled outside
  *  `CALIBRATION_FOLDER_TYPE` because it is not one frame type. */
@@ -178,6 +186,41 @@ export interface CalibrationFrameInfo {
  *  may still produce a literal dot; both are accepted. */
 function toDecimal(raw: string): number {
   return Number(raw.replace('_', '.'));
+}
+
+/**
+ * SeeStar's on-device dark library (`darklibrary/` at the share root) holds
+ * masters the telescope stacked itself, named:
+ *
+ *   MasterDark_5_30.0s_26.0C_20261014-192837.fit
+ *   MasterDark_5_30.0s_26.0C_20261014-192837.jpg   (its preview)
+ *
+ * Exposure and sensor temperature are explicit (`30.0s`, `26.0C`) and the
+ * stamp is the usual local `YYYYMMDD-HHMMSS`. The number after the type is
+ * left unread on purpose: nothing confirms whether it is a frame count or a
+ * setting, and a wrong `stackCount` or `gain` would mis-match darks to lights.
+ */
+const SEESTAR_MASTER_CALIBRATION_FILENAME_RE =
+  /^Master(?:Dark|Bias|Flat|DarkFlat|FlatDark)_\d+_(?<exp>\d+(?:\.\d+)?)s_(?<temp>-?\d+(?:\.\d+)?)C_(?<date>\d{8})-(?<time>\d{6})\d*\.[^.]+$/i;
+
+function parseSeestarMasterCalibrationFilename(name: string): CalibrationFrameInfo | null {
+  const m = SEESTAR_MASTER_CALIBRATION_FILENAME_RE.exec(name);
+  if (!m?.groups) return null;
+  const g = m.groups;
+
+  const info: CalibrationFrameInfo = {
+    exposureSec: Number(g.exp),
+    sensorTempC: Number(g.temp),
+  };
+
+  // Local time, no zone in the name: the same limitation every telescope
+  // filename timestamp in this module has.
+  const { date, time } = g;
+  const iso = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4, 6)}`;
+  const parsed = new Date(iso);
+  if (!isNaN(parsed.getTime())) info.capturedAt = parsed.toISOString();
+
+  return info;
 }
 
 /**
@@ -360,8 +403,8 @@ function parseDwarfRawCalibrationFilename(name: string): CalibrationFrameInfo | 
  * Parse the metadata a calibration frame's own filename encodes.
  *
  * Tries the ASIAIR/N.I.N.A. convention first, then Dwarf's `CALI_FRAME`
- * master convention, then Dwarf's `DWARF_DARK` raw-sub-frame convention — the
- * three shapes cannot collide (each has a distinct, required literal prefix
+ * master convention, then Dwarf's `DWARF_DARK` raw-sub-frame convention, then
+ * SeeStar's `darklibrary` masters — the four shapes cannot collide (each has a distinct, required literal prefix
  * or timestamp token the others never produce). Best-effort: returns null
  * for anything that matches none of them rather than guessing, since a file
  * that fails to parse is still listed (just without the derived chips)
@@ -370,7 +413,8 @@ function parseDwarfRawCalibrationFilename(name: string): CalibrationFrameInfo | 
 export function parseCalibrationFilename(name: string): CalibrationFrameInfo | null {
   return parseAsiairCalibrationFilename(name)
     ?? parseDwarfMasterCalibrationFilename(name)
-    ?? parseDwarfRawCalibrationFilename(name);
+    ?? parseDwarfRawCalibrationFilename(name)
+    ?? parseSeestarMasterCalibrationFilename(name);
 }
 
 /** Dwarf 3's per-camera `CALI_FRAME` calibration subfolder, e.g.

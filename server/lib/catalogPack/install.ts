@@ -29,6 +29,7 @@ import { downloadToFile, fetchJson, fetchText } from './download.js';
 import { extractPack } from './unpack.js';
 import { getPackState, setPackState } from './state.js';
 import { resolveCanonicalId } from '../catalogAliases.js';
+import { purgeResizedThumbnails } from './heal.js';
 
 const PACK_INDEX_URL = 'https://downloads.nebulis.app/catalog/v1/index.json';
 const PACK_INDEX_SIG_URL = 'https://downloads.nebulis.app/catalog/v1/index.json.sig';
@@ -65,7 +66,19 @@ export async function installCatalogPacks(
   tiers: CatalogTier[],
   signal: AbortSignal,
   prewarm: (id: string, masterPath: string, source: 'hubble' | 'dss2') => Promise<void>,
+  opts: {
+    /** Tiers to install even though catalogPackState says they are current,
+     *  because local Hubble masters no longer match the pack (see heal.ts). */
+    forceTiers?: ReadonlySet<CatalogTier>;
+  } = {},
 ): Promise<InstallResult[]> {
+  // A developer who has loaded a locally built pack (scripts/catalog-load-local.ts) sets this so
+  // the update check and the prefetch job do not put the published packs back over it.
+  if (process.env.NEBULIS_SKIP_PACK_INSTALL === '1') {
+    console.log('[catalogPack] NEBULIS_SKIP_PACK_INSTALL is set: not installing packs');
+    return tiers.map(tier => ({ tier, version: '', objectCount: 0, skipped: true, reason: 'disabled_by_env' }));
+  }
+
   // ── Fetch + verify index ────────────────────────────────────────────────
   let indexBuf: Buffer;
   let indexSig: string;
@@ -97,7 +110,7 @@ export async function installCatalogPacks(
 
   for (const tier of tiers) {
     if (signal.aborted) break;
-    const result = await installTier(tier, index, signal, prewarm);
+    const result = await installTier(tier, index, signal, prewarm, opts.forceTiers?.has(tier) ?? false);
     results.push(result);
   }
 
@@ -129,6 +142,7 @@ async function installTier(
   index: PackIndex,
   signal: AbortSignal,
   prewarm: (id: string, masterPath: string, source: 'hubble' | 'dss2') => Promise<void>,
+  force: boolean,
 ): Promise<InstallResult> {
   const entry = index.tiers.find(t => t.tier === tier);
   if (!entry) {
@@ -138,11 +152,13 @@ async function installTier(
   // Skip if already installed at this version — but only if the images it
   // recorded are actually still on disk. See skyCacheHasImages() above.
   const existing = getPackState(tier);
-  if (existing?.version === entry.version && skyCacheHasImages()) {
+  if (!force && existing?.version === entry.version && skyCacheHasImages()) {
     console.log(`[catalogPack] ${tier} v${entry.version} already installed — skipping`);
     return { tier, version: entry.version, objectCount: existing.objectCount, skipped: true, reason: 'already_installed' };
   }
-  if (existing?.version === entry.version) {
+  if (force && existing?.version === entry.version) {
+    console.log(`[catalogPack] ${tier} v${entry.version}: repairing Hubble masters that differ from the pack`);
+  } else if (existing?.version === entry.version) {
     console.warn(`[catalogPack] ${tier} v${entry.version} recorded as installed but sky-cache/ is empty — reinstalling`);
   }
 
@@ -251,6 +267,7 @@ async function installTier(
 
     if (fs.existsSync(imagesExtractDir)) {
       const imageFiles = fs.readdirSync(imagesExtractDir);
+      const expectedShaByPath = new Map(manifest.files.map(f => [f.path, f.sha256]));
       const concurrency = Math.max(2, Math.min(4, os.cpus().length));
 
       // Process images concurrently — sharp/libvips uses a thread pool so
@@ -287,12 +304,20 @@ async function installTier(
           // Normally don't overwrite an existing file (live-scraped or from
           // another pack). On a corrective version upgrade of this tier, do
           // overwrite — that is the whole point of the new pack version.
+          // A Hubble master is the exception to the guard even without a
+          // version change: it is copied byte for byte from a signed pack, so
+          // one that differs from the signed hash is stale or wrong (an old
+          // scraper wrote the Crab Nebula over seven open clusters) and the
+          // guard would otherwise keep it forever.
           let skip = false;
-          if (!isCorrectiveUpgrade) {
-            try {
-              const stat = fs.statSync(dest);
-              if (stat.size > 0) skip = true;
-            } catch { /* not present */ }
+          let existedBefore = false;
+          try {
+            existedBefore = fs.statSync(dest).size > 0;
+          } catch { /* not present */ }
+          if (!isCorrectiveUpgrade && existedBefore) {
+            skip = true;
+            const expectedSha = expectedShaByPath.get(`images/${filename}`);
+            if (isHubble && expectedSha && sha256File(dest) !== expectedSha) skip = false;
           }
 
           if (!skip) {
@@ -304,6 +329,10 @@ async function installTier(
               fs.copyFileSync(src, dest);
               try { fs.unlinkSync(src); } catch { /* tmp dir is wiped in finally */ }
             }
+            // prewarm skips a size that already exists and the resized names
+            // carry no content hash, so the replaced master's old thumbnails
+            // must go or they keep being served.
+            if (existedBefore) purgeResizedThumbnails(skyCache, canonicalId, source);
             movedCount++;
           }
 

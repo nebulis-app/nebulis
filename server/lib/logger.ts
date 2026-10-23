@@ -60,6 +60,10 @@ try {
 
 const fileStream = pino.destination({ dest: LOG_PATH, sync: true, mkdir: true });
 
+function isDestinationStream(value: unknown): value is DestinationStream {
+  return typeof value === 'object' && value !== null && 'write' in value && typeof value.write === 'function';
+}
+
 // In dev, try to pretty-print stdout. If pino-pretty isn't available, fall
 // back to a plain JSON stdout stream rather than crashing the boot.
 function buildStdoutStream(): DestinationStream {
@@ -68,12 +72,15 @@ function buildStdoutStream(): DestinationStream {
   }
   try {
     // Resolved lazily so production builds without pino-pretty don't fail.
-    const prettyFactory = require('pino-pretty') as (opts?: unknown) => DestinationStream;
-    return prettyFactory({
+    const prettyFactory: unknown = require('pino-pretty');
+    if (typeof prettyFactory !== 'function') throw new Error('pino-pretty did not export a factory');
+    const stream: unknown = prettyFactory({
       colorize: true,
       translateTime: 'SYS:HH:MM:ss.l',
       ignore: 'pid,hostname',
     });
+    if (!isDestinationStream(stream)) throw new Error('pino-pretty did not return a writable stream');
+    return stream;
   } catch {
     return pino.destination({ dest: 1, sync: false });
   }

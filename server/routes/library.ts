@@ -4,6 +4,7 @@
  * Serves objects/sessions/files from the locally-imported copy of the
  * SeeStar image library, and provides endpoints to trigger imports.
  */
+import { markGeometryEdited } from '../lib/annotate/geometryEdits.js';
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
@@ -16,13 +17,25 @@ import archiver from 'archiver';
 import multer from 'multer';
 import { log } from '../lib/logger.js';
 import { debugLog, isDebugLoggingEnabled } from '../lib/debugLogger.js';
-import { isErrnoException } from '../lib/errors.js';
+import { errnoCode, isErrnoException } from '../lib/errors.js';
 import { redactUrl } from '../lib/logSafe.js';
 import { THUMBNAILS_DIR } from '../lib/paths.js';
 import { getLibraryDir, isLibraryAvailable, statLibraryFileForServe, TimeoutError } from '../lib/libraryPath.js';
 import { resolveLibraryFile, LinkedFileReadOnlyError } from '../lib/library/fileResolver.js';
+import {
+  getIntegrationBreakdown,
+  getIntegrationProgressForGoalObjects,
+  setIntegrationGoals,
+  getFilterAliases,
+  setFilterAliases,
+  MAX_GOAL_SEC,
+  MAX_FILTER_NAME_LENGTH,
+} from '../lib/library/integration.js';
+import { replaceLibraryFile, ReplaceFileError, originalBackupFile, restoreOriginalBackup } from '../lib/library/replaceFile.js';
 import { getObjectLayout, sessionFolderFor } from '../lib/library/libraryLayout.js';
 import { runRender } from '../lib/renderQueue.js';
+import { getClusterItems } from '../lib/library/cluster.js';
+import { collectMediaItems, buildObjectMedia, MEDIA_KINDS, MEDIA_GROUP_BYS, MEDIA_SORTS } from '../lib/library/objectMedia.js';
 import { mintDownloadToken, DOWNLOAD_TOKEN_TTL_MS } from '../lib/downloadToken.js';
 import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
 import { acquireLibraryLock, libraryBusyRefusal } from '../lib/libraryBusy.js';
@@ -30,6 +43,9 @@ import { getSite } from '../lib/observingSites.js';
 import { plantSampleObject, purgeSampleObject } from '../lib/library/sampleLibrary.js';
 import sharp from '../lib/sharp-optional.js';
 import { generateFitsThumbnail, fitsThumbnailPath, type FitsThumbnailTier } from '../lib/fitsThumbnail.js';
+import { buildSessionReport, measureLibraryFile, setFrameReview, FrameFileError, type FrameAnalysisRow } from '../lib/frameAnalysis/service.js';
+import { enqueueFrames, queueStateFor } from '../lib/frameAnalysis/queue.js';
+import { buildStackingPlan, buildExportEntries, exportFileName } from '../lib/library/stackingExport.js';
 import { generateTiffThumbnail, tiffThumbnailPath, type TiffThumbnailTier } from '../lib/tiffThumbnail.js';
 import { normalizeCatalogId, clampToNightSafeTime, mimeTypeForExtension } from '../lib/telescopeFiles.js';
 import {
@@ -37,6 +53,7 @@ import {
   runAllTelescopesImport,
   reassignSessionTelescope,
   reassignSessionSite,
+  setSessionOptics,
   backfillSingleSessionWeather,
   getImportStatus,
   cancelImport,
@@ -79,6 +96,11 @@ import {
   setGalleryCrop,
   setProcessingStatus,
   isCatalogSourceSentinel,
+  isBuiltinArtSentinel,
+  parseBuiltinArtTheme,
+  parseBuiltinArtSentinel,
+  ensureBuiltinArtFile,
+  BUILTIN_ART_IDS,
   findFallbackObservationImage,
   getStackedImages,
   getImportHistory,
@@ -111,6 +133,7 @@ import {
   resolveObjectImagePath,
   objectThumbnailDiskCacheKey,
   fileThumbnailDiskCacheKey,
+  PROCESSING_STATUSES,
 } from '../lib/localLibrary.js';
 import { parseGalleryCrop, cropRegion } from '../lib/library/galleryCrop.js';
 import { getArchiveDir, listArchivedFolders, listArchiveScopes } from '../lib/library/archiveFolders.js';
@@ -144,6 +167,7 @@ import { prefetchSkyImage } from '../lib/skyImage.js';
 import { getById as getDsoById } from '../lib/dsoCatalog.js';
 import { caldwellToNgcId } from '../lib/caldwellCatalog.js';
 import { resolveCanonicalId } from '../lib/catalogAliases.js';
+import { cometKey } from '../lib/library/movingObject.js';
 import { getSettingsData, getProfileById } from '../lib/telescopes.js';
 import {
   scanSource, commitSource, rescanSource, deleteSource, updateSource, isValidRefreshInterval, summarizeSources,
@@ -277,6 +301,12 @@ const SessionTelescopeBodySchema = z.object({
   telescopeId: z.string().min(1, 'telescopeId is required'),
 });
 
+const SessionOpticsBodySchema = z.object({
+  /** A configuration of the session's telescope, or null to let the FITS
+   *  focal length decide again. */
+  opticalConfigId: z.string().min(1).nullable(),
+});
+
 const SessionSiteBodySchema = z.object({
   siteId: z.string().nullable(),
 });
@@ -314,6 +344,7 @@ const FolderCommitBodySchema = z.object({
   importFits: z.boolean().optional(),
   archiveAllFiles: z.boolean().optional(),
   telescopeId: z.string().nullable().optional(),
+  opticalConfigId: z.string().nullable().optional(),
 });
 
 const MoveObservationBodySchema = z.object({
@@ -323,6 +354,9 @@ const MoveObservationBodySchema = z.object({
 const SubframesBodySchema = z.object({
   dates: z.array(z.string()).min(1, 'dates must be a non-empty array'),
   filters: z.array(z.string()).optional(),
+  // Leave out the sub-frames that are not kept: the user's keep / reject call, else a frame graded bad by Frame
+  // Analysis. Frames not measured yet have no grade against them, so they go in.
+  keptOnly: z.boolean().optional(),
   // Matches `/sessions?includeVariants=true` and `/download/objects/:objectId?includeVariants=true`:
   // a mosaic/Ha/etc. variant's sub-frames live in that variant's own object
   // folder, not the base object's, so combining "all of M31" requires pulling
@@ -344,7 +378,7 @@ const GalleryImageBodySchema = z.object({
 });
 
 const ProcessingStatusBodySchema = z.object({
-  status: z.enum(['unprocessed', 'processing', 'processed']),
+  status: z.enum(PROCESSING_STATUSES),
 });
 
 const SessionImageBodySchema = z.object({
@@ -605,6 +639,31 @@ router.put('/objects/:objectId/sessions/:date/telescope', requireAdmin, (req: Re
     return;
   }
   res.apiSuccess({ updated: true, telescopeId });
+});
+
+/**
+ * Set which optical configuration of its telescope shot a session (e.g. the
+ * reducer rather than native), or `null` to go back to the configuration
+ * matched from the FITS focal length. See lib/library/sessionOptics.ts.
+ */
+router.put('/objects/:objectId/sessions/:date/optics', requireAdmin, (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const date = String(req.params.date);
+  const parsed = SessionOpticsBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(400, 'BAD_REQUEST', parsed.error.issues[0]?.message ?? 'opticalConfigId is required (or null)');
+    return;
+  }
+  const result = setSessionOptics(objectId, date, parsed.data.opticalConfigId);
+  if (result === 'not_found') {
+    res.apiError(404, 'NOT_FOUND', 'Session not found');
+    return;
+  }
+  if (result === 'wrong_telescope') {
+    res.apiError(422, 'VALIDATION_ERROR', "That configuration does not belong to this session's telescope");
+    return;
+  }
+  res.apiSuccess({ updated: true, opticalConfigId: parsed.data.opticalConfigId });
 });
 
 /**
@@ -1129,9 +1188,12 @@ function groupByVariants(objects: ReturnType<typeof getLocalObjects>) {
     // an alias name groups with its canonical primary — e.g. "NGC224_Mosaic"
     // (catalogId "NGC224") folds into the "M31" card instead of showing as a
     // separate "NGC224" card.
-    const key = resolveCanonicalId(obj.catalogId);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(obj);
+    // A comet is keyed by its designation instead: telescopes name the same comet differently
+    // ("C-2023A3" and "C2023A3(Tsuchinshan-ATLAS)"), and no catalog alias table covers them.
+    const key = cometKey(obj.catalogId) ?? cometKey(obj.id) ?? resolveCanonicalId(obj.catalogId);
+    const group = groups.get(key);
+    if (group) group.push(obj);
+    else groups.set(key, [obj]);
   }
 
   const maxStr = (a: string | null | undefined, b: string | null | undefined) =>
@@ -1192,6 +1254,19 @@ function resolveVariantIds(objectId: string, userId: string): string[] {
 
 router.get('/object-filters', (_req: Request, res: Response) => {
   res.apiSuccess(LIBRARY_OBJECT_FILTERS);
+});
+
+/**
+ * Per-object work done and best own picture, for the desktop app's Cluster view. Registered before any `/:id`
+ * route so the literal segment is not read as an object id.
+ */
+router.get('/cluster', async (_req: Request, res: Response) => {
+  try {
+    res.apiSuccess(await getClusterItems());
+  } catch (err) {
+    log.error({ error: err instanceof Error ? err.message : String(err) }, 'Library cluster failed');
+    res.apiError(500, 'CLUSTER_FAILED', 'Could not build the cluster view');
+  }
 });
 
 /**
@@ -1421,7 +1496,7 @@ function decodeCalibrationBundleId(id: string): CalibrationBundleSelector | null
       typeof parsed !== 'object' || parsed === null ||
       !('folderName' in parsed) || !('key' in parsed) || !('scope' in parsed)
     ) return null;
-    const { scope, folderName, key } = parsed as Record<string, unknown>;
+    const { scope, folderName, key } = parsed;
     if ((scope !== null && typeof scope !== 'string') || typeof folderName !== 'string' || typeof key !== 'string') {
       return null;
     }
@@ -1578,7 +1653,7 @@ router.get('/objects/:objectId/thumbnail', async (req: Request, res: Response) =
     const prefer: 'sky' | 'telescope' | undefined =
       preferRaw === 'sky' || preferRaw === 'telescope' ? preferRaw : undefined;
 
-    const srcPath = await resolveObjectImagePath(objectId, prefer);
+    const srcPath = await resolveObjectImagePath(objectId, prefer, parseBuiltinArtTheme(req.query.theme));
     if (!srcPath) {
       res.status(404).send('No image available');
       return;
@@ -1643,6 +1718,22 @@ router.get('/objects/:objectId/thumbnail', async (req: Request, res: Response) =
     console.error('[thumbnail] failed to generate:', err);
     if (!res.headersSent) res.status(500).send('Failed to generate thumbnail');
   }
+});
+
+// Built-in artwork for the gallery-image picker's "Other" section. The id is
+// matched against a fixed list, never joined into a path from the request.
+router.get('/builtin-art/:id', (req: Request, res: Response) => {
+  const id = parseBuiltinArtSentinel(`builtin:${String(req.params.id)}`);
+  if (!id) {
+    res.status(404).send('Unknown artwork');
+    return;
+  }
+  res.set('Content-Type', 'image/svg+xml');
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.sendFile(ensureBuiltinArtFile(id, parseBuiltinArtTheme(req.query.theme)), { dotfiles: 'allow' });
+});
+router.get('/builtin-art', (_req: Request, res: Response) => {
+  res.apiSuccess({ ids: BUILTIN_ART_IDS });
 });
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
@@ -1890,6 +1981,63 @@ router.post('/objects/:objectId/sessions/:date/move', requireAdmin, (req: Reques
 
 // ─── Files ────────────────────────────────────────────────────────────────────
 
+// ─── Stacking export (lights + matched calibration) ──────────────────────────
+// See server/lib/library/stackingExport.ts. The plan is what the dialog shows; the export streams the same plan
+// into a ZIP through the async job flow of the sub-frame download (status / tmp routes below). Which lights are
+// kept comes from Frame Analysis: the user's keep / reject first, then the grade.
+
+const NIGHT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const StackingExportSchema = z.object({
+  dates: z.array(z.string().regex(NIGHT_DATE_RE, 'dates must be YYYY-MM-DD')).min(1).max(366),
+  includeNotKept: z.boolean().optional(),
+  layout: z.enum(['wbpp', 'siril']).optional(),
+});
+
+function stackingRequest(req: Request, res: Response) {
+  const parsed = StackingExportSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
+    return null;
+  }
+  const objectId = String(req.params.objectId);
+  if (!objectStmts.getObject.get(objectId)) {
+    res.apiError(404, 'NOT_FOUND', 'Object not found in local library');
+    return null;
+  }
+  return { objectId, ...parsed.data };
+}
+
+router.post('/objects/:objectId/stacking-export/plan', strictRateLimiter, async (req: Request, res: Response) => {
+  const r = stackingRequest(req, res);
+  if (!r) return;
+  if (!(await requireLibraryReachable(res))) return;
+  res.apiSuccess(buildStackingPlan(r.objectId, r.dates, { includeNotKept: r.includeNotKept }).plan);
+});
+
+router.post('/objects/:objectId/stacking-export', strictRateLimiter, async (req: Request, res: Response) => {
+  const r = stackingRequest(req, res);
+  if (!r) return;
+  if (!(await requireLibraryReachable(res))) return;
+  const data = buildStackingPlan(r.objectId, r.dates, { includeNotKept: r.includeNotKept });
+  if (data.plan.totals.lights === 0) {
+    res.apiError(404, 'NO_FILES', 'No light frames to export for the selected nights');
+    return;
+  }
+  // The ZIP is built in the temp folder first, so check there is room for it before starting.
+  try {
+    const st = fs.statfsSync(os.tmpdir());
+    const free = st.bavail * st.bsize;
+    if (free < data.plan.totals.bytes * 1.05) {
+      res.apiError(507, 'INSUFFICIENT_SPACE', 'Not enough free disk space to build this export');
+      return;
+    }
+  } catch { /* cannot tell: let the job try */ }
+  const layout = r.layout ?? 'wbpp';
+  const base = exportFileName(r.objectId, data.plan.nights, layout);
+  res.apiSuccess(startZipJob(`${base}.zip`, buildExportEntries(data, layout, base)));
+});
+
 router.get('/objects/:objectId/sessions/:date/files', async (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const date = String(req.params.date);
@@ -1900,6 +2048,148 @@ router.get('/objects/:objectId/sessions/:date/files', async (req: Request, res: 
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to list files';
     res.apiError(500, 'LIST_FAILED', message);
+  }
+});
+
+/**
+ * Sub-frame analysis for one night: every raw FITS frame with whatever has been measured so far and a verdict
+ * (good / fair / bad, plus clouds, star trails, soft focus, streak, noise) read against the rest of the night.
+ * Read-only; frames still unmeasured come back with `metrics: null` for the client to request one at a time.
+ */
+router.get('/objects/:objectId/sessions/:date/frame-analysis', async (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const date = String(req.params.date);
+  try {
+    if (!(await requireLibraryReachable(res))) return;
+    // A mosaic/Ha/etc. variant keeps its sub-frames in its own object folder, so the object page asks for the family.
+    const ids = queryString(req.query.includeVariants) === '1' ? resolveVariantIds(objectId, req.userId ?? '') : [objectId];
+    const report = buildSessionReport(ids, date);
+    res.apiSuccess({ ...report, ...queueStateFor(report.frames.map(f => f.path)) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to analyze frames';
+    res.apiError(500, 'FRAME_ANALYSIS_FAILED', message);
+  }
+});
+
+const FrameMeasureBodySchema = z.object({
+  path: z.string().min(1),
+  force: z.boolean().optional(),
+});
+
+/** Measure one raw frame (or return its stored measurement). CPU-heavy, so admin only and one at a time. */
+router.post('/frame-analysis/measure', requireAdmin, async (req: Request, res: Response) => {
+  const parsed = FrameMeasureBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(400, 'MISSING_PATH', 'path is required');
+    return;
+  }
+  try {
+    if (!(await requireLibraryReachable(res))) return;
+    const { metrics, cached } = await measureLibraryFile(parsed.data.path, parsed.data.force === true);
+    res.apiSuccess({ path: parsed.data.path, metrics, cached });
+  } catch (err) {
+    if (err instanceof FrameFileError) {
+      const status = err.code === 'FORBIDDEN' ? 403 : err.code === 'NOT_FOUND' ? 404 : 422;
+      res.apiError(status, err.code === 'UNREADABLE' ? 'FRAME_UNREADABLE' : err.code, err.message);
+      return;
+    }
+    const message = err instanceof Error ? err.message : 'Failed to measure frame';
+    res.apiError(500, 'FRAME_ANALYSIS_FAILED', message);
+  }
+});
+
+const FrameReviewBodySchema = z.object({
+  path: z.string().min(1),
+  /** true = keep this frame, false = reject it, null = follow the grade again. */
+  keep: z.boolean().nullable(),
+});
+
+/** The user's keep / reject call on one raw frame. It wins over the analyzer's grade in stacking exports. */
+router.put('/frame-analysis/review', requireAdmin, (req: Request, res: Response) => {
+  const parsed = FrameReviewBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
+    return;
+  }
+  try {
+    const { path, keep } = parsed.data;
+    setFrameReview(path, keep === null ? null : keep ? 'keep' : 'reject');
+    res.apiSuccess({ path, keep });
+  } catch (err) {
+    if (err instanceof FrameFileError) {
+      const status = err.code === 'FORBIDDEN' ? 403 : 404;
+      res.apiError(status, err.code, err.message);
+      return;
+    }
+    const message = err instanceof Error ? err.message : 'Failed to save review';
+    res.apiError(500, 'FRAME_ANALYSIS_FAILED', message);
+  }
+});
+
+function csvCell(value: string | number | null): string {
+  if (value === null) return '';
+  const s = String(value);
+  // Quote anything with a delimiter, quote or newline; a leading =,+,-,@ would run as a formula in a spreadsheet.
+  const guarded = /^[=+\-@]/.test(s) ? `'${s}` : s;
+  return /[",\n\r]/.test(guarded) ? `"${guarded.replace(/"/g, '""')}"` : guarded;
+}
+
+function frameAnalysisCsv(frames: FrameAnalysisRow[]): string {
+  const head = ['file', 'timestamp', 'grade', 'score', 'flags', 'stars', 'fwhm_px', 'elongation', 'background', 'noise', 'review', 'accepted'];
+  const rows = frames.map(f => [
+    f.name, f.timestamp, f.verdict?.grade ?? '', f.verdict?.score ?? '', f.verdict?.flags.join(' ') ?? '',
+    f.metrics?.starCount ?? '', f.metrics?.fwhm ?? '', f.metrics?.elongation ?? '', f.metrics?.background ?? '',
+    f.metrics?.noise ?? '', f.review ?? '', f.kept ? 1 : 0,
+  ].map(csvCell).join(','));
+  return `${[head.join(','), ...rows].join('\r\n')}\r\n`;
+}
+
+/** A night's frame analysis as CSV, with an `accepted` column a PixInsight or Siril script can filter on. */
+router.get('/objects/:objectId/sessions/:date/frame-analysis.csv', async (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const date = String(req.params.date);
+  try {
+    if (!(await requireLibraryReachable(res))) return;
+    const ids = queryString(req.query.includeVariants) === '1' ? resolveVariantIds(objectId, req.userId ?? '') : [objectId];
+    const report = buildSessionReport(ids, date);
+    const safeName = `${objectId}_${date}_frames.csv`.replace(/[^\w.-]+/g, '_');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.send(frameAnalysisCsv(report.frames));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to export frame analysis';
+    res.apiError(500, 'FRAME_ANALYSIS_FAILED', message);
+  }
+});
+
+const FrameQueueBodySchema = z.object({
+  includeVariants: z.boolean().optional(),
+  force: z.boolean().optional(),
+});
+
+/**
+ * Queue every unmeasured raw frame of a night for the background worker, then return at once. The list polls the
+ * night's report to watch it fill. Idempotent: frames already stored or waiting are skipped.
+ */
+router.post('/objects/:objectId/sessions/:date/frame-analysis/measure', requireAdmin, async (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const date = String(req.params.date);
+  const parsed = FrameQueueBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.apiError(400, 'INVALID_BODY', 'Invalid request body');
+    return;
+  }
+  try {
+    if (!(await requireLibraryReachable(res))) return;
+    const ids = parsed.data.includeVariants ? resolveVariantIds(objectId, req.userId ?? '') : [objectId];
+    const report = buildSessionReport(ids, date);
+    const force = parsed.data.force === true;
+    const todo = report.frames.filter(f => force || f.metrics === null).map(f => f.path);
+    const added = enqueueFrames(todo, force);
+    res.apiSuccess({ queued: added, pending: queueStateFor(todo).pending, total: report.total });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to queue frames';
+    res.apiError(500, 'FRAME_ANALYSIS_FAILED', message);
   }
 });
 
@@ -1915,6 +2205,46 @@ router.get('/objects/:objectId/files', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Everything an object has, as one filterable, pageable list: processed
+ * images, telescope images, sub-frames, videos and project archives across the
+ * whole variant family. Backs the "All media" object page.
+ */
+const ObjectMediaQuerySchema = z.object({
+  kind: z.enum(['all', ...MEDIA_KINDS]).default('all'),
+  group: z.enum(MEDIA_GROUP_BYS).default('night'),
+  sort: z.enum(MEDIA_SORTS).default('newest'),
+  telescope: z.string().max(200).optional(),
+  filter: z.string().max(100).optional(),
+  night: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  format: z.string().max(20).optional(),
+  favorites: z.enum(['0', '1']).optional(),
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(500).default(120),
+  subPreview: z.coerce.number().int().min(0).max(50).default(6),
+});
+
+router.get('/objects/:objectId/media', async (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const parsed = ObjectMediaQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid query');
+    return;
+  }
+  const { favorites, ...rest } = parsed.data;
+  try {
+    if (!(await requireLibraryReachable(res))) return;
+    const userId = req.userId ?? '';
+    const ids = resolveVariantIds(objectId, userId);
+    const items = collectMediaItems(ids, new Set(getImageFavorites(userId)));
+    res.apiSuccess(buildObjectMedia(items, { ...rest, favorites: favorites === '1' }));
+  } catch (err) {
+    res.apiError(500, 'LIST_FAILED', err instanceof Error ? err.message : 'Failed to list media');
+  }
+});
+
 // ─── File download/view ───────────────────────────────────────────────────────
 
 router.get('/file', async (req: Request, res: Response) => {
@@ -1925,7 +2255,13 @@ router.get('/file', async (req: Request, res: Response) => {
   }
   if (!(await requireLibraryReachable(res))) return;
 
-  const result = await getLocalFile(filePath);
+  let result;
+  try {
+    result = await getLocalFile(filePath);
+  } catch (err) {
+    respondFsGuardError(res, err);
+    return;
+  }
   if (!result) {
     res.status(404).send('Not found');
     return;
@@ -1998,7 +2334,7 @@ router.get('/video', async (req: Request, res: Response) => {
     // A dropped connection mid-stream surfaces here as ECONNABORTED / write
     // after end — not an error worth logging or responding to.
     if (res.headersSent) return;
-    const status = (err as NodeJS.ErrnoException).code === 'ENOENT' ? 404 : 500;
+    const status = errnoCode(err) === 'ENOENT' ? 404 : 500;
     res.status(status).type('text/plain').send('Could not read video');
   });
 });
@@ -2286,6 +2622,79 @@ router.get('/objects/:objectId/integration', async (req: Request, res: Response)
   }
 });
 
+// ─── Integration per filter + goals ──────────────────────────────────────────
+// See server/lib/library/integration.ts. Unlike /integration above (managed
+// files only, per night), this reads the libraryFiles table, so linked-folder
+// subs count, and groups by filter.
+
+const FilterNameSchema = z.string().trim().min(1).max(MAX_FILTER_NAME_LENGTH);
+
+const IntegrationGoalsSchema = z.object({
+  goals: z.array(z.object({
+    filter: FilterNameSchema.nullable(),
+    goalSec: z.number().int().min(0).max(MAX_GOAL_SEC),
+  })).max(50),
+});
+
+const FilterAliasesSchema = z.object({
+  aliases: z.array(z.object({
+    alias: FilterNameSchema,
+    canonical: FilterNameSchema,
+  })).max(500),
+});
+
+router.get('/objects/:objectId/integration/filters', async (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  try {
+    if (!(await requireLibraryReachable(res))) return;
+    res.apiSuccess(getIntegrationBreakdown(objectId));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to compute integration per filter';
+    res.apiError(500, 'STATS_FAILED', message);
+  }
+});
+
+router.get('/integration/progress', async (_req: Request, res: Response) => {
+  try {
+    if (!(await requireLibraryReachable(res))) return;
+    res.apiSuccess(getIntegrationProgressForGoalObjects());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to compute integration progress';
+    res.apiError(500, 'STATS_FAILED', message);
+  }
+});
+
+router.put('/objects/:objectId/integration/goals', requireAdmin, (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const parsed = IntegrationGoalsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
+    return;
+  }
+  try {
+    res.apiSuccess(setIntegrationGoals(objectId, parsed.data.goals));
+  } catch (err) {
+    if (err instanceof RangeError) {
+      res.apiError(422, 'VALIDATION_ERROR', err.message);
+      return;
+    }
+    throw err;
+  }
+});
+
+router.get('/filter-aliases', (_req: Request, res: Response) => {
+  res.apiSuccess(getFilterAliases());
+});
+
+router.put('/filter-aliases', requireAdmin, (req: Request, res: Response) => {
+  const parsed = FilterAliasesSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
+    return;
+  }
+  res.apiSuccess(setFilterAliases(parsed.data.aliases));
+});
+
 // ─── FITS header (local file) ─────────────────────────────────────────────────
 
 router.get('/headers', async (req: Request, res: Response) => {
@@ -2552,86 +2961,23 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000).unref?.();
 
-// Filter query — returns distinct filter names found across sub-frames for the given dates
-router.post('/download/objects/:objectId/subframe-filters', strictRateLimiter, (req: Request, res: Response) => {
-  const objectId = String(req.params.objectId);
-  const bodyParsed = z.object({
-    dates: z.array(z.string()).min(1),
-    includeVariants: z.boolean().optional(),
-  }).safeParse(req.body);
-  if (!bodyParsed.success) {
-    res.apiError(400, 'INVALID_DATES', 'dates must be a non-empty array');
-    return;
-  }
-  // A mosaic/Ha/etc. variant's sub-frames live in that variant's own object
-  // folder, not the base object's — see resolveVariantIds. Uses getLocalFiles
-  // (same layout-aware, libraryFiles-backed accessor `getLocalSessions` uses)
-  // rather than a flat readdir, because a nested object stores files under
-  // per-session subfolders that a flat listing never sees.
-  const ids = bodyParsed.data.includeVariants ? resolveVariantIds(objectId, req.userId ?? '') : [objectId];
-  const filters = new Set<string>();
-  for (const id of ids) {
-    for (const date of bodyParsed.data.dates) {
-      for (const f of getLocalFiles(id, date)) {
-        if (f.fileType === 'sub' && f.filter) filters.add(f.filter);
-      }
-    }
-  }
-  res.apiSuccess({ filters: [...filters].sort() });
-});
+/** One ZIP entry: a file on disk, or inline text (a README, a manifest). */
+interface ZipJobEntry {
+  name: string;
+  abs?: string;
+  content?: string;
+}
 
-// Phase 1 — start async ZIP job
-router.post('/download/objects/:objectId/subframes', strictRateLimiter, (req: Request, res: Response) => {
-  const objectId = String(req.params.objectId);
-  const bodyParsed = SubframesBodySchema.safeParse(req.body);
-  if (!bodyParsed.success) {
-    res.apiError(400, 'INVALID_DATES', bodyParsed.error.issues[0]?.message ?? 'dates must be a non-empty array');
-    return;
-  }
-  const { dates, filters, includeVariants, sirilLayout } = bodyParsed.data;
-
-  const filterSet = filters && filters.length > 0 ? new Set(filters) : null;
-  // A mosaic/Ha/etc. variant's sub-frames live in that variant's own object
-  // folder, not the base object's — see resolveVariantIds. Uses getLocalFiles
-  // (same layout-aware, libraryFiles-backed accessor `getLocalSessions` uses)
-  // rather than a flat readdir, because a nested object stores files under
-  // per-session subfolders that a flat listing never sees.
-  const ids = includeVariants ? resolveVariantIds(objectId, req.userId ?? '') : [objectId];
-  const LIBRARY_DIR = getLibraryDir();
-  const anyObjectExists = ids.some(id => {
-    const objDir = path.resolve(LIBRARY_DIR, getObjectFolderName(id));
-    return objDir.startsWith(LIBRARY_DIR + path.sep) && fs.existsSync(objDir);
-  });
-  if (!anyObjectExists) {
-    res.apiError(404, 'NOT_FOUND', 'Object not found in local library');
-    return;
-  }
-
-  const subFrames: { libPath: string }[] = [];
-  for (const id of ids) {
-    for (const date of dates) {
-      for (const f of getLocalFiles(id, date)) {
-        if (f.fileType !== 'sub') continue;
-        if (filterSet !== null && (!f.filter || !filterSet.has(f.filter))) continue;
-        subFrames.push({ libPath: f.path });
-      }
-    }
-  }
-
-  if (subFrames.length === 0) {
-    res.apiError(404, 'NO_FILES', 'No subframes found for the selected sessions');
-    return;
-  }
-
-  const nowDate = new Date();
-  const datePart = nowDate.toISOString().slice(0, 10).replace(/-/g, '');
-  const timePart = nowDate.toTimeString().slice(0, 8).replace(/:/g, '');
-  const filename = `${objectId}-${datePart}${timePart}.zip`;
+/**
+ * Start building a ZIP in the background (phase 1 of the flow below) and return the job id to poll. Shared by the
+ * sub-frame download and the stacking export.
+ */
+function startZipJob(filename: string, entries: ZipJobEntry[]): { jobId: string; filesTotal: number } {
   const tmpPath = path.join(os.tmpdir(), `nebulis-${randomUUID()}.zip`);
 
   const jobId = randomUUID();
   const job: ArchiveJob = {
-    filesTotal: subFrames.length,
+    filesTotal: entries.length,
     filesDone: 0,
     status: 'running',
     filename,
@@ -2639,12 +2985,10 @@ router.post('/download/objects/:objectId/subframes', strictRateLimiter, (req: Re
     expiresAt: Date.now() + 30 * 60 * 1000,
   };
   if (archiveJobs.size >= MAX_ARCHIVE_JOBS) {
-    archiveJobs.delete(archiveJobs.keys().next().value!);
+    const oldest = archiveJobs.keys().next();
+    if (!oldest.done) archiveJobs.delete(oldest.value);
   }
   archiveJobs.set(jobId, job);
-
-  // Respond immediately so client can start polling
-  res.apiSuccess({ jobId, filesTotal: subFrames.length });
 
   // Build ZIP asynchronously
   const output = fs.createWriteStream(tmpPath);
@@ -2686,6 +3030,98 @@ router.post('/download/objects/:objectId/subframes', strictRateLimiter, (req: Re
 
   archive.pipe(output);
 
+  for (const entry of entries) {
+    if (entry.content !== undefined) archive.append(entry.content, { name: entry.name });
+    else if (entry.abs) archive.file(entry.abs, { name: entry.name });
+  }
+  void archive.finalize();
+  return { jobId, filesTotal: entries.length };
+}
+
+// Filter query — returns distinct filter names found across sub-frames for the given dates
+router.post('/download/objects/:objectId/subframe-filters', strictRateLimiter, (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const bodyParsed = z.object({
+    dates: z.array(z.string()).min(1),
+    includeVariants: z.boolean().optional(),
+  }).safeParse(req.body);
+  if (!bodyParsed.success) {
+    res.apiError(400, 'INVALID_DATES', 'dates must be a non-empty array');
+    return;
+  }
+  // A mosaic/Ha/etc. variant's sub-frames live in that variant's own object
+  // folder, not the base object's — see resolveVariantIds. Uses getLocalFiles
+  // (same layout-aware, libraryFiles-backed accessor `getLocalSessions` uses)
+  // rather than a flat readdir, because a nested object stores files under
+  // per-session subfolders that a flat listing never sees.
+  const ids = bodyParsed.data.includeVariants ? resolveVariantIds(objectId, req.userId ?? '') : [objectId];
+  const filters = new Set<string>();
+  for (const id of ids) {
+    for (const date of bodyParsed.data.dates) {
+      for (const f of getLocalFiles(id, date)) {
+        if (f.fileType === 'sub' && f.filter) filters.add(f.filter);
+      }
+    }
+  }
+  res.apiSuccess({ filters: [...filters].sort() });
+});
+
+/** Library paths of a night's raw frames that are not kept (the user's reject, or graded bad). Empty for a night with
+ *  no analysis and no review. */
+function notKeptSubFrames(objectId: string, night: string): Set<string> {
+  if (!NIGHT_DATE_RE.test(night)) return new Set();
+  return new Set(buildSessionReport([objectId], night).frames.filter(f => !f.kept).map(f => f.path));
+}
+
+// Phase 1 — start async ZIP job
+router.post('/download/objects/:objectId/subframes', strictRateLimiter, (req: Request, res: Response) => {
+  const objectId = String(req.params.objectId);
+  const bodyParsed = SubframesBodySchema.safeParse(req.body);
+  if (!bodyParsed.success) {
+    res.apiError(400, 'INVALID_DATES', bodyParsed.error.issues[0]?.message ?? 'dates must be a non-empty array');
+    return;
+  }
+  const { dates, filters, includeVariants, sirilLayout, keptOnly } = bodyParsed.data;
+
+  const filterSet = filters && filters.length > 0 ? new Set(filters) : null;
+  // A mosaic/Ha/etc. variant's sub-frames live in that variant's own object
+  // folder, not the base object's — see resolveVariantIds. Uses getLocalFiles
+  // (same layout-aware, libraryFiles-backed accessor `getLocalSessions` uses)
+  // rather than a flat readdir, because a nested object stores files under
+  // per-session subfolders that a flat listing never sees.
+  const ids = includeVariants ? resolveVariantIds(objectId, req.userId ?? '') : [objectId];
+  const LIBRARY_DIR = getLibraryDir();
+  const anyObjectExists = ids.some(id => {
+    const objDir = path.resolve(LIBRARY_DIR, getObjectFolderName(id));
+    return objDir.startsWith(LIBRARY_DIR + path.sep) && fs.existsSync(objDir);
+  });
+  if (!anyObjectExists) {
+    res.apiError(404, 'NOT_FOUND', 'Object not found in local library');
+    return;
+  }
+
+  const subFrames: { libPath: string }[] = [];
+  for (const id of ids) {
+    for (const date of dates) {
+      const notKept = keptOnly ? notKeptSubFrames(id, date) : null;
+      for (const f of getLocalFiles(id, date)) {
+        if (f.fileType !== 'sub') continue;
+        if (filterSet !== null && (!f.filter || !filterSet.has(f.filter))) continue;
+        if (notKept && notKept.has(f.path)) continue;
+        subFrames.push({ libPath: f.path });
+      }
+    }
+  }
+
+  if (subFrames.length === 0) {
+    res.apiError(404, 'NO_FILES', 'No subframes found for the selected sessions');
+    return;
+  }
+
+  const nowDate = new Date();
+  const datePart = nowDate.toISOString().slice(0, 10).replace(/-/g, '');
+  const timePart = nowDate.toTimeString().slice(0, 8).replace(/:/g, '');
+  const filename = `${objectId}-${datePart}${timePart}.zip`;
   // libPath is folderName-relative (may include a session subfolder for a
   // nested object); by default keep that structure in the zip entry name too,
   // both to avoid same-filename collisions across sessions and to stay
@@ -2697,6 +3133,7 @@ router.post('/download/objects/:objectId/subframes', strictRateLimiter, (req: Re
   // timestamp), and any residual collision gets a `-2`, `-3` suffix.
   const sirilFolder = sirilLayout ? getObjectFolderName(objectId) : null;
   const usedNames = new Set<string>();
+  const entries: ZipJobEntry[] = [];
   for (const { libPath } of subFrames) {
     let entryName = libPath;
     if (sirilFolder) {
@@ -2711,10 +3148,11 @@ router.post('/download/objects/:objectId/subframes', strictRateLimiter, (req: Re
       }
       usedNames.add(entryName);
     }
-    archive.file(path.join(LIBRARY_DIR, libPath), { name: entryName });
+    entries.push({ name: entryName, abs: path.join(LIBRARY_DIR, libPath) });
   }
 
-  archive.finalize();
+  // Respond immediately so client can start polling
+  res.apiSuccess(startZipJob(filename, entries));
 });
 
 // Phase 2 — poll job status
@@ -2941,7 +3379,7 @@ router.get('/objects/:objectId/gallery-image', async (req: Request, res: Respons
   // disk waiting to override the user's choice on some other screen (the exact
   // "my clean image keeps reverting after a restart" complaint). Both functions
   // are already no-ops once their file exists; this only stops the first fetch.
-  if (!row.userSet || !isCatalogSourceSentinel(row.galleryImage ?? '')) {
+  if (!row.userSet || !(isCatalogSourceSentinel(row.galleryImage ?? '') || isBuiltinArtSentinel(row.galleryImage))) {
     prefetchObjectWiki(resolvedId).catch(() => {});
     prefetchObjectHubble(resolvedId).catch(() => {});
   }
@@ -2989,7 +3427,7 @@ router.put('/objects/:objectId/gallery-image', requireAdmin, (req: Request, res:
     // later reaches sharp() on the *public*, auth-bypassed /thumbnail route via
     // resolveObjectImagePath. The catalog-source:* sentinel is a fixed
     // literal, not a path, so it's exempt.
-    if (resolved !== null && !isCatalogSourceSentinel(resolved) && !resolveLibraryFile(resolved)) {
+    if (resolved !== null && !isCatalogSourceSentinel(resolved) && !isBuiltinArtSentinel(resolved) && !resolveLibraryFile(resolved)) {
       res.apiError(400, 'INVALID_PATH', 'imagePath resolves outside the library');
       return;
     }
@@ -3435,7 +3873,7 @@ router.post(
     const objectId = String(req.params.objectId);
     const file = req.file;
     if (!file) {
-      res.apiError(400, 'NO_ARCHIVE', 'No archive file provided, or it was not a .zip');
+      res.apiError(400, 'NO_ARCHIVE', 'No project file provided, or it was not a .zip, .xpsm or .pxiproject');
       return;
     }
 
@@ -3444,7 +3882,7 @@ router.post(
     const software = typeof req.body?.software === 'string' ? req.body.software.trim() : '';
 
     try {
-      const record = addProjectArchive(objectId, file.path, file.originalname, projectArchiveMimeType(), title, notes, software);
+      const record = addProjectArchive(objectId, file.path, file.originalname, projectArchiveMimeType(file.originalname), title, notes, software);
       res.apiSuccess(record);
     } catch (err) {
       try { fs.unlinkSync(file.path); } catch { /* ignore */ }
@@ -3578,11 +4016,63 @@ router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, edi
       }
     }
 
+    // Only an overwrite can leave an old picture with a frame that no longer matches its FITS header.
+    if (overwriteRaw && req.body?.geometryChanged === '1') markGeometryEdited(overwriteRaw);
     invalidateAllImagesCache();
     res.apiSuccess({ objectId, date, filename });
   } catch (err) {
     try { fs.unlinkSync(file.path); } catch { /* ignore */ }
     res.apiError(500, 'SAVE_FAILED', err instanceof Error ? err.message : 'Save failed');
+  }
+});
+
+// ─── Replace a picture in place (viewer Rotate / Edit) ────────────────────────
+// Rewrites the pixels of one existing JPEG/PNG. The first original is kept under DATA_DIR/original-backups.
+router.post('/file/replace', requireAdmin, editedImageUpload.single('image'), (req: Request, res: Response) => {
+  const staged = req.file;
+  const cleanup = () => { if (staged) { try { fs.unlinkSync(staged.path); } catch { /* ignore */ } } };
+  const filePath = queryString(req.query.path);
+  if (!staged) { res.apiError(400, 'NO_IMAGE', 'No image file provided'); return; }
+  if (!filePath) { cleanup(); res.apiError(400, 'MISSING_PATH', 'Query parameter "path" is required'); return; }
+  try {
+    const result = replaceLibraryFile(filePath, staged.path, { confirmLinked: queryString(req.query.confirmLinked) === '1' });
+    // The viewer's Rotate and Edit both come here without saying what changed, so assume the frame did.
+    markGeometryEdited(filePath);
+    invalidateAllImagesCache();
+    res.apiSuccess({ replaced: true, ...result });
+  } catch (err) {
+    if (err instanceof ReplaceFileError) { res.apiError(err.status, err.code, err.message); return; }
+    res.apiError(500, 'REPLACE_FAILED', err instanceof Error ? err.message : 'Replace failed');
+  } finally {
+    cleanup();
+  }
+});
+
+// The first original of a picture that was rotated or edited. Kept under DATA_DIR/original-backups, never in the
+// library, so it is not scanned, stacked or counted. 404 NO_ORIGINAL when the picture was never replaced (HEAD works
+// as an existence check). Deliberately NOT under /file/…: that prefix is on the unauthenticated read bypass in
+// middleware/auth.ts (for <img> tags), and this must keep requiring a login.
+router.get('/file-original', (req: Request, res: Response) => {
+  const filePath = queryString(req.query.path);
+  if (!filePath) { res.apiError(400, 'MISSING_PATH', 'Query parameter "path" is required'); return; }
+  const backup = originalBackupFile(filePath);
+  if (!backup) { res.apiError(404, 'NO_ORIGINAL', 'There is no saved original for this picture'); return; }
+  res.set('Cache-Control', 'no-store');
+  res.type(path.extname(backup));
+  res.sendFile(backup);
+});
+
+// Puts the kept original back over the picture and forgets the backup.
+router.post('/file/restore-original', requireAdmin, (req: Request, res: Response) => {
+  const filePath = queryString(req.query.path);
+  if (!filePath) { res.apiError(400, 'MISSING_PATH', 'Query parameter "path" is required'); return; }
+  try {
+    const result = restoreOriginalBackup(filePath, { confirmLinked: queryString(req.query.confirmLinked) === '1' });
+    invalidateAllImagesCache();
+    res.apiSuccess({ restored: true, ...result });
+  } catch (err) {
+    if (err instanceof ReplaceFileError) { res.apiError(err.status, err.code, err.message); return; }
+    res.apiError(500, 'RESTORE_FAILED', err instanceof Error ? err.message : 'Restore failed');
   }
 });
 

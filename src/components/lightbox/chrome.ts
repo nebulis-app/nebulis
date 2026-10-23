@@ -28,7 +28,7 @@ export const LB_ICON_BTN =
 
 /** Text button inside a group, e.g. "Fit", "1:1", "FITS Header". */
 export const LB_TEXT_BTN =
-  'inline-flex h-8 items-center justify-center rounded-full px-2.5 text-[11.5px] font-medium '
+  'inline-flex h-8 items-center justify-center rounded-full px-2.5 text-[0.7188rem] font-medium '
   + 'whitespace-nowrap text-white/60 outline-none transition hover:bg-white/15 hover:text-white '
   + 'focus-visible:ring-2 focus-visible:ring-white/60 disabled:pointer-events-none disabled:opacity-25';
 

@@ -98,6 +98,53 @@
     "changeStatus": "Cambiar estado de procesamiento",
     "status": "Estado de procesamiento"
   },
+  "mosaic": {
+    "layout": "Vista",
+    "grid": "Cuadrícula",
+    "mosaic": "Mosaico",
+    "names": "Mostrar nombres",
+    "zoomIn": "Acercar",
+    "zoomOut": "Alejar",
+    "fit": "Ajustar a la ventana",
+    "objectsLabel": "Mosaico de tus objetos",
+    "picturesLabel": "Mosaico de tus imágenes",
+    "processed_one": "{{count}} procesada",
+    "processed_other": "{{count}} procesadas",
+    "stacks_one": "{{count}} apilado",
+    "stacks_other": "{{count}} apilados",
+    "subs_one": "{{count}} sub",
+    "subs_other": "{{count}} subs",
+    "nothing": "Aún no hay capturas",
+    "estimated": "No se pudieron cargar los totales de trabajo, así que los tamaños se basan en el número de noches.",
+    "showing": "Mostrando {{shown}} de {{total}} imágenes. Primero van los favoritos y las imágenes procesadas.",
+    "hint": "Desplaza o pellizca para hacer zoom, arrastra para moverte.",
+    "hiddenNoPicture_one": "No se muestra {{count}} objeto sin imagen propia.",
+    "hiddenNoPicture_other": "No se muestran {{count}} objetos sin imagen propia.",
+    "fullscreen": "Pantalla completa",
+    "exitFullscreen": "Salir de pantalla completa",
+    "share": {
+      "open": "Compartir imagen",
+      "title": "Compartir imagen",
+      "close": "Cerrar",
+      "previewAlt": "Vista previa del mosaico",
+      "format": "Formato",
+      "formats": {
+        "shown": "Como se ve",
+        "wide": "Panorámico 4K",
+        "square": "Cuadrado",
+        "story": "Historia"
+      },
+      "jpeg": "Guardar como JPG en lugar de PNG",
+      "download": "Descargar",
+      "rendering": "Creando…",
+      "copy": "Copiar imagen",
+      "share": "Compartir…",
+      "downloaded": "Imagen guardada.",
+      "copied": "Copiado al portapapeles.",
+      "shareFallback": "Aquí no se pueden compartir archivos, así que se descargó la imagen.",
+      "failed": "No se pudo crear la imagen. Prueba con un formato más pequeño."
+    }
+  },
   "gallery": {
     "searchPlaceholder": "Buscar objetos, constelaciones...",
     "uploadFiles": "Subir archivos",
@@ -267,7 +314,13 @@
       "deletedTooltip": "Ver elementos eliminados que puedes restaurar para permitir su resincronización",
       "count_one": "{{count}} observación",
       "count_other": "{{count}} observaciones",
-      "empty": "Aún no se ha capturado nada para este objeto."
+      "empty": "Aún no se ha capturado nada para este objeto.",
+      "noRig": "Sin telescopio",
+      "groupBy": "Agrupar noches",
+      "groupBy_year": "Por año",
+      "groupBy_rig": "Por equipo",
+      "rigSummary_one": "{{count}} noche · {{integration}}",
+      "rigSummary_other": "{{count}} noches · {{integration}}"
     },
     "observationCard": {
       "noPreview": "Sin vista previa",
@@ -343,6 +396,34 @@
       "dropHint": "Suelta tu imagen aquí o haz clic para buscarla",
       "formatsHint": "JPG, PNG, TIFF, FITS, XISF, PSD, RAW. Hasta 2 GB."
     },
+    "integrationSection": {
+      "heading": "Integración",
+      "noneYet": "Nada todavía",
+      "summary_one": "{{total}} · {{count}} filtro",
+      "summary_other": "{{total}} · {{count}} filtros",
+      "emptyHint": "Aún no hay subtomas. Importa o vincula tus lights para ver la integración por filtro, o fija objetivos para planificar una campaña.",
+      "editGoals": "Objetivos",
+      "editHint": "Horas deseadas por filtro. Déjalo vacío o en 0 para quitar un objetivo.",
+      "noFiltersYet": "Aún no hay filtros. Añade uno para fijar un objetivo antes de fotografiar.",
+      "noFilter": "Sin filtro",
+      "frames_one": "{{count}} toma",
+      "frames_other": "{{count}} tomas",
+      "remaining": "faltan {{duration}} · {{pct}} %",
+      "goalReached": "Objetivo alcanzado",
+      "unknownNight": "Noche desconocida",
+      "unreadable_one": "{{count}} subtoma no se pudo leer y no se cuenta.",
+      "unreadable_other": "{{count}} subtomas no se pudieron leer y no se cuentan.",
+      "filterPlaceholder": "Nombre del filtro",
+      "goalHoursFor": "Objetivo en horas para {{filter}}",
+      "hoursUnit": "h",
+      "removeRow": "Quitar",
+      "addFilter": "Añadir filtro",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "invalidHours": "Introduce un número de horas entre 0 y 1000.",
+      "missingFilterName": "Ponle un nombre al nuevo filtro.",
+      "saveFailed": "No se pudieron guardar los objetivos."
+    },
     "projectArchivesSection": {
       "heading": "Proyectos de procesado",
       "countArchived_one": "{{count}} archivado",
@@ -379,10 +460,14 @@
       "progressStatus": "{{pct}}% · {{loaded}} de {{total}}"
     },
     "hero": {
+      "layoutSwitch": "Vista de la página del objeto",
+      "layoutByNight": "Clásica",
+      "layoutAllPhotos": "Combinada",
       "breadcrumb": "Ruta de navegación",
       "library": "Biblioteca",
       "chooseImageTitle": "Elige la imagen que representa a este objeto",
       "changeImage": "Cambiar imagen",
+      "readMore": "Más",
       "noImageYet": "Aún no hay imagen",
       "chooseImage": "Elegir una imagen",
       "removeFromFavorites": "Quitar de favoritos",
@@ -414,7 +499,9 @@
       "editObjectDetails": "Editar detalles del objeto",
       "reclassifyObject": "Reclasificar objeto",
       "reclassifyObjectTitle": "Mover todo lo de aquí a otro objeto del catálogo",
-      "deleteObject": "Eliminar objeto"
+      "deleteObject": "Eliminar objeto",
+      "stackingExport": "Exportar para apilar",
+      "stackingExportTitle": "Lights conservados + darks, flats y bias correspondientes, para WBPP o Siril"
     }
   },
   "galleryPage": {
@@ -499,6 +586,7 @@
   },
   "imageCard": {
     "processedImage": "Imagen procesada",
+    "editedImage": "Editada en Nebulis",
     "removeFromFavorites": "Quitar de favoritos",
     "addToFavorites": "Añadir a favoritos",
     "unknownDate": "Fecha desconocida"
@@ -677,7 +765,8 @@
     "cancellingProgress": "Cancelando…",
     "importingProgress": "Importando...",
     "progressOf": "{{done}} de {{total}}",
-    "progressObject": " · objeto {{current}} de {{total}}"
+    "progressObject": " · objeto {{current}} de {{total}}",
+    "finishingProgress": "Terminando. Añadiendo detalles del catálogo y preparando miniaturas..."
   },
   "objectReviewCard": {
     "sourceFits": "de la cabecera FITS",
@@ -788,9 +877,11 @@
       "emptyLayerLabel": "(vacío)"
     },
     "textPanel": {
+      "addText": "Añadir texto",
+      "defaultText": "Texto",
+      "noSelection": "Selecciona un texto en la imagen o en la lista para cambiarlo, o añade texto nuevo.",
       "content": "Contenido",
       "contentPlaceholder": "Tu texto…",
-      "clickToPlaceHint": "Haz clic en la imagen para colocar el texto",
       "font": "Fuente",
       "size": "Tamaño",
       "sizeValue": "{{size}}px",
@@ -821,7 +912,8 @@
       "hint": "Arrastra para dibujar un área de recorte. Arrastra los bordes o las esquinas para redimensionarla. Arrastra dentro para moverla. Pulsa Intro o haz clic en Aplicar para confirmar.",
       "applyCrop": "Aplicar recorte",
       "cropApplied": "Recorte aplicado",
-      "resetCrop": "Restablecer recorte"
+      "resetCrop": "Restablecer recorte",
+      "cancel": "Cancelar"
     },
     "adjustPanel": {
       "brightness": "Brillo",
@@ -833,10 +925,15 @@
       "flip": "Voltear",
       "horizontal": "Horizontal",
       "vertical": "Vertical",
-      "resetAll": "Restablecer todo"
+      "resetAll": "Restablecer todo",
+      "auto": "Automático",
+      "autoHint": "Ajustar brillo, contraste y saturación según la imagen",
+      "compare": "Mantén para comparar",
+      "compareHint": "Mantén pulsado para ver el original sin ajustes (o mantén \\)"
     },
     "save": {
       "title": "Título",
+      "titleHint": "Se usa para una versión nueva. Guardar mantiene el nombre actual.",
       "saving": "Guardando…",
       "save": "Guardar",
       "saveAsNewVersion": "Guardar como nueva versión",
@@ -900,10 +997,18 @@
     "deleteImageMessage": "Esto eliminará permanentemente la imagen procesada. Esto no se puede deshacer.",
     "deleting": "Eliminando…",
     "deleteFailed": "No se pudo eliminar",
-    "deleteLinkedFileMessage": "{{name}} está en una carpeta vinculada. Se eliminará de tu disco y Nebulis no tiene otra copia. Esta acción no se puede deshacer."
+    "deleteLinkedFileMessage": "{{name}} está en una carpeta vinculada. Se eliminará de tu disco y Nebulis no tiene otra copia. Esta acción no se puede deshacer.",
+    "keepFrame": "Conservar esta imagen (K)",
+    "rejectFrame": "Rechazar esta imagen (X)"
   },
   "galleryImageModal": {
     "title": "Elegir imagen de galería",
+    "otherHeading": "Otras",
+    "otherHint": "Para carpetas y todo lo que no tiene imagen del cielo. Los colores siguen tu tema.",
+    "art_folder": "Carpeta",
+    "art_drive": "Unidad",
+    "art_telescope": "Telescopio",
+    "art_starfield": "Campo estelar",
     "referenceImage": "Imagen de referencia",
     "cachedCount_one": "{{count}} en caché",
     "cachedCount_other": "{{count}} en caché",
@@ -977,9 +1082,7 @@
     "nextImageAria": "Imagen siguiente",
     "fullscreenTitle": "Ver a pantalla completa",
     "fullscreenAria": "Ver a pantalla completa",
-    "exitFullscreenAria": "Salir de pantalla completa",
-    "rotateTitle": "Girar 90°",
-    "rotateAria": "Girar 90°"
+    "exitFullscreenAria": "Salir de pantalla completa"
   },
   "compareSessionsModal": {
     "title": "Comparar sesiones",
@@ -1088,7 +1191,10 @@
     "titleLink": "Vincular una carpeta",
     "reviewLink": "Revisar",
     "step3NameLink": "Revisar y vincular",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "opticalTrain": "Tren óptico",
+    "opticalTrainAuto": "Detectar por la focal de los FITS",
+    "opticalTrainHint": "Con qué configuración de este telescopio se tomaron estos archivos, por ejemplo con el reductor. En automático se usa la focal registrada en los FITS de cada noche."
   },
   "linkFolderWizard": {
     "modalTitle": "Vincular una carpeta",
@@ -1155,5 +1261,206 @@
     "label_one": "Eliminar también {{count}} archivo original ({{size}}) del disco",
     "label_other": "Eliminar también {{count}} archivos originales ({{size}}) del disco",
     "help": "Sin marcar, solo se quita de Nebulis y tus archivos siguen en {{folders}}. Marcado, los archivos se eliminan de tu disco y Nebulis no tiene otra copia, así que no se puede deshacer."
+  },
+  "objectMedia": {
+    "nights": {
+      "col": {
+        "night": "Noche",
+        "pictures": "Imágenes",
+        "frames": "Fotogramas",
+        "integration": "Integración",
+        "quality": "Calidad"
+      },
+      "pictures_one": "{{count}} imagen",
+      "pictures_other": "{{count}} imágenes",
+      "open": "Abrir la noche"
+    },
+    "subNights": {
+      "open": "Abrir fotogramas",
+      "back": "Todas las noches",
+      "empty": "Aún no hay subtomas.",
+      "emptyHint": "Usa «Sincronizar todas las subtomas» en el menú … de la parte superior de la página para traerlas desde tu telescopio."
+    },
+    "featured": {
+      "title": "Tus imágenes procesadas",
+      "seeAll": "Ver las {{count}}"
+    },
+    "heading": "Medios de {{name}}",
+    "tabsLabel": "Tipo de medio",
+    "tab": {
+      "all": "Todo",
+      "processed": "Procesadas",
+      "telescope": "Telescopio",
+      "nights": "Noches",
+      "sub": "Subtomas",
+      "project": "Proyectos",
+      "video": "Vídeos"
+    },
+    "kind": {
+      "processed": "Imagen procesada",
+      "telescope": "Imagen del telescopio",
+      "sub": "Subtoma",
+      "project": "Proyecto",
+      "video": "Vídeo"
+    },
+    "groupBy": {
+      "night": "Noche",
+      "telescope": "Telescopio",
+      "filter": "Filtro",
+      "type": "Tipo",
+      "none": "Ninguno"
+    },
+    "sort": {
+      "newest": "Más recientes primero",
+      "oldest": "Más antiguas primero",
+      "time": "Hora de captura"
+    },
+    "size": {
+      "small": "S",
+      "medium": "M",
+      "large": "L"
+    },
+    "sizeName": {
+      "small": "Miniaturas pequeñas",
+      "medium": "Miniaturas medianas",
+      "large": "Miniaturas grandes"
+    },
+    "toolbar": {
+      "view": "Vista",
+      "groupBy": "Agrupar por",
+      "sort": "Ordenar",
+      "filters": "Filtros",
+      "tileSize": "Tamaño de miniatura",
+      "reviewFrames": "Revisar subtomas",
+      "addImage": "Añadir imagen"
+    },
+    "filters": {
+      "telescope": "Telescopio",
+      "lightFilter": "Filtro",
+      "format": "Formato",
+      "night": "Noche",
+      "favoritesOnly": "Solo favoritas",
+      "favorites": "Favoritas",
+      "clear": "Quitar filtros",
+      "remove": "Quitar el filtro {{name}}"
+    },
+    "group": {
+      "hideFits": "Ocultar los archivos FITS",
+      "showFits": "Mostrar los archivos FITS",
+      "hideFitsShort": "Ocultar",
+      "showFitsShort": "Mostrar",
+      "fitsFiles": "Archivos FITS",
+      "across": "Varias noches",
+      "projects": "Proyectos",
+      "all": "Todas las imágenes",
+      "noNight": "Sin noche",
+      "noTelescope": "Telescopio desconocido",
+      "noFilter": "Sin filtro",
+      "openNight": "Noche",
+      "showAllSubs": "Mostrar todas",
+      "frames_one": "{{count}} toma",
+      "frames_other": "{{count}} tomas",
+      "framesExposure": "{{count}} × {{exposure}}",
+      "integration": "{{time}} de integración"
+    },
+    "tile": {
+      "markUnprocessed": "Marcar como no procesada",
+      "markUnprocessedTitle": "¿Marcar como no procesada?",
+      "markUnprocessedMessage": "La imagen pasa de Procesadas de vuelta a Telescopio. No se elimina nada.",
+      "markUnprocessedFailed": "No se pudo marcar como no procesada",
+      "markProcessed": "Marcar como procesada",
+      "markProcessedTitle": "¿Marcar como procesada?",
+      "markProcessedMessage": "La imagen pasa de Telescopio a Procesadas. No se elimina nada.",
+      "markProcessedFailed": "No se pudo marcar como procesada",
+      "favorite": "Favorita",
+      "unfavorite": "Quitar de favoritas",
+      "download": "Descargar"
+    },
+    "loading": "Cargando medios",
+    "loadingMore": "Cargando más",
+    "loadMore": "Cargar más",
+    "error": "No se pudieron cargar los medios.",
+    "retry": "Reintentar",
+    "noMatch": "Ninguna imagen coincide con estos filtros.",
+    "empty": {
+      "title": "Aún no hay imágenes",
+      "hint": "Añade una observación o sincroniza desde tu telescopio y tus imágenes aparecerán aquí.",
+      "add": "Añadir observación"
+    },
+    "deletedItems_one": "{{count}} elemento eliminado",
+    "deletedItems_other": "{{count}} elementos eliminados",
+    "analyzeFrames": "Analizar fotogramas",
+    "analyzeFramesTitle": "Medir cada fotograma en bruto de una noche y marcar nubes, estelas, desenfoque, trazos y ruido",
+    "subsView": {
+      "listTitle": "Noche a noche, con la calidad medida de los fotogramas",
+      "gridTitle": "Cada fotograma como miniatura",
+      "label": "Diseño de subfotogramas",
+      "grid": "Cuadrícula",
+      "list": "Lista"
+    }
+  },
+  "annotate": {
+    "all": "Todos",
+    "noneShown": "Ninguno",
+    "target": "Objetivo",
+    "toggle": "Nombrar los objetos de esta imagen",
+    "toggleHide": "Ocultar nombres de objetos",
+    "title": "Nombres de objetos",
+    "loading": "Buscando objetos...",
+    "quality": {
+      "solved": "Resuelta (plate solving)",
+      "header": "Posición de los datos FITS",
+      "approximate": "Aproximada",
+      "unavailable": "No disponible"
+    },
+    "zoomedToast": "Los círculos son estimaciones. Aleja para un mejor ajuste u obtén posiciones exactas.",
+    "zoomedHint": "Las posiciones estimadas pueden desviarse unos minutos de arco, algo que se nota al acercar. Aleja hasta ver todo el encuadre u obtén posiciones exactas.",
+    "approximateHelp": "Colocados según la posición del objetivo y el campo de visión de tu telescopio. Los círculos pueden quedar desviados si el encuadre estaba girado, descentrado o formado a partir de un mosaico.",
+    "foundCount_one": "{{count}} objeto en el encuadre",
+    "foundCount_other": "{{count}} objetos en el encuadre",
+    "none": "No se encontraron objetos del catálogo en este encuadre.",
+    "reason": {
+      "edited": "Esta imagen se recortó o giró después de capturarla, por lo que su posición registrada ya no encaja. La resolución astrométrica aún puede situarla.",
+      "mosaic": "Las imágenes en mosaico abarcan más cielo que un solo encuadre, así que no se puede estimar su posición. El plate solving sí puede situarlas.",
+      "no-position": "Nebulis no sabe hacia dónde apunta esta imagen, así que no puede estimar dónde caen los objetos.",
+      "no-sky": "Esta imagen no tiene estrellas con las que comparar, como el Sol, la Luna, un planeta, un paisaje o estelas estelares, así que no hay nada que anotar.",
+      "unknown-field": "Se desconoce el campo de visión de este telescopio, así que no se pueden estimar las posiciones."
+    },
+    "solving": "Afinando con plate solving...",
+    "solveFailed": "El plate solving no encontró coincidencia, así que se muestra la estimación.",
+    "retry": "Reintentar",
+    "install": {
+      "cta": "Obtener posiciones exactas",
+      "detail": "Descarga una sola vez el solucionador ASTAP y una base de datos de estrellas de 100 MB.",
+      "downloading": "Descargando el solucionador y la base de datos de estrellas...",
+      "extracting": "Descomprimiendo...",
+      "failed": "No se pudo instalar el solucionador: {{error}}"
+    },
+    "info": {
+      "open": "Detalles de {{name}}",
+      "close": "Cerrar detalles",
+      "loading": "Cargando detalles...",
+      "noDescription": "Aún no hay una descripción disponible para este objeto.",
+      "alsoKnownAs": "También conocido como",
+      "magnitude": "Magnitud {{value}}",
+      "size": "Tamaño {{value}}",
+      "distance": "A {{value}}",
+      "openInNebulis": "Abrir en Nebulis",
+      "wikipedia": "Wikipedia",
+      "simbad": "SIMBAD",
+      "beyondFrame": "Se extiende más allá de este encuadre",
+      "target": "Objetivo · esta imagen está archivada bajo él",
+      "morePhotos": "Más fotos"
+    },
+    "export": {
+      "downloadTitle": "Guardar esta imagen",
+      "shareTitle": "Compartir esta imagen",
+      "question": "Se muestran los nombres de los objetos. ¿Quieres incluirlos en la imagen que guardas?",
+      "withNames": "Con los nombres dibujados",
+      "withNamesHint": "Una copia JPEG con los círculos y nombres incorporados.",
+      "original": "Archivo original",
+      "originalHint": "Tal como se capturó, sin los nombres.",
+      "failed": "No se pudo crear la imagen anotada. Prueba con el original."
+    }
   }
 }

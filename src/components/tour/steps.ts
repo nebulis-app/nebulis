@@ -18,6 +18,7 @@ export type TourStepId =
   | 'sync'
   | 'planner'
   | 'processed'
+  | 'explore'
   | 'catalogs'
   | 'gallery'
   | 'observations'
@@ -73,7 +74,7 @@ export const TOUR_STEPS: TourStep[] = [
     icon: 'library',
     title: 'Your library, front and center',
     body: 'This is home base. Every object you have imaged lives here as a card with its best picture, the number of nights you captured it, and the telescope it came from.',
-    hint: 'Use search, the favorites chip, and the type filters to find anything in seconds.',
+    hint: 'Search, the Filters and View buttons, and the Layout control (grid or Mosaic) help you find anything in seconds.',
   },
   {
     id: 'telescopes',
@@ -101,8 +102,8 @@ export const TOUR_STEPS: TourStep[] = [
     placement: { side: 'bottom', align: 'start' },
     icon: 'crosshair',
     title: 'Plan the night before it starts',
-    body: "The Planner answers 'is tonight worth going out?' and then lets you schedule what to shoot when. Pick a night, drag targets into the timeline, and look for the blocks Nebulis marks green.",
-    hint: 'Green means fully visible, amber partly visible, and red blocked by your own sky.',
+    body: "The Planner answers 'is tonight worth going out?' and then lets you schedule what to shoot when. Pick a night, drag targets into the timeline, or let Plan my night fill it using the hourly forecast.",
+    hint: 'Green means fully visible, amber partly visible, and red blocked by your own sky or the Moon.',
   },
   {
     id: 'processed',
@@ -110,18 +111,28 @@ export const TOUR_STEPS: TourStep[] = [
     placement: { side: 'top', align: 'center' },
     icon: 'catalogs',
     title: 'Your finished images',
-    body: "This is where your finished work lands. Open any object to see its 'Processed Images' rollup above the session list, or an individual observation to upload a new one with 'Add processed image'.",
-    hint: 'Any processed image can be starred to become the object\'s cover picture in the library.',
+    body: 'This is where your finished work lands. Open any object and its page gathers every picture of it, with your processed images shown large at the top, then tabs for sub-frames, nights and projects.',
+    hint: 'Open a night to upload a processed image, and star any of them to make it the object\'s cover picture in the library.',
     grabFirstObject: true,
+  },
+  {
+    id: 'explore',
+    anchorKey: 'explore',
+    route: '/explore',
+    placement: { side: 'bottom', align: 'start' },
+    icon: 'compass',
+    title: 'Discover what to shoot next',
+    body: "Explore finds your next target. Search any name or catalog number, or browse by kind. Each object says whether you can see it from your site tonight and whether it fits your telescope's frame.",
+    hint: 'Add anything you like to your wishlist, or plan it for tonight in one tap.',
   },
   {
     id: 'catalogs',
     anchorKey: 'catalogs',
     route: '/catalogs',
     placement: { side: 'bottom', align: 'start' },
-    icon: 'compass',
-    title: 'Discover what to shoot next',
-    body: 'Catalogs is the observing atlas: Messier, NGC, IC, Sharpless and Caldwell, each with images, positions, sizes and descriptions. Search a target, open it, and tap Plan Tonight.',
+    icon: 'catalogs',
+    title: 'Track your progress',
+    body: 'Catalogs is the observing atlas: Messier, NGC, IC, Sharpless and Caldwell, each with a progress board of what you have imaged and what is left. Open a board, tap an object for its details, or open My Catalog for a wall of your own pictures.',
   },
   {
     id: 'gallery',
@@ -148,7 +159,7 @@ export const TOUR_STEPS: TourStep[] = [
     placement: { side: 'right', align: 'center' },
     icon: 'settings',
     title: 'Make it yours',
-    body: 'Settings is deeper than the telescope page: observing site, storage location, processing library, catalogs, connected phones and TVs, and a full system log. Poke around when you are ready.',
+    body: 'Settings is deeper than the telescope page: observing sites, storage location, library options, alerts, connected phones and TVs, and a full system log. The search box at the top finds any setting by name.',
   },
   {
     id: 'done',
@@ -156,7 +167,7 @@ export const TOUR_STEPS: TourStep[] = [
     placement: { side: 'bottom', align: 'end' },
     icon: 'sparkles',
     title: 'You are ready',
-    body: 'That is the whole loop: connect one telescope, let the imports run, plan clear nights in the Planner, and enjoy the finished images in the Gallery.',
+    body: 'That is the whole loop: connect one telescope, let the imports run, find a target in Explore, plan clear nights in the Planner, and enjoy the finished images in the Gallery.',
     hint: 'Lost later? The Help page has written guides with screenshots, and this tour is always one click away.',
   },
 ];

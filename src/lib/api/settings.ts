@@ -49,3 +49,35 @@ export async function downloadDebugLog(): Promise<void> {
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 100);
 }
+
+// ─── Personal API keys (PixInsight and other tools) ─────────────────────────
+
+export interface UserApiKey {
+  id: string;
+  userId: string;
+  /** First characters of the key, safe to show. The full key is only returned once, at creation. */
+  keyPrefix: string;
+  name: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+  /** Present in the admin "all keys" listing; null when the owner no longer exists. */
+  ownerUsername?: string | null;
+  ownerDisplayName?: string | null;
+}
+
+export interface CreatedApiKey {
+  id: string;
+  /** The secret. Shown once; the server keeps only its hash. */
+  apiKey: string;
+  keyPrefix: string;
+  name: string;
+}
+
+export const getApiKeys = (scope: 'mine' | 'all' = 'mine') =>
+  fetchJSON<{ keys: UserApiKey[]; max: number }>(`/settings/api-keys${scope === 'all' ? '?scope=all' : ''}`);
+
+export const createApiKey = (name: string) =>
+  fetchJSON<CreatedApiKey>('/settings/api-keys', { method: 'POST', body: JSON.stringify({ name }) });
+
+export const revokeApiKeyById = (id: string) =>
+  fetchJSON<{ revoked: boolean; id: string }>(`/settings/api-keys/${encodeURIComponent(id)}`, { method: 'DELETE' });

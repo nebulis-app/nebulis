@@ -4,6 +4,9 @@
 @source "../index.html";
 
 @theme {
+  /* Between xl (1280px) and 2xl (1536px): where a three-column object hero first fits (see ObjectHero). */
+  --breakpoint-hero: 90rem;
+
   /* Color palette - Deep space inspired, warm and professional */
   --color-slate-950: #0a0e17;
   --color-slate-900: #0f1524;
@@ -77,6 +80,21 @@ body {
 html {
   transition: background-color 0.3s ease, color 0.3s ease;
   overflow-x: hidden;
+  /* Always reserve the scrollbar's width. Without it, a page that is just
+     tall enough to scroll (or a modal that locks body scroll) adds or removes
+     the bar and shifts the whole layout sideways. */
+  scrollbar-gutter: stable;
+  /* --ui-scale is the per-device "Interface size" setting (hooks/useUiScale). */
+  font-size: calc(16px * var(--ui-scale, 1));
+}
+
+/* Large displays: grow the rem base (16px at 1920px wide, ~+1px per 500px,
+   capped at 20px). Tailwind spacing/text and the rem-based page width cap
+   scale with it, so the UI isn't a small island on a 4K/5K screen. */
+@media (min-width: 1920px) {
+  html {
+    font-size: calc(clamp(16px, calc(16px + (100vw - 1920px) / 500), 20px) * var(--ui-scale, 1));
+  }
 }
 
 /* ─── Light theme ─────────────────────────────────────────────── */
@@ -833,4 +851,113 @@ html.space::before {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Mosaic wall (Library and Gallery). Tiles sit in world units inside one transformed layer, so everything that
+   must stay a fixed size on screen (outline, label text, shadow) divides by --mosaic-s, the layer's scale. */
+.mosaic-stage {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  background:
+    radial-gradient(1px 1px at 12% 22%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1px 1px at 78% 14%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1px 1px at 41% 71%, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1px 1px at 91% 83%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 5% 90%, rgba(255, 255, 255, 0.35), transparent),
+    radial-gradient(ellipse at 50% -10%, #101b30 0%, #060a12 70%);
+}
+.mosaic-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.mosaic-tile {
+  position: absolute;
+  display: block;
+  transform-origin: center;
+  transition: transform 0.24s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.2s ease;
+  outline: none;
+}
+.mosaic-tile > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #0b1220;
+}
+.mosaic-tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: calc(1.4px / var(--mosaic-s, 1)) solid var(--mosaic-line, rgba(255, 255, 255, 0.95));
+  pointer-events: none;
+}
+.mosaic-tile:focus-visible::after {
+  border-width: calc(3px / var(--mosaic-s, 1));
+  border-color: var(--color-accent-400);
+}
+.mosaic-layer[data-hovering='true'] .mosaic-tile:not([data-hot='true']) {
+  opacity: 0.6;
+}
+.mosaic-tile[data-hot='true'] {
+  z-index: 5;
+  box-shadow: 0 calc(12px / var(--mosaic-s, 1)) calc(36px / var(--mosaic-s, 1)) rgba(0, 0, 0, 0.65);
+}
+.mosaic-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: calc(14px / var(--mosaic-s, 1)) calc(6px / var(--mosaic-s, 1)) calc(4px / var(--mosaic-s, 1));
+  font-size: calc(11px / var(--mosaic-s, 1));
+  line-height: 1.2;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  pointer-events: none;
+}
+
+
+/* Planner target rows: star and info float in beside the "+" while the row is hovered or focused, so the name keeps the
+   room. Touch screens have no hover, so there they stay in the row. */
+@media (hover: hover) {
+  .lib-row-secondary {
+    position: absolute;
+    right: 100%;
+    margin-right: 0.25rem;
+    padding: 0.125rem 0.25rem;
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  .group:hover .lib-row-secondary,
+  .lib-row-secondary:focus-within {
+    opacity: 1;
+  }
+}
+
+/* Settings search: briefly marks the row a search result jumped to. */
+@keyframes settings-flash {
+  0%, 60% { background-color: color-mix(in srgb, var(--color-accent-500) 22%, transparent); }
+  100% { background-color: transparent; }
+}
+.settings-flash {
+  animation: settings-flash 2s ease-out;
+}
+
+/* The image editor opens over the viewer it was launched from, so it fades in rather than cutting. */
+@keyframes image-editor-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.image-editor-fade-in {
+  animation: image-editor-fade-in 160ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .image-editor-fade-in { animation: none; }
 }

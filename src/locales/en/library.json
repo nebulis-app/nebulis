@@ -98,6 +98,53 @@
     "changeStatus": "Change processing status",
     "status": "Processing status"
   },
+  "mosaic": {
+    "layout": "Layout",
+    "grid": "Grid",
+    "mosaic": "Mosaic",
+    "names": "Show names",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fit": "Fit to window",
+    "objectsLabel": "Mosaic of your objects",
+    "picturesLabel": "Mosaic of your pictures",
+    "processed_one": "{{count}} processed",
+    "processed_other": "{{count}} processed",
+    "stacks_one": "{{count}} stack",
+    "stacks_other": "{{count}} stacks",
+    "subs_one": "{{count}} sub",
+    "subs_other": "{{count}} subs",
+    "nothing": "Nothing captured yet",
+    "estimated": "Work totals could not be loaded, so sizes come from the number of nights.",
+    "showing": "Showing {{shown}} of {{total}} pictures. Favorites and processed pictures come first.",
+    "hint": "Scroll or pinch to zoom, drag to pan.",
+    "hiddenNoPicture_one": "{{count}} object without a picture of its own is not shown.",
+    "hiddenNoPicture_other": "{{count}} objects without a picture of their own are not shown.",
+    "fullscreen": "Full screen",
+    "exitFullscreen": "Exit full screen",
+    "share": {
+      "open": "Share image",
+      "title": "Share image",
+      "close": "Close",
+      "previewAlt": "Mosaic preview",
+      "format": "Format",
+      "formats": {
+        "shown": "As shown",
+        "wide": "Wide 4K",
+        "square": "Square",
+        "story": "Story"
+      },
+      "jpeg": "Save as JPG instead of PNG",
+      "download": "Download",
+      "rendering": "Rendering…",
+      "copy": "Copy image",
+      "share": "Share…",
+      "downloaded": "Image saved.",
+      "copied": "Copied to the clipboard.",
+      "shareFallback": "Sharing files is not available here, so the image was downloaded.",
+      "failed": "Could not create the image. Try a smaller format."
+    }
+  },
   "gallery": {
     "searchPlaceholder": "Search objects, constellations...",
     "uploadFiles": "Upload Files",
@@ -124,7 +171,12 @@
     "uploadObservation": "Upload Observation",
     "configureSettings": "Configure Settings",
     "gridSize": "Grid size",
-    "groupOptions": {"none": "No grouping", "catalog": "By catalog", "type": "By type", "constellation": "By constellation"},
+    "groupOptions": {
+      "none": "No grouping",
+      "catalog": "By catalog",
+      "type": "By type",
+      "constellation": "By constellation"
+    },
     "sortOptions": {
       "catalogAsc": "Catalog number (M1, M2…)",
       "nameAsc": "Name (A–Z)",
@@ -262,7 +314,13 @@
       "deletedTooltip": "See deleted items you can restore to allow re-syncing",
       "count_one": "{{count}} observation",
       "count_other": "{{count}} observations",
-      "empty": "Nothing captured for this object yet."
+      "empty": "Nothing captured for this object yet.",
+      "noRig": "No telescope",
+      "groupBy": "Group nights by",
+      "groupBy_year": "By year",
+      "groupBy_rig": "By rig",
+      "rigSummary_one": "{{count}} night · {{integration}}",
+      "rigSummary_other": "{{count}} nights · {{integration}}"
     },
     "observationCard": {
       "noPreview": "No preview",
@@ -338,6 +396,34 @@
       "dropHint": "Drop your image here or click to browse",
       "formatsHint": "JPG, PNG, TIFF, FITS, XISF, PSD, RAW. Up to 2 GB."
     },
+    "integrationSection": {
+      "heading": "Integration",
+      "noneYet": "None yet",
+      "summary_one": "{{total}} · {{count}} filter",
+      "summary_other": "{{total}} · {{count}} filters",
+      "emptyHint": "No sub-frames yet. Import or link your light frames to see integration per filter, or set goals to plan a campaign.",
+      "editGoals": "Goals",
+      "editHint": "Hours wanted per filter. Leave empty or 0 to remove a goal.",
+      "noFiltersYet": "No filters yet. Add one to set a goal before shooting.",
+      "noFilter": "No filter",
+      "frames_one": "{{count}} frame",
+      "frames_other": "{{count}} frames",
+      "remaining": "{{duration}} left · {{pct}}%",
+      "goalReached": "Goal reached",
+      "unknownNight": "Unknown night",
+      "unreadable_one": "{{count}} sub-frame could not be read and is not counted.",
+      "unreadable_other": "{{count}} sub-frames could not be read and are not counted.",
+      "filterPlaceholder": "Filter name",
+      "goalHoursFor": "Goal in hours for {{filter}}",
+      "hoursUnit": "h",
+      "removeRow": "Remove",
+      "addFilter": "Add filter",
+      "cancel": "Cancel",
+      "save": "Save",
+      "invalidHours": "Enter a number of hours between 0 and 1000.",
+      "missingFilterName": "Give the new filter a name.",
+      "saveFailed": "Could not save the goals."
+    },
     "projectArchivesSection": {
       "heading": "Processing Projects",
       "countArchived_one": "{{count}} archived",
@@ -374,10 +460,14 @@
       "progressStatus": "{{pct}}% · {{loaded}} of {{total}}"
     },
     "hero": {
+      "layoutSwitch": "Object page view",
+      "layoutByNight": "Classic",
+      "layoutAllPhotos": "Combined",
       "breadcrumb": "Breadcrumb",
       "library": "Library",
       "chooseImageTitle": "Choose the image that represents this object",
       "changeImage": "Change image",
+      "readMore": "More",
       "noImageYet": "No image yet",
       "chooseImage": "Choose an image",
       "removeFromFavorites": "Remove from favorites",
@@ -409,7 +499,9 @@
       "editObjectDetails": "Edit object details",
       "reclassifyObject": "Reclassify object",
       "reclassifyObjectTitle": "Move everything here to a different catalog object",
-      "deleteObject": "Delete object"
+      "deleteObject": "Delete object",
+      "stackingExport": "Export for stacking",
+      "stackingExportTitle": "Kept lights + matching darks, flats and bias, for WBPP or Siril"
     }
   },
   "galleryPage": {
@@ -494,6 +586,7 @@
   },
   "imageCard": {
     "processedImage": "Processed image",
+    "editedImage": "Edited in Nebulis",
     "removeFromFavorites": "Remove from favorites",
     "addToFavorites": "Add to favorites",
     "unknownDate": "Unknown date"
@@ -672,7 +765,8 @@
     "cancellingProgress": "Cancelling…",
     "importingProgress": "Importing...",
     "progressOf": "{{done}} of {{total}}",
-    "progressObject": " · object {{current}} of {{total}}"
+    "progressObject": " · object {{current}} of {{total}}",
+    "finishingProgress": "Finishing up. Adding catalog details and preparing thumbnails..."
   },
   "objectReviewCard": {
     "sourceFits": "from FITS header",
@@ -783,9 +877,11 @@
       "emptyLayerLabel": "(empty)"
     },
     "textPanel": {
+      "addText": "Add text",
+      "defaultText": "Text",
+      "noSelection": "Select a text label on the picture or in the list to change it, or add new text.",
       "content": "Content",
       "contentPlaceholder": "Your text…",
-      "clickToPlaceHint": "Click canvas to place text",
       "font": "Font",
       "size": "Size",
       "sizeValue": "{{size}}px",
@@ -816,7 +912,8 @@
       "hint": "Drag to draw a crop box. Drag edges or corners to resize. Drag inside to move. Press Enter or click Apply to confirm.",
       "applyCrop": "Apply crop",
       "cropApplied": "Crop applied",
-      "resetCrop": "Reset crop"
+      "resetCrop": "Reset crop",
+      "cancel": "Cancel"
     },
     "adjustPanel": {
       "brightness": "Brightness",
@@ -828,10 +925,15 @@
       "flip": "Flip",
       "horizontal": "Horizontal",
       "vertical": "Vertical",
-      "resetAll": "Reset all"
+      "resetAll": "Reset all",
+      "auto": "Auto",
+      "autoHint": "Set brightness, contrast and saturation from this picture",
+      "compare": "Hold to compare",
+      "compareHint": "Hold to see the original without adjustments (or hold \\)"
     },
     "save": {
       "title": "Title",
+      "titleHint": "Used for a new version. Save keeps the current name.",
       "saving": "Saving…",
       "save": "Save",
       "saveAsNewVersion": "Save as new version",
@@ -895,10 +997,18 @@
     "deleteImageMessage": "This will permanently delete the processed image. This cannot be undone.",
     "deleting": "Deleting…",
     "deleteFailed": "Delete failed",
-    "deleteLinkedFileMessage": "{{name}} is in a linked folder. It will be deleted from your disk, and Nebulis has no other copy. This cannot be undone."
+    "deleteLinkedFileMessage": "{{name}} is in a linked folder. It will be deleted from your disk, and Nebulis has no other copy. This cannot be undone.",
+    "keepFrame": "Keep this frame (K)",
+    "rejectFrame": "Reject this frame (X)"
   },
   "galleryImageModal": {
     "title": "Choose Gallery Image",
+    "otherHeading": "Other",
+    "otherHint": "For folders and anything with no sky match. Colours follow your theme.",
+    "art_folder": "Folder",
+    "art_drive": "Drive",
+    "art_telescope": "Telescope",
+    "art_starfield": "Starfield",
     "referenceImage": "Reference Image",
     "cachedCount_one": "{{count}} cached",
     "cachedCount_other": "{{count}} cached",
@@ -972,9 +1082,7 @@
     "nextImageAria": "Next image",
     "fullscreenTitle": "View fullscreen",
     "fullscreenAria": "View fullscreen",
-    "exitFullscreenAria": "Exit fullscreen",
-    "rotateTitle": "Rotate 90°",
-    "rotateAria": "Rotate 90°"
+    "exitFullscreenAria": "Exit fullscreen"
   },
   "compareSessionsModal": {
     "title": "Compare Sessions",
@@ -1083,7 +1191,10 @@
     "titleLink": "Link a folder",
     "reviewLink": "Review",
     "step3NameLink": "Review & link",
-    "close": "Close"
+    "close": "Close",
+    "opticalTrain": "Optical train",
+    "opticalTrainAuto": "Detect from the FITS focal length",
+    "opticalTrainHint": "Which configuration of this telescope shot these files, e.g. with the reducer. Automatic reads the focal length each night's FITS recorded."
   },
   "linkFolderWizard": {
     "modalTitle": "Link a folder",
@@ -1150,5 +1261,206 @@
     "label_one": "Also delete {{count}} original file ({{size}}) from disk",
     "label_other": "Also delete {{count}} original files ({{size}}) from disk",
     "help": "Unchecked, this only removes it from Nebulis and your files stay in {{folders}}. Checked, the files are deleted from your disk and Nebulis has no other copy, so this cannot be undone."
+  },
+  "objectMedia": {
+    "nights": {
+      "col": {
+        "night": "Night",
+        "pictures": "Pictures",
+        "frames": "Frames",
+        "integration": "Integration",
+        "quality": "Quality"
+      },
+      "pictures_one": "{{count}} picture",
+      "pictures_other": "{{count}} pictures",
+      "open": "Open night"
+    },
+    "subNights": {
+      "open": "Open frames",
+      "back": "All nights",
+      "empty": "No sub-frames yet.",
+      "emptyHint": "Use Sync all sub-frames in the … menu at the top of the page to pull them from your telescope."
+    },
+    "featured": {
+      "title": "Your processed images",
+      "seeAll": "See all {{count}}"
+    },
+    "heading": "{{name}} media",
+    "tabsLabel": "Media type",
+    "tab": {
+      "all": "All",
+      "processed": "Processed",
+      "telescope": "Telescope",
+      "nights": "Nights",
+      "sub": "Subframes",
+      "project": "Projects",
+      "video": "Videos"
+    },
+    "kind": {
+      "processed": "Processed image",
+      "telescope": "Telescope image",
+      "sub": "Subframe",
+      "project": "Project",
+      "video": "Video"
+    },
+    "groupBy": {
+      "night": "Night",
+      "telescope": "Telescope",
+      "filter": "Filter",
+      "type": "Type",
+      "none": "None"
+    },
+    "sort": {
+      "newest": "Newest first",
+      "oldest": "Oldest first",
+      "time": "Capture time"
+    },
+    "size": {
+      "small": "S",
+      "medium": "M",
+      "large": "L"
+    },
+    "sizeName": {
+      "small": "Small tiles",
+      "medium": "Medium tiles",
+      "large": "Large tiles"
+    },
+    "toolbar": {
+      "view": "View",
+      "groupBy": "Group by",
+      "sort": "Sort",
+      "filters": "Filters",
+      "tileSize": "Tile size",
+      "reviewFrames": "Review subframes",
+      "addImage": "Add image"
+    },
+    "filters": {
+      "telescope": "Telescope",
+      "lightFilter": "Filter",
+      "format": "Format",
+      "night": "Night",
+      "favoritesOnly": "Favorites only",
+      "favorites": "Favorites",
+      "clear": "Clear filters",
+      "remove": "Remove filter {{name}}"
+    },
+    "group": {
+      "hideFits": "Hide FITS files",
+      "showFits": "Show FITS files",
+      "hideFitsShort": "Hide",
+      "showFitsShort": "Show",
+      "fitsFiles": "FITS files",
+      "across": "Across nights",
+      "projects": "Projects",
+      "all": "All images",
+      "noNight": "No night",
+      "noTelescope": "Unknown telescope",
+      "noFilter": "No filter",
+      "openNight": "Night",
+      "showAllSubs": "Show all",
+      "frames_one": "{{count}} frame",
+      "frames_other": "{{count}} frames",
+      "framesExposure": "{{count}} × {{exposure}}",
+      "integration": "{{time}} integration"
+    },
+    "tile": {
+      "markUnprocessed": "Mark as unprocessed",
+      "markUnprocessedTitle": "Mark as unprocessed?",
+      "markUnprocessedMessage": "This moves the picture out of Processed and back into Telescope. Nothing is deleted.",
+      "markUnprocessedFailed": "Could not mark as unprocessed",
+      "markProcessed": "Mark as processed",
+      "markProcessedTitle": "Mark as processed?",
+      "markProcessedMessage": "This moves the picture out of Telescope and into Processed. Nothing is deleted.",
+      "markProcessedFailed": "Could not mark as processed",
+      "favorite": "Favorite",
+      "unfavorite": "Remove favorite",
+      "download": "Download"
+    },
+    "loading": "Loading media",
+    "loadingMore": "Loading more",
+    "loadMore": "Load more",
+    "error": "Could not load media.",
+    "retry": "Try again",
+    "noMatch": "No images match these filters.",
+    "empty": {
+      "title": "No images yet",
+      "hint": "Add an observation or sync from your telescope and your pictures will show up here.",
+      "add": "Add observation"
+    },
+    "deletedItems_one": "{{count}} deleted item",
+    "deletedItems_other": "{{count}} deleted items",
+    "analyzeFrames": "Analyze Frames",
+    "analyzeFramesTitle": "Measure every raw frame of a night and flag clouds, star trails, soft focus, streaks and noise",
+    "subsView": {
+      "listTitle": "Night by night, with how the frames measured",
+      "gridTitle": "Every frame as a thumbnail",
+      "label": "Subframe layout",
+      "grid": "Grid",
+      "list": "List"
+    }
+  },
+  "annotate": {
+    "all": "All",
+    "noneShown": "None",
+    "target": "Target",
+    "toggle": "Name the objects in this image",
+    "toggleHide": "Hide object names",
+    "title": "Object names",
+    "loading": "Finding objects...",
+    "quality": {
+      "solved": "Plate solved",
+      "header": "Position from FITS data",
+      "approximate": "Approximate",
+      "unavailable": "Not available"
+    },
+    "zoomedToast": "Rings are estimates. Zoom out for the best fit, or get exact positions.",
+    "zoomedHint": "Estimated positions can be a few arcminutes off, which shows once you zoom in. Zoom out to the whole frame, or get exact positions.",
+    "approximateHelp": "Placed from the target's position and your telescope's field of view. Rings can sit off if the frame was rotated, off-centre or stitched from a mosaic.",
+    "foundCount_one": "{{count}} object in frame",
+    "foundCount_other": "{{count}} objects in frame",
+    "none": "No catalog objects found in this frame.",
+    "reason": {
+      "edited": "This picture was cropped or rotated after it was captured, so its recorded position no longer fits. Plate solving can still place it.",
+      "mosaic": "Mosaic images cover more sky than one frame, so their positions can't be estimated. Plate solving can still place them.",
+      "no-position": "Nebulis doesn't know where this image points, so it can't estimate where objects fall.",
+      "no-sky": "This picture has no stars to match, such as the Sun, Moon, a planet, scenery or star trails, so there is nothing to annotate.",
+      "unknown-field": "This telescope's field of view isn't known, so positions can't be estimated."
+    },
+    "solving": "Refining with plate solve...",
+    "solveFailed": "Plate solving didn't find a match, so the estimate is shown.",
+    "retry": "Try again",
+    "install": {
+      "cta": "Get exact positions",
+      "detail": "Downloads the ASTAP plate solver and a 100 MB star database, once.",
+      "downloading": "Downloading the plate solver and star database...",
+      "extracting": "Unpacking...",
+      "failed": "The plate solver couldn't be installed: {{error}}"
+    },
+    "info": {
+      "open": "Details for {{name}}",
+      "close": "Close details",
+      "loading": "Loading details...",
+      "noDescription": "No description is available for this object yet.",
+      "alsoKnownAs": "Also known as",
+      "magnitude": "Magnitude {{value}}",
+      "size": "Size {{value}}",
+      "distance": "{{value}} away",
+      "openInNebulis": "Open in Nebulis",
+      "wikipedia": "Wikipedia",
+      "simbad": "SIMBAD",
+      "beyondFrame": "Extends beyond this frame",
+      "target": "Target · this picture is filed under it",
+      "morePhotos": "More photos"
+    },
+    "export": {
+      "downloadTitle": "Save this picture",
+      "shareTitle": "Share this picture",
+      "question": "Object names are showing. Include them in the picture you save?",
+      "withNames": "With names drawn in",
+      "withNamesHint": "A JPEG copy with the rings and names burned in.",
+      "original": "Original file",
+      "originalHint": "Exactly as it was captured, without the names.",
+      "failed": "The annotated picture couldn't be made. Try the original instead."
+    }
   }
 }

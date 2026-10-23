@@ -51,7 +51,7 @@ interface Props {
 /** One cell in the header label row. */
 function ColLabel({ children }: { children: React.ReactNode }) {
   return (
-    <th scope="col" className="py-2 px-3 text-left text-[10.5px] font-medium uppercase tracking-[0.14em] whitespace-nowrap">
+    <th scope="col" className="py-2 px-3 text-left text-[0.6562rem] font-medium uppercase tracking-[0.14em] whitespace-nowrap">
       {children}
     </th>
   );
@@ -62,11 +62,11 @@ function ScoreChip({ score, label, isNight }: { score: number; label: string; is
   const hex = scoreHex(score, isNight);
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ring-1 ring-inset"
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-bold tabular-nums ring-1 ring-inset"
       style={{ color: hex, backgroundColor: `${hex}18`, borderColor: `${hex}45` }}
     >
       {score}
-      <span className="font-semibold uppercase tracking-[0.10em] text-[9.5px]">{label}</span>
+      <span className="font-semibold uppercase tracking-[0.10em] text-[0.5938rem]">{label}</span>
     </span>
   );
 }
@@ -79,7 +79,7 @@ function CloudBar({ pct, isDark }: { pct: number; isDark: boolean }) {
       <div className={`h-1.5 rounded-full overflow-hidden flex-1 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>
         <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="tabular-nums text-[11px] w-7 text-right">{pct}%</span>
+      <span className="tabular-nums text-[0.6875rem] w-7 text-right">{pct}%</span>
     </div>
   );
 }
@@ -139,7 +139,7 @@ export function ImagingWindow({
             <h2 className={`font-display font-semibold leading-tight ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>
               {t('imagingWindow.title')}
             </h2>
-            <p className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            <p className={`text-[0.6875rem] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
               {win.astronomical ? t('imagingWindow.astronomicalDark') : t('imagingWindow.nauticalDark')}
             </p>
           </div>
@@ -154,7 +154,7 @@ export function ImagingWindow({
           <span>{formatTime(win.startIso, timeZone)}</span>
           <span className="opacity-50">→</span>
           <span>{formatTime(win.endIso, timeZone)}</span>
-          <span className={`ml-1 text-[11px] font-normal ${isDark ? 'text-violet-400/60' : 'text-violet-500/70'}`}>
+          <span className={`ml-1 text-[0.6875rem] font-normal ${isDark ? 'text-violet-400/60' : 'text-violet-500/70'}`}>
             {t('imagingWindow.durationHours', { hours: windowHours.length - 1 })}
           </span>
         </div>
@@ -241,7 +241,7 @@ export function ImagingWindow({
 
                   <td className="px-3 py-2.5 tabular-nums whitespace-nowrap">
                     {vis.dewWarning ? (
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset ${
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] ring-1 ring-inset ${
                         isDark
                           ? 'bg-amber-500/10 text-amber-400 ring-amber-500/20'
                           : 'bg-amber-50 text-amber-700 ring-amber-200'
@@ -262,7 +262,7 @@ export function ImagingWindow({
 
       {/* What the Moon is actually doing, rather than a claim that it is up all
           night: a 90% Moon that set at 22:00 must not be flagged at 03:00. */}
-      <div className={`px-5 py-3 text-[11px] border-t ${isDark ? 'border-slate-800 text-slate-600' : 'border-slate-100 text-slate-400'}`}>
+      <div className={`px-5 py-3 text-[0.6875rem] border-t ${isDark ? 'border-slate-800 text-slate-600' : 'border-slate-100 text-slate-400'}`}>
         {t('imagingWindow.moonSummary', { percent: Math.round(tonight.moonIllumination) })}
         {moonSingleSpan && (
           <> {t('imagingWindow.moonUpDuring', {

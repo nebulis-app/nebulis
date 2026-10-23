@@ -58,7 +58,7 @@ export function SitePanel({
           <div className="mt-4 min-h-[168px] flex-1 overflow-hidden rounded-xl">
             <ObservationMap lat={coordinates.lat} lon={coordinates.lon} isDark={isDark} />
           </div>
-          <div className={`mt-2.5 flex items-center justify-between gap-3 text-[12.5px] ${
+          <div className={`mt-2.5 flex items-center justify-between gap-3 text-[0.7812rem] ${
             isDark ? 'text-slate-400' : 'text-slate-500'
           }`}>
             <span className={`truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>

@@ -55,7 +55,6 @@ import { log } from '../logger.js';
 import { isRealFile } from '../telescopeFiles.js';
 import {
   getLibraryFilesForObject,
-  getLibraryFileRow,
   sessionDateForRow,
   objectRelativePath,
   writeObjectManifest,
@@ -68,6 +67,7 @@ import {
   setObjectLayout,
   listObjectFiles,
   sanitizeSessionFolder,
+  sessionFolderFor,
 } from './libraryLayout.js';
 import { claimImportLock, releaseImportLock } from './import.js';
 
@@ -105,7 +105,7 @@ export interface RenestSummary {
  * sitting at the destination (a re-run that got halfway) would collide; the
  * delete-then-update handles that instead of throwing.
  */
-function rewritePathReferences(objectId: string, fromRel: string, toRel: string): void {
+export function rewritePathReferences(objectId: string, fromRel: string, toRel: string): void {
   db.prepare('UPDATE libraryFiles SET relPath = ? WHERE relPath = ?')
     .run(toRel, fromRel);
   db.prepare('UPDATE librarySessions SET sessionImage = ? WHERE objectId = ? AND sessionImage = ?')
@@ -118,12 +118,27 @@ function rewritePathReferences(objectId: string, fromRel: string, toRel: string)
     .run(toRel, fromRel);
 }
 
-/** Session directory a legacy flat file belongs in: its observing night, or
- *  the unsorted bucket when it has none (no row, or a row with no date). */
+/** The Dwarf session directory a legacy file came from, recovered from the
+ *  telescope path the flat importer recorded (`.../Astronomy/<session>/<file>`).
+ *  Null when the row has no source path or it names no Dwarf session. */
+function deviceSessionFolder(row: LibraryFileRow | undefined): string | null {
+  const src = row?.sourcePath;
+  if (!src) return null;
+  const segment = src.split(/[\\/]/).find(part => /^DWARF_/i.test(part));
+  return segment ? sanitizeSessionFolder(segment) : null;
+}
+
+/** Session directory a legacy flat file belongs in: the same folder a fresh
+ *  import would have created. That is the device's own session folder when the
+ *  row still remembers it (Dwarf), otherwise the canonical per-night folder
+ *  (SeeStar, ASIAIR), otherwise the unsorted bucket. Using the import's own
+ *  naming means a later sync lands in the migrated folder instead of beside it. */
 function targetDirFor(row: LibraryFileRow | undefined): string {
+  const fromDevice = deviceSessionFolder(row);
+  if (fromDevice) return fromDevice;
   const night = row ? sessionDateForRow(row) : null;
   if (!night) return UNSORTED_DIR;
-  return sanitizeSessionFolder(night) ?? UNSORTED_DIR;
+  return sessionFolderFor(null, night, null) ?? UNSORTED_DIR;
 }
 
 /**
@@ -369,6 +384,12 @@ export function getRenestStatus(): RenestStatus {
  * Flat objects that actually have managed files to reorganize. An object made
  * only of linked-source rows has nothing under the managed library to move, so
  * counting it would show the upgrade prompt to someone with nothing to convert.
+ *
+ * Deliberately not narrowed by `fileCount` or managed rows: a legacy flat object
+ * can hold real files on disk with neither (see the renestLibrary test), and
+ * hiding it here would leave it flat for good. An object that is truly empty is
+ * instead marked nested at boot by reconcileLayoutFromDisk, which looks at the
+ * disk rather than the database.
  */
 const FLAT_OBJECT_FILTER = `
   o.deleted = 0 AND (o.layout IS NULL OR o.layout != 'nested')
@@ -444,11 +465,4 @@ export async function renestLibrary(): Promise<RenestSummary> {
   status.summary = summary;
   log.info({ objects: summary.objects, moved: summary.moved, failed: summary.failed }, '[renest] library run complete');
   return summary;
-}
-
-/** Exposed for tests: does this object have a row for every file on disk? */
-export function isFullyRecorded(objectId: string, folderName: string): boolean {
-  const objDir = path.join(getLibraryDir(), folderName);
-  const files = listObjectFiles(objDir, getObjectLayout(objectId)).filter(e => isRealFile(e.fileName));
-  return files.every(e => getLibraryFileRow(`${folderName}/${e.relPath}`) !== undefined);
 }

@@ -32,11 +32,24 @@ import { getPlannerCatalog, searchFiltered as searchDso, filterCatalog, getById,
 import { altAz, getNightWindow, visibilityWindow, altitudeCurve, moonPhaseName } from '../lib/astroCalc.js';
 import { addDaysToDateKey, localDateKey, localParts, zonedDateTimeToUtc } from '../lib/timezone.js';
 import { observerTimezoneForCoordinates } from '../lib/observerTimezone.js';
-import { OBSERVING_NIGHT_ROLLOVER_HOUR } from '../lib/telescopeFiles.js';
-import { generateNightPlan, type PlanCandidate, AUTO_PLAN_FOCUSES } from '../lib/autoPlan.js';
-import { checkMoonProximity } from '../lib/moonProximity.js';
+import { OBSERVING_NIGHT_ROLLOVER_HOUR, isPlausibleCalendarDate } from '../lib/telescopeFiles.js';
+import { generateNightPlanDetailed, AUTO_PLAN_FOCUSES } from '../lib/autoPlan.js';
+import { indexForecastHours, slotSkyQuality, DEFAULT_MAX_CLOUD_COVER } from '../lib/skyQuality.js';
+import {
+  buildForecast,
+  getForecastCacheEntry,
+  isUsableForecast,
+  setForecastCacheEntry,
+  CACHE_TTL_MS,
+  type ForecastHour,
+} from '../lib/forecastCache.js';
+import { log } from '../lib/logger.js';
+import { hasNarrowbandCapableFilter } from '../lib/gear.js';
+import { checkMoonProximity, moonThresholdForIllumination, moonVerdictFor } from '../lib/moonProximity.js';
 import { checkBlockVisibility, type VisibleSkyMap } from '../lib/visibilityCheck.js';
 import { computeBestTonightScore } from '../lib/bestTonightScore.js';
+import { showpieceScore } from '../lib/explore/showpiece.js';
+import { tonightRank } from '../lib/explore/rank.js';
 import SunCalc from 'suncalc';
 
 const router = Router();
@@ -47,7 +60,7 @@ const PlannerTonightQuerySchema = z.object({
   /** Local calendar date YYYY-MM-DD whose night we are planning. Defaults to
    *  tonight. The night window is the dusk-to-dawn span beginning that
    *  evening. */
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  date: z.string().refine(isPlausibleCalendarDate, 'date must be a real calendar date (YYYY-MM-DD)').optional(),
   /** Explicit observing site to plan from. Wins over lat/lon and over the
    *  server's active/default site — see resolveSite in observingSites.ts. */
   siteId: z.string().optional(),
@@ -267,7 +280,7 @@ router.get('/tonight', async (req: Request, res: Response) => {
   for (let i = 0; i < catalog.length; i++) {
     if (i > 0 && i % 50 === 0) await new Promise<void>(r => setImmediate(r));
 
-    const entry = catalog[i]!;
+    const entry = catalog[i];
     if (typeFilter && !entry.type.toLowerCase().includes(typeFilter.toLowerCase()) && entry.typeCode !== typeFilter) {
       continue;
     }
@@ -293,6 +306,9 @@ router.get('/tonight', async (req: Request, res: Response) => {
       maxAltTime: window.maxAltTime?.toISOString() ?? null,
       risesAt: window.rises?.toISOString() ?? null,
       setsAt: window.sets?.toISOString() ?? null,
+      // How rewarding the object is to shoot at all (see lib/explore/showpiece), so every client can order
+      // "Best tonight" by the same blend Explore uses without carrying its own copy of the catalog scores.
+      showpiece: showpieceScore(entry),
       isInWishlist: wishlistIds.has(entry.id),
       isAlreadyImaged: libraryMap.has(entry.id),
       libraryObjectId: libraryMap.get(entry.id) ?? null,
@@ -311,6 +327,11 @@ router.get('/tonight', async (req: Request, res: Response) => {
   const targetsWithScore = targets.map(t => ({
     ...t,
     bestTonightScore: computeBestTonightScore(t, scoreWindowStart, scoreWindowEnd).total,
+  })).map(t => ({
+    ...t,
+    // The shared "Best tonight" order (lib/explore/rank.ts). `bestTonightScore` stays the pure conditions score
+    // ("Best conditions").
+    tonightRank: tonightRank(t.bestTonightScore, t.showpiece),
   }));
 
   const payload = {
@@ -409,6 +430,12 @@ const PlanCandidateSchema = z.object({
   constellation: z.string().nullable().optional().transform(v => v ?? null),
   commonNames: z.array(z.string()),
   isAlreadyImaged: z.boolean(),
+  /** Per-filter integration goals, read only with `favorGoals`. */
+  goals: z.array(z.object({
+    filter: z.string().max(100).nullable(),
+    goalSec: z.number().min(0),
+    remainingSec: z.number().min(0),
+  })).max(50).optional(),
 });
 
 const AutoPlanBodySchema = z.object({
@@ -431,14 +458,59 @@ const AutoPlanBodySchema = z.object({
   focus: z.enum(AUTO_PLAN_FOCUSES).optional(),
   unimagedOnly: z.boolean().optional(),
   jitter: z.number().optional(),
+  /** Use the hourly forecast for the observer's location: skip cloudy slots,
+   *  steer small targets to steady seeing. Off when omitted, so existing
+   *  clients get exactly the plan they always did. */
+  useForecast: z.boolean().optional(),
+  /** Cloud cover (%) above which a slot is skipped. */
+  maxCloudCover: z.number().min(0).max(100).optional(),
+  /** Favour objects with integration time left (candidates' `goals`), drop
+   *  those whose goals are reached, and pick each block's filter. Off when
+   *  omitted. */
+  favorGoals: z.boolean().optional(),
+  /** Overrides the gear lookup: can this user shoot narrowband? Absent = ask the Gear inventory. */
+  narrowbandCapable: z.boolean().optional(),
 });
+
+/**
+ * Hourly forecast for a location: the cached one when fresh (the Planner and
+ * Sky Forecast pages keep it warm for the active site), otherwise a fetch,
+ * cached the same way the forecast route does. Null when no forecast can be
+ * had, in which case the plan is built without weather.
+ */
+const FORECAST_WAIT_MS = 8_000;
+
+async function forecastHoursFor(lat: number, lon: number): Promise<{ hours: ForecastHour[]; fetchedAt: number } | null> {
+  const cached = getForecastCacheEntry(lat, lon);
+  const pick = (data: unknown) => (data as { hourly: ForecastHour[] }).hourly;
+  if (cached && isUsableForecast(cached.data) && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    return { hours: pick(cached.data), fetchedAt: cached.fetchedAt };
+  }
+  try {
+    // Bounded: a slow weather provider must not hold Plan My Night; it falls through to planning without weather.
+    const data = await Promise.race([
+      buildForecast(lat, lon),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), FORECAST_WAIT_MS).unref?.()),
+    ]);
+    if (data && isUsableForecast(data)) {
+      const now = Date.now();
+      setForecastCacheEntry({ data, fetchedAt: now, lat, lon });
+      return { hours: pick(data), fetchedAt: now };
+    }
+  } catch (err) {
+    log.warn({ err: err instanceof Error ? err.message : String(err) }, '[planner] forecast unavailable, planning without weather');
+  }
+  // A stale but usable entry still beats planning blind.
+  if (cached && isUsableForecast(cached.data)) return { hours: pick(cached.data), fetchedAt: cached.fetchedAt };
+  return null;
+}
 
 // POST /api/v1/planner/plan — run the canonical auto-scheduler server-side.
 // Body mirrors AutoPlanParams; both existing callers (the planner page's
 // "Plan My Night" and a single catalog's "Plan Tonight") already hold the
 // full candidate list client-side, so this endpoint just executes the
 // algorithm rather than re-deriving the pool from the DSO catalog itself.
-router.post('/plan', (req: Request, res: Response) => {
+router.post('/plan', async (req: Request, res: Response) => {
   const parsed = AutoPlanBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
@@ -452,8 +524,16 @@ router.post('/plan', (req: Request, res: Response) => {
     return;
   }
 
-  const blocks = generateNightPlan({
-    targets: body.targets as PlanCandidate[],
+  const narrowbandCapable = body.narrowbandCapable ?? hasNarrowbandCapableFilter();
+  const forecast = body.useForecast ? await forecastHoursFor(body.observerLat, body.observerLon) : null;
+  const indexedHours = forecast ? indexForecastHours(forecast.hours) : null;
+  const maxCloudCover = body.maxCloudCover ?? DEFAULT_MAX_CLOUD_COVER;
+
+  const { blocks, skippedSlots, goalsComplete } = generateNightPlanDetailed({
+    skyQuality: indexedHours
+      ? (start, end) => slotSkyQuality(indexedHours, start, end, maxCloudCover)
+      : undefined,
+    targets: body.targets,
     observerLat: body.observerLat,
     observerLon: body.observerLon,
     windowStart,
@@ -462,10 +542,12 @@ router.post('/plan', (req: Request, res: Response) => {
     maxObjects: body.maxObjects,
     minAlt: body.minAlt,
     moonIllumination: body.moonIllumination,
-    visibleSkyMap: (body.visibleSkyMap ?? null) as VisibleSkyMap | null,
+    visibleSkyMap: body.visibleSkyMap ?? null,
     focus: body.focus,
     unimagedOnly: body.unimagedOnly,
     jitter: body.jitter,
+    favorGoals: body.favorGoals,
+    narrowbandCapable,
   });
 
   res.apiSuccess(
@@ -476,7 +558,31 @@ router.post('/plan', (req: Request, res: Response) => {
       meanAlt: Math.round(b.meanAlt * 10) / 10,
       moonSeparation: Number.isFinite(b.moonSeparation) ? Math.round(b.moonSeparation * 10) / 10 : null,
       moonVerdict: b.moonVerdict,
+      // Additive, like `sky`: the filter type the Moon check assumed.
+      filterBand: b.filterBand,
+      // Additive, with favorGoals only: the goal filter picked for the block.
+      ...(b.filter !== undefined ? { filter: b.filter, filterRemainingSec: b.filterRemainingSec } : {}),
+      // Additive: clients that don't know `sky` ignore it.
+      sky: b.sky,
     })),
+    {
+      weather: {
+        requested: body.useForecast === true,
+        used: forecast !== null,
+        forecastFetchedAt: forecast ? new Date(forecast.fetchedAt).toISOString() : null,
+        maxCloudCover,
+        skippedSlots: skippedSlots.map(s => ({
+          start: s.start.toISOString(),
+          end: s.end.toISOString(),
+          cloudCover: s.cloudCover,
+        })),
+      },
+      narrowbandCapable,
+      goals: {
+        requested: body.favorGoals === true,
+        complete: goalsComplete.map(t => ({ id: t.id, name: t.name })),
+      },
+    },
   );
 });
 
@@ -486,6 +592,8 @@ const VerdictItemSchema = z.object({
   dec: z.number(),
   start: z.string().datetime(),
   end: z.string().datetime(),
+  /** The block's filter type; absent or null = broadband, as before. */
+  band: z.enum(['broadband', 'narrowband']).nullable().optional(),
 });
 
 const VerdictBodySchema = z.object({
@@ -515,7 +623,7 @@ router.post('/verdict', (req: Request, res: Response) => {
     return;
   }
   const body = parsed.data;
-  const skyMap = (body.visibleSkyMap ?? null) as VisibleSkyMap | null;
+  const skyMap: VisibleSkyMap | null = body.visibleSkyMap ?? null;
 
   // Response shapes mirror the client's existing BlockVisibilityResult /
   // MoonProximityResult interfaces field-for-field (dates as ISO strings) so
@@ -524,7 +632,11 @@ router.post('/verdict', (req: Request, res: Response) => {
   const results = body.items.map(item => {
     const start = new Date(item.start);
     const end = new Date(item.end);
-    const moon = checkMoonProximity(item.ra, item.dec, body.observerLat, body.observerLon, start, end, body.moonIllumination, 5, body.timeZone);
+    const band = item.band ?? 'broadband';
+    const moon = checkMoonProximity(item.ra, item.dec, body.observerLat, body.observerLon, start, end, body.moonIllumination, 5, body.timeZone, band);
+    // Same closest approach against the narrowband tolerance: lets the client
+    // say "narrowband would be fine" on a broadband or unset block.
+    const narrowbandVerdict = moonVerdictFor(moon.minSeparation, moonThresholdForIllumination(body.moonIllumination, 'narrowband'));
     const visibility = checkBlockVisibility(item.ra, item.dec, body.observerLat, body.observerLon, start, end, skyMap, 5, body.timeZone);
     return {
       id: item.id,
@@ -535,6 +647,8 @@ router.post('/verdict', (req: Request, res: Response) => {
         worstAt: moon.worstAt?.toISOString() ?? null,
         moonAltAtWorst: Math.round(moon.moonAltAtWorst * 10) / 10,
         reason: moon.reason,
+        band,
+        narrowbandVerdict,
       },
       visibility: {
         verdict: visibility.verdict,

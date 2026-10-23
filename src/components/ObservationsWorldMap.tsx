@@ -243,7 +243,7 @@ export const ObservationsWorldMap = forwardRef<ObservationsWorldMapHandle, Obser
 
     // Frame all sites. A single site would otherwise zoom to street level.
     if (sites.length > 0) {
-      const bounds = L.latLngBounds(sites.map(s => [s.lat, s.lon] as [number, number]));
+      const bounds = L.latLngBounds(sites.map((s): L.LatLngTuple => [s.lat, s.lon]));
       map.fitBounds(bounds, { padding: [48, 48], maxZoom: sites.length === 1 ? 9 : 12 });
     }
 
@@ -252,7 +252,9 @@ export const ObservationsWorldMap = forwardRef<ObservationsWorldMapHandle, Obser
     // DOM across open/close, so attaching per-anchor on every `popupopen` piled
     // up duplicate listeners and fired navigate() once per prior open.
     const onContainerClick = (ev: MouseEvent) => {
-      const link = (ev.target as HTMLElement | null)?.closest<HTMLAnchorElement>('.nebulis-obs-link');
+      const link = ev.target instanceof Element
+        ? ev.target.closest<HTMLAnchorElement>('.nebulis-obs-link')
+        : null;
       if (!link) return;
       ev.preventDefault();
       const obj = link.getAttribute('data-obj');

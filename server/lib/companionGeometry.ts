@@ -5,7 +5,7 @@
  * (scripts/build-catalog-companions.ts) and the runtime (companions.ts, which
  * reads the generated table) can use it without a circular dependency.
  */
-import type { TelescopeKind } from './types/telescopeKind.js';
+import { isTelescopeKind, type TelescopeKind } from './types/telescopeKind.js';
 import { resolveCanonicalId } from './catalogAliases.js';
 
 /** The key the companion table is indexed by: canonical id, uppercase, no spaces. */
@@ -46,7 +46,7 @@ export const KIND_FOV_DEG: Partial<Record<TelescopeKind, { widthDeg: number; hei
 export function frameRadiusDeg(kinds: ReadonlyArray<string | null | undefined>): number {
   let best = 0;
   for (const kind of kinds) {
-    const fov = kind ? KIND_FOV_DEG[kind as TelescopeKind] : undefined;
+    const fov = kind && isTelescopeKind(kind) ? KIND_FOV_DEG[kind] : undefined;
     if (fov) best = Math.max(best, Math.min(fov.widthDeg, fov.heightDeg) / 2);
   }
   return best > 0 ? best : UNKNOWN_FRAME_RADIUS_DEG;

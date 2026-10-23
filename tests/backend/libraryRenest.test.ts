@@ -86,9 +86,26 @@ describe('renestObject', () => {
     expect(result.error).toBeUndefined();
 
     const dirs = fs.readdirSync(objDir()).filter(d => !d.startsWith('.')).sort();
-    expect(dirs).toEqual(['2026-07-05', '2026-07-08']);
-    expect(fs.readdirSync(path.join(objDir(), '2026-07-05')).sort())
+    expect(dirs).toEqual(['2026-07-05_00-00-00', '2026-07-08_00-00-00']);
+    expect(fs.readdirSync(path.join(objDir(), '2026-07-05_00-00-00')).sort())
       .toEqual(['a_20260705-220000.jpg', 'b_20260705-230000.jpg']);
+  });
+
+  it('puts Dwarf files back in the device session folder they came from', () => {
+        seedObject();
+const session = 'DWARF_RAW_TELE_C 6_EXP_15_GAIN_60_2026-09-15-20-51-09-353';
+    const fileName = 'C 6_15s60_Duo-Band_20260916-004848160_29C.fits';
+    fs.mkdirSync(objDir(), { recursive: true });
+    fs.writeFileSync(path.join(objDir(), fileName), 'x');
+    recordLibraryFile({
+      objectId: OBJECT_ID, folderName: FOLDER, fileName, originalName: fileName,
+      captureDate: '2026-09-16', captureTime: '004848', bytes: 1,
+      sourcePath: `Astronomy/${session}/${fileName}`,
+    });
+
+    renestObject(OBJECT_ID);
+
+    expect(fs.readdirSync(objDir()).filter(n => !n.startsWith("."))).toEqual([session]);
   });
 
   it('marks the object nested and rewrites its file rows', () => {
@@ -97,7 +114,7 @@ describe('renestObject', () => {
     renestObject(OBJECT_ID);
 
     expect(getObjectLayout(OBJECT_ID)).toBe('nested');
-    expect(getLibraryFileRow('M31/2026-07-05/a_20260705-220000.jpg')).toBeDefined();
+    expect(getLibraryFileRow('M31/2026-07-05_00-00-00/a_20260705-220000.jpg')).toBeDefined();
     expect(getLibraryFileRow('M31/a_20260705-220000.jpg')).toBeUndefined();
   });
 
@@ -109,7 +126,7 @@ describe('renestObject', () => {
     expect(getLocalSessions(OBJECT_ID).map(s => s.date)).toEqual(['2026-07-05']);
     const files = getLocalFiles(OBJECT_ID, '2026-07-05');
     expect(files).toHaveLength(1);
-    expect(files[0].path).toBe('M31/2026-07-05/a_20260705-220000.jpg');
+    expect(files[0].path).toBe('M31/2026-07-05_00-00-00/a_20260705-220000.jpg');
   });
 
   it('parks files with no derivable night in the unsorted bucket', () => {
@@ -124,7 +141,7 @@ describe('renestObject', () => {
     fs.mkdirSync(objDir(), { recursive: true });
     fs.writeFileSync(path.join(objDir(), 'stray.jpg'), 'x');
     renestObject(OBJECT_ID);
-    expect(getLibraryFileRow(`M31/${UNSORTED_DIR}/stray.jpg`)).toBeDefined();
+    expect(getLibraryFileRow(`M31/${UNSORTED_DIR}/stray.jpg`)).toMatchObject({ relPath: `M31/${UNSORTED_DIR}/stray.jpg` });
   });
 
   it('is idempotent', () => {
@@ -151,7 +168,7 @@ describe('stored path references', () => {
     const row = db.prepare<[string, string], { sessionImage: string | null }>(
       'SELECT sessionImage FROM librarySessions WHERE objectId = ? AND date = ?',
     ).get(OBJECT_ID, '2026-07-05');
-    expect(row?.sessionImage).toBe('M31/2026-07-05/hero_20260705-220000.jpg');
+    expect(row?.sessionImage).toBe('M31/2026-07-05_00-00-00/hero_20260705-220000.jpg');
     expect(fs.existsSync(path.join(LIBRARY_DIR, row!.sessionImage!))).toBe(true);
   });
 
@@ -166,7 +183,7 @@ describe('stored path references', () => {
     const row = db.prepare<[string], { galleryImage: string | null }>(
       'SELECT galleryImage FROM libraryObjects WHERE objectId = ?',
     ).get(OBJECT_ID);
-    expect(row?.galleryImage).toBe('M31/2026-07-05/g_20260705-220000.jpg');
+    expect(row?.galleryImage).toBe('M31/2026-07-05_00-00-00/g_20260705-220000.jpg');
   });
 
   it('rewrites image favorites so they do not vanish', () => {
@@ -178,7 +195,7 @@ describe('stored path references', () => {
     renestObject(OBJECT_ID);
 
     const paths = db.prepare<[], { imagePath: string }>('SELECT imagePath FROM imageFavorites').all();
-    expect(paths.map(p => p.imagePath)).toEqual(['M31/2026-07-05/f_20260705-220000.jpg']);
+    expect(paths.map(p => p.imagePath)).toEqual(['M31/2026-07-05_00-00-00/f_20260705-220000.jpg']);
   });
 });
 
@@ -189,7 +206,7 @@ describe('crash recovery', () => {
     seedObject();
     seedFlatFile('a_20260705-220000.jpg', '2026-07-05', '220000');
     const from = path.join(objDir(), 'a_20260705-220000.jpg');
-    const to = path.join(objDir(), '2026-07-05', 'a_20260705-220000.jpg');
+    const to = path.join(objDir(), '2026-07-05_00-00-00', 'a_20260705-220000.jpg');
     fs.mkdirSync(path.dirname(to), { recursive: true });
     fs.renameSync(from, to);
     // Row deliberately left pointing at the old path.
@@ -200,7 +217,7 @@ describe('crash recovery', () => {
     expect(result.moved).toBe(1);
     expect(result.error).toBeUndefined();
     expect(getObjectLayout(OBJECT_ID)).toBe('nested');
-    expect(getLibraryFileRow('M31/2026-07-05/a_20260705-220000.jpg')).toBeDefined();
+    expect(getLibraryFileRow('M31/2026-07-05_00-00-00/a_20260705-220000.jpg')).toBeDefined();
     expect(getLibraryFileRow('M31/a_20260705-220000.jpg')).toBeUndefined();
   });
 
@@ -231,7 +248,7 @@ describe('crash recovery', () => {
     seedObject();
     seedFlatFile('a_20260705-220000.jpg', '2026-07-05', '220000', 'same-bytes');
     const from = path.join(objDir(), 'a_20260705-220000.jpg');
-    const to = path.join(objDir(), '2026-07-05', 'a_20260705-220000.jpg');
+    const to = path.join(objDir(), '2026-07-05_00-00-00', 'a_20260705-220000.jpg');
     fs.mkdirSync(path.dirname(to), { recursive: true });
     fs.copyFileSync(from, to);
 
@@ -241,7 +258,7 @@ describe('crash recovery', () => {
     expect(getObjectLayout(OBJECT_ID)).toBe('nested');
     expect(fs.existsSync(from)).toBe(false);
     expect(fs.existsSync(to)).toBe(true);
-    expect(getLibraryFileRow('M31/2026-07-05/a_20260705-220000.jpg')).toBeDefined();
+    expect(getLibraryFileRow('M31/2026-07-05_00-00-00/a_20260705-220000.jpg')).toBeDefined();
     expect(getLibraryFileRow('M31/a_20260705-220000.jpg')).toBeUndefined();
   });
 
@@ -249,7 +266,7 @@ describe('crash recovery', () => {
     seedObject();
     seedFlatFile('a_20260705-220000.jpg', '2026-07-05', '220000', 'source');
     const from = path.join(objDir(), 'a_20260705-220000.jpg');
-    const to = path.join(objDir(), '2026-07-05', 'a_20260705-220000.jpg');
+    const to = path.join(objDir(), '2026-07-05_00-00-00', 'a_20260705-220000.jpg');
     fs.mkdirSync(path.dirname(to), { recursive: true });
     fs.writeFileSync(to, 'target');
 
@@ -346,7 +363,7 @@ describe('linked sources', () => {
     const linked = getLibraryFileRow(linkedRel);
     expect(linked?.sourceId).toBe('src1');
     expect(linked?.relPath).toBe(linkedRel);
-    expect(getLibraryFileRow('M31/2026-07-05/a_20260705-220000.jpg')).toBeDefined();
+    expect(getLibraryFileRow('M31/2026-07-05_00-00-00/a_20260705-220000.jpg')).toBeDefined();
   });
 
   it('a whole-library run skips objects that hold only linked files', async () => {

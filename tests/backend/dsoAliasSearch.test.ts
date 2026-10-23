@@ -196,7 +196,10 @@ describe('planner pane finds every object, up tonight or not', () => {
   });
 
   for (const id of TEST_OBJECTS) {
-    (inTonightList.has(id) ? it : it.skip)(`${id} when it is up tonight`, () => {
+    // Objects outside the Planner list (pinned to exactly SH2-155 by the test
+    // above) cannot be "up tonight" by construction, so no case is registered
+    // for them rather than a permanently skipped one.
+    if (inTonightList.has(id)) it(`${id} when it is up tonight`, () => {
       const byId = new Map([...FILLER.map((e) => plannerSearchFields(e)), ...TEST_OBJECTS.filter((x) => inTonightList.has(x)).map(asTarget)].map((t) => [t.id, t]));
       const targets = [...byId.values()];
       const failures: string[] = [];

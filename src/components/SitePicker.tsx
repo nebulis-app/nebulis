@@ -99,7 +99,7 @@ export function SitePicker({
           }`}
         >
           {sites.length > 1 && (
-            <li className={`px-3 pt-1.5 pb-1 text-[11px] font-semibold uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            <li className={`px-3 pt-1.5 pb-1 text-[0.6875rem] font-semibold uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
               {t('sitePicker.observingSites')}
             </li>
           )}

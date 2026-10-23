@@ -23,6 +23,7 @@ import fsp from 'fs/promises';
 import path from 'path';
 
 import { readArchiveMarker } from './archiveMarker.js';
+import { errnoCode } from '../errors.js';
 
 /** The archive disk is no longer the one the run started on. Carries a message fit to show the user. */
 export class DiskGoneError extends Error {
@@ -84,7 +85,7 @@ export async function createDiskGuard(root: string, archiveId: string): Promise<
         await fsp.mkdir(current);
         created.push(current);
       } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
+        const code = errnoCode(err);
         if (code === 'EEXIST') continue;
         if (code === 'ENOENT') throw new DiskGoneError(DISK_LOST_MESSAGE);
         throw err;

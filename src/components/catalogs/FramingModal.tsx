@@ -66,9 +66,11 @@ interface SavedMosaicFraming {
 function parseSavedFraming(json: string | null | undefined): SavedMosaicFraming | null {
   if (!json) return null;
   try {
-    const parsed = JSON.parse(json) as Partial<SavedMosaicFraming>;
+    const parsed: unknown = JSON.parse(json);
     if (
-      typeof parsed.cols === 'number' && typeof parsed.rows === 'number'
+      typeof parsed === 'object' && parsed !== null
+      && 'cols' in parsed && 'rows' in parsed && 'overlap' in parsed && 'rotationDeg' in parsed
+      && typeof parsed.cols === 'number' && typeof parsed.rows === 'number'
       && typeof parsed.overlap === 'number' && typeof parsed.rotationDeg === 'number'
     ) {
       return { cols: parsed.cols, rows: parsed.rows, overlap: parsed.overlap, rotationDeg: parsed.rotationDeg };
@@ -455,21 +457,21 @@ export function FramingModal({ catalogId, objectName, isDark, onClose, savedFram
                 <option value={CUSTOM_ID}>{t('framingModal.customOption')}</option>
               </select>
               {selectedTelescopeNeedsOptics && (
-                <p className={`mt-1.5 text-[11px] ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
-                  {t('framingModal.noOpticsWarning', { name: selectedTelescope!.name })}
+                <p className={`mt-1.5 text-[0.6875rem] ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
+                  {t('framingModal.noOpticsWarning', { name: selectedTelescope.name })}
                 </p>
               )}
             </div>
 
             {(profileId === CUSTOM_ID || profileId.startsWith(CUSTOM_RIG_PREFIX)) && (
               <div className="grid grid-cols-2 gap-2">
-                <label className="col-span-2 text-[11px] uppercase tracking-wide font-semibold text-slate-500">{t('framingModal.opticsMm')}</label>
+                <label className="col-span-2 text-[0.6875rem] uppercase tracking-wide font-semibold text-slate-500">{t('framingModal.opticsMm')}</label>
                 <div>
-                  <span className={`text-[11px] ${panelText}`}>{t('framingModal.focal')}</span>
+                  <span className={`text-[0.6875rem] ${panelText}`}>{t('framingModal.focal')}</span>
                   <input type="number" min={1} value={setup.custom.focalMm} onChange={e => updateCustom({ focalMm: Number(e.target.value) })} className={inputCls} />
                 </div>
                 <div>
-                  <span className={`text-[11px] ${panelText}`}>{t('framingModal.pixelSize')}</span>
+                  <span className={`text-[0.6875rem] ${panelText}`}>{t('framingModal.pixelSize')}</span>
                   <input
                     type="number"
                     min={0}
@@ -481,11 +483,11 @@ export function FramingModal({ catalogId, objectName, isDark, onClose, savedFram
                   />
                 </div>
                 <div>
-                  <span className={`text-[11px] ${panelText}`}>{t('framingModal.sensorW')}</span>
+                  <span className={`text-[0.6875rem] ${panelText}`}>{t('framingModal.sensorW')}</span>
                   <input type="number" min={0.1} step={0.1} value={setup.custom.sensorWMm} onChange={e => updateCustom({ sensorWMm: Number(e.target.value) })} className={inputCls} />
                 </div>
                 <div>
-                  <span className={`text-[11px] ${panelText}`}>{t('framingModal.sensorH')}</span>
+                  <span className={`text-[0.6875rem] ${panelText}`}>{t('framingModal.sensorH')}</span>
                   <input type="number" min={0.1} step={0.1} value={setup.custom.sensorHMm} onChange={e => updateCustom({ sensorHMm: Number(e.target.value) })} className={inputCls} />
                 </div>
 
@@ -564,7 +566,7 @@ export function FramingModal({ catalogId, objectName, isDark, onClose, savedFram
                   )}
                 </div>
 
-                <p className={`col-span-2 text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                <p className={`col-span-2 text-[0.625rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                   {t('framingModal.customOpticsHint')}
                 </p>
               </div>
@@ -632,7 +634,7 @@ export function FramingModal({ catalogId, objectName, isDark, onClose, savedFram
           </div>
         </div>
 
-        <div className={`px-5 py-3 border-t text-[11px] ${isDark ? 'border-slate-700/40 text-slate-500' : 'border-slate-200 text-slate-400'}`}>
+        <div className={`px-5 py-3 border-t text-[0.6875rem] ${isDark ? 'border-slate-700/40 text-slate-500' : 'border-slate-200 text-slate-400'}`}>
           {t('framingModal.fovDisclaimer')}
         </div>
       </div>

@@ -26,12 +26,58 @@ const SECTION_META: Record<string, { labelKey: string; Icon: React.ElementType; 
   Fixed:   { labelKey: 'changelogModal.sections.fixed',   Icon: Wrench,      chip: 'bg-amber-500/15 text-amber-400' },
   Removed: { labelKey: 'changelogModal.sections.removed', Icon: AlertCircle, chip: 'bg-red-500/15 text-red-400' },
 };
+// CHANGELOG.md headings use New / Updated; they share the Added / Changed
+// styling and translated labels.
+SECTION_META.New = SECTION_META.Added;
+SECTION_META.Updated = SECTION_META.Changed;
 const SECTION_META_LIGHT: Record<string, { chip: string }> = {
   Added:   { chip: 'bg-emerald-50 text-emerald-700' },
   Changed: { chip: 'bg-blue-50 text-blue-700' },
   Fixed:   { chip: 'bg-amber-50 text-amber-700' },
   Removed: { chip: 'bg-red-50 text-red-700' },
 };
+SECTION_META_LIGHT.New = SECTION_META_LIGHT.Added;
+SECTION_META_LIGHT.Updated = SECTION_META_LIGHT.Changed;
+
+const LINK_PATTERN = /\[([^\]]+)\]\((https:\/\/[^)\s]+)\)/g;
+
+/** Turns [text](https://...) into links, leaving everything else as written. Only https links, so a changelog line can never
+ *  carry a script or other scheme into an href. */
+function renderLinks(text: string, linkClass: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  for (const match of text.matchAll(LINK_PATTERN)) {
+    const at = match.index ?? 0;
+    if (at > last) out.push(text.slice(last, at));
+    out.push(
+      <a key={at} href={match[2]} target="_blank" rel="noopener noreferrer" className={linkClass}>{match[1]}</a>,
+    );
+    last = at + match[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+/** Renders **bold** spans and [links](https://...) from changelog text. A span holding a Settings path
+ *  ("Settings -> Library -> Filter aliases") becomes a chip so it reads as a
+ *  place to go; any other bold span is a plain lead-in. */
+function renderInline(text: string, strongClass: string, isDark: boolean): React.ReactNode[] {
+  const chipClass = isDark
+    ? 'bg-slate-800 text-slate-100 ring-1 ring-slate-700'
+    : 'bg-slate-100 text-slate-900 ring-1 ring-slate-200';
+  const linkClass = isDark ? 'text-accent-400 hover:underline' : 'text-accent-600 hover:underline';
+  return text.split(/\*\*(.+?)\*\*/g).map((part, i) => {
+    if (i % 2 === 0) return <span key={i}>{renderLinks(part, linkClass)}</span>;
+    if (part.includes('->')) {
+      return (
+        <span key={i} className={`mx-0.5 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[0.85em] font-medium ${chipClass}`}>
+          {part.replace(/ -> /g, ' \u2192 ')}
+        </span>
+      );
+    }
+    return <strong key={i} className={strongClass}>{part}</strong>;
+  });
+}
 
 interface Props {
   isOpen: boolean;
@@ -174,7 +220,7 @@ export function ChangelogModal({ isOpen, onClose, onAcknowledge, acknowledging, 
                           }`}
                         >
                           <div className="text-sm font-medium">v{entry.version}</div>
-                          <div className={`text-[10px] mt-0.5 ${isSelected ? '' : muted}`}>
+                          <div className={`text-[0.625rem] mt-0.5 ${isSelected ? '' : muted}`}>
                             {entry.date}
                           </div>
                         </button>
@@ -271,7 +317,7 @@ function EntryDetail({
         </span>
         <span className={`text-xs ${muted}`}>{entry.date}</span>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-6">
         {Object.entries(entry.sections).map(([sectionName, items]) => {
           const meta = SECTION_META[sectionName];
           const lightMeta = SECTION_META_LIGHT[sectionName];
@@ -282,17 +328,36 @@ function EntryDetail({
           const sectionLabel = meta ? t(meta.labelKey) : sectionName;
           return (
             <div key={sectionName}>
-              <div className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full mb-2 ${chipClass}`}>
-                {Icon && <Icon className="w-3 h-3" />}
+              <div className={`inline-flex items-center gap-1 text-sm font-semibold px-3 py-1 rounded-full mb-3 ${chipClass}`}>
+                {Icon && <Icon className="w-4 h-4" />}
                 {sectionLabel}
               </div>
-              <ul className="space-y-1">
-                {items.map((item, j) => (
-                  <li key={j} className={`flex gap-2 text-sm ${itemText}`}>
-                    <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${isDark ? 'bg-slate-500' : 'bg-slate-400'}`} />
-                    {item}
-                  </li>
-                ))}
+              <ul className="space-y-3.5">
+                {items.map((item, j) => {
+                  // Sub-bullets arrive as extra lines after the parent text.
+                  const [head, ...subs] = item.split('\n');
+                  const subText = isDark ? 'text-slate-400' : 'text-slate-600';
+                  const strong = isDark ? 'font-semibold text-slate-100' : 'font-semibold text-slate-900';
+                  const dot = isDark ? 'bg-slate-500' : 'bg-slate-400';
+                  return (
+                    <li key={j} className={`text-sm ${itemText}`}>
+                      <div className="flex gap-2">
+                        <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${dot}`} />
+                        <span>{renderInline(head, strong, isDark)}</span>
+                      </div>
+                      {subs.length > 0 && (
+                        <ul className={`mt-1.5 ml-3 space-y-1 ${subText}`}>
+                          {subs.map((sub, k) => (
+                            <li key={k} className="flex gap-2">
+                              <span className={`mt-2.5 h-px w-2 shrink-0 ${isDark ? 'bg-slate-400' : 'bg-slate-500'}`} />
+                              <span>{renderInline(sub, strong, isDark)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           );

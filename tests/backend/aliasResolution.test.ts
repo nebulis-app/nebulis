@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import snapshot from './fixtures/alias-resolution.snapshot.json';
 import { resolveCanonicalId, getAliasesFor } from '../../server/lib/catalogAliases';
 
-// The hand-written ALIASES map in catalogAliases.ts was replaced with one
-// derived from CALDWELL_TO_NGC, the Sharpless cross-references, OpenNGC's
-// Messier cross-references and a short exception list. This snapshot was
-// captured from the old hand-written map. Every id must still resolve to the
-// same canonical id and expose the same alias set — a change here means a
-// library folder key would be rewritten by the boot-time fold migration.
+// The alias map is read off the records of server/data/dso-catalog.json. This
+// snapshot was captured from the old hand-written map and updated only for the
+// deliberate corrections of the 2026-10 catalog audit (Caldwell 102/103 and
+// eight Sharpless nebulae that are the same object as an NGC/IC one). Every id
+// must still resolve to the same canonical id and expose the same alias set — a
+// change here means a library folder key would be rewritten by the boot-time
+// fold migration.
 describe('alias resolution parity with the old hand-written map', () => {
   const entries = Object.entries(snapshot as Record<string, { canonical: string; aliases: string[] }>);
 

@@ -74,7 +74,7 @@ describe('folder import object identification', () => {
     // ...and commit stores it that way.
     await commitFolderImport(plan);
 
-    expect(stmts.getObject.get('M42')).toBeTruthy();
+    expect(stmts.getObject.get('M42')).toMatchObject({ objectId: 'M42', folderName: 'M42 - Orion Nebula' });
     expect(stmts.getObject.get('M42-OrionNebula')).toBeUndefined();
     expect(getLocalSessions('M42').length).toBeGreaterThan(0);
     expect(fs.readdirSync(path.join(LIBRARY_DIR, 'M42 - Orion Nebula'), { recursive: true }).length)
@@ -91,7 +91,7 @@ describe('folder import object identification', () => {
     expect(scan.objects[0].catalogMatch?.objectId).toBe('M31');
 
     await commitFolderImport(plan);
-    expect(stmts.getObject.get('M31')).toBeTruthy();
+    expect(stmts.getObject.get('M31')).toMatchObject({ objectId: 'M31', folderName: 'Seestar_M31' });
     expect(stmts.getObject.get('Seestar_M31')).toBeUndefined();
   });
 
@@ -104,6 +104,6 @@ describe('folder import object identification', () => {
     expect(scan.objects[0].catalogMatch).toBeNull();
 
     await commitFolderImport(plan);
-    expect(stmts.getObject.get('MyCustomTarget')).toBeTruthy();
+    expect(stmts.getObject.get('MyCustomTarget')).toMatchObject({ objectId: 'MyCustomTarget', folderName: 'My Custom Target' });
   });
 });

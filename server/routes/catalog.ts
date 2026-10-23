@@ -48,8 +48,9 @@ import { DATA_DIR } from '../lib/paths.js';
 import { isRecord, parseJsonRecord } from '../lib/typeGuards.js';
 import { caldwellToNgcId, CALDWELL_FALLBACK_COORDS } from '../lib/caldwellCatalog.js';
 import { getOverride, saveOverride, deleteOverride, getOverrideRecord } from '../lib/catalogOverrides.js';
-import { getCuratedDescription } from '../lib/curatedDescriptions.js';
+import { getCuratedDescription, getSiblingDescription } from '../lib/curatedDescriptions.js';
 import { lookupTimeZoneForCoordinates } from '../lib/observerTimezone.js';
+import { catalogImageCacheControl } from '../lib/catalogImageCache.js';
 
 /** Max requested thumbnail size — caps Sharp work and disk usage. */
 const MAX_REQUEST_DIMENSION = 1920;
@@ -375,7 +376,7 @@ router.get('/:id/image', async (req: Request, res: Response) => {
     }
     res.setHeader('Content-Type', master.contentType);
     res.setHeader('Last-Modified', lastModified);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Cache-Control', catalogImageCacheControl(master.source));
     const s = fs.createReadStream(master.path);
     s.on('error', () => { if (!res.headersSent) res.status(500).end(); });
     s.pipe(res);
@@ -385,9 +386,9 @@ router.get('/:id/image', async (req: Request, res: Response) => {
   // ── Resized cache hit ──
   // Keyed on (id, source, w, h, fit) so the file name changes when the
   // selected master does — preventing stale cross-source thumbnails.
-  // Cache-Control is 24h (not immutable) because the best available master
-  // can change when catalog packs download better imagery — immutable would
-  // lock browsers onto the old image for an entire year.
+  // Cache-Control comes from catalogImageCacheControl: immutable for a final
+  // Hubble/Wikipedia master, 30 days for a DSS2 plate that a pack could still
+  // replace with something better.
   const resizedPath = resizedImagePath(id, width, height, fit, master.source);
   try {
     const stat = fs.statSync(resizedPath);
@@ -400,7 +401,7 @@ router.get('/:id/image', async (req: Request, res: Response) => {
       }
       res.setHeader('Content-Type', 'image/jpeg');
       res.setHeader('Last-Modified', lastModified);
-      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Cache-Control', catalogImageCacheControl(master.source));
       const s = fs.createReadStream(resizedPath);
       s.on('error', () => { if (!res.headersSent) res.status(500).end(); });
       s.pipe(res);
@@ -421,7 +422,7 @@ router.get('/:id/image', async (req: Request, res: Response) => {
     const resizedStat = fs.statSync(resizedPath);
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Last-Modified', new Date(resizedStat.mtimeMs).toUTCString());
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Cache-Control', catalogImageCacheControl(master.source));
     const s = fs.createReadStream(resizedPath);
     s.on('error', () => { if (!res.headersSent) res.status(500).end(); });
     s.pipe(res);
@@ -581,6 +582,9 @@ router.post('/:id/prefetch', requireAdmin, async (req: Request, res: Response) =
 });
 
 // ─── Object info (served from DB — enriched during import) ──────────────
+/** Ids already sent for a Wikipedia lookup this run, so repeated opens do not repeat it. */
+const wikiLookupsTried = new Set<string>();
+
 router.get('/:id/info', (_req: Request, res: Response) => {
   const id = String(_req.params.id);
 
@@ -605,12 +609,17 @@ router.get('/:id/info', (_req: Request, res: Response) => {
   // short one-liners saved during library import. Fall back to curated
   // descriptions for popular objects, then the library/static description.
   const wikiExtract = cached?.status === 'ok' ? cached.extract : '';
-  const description = curated?.extract || wikiExtract || obj?.description || entry?.description || '';
+  const ownDescription = curated?.extract || wikiExtract || obj?.description || entry?.description || '';
+  // Last resort: borrow the text of an object that shares this one's common
+  // name (a section of the same nebula), so it never replaces real data.
+  const sibling = ownDescription ? null : getSiblingDescription(id);
+  const description = ownDescription || sibling?.extract || '';
 
   const wikiUrl =
     curated?.wikiUrl
     || (cached?.status === 'ok' ? cached.wikiUrl : '')
     || obj?.wikiUrl
+    || sibling?.wikiUrl
     || null;
 
   // User overrides win over every other source — they're the user's intent.
@@ -618,6 +627,7 @@ router.get('/:id/info', (_req: Request, res: Response) => {
   // base merge inside getCatalogEntry can't do (the extract is only
   // consulted in this route).
   const override = getOverride(id);
+  const distanceLy = override?.distanceLy ?? entry?.distanceLy ?? obj?.distanceLy;
 
   const info = {
     name: override?.name ?? obj?.objectName ?? entry?.name ?? id,
@@ -627,10 +637,8 @@ router.get('/:id/info', (_req: Request, res: Response) => {
     description: override?.description ?? description,
     ra: override?.ra ?? obj?.ra ?? entry?.ra ?? null,
     dec: override?.dec ?? obj?.dec ?? entry?.dec ?? null,
-    distance: (override?.distanceLy ?? entry?.distanceLy ?? obj?.distanceLy) != null
-      ? formatDistance((override?.distanceLy ?? entry?.distanceLy ?? obj?.distanceLy)!)
-      : null,
-    distanceLy: override?.distanceLy ?? entry?.distanceLy ?? obj?.distanceLy ?? null,
+    distance: distanceLy != null ? formatDistance(distanceLy) : null,
+    distanceLy: distanceLy ?? null,
     size: obj?.sizeArcmin || (entry?.majorAxisArcmin != null ? `${entry.majorAxisArcmin.toFixed(1)}'` : null),
     imageUrl: `/api/catalog/${encodeURIComponent(id)}/image`,
     wikiUrl,
@@ -642,8 +650,16 @@ router.get('/:id/info', (_req: Request, res: Response) => {
   // background re-enrichment. Skip if catalogCache already recorded not_found —
   // the prefetch job already determined Wikipedia has no page for this object,
   // so retrying on every /info request just hammers Wikipedia pointlessly.
-  if (!description && obj && cached?.status !== 'not_found') {
+  if (!ownDescription && obj && cached?.status !== 'not_found') {
     enrichObjectData(id).catch(() => {});
+  }
+
+  // An object that is not in the library (a planner or wishlist target) never
+  // got that fetch, so it stayed empty. Ask Wikipedia once per run for it; the
+  // answer is cached, so the next open of the same object has the text.
+  if (!ownDescription && !obj && cached?.status !== 'not_found' && !wikiLookupsTried.has(id)) {
+    wikiLookupsTried.add(id);
+    prefetchObjectWiki(id).catch(() => {});
   }
 
   res.apiSuccess(info);
@@ -912,7 +928,8 @@ function saveGeocodeCache() {
 
 async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
   const key = `${lat.toFixed(2)},${lon.toFixed(2)}`;
-  if (geocodeCache.has(key)) return geocodeCache.get(key)!;
+  const cachedName = geocodeCache.get(key);
+  if (cachedName !== undefined) return cachedName;
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10`;
     const resp = await fetch(url, {

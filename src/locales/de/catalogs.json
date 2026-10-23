@@ -51,7 +51,8 @@
     "planTonightTitle": "Heute Nacht aus nicht aufgenommenen {{label}}-Objekten planen",
     "planTonight": "Heute Nacht planen",
     "inFrameNote_one": "Enthält {{count}} im Bildfeld eines anderen Objekts",
-    "inFrameNote_other": "Enthält {{count}} im Bildfeld anderer Objekte"
+    "inFrameNote_other": "Enthält {{count}} im Bildfeld anderer Objekte",
+    "myCatalog": "Mein {{label}}-Katalog"
   },
   "catalogPanel": {
     "ariaLabel": "Katalog {{label}}, {{imaged}} von {{total}} Objekten aufgenommen",
@@ -62,7 +63,10 @@
     "complete": "Abgeschlossen",
     "toGo_one": "noch {{count}}",
     "toGo_other": "noch {{count}}",
-    "openBoard": "Board öffnen"
+    "openBoard": "Board öffnen",
+    "myCatalog": "Mein {{label}}",
+    "myCatalogAria_one": "Mein {{label}}-Katalog, {{count}} Bild",
+    "myCatalogAria_other": "Mein {{label}}-Katalog, {{count}} Bilder"
   },
   "catalogTile": {
     "imagedAriaLabel": "{{id}}, {{name}}, aufgenommen",
@@ -253,5 +257,246 @@
     "saveFraming": "Framing für diese Sitzung speichern",
     "framingSaved": "Gespeichert",
     "fovDisclaimer": "Gesichtsfeldwerte sind ungefähr. Smarte Teleskope sind Alt-Az-montiert, daher dreht sich der tatsächliche Bildwinkel während einer Sitzung."
+  },
+  "wall": {
+    "title": "Mein {{label}}-Katalog",
+    "backToBoard": "{{label}}-Übersicht",
+    "filterAria": "Bilder anzeigen",
+    "filter": {
+      "all": "Alle",
+      "processed": "Bearbeitet",
+      "telescope": "Teleskop"
+    },
+    "mosaic": "Mosaik",
+    "uniform": "Gleichmäßig",
+    "layoutMosaic": "Zum Mosaik-Layout wechseln",
+    "layoutUniform": "Zum Layout mit gleich großen Kacheln wechseln",
+    "processed": "Bearbeitet",
+    "telescope": "Teleskop",
+    "inFrame": "Im Bildfeld",
+    "openObject": "{{name}} öffnen",
+    "emptyAria": "{{label}}, noch nicht fotografiert",
+    "notImaged": "Noch nicht fotografiert",
+    "addWishlist": "Zur Wunschliste hinzufügen",
+    "removeWishlist": "Von der Wunschliste entfernen",
+    "planIt": "Planen",
+    "loadFailed": "Dein Katalog konnte nicht geladen werden. Lade die Seite neu.",
+    "empty": "Du hast noch nichts aus dem {{label}}-Katalog fotografiert. Deine Bilder füllen diese Wand, sobald du welche hinzufügst.",
+    "edit": {
+      "start": "Layout bearbeiten",
+      "done": "Fertig",
+      "cancel": "Abbrechen",
+      "resetWall": "Wand zurücksetzen",
+      "resetTile": "Diese Kachel zurücksetzen",
+      "hint": "Ziehe an einer Ecke oder nutze die Größen-Schaltfläche. Änderungen werden mit Fertig gespeichert.",
+      "chooseImage": "Bild wählen",
+      "size": "Kachelgröße",
+      "sizeAria": "Größe von {{id}} ändern",
+      "auto": "Automatisch",
+      "dragAria": "Zum Ändern der Größe von {{id}} ziehen",
+      "close": "Schließen",
+      "focusHint": "Ziehe den Rahmen zum Verschieben, ziehe eine Ecke oder nutze den Regler zum Zoomen. Der Rahmen ist der Ausschnitt auf der Kachel.",
+      "frameHint": "Alles im Rahmen wird auf der Kachel gezeigt. Zoome hinein, um nur einen Teil des Bildes zu zeigen.",
+      "cropPreview": "Kachelvorschau ({{cols}} × {{rows}})",
+      "yourImages": "Deine Bilder dieses Objekts",
+      "noImages": "Keine Bilder vorhanden.",
+      "saveFailed": "Dein Layout konnte nicht gespeichert werden. Versuche es erneut."
+    },
+    "poster": {
+      "open": "Poster teilen",
+      "title": "Poster teilen",
+      "previewAlt": "Postervorschau",
+      "format": "Seitenverhältnis",
+      "formats": {
+        "wide": "Breit 4K",
+        "story": "Story",
+        "square": "Quadrat",
+        "print": "Druck A2"
+      },
+      "imagedOnly": "Nur Objekte, die ich fotografiert habe",
+      "labels": "Katalognummern anzeigen",
+      "jpeg": "Als JPG statt PNG speichern",
+      "titleField": "Titel",
+      "subtitleField": "Untertitel",
+      "subtitlePlaceholder": "Dein Name, Ort oder Jahr",
+      "download": "Herunterladen",
+      "rendering": "Wird erstellt…",
+      "copy": "Bild kopieren",
+      "share": "Teilen…",
+      "downloaded": "Poster gespeichert.",
+      "copied": "In die Zwischenablage kopiert.",
+      "shareFallback": "Das Teilen von Dateien ist hier nicht möglich, daher wurde das Poster heruntergeladen.",
+      "failed": "Das Poster konnte nicht erstellt werden. Versuche ein kleineres Format.",
+      "brand": "Nebulis-Logo und -Namen hinzufügen",
+      "brandSide": {
+        "left": "Links",
+        "right": "Rechts",
+        "bottomRight": "Unten rechts"
+      }
+    },
+    "statsTile": "{{imaged}} / {{total}}"
+  },
+  "explore": {
+    "hero": {
+      "title": "Entdecken",
+      "subtitle": "Finde Motive, die sich lohnen. Suche nach Namen oder Katalognummern oder stöbere nach Objektart.",
+      "site": "Beobachtungsort",
+      "setLocation": "Lege deinen Standort fest, um zu sehen, was du fotografieren kannst"
+    },
+    "search": {
+      "label": "Den Himmel durchsuchen",
+      "placeholder": "Name oder Nummer suchen: Pelikan, M42, NGC 7000, C14, Sh2-155",
+      "clear": "Suche löschen",
+      "results": "Suchergebnisse",
+      "bestOfConstellation": "Beste Objekte in {{name}}",
+      "constellationCount_one": "{{count}} Objekt",
+      "constellationCount_other": "{{count}} Objekte",
+      "noResults": "Nichts gefunden für „{{query}}“",
+      "seeAll": "Alle {{count}} Ergebnisse anzeigen",
+      "addNamed": "{{name}} zur Wunschliste hinzufügen",
+      "addHint": "Zur Wunschliste hinzufügen (Strg+Enter)"
+    },
+    "visibility": {
+      "tonight": "Heute Nacht sichtbar",
+      "bestMonth": "Am besten im {{month}}",
+      "bestRange": "Am besten {{from}} bis {{to}}",
+      "inSeason": "In der Saison",
+      "low": "Von hier aus tief",
+      "never": "Geht hier nie auf",
+      "upOn": "Sichtbar am {{date}}"
+    },
+    "card": {
+      "mag": "{{value}} mag",
+      "maxAlt": "Max. Höhe",
+      "best": "Beste",
+      "magLabel": "Mag.",
+      "open": "{{name}} öffnen",
+      "imaged": "Du hast dieses Objekt fotografiert",
+      "onWishlist": "Auf deiner Wunschliste",
+      "added": "Hinzugefügt",
+      "add": "Wunschliste",
+      "planTonight": "Heute planen",
+      "notUpTonight": "Heute Nacht von deinem Standort aus nicht sichtbar",
+      "planned": "Für heute Nacht eingeplant",
+      "noRoom": "Heute Nacht kein freier Platz",
+      "planFailed": "Planen fehlgeschlagen",
+      "openPlanner": "Im Planer öffnen",
+      "openPlannerNamed": "{{name}} im Planer anzeigen"
+    },
+    "tile": {
+      "total": "{{formatted}} Objekte",
+      "visibleHere": "{{formatted}} von hier sichtbar",
+      "upTonight": "{{formatted}} heute Nacht sichtbar"
+    },
+    "categories": {
+      "showpieces": {
+        "label": "Highlights",
+        "blurb": "Handverlesene Favoriten",
+        "intro": "Eine kurze Liste der meistfotografierten Objekte, ausgewählt, weil sie sich schon mit einem kleinen Teleskop lohnen."
+      },
+      "galaxies": {
+        "label": "Galaxien",
+        "blurb": "Spiralen, Ellipsen und Galaxien von der Kante",
+        "intro": "Andere Sternenstädte. Die großen, hellen kommen zuerst. Lichtschwache Galaxien brauchen viele Stunden, prüfe also Größe und Helligkeit, bevor du eine Nacht opferst."
+      },
+      "galaxy-groups": {
+        "label": "Galaxiengruppen",
+        "blurb": "Paare, Trios und kompakte Gruppen",
+        "intro": "Galaxien, die am Himmel dicht beieinander stehen. Sie ergeben kleine Bildfelder, die zu kurzen Brennweiten passen."
+      },
+      "emission-nebulae": {
+        "label": "Emissionsnebel",
+        "blurb": "Leuchtende Wasserstoffwolken und Sternentstehungsgebiete",
+        "intro": "Gaswolken, die von jungen Sternen zum Leuchten gebracht werden. Sie glühen in Wasserstoff-Alpha rot, daher hilft ein Dualband-Filter unter hellem Himmel sehr."
+      },
+      "planetary-nebulae": {
+        "label": "Planetarische Nebel",
+        "blurb": "Gashüllen um sterbende Sterne",
+        "intro": "Klein, hell und oft farbig. Viele sind winzig, deshalb zeigt eine längere Brennweite die meisten Details."
+      },
+      "supernova-remnants": {
+        "label": "Supernova-Überreste",
+        "blurb": "Trümmer explodierter Sterne",
+        "intro": "Feine, zarte Filamente explodierter Sterne. Sie sind schwach und belohnen lange Belichtungen unter dunklem Himmel."
+      },
+      "dark-reflection": {
+        "label": "Dunkel- und Reflexionsnebel",
+        "blurb": "Staubwolken, beleuchtet und unbeleuchtet",
+        "intro": "Staub, der Sternenlicht schluckt oder streut. Blaue Reflexionsnebel zeigen sich unter fast jedem Himmel. Dunkelnebel brauchen einen hellen Hintergrund."
+      },
+      "clusters": {
+        "label": "Sternhaufen",
+        "blurb": "Offene und kugelförmige Haufen",
+        "intro": "Offene Haufen sind lockere Familien junger Sterne. Kugelsternhaufen sind dichte Kugeln alter Sterne. Kurze Belichtungen reichen."
+      }
+    },
+    "best": {
+      "title": "Die Besten für heute Nacht an deinem Standort",
+      "seeAll": "Alle anzeigen",
+      "titleOn": "Die Besten am {{date}}"
+    },
+    "browse": {
+      "title": "Nach Art durchsuchen",
+      "myWishlist": "Meine Wunschliste ({{count}})"
+    },
+    "results": {
+      "back": "Zurück zu Entdecken",
+      "forQuery": "Ergebnisse für „{{query}}“",
+      "inConstellation": "Die Besten in {{name}}",
+      "all": "Alles",
+      "count": "{{formatted}} Objekte",
+      "loading": "Wird geladen",
+      "empty": "Keine Objekte passen zu diesen Filtern.",
+      "showEverything": "Alles anzeigen, auch was hier nie aufgeht",
+      "loadMore": "Mehr laden",
+      "bestTonight": "Beste heute Nacht",
+      "bestOn": "Die Besten am {{date}}"
+    },
+    "filters": {
+      "visibility": "Anzeigen",
+      "tonight": "Heute Nacht sichtbar",
+      "here": "Von hier sichtbar",
+      "all": "Alles",
+      "notImaged": "Noch nicht fotografiert",
+      "sort": "Sortieren",
+      "fitsScope": "Passt zu meinem Teleskop",
+      "fitsScopeHint": "Objekte, die in ein Bild von {{scope}} passen",
+      "upOn": "Sichtbar am {{date}}"
+    },
+    "sort": {
+      "best": "Beste",
+      "tonight": "Beste heute Nacht",
+      "bright": "Hellste",
+      "large": "Größte",
+      "name": "Name"
+    },
+    "planNight": {
+      "title": "{{name}} planen",
+      "subtitle": "Die nächsten 30 Nächte an deinem Standort. Sterne markieren die drei besten.",
+      "loading": "Die nächsten 30 Nächte werden geprüft",
+      "noLocation": "Lege deinen Beobachtungsort fest, um eine Nacht zu planen.",
+      "never": "Dieses Objekt steigt von deinem Standort aus nicht hoch genug.",
+      "best": "Beste Nacht",
+      "altHours": "Bis {{alt}}° für {{hours}} Std.",
+      "moon": {
+        "ok": "Mond {{illum}} %, unproblematisch",
+        "caution": "Mond {{illum}} %, etwas nah",
+        "warning": "Mond {{illum}} %, zu nah"
+      },
+      "plan": "Planen",
+      "planned": "Eingeplant",
+      "noRoom": "Kein freier Platz",
+      "noWindow": "Kein dunkles Zeitfenster",
+      "failed": "Planen fehlgeschlagen",
+      "geometryNote": "Basiert nur auf Höhe und Mond. Prüfe die Vorhersage auf Wolken.",
+      "openPlanner": "Planer öffnen",
+      "close": "Schließen",
+      "bestNights": "Beste Nächte",
+      "allNights": "Nächste 30 Nächte"
+    },
+    "night": {
+      "showing": "Zeigt {{date}}, die im Planer gewählte Nacht.",
+      "backToTonight": "Zurück zu heute Nacht"
+    }
   }
 }

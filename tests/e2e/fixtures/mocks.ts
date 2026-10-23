@@ -108,6 +108,8 @@ export const MOCK = {
   ],
 
   settings: {
+    // The app opens object pages on Combined; these specs cover the Classic page (an observation grid) unless they say otherwise.
+    objectPageLayout: 'nights',
     hostname: '192.168.1.100',
     shareName: 'Seestar',
     username: 'seestar',
@@ -929,6 +931,14 @@ export async function mockAllRoutes(page: Page) {
   // object and `archives.map is not a function` crashes the page.
   await page.route('**/api/library/objects/*/project-archives', r =>
     r.fulfill(json(ok([]))));
+  // The Combined object page (the default) asks for its pictures here. Without this the catch-all above answers
+  // with a single object and `facets.nights` is undefined, which crashes the page.
+  await page.route('**/api/library/objects/*/media**', r =>
+    r.fulfill(json(ok({
+      counts: { all: 0, processed: 0, telescope: 0, nights: 0, sub: 0, project: 0, video: 0 },
+      facets: { telescopes: [], filters: [], nights: [], formats: [] },
+      groups: [], items: [], total: 0, nextOffset: null,
+    }))));
   // Same catch-all hazard again: the object page's admin-only trash-count
   // queries hit these two, and without a mock `deletedObjectsAll` ends up as
   // a single MOCK.objects[0] object rather than an array, throwing

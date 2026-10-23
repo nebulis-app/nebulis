@@ -8,6 +8,7 @@
  * a caller must leave that path alone.
  */
 import fsp from 'fs/promises';
+import { errnoCode } from './errors.js';
 
 export type PathProbe = 'present' | 'missing' | 'error';
 
@@ -16,7 +17,7 @@ export async function probePath(absPath: string): Promise<PathProbe> {
     await fsp.access(absPath);
     return 'present';
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
+    const code = errnoCode(err);
     return code === 'ENOENT' || code === 'ENOTDIR' ? 'missing' : 'error';
   }
 }

@@ -45,7 +45,7 @@ describe('library trash: object restore', () => {
 
     const before = stmts.getObject.get('M81');
     expect(before?.deleted).toBe(1);
-    expect(before?.deletedAt).toBeTruthy();
+    expect(before?.deletedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
     // The delete really did remove the files — restore must not fabricate them.
     expect(fs.existsSync(path.join(LIBRARY_DIR, 'M81'))).toBe(false);
 

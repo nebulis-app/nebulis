@@ -8,10 +8,11 @@
  * scheduled. Nights past the forecast horizon still show Moon and schedule,
  * which is most of what decides a target list anyway.
  */
-import { useEffect, useRef } from 'react';
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Calendar, ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { scoreHex } from '../../lib/forecastScore';
+import { scoreHex, scoreLabel } from '../../lib/forecastScore';
+import { useClickOutside } from '../../hooks/useClickOutside';
 import { useTheme } from '../../hooks/useTheme';
 import { MoonDisk } from '../ui/MoonDisk';
 import { translateMoonPhase } from '../../lib/moonPhaseLabel';
@@ -90,7 +91,7 @@ export function NightStrip({ nights, selectedKey, onSelect, onStep, onOpenCalend
                 night.plannedCount > 0 ? t('nightStrip.blocksPlanned', { count: night.plannedCount }) : null,
               ].filter(Boolean).join(' · ')}
             >
-              <div className={`text-[9.5px] font-medium uppercase tracking-[0.06em] ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+              <div className={`text-[0.5938rem] font-medium uppercase tracking-[0.06em] ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
                 {night.isToday ? t('nightStrip.tonight') : formatDate(night.date, { weekday: 'short' })}
               </div>
               <div className="mt-0.5 flex items-center justify-center gap-1">
@@ -128,6 +129,7 @@ export function NightStrip({ nights, selectedKey, onSelect, onStep, onOpenCalend
       <StepButton label={t('nightStrip.pickADate')} onClick={onOpenCalendar} className={`${stepClass} w-[58px]`}>
         <Calendar className="h-4 w-4" />
       </StepButton>
+      <StripLegend isDark={isDark} isNight={isNight} />
     </div>
   );
 }
@@ -152,5 +154,81 @@ function StepButton({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * What the chips are saying, once, instead of in each chip's tooltip: the bar is
+ * the forecast rating, the dot is a night that already has a plan, the disk is
+ * the Moon. Nothing on the strip explains itself otherwise, and the blue bar
+ * (a mid rating) read to some as a different kind of night.
+ */
+function StripLegend({ isDark, isNight }: { isDark: boolean; isNight: boolean }) {
+  const { t } = useTranslation('planner');
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  useClickOutside(wrapRef, () => setOpen(false), { enabled: open, closeOnEscape: true });
+
+  const muted = isDark ? 'text-slate-400' : 'text-slate-500';
+  const strong = isDark ? 'text-slate-100' : 'text-slate-900';
+  // One score per rating band, best first, so the key shows the whole scale.
+  const samples = [90, 75, 60, 45, 30];
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={t('nightStrip.legendLabel')}
+        title={t('nightStrip.legendTitle')}
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition ${
+          isDark ? 'text-slate-500 hover:bg-slate-800 hover:text-slate-200' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'
+        }`}
+      >
+        <Info className="h-4 w-4" />
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label={t('nightStrip.legendLabel')}
+          className={`absolute left-0 top-full z-30 mt-1.5 w-72 space-y-3 rounded-xl border p-3 shadow-xl ${
+            isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'
+          }`}
+        >
+          <div>
+            <div className={`text-xs font-medium ${strong}`}>{t('nightStrip.legendRating')}</div>
+            <div className={`mb-1.5 text-[0.6875rem] ${muted}`}>{t('nightStrip.legendRatingHint')}</div>
+            <ul className="space-y-1">
+              {samples.map(score => (
+                <li key={score} className="flex items-center gap-2">
+                  <span className={`h-1 w-10 overflow-hidden rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>
+                    <span className="block h-full rounded-full" style={{ width: `${score}%`, background: scoreHex(score, isNight) }} />
+                  </span>
+                  <span className={`text-[0.6875rem] ${muted}`}>{scoreLabel(score, t)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="flex items-start gap-2">
+            <span aria-hidden="true" className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-500" />
+            <div>
+              <div className={`text-xs font-medium ${strong}`}>{t('nightStrip.legendPlanned')}</div>
+              <div className={`text-[0.6875rem] ${muted}`}>{t('nightStrip.legendPlannedHint')}</div>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-slate-950">
+              <MoonDisk illumination={50} phase="First Quarter" size={13} />
+            </span>
+            <div>
+              <div className={`text-xs font-medium ${strong}`}>{t('nightStrip.legendMoon')}</div>
+              <div className={`text-[0.6875rem] ${muted}`}>{t('nightStrip.legendMoonHint')}</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

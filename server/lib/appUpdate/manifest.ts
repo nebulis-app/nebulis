@@ -14,7 +14,7 @@ export type UpdateChannel = (typeof UPDATE_CHANNELS)[number];
 /** Narrows a DB column / request body value to the union. See
  *  isPreferredCatalog in types/appSettings.ts for why this takes `unknown`. */
 export function isUpdateChannel(value: unknown): value is UpdateChannel {
-  return typeof value === 'string' && (UPDATE_CHANNELS as readonly string[]).includes(value);
+  return typeof value === 'string' && UPDATE_CHANNELS.some((entry) => entry === value);
 }
 
 const Artifact = z.object({

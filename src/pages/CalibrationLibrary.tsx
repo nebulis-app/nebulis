@@ -125,7 +125,8 @@ function formatCamera(v: string | null | undefined): string | null {
 function frameInfoSummary(info: CalibrationFrameInfo | null): string | null {
   if (!info) return null;
   const parts: string[] = [];
-  if (info.camera) parts.push(formatCamera(info.camera)!);
+  const camera = formatCamera(info.camera);
+  if (camera) parts.push(camera);
   if (info.exposureSec !== undefined) parts.push(formatExposure(info.exposureSec));
   if (info.binning !== undefined) parts.push(`Bin${info.binning}`);
   if (info.gain !== undefined) parts.push(`gain${info.gain}`);
@@ -213,7 +214,7 @@ function SettingsGroupTable({
                       {formatExposure(set.exposureSec)}
                       {set.frameType !== null && (
                         <span
-                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[0.625rem] font-semibold uppercase tracking-wide ${
                             isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'
                           }`}
                         >
@@ -223,7 +224,7 @@ function SettingsGroupTable({
                       {set.camera !== null && (
                         <span
                           title={t('calibrations.table.cameraTitle')}
-                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.625rem] font-semibold uppercase tracking-wide ${
                             isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'
                           }`}
                         >
@@ -586,8 +587,9 @@ export function CalibrationLibrary() {
 
       {!isLoading && !error && groups.length > 0 && (
         <>
-          {TYPE_ORDER.filter(type => groupsByType.has(type)).map(type => {
-            const typeGroups = groupsByType.get(type)!;
+          {TYPE_ORDER.map(type => {
+            const typeGroups = groupsByType.get(type);
+            if (!typeGroups) return null;
             return (
               <Sec key={type} title={typeGroups[0].typeLabel} description={t(`calibrations.typeDescription.${type}`)} isDark={isDark}>
                 <div className="divide-y divide-slate-800/50">

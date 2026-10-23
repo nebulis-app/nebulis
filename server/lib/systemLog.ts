@@ -35,12 +35,12 @@ export type SystemLogLevel = (typeof SYSTEM_LOG_LEVELS)[number];
  *  array so a new category only has to be added in one place. Mirrored on the
  *  frontend at src/lib/api/systemLog.ts. */
 export function isSystemLogCategory(value: string): value is SystemLogCategory {
-  return (SYSTEM_LOG_CATEGORIES as readonly string[]).includes(value);
+  return SYSTEM_LOG_CATEGORIES.some((entry) => entry === value);
 }
 
 /** Narrow a query-string / DB string to a known level. See isSystemLogCategory. */
 export function isSystemLogLevel(value: string): value is SystemLogLevel {
-  return (SYSTEM_LOG_LEVELS as readonly string[]).includes(value);
+  return SYSTEM_LOG_LEVELS.some((entry) => entry === value);
 }
 
 export interface SystemLogEntry {

@@ -45,7 +45,7 @@ import {
 import { useClickOutside } from '../../hooks/useClickOutside';
 import { useImageFocalPoint } from '../../hooks/useImageFocalPoint';
 import { FitsPreview } from '../FitsPreview';
-import { FileLocationModal } from '../library/FileLocationModal';
+import { FileLocationModal } from '../ui/FileLocationModal';
 import { HeroBackdrop } from '../ui/HeroBackdrop';
 import { HERO_IMAGES } from '../../lib/heroImagery';
 import { TelescopeChip } from './TelescopeChip';
@@ -100,9 +100,14 @@ interface Props {
   telescope: TelescopeProfile | null;
   telescopes: TelescopeProfile[];
   isAdmin: boolean;
+  /** Optical train of the night, shown with the telescope. */
+  optics?: import('../../types').SessionOptics;
 
   captureMetrics: React.ComponentProps<typeof CaptureRail>['metrics'];
   accent: string;
+  /** Beside the title on wide screens, under it on narrow ones. The night's
+   *  sky for this session. Omitted when there is nothing to show. */
+  sidePanel?: React.ReactNode;
 
   onOpenNotes: (() => void) | null;
   hasNote: boolean;
@@ -116,11 +121,11 @@ interface Props {
  *  the panel is the same size before and after the image loads and either
  *  orientation sits on the same mat. The identity column matches its `lg` step
  *  (see below) to line its top and bottom up with the frame's. */
-const FRAME_HEIGHT = 'h-[260px] sm:h-[330px] lg:h-[420px]';
+const FRAME_HEIGHT = 'h-[220px] sm:h-[270px] lg:h-[320px]';
 /** Same steps as FRAME_HEIGHT. FitsPreview draws into a canvas inside its own
  *  auto-height wrapper, so a percentage cap there resolves to nothing; it needs
  *  the pixel values spelled out. */
-const FRAME_MAX_HEIGHT = 'max-h-[260px] sm:max-h-[330px] lg:max-h-[420px]';
+const FRAME_MAX_HEIGHT = 'max-h-[220px] sm:max-h-[270px] lg:max-h-[320px]';
 /** Square footprint for the one state that has no picture to size against —
  *  see FRAME_PLACEHOLDER in ObjectHero for the full reasoning, which this
  *  mirrors exactly: a shrink-wrapped column with nothing to shrink around
@@ -143,8 +148,8 @@ const BADGE_TONE = {
 export function SessionHero({
   objectId, date, displayName, formattedDate, shortDate, timeRange, eyebrow,
   media, badge, onOpenMedia, onResetCrown, emptyReason,
-  telescope, telescopes, isAdmin,
-  captureMetrics, accent,
+  telescope, telescopes, isAdmin, optics,
+  captureMetrics, accent, sidePanel,
   onOpenNotes, hasNote, onMove, onDelete,
 }: Props) {
   const { t } = useTranslation('observations');
@@ -251,7 +256,7 @@ export function SessionHero({
             lives in the overflow menu below, the same place ObjectHero keeps
             it, instead of an unlabeled corner button nothing else on the page
             used that pattern for. */}
-        <nav aria-label={t('observationDetail.hero.breadcrumb')} className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
+        <nav aria-label={t('observationDetail.hero.breadcrumb')} className="flex flex-wrap items-center gap-1.5 text-[0.7812rem]">
           <Link to="/observations" className="text-white/45 transition hover:text-white">
             {t('observationDetail.hero.observations')}
           </Link>
@@ -266,7 +271,7 @@ export function SessionHero({
           <span className="text-white/70">{shortDate}</span>
         </nav>
 
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:gap-9">
+        <div className="flex flex-col gap-6 lg:flex-row lg:flex-wrap lg:items-center lg:gap-9 xl:flex-nowrap">
         {/* The frame. Matches ObjectHero's picture deliberately, down to the
             reasoning: the column used to be a fixed 56% regardless of the
             frame's own shape, which on a portrait stack (any Seestar image is
@@ -385,7 +390,7 @@ export function SessionHero({
                   {onResetCrown && (
                     <button
                       onClick={e => { e.stopPropagation(); onResetCrown(); }}
-                      className="absolute bottom-2.5 left-2.5 rounded-full bg-black/45 px-2.5 py-1 text-[11px]
+                      className="absolute bottom-2.5 left-2.5 rounded-full bg-black/45 px-2.5 py-1 text-[0.6875rem]
                         font-medium text-white/70 opacity-0 backdrop-blur-md transition hover:text-white
                         group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none
                         focus-visible:ring-2 focus-visible:ring-white/70"
@@ -427,16 +432,16 @@ export function SessionHero({
         <div className="flex min-w-0 flex-1 flex-col gap-5 lg:self-start">
             <div className="min-w-0">
             {eyebrow.length > 0 && (
-              <div className="truncate text-[11px] font-medium uppercase tracking-[0.18em] text-white/50">
+              <div className="truncate text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-white/50">
                 {eyebrow.join(' · ')}
               </div>
             )}
 
-            <h1 className="font-display mt-1.5 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-[42px] lg:leading-[1.05]">
+            <h1 className="font-display mt-1.5 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-[2.625rem] lg:leading-[1.05]">
               {displayName}
             </h1>
 
-            <div className="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-white/65">
+            <div className="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.8125rem] text-white/65">
               <span className="inline-flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5 text-white/40" />
                 {formattedDate}
@@ -454,6 +459,7 @@ export function SessionHero({
                   telescope={telescope}
                   telescopes={telescopes}
                   isAdmin={isAdmin}
+                  optics={optics}
                 />
               )}
             </div>
@@ -481,6 +487,11 @@ export function SessionHero({
             />
           </div>
         </div>
+        {sidePanel && (
+          <div className="w-full max-w-xl shrink-0 lg:basis-full xl:basis-[420px] xl:self-start">
+            {sidePanel}
+          </div>
+        )}
         </div>
       </div>
 
@@ -507,7 +518,7 @@ function Badge({ badge }: { badge: NonNullable<HeroBadge> }) {
   return (
     <div
       className={`absolute left-2.5 top-2.5 inline-flex items-center gap-1.5 rounded-md px-2 py-1
-        text-[11px] font-semibold shadow backdrop-blur-md ${className}`}
+        text-[0.6875rem] font-semibold shadow backdrop-blur-md ${className}`}
     >
       <Icon className="h-3 w-3" />
       {badge.text}
@@ -559,7 +570,7 @@ function OverflowMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         title={t('observationDetail.hero.moreActions')}
-        className="inline-flex items-center gap-2 rounded-full bg-white/[0.07] px-3 py-2 text-[13px] font-medium
+        className="inline-flex items-center gap-2 rounded-full bg-white/[0.07] px-3 py-2 text-[0.8125rem] font-medium
           text-white/85 ring-1 ring-inset ring-white/15 backdrop-blur-md transition-colors hover:bg-white/15
           hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
       >
@@ -577,7 +588,7 @@ function OverflowMenu({
           <button
             role="menuitem"
             onClick={() => { setOpen(false); onShowLocation(); }}
-            className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] text-slate-200 transition hover:bg-slate-800"
+            className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.8125rem] text-slate-200 transition hover:bg-slate-800"
           >
             <FolderOpen className="h-3.5 w-3.5 text-slate-400" />
             {t('observationDetail.hero.showFileLocation')}
@@ -587,7 +598,7 @@ function OverflowMenu({
               role="menuitem"
               onClick={() => { setOpen(false); onMove(); }}
               title={t('observationDetail.hero.moveTitle')}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] text-slate-200 transition hover:bg-slate-800"
+              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.8125rem] text-slate-200 transition hover:bg-slate-800"
             >
               <ArrowRightLeft className="h-3.5 w-3.5 text-slate-400" />
               {t('observationDetail.hero.move')}
@@ -599,7 +610,7 @@ function OverflowMenu({
               <button
                 role="menuitem"
                 onClick={() => { setOpen(false); onDelete(); }}
-                className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] text-red-300 transition hover:bg-red-500/10"
+                className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.8125rem] text-red-300 transition hover:bg-red-500/10"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 {t('observationDetail.hero.delete')}
@@ -626,7 +637,7 @@ function HeroAction({ onClick, icon: Icon, label, title, danger, dotColor }: {
     <button
       onClick={onClick}
       title={title}
-      className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[13px] font-medium
+      className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[0.8125rem] font-medium
         ring-1 ring-inset backdrop-blur-md transition-colors
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
         danger

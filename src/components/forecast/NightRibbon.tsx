@@ -665,7 +665,7 @@ export function NightRibbon({
                 minWidth: '7.5rem',
               }}
             >
-              <div className="text-[11px] font-medium text-white/60 tabular-nums">
+              <div className="text-[0.6875rem] font-medium text-white/60 tabular-nums">
                 {formatTime(active.hour.time, timeZone)}
               </div>
               <div
@@ -674,10 +674,10 @@ export function NightRibbon({
               >
                 {active.vis.score}
               </div>
-              <div className="text-[11px] font-semibold" style={{ color: active.vis.hex }}>
+              <div className="text-[0.6875rem] font-semibold" style={{ color: active.vis.hex }}>
                 {active.vis.label}
               </div>
-              <div className="mt-1 text-[11px] text-white/55 tabular-nums">
+              <div className="mt-1 text-[0.6875rem] text-white/55 tabular-nums">
                 {t('nightRibbon.cloudTemp', { percent: active.hour.cloudCover, temp: formatTemp(active.hour.temperature, tempUnit) })}
               </div>
             </div>

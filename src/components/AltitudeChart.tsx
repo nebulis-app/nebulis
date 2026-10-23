@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useCallback } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import SunCalc from 'suncalc';
 import { useTranslation } from 'react-i18next';
-import { computeAltitudeCurve, buildTonightWindow } from '../lib/altaz';
+import { computeAltitudeCurve, buildObservingWindow } from '../lib/altaz';
 import { computeMoonInterferenceCurve, type MoonVerdict } from '../lib/moonProximity';
-import { formatHm } from '../lib/timeFormat';
+import { formatHm, hourTicks } from '../lib/timeFormat';
 import { useTheme } from '../hooks/useTheme';
 
 type TFunc = (key: string, opts?: Record<string, unknown>) => string;
@@ -47,6 +47,28 @@ interface AltitudeChartProps {
    * their compact size.
    */
   fill?: boolean;
+  /**
+   * Width of the drawing's own coordinate space, which the SVG then scales to
+   * its container. Every size in the chart (type, strokes, padding) is in
+   * these units, so a narrow container with the default 560 shrinks all of it
+   * to about half size. A caller that renders the chart narrow passes a
+   * width near its real one to keep the text readable.
+   */
+  viewWidth?: number;
+  /** Natural plot height in the same units as `viewWidth`. Lower it for a
+   *  compact strip, such as the one in the object hero. */
+  viewHeight?: number;
+  /** Chart a given night instead of the coming one: any moment inside it.
+   *  Turns off the live "now" marker, which belongs to tonight. */
+  at?: Date;
+  /** With `at`, the moment to read the altitude at (e.g. mid-session). The
+   *  header then says how high the object was then, next to the night's peak. */
+  focusAt?: Date;
+  /** Spans to shade on the plot, such as when a session was imaged. */
+  highlights?: { start: Date; end: Date }[];
+  /** Colour of the shading: green for time the frames prove was imaged,
+   *  amber for a span only inferred from first and last timestamps. */
+  highlightTone?: 'amber' | 'green';
 }
 
 /**
@@ -57,14 +79,15 @@ interface AltitudeChartProps {
  * with fixed 4-hour tick labels (12, 16, 20, 00, 04, 08, 12) and a marker
  * showing the object's current position.
  */
-export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, timeZone, isDark, onScrub, fill = false }: AltitudeChartProps) {
+export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, timeZone, isDark, onScrub, fill = false, viewWidth = 560, viewHeight = 160, at, focusAt, highlights, highlightTone = 'amber' }: AltitudeChartProps) {
   const { t } = useTranslation('common');
   const { isNight } = useTheme();
+  const atMs = at?.getTime();
   const { samples, start, end } = useMemo(() => {
-    const { start, end } = buildTonightWindow(new Date(), timeZone);
+    const { start, end } = buildObservingWindow(atMs != null ? new Date(atMs) : new Date(), lat, lon, timeZone);
     const samples = computeAltitudeCurve(ra, dec, lat, lon, start, end, 15);
     return { samples, start, end };
-  }, [ra, dec, lat, lon, timeZone]);
+  }, [ra, dec, lat, lon, timeZone, atMs]);
 
   // Moon interference strip — same 15-min cadence as the altitude samples so
   // each band lines up with the curve directly below it. Undefined
@@ -136,7 +159,7 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
     const path = buildSmoothPath(points);
 
     const nowMs = Date.now();
-    const tNow = (nowMs - startMs) / spanMs;
+    const tNow = atMs != null ? -1 : (nowMs - startMs) / spanMs;
     let current: { x: number; y: number; alt: number; az: number } | null = null;
     if (tNow >= 0 && tNow <= 1 && points.length > 0) {
       // Linear interpolation between the two bracketing samples for a smooth dot
@@ -158,10 +181,10 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
     }
 
     return { pathD: path, currentPoint: current };
-  }, [samples, start, end]);
+  }, [samples, start, end, atMs]);
 
   // Fixed chart geometry — not stretched across full width
-  const W = 560;
+  const W = viewWidth;
   // Moon band sits in its own row above the plot, not overlaid on it —
   // reserving separate vertical space keeps it readable against the curve
   // instead of fighting for the same pixels near 90°.
@@ -171,12 +194,13 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
   // Whether the row exists at all — the moon is up during tonight's dark
   // hours. Otherwise the chart renders exactly as it did before this feature.
   const showMoonRow = moonVisibleSegments.length > 0;
-  const naturalH = 160 + (showMoonRow ? moonBarH + moonBarGap : 0);
+  const naturalH = viewHeight + (showMoonRow ? moonBarH + moonBarGap : 0);
   // In fill mode the SVG's box is sized by the flex parent, so measure it and
   // hand the viewBox the height that matches that box exactly. Meeting the box
   // with a matching aspect ratio means the drawing scales uniformly (no
   // squashed text) and the leftover height becomes real plot, not letterbox.
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const clipId = useId();
   const [fillBox, setFillBox] = useState<{ w: number; h: number } | null>(null);
   useEffect(() => {
     const el = svgRef.current;
@@ -207,17 +231,17 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
   const dotFill = isNight ? '#cc3333' : isDark ? '#ffffff' : '#0f172a';
   const dotStroke = isNight ? '#000000' : isDark ? '#0f172a' : '#ffffff';
 
-  // Fixed 4-hour ticks — start is local noon, so offsets of 0/4/8/12/16/20/24
-  // produce the hour labels 12, 16, 20, 00, 04, 08, 12.
-  const TICKS = [
-    { t: 0 / 24, label: '12' },
-    { t: 4 / 24, label: '16' },
-    { t: 8 / 24, label: '20' },
-    { t: 12 / 24, label: '00' },
-    { t: 16 / 24, label: '04' },
-    { t: 20 / 24, label: '08' },
-    { t: 24 / 24, label: '12' },
-  ];
+  // Hour labels on the even (or, for a long night, every third) hour of the
+  // observer's clock. The window starts at sunset and ends at sunrise, so the
+  // ticks sit inside it rather than at its ends; ones too close to the left
+  // edge are dropped so their label is not clipped.
+  const TICKS = useMemo(() => {
+    const spanMs = end.getTime() - start.getTime();
+    const every = spanMs > 13 * 3_600_000 ? 3 : 2;
+    return hourTicks(start, end, timeZone)
+      .map(d => ({ t: (d.getTime() - start.getTime()) / spanMs, label: formatHm(d, timeZone).slice(0, 2) }))
+      .filter(tick => Number(tick.label) % every === 0 && tick.t >= 0.03 && tick.t <= 0.97);
+  }, [start, end, timeZone]);
 
   // Hover state — set by pointer move/click on the chart
   const [hover, setHover] = useState<{
@@ -270,7 +294,7 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
       setHover(point);
       onScrub?.({ time: point.time, alt: point.alt, az: point.az });
     },
-    [interpAt, padL, plotW, onScrub],
+    [interpAt, padL, plotW, W, onScrub],
   );
 
   const handleLeave = useCallback(() => {
@@ -281,20 +305,42 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
   // The "active" point drives the header and the big marker.
   // Hover takes precedence over the real-time "now" position.
   const activePoint = hover ?? currentPoint;
-  const headerAlt = activePoint ? Math.round(activePoint.alt) : 0;
-  const headerDir = activePoint ? azToCompass(activePoint.az, t) : '';
+  // With no cursor and "now" outside the chart (daytime), the header reports
+  // tonight's best moment instead of a live reading of nothing.
+  const peakPoint = useMemo(
+    () => samples.reduce<(typeof samples)[number] | null>((best, s) => (!best || s.alt > best.alt ? s : best), null),
+    [samples],
+  );
+  // On a past night the header reads the altitude at the moment that matters
+  // (when you were imaging), with the peak beside it, not "tonight's" peak.
+  const focusPoint = useMemo(() => {
+    if (!focusAt || atMs == null || samples.length < 2) return null;
+    const t = (focusAt.getTime() - start.getTime()) / (end.getTime() - start.getTime());
+    return t >= 0 && t <= 1 ? interpAt(t) : null;
+  }, [focusAt, atMs, samples.length, start, end, interpAt]);
+  const headerPoint = activePoint ?? focusPoint ?? peakPoint;
+  const headerAlt = headerPoint ? Math.round(headerPoint.alt) : 0;
+  const headerDir = headerPoint ? azToCompass(headerPoint.az, t) : '';
   const headerLabel = hover
     ? formatHm(hover.time, timeZone)
     : currentPoint
       ? t('altitudeChart.currentAltitude')
-      : '';
+      : focusPoint && peakPoint
+        ? t('altitudeChart.atTimePeak', {
+            time: formatHm(focusPoint.time, timeZone),
+            peak: Math.round(peakPoint.alt),
+            peakTime: formatHm(peakPoint.time, timeZone),
+          })
+        : peakPoint
+          ? t(atMs != null ? 'altitudeChart.peakAtTime' : 'altitudeChart.peakAt', { time: formatHm(peakPoint.time, timeZone) })
+          : '';
 
   if (samples.length === 0) return null;
 
   return (
     <div
       className={`rounded-xl border max-w-xl ${
-        fill ? 'flex min-h-0 flex-1 flex-col' : ''
+        fill ? 'flex min-h-fit flex-1 flex-col' : ''
       } ${
         isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-50/80 border-slate-200'
       }`}
@@ -309,7 +355,7 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
             {headerAlt}°
           </span>
           {headerLabel && (
-            <span className={`truncate text-[11px] tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            <span className={`truncate text-[0.6875rem] tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
               {headerLabel}
             </span>
           )}
@@ -329,7 +375,7 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="xMidYMid meet"
-        className={`w-full cursor-crosshair touch-none overflow-hidden ${fill ? 'min-h-0 grow' : ''}`}
+        className={`w-full cursor-crosshair touch-none overflow-hidden ${fill ? 'shrink-0 grow' : ''}`}
         style={{ display: 'block', ...(fill ? { aspectRatio: `${W} / ${naturalH}` } : {}) }}
         onPointerMove={handlePointer}
         onPointerDown={handlePointer}
@@ -422,6 +468,28 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
           />
         )}
 
+        {/* A span of interest, e.g. when the session was imaged. Under the
+            curve so the line stays crisp across it. */}
+        {highlights?.map((span, i) => {
+          const spanMs = end.getTime() - start.getTime();
+          const x0 = Math.max(0, Math.min(1, (span.start.getTime() - start.getTime()) / spanMs));
+          const x1 = Math.max(0, Math.min(1, (span.end.getTime() - start.getTime()) / spanMs));
+          if (x1 <= x0) return null;
+          const fill = highlightTone === 'green'
+            ? (isNight ? 'rgba(204,51,51,0.28)' : 'rgba(52,211,153,0.28)')
+            : (isNight ? 'rgba(204,51,51,0.18)' : 'rgba(251,191,36,0.16)');
+          return (
+            <rect
+              key={i}
+              x={xToPx(x0)}
+              y={padT}
+              width={Math.max(1.5, xToPx(x1) - xToPx(x0))}
+              height={plotH}
+              fill={fill}
+            />
+          );
+        })}
+
         {/* Fixed hour ticks */}
         {TICKS.map((tick, i) => (
           <text
@@ -437,8 +505,15 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
           </text>
         ))}
 
-        {/* Altitude curve */}
+        {/* Altitude curve. Clipped at the plot's bottom edge so the stretch
+            below the horizon does not run through the hour labels. */}
+        <defs>
+          <clipPath id={clipId}>
+            <rect x={0} y={0} width={W} height={H - padB + 1} />
+          </clipPath>
+        </defs>
         <path
+          clipPath={`url(#${clipId})`}
           d={transformPath(pathD, xToPx, yToPx)}
           fill="none"
           stroke={curveColor}

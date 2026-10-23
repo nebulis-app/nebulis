@@ -1,18 +1,24 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useMutationState, useQueryClient } from '@tanstack/react-query';
+import { isImageFavoriteVars, type ImageFavoriteVars } from '../lib/favoriteMutations';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  Star, Images, AlertCircle, Search, Filter, ArrowUpDown, Check, Sparkles, X,
+  Star, Images, AlertCircle, Search, Filter, ArrowUpDown, Check, Sparkles, X, LayoutGrid, LayoutDashboard,
 } from 'lucide-react';
-import { getAllLibraryImages, toggleImageFavorite, getLibraryObjectFilters, type LibraryImage } from '../lib/api/library';
+import {
+  getAllLibraryImages, toggleImageFavorite, getLibraryObjectFilters, type LibraryImage,
+} from '../lib/api/library';
 import { getSettings } from '../lib/api/settings';
 import { normalizeSearch } from '../lib/dsoSearch';
 import { useTheme } from '../hooks/useTheme';
 import { PlanetariumMode } from '../components/gallery/PlanetariumMode';
 import { ImageGalleryHero } from '../components/gallery/ImageGalleryHero';
 import { ImageViewer } from '../components/gallery/ImageViewer';
+import { ObjectImageEditor } from '../components/objectDetail/ObjectImageEditor';
+import type { ObjectEditRequest } from '../components/objectDetail/objectEditRequest';
 import { ImageCard } from '../components/gallery/ImageCard';
+import { MosaicWall, type MosaicTile } from '../components/mosaic/MosaicWall';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { FilterSection, Pill, TypeFilterSection, ActiveFilterChips, PopoverResetButton } from '../components/filters/toolbarParts';
 import { TOOLBAR_BTN, POPOVER, popoverSurface } from '../components/filters/toolbarStyles';
@@ -30,6 +36,16 @@ const SORT_OPTIONS: { value: SortKey; labelKey: string }[] = [
 ];
 
 const SORT_STORAGE_KEY = 'nebulis-gallery-sort';
+const LAYOUT_STORAGE_KEY = 'nebulis-gallery-layout';
+const MOSAIC_LABELS_STORAGE_KEY = 'nebulis-mosaic-labels';
+/** The wall shows this many pictures at most, favorites and processed ones first. */
+const MOSAIC_LIMIT = 600;
+
+type LayoutMode = 'grid' | 'mosaic';
+
+function readStoredLayout(): LayoutMode {
+  try { return localStorage.getItem(LAYOUT_STORAGE_KEY) === 'mosaic' ? 'mosaic' : 'grid'; } catch { return 'grid'; }
+}
 
 function readStoredSort(): SortKey {
   try {
@@ -53,10 +69,12 @@ export function ImageGalleryPage() {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>(readStoredSort);
   const [sortOpen, setSortOpen] = useState(false);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(readStoredLayout);
   const sortRef = useRef<HTMLDivElement>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtersRef = useRef<HTMLDivElement>(null);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [editRequest, setEditRequest] = useState<ObjectEditRequest | null>(null);
   const [planetariumImages, setPlanetariumImages] = useState<LibraryImage[] | null>(null);
 
   const { data: serverImages, isLoading, error } = useQuery({
@@ -129,17 +147,19 @@ export function ImageGalleryPage() {
   // Unifying Lens: derive the displayed favorite state by overlaying any
   // in-flight favorite mutations on top of the server cache. No setQueryData,
   // no rollback — when the mutation settles, the overlay disappears naturally.
-  const pendingFavorites = useMutationState<{ imagePath: string; isFavorite: boolean }>({
+  const pendingFavorites = useMutationState<ImageFavoriteVars | null>({
     filters: { mutationKey: ['toggle-image-favorite'], status: 'pending' },
-    select: m => m.state.variables as { imagePath: string; isFavorite: boolean },
+    select: m => (isImageFavoriteVars(m.state.variables) ? m.state.variables : null),
   });
   const images = useMemo(() => {
     if (!serverImages) return serverImages;
     if (pendingFavorites.length === 0) return serverImages;
-    const overlay = new Map(pendingFavorites.map(p => [p.imagePath, p.isFavorite]));
-    return serverImages.map(img =>
-      overlay.has(img.path) ? { ...img, isFavorite: overlay.get(img.path)! } : img
-    );
+    const overlay = new Map<string, boolean>();
+    for (const p of pendingFavorites) if (p) overlay.set(p.imagePath, p.isFavorite);
+    return serverImages.map(img => {
+      const pending = overlay.get(img.path);
+      return pending === undefined ? img : { ...img, isFavorite: pending };
+    });
   }, [serverImages, pendingFavorites]);
 
   // Filter/sort against a deferred copy of the search string so typing stays at
@@ -238,6 +258,37 @@ export function ImageGalleryPage() {
     setActiveFilterId(ALL_FILTER_ID);
     setProcessedOnlyOverride(null);
   }
+
+  function applyLayout(mode: LayoutMode) {
+    setLayoutMode(mode);
+    try { localStorage.setItem(LAYOUT_STORAGE_KEY, mode); } catch { /* ignore */ }
+  }
+
+  // Mosaic: favorites and processed pictures first, then newest; a tile's size follows that order. The sort menu
+  // does not apply here, since position on the wall is not a list order.
+  const mosaicOn = layoutMode === 'mosaic';
+  const mosaicImages = useMemo(() => {
+    if (!mosaicOn) return [];
+    const rank = (i: LibraryImage) => (i.isFavorite ? 2 : 0) + (i.isProcessed ? 1 : 0);
+    return filtered
+      .map((img, idx) => ({ img, idx }))
+      .sort((a, b) => rank(b.img) - rank(a.img) || (b.img.date ?? '').localeCompare(a.img.date ?? '') || a.idx - b.idx)
+      .slice(0, MOSAIC_LIMIT)
+      .map(e => e.img);
+  }, [mosaicOn, filtered]);
+  const mosaicTiles = useMemo<MosaicTile[]>(() => mosaicImages.map((img, i) => ({
+    id: img.path,
+    title: img.objectName || img.objectId,
+    subtitle: img.date || undefined,
+    score: mosaicImages.length - i,
+    href: img.downloadUrl,
+    // The server's own tiers: thumbUrl is safe for any file type, previewUrl is the 2048 px one for a close look.
+    imageUrl: (px: number) => (px > 500 ? img.previewUrl : img.thumbUrl),
+  })), [mosaicImages]);
+  const openMosaicTile = useCallback((path: string) => {
+    const img = filtered.find(f => f.path === path);
+    if (img) handleOpenImage(img);
+  }, [filtered, handleOpenImage]);
 
   function applySort(key: SortKey) {
     setSortKey(key);
@@ -350,6 +401,31 @@ export function ImageGalleryPage() {
             <Star className={`w-4 h-4 ${effectiveFilterId === FAVORITES_FILTER_ID ? 'fill-current' : ''}`} />
           </button>
 
+          <div role="group" aria-label={t('mosaic.layout')} className={`flex items-center p-0.5 rounded-full ring-1 ring-inset shrink-0 ${
+            isDark ? 'bg-slate-900/70 ring-slate-700/60' : 'bg-white ring-slate-200'
+          }`}>
+            {([
+              { mode: 'grid' as const, icon: LayoutGrid, label: t('mosaic.grid') },
+              { mode: 'mosaic' as const, icon: LayoutDashboard, label: t('mosaic.mosaic') },
+            ]).map(opt => (
+              <button
+                key={opt.mode}
+                type="button"
+                onClick={() => applyLayout(opt.mode)}
+                aria-pressed={layoutMode === opt.mode}
+                aria-label={opt.label}
+                title={opt.label}
+                className={`flex items-center justify-center w-9 h-9 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50 ${
+                  layoutMode === opt.mode
+                    ? isDark ? 'bg-accent-500/20 text-accent-400' : 'bg-accent-500 text-white'
+                    : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <opt.icon className="w-4 h-4" />
+              </button>
+            ))}
+          </div>
+
           <div ref={sortRef} className="relative shrink-0">
             <button
               onClick={() => setSortOpen(o => !o)}
@@ -427,6 +503,21 @@ export function ImageGalleryPage() {
           <p className={`text-lg font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>{t('galleryPage.unableToLoad')}</p>
           <p className="mt-1 text-sm">{error instanceof Error ? error.message : t('galleryPage.loadErrorFallback')}</p>
         </div>
+      ) : filtered.length > 0 && mosaicOn ? (
+        <div className="space-y-2">
+          <MosaicWall
+            tiles={mosaicTiles}
+            onOpen={openMosaicTile}
+            labelsStorageKey={MOSAIC_LABELS_STORAGE_KEY}
+            ariaLabel={t('mosaic.picturesLabel')}
+            shareFileBase="nebulis-gallery"
+          />
+          <p className="text-xs text-slate-500">
+            {mosaicImages.length < filtered.length
+              ? t('mosaic.showing', { shown: mosaicImages.length, total: filtered.length })
+              : t('mosaic.hint')}
+          </p>
+        </div>
       ) : filtered.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {filtered.map((img) => (
@@ -479,8 +570,31 @@ export function ImageGalleryPage() {
           isAdmin={isAdmin}
           onClose={() => setViewerIndex(null)}
           onToggleFavorite={handleToggleFavorite}
+          onEditImage={img => {
+            // A processed picture has no id here, so it is saved as a new version; a raw JPEG can be replaced in its night.
+            const hasNight = img.date !== 'unknown';
+            setEditRequest({
+              url: img.downloadUrl,
+              name: img.name,
+              sourceKind: img.isProcessed ? 'processed' : 'telescope',
+              overwriteTarget: !img.isProcessed && hasNight && /\.jpe?g$/i.test(img.name)
+                ? { kind: 'telescope', path: img.path }
+                : undefined,
+              objectId: img.objectId,
+              date: hasNight ? img.date : null,
+            });
+          }}
         />
       )}
+
+      <ObjectImageEditor
+        request={editRequest}
+        onClose={() => setEditRequest(null)}
+        onSaved={() => {
+          void queryClient.invalidateQueries({ queryKey: ['all-library-images'] });
+          setViewerIndex(null);
+        }}
+      />
     </div>
   );
 }

@@ -8,7 +8,8 @@ import noUnguardedTimezone from './eslint-rules/no-unguarded-timezone.js'
 import noHardcodedJsxText from './eslint-rules/no-hardcoded-jsx-text.js'
 
 export default defineConfig([
-  globalIgnores(['dist', 'coverage', 'server/dist']),
+  // server/assets/pixinsight is PixInsight's own JavaScript dialect (`#engine`, `#feature-id` directives), not parseable as ES.
+  globalIgnores(['dist', 'coverage', 'server/dist', 'server/assets/pixinsight']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -61,6 +62,52 @@ export default defineConfig([
     },
   },
   {
+    // Zone boundary: the SPA and the server share no code. The /api contract
+    // (and the OpenAPI spec) is the only link, so neither side may import the
+    // other's files. tests/ is deliberately out of scope (parity tests import
+    // both zones). The server/lib and server/routes blocks below repeat the
+    // src ban because a later block's no-restricted-imports replaces this one.
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['**/server/**'],
+          message: 'Zone boundary: src/ must not import from server/. Go through the /api contract.',
+        }],
+      }],
+    },
+  },
+  {
+    files: ['server/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['**/src/**'],
+          message: 'Zone boundary: server/ must not import from src/.',
+        }],
+      }],
+    },
+  },
+  {
+    // Layer boundary: src/lib and src/hooks sit below the UI, so they must
+    // never import components, pages or contexts.
+    files: ['src/lib/**/*.{ts,tsx}', 'src/hooks/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            group: ['**/server/**'],
+            message: 'Zone boundary: src/ must not import from server/. Go through the /api contract.',
+          },
+          {
+            group: ['**/components/**', '**/pages/**', '**/contexts/**'],
+            message: 'Upward dependency: src/lib and src/hooks must never import components, pages or contexts.',
+          },
+        ],
+      }],
+    },
+  },
+  {
     // Layer boundary: server/lib and server/middleware must never import from
     // server/routes — dependencies flow index.ts → routes → middleware → lib,
     // never back up. Zero violations today; this rule exists to keep it that
@@ -68,10 +115,16 @@ export default defineConfig([
     files: ['server/lib/**/*.ts', 'server/middleware/**/*.ts'],
     rules: {
       'no-restricted-imports': ['error', {
-        patterns: [{
-          group: ['**/routes/*'],
-          message: 'Upward dependency: server/lib and server/middleware must never import from server/routes.',
-        }],
+        patterns: [
+          {
+            group: ['**/routes/*'],
+            message: 'Upward dependency: server/lib and server/middleware must never import from server/routes.',
+          },
+          {
+            group: ['**/src/**'],
+            message: 'Zone boundary: server/ must not import from src/.',
+          },
+        ],
       }],
     },
   },
@@ -89,6 +142,10 @@ export default defineConfig([
           name: '../lib/db.js',
           importNames: ['default'],
           message: 'Routes must not access the database directly. Add a function to the owning lib/ module instead.',
+        }],
+        patterns: [{
+          group: ['**/src/**'],
+          message: 'Zone boundary: server/ must not import from src/.',
         }],
       }],
     },

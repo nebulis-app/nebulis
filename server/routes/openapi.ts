@@ -5,6 +5,7 @@ import { UPDATE_CHANNELS } from '../lib/appUpdate/manifest.js';
 import {
   GALLERY_IMAGE_SOURCES,
   PREFERRED_CATALOGS,
+  OBJECT_PAGE_LAYOUTS,
   TEMPERATURE_UNITS,
   WIND_SPEED_UNITS,
 } from '../lib/types/appSettings.js';
@@ -229,6 +230,53 @@ const spec = {
         },
       },
 
+      IntegrationGoal: {
+        type: 'object',
+        properties: {
+          filter:  nullable(strEx('Ha')),
+          goalSec: { type: 'integer', example: 36000 },
+        },
+      },
+      IntegrationBreakdown: {
+        type: 'object',
+        properties: {
+          objectId:         strEx('Sh2-105'),
+          totalFrames:      { type: 'integer' },
+          totalExposureSec: { type: 'integer' },
+          unreadableFrames: { type: 'integer' },
+          filters: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                filter:      nullable(strEx('OIII')),
+                frames:      { type: 'integer' },
+                exposureSec: { type: 'integer' },
+                goalSec:     nullable({ type: 'integer' }),
+                nights: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      date:        strEx('2026-09-20'),
+                      frames:      { type: 'integer' },
+                      exposureSec: { type: 'integer' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      FilterAlias: {
+        type: 'object',
+        properties: {
+          alias:     strEx('H-alpha 7nm'),
+          canonical: strEx('Ha'),
+        },
+      },
+
       // Storage
       StorageObject: {
         type: 'object',
@@ -303,6 +351,9 @@ const spec = {
           importThumbnails: { type: 'boolean', description: 'Per-telescope file-type import filter' },
           importSubFrames:  { type: 'boolean', description: 'Per-telescope file-type import filter' },
           importVideos:     { type: 'boolean', description: 'Per-telescope file-type import filter' },
+          archiveAllFiles:  { type: 'boolean', description: 'Keep files Nebulis has no use for, so this telescope\'s library folder is a complete copy of the device' },
+          pinnedTransportId: nullable({ type: 'string', description: 'Transport id to force, overriding the local > ftp > smb heuristic. Null means "Auto".' }),
+          activeOpticalConfigId: nullable({ type: 'string', description: 'Currently mounted optical config, for kinds with no fixed field of view. Null means "use the oldest config".' }),
           trackDeviceIdentity: {
             type: 'boolean',
             description: 'When true, the import pipeline reads/writes a device-identity marker so the same physical telescope reached over two transports (e.g. Wi-Fi and USB) resolves to one logical device',
@@ -363,6 +414,11 @@ const spec = {
           importThumbnails: { type: 'boolean', description: 'Legacy global default; superseded by TelescopeProfile.importThumbnails for newer installs' },
           importSubFrames:  { type: 'boolean', description: 'Legacy global default; superseded by TelescopeProfile.importSubFrames for newer installs' },
           importVideos:     { type: 'boolean', description: 'Legacy global default; superseded by TelescopeProfile.importVideos for newer installs' },
+          archiveAllFiles:  { type: 'boolean', description: 'Legacy global default; superseded by TelescopeProfile.archiveAllFiles for newer installs' },
+          galleryProcessedOnlyDefault: { type: 'boolean', description: 'Gallery opens with the processed-only filter on' },
+          planetariumProcessedOnlyDefault: { type: 'boolean', description: 'Planetarium opens with the processed-only filter on' },
+          annotateAutoSolve: { type: 'boolean', default: true, description: 'Plate-solve new stacked images in the background while the library is idle, so Annotate has results ready' },
+          autoMeasureFrames: { type: 'boolean', default: false, description: 'Analyze new raw sub-frames in the background after an import, once the library is idle, so the Subframes list is already scored when opened' },
           onboardingCompleted: { type: 'boolean' },
           prefetchCatalogAssets: { type: 'boolean', description: 'Toggles the bulk background prefetch job that warms catalog imagery/descriptions in the cache' },
           planetariumShowInfo: { type: 'boolean' },
@@ -384,6 +440,8 @@ const spec = {
           nightlyHousekeepingLastRun: nullable({ type: 'integer', description: 'Unix ms of the last run, read-only' }),
           nightlyForecastLastRun: nullable({ type: 'integer', description: 'Unix ms of the last run, read-only' }),
           calibrationExpiryDays: { type: 'integer', description: 'Days an archived bias/dark bundle stays valid before the Calibrations page flags it expired' },
+          pixinsightEnabled: { type: 'boolean', description: 'Serve the PixInsight connector update repository at /plugins/pixinsight/ (admin opt-in, default off)' },
+          objectPageLayout: { type: 'string', enum: [...OBJECT_PAGE_LAYOUTS], description: "Object page layout: 'media' (Combined: every picture of the object on one page, the default) or 'nights' (Classic: a grid of observations)" },
           groupCatalogCompanions: { type: 'boolean', description: 'Catalog boards also count objects that sat inside the frame of an object you imaged (M43 when M42 was shot)' },
         },
       },
@@ -626,6 +684,81 @@ const spec = {
         responses: { 200: { description: 'File list across all sessions' } },
       },
     },
+    '/library/objects/{objectId}/integration/filters': {
+      get: {
+        summary: 'Integration per filter and per night, with goals',
+        tags: ['Library (Local)'],
+        description: 'Groups light sub-frames (managed and linked folders) by canonical filter name, then by observing night. Filter comes from the FITS FILTER keyword, then the capture sidecar, else the "no filter" bucket (filter: null). Filters that only have a goal are listed after the others.',
+        parameters: [{ $ref: '#/components/parameters/objectId' }],
+        responses: {
+          200: {
+            description: 'Integration breakdown',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/IntegrationBreakdown' } } },
+          },
+        },
+      },
+    },
+    '/library/objects/{objectId}/integration/goals': {
+      put: {
+        summary: 'Replace the integration goals of an object (admin)',
+        tags: ['Library (Local)'],
+        description: 'Replaces every goal on the object. Filter names are normalised with the same aliases as frames; goalSec 0 removes a goal.',
+        parameters: [{ $ref: '#/components/parameters/objectId' }],
+        requestBody: {
+          content: { 'application/json': { schema: {
+            type: 'object',
+            properties: { goals: { type: 'array', items: { $ref: '#/components/schemas/IntegrationGoal' } } },
+          } } },
+        },
+        responses: { 200: { description: 'Goals now stored' }, 422: { description: 'Invalid goal' } },
+      },
+    },
+    '/library/integration/progress': {
+      get: {
+        summary: 'Progress toward integration goals, for every object that has one',
+        tags: ['Library (Local)'],
+        description: 'Used by the Planner and Wishlist to show the time left per filter. Objects without goals are omitted.',
+        responses: {
+          200: {
+            description: 'Progress per object',
+            content: { 'application/json': { schema: { type: 'array', items: {
+              type: 'object',
+              properties: {
+                objectId: strEx('NGC6888'),
+                complete: { type: 'boolean' },
+                filters: { type: 'array', items: {
+                  type: 'object',
+                  properties: {
+                    filter:       nullable(strEx('D2')),
+                    goalSec:      { type: 'integer' },
+                    exposureSec:  { type: 'integer' },
+                    remainingSec: { type: 'integer' },
+                  },
+                } },
+              },
+            } } } },
+          },
+        },
+      },
+    },
+    '/library/filter-aliases': {
+      get: {
+        summary: 'List user-defined filter name aliases',
+        tags: ['Library (Local)'],
+        responses: { 200: { description: 'Aliases', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/FilterAlias' } } } } } },
+      },
+      put: {
+        summary: 'Replace the filter name aliases (admin)',
+        tags: ['Library (Local)'],
+        requestBody: {
+          content: { 'application/json': { schema: {
+            type: 'object',
+            properties: { aliases: { type: 'array', items: { $ref: '#/components/schemas/FilterAlias' } } },
+          } } },
+        },
+        responses: { 200: { description: 'Aliases now stored' }, 422: { description: 'Invalid alias' } },
+      },
+    },
     '/library/file': {
       get: {
         summary: 'Download a local library file',
@@ -701,6 +834,72 @@ const spec = {
         },
       },
     },
+    // ── Explore ───────────────────────────────────────────────────────
+    '/explore/search': {
+      get: {
+        summary: 'Typeahead search over the whole catalog',
+        tags: ['Explore'],
+        description: 'Matches common names and every designation (M, NGC, IC, Caldwell, Sharpless, Barnard). Each row carries visibility from the resolved site. A constellation name also returns a `constellation` hint.',
+        parameters: [
+          { name: 'q', in: 'query', required: true, schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 8, maximum: 20 } },
+          { name: 'siteId', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: { 200: { description: 'results, total, constellation, locationSet' } },
+      },
+    },
+    '/explore/categories': {
+      get: {
+        summary: 'Browse tiles with counts for this site',
+        tags: ['Explore'],
+        description: 'Per category: total objects, how many ever clear the site minimum altitude, and how many are up tonight.',
+        parameters: [{ name: 'siteId', in: 'query', schema: { type: 'string' } }],
+        responses: { 200: { description: 'categories[] of {id,total,visibleHere,goodTonight}' } },
+      },
+    },
+    '/explore/browse': {
+      get: {
+        summary: 'Ranked, filtered, paged objects',
+        tags: ['Explore'],
+        description: 'Default order is the showpiece score. `category` is `all` or one of the ids from /explore/categories.',
+        parameters: [
+          { name: 'category', in: 'query', schema: { type: 'string', default: 'all' } },
+          { name: 'q', in: 'query', schema: { type: 'string' } },
+          { name: 'constellation', in: 'query', schema: { type: 'string' } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['best', 'tonight', 'bright', 'large', 'name'], default: 'best' } },
+          { name: 'visibility', in: 'query', schema: { type: 'string', enum: ['all', 'here', 'tonight'], default: 'here' } },
+          { name: 'notImaged', in: 'query', schema: { type: 'boolean' } },
+          { $ref: '#/components/parameters/limit' },
+          { name: 'offset', in: 'query', schema: { type: 'integer', default: 0 } },
+          { name: 'siteId', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: { 200: { description: 'results[] (ExploreRow), total, locationSet' } },
+      },
+    },
+    '/explore/best-tonight': {
+      get: {
+        summary: 'Rewarding targets that are up tonight',
+        tags: ['Explore'],
+        parameters: [
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 10, maximum: 30 } },
+          { name: 'siteId', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: { 200: { description: 'results[] (ExploreRow), locationSet' } },
+      },
+    },
+    '/explore/next-good-nights/{objectId}': {
+      get: {
+        summary: 'Upcoming nights ranked for one object',
+        tags: ['Explore'],
+        description: 'Per night: peak altitude, hours above the site minimum, moon illumination and proximity verdict, and a 0-1 score. The three best are flagged `isBest`. Geometry only; cloud forecast is not factored in.',
+        parameters: [
+          { name: 'objectId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'days', in: 'query', schema: { type: 'integer', default: 30, maximum: 60 } },
+          { name: 'siteId', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: { 200: { description: 'nights[]' }, 404: { description: 'Unknown object' } },
+      },
+    },
     '/dso/{id}': {
       get: {
         summary: 'Get single DSO entry',
@@ -710,6 +909,131 @@ const spec = {
         responses: {
           200: { description: 'DSO entry with optional current alt/az', content: { 'application/json': { schema: { $ref: '#/components/schemas/DsoEntry' } } } },
           404: { description: 'Not found' },
+        },
+      },
+    },
+
+    // ── Gear ──────────────────────────────────────────────────────────
+    '/gear': {
+      get: {
+        summary: 'List gear',
+        tags: ['Gear'],
+        description: [
+          'Filters, cameras, lenses, power, dew heaters and the rest of what is brought to a night, other than the telescopes',
+          '(those are telescope profiles). Archived gear is left out unless `archived=1`.',
+          '',
+          'Each item carries `specs`, the figures that belong to its kind (for example `capacityWh` for power, `type` for a filter,',
+          '`drawW` for anything that draws power). Unknown or out-of-range figures are dropped on write, never coerced.',
+        ].join('\n'),
+        parameters: [{ name: 'archived', in: 'query', schema: { type: 'string', enum: ['1'] }, description: 'Include archived gear' }],
+        responses: { 200: { description: 'Array of gear items' } },
+      },
+      post: {
+        summary: 'Add gear',
+        tags: ['Gear'],
+        description: 'Admin only. Body: `kind`, `name`, and optionally `brand`, `model`, `specs`, `telescopeId`, `notes`.',
+        responses: { 200: { description: 'The new gear item' }, 422: { description: 'VALIDATION_ERROR' } },
+      },
+    },
+    '/gear/{id}': {
+      get: { summary: 'One gear item', tags: ['Gear'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'The gear item' }, 404: { description: 'Not found' } } },
+      put: { summary: 'Change gear', tags: ['Gear'], description: 'Admin only. Any of the fields from add. A new `kind` re-validates the specs against it.', responses: { 200: { description: 'The updated item' } } },
+      delete: { summary: 'Delete gear', tags: ['Gear'], description: 'Admin only. Also removes it from every kit.', responses: { 200: { description: 'Deleted' } } },
+    },
+    '/gear/{id}/archive': { post: { summary: 'Archive gear', tags: ['Gear'], description: 'Admin only. Hides it from the list without losing it. `/unarchive` reverses it.', responses: { 200: { description: 'The archived item' } } } },
+    '/gear/kits': {
+      get: { summary: 'List packing lists', tags: ['Gear'], responses: { 200: { description: 'Array of kits: `name`, `itemIds` (gear and telescope ids), `extraItems` (free-text lines), `siteId`' } } },
+      post: { summary: 'Add a packing list', tags: ['Gear'], description: 'Admin only.', responses: { 200: { description: 'The new kit' } } },
+    },
+    '/gear/kits/{id}': {
+      put: { summary: 'Change a packing list', tags: ['Gear'], description: 'Admin only.', responses: { 200: { description: 'The updated kit' } } },
+      delete: { summary: 'Delete a packing list', tags: ['Gear'], description: 'Admin only. Also removes its ticks.', responses: { 200: { description: 'Deleted' } } },
+    },
+    '/gear/kits/{id}/checks': {
+      get: { summary: 'Ticked lines for a night', tags: ['Gear'], parameters: [{ name: 'night', in: 'query', required: true, schema: { type: 'string', format: 'date' } }], responses: { 200: { description: '`{ night, checked: string[] }`, the keys of the ticked lines' } } },
+      put: { summary: 'Tick or untick a line', tags: ['Gear'], description: 'Admin only. Body `{ itemKey, checked }`. Ticks older than 30 days are dropped.', responses: { 200: { description: 'The ticked lines for that night' } } },
+      delete: { summary: 'Untick everything for a night', tags: ['Gear'], description: 'Admin only.', responses: { 200: { description: 'An empty list' } } },
+    },
+
+    // ── Journal ───────────────────────────────────────────────────────
+    '/journal': {
+      get: {
+        summary: 'Journal entries',
+        tags: ['Journal'],
+        description: [
+          'What the user wrote about their nights: notes, checklists, comments on one picture, and attached files.',
+          'Every entry has a `night`; `objectId` narrows it to one object imaged that night and `filePath` (library-relative) to one file of it.',
+          'Newest night first, and oldest entry first inside a night.',
+        ].join('\n'),
+        parameters: [
+          { name: 'night', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'objectId', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: { 200: { description: 'Array of entries, each with its `attachments` and `checklist`' } },
+      },
+      post: { summary: 'Add an entry', tags: ['Journal'], description: 'Admin only. Body: `night`, and optionally `objectId`, `filePath`, `title`, `body`, `checklist` (`[{ text, done }]`).', responses: { 200: { description: 'The new entry' }, 422: { description: 'VALIDATION_ERROR' } } },
+    },
+    '/journal/{id}': {
+      get: { summary: 'One entry', tags: ['Journal'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'The entry' }, 404: { description: 'Not found' } } },
+      put: { summary: 'Change an entry', tags: ['Journal'], description: 'Admin only. Any of the fields from add.', responses: { 200: { description: 'The updated entry' } } },
+      delete: { summary: 'Delete an entry', tags: ['Journal'], description: 'Admin only. Also deletes its files.', responses: { 200: { description: 'Deleted' } } },
+    },
+    '/journal/{id}/attachments': {
+      post: { summary: 'Attach a file', tags: ['Journal'], description: 'Admin only. multipart/form-data with one file in the `file` field, up to 100 MB; at most 30 files an entry.', responses: { 200: { description: 'The attachment' }, 413: { description: 'FILE_TOO_LARGE' } } },
+    },
+    '/journal/attachments/{id}': {
+      get: { summary: 'An attached file', tags: ['Journal'], description: 'Pictures, PDFs and plain text are served inline; anything else, or any file with `download=1`, as a download.', responses: { 200: { description: 'The file' }, 404: { description: 'Not found' } } },
+      delete: { summary: 'Remove an attached file', tags: ['Journal'], description: 'Admin only.', responses: { 200: { description: 'Deleted' } } },
+    },
+    '/sites/{id}/photos': {
+      get: { summary: 'Pictures of an observing site', tags: ['Sites'], description: 'Oldest first. Each has `id`, `fileName`, `mimeType`, `size`, `caption` and `createdAt`.', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Array of pictures' }, 404: { description: 'Site not found' } } },
+      post: { summary: 'Add a picture to a site', tags: ['Sites'], description: 'Admin only. multipart/form-data with one picture in the `file` field (JPEG, PNG, WebP, GIF or HEIC, up to 30 MB) and an optional `caption`. At most 40 pictures a site.', responses: { 200: { description: 'The picture' }, 413: { description: 'FILE_TOO_LARGE' }, 422: { description: 'VALIDATION_ERROR' } } },
+    },
+    '/sites/photos/{photoId}': {
+      get: { summary: 'A site picture', tags: ['Sites'], description: 'The file itself. `w=<pixels>` returns a JPEG preview no wider than that. Readable without a token so an <img> tag can show it.', parameters: [{ name: 'photoId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'w', in: 'query', schema: { type: 'integer', minimum: 64, maximum: 2400 } }], responses: { 200: { description: 'The picture' }, 404: { description: 'Not found' } } },
+      put: { summary: 'Change a picture caption', tags: ['Sites'], description: 'Admin only. Body: `{ caption }`.', responses: { 200: { description: 'The picture' } } },
+      delete: { summary: 'Remove a picture', tags: ['Sites'], description: 'Admin only. Deletes the file too.', responses: { 200: { description: 'Deleted' } } },
+    },
+    '/forecast/recorded': {
+      get: {
+        summary: "A past night's recorded weather",
+        tags: ['Forecast'],
+        description: 'The hourly conditions kept for one night at a place (the forecast snapshot, which alone has seeing, else an archive row). `conditions` is null when nothing was kept.',
+        parameters: [
+          { name: 'night', in: 'query', required: true, schema: { type: 'string', format: 'date' } },
+          { name: 'lat', in: 'query', required: true, schema: { type: 'number' } },
+          { name: 'lon', in: 'query', required: true, schema: { type: 'number' } },
+        ],
+        responses: { 200: { description: '`{ conditions: NightConditions | null }`' } },
+      },
+    },
+
+    // ── Sky events ────────────────────────────────────────────────────
+    '/sky-events': {
+      get: {
+        summary: 'Sky events judged from an observing site',
+        tags: ['Sky'],
+        description: [
+          'Moon phases, meteor showers, eclipses, planet oppositions, conjunctions, greatest elongations, equinoxes and solstices',
+          'from 2026 to 2036, each judged from the observing site: whether it is up in the dark, how high, the best time to look,',
+          'how much the Moon interferes, and the forecast score when the night is inside the forecast range.',
+          '',
+          'Read-only and answered from a bundled table; nothing is fetched from an outside service. Solar eclipses are judged only by',
+          'Sun altitude and distance from the point of greatest eclipse, not by local circumstances.',
+        ].join('\n'),
+        parameters: [
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' }, description: 'First local date. Defaults to today at the site.' },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Last local date. Defaults to 180 days after `from`; at most 1100 days apart.' },
+          { name: 'siteId', in: 'query', schema: { type: 'string' }, description: 'Observing site. Defaults to the active site.' },
+          { name: 'lat', in: 'query', schema: { type: 'number' }, description: 'Use with `lon` instead of a site.' },
+          { name: 'lon', in: 'query', schema: { type: 'number' }, description: 'Use with `lat` instead of a site.' },
+          { name: 'kinds', in: 'query', schema: { type: 'string' }, description: 'Comma-separated: moonPhase, meteorShower, lunarEclipse, solarEclipse, opposition, conjunction, elongation, season.' },
+        ],
+        responses: {
+          200: { description: 'The site, the range, the date the table runs to, and the events in date order' },
+          400: { description: 'INVALID_QUERY, INVALID_KINDS, INVALID_RANGE, RANGE_TOO_LARGE or INVALID_COORDS' },
         },
       },
     },

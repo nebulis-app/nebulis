@@ -6,6 +6,8 @@
  * this helper to produce the same URL the server wrote.
  */
 
+import { isOneOf } from './typeGuards';
+
 /**
  * Standard thumbnail dimensions for grid tiles, previews, and gallery cards.
  * The server resizes from a single master image once and caches the result on
@@ -98,4 +100,39 @@ export function getCatalogSourceThumbnailUrl(
 ): string {
   return `/api/catalog/${encodeURIComponent(catalogId)}/image`
     + `?w=${width}&h=${height}&source=${source}`;
+}
+
+// ─── Built-in artwork ───────────────────────────────────────────────────
+//
+// `builtin:<id>` marks one of the bundled illustrations (folder, drive, …) for
+// objects with no sky-survey match. The server draws it in the colours of the
+// theme named in `?theme=`, so the pick follows the theme the user switches to.
+
+export const BUILTIN_ART_IDS = ['folder', 'drive', 'telescope', 'starfield'] as const;
+export type BuiltinArtId = (typeof BUILTIN_ART_IDS)[number];
+
+const BUILTIN_SENTINEL_PREFIX = 'builtin:';
+
+export function makeBuiltinSentinel(id: BuiltinArtId): string {
+  return `${BUILTIN_SENTINEL_PREFIX}${id}`;
+}
+
+export function parseBuiltinSentinel(value: string | null | undefined): BuiltinArtId | null {
+  if (!value || !value.startsWith(BUILTIN_SENTINEL_PREFIX)) return null;
+  const id = value.slice(BUILTIN_SENTINEL_PREFIX.length);
+  return isOneOf(BUILTIN_ART_IDS, id) ? id : null;
+}
+
+/** The active theme, for URLs that are drawn per theme. Read straight from the
+ *  key useTheme persists so plain URL builders need no hook. */
+export function currentThemeId(): string {
+  try {
+    const stored = localStorage.getItem('nebulis-theme');
+    if (stored === 'light' || stored === 'dark' || stored === 'space' || stored === 'night') return stored;
+  } catch { /* storage blocked */ }
+  return 'dark';
+}
+
+export function getBuiltinArtUrl(id: BuiltinArtId, theme: string = currentThemeId()): string {
+  return `/api/library/builtin-art/${id}?theme=${theme}`;
 }

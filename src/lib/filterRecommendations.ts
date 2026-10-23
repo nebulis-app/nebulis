@@ -4,7 +4,7 @@
  * Pure logic: this module answers "which filters suit this object?" and
  * returns stable keys. The human-readable labels and rationale sentences live
  * in `src/locales/<lang>/catalogs.json` under `filterRecommendations`, and are
- * resolved by `src/components/catalogs/FilterRecommendationPanel.tsx`.
+ * resolved by `src/components/ui/FilterRecommendationPanel.tsx`.
  *
  * Keeping the copy out of here is deliberate. The app ships four languages
  * (see src/locales/CONTRIBUTING-TRANSLATIONS.md), so a table of English
@@ -86,7 +86,7 @@ function broadbandDefault(): FilterRecommendation {
  * generic `nebula` rule below it.
  *
  * The type strings this is written against are the real ones in the catalog
- * data (openngc.json / catalog-curated.json): "Emission Nebula", "Dark Nebula",
+ * data (server/data/dso-catalog.json): "Emission Nebula", "Dark Nebula",
  * "Spiral Galaxy", "Cluster + Nebula", "Star Cloud", and so on.
  */
 const RULES: ReadonlyArray<{

@@ -85,7 +85,7 @@ export function ArchiveSetupWizard(props: WizardProps) {
                 className="flex min-w-0 items-center gap-2 disabled:cursor-default"
               >
                 <span
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-semibold ${
                     current
                       ? 'bg-accent-500 text-white'
                       : done
@@ -100,7 +100,7 @@ export function ArchiveSetupWizard(props: WizardProps) {
                   {done ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : i + 1}
                 </span>
                 <span
-                  className={`hidden truncate text-[12px] font-medium sm:inline ${
+                  className={`hidden truncate text-[0.75rem] font-medium sm:inline ${
                     current ? s.strongText : s.subText
                   }`}
                 >
@@ -116,8 +116,8 @@ export function ArchiveSetupWizard(props: WizardProps) {
       </ol>
 
       <div className="px-5 py-5">
-        <h4 className={`text-[14px] font-semibold ${s.strongText}`}>{stepTitle}</h4>
-        <p className={`mb-5 mt-1 text-[12px] leading-relaxed ${s.subText}`}>{t(`archive.steps.${step}.body`)}</p>
+        <h4 className={`text-[0.875rem] font-semibold ${s.strongText}`}>{stepTitle}</h4>
+        <p className={`mb-5 mt-1 text-[0.75rem] leading-relaxed ${s.subText}`}>{t(`archive.steps.${step}.body`)}</p>
 
         {step === 'disk' && (
           <>
@@ -131,7 +131,7 @@ export function ArchiveSetupWizard(props: WizardProps) {
               onPathTyped={props.onPathTyped}
             />
             {props.adoptable && (
-              <p className={`mt-4 text-[12px] leading-relaxed ${s.subText}`}>{t('archive.steps.disk.claimNote')}</p>
+              <p className={`mt-4 text-[0.75rem] leading-relaxed ${s.subText}`}>{t('archive.steps.disk.claimNote')}</p>
             )}
           </>
         )}
@@ -214,20 +214,20 @@ function ReviewStep({
         {groups.map(group => (
           <li key={group.id} className={`rounded-xl border px-4 py-3 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
             <div className="flex items-center justify-between gap-3">
-              <div className={`text-[10px] font-semibold uppercase tracking-[0.1em] ${s.subText}`}>
+              <div className={`text-[0.625rem] font-semibold uppercase tracking-[0.1em] ${s.subText}`}>
                 {t(`archive.steps.${group.id}.name`)}
               </div>
               <button
                 type="button"
                 onClick={() => onEdit(group.id)}
-                className={`text-[12px] font-medium ${isDark ? 'text-accent-400 hover:text-accent-300' : 'text-accent-600 hover:text-accent-700'}`}
+                className={`text-[0.75rem] font-medium ${isDark ? 'text-accent-400 hover:text-accent-300' : 'text-accent-600 hover:text-accent-700'}`}
               >
                 {t('archive.overview.edit')}
               </button>
             </div>
             <ul className="mt-1.5 space-y-1">
               {group.lines.map(line => (
-                <li key={line} className={`text-[13px] leading-relaxed ${s.strongText}`}>
+                <li key={line} className={`text-[0.8125rem] leading-relaxed ${s.strongText}`}>
                   {line}
                 </li>
               ))}
@@ -235,8 +235,8 @@ function ReviewStep({
           </li>
         ))}
       </ul>
-      {claims && <p className={`text-[12px] leading-relaxed ${s.subText}`}>{t('archive.steps.disk.claimNote')}</p>}
-      <p className={`text-[12px] leading-relaxed ${s.subText}`}>{t('archive.steps.review.warning')}</p>
+      {claims && <p className={`text-[0.75rem] leading-relaxed ${s.subText}`}>{t('archive.steps.disk.claimNote')}</p>}
+      <p className={`text-[0.75rem] leading-relaxed ${s.subText}`}>{t('archive.steps.review.warning')}</p>
     </div>
   );
 }

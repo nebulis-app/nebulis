@@ -52,11 +52,11 @@ export function CaptureRail({ metrics, accent, barAriaLabel }: {
           <div className="font-display truncate text-lg font-bold leading-none tracking-tight text-white tabular-nums">
             {value}
           </div>
-          <div className="mt-1.5 truncate text-[10px] font-medium uppercase tracking-[0.14em] text-white/45">
+          <div className="mt-1.5 truncate text-[0.625rem] font-medium uppercase tracking-[0.14em] text-white/45">
             {label}
           </div>
           {hint && (
-            <div className="mt-1 truncate text-[11px] tabular-nums text-white/40">{hint}</div>
+            <div className="mt-1 truncate text-[0.6875rem] tabular-nums text-white/40">{hint}</div>
           )}
           {bar != null && (
             <div

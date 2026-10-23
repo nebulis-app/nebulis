@@ -4,11 +4,9 @@ import { AlertTriangle, Play } from 'lucide-react';
 
 import type { ArchiveConfig, ArchiveDestinationState } from '../../lib/api/storage';
 import { CleanupFields, CopyFields, DiskFields, ScheduleFields } from './ArchiveFields';
-import type { ArchiveGroup, ArchiveSummary } from './archiveForm';
+import { ARCHIVE_GROUPS, type ArchiveGroup, type ArchiveSummary } from './archiveForm';
 import { archiveStyles, STATE_ICON, stateColor } from './archiveStyles';
 import { RowGroup } from './SettingsUI';
-
-const GROUPS: ArchiveGroup[] = ['disk', 'copy', 'schedule', 'cleanup'];
 
 interface OverviewProps {
   isDark: boolean;
@@ -81,9 +79,9 @@ export function ArchiveOverview(props: OverviewProps) {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
-              <div className={`text-[13px] font-semibold ${s.strongText}`}>{t('archive.overview.on')}</div>
+              <div className={`text-[0.8125rem] font-semibold ${s.strongText}`}>{t('archive.overview.on')}</div>
             </div>
-            <div className={`mt-1.5 truncate font-mono text-[13px] ${s.strongText}`}>{props.destinationPath}</div>
+            <div className={`mt-1.5 truncate font-mono text-[0.8125rem] ${s.strongText}`}>{props.destinationPath}</div>
             <div className={`mt-1 flex items-start gap-1.5 text-xs leading-relaxed ${stateColor(state, isDark)}`}>
               <StateIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>{t(stateKey)}</span>
@@ -132,7 +130,7 @@ export function ArchiveOverview(props: OverviewProps) {
         )}
 
         {(props.running || props.lastResult) && (
-          <div className={`space-y-1 text-[12px] ${s.subText}`}>
+          <div className={`space-y-1 text-[0.75rem] ${s.subText}`}>
             {props.running && props.progress && (
               <p>{t('archive.progress', { done: props.progress.done, total: props.progress.total })}</p>
             )}
@@ -144,7 +142,7 @@ export function ArchiveOverview(props: OverviewProps) {
       <RowGroup label={t('archive.overview.settings')} isDark={isDark} />
 
       <ul>
-        {GROUPS.map(group => {
+        {ARCHIVE_GROUPS.map(group => {
           const isOpen = open === group;
           return (
             // The open group is tinted as one piece, header and fields together, with an
@@ -162,11 +160,11 @@ export function ArchiveOverview(props: OverviewProps) {
             >
               <div className="flex items-start justify-between gap-4 px-5 py-3.5">
                 <div className="min-w-0">
-                  <div className={`text-[13px] font-medium ${s.strongText}`}>{t(`archive.steps.${group}.name`)}</div>
+                  <div className={`text-[0.8125rem] font-medium ${s.strongText}`}>{t(`archive.steps.${group}.name`)}</div>
                   {!isOpen && (
                     <div className="mt-1 space-y-0.5">
                       {rowValue[group].map(line => (
-                        <p key={line} className={`text-[12px] leading-relaxed ${s.subText}`}>
+                        <p key={line} className={`text-[0.75rem] leading-relaxed ${s.subText}`}>
                           {line}
                         </p>
                       ))}
@@ -178,7 +176,7 @@ export function ArchiveOverview(props: OverviewProps) {
                   onClick={() => openGroup(isOpen ? null : group)}
                   aria-expanded={isOpen}
                   aria-label={`${isOpen ? t('archive.overview.close') : t('archive.overview.edit')}: ${t(`archive.steps.${group}.name`)}`}
-                  className={`shrink-0 rounded-lg px-3 py-1.5 text-[12px] font-medium ${s.btnSubtle}`}
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-[0.75rem] font-medium ${s.btnSubtle}`}
                 >
                   {isOpen ? t('archive.overview.close') : t('archive.overview.edit')}
                 </button>

@@ -51,7 +51,8 @@
     "planTonightTitle": "Plan tonight from un-imaged {{label}} objects",
     "planTonight": "Plan tonight",
     "inFrameNote_one": "Includes {{count}} imaged in another object's frame",
-    "inFrameNote_other": "Includes {{count}} imaged in other objects' frames"
+    "inFrameNote_other": "Includes {{count}} imaged in other objects' frames",
+    "myCatalog": "My {{label}} Catalog"
   },
   "catalogPanel": {
     "ariaLabel": "{{label}} catalog, {{imaged}} of {{total}} objects imaged",
@@ -62,7 +63,10 @@
     "complete": "Complete",
     "toGo_one": "{{count}} to go",
     "toGo_other": "{{count}} to go",
-    "openBoard": "Open board"
+    "openBoard": "Open board",
+    "myCatalog": "My {{label}}",
+    "myCatalogAria_one": "My {{label}} catalog, {{count}} image",
+    "myCatalogAria_other": "My {{label}} catalog, {{count}} images"
   },
   "catalogTile": {
     "imagedAriaLabel": "{{id}}, {{name}}, imaged",
@@ -253,5 +257,246 @@
     "saveFraming": "Save framing to this session",
     "framingSaved": "Saved",
     "fovDisclaimer": "Field of view values are approximate. Smart telescopes are alt-az, so the true frame angle rotates during a session."
+  },
+  "wall": {
+    "title": "My {{label}} Catalog",
+    "backToBoard": "{{label}} board",
+    "filterAria": "Show images",
+    "filter": {
+      "all": "All",
+      "processed": "Processed",
+      "telescope": "Telescope"
+    },
+    "mosaic": "Mosaic",
+    "uniform": "Uniform",
+    "layoutMosaic": "Switch to mosaic layout",
+    "layoutUniform": "Switch to equal-size layout",
+    "processed": "Processed",
+    "telescope": "Telescope",
+    "inFrame": "In frame",
+    "openObject": "Open {{name}}",
+    "emptyAria": "{{label}}, not imaged yet",
+    "notImaged": "Not imaged yet",
+    "addWishlist": "Add to wishlist",
+    "removeWishlist": "Remove from wishlist",
+    "planIt": "Plan it",
+    "statsTile": "{{imaged}} / {{total}}",
+    "loadFailed": "Could not load your catalog. Try refreshing.",
+    "empty": "You have not imaged anything from the {{label}} catalog yet. Your pictures will fill this wall as you add them.",
+    "edit": {
+      "start": "Edit layout",
+      "done": "Done",
+      "cancel": "Cancel",
+      "resetWall": "Reset wall",
+      "resetTile": "Reset this tile",
+      "hint": "Drag a corner or use the size button to resize. Changes save when you press Done.",
+      "chooseImage": "Choose picture",
+      "size": "Tile size",
+      "sizeAria": "Resize {{id}}",
+      "auto": "Auto",
+      "dragAria": "Drag to resize {{id}}",
+      "close": "Close",
+      "focusHint": "Drag the box to move it, drag a corner or use the slider to zoom. The box is the part shown on the tile.",
+      "frameHint": "Everything inside the box is shown on the tile. Zoom in to feature just one part of the picture.",
+      "cropPreview": "Tile preview ({{cols}} × {{rows}})",
+      "yourImages": "Your pictures of this object",
+      "noImages": "No pictures to show.",
+      "saveFailed": "Could not save your layout. Try again."
+    },
+    "poster": {
+      "open": "Share poster",
+      "title": "Share poster",
+      "previewAlt": "Poster preview",
+      "format": "Format",
+      "formats": {
+        "wide": "Wide 4K",
+        "story": "Story",
+        "square": "Square",
+        "print": "Print A2"
+      },
+      "imagedOnly": "Only objects I have imaged",
+      "labels": "Show catalog numbers",
+      "jpeg": "Save as JPG instead of PNG",
+      "titleField": "Title",
+      "subtitleField": "Subtitle",
+      "subtitlePlaceholder": "Your name, location or year",
+      "download": "Download",
+      "rendering": "Rendering…",
+      "copy": "Copy image",
+      "share": "Share…",
+      "downloaded": "Poster saved.",
+      "copied": "Copied to the clipboard.",
+      "shareFallback": "Sharing files is not available here, so the poster was downloaded.",
+      "failed": "Could not create the poster. Try a smaller format.",
+      "brand": "Add the Nebulis logo and name",
+      "brandSide": {
+        "left": "Left",
+        "right": "Right",
+        "bottomRight": "Bottom right"
+      }
+    }
+  },
+  "explore": {
+    "hero": {
+      "title": "Explore",
+      "subtitle": "Find something worth photographing. Search any name or catalog number, or browse the sky by kind.",
+      "site": "Observing site",
+      "setLocation": "Set your location to see what you can shoot"
+    },
+    "search": {
+      "label": "Search the sky",
+      "placeholder": "Search a name or number: Pelican, M42, NGC 7000, C14, Sh2-155",
+      "clear": "Clear search",
+      "results": "Search results",
+      "bestOfConstellation": "Best objects in {{name}}",
+      "constellationCount_one": "{{count}} object",
+      "constellationCount_other": "{{count}} objects",
+      "noResults": "Nothing found for \"{{query}}\"",
+      "seeAll": "See all {{count}} results",
+      "addNamed": "Add {{name}} to wishlist",
+      "addHint": "Add to wishlist (Ctrl+Enter)"
+    },
+    "visibility": {
+      "tonight": "Up tonight",
+      "bestMonth": "Best in {{month}}",
+      "bestRange": "Best {{from}} to {{to}}",
+      "inSeason": "In season",
+      "low": "Low from here",
+      "never": "Never rises here",
+      "upOn": "Up on {{date}}"
+    },
+    "card": {
+      "mag": "mag {{value}}",
+      "maxAlt": "Max alt",
+      "best": "Best",
+      "magLabel": "Mag",
+      "open": "Open {{name}}",
+      "imaged": "You have imaged this",
+      "onWishlist": "On your wishlist",
+      "added": "Added",
+      "add": "Wishlist",
+      "planTonight": "Plan tonight",
+      "notUpTonight": "Not up tonight from your site",
+      "planned": "Added to tonight",
+      "noRoom": "No free slot tonight",
+      "planFailed": "Could not plan",
+      "openPlanner": "Open in Planner",
+      "openPlannerNamed": "Show {{name}} in the Planner"
+    },
+    "tile": {
+      "total": "{{formatted}} objects",
+      "visibleHere": "{{formatted}} visible here",
+      "upTonight": "{{formatted}} up tonight"
+    },
+    "categories": {
+      "showpieces": {
+        "label": "Showpieces",
+        "blurb": "Hand-picked favorites",
+        "intro": "A short list of the objects people photograph most, chosen because they reward a small telescope."
+      },
+      "galaxies": {
+        "label": "Galaxies",
+        "blurb": "Spirals, ellipticals and edge-on discs",
+        "intro": "Other star cities. The big, bright ones come first. Faint galaxies need many hours, so check size and brightness before you give up a night."
+      },
+      "galaxy-groups": {
+        "label": "Galaxy groups",
+        "blurb": "Pairs, trios and compact groups",
+        "intro": "Galaxies that sit close together on the sky. They make small fields that suit a short focal length."
+      },
+      "emission-nebulae": {
+        "label": "Emission nebulae",
+        "blurb": "Glowing hydrogen clouds and star nurseries",
+        "intro": "Clouds of gas lit up by young stars. They glow red in hydrogen-alpha, so a dual-band filter helps a lot under a bright sky."
+      },
+      "planetary-nebulae": {
+        "label": "Planetary nebulae",
+        "blurb": "Shells of gas around dying stars",
+        "intro": "Small, bright and often colorful. Many are tiny, so a longer focal length shows the most detail."
+      },
+      "supernova-remnants": {
+        "label": "Supernova remnants",
+        "blurb": "Debris from exploded stars",
+        "intro": "Fine, wispy filaments from stars that exploded. They are faint, so they reward long exposures under dark skies."
+      },
+      "dark-reflection": {
+        "label": "Dark and reflection nebulae",
+        "blurb": "Dust clouds, lit and unlit",
+        "intro": "Dust that blocks or scatters starlight. Blue reflection nebulae show from almost any sky. Dark ones need a bright backdrop behind them."
+      },
+      "clusters": {
+        "label": "Star clusters",
+        "blurb": "Open and globular clusters",
+        "intro": "Open clusters are loose families of young stars. Globulars are dense balls of old stars. Short exposures work well."
+      }
+    },
+    "best": {
+      "title": "Best tonight from your site",
+      "seeAll": "See all",
+      "titleOn": "Best on {{date}}"
+    },
+    "browse": {
+      "title": "Browse by kind",
+      "myWishlist": "My wishlist ({{count}})"
+    },
+    "results": {
+      "back": "Back to Explore",
+      "forQuery": "Results for \"{{query}}\"",
+      "inConstellation": "Best in {{name}}",
+      "all": "Everything",
+      "count": "{{formatted}} objects",
+      "loading": "Loading",
+      "empty": "Nothing matches these filters.",
+      "showEverything": "Show everything, even what never rises here",
+      "loadMore": "Load more",
+      "bestTonight": "Best tonight",
+      "bestOn": "Best on {{date}}"
+    },
+    "filters": {
+      "visibility": "Show",
+      "tonight": "Up tonight",
+      "here": "Visible from here",
+      "all": "Everything",
+      "notImaged": "Not yet imaged",
+      "sort": "Sort",
+      "fitsScope": "Fits my scope",
+      "fitsScopeHint": "Objects that fit one frame of {{scope}}",
+      "upOn": "Up on {{date}}"
+    },
+    "sort": {
+      "best": "Best",
+      "tonight": "Best tonight",
+      "bright": "Brightest",
+      "large": "Largest",
+      "name": "Name"
+    },
+    "planNight": {
+      "title": "Plan {{name}}",
+      "subtitle": "The next 30 nights from your site. Stars mark the best three.",
+      "loading": "Checking the next 30 nights",
+      "noLocation": "Set your observing location to plan a night.",
+      "never": "This object does not rise high enough from your site.",
+      "best": "Best night",
+      "altHours": "Up to {{alt}}° for {{hours}} h",
+      "moon": {
+        "ok": "Moon {{illum}}%, no problem",
+        "caution": "Moon {{illum}}%, a bit close",
+        "warning": "Moon {{illum}}%, too close"
+      },
+      "plan": "Plan",
+      "planned": "Planned",
+      "noRoom": "No free slot",
+      "noWindow": "No dark window",
+      "failed": "Could not plan",
+      "geometryNote": "Based on altitude and the moon only. Check the forecast for clouds.",
+      "openPlanner": "Open Planner",
+      "close": "Close",
+      "bestNights": "Best nights",
+      "allNights": "Next 30 nights"
+    },
+    "night": {
+      "showing": "Showing {{date}}, the night chosen in the Planner.",
+      "backToTonight": "Back to tonight"
+    }
   }
 }

@@ -13,6 +13,7 @@
     "forecast": "Vorhersage",
     "planner": "Planer",
     "wishlist": "Wunschliste",
+    "explore": "Entdecken",
     "catalogs": "Kataloge",
     "calibrations": "Kalibrierung",
     "settings": "Einstellungen",
@@ -207,6 +208,9 @@
     "manageLocations": "Standorte verwalten..."
   },
   "altitudeChart": {
+    "peakAt": "Höchststand heute Nacht, {{time}}",
+    "atTimePeak": "Um {{time}} · Maximum {{peak}}° um {{peakTime}}",
+    "peakAtTime": "Maximum um {{time}}",
     "currentAltitude": "Aktuelle Höhe",
     "moonLabel": "Mond",
     "moonStripSpan": "Mondstörung von {{start}} bis {{end}}"
@@ -325,5 +329,9 @@
     "title": "Etwas ist schiefgelaufen",
     "description": "Ein unerwarteter Fehler ist aufgetreten. Lade die Seite neu, um fortzufahren.",
     "reloadPage": "Seite neu laden"
+  },
+  "heroToggle": {
+    "collapse": "Banner einklappen",
+    "expand": "Banner ausklappen"
   }
 }

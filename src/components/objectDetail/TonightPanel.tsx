@@ -12,7 +12,7 @@
  * Everything here is computed in the browser from the object's coordinates and
  * the active observing site, with no server round-trip.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Trans, useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
@@ -33,6 +33,12 @@ interface Props {
   /** Decimal degrees. */
   decDegrees: number | null;
   site: ObservingSite | null | undefined;
+  /** `card` is the standalone panel. `hero` is the compact glass version that
+   *  stands on the object hero, which is dark in every theme. */
+  variant?: 'card' | 'hero';
+  /** Appended under the panel's own content, divided off: the object hero
+   *  puts the filter guidance here so both planning answers share a panel. */
+  children?: ReactNode;
 }
 
 function formatHoursMinutes(minutes: number): string {
@@ -42,9 +48,39 @@ function formatHoursMinutes(minutes: number): string {
   return `${m}m`;
 }
 
-export function TonightPanel({ raHours, decDegrees, site: activeSite }: Props) {
+/** The surface the panel sits on: the shared card, or glass over the hero. */
+function TonightShell({ hero, title, aside, footer, children }: {
+  hero: boolean;
+  title: string;
+  aside?: ReactNode;
+  footer?: ReactNode;
+  children: ReactNode;
+}) {
+  const { isDark } = useTheme();
+  const footerBlock = footer
+    ? <div className={`mt-4 border-t pt-4 ${hero ? 'border-white/10' : isDark ? 'border-slate-800' : 'border-slate-100'}`}>{footer}</div>
+    : null;
+  if (!hero) {
+    return <SessionPanel title={title} icon={Telescope} aside={aside}>{children}{footerBlock}</SessionPanel>;
+  }
+  return (
+    <section className="rounded-2xl bg-slate-950/55 p-4 ring-1 ring-inset ring-white/10 backdrop-blur-md">
+      <div className="mb-3 flex items-center gap-2">
+        <Telescope className="h-4 w-4 shrink-0 text-white/50" />
+        <h2 className="font-display text-[0.875rem] font-semibold tracking-tight text-white">{title}</h2>
+        {aside && <div className="ml-auto min-w-0">{aside}</div>}
+      </div>
+      {children}
+      {footerBlock}
+    </section>
+  );
+}
+
+export function TonightPanel({ raHours, decDegrees, site: activeSite, variant = 'card', children }: Props) {
   const { t } = useTranslation('library');
-  const { isDark, isNight, isSpace } = useTheme();
+  const { isDark: themeDark, isNight, isSpace } = useTheme();
+  const hero = variant === 'hero';
+  const isDark = hero || themeDark;
   const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-accent-500';
 
   // Previewing a different site here is local to this panel and never
@@ -96,18 +132,18 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite }: Props) {
 
   if (raHours == null || decDegrees == null) {
     return (
-      <SessionPanel title={t('objectDetail.tonightPanel.title')} icon={Telescope}>
-        <PanelEmpty>
+      <TonightShell hero={hero} title={t('objectDetail.tonightPanel.title')} footer={children}>
+        <PanelEmpty forceDark={hero}>
           {t('objectDetail.tonightPanel.noCoords')}
         </PanelEmpty>
-      </SessionPanel>
+      </TonightShell>
     );
   }
 
   if (lat == null || lon == null) {
     return (
-      <SessionPanel title={t('objectDetail.tonightPanel.title')} icon={Telescope}>
-        <PanelEmpty>
+      <TonightShell hero={hero} title={t('objectDetail.tonightPanel.title')} footer={children}>
+        <PanelEmpty forceDark={hero}>
           <span className="inline-flex flex-wrap items-center gap-1">
             <MapPin className="h-3.5 w-3.5" />
             <Trans
@@ -119,7 +155,7 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite }: Props) {
             />
           </span>
         </PanelEmpty>
-      </SessionPanel>
+      </TonightShell>
     );
   }
 
@@ -132,9 +168,10 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite }: Props) {
   const worthIt = tonight != null && tonight.minutesAbove > 0;
 
   return (
-    <SessionPanel
+    <TonightShell
+      hero={hero}
+      footer={hero ? undefined : children}
       title={t('objectDetail.tonightPanel.title')}
-      icon={Telescope}
       aside={
         sites.length > 1 ? (
           <SitePicker
@@ -146,13 +183,19 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite }: Props) {
             onSelect={id => setPreviewSiteId(id)}
           />
         ) : (
-          <span className={`truncate text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+          <span className={`truncate text-[0.6875rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
             {site?.name}
           </span>
         )
       }
     >
-      <div className={`flex items-start gap-2 text-[13px] ${
+      {/* When the hero stacks the panel full width (below the three-column
+          breakpoint) it is wide and short: the picture on the left, the
+          numbers and filter advice on the right, instead of a 380px chart in
+          a card three times that wide. Narrow, it stays one column. */}
+      <div className={hero ? '@[640px]:grid @[640px]:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] @[640px]:items-start @[640px]:gap-x-8' : undefined}>
+      <div>
+      <div className={`flex items-start gap-2 text-[0.8125rem] ${
         worthIt
           ? (isDark ? 'text-slate-200' : 'text-slate-800')
           : (isDark ? 'text-slate-400' : 'text-slate-500')
@@ -163,12 +206,12 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite }: Props) {
         <p>
           {noDarkness ? (
             t('objectDetail.tonightPanel.noDarkness')
-          ) : worthIt && peakAt ? (
+          ) : worthIt && peakAt && peakAlt != null ? (
             // site's timezone, not the viewer's — a plan made for a remote site is read in that site's night
             <Trans
               i18nKey="objectDetail.tonightPanel.climbsTo"
               ns="library"
-              values={{ deg: Math.round(peakAlt!), time: formatHm(peakAt, site?.timezone) }}
+              values={{ deg: Math.round(peakAlt), time: formatHm(peakAt, site?.timezone) }}
               components={{
                 1: <span className="font-semibold tabular-nums" />,
                 3: <span className="font-semibold tabular-nums" />,
@@ -192,17 +235,25 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite }: Props) {
             minAlt={minAlt}
             timeZone={site?.timezone}
             isDark={isDark}
+            // The hero column is about 380px wide, so draw at that size
+            // instead of shrinking a 560-unit drawing to two thirds.
+            viewWidth={hero ? 380 : undefined}
+            viewHeight={hero ? 96 : undefined}
           />
         </div>
       )}
+      </div>
 
-      <FactGrid className={`mt-4 border-t pt-4 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+      <div>
+      <FactGrid className={`mt-4 border-t pt-4 ${hero ? 'border-white/10 @[640px]:mt-0 @[640px]:border-t-0 @[640px]:pt-0' : isDark ? 'border-slate-800' : 'border-slate-100'}`}>
         <Fact
+          forceDark={hero}
           label={t('objectDetail.tonightPanel.aboveLabel', { minAlt })}
-          value={worthIt ? formatHoursMinutes(tonight!.minutesAbove) : t('objectDetail.tonightPanel.noneTonight')}
+          value={worthIt ? formatHoursMinutes(tonight.minutesAbove) : t('objectDetail.tonightPanel.noneTonight')}
           hint={t('objectDetail.tonightPanel.aboveHint', { siteName: site?.name ?? t('objectDetail.tonightPanel.thisSite') })}
         />
         <Fact
+          forceDark={hero}
           label={t('objectDetail.tonightPanel.bestMonths')}
           value={season?.windowStart
             ? (season.windowStart === season.windowEnd
@@ -212,6 +263,9 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite }: Props) {
           hint={t('objectDetail.tonightPanel.bestMonthsHint')}
         />
       </FactGrid>
-    </SessionPanel>
+      {hero && children && <div className="mt-4 border-t border-white/10 pt-4">{children}</div>}
+      </div>
+      </div>
+    </TonightShell>
   );
 }

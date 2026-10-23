@@ -25,6 +25,7 @@ import { stmts } from '../../server/lib/library/objects';
 import {
   STARTRAILS_TARGET_NAME,
   STARTRAILS_OBJECT_TYPE,
+  STARTRAILS_DESCRIPTION,
   getStartrailsObjectId,
 } from '../../server/lib/library/dwarfStartrails';
 
@@ -103,7 +104,7 @@ describe('STARTRAILS folding into a synthetic object', () => {
     expect(row).toBeDefined();
     expect(row?.objectName).toBe(STARTRAILS_TARGET_NAME);
     expect(row?.objectType).toBe(STARTRAILS_OBJECT_TYPE);
-    expect(row?.description).toBeTruthy();
+    expect(row?.description).toBe(STARTRAILS_DESCRIPTION);
 
     const sessions = getLocalSessions(objectId);
     expect(sessions.map(s => s.date).sort()).toEqual(['2026-08-01', '2026-08-02']);
@@ -127,7 +128,7 @@ describe('STARTRAILS folding into a synthetic object', () => {
 
     const row = stmts.getObject.get(objectId);
     expect(row?.objectType).toBe(STARTRAILS_OBJECT_TYPE);
-    expect(row?.description).toBeTruthy();
+    expect(row?.description).toBe(STARTRAILS_DESCRIPTION);
   });
 
   it('an empty STARTRAILS folder (no capture subfolders) stays excluded, unfolded', () => {

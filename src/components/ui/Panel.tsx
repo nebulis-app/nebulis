@@ -11,9 +11,12 @@ import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 
-export function SessionPanel({ title, icon: Icon, aside, children, className = '' }: {
+export function SessionPanel({ title, icon: Icon, aside, children, className = '', hideHeader = false }: {
   title: string;
   icon: LucideIcon;
+  /** Leave out the heading row, for a panel whose caller already shows the
+   *  title (the object page's collapsible About). */
+  hideHeader?: boolean;
   /** Right-hand slot in the heading row, for a count or a small control. */
   aside?: ReactNode;
   children: ReactNode;
@@ -28,15 +31,15 @@ export function SessionPanel({ title, icon: Icon, aside, children, className = '
         isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white shadow-sm'
       } ${className}`}
     >
-      <div className="mb-4 flex items-center gap-2">
+      {!hideHeader && <div className="mb-4 flex items-center gap-2">
         <Icon className={`h-4 w-4 shrink-0 ${accentText}`} />
-        <h2 className={`font-display text-[15px] font-semibold tracking-tight ${
+        <h2 className={`font-display text-[0.9375rem] font-semibold tracking-tight ${
           isDark ? 'text-white' : 'text-slate-900'
         }`}>
           {title}
         </h2>
         {aside && <div className="ml-auto min-w-0">{aside}</div>}
-      </div>
+      </div>}
       {children}
     </section>
   );
@@ -47,23 +50,27 @@ export function SessionPanel({ title, icon: Icon, aside, children, className = '
  * because the value is the thing being read. `title` carries an explanation for
  * a unit that needs one (angular size), rendered as a dotted underline.
  */
-export function Fact({ label, value, hint }: {
+export function Fact({ label, value, hint, forceDark = false }: {
   label: string;
   value: ReactNode;
   hint?: string;
+  /** For a fact standing on a surface that is dark in every theme (the object
+   *  hero), where the theme's own light-mode colours would be unreadable. */
+  forceDark?: boolean;
 }) {
-  const { isDark } = useTheme();
+  const { isDark: themeDark } = useTheme();
+  const isDark = forceDark || themeDark;
   return (
     <div className="min-w-0">
       <dt
         title={hint}
-        className={`truncate text-[10.5px] font-medium uppercase tracking-[0.12em] ${
+        className={`truncate text-[0.6562rem] font-medium uppercase tracking-[0.12em] ${
           hint ? 'cursor-help underline decoration-dotted underline-offset-2' : ''
         } ${isDark ? 'text-slate-500' : 'text-slate-400'}`}
       >
         {label}
       </dt>
-      <dd className={`mt-1 truncate text-[13px] font-medium tabular-nums ${
+      <dd className={`mt-1 truncate text-[0.8125rem] font-medium tabular-nums ${
         isDark ? 'text-slate-200' : 'text-slate-800'
       }`}>
         {value}
@@ -80,9 +87,10 @@ export function FactGrid({ children, className = '' }: { children: ReactNode; cl
 
 /** Muted line for a panel that has nothing to show, so the row of panels keeps
  *  its shape instead of collapsing to two. */
-export function PanelEmpty({ children }: { children: ReactNode }) {
-  const { isDark } = useTheme();
+export function PanelEmpty({ children, forceDark = false }: { children: ReactNode; forceDark?: boolean }) {
+  const { isDark: themeDark } = useTheme();
+  const isDark = forceDark || themeDark;
   return (
-    <p className={`text-[13px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{children}</p>
+    <p className={`text-[0.8125rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{children}</p>
   );
 }

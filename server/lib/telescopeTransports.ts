@@ -22,7 +22,7 @@ import { encrypt, decrypt } from './crypto/secretBox.js';
 export const TRANSPORT_KINDS = ['smb', 'local', 'ftp'] as const;
 export type TransportKind = (typeof TRANSPORT_KINDS)[number];
 export function isTransportKind(value: string): value is TransportKind {
-  return (TRANSPORT_KINDS as readonly string[]).includes(value);
+  return TRANSPORT_KINDS.some((entry) => entry === value);
 }
 
 export interface TelescopeTransport {

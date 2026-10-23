@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, skipToken } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Columns, Layers, Calendar, GripVertical, ImageOff } from 'lucide-react';
@@ -8,14 +8,13 @@ import { useTheme } from '../hooks/useTheme';
 import { formatDate } from '../lib/formatLocale';
 
 export function CompareView() {
-  const { objectId } = useParams<{ objectId: string }>();
+  const { objectId = '' } = useParams<{ objectId: string }>();
   const { isDark } = useTheme();
   const { t } = useTranslation('library');
 
   const { data: sessions } = useQuery({
     queryKey: ['library-sessions', objectId],
-    queryFn: () => getLibrarySessions(objectId!),
-    enabled: !!objectId,
+    queryFn: objectId ? () => getLibrarySessions(objectId) : skipToken,
   });
 
   const [leftSession, setLeftSession] = useState<string | null>(null);
@@ -44,7 +43,7 @@ export function CompareView() {
   return (
     <div className="space-y-6">
       <Link
-        to={`/object/${encodeURIComponent(objectId!)}`}
+        to={`/object/${encodeURIComponent(objectId)}`}
         className={`inline-flex items-center gap-2 text-sm font-medium transition ${
           isDark ? 'text-slate-400 hover:text-accent-400' : 'text-slate-500 hover:text-accent-600'
         }`}

@@ -80,7 +80,7 @@ export function DatabaseBackupsSection({ isDark }: { isDark: boolean }) {
   };
 
   const btnBase =
-    'px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+    'px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
   const subtle = isDark ? 'text-slate-400' : 'text-slate-600';
 
   return (
@@ -90,13 +90,13 @@ export function DatabaseBackupsSection({ isDark }: { isDark: boolean }) {
       isDark={isDark}
     >
       <div className="px-5 py-5 space-y-4">
-        <p className={`text-[13px] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+        <p className={`text-[0.8125rem] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
           {t('databaseBackups.explanation', { keep })}
         </p>
 
         {failed && (
           <div
-            className={`rounded-lg px-3.5 py-3 text-[12px] leading-relaxed ${
+            className={`rounded-lg px-3.5 py-3 text-[0.75rem] leading-relaxed ${
               isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'
             }`}
           >
@@ -106,7 +106,7 @@ export function DatabaseBackupsSection({ isDark }: { isDark: boolean }) {
 
         {notice && (
           <div
-            className={`rounded-lg px-3.5 py-3 text-[12px] ${
+            className={`rounded-lg px-3.5 py-3 text-[0.75rem] ${
               isDark ? 'bg-emerald-500/10 text-emerald-200/90' : 'bg-emerald-50 text-emerald-900'
             }`}
           >
@@ -116,7 +116,7 @@ export function DatabaseBackupsSection({ isDark }: { isDark: boolean }) {
 
         {error && (
           <div
-            className={`rounded-lg px-3.5 py-3 text-[12px] ${
+            className={`rounded-lg px-3.5 py-3 text-[0.75rem] ${
               isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'
             }`}
           >
@@ -125,9 +125,9 @@ export function DatabaseBackupsSection({ isDark }: { isDark: boolean }) {
         )}
 
         {isLoading ? (
-          <p className={`text-[13px] ${subtle}`}>{t('databaseBackups.loading')}</p>
+          <p className={`text-[0.8125rem] ${subtle}`}>{t('databaseBackups.loading')}</p>
         ) : backups.length === 0 ? (
-          <p className={`text-[13px] ${subtle}`}>
+          <p className={`text-[0.8125rem] ${subtle}`}>
             {t('databaseBackups.noBackups')}
           </p>
         ) : (
@@ -136,11 +136,11 @@ export function DatabaseBackupsSection({ isDark }: { isDark: boolean }) {
               <li key={b.name} className="flex items-center gap-3 px-3.5 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className={`text-[13px] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                    <span className={`text-[0.8125rem] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                       {b.version ? `v${b.version}` : t('databaseBackups.unknownVersion')}
                     </span>
                     <span
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+                      className={`px-1.5 py-0.5 rounded text-[0.625rem] font-semibold uppercase tracking-wide ${
                         b.kind === 'upgrade'
                           ? isDark ? 'bg-accent-500/15 text-accent-300' : 'bg-accent-100 text-accent-700'
                           : isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'
@@ -149,10 +149,10 @@ export function DatabaseBackupsSection({ isDark }: { isDark: boolean }) {
                       {t(`databaseBackups.kind.${b.kind}`)}
                     </span>
                   </div>
-                  <div className={`mt-0.5 text-[11.5px] ${subtle}`}>
+                  <div className={`mt-0.5 text-[0.7188rem] ${subtle}`}>
                     {new Date(b.createdAt).toLocaleString(activeLocale())} · {formatBytes(b.sizeBytes)}
                   </div>
-                  <div className={`mt-0.5 text-[11px] font-mono break-all ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                  <div className={`mt-0.5 text-[0.6875rem] font-mono break-all ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                     {b.name}
                   </div>
                 </div>
@@ -178,7 +178,7 @@ export function DatabaseBackupsSection({ isDark }: { isDark: boolean }) {
         )}
 
         {data?.dir && (
-          <p className={`text-[11px] font-mono break-all ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+          <p className={`text-[0.6875rem] font-mono break-all ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
             {data.dir}
           </p>
         )}

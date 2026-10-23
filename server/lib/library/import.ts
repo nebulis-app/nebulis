@@ -21,6 +21,8 @@ import {
   setProfileDeviceId,
   type TelescopeProfile,
 } from '../telescopes.js';
+import { getOpticalConfigsForProfile } from '../telescopeOpticalConfigs.js';
+import { setSessionOpticalConfig } from './sessionOptics.js';
 import { smbListDir, smbGetFile, type SmbEntry } from '../smb.js';
 import { selectActiveTransport, markTransportSeen, type TransportKind } from '../telescopeTransports.js';
 import { writeIdentityIfMissing } from '../deviceIdentity.js';
@@ -53,7 +55,7 @@ import {
   type GenericDiscoveredObject,
   type AsiairDiscoveredObject,
 } from '../walkers/index.js';
-import { isAsiairKind } from '../types/telescopeKind.js';
+import { isAsiairKind, isSeestarKind } from '../types/telescopeKind.js';
 import {
   parseFilename,
   isObjectFolder,
@@ -82,7 +84,7 @@ import {
 } from './objects.js';
 import { resolveObjectImagePath, invalidateAllImagesCache, objectThumbnailDiskCacheKey } from './gallery.js';
 import { writeFileIntoLibrary, copyTransportFile } from './importWrite.js';
-import { recordLibraryFiles, roleForFile, resolverFor, writeObjectManifest, getLibraryFileRow, type RecordFileInput } from './libraryFiles.js';
+import { recordLibraryFiles, roleForFile, resolverFor, writeObjectManifest, getLibraryFileRow, getLibraryFilesForObject, type RecordFileInput } from './libraryFiles.js';
 import { classifyExistingCopy } from './existingCopy.js';
 import { isCaptureInfoSidecar, ingestCaptureInfoFile } from './captureInfo.js';
 import { getStartrailsObjectId, patchStartrailsObjectMeta } from './dwarfStartrails.js';
@@ -94,6 +96,7 @@ import {
   sessionFolderFor,
   canonicalSessionFolder,
   layoutForImport,
+  layoutForNewObject,
   getObjectLayout,
   setObjectLayout,
   listObjectFiles,
@@ -113,7 +116,7 @@ import {
 } from './importFilter.js';
 import { isRecord } from '../typeGuards.js';
 import { isContainerFolder, groupByTarget, stripCaptureModeSuffix } from './objectDiscovery.js';
-import { isCalibrationFolderName } from './calibrationFolders.js';
+import { isCalibrationFolderName, SEESTAR_DARK_LIBRARY_FOLDER } from './calibrationFolders.js';
 import {
   collectObjectSources,
   walkObjectFiles,
@@ -319,6 +322,28 @@ export function createWorkerQueue<T>(concurrency: number, process: (item: T) => 
  * key is always identical to what the route will look up. Runs up to 4
  * objects concurrently to saturate the sharp/libvips thread pool.
  */
+/** How long an import waits for thumbnail pre-warming before it reports done.
+ *  A target with no local image falls back to a sky-survey fetch with a long
+ *  timeout, so on a slow or offline network the wait used to hold the progress
+ *  dialog at 100% for a minute or more. The workers keep running after this and
+ *  anything unfinished is generated on first view. */
+const THUMB_PREWARM_MAX_WAIT_MS = 10_000;
+
+/** Resolve when `work` settles or `ms` passes, whichever is first. Never rejects:
+ *  the work's own errors are handled inside it, and the caller only wants to stop
+ *  waiting. */
+export async function waitUpTo(work: Promise<unknown>, ms: number): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      work.catch(() => undefined),
+      new Promise<void>(resolve => { timer = setTimeout(resolve, ms); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function pregenerateObjectThumbnails(objectIds: Iterable<string>): Promise<void> {
   const THUMB_W = 400;
   const THUMB_H = 400;
@@ -511,9 +536,27 @@ function safeObjectDir(objectName: string): string | null {
  * single observing night — see addProcessedImage's 'dwarf-restack' source),
  * plus a `libraryObjects` row via resolveCatalogMeta so it shows up in the
  * UI immediately rather than waiting for this run's end-of-loop save.
+ *
+ * Callers must only call this once a file is actually in hand (copied to the
+ * import temp dir), and must run the returned undo when nothing ends up
+ * attached. An object created ahead of a copy that then failed was left behind
+ * empty, and because it was created flat it raised the "your library needs a
+ * one-time update" prompt over an object with nothing in it.
+ *
+ * A newly created (or revived, file-less) object is stamped nested, the same
+ * shape `layoutForNewObject` gives every other new object. Leaving it at the
+ * column's flat default meant the first raw-session sync of that target later
+ * went through the flat path, which renames Dwarf files.
+ *
+ * Returns an undo that removes what this call created (or re-tombstones what it
+ * revived), or null when the object already existed and nothing was changed.
  */
-function ensureRestackObject(targetId: string, index: LibraryIndex, telescopeId: string | null): void {
-  if (index.objects[targetId] && !index.objects[targetId].deleted) return;
+function ensureRestackObject(targetId: string, index: LibraryIndex, telescopeId: string | null): (() => void) | null {
+  const prior = index.objects[targetId];
+  if (prior && !prior.deleted) return null;
+  const priorRow = stmts.getObject.get(targetId);
+  // A live row the index did not know about is not ours to create or undo.
+  if (priorRow && !priorRow.deleted) return null;
   const preferCaldwell = loadSettings().preferredCatalog === 'caldwell';
   const folderName = applyCatalogPreference(targetId, preferCaldwell);
   const lastImport = new Date().toISOString();
@@ -527,11 +570,31 @@ function ensureRestackObject(targetId: string, index: LibraryIndex, telescopeId:
         cat.description, cat.magnitude, cat.ra, cat.dec, cat.distanceLy,
       );
       if (telescopeId) stmts.setObjectPrimaryTelescopeIfNull.run(telescopeId, targetId);
+      // A revived tombstone that still has copied files keeps the layout those
+      // files are stored in; anything without one starts nested.
+      if (!hasManagedFilesStmt.get(targetId)) setObjectLayout(targetId, layoutForNewObject());
     })();
   } catch (err) {
     log.warn({ err: err instanceof Error ? err.message : String(err), targetId }, '[import] failed to create object for RESTACKED target');
   }
+  return () => {
+    try {
+      if (priorRow) {
+        stmts.markObjectDeleted.run(priorRow.deletedAt ?? new Date().toISOString(), targetId);
+      } else {
+        db.prepare('DELETE FROM libraryObjects WHERE objectId = ?').run(targetId);
+      }
+    } catch (err) {
+      log.warn({ err: err instanceof Error ? err.message : String(err), targetId }, '[import] failed to undo RESTACKED object creation');
+    }
+    if (prior) index.objects[targetId] = prior;
+    else delete index.objects[targetId];
+  };
 }
+
+const hasManagedFilesStmt = db.prepare<[string], { one: number }>(
+  'SELECT 1 AS one FROM libraryFiles WHERE objectId = ? AND sourceId IS NULL LIMIT 1',
+);
 
 /** True when a filename from a remote (SMB) directory listing is safe to use
  *  as a `path.join(objLocalDir, name)` local filename. A hostile or buggy
@@ -1545,8 +1608,42 @@ export async function runImport(
         });
       };
 
+      // Files this object already holds under a *different* session folder
+      // (a night-named folder from the flat→nested migration, say), keyed by
+      // original name + size. Without this the path-only "exists" check in
+      // writeFileIntoLibrary misses them and a device-named copy of every
+      // file lands beside the migrated one.
+      const heldElsewhere = new Set<string>();
+      if (objectLayout === 'nested') {
+        for (const row of getLibraryFilesForObject(objIdNormalized)) {
+          if (row.sourceId || row.missingSince || !row.bytes) continue;
+          heldElsewhere.add(`${row.originalName}|${row.bytes}|${row.relPath}`);
+        }
+      }
+      const alreadyHeldElsewhere = (file: ImportFile, destRel: string): boolean => {
+        if (heldElsewhere.size === 0 || !file.size || !file.sessionFolder) return false;
+        const prefix = `${file.originalName}|${file.size}|`;
+        const destPath = `${objFolderName}/${destRel}`;
+        for (const key of heldElsewhere) {
+          if (!key.startsWith(prefix)) continue;
+          const relPath = key.slice(prefix.length);
+          if (relPath !== destPath && fs.existsSync(path.join(getLibraryDir(), relPath))) return true;
+        }
+        return false;
+      };
+
       const downloadOne = async (file: ImportFile): Promise<void> => {
         const destRel = destRelFor(file);
+        if (alreadyHeldElsewhere(file, destRel)) {
+          debugLog('import:file', `Skip (held in another session folder): ${objectName}/${destRel}`);
+          importStatus.filesDone++;
+          importStatus.currentObjectFilesDone++;
+          importStatus.skippedFiles++;
+          importStatus.bytesDone += file.size || 0;
+          fileCount++;
+          if (file.date) sessionSet.add(file.date);
+          return;
+        }
         debugLog('import:file', `Downloading: ${objectName}/${destRel}${file.size != null ? ` (${(file.size / 1024).toFixed(0)} KB)` : ''}`);
         const outcome = await writeFileIntoLibrary(
           { source: file.remotePath, destRel, expectedSize: file.size, sourceKind: 'transport' },
@@ -1844,7 +1941,12 @@ export async function runImport(
           const hasImportableFile = files.some(f =>
             (isRenderableProcessedName(f.name) || isStoredOnlyProcessedName(f.name)) && !isDwarfThumbnailPreviewName(f.name));
           if (!hasImportableFile) continue; // stays in allCandidates, archived below (usually nothing — empty dir)
-          ensureRestackObject(targetId, index, profile.id);
+          // Created lazily, once the first file has actually been copied, and
+          // undone if nothing attaches: a failed download must not leave an
+          // empty object behind (see ensureRestackObject).
+          let objectReady = false;
+          let undoCreate: (() => void) | null = null;
+          let attachedHere = 0;
           for (const f of files) {
             if (!isRenderableProcessedName(f.name) && !isStoredOnlyProcessedName(f.name)) continue;
             // Dwarf's redundant low-res preview of stacked.jpg -- never worth
@@ -1852,19 +1954,22 @@ export async function runImport(
             // the archive with everything else, bytes preserved either way.
             if (isDwarfThumbnailPreviewName(f.name)) continue;
             const relPath = f.relPath;
-            if (hasRestackedImage(targetId, f.name)) { matchedRelPaths.add(relPath); continue; } // already imported on a prior sync
+            if (hasRestackedImage(targetId, f.name)) { matchedRelPaths.add(relPath); attachedHere++; continue; } // already imported on a prior sync
             const tmpPath = path.join(IMPORT_TMP_BASE, `restack_${randomUUID()}_${path.basename(f.name)}`);
             try {
               await fs.promises.mkdir(IMPORT_TMP_BASE, { recursive: true });
               await copyTransportFile(f.remotePath, tmpPath, profile);
+              if (!objectReady) { undoCreate = ensureRestackObject(targetId, index, profile.id); objectReady = true; }
               addProcessedImage(targetId, restackDate, tmpPath, f.name, mimeTypeForExtension(f.name), subName, '', null, 'dwarf-restack');
               matched++;
+              attachedHere++;
               matchedRelPaths.add(relPath);
             } catch (err) {
               log.warn({ err: err instanceof Error ? err.message : String(err), folder: subName, file: f.name }, '[import] RESTACKED file failed; skipping');
               try { await fs.promises.unlink(tmpPath); } catch { /* best-effort */ }
             }
           }
+          if (attachedHere === 0) undoCreate?.();
         }
         const toArchive = allCandidates.filter(c => !matchedRelPaths.has(c.relPath));
         if (toArchive.length > 0) {
@@ -1893,7 +1998,17 @@ export async function runImport(
     // unconditionally: a folder-import user has to opt into "archive
     // everything", but a live-synced Dwarf's calibration data has nowhere
     // else to go and no reason to be left behind.
-    if ((isDwarf || isAsiair) && !importCancelRequested) {
+    //
+    // SeeStar's `darklibrary/` is the same case: it sits at the share root
+    // beside MyWorks, so the object walker never reads it. Unlike the other
+    // two it is regenerated by the device under the same file names, so a
+    // changed file replaces the archived one in place (the old copy is kept
+    // under `.replaced/`) rather than piling up `name (1).fit` duplicates.
+    //
+    // All three honor the profile's "sync calibration frames" switch, which
+    // defaults on.
+    const isSeestar = isSeestarKind(profile.kind);
+    if ((isDwarf || isAsiair || isSeestar) && profile.syncCalibrationFrames !== false && !importCancelRequested) {
       importStatus.currentObject = 'Calibration frames';
       try {
         // ASIAIR keeps its calibration under the capture-mode folders
@@ -1901,8 +2016,10 @@ export async function runImport(
         // the same situation as Dwarf's CALI_FRAME and gets the same answer.
         // Its base is the resolved ASIAIR root rather than walkerBase, which is
         // '' for this kind: removable media nests the tree under `ASIAir/`.
-        const archiveBase = isAsiair ? await resolveAsiairRoot(profile) : walkerBase;
-        const archiveFolders = isAsiair ? ASIAIR_CALIBRATION_PATHS : ['CALI_FRAME', 'DWARF_DARK'];
+        const archiveBase = isAsiair ? await resolveAsiairRoot(profile) : isSeestar ? '' : walkerBase;
+        const archiveFolders = isAsiair
+          ? ASIAIR_CALIBRATION_PATHS
+          : isSeestar ? [SEESTAR_DARK_LIBRARY_FOLDER] : ['CALI_FRAME', 'DWARF_DARK'];
         // Not every device has every folder; collectRemoteArchiveCandidates
         // lists each independently and simply finds nothing for one that's
         // absent (smbListDir returns an empty listing for a missing remote
@@ -1916,8 +2033,9 @@ export async function runImport(
         if (candidates.length > 0) {
           const archived = await downloadToArchive(profile, candidates, getArchiveDir(profile.id), {
             shouldCancel: () => importCancelRequested,
+            replaceChanged: isSeestar,
           });
-          debugLog('import:dwarf', `Calibration archive: ${archived.copied} new, ${archived.alreadyPresent} already archived, ${archived.failed} failed`);
+          debugLog('import:dwarf', `Calibration archive: ${archived.copied} new (${archived.replaced} replaced), ${archived.alreadyPresent} already archived, ${archived.failed} failed`);
         }
       } catch (err) {
         log.warn({ err: err instanceof Error ? err.message : String(err) }, '[import] calibration archive pass failed; continuing');
@@ -2013,7 +2131,7 @@ export async function runImport(
     if (importNewFiles.length > 0) {
       const newObjectIds = new Set(importNewFiles.map(f => resolveCanonicalId(normalizeObjectId(f.name.split('/')[0]))));
       debugLog('import:thumb', `Pre-warming gallery thumbnails for ${newObjectIds.size} object(s): ${Array.from(newObjectIds).join(', ')}`);
-      await pregenerateObjectThumbnails(newObjectIds);
+      await waitUpTo(pregenerateObjectThumbnails(newObjectIds), THUMB_PREWARM_MAX_WAIT_MS);
       debugLog('import:thumb', 'Gallery thumbnail pre-warm complete');
 
       // Also warm the per-session (Nights calendar) thumbnails for the new
@@ -3198,6 +3316,12 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
 
   const prevLastRun = importStatus.lastRun;
   const commitProfile = plan.telescopeId ? getProfileById(plan.telescopeId) : null;
+  // Only a configuration of the chosen telescope is stamped; anything else
+  // is ignored rather than failing the import.
+  const commitOpticalConfigId = commitProfile && plan.opticalConfigId
+    && getOpticalConfigsForProfile(commitProfile.id).some(c => c.id === plan.opticalConfigId)
+    ? plan.opticalConfigId
+    : null;
   importCancelRequested = false;
   importStatus = {
     running: true,
@@ -3785,26 +3909,38 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
         // see the live-sync block's identical guard for why this must run
         // before ensureRestackObject, not after.
         if (!files.some(n => !isDwarfThumbnailPreviewName(n))) continue; // stays in allRestackedCandidates, archived below
-        ensureRestackObject(targetId, index, commitProfile?.id ?? null);
+        // Created lazily once a file is copied, and undone if nothing attaches
+        // (see ensureRestackObject and the live-sync block).
+        let objectReady = false;
+        let undoCreate: (() => void) | null = null;
+        let attachedHere = 0;
         for (const f of files) {
           // Dwarf's redundant low-res preview of stacked.jpg -- never worth a
           // processed-image row. Leave it unmatched so it still lands in the
           // archive with everything else, bytes preserved either way.
           if (isDwarfThumbnailPreviewName(f)) continue;
           const relPath = `${restackedFolderName}/${sub.name}/${f}`;
-          if (hasRestackedImage(targetId, f)) { matchedRelPaths.add(relPath); continue; } // already imported on a prior run
+          if (hasRestackedImage(targetId, f)) { matchedRelPaths.add(relPath); attachedHere++; continue; } // already imported on a prior run
           const srcPath = path.join(subDir, f);
-          const tmpPath = `${srcPath}.restack-import-${randomUUID()}`;
+          // addProcessedImage moves its input, so it needs a copy it owns. That
+          // copy goes in our own temp dir, never beside the source: the import
+          // must not write into the user's folder (which may also be read-only,
+          // e.g. a mounted card, where this used to fail every file).
+          const tmpPath = path.join(IMPORT_TMP_BASE, `restack_${randomUUID()}_${path.basename(f)}`);
           try {
+            fs.mkdirSync(IMPORT_TMP_BASE, { recursive: true });
             fs.copyFileSync(srcPath, tmpPath);
+            if (!objectReady) { undoCreate = ensureRestackObject(targetId, index, commitProfile?.id ?? null); objectReady = true; }
             addProcessedImage(targetId, restackDate, tmpPath, f, mimeTypeForExtension(f), sub.name, '', null, 'dwarf-restack');
             restackMatched++;
+            attachedHere++;
             matchedRelPaths.add(relPath);
           } catch (err) {
             log.warn({ err: err instanceof Error ? err.message : String(err), file: f }, '[folder-import] RESTACKED file failed; skipping');
             try { fs.unlinkSync(tmpPath); } catch { /* best-effort */ }
           }
         }
+        if (attachedHere === 0) undoCreate?.();
       }
       // relPath is remapped from whatever case the source folder actually used
       // (restackedFolderName) to the canonical RESTACKED_ROOT_DIR_NAME, so every
@@ -3818,6 +3954,13 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
         .filter(c => !matchedRelPaths.has(c.relPath))
         .map(c => ({ ...c, relPath: RESTACKED_ROOT_DIR_NAME + c.relPath.slice(restackedFolderName.length) }));
       debugLog('import:dwarf', `RESTACKED: ${restackMatched} file(s) matched to an object, ${restackArchiveCandidates.length} file(s) archived (no matching object)`);
+      // Which restack files fall through to the archive is only known now, after
+      // matching. The archive pass below ticks filesDone once per file, so they
+      // join the total here; without this the bar read "319 of 312".
+      for (const c of restackArchiveCandidates) {
+        importStatus.filesTotal++;
+        importStatus.bytesTotal += c.size;
+      }
     }
 
     // Archive pass. Runs after the objects so a cancelled or failed run has
@@ -3906,6 +4049,7 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
               // win attribution even if an earlier import from a different
               // telescope already claimed this (objectId, date) session.
               stmts.addSessionStampedForce.run(objectId, date, commitProfile.id);
+              if (commitOpticalConfigId) setSessionOpticalConfig(objectId, date, commitOpticalConfigId);
             } else {
               stmts.addSession.run(objectId, date);
             }
@@ -3936,7 +4080,7 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
     // Pre-warm gallery thumbnails for newly-imported objects.
     if (importNewFiles.length > 0) {
       const newObjectIds = new Set(importNewFiles.map(f => resolveCanonicalId(normalizeObjectId(f.name.split('/')[0]))));
-      await pregenerateObjectThumbnails(newObjectIds);
+      await waitUpTo(pregenerateObjectThumbnails(newObjectIds), THUMB_PREWARM_MAX_WAIT_MS);
     }
   } catch (err) {
     const raw = err instanceof Error ? err.message : 'Folder import failed.';

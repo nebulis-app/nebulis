@@ -240,8 +240,8 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
                   <div className="flex-1 min-w-0">
                     <div className={`text-sm font-medium truncate ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
                       {kindLabel(t, transport.kind)}
-                      {isPinned && <span className="ml-1.5 text-[10px] font-semibold text-accent-500">{t('transportEditor.pinnedBadge')}</span>}
-                      {isActive && !isPinned && <span className={`ml-1.5 text-[10px] font-semibold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{t('addTelescopeModal.activeLabel')}</span>}
+                      {isPinned && <span className="ml-1.5 text-[0.625rem] font-semibold text-accent-500">{t('transportEditor.pinnedBadge')}</span>}
+                      {isActive && !isPinned && <span className={`ml-1.5 text-[0.625rem] font-semibold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{t('addTelescopeModal.activeLabel')}</span>}
                     </div>
                     <div className={`text-xs font-mono truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                       {transport.kind === 'local'

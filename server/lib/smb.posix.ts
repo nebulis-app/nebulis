@@ -15,6 +15,7 @@ import {
   withSmbGuards,
 } from './smb.shared.js';
 import type { TelescopeProfile } from './telescopes.js';
+import { childProcessOutput } from './errors.js';
 import { debugLog, isDebugLoggingEnabled } from './debugLogger.js';
 
 type ProfileArg = Partial<Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'>> | null | undefined;
@@ -57,8 +58,7 @@ const WARN_DEDUPE_MS = 60_000;
  *
  *  The Error message itself stays the short classified summary. */
 function smbFailure(err: unknown, op: string, conn: string): Error {
-  const e = err as { stdout?: string; stderr?: string };
-  const combined = scrubSmbArgs(`${e.stderr ?? ''} ${e.stdout ?? ''}`.trim())
+  const combined = scrubSmbArgs(`${childProcessOutput(err, 'stderr') ?? ''} ${childProcessOutput(err, 'stdout') ?? ''}`.trim())
     || (err instanceof Error ? scrubSmbArgs(err.message) : String(err));
   const oneLine = combined.replace(/\s+/g, ' ').trim().slice(0, 800);
   const reason = extractSmbReason(err);

@@ -18,15 +18,15 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(Math.max(n, lo), h
 
 /** Window size as fractions of the image at zoom 1 (mirrors baseWindow on the
  *  server). `aspect` is the image's width / height. */
-function baseWindow(aspect: number, rotated: boolean) {
-  const a = rotated ? 1 / aspect : aspect;
+function baseWindow(aspect: number, rotated: boolean, frameAspect?: number) {
+  const a = frameAspect ?? (rotated ? 1 / aspect : aspect);
   return a >= aspect ? { w: 1, h: aspect / a } : { w: a / aspect, h: 1 };
 }
 
 /** Keep the window inside the image: the centre can't get closer than half a
  *  window to any edge. */
-function constrain(c: GalleryCrop, aspect: number): GalleryCrop {
-  const b = baseWindow(aspect, !!c.rotated);
+function constrain(c: GalleryCrop, aspect: number, frameAspect?: number): GalleryCrop {
+  const b = baseWindow(aspect, !!c.rotated, frameAspect);
   const hx = b.w / (2 * c.zoom);
   const hy = b.h / (2 * c.zoom);
   const out: GalleryCrop = { zoom: c.zoom, x: clamp(c.x, hx, 1 - hx), y: clamp(c.y, hy, 1 - hy) };
@@ -51,12 +51,22 @@ export function ImageFramer({
   crop,
   onChange,
   isDark,
+  frameAspect,
+  onAspect,
+  hint,
 }: {
   src: string;
   /** null = whole image. */
   crop: GalleryCrop | null;
   onChange: (crop: GalleryCrop | null) => void;
   isDark: boolean;
+  /** Fix the box to this width / height (a wall tile's shape) instead of the
+   *  image's own. The portrait toggle is hidden then. */
+  frameAspect?: number;
+  /** Reports the image's natural width / height once it has loaded. */
+  onAspect?: (aspect: number) => void;
+  /** Replaces the default help line under the controls. */
+  hint?: string;
 }) {
   const { t } = useTranslation('library');
   const [aspect, setAspect] = useState(1.5);
@@ -66,15 +76,16 @@ export function ImageFramer({
 
   const c = crop ?? { x: 0.5, y: 0.5, zoom: 1 };
   const rotated = !!c.rotated;
-  const base = baseWindow(aspect, rotated);
+  const base = baseWindow(aspect, rotated, frameAspect);
   const boxW = base.w / c.zoom;
   const boxH = base.h / c.zoom;
 
   const emit = (next: GalleryCrop) => {
-    const fixed = constrain(next, aspect);
+    const fixed = constrain(next, aspect, frameAspect);
     // Back to whole-image framing is stored as "no crop". A rotated frame at
     // zoom 1 is still a crop (a strip), so it is kept.
-    onChange(fixed.zoom <= 1.01 && !fixed.rotated ? null : fixed);
+    // A fixed-shape frame can still slide along the long edge at zoom 1.
+    onChange(fixed.zoom <= 1.01 && !fixed.rotated && frameAspect == null ? null : fixed);
   };
 
   const toggleRotated = () => {
@@ -84,7 +95,9 @@ export function ImageFramer({
   };
 
   const point = (e: React.PointerEvent) => {
-    const r = stageRef.current!.getBoundingClientRect();
+    const stage = stageRef.current;
+    if (!stage) return null;
+    const r = stage.getBoundingClientRect();
     return { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height, w: r.width, h: r.height };
   };
 
@@ -107,6 +120,7 @@ export function ImageFramer({
     const g = gesture.current;
     if (!g) return;
     const p = point(e);
+    if (!p) return;
     if (g.kind === 'move') {
       emit({
         ...g.start,
@@ -133,7 +147,7 @@ export function ImageFramer({
   const endGesture = () => { gesture.current = null; };
 
   const setZoom = (zoom: number) => emit({ ...c, zoom: clamp(zoom, 1, MAX_ZOOM) });
-  const canMove = c.zoom > 1 || rotated;
+  const canMove = c.zoom > 1 || rotated || frameAspect != null;
 
   const muted = isDark ? 'text-slate-400' : 'text-slate-500';
   const btn = `p-1.5 rounded-lg transition disabled:opacity-30 ${isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'}`;
@@ -159,7 +173,7 @@ export function ImageFramer({
           draggable={false}
           onLoad={(e) => {
             const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
-            if (w && h) setAspect(w / h);
+            if (w && h) { setAspect(w / h); onAspect?.(w / h); }
           }}
           onError={() => setFailed(true)}
           className="absolute inset-0 w-full h-full"
@@ -205,16 +219,18 @@ export function ImageFramer({
           <Plus className="w-4 h-4" />
         </button>
         <span className={`w-12 text-right text-xs tabular-nums ${muted}`}>{c.zoom.toFixed(1)}×</span>
-        <button
-          type="button"
-          onClick={toggleRotated}
-          title={t(rotated ? 'galleryImageModal.frameLandscape' : 'galleryImageModal.framePortrait')}
-          aria-label={t(rotated ? 'galleryImageModal.frameLandscape' : 'galleryImageModal.framePortrait')}
-          className={btn}
-        >
-          {/* Shows the shape you will get by pressing it. */}
-          {rotated ? <RectangleHorizontal className="w-4 h-4" /> : <RectangleVertical className="w-4 h-4" />}
-        </button>
+        {frameAspect == null && (
+          <button
+            type="button"
+            onClick={toggleRotated}
+            title={t(rotated ? 'galleryImageModal.frameLandscape' : 'galleryImageModal.framePortrait')}
+            aria-label={t(rotated ? 'galleryImageModal.frameLandscape' : 'galleryImageModal.framePortrait')}
+            className={btn}
+          >
+            {/* Shows the shape you will get by pressing it. */}
+            {rotated ? <RectangleHorizontal className="w-4 h-4" /> : <RectangleVertical className="w-4 h-4" />}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onChange(null)}
@@ -226,7 +242,7 @@ export function ImageFramer({
           <RotateCcw className="w-4 h-4" />
         </button>
       </div>
-      <p className={`text-xs text-center ${muted}`}>{t('galleryImageModal.framingHint')}</p>
+      <p className={`text-xs text-center ${muted}`}>{hint ?? t('galleryImageModal.framingHint')}</p>
     </div>
   );
 }

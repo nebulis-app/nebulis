@@ -86,7 +86,9 @@
     "showingRange": "Affichage de {{from}}–{{to}} sur {{total}} observations",
     "previousPage": "Page précédente",
     "nextPage": "Page suivante",
-    "pageOfTotal": "{{page}} / {{totalPages}}"
+    "pageOfTotal": "{{page}} / {{totalPages}}",
+    "columnRig": "Rig",
+    "noRig": "Sans télescope"
   },
   "toolbar": {
     "viewGroup": "Vue",
@@ -98,7 +100,8 @@
     "today": "Aujourd'hui",
     "allTelescopes": "Tous les télescopes",
     "filterByTelescope": "Filtrer par télescope",
-    "share": "Partager"
+    "share": "Partager",
+    "allTrains": "{{name}} (tous les trains)"
   },
   "newObservationForm": {
     "objectLabel": "Objet",
@@ -166,7 +169,16 @@
       "capturedOn": "Capturé avec {{name}}. Cliquez pour voir ses autres sessions.",
       "reassignTitle": "Réattribuer à un autre télescope",
       "reassignTo": "Réattribuer à",
-      "reassignFailed": "Échec de la réattribution"
+      "reassignFailed": "Échec de la réattribution",
+      "opticsTitle": "Train optique",
+      "opticsAuto": "Automatique",
+      "opticsAutoFits": "FITS : {{focal}}",
+      "opticsAutoNone": "non détecté",
+      "opticsSource": {
+        "manual": "Choisi pour cette nuit",
+        "fits": "Déduit de la focale inscrite dans les FITS",
+        "only": "Seule configuration du télescope"
+      }
     },
     "objectPanel": {
       "about": "À propos de {{name}}",
@@ -212,6 +224,8 @@
     "subframesPanel": {
       "scanTrails": "Rechercher des traînées",
       "scanTrailsTitle": "Analyser toutes les sous-poses FITS à la recherche de traînées de satellites",
+      "analyzeFrames": "Analyser les images",
+      "analyzeFramesTitle": "Mesurer chaque image brute de cette nuit et signaler nuages, traînées d'étoiles, flou, traînées et bruit",
       "telescopeOfflineTitle": "Le télescope est hors ligne. Connectez-le pour télécharger les sous-poses.",
       "downloadFromTelescopeTitle": "Télécharger toutes les sous-poses brutes de cette session depuis le télescope vers votre bibliothèque",
       "syncSubs": "Synchroniser les sous-poses",
@@ -221,11 +235,6 @@
       "downloadFailed": "Échec du téléchargement",
       "zipping": "Compression {{done}}/{{total}}…",
       "deleteAllTitle": "Supprimer toutes les sous-poses de cette session",
-      "frameTitle": "{{name}} (pose {{index}} sur {{total}})",
-      "showingSampled": "Affichage de {{shown}} sur {{total}}, échantillonnées sur toute la session",
-      "showingAll": "Affichage des {{total}}",
-      "viewAll": "Voir les {{total}}",
-      "openViewer": "Ouvrir la visionneuse",
       "empty": "Aucune sous-pose téléchargée pour l'instant. Connectez votre télescope et utilisez Synchroniser les sous-poses pour les récupérer."
     },
     "sessionFileGrid": {
@@ -259,6 +268,13 @@
       "addMore": "Ajouter d'autres",
       "moveToImages": "Marquer comme non traité"
     },
+    "nightPanel": {
+      "title": "Cette nuit-là",
+      "syncHint": "Synchronisez les sous-poses pour voir quand vous avez capturé",
+      "imaged": "Capturé {{range}}",
+      "cloud": "{{label}} · {{percent}}% de nuages",
+      "moon": "Lune {{percent}}%"
+    },
     "hero": {
       "breadcrumb": "Fil d'Ariane",
       "observations": "Observations",
@@ -281,6 +297,7 @@
       "deleteTitle": "Supprimer l'observation"
     },
     "page": {
+      "sessionDetails": "Détails de la session",
       "unknownDate": "Date inconnue",
       "rawFitsOnly": "Poses FITS brutes uniquement",
       "noImagesCaptured": "Aucune image capturée",
@@ -439,7 +456,153 @@
       "filterTypesSelected_other": "{{selected}} types de filtres sélectionnés sur {{count}}",
       "selectAtLeastOneFilter": "Sélectionnez au moins un type de filtre",
       "back": "Retour",
-      "discardSelection": "Abandonner votre sélection de sessions ?"
+      "discardSelection": "Abandonner votre sélection de sessions ?",
+      "keptOnlyOption": "Seulement les sous-poses gardées",
+      "keptOnlyHint": "Écarte les sous-poses notées « mauvaise » ou décochées dans la vue qualité de la nuit. Les nuits pas encore mesurées partent en entier."
+    },
+    "frameAnalysisModal": {
+      "title": "Qualité des images",
+      "measuring": "Mesure de {{done}} sur {{total}}",
+      "framesMeasured_one": "{{count}} image mesurée",
+      "framesMeasured_other": "{{count}} images mesurées",
+      "stop": "Arrêter",
+      "measureAgain": "Mesurer à nouveau",
+      "measureAgainTitle": "Supprimer les mesures enregistrées de cette nuit et relire toutes les images",
+      "close": "Fermer",
+      "loadFailed": "Les images n'ont pas pu être analysées",
+      "noFrames": "Aucune sous-image FITS brute pour cette nuit. Synchronisez-les d'abord depuis le télescope.",
+      "noMatch": "Aucune image ne correspond à ce filtre.",
+      "waiting": "En attente",
+      "notMeasured": "Non mesurée",
+      "unreadable": "Lecture impossible : {{reason}}",
+      "typicalFrame": "Une image typique de cette nuit : {{stars}} étoiles, étoiles de {{fwhm}} px de large, {{elongation}} fois plus longues que larges. Chaque image est jugée par rapport à celle-ci.",
+      "filterLabel": "Afficher",
+      "sortLabel": "Trier",
+      "filters": {
+        "all": "Toutes",
+        "good": "Bonnes",
+        "flagged": "Signalées",
+        "bad": "Mauvaises"
+      },
+      "sorts": {
+        "score": "Score",
+        "time": "Heure",
+        "stars": "Étoiles",
+        "sharpness": "Netteté",
+        "roundness": "Rondeur"
+      },
+      "grades": {
+        "good": "Bonne",
+        "fair": "Moyenne",
+        "bad": "Mauvaise"
+      },
+      "gradeCount": {
+        "good": "{{count}} bonnes",
+        "fair": "{{count}} moyennes",
+        "bad": "{{count}} mauvaises"
+      },
+      "flags": {
+        "clouds": "Nuages",
+        "trails": "Traînées d'étoiles",
+        "soft": "Étoiles floues",
+        "streak": "Traînée",
+        "noStars": "Sans étoiles",
+        "noisy": "Bruitée"
+      },
+      "stats": {
+        "stars": "Étoiles",
+        "width": "Largeur",
+        "round": "Rondeur",
+        "noise": "Bruit",
+        "signal": "Signal",
+        "pixels": "{{value}} px",
+        "times": "{{value}}×"
+      },
+      "reasons": {
+        "noStars": "Seulement {{stars}} étoiles trouvées, contre environ {{typical}} dans une image typique de cette nuit. Le ciel était couvert ou l'optique embuée.",
+        "clouds": "{{stars}} étoiles contre environ {{typical}} dans une image typique ({{percent}} % de moins).",
+        "cloudsBrighter": "Le ciel est aussi plus lumineux, comme avec des nuages éclairés par en dessous.",
+        "trailsPlain": "Les étoiles sont {{ratio}} fois plus longues que larges. Le télescope a bougé ou a été secoué pendant la pose.",
+        "trailsPlainAngle": "Les étoiles sont {{ratio}} fois plus longues que larges, étirées vers {{angle}}°. Le télescope a bougé ou a été secoué pendant la pose.",
+        "trailsSlight": "Les étoiles sont {{ratio}} fois plus longues que larges. Un léger bougé qui se verra à peine une fois les images empilées.",
+        "trailsSlightAngle": "Les étoiles sont {{ratio}} fois plus longues que larges, étirées vers {{angle}}°. Un léger bougé qui se verra à peine une fois les images empilées.",
+        "soft": "Les étoiles font {{fwhm}} px de large contre {{typical}} px typiques : mise au point imparfaite ou air instable.",
+        "streak": "Une traînée droite traverse l'image à environ {{angle}}° (un satellite ou un avion). L'empilement avec rejet l'élimine en général.",
+        "noisy": "Le bruit de fond dépasse de {{percent}} % celui de l'image typique de la nuit."
+      },
+      "selectHint": "Cliquez sur les images pour les sélectionner.",
+      "selectedCount_one": "{{count}} image sélectionnée",
+      "selectedCount_other": "{{count}} images sélectionnées",
+      "selectBad": "Sélectionner toutes les mauvaises",
+      "selectFlagged": "Sélectionner les signalées",
+      "clear": "Effacer",
+      "discard": "Supprimer…",
+      "keepFrames": "Garder les images",
+      "confirmDiscard_one": "Supprimer définitivement {{count}} image de votre bibliothèque ?",
+      "confirmDiscard_other": "Supprimer définitivement {{count}} images de votre bibliothèque ?",
+      "confirmDiscardLinked_one": "Supprimer définitivement {{count}} image ? {{linked}} se trouve dans un dossier lié : l'original est supprimé du disque et Nebulis n'en a pas d'autre copie.",
+      "confirmDiscardLinked_other": "Supprimer définitivement {{count}} images ? {{linked}} se trouvent dans un dossier lié : les originaux sont supprimés du disque et Nebulis n'en a pas d'autre copie.",
+      "discardFailures": "{{removed}} supprimées. {{count}} n'ont pas pu être retirées :\n{{details}}",
+      "nightLabel": "Nuit",
+      "nightOption": "{{date}} ({{count}})",
+      "selectFrame": "Sélectionner {{name}}",
+      "markKeep": "Garder",
+      "markReject": "Rejeter",
+      "followGrade": "Retirer la marque"
+    },
+    "frameList": {
+      "notMeasuredTitle": "Ouvrez la nuit pour mesurer ses images.",
+      "measuredOfTitle": "L'analyse des images est encore en cours ou a été interrompue pour cette nuit.",
+      "allClearTitle": "Les {{count}} images sont mesurées. Aucun nuage, traînée d'étoiles ni trait trouvé.",
+      "flaggedTitle": "Certaines images montrent des nuages, des traînées d'étoiles, des traits, un flou ou du bruit. Ouvrez la nuit pour les examiner.",
+      "openFrame": "Ouvrir l'image",
+      "allClearShort": "Aucun défaut",
+      "measuredOf": "{{measured}} sur {{total}} mesurées",
+      "allClear": "Aucun nuage, traînée d'étoiles ni trait trouvé",
+      "flagged": "{{flagged}} signalées",
+      "flaggedAndBad": "{{flagged}} signalées · {{bad}} mauvaises",
+      "flaggedOnly": "Signalées seulement",
+      "previews": "Aperçus",
+      "notMeasured": "Non mesurée",
+      "moreFlags": "+{{count}}",
+      "longestGap": "Plus longue pause {{duration}} à {{time}}",
+      "timelineLabel": "Une marque par image au fil de la nuit, colorée selon la note",
+      "column": {
+        "time": "Heure",
+        "score": "Score",
+        "flags": "Signes",
+        "stars": "Étoiles",
+        "fwhm": "Largeur px",
+        "round": "Traînée",
+        "noise": "Bruit",
+        "snr": "Signal",
+        "sky": "Ciel",
+        "file": "Fichier"
+      },
+      "sortHint": {
+        "time": "Trier par heure de prise de vue",
+        "score": "Trier par score, la pire d'abord",
+        "flags": "Trier selon ce qui ne va pas dans l'image",
+        "stars": "Trier par étoiles trouvées",
+        "fwhm": "Trier par largeur d'étoile (FWHM) en pixels, la plus nette d'abord",
+        "round": "Trier par allongement des étoiles : 1,00 est rond, plus est étiré",
+        "noise": "Trier par bruit de fond, le plus faible d’abord. Plus bas, c’est plus propre.",
+        "snr": "Trier par signal : de combien les étoiles les plus brillantes dépassent le bruit (×). Plus haut, c’est mieux.",
+        "sky": "Trier par luminosité du ciel (valeurs brutes). Un saut entre deux images peut venir de nuages, de brume ou de la Lune.",
+        "file": "Trier par nom de fichier"
+      },
+      "menu": {
+        "open": "Ouvrir",
+        "download": "Télécharger",
+        "copyLink": "Copier le lien",
+        "copied": "Copié"
+      },
+      "exportCsv": "Exporter en CSV",
+      "exportCsvTitle": "Télécharger les mesures de cette nuit en CSV, avec une colonne « accepted » pour les scripts PixInsight ou Siril",
+      "review": {
+        "keep": "Gardée",
+        "reject": "Rejetée"
+      }
     },
     "satelliteTrailScanModal": {
       "title": "Détection de traînées de satellites",
@@ -536,5 +699,85 @@
     "moreCount_one": "+{{count}} de plus",
     "moreCount_other": "+{{count}} de plus",
     "approximate": "approximatif"
+  },
+  "planOutcome": {
+    "status": {
+      "upcoming": "Prévu",
+      "in_progress": "En cours",
+      "awaiting_import": "Import en attente",
+      "done": "Fait",
+      "partial": "Partiel",
+      "missed": "Raté",
+      "skipped": "Sauté"
+    },
+    "achievedOfPlanned": "{{achieved}}/{{planned}}",
+    "resultTitle_one": "Planner : {{status}} · {{achieved}} sur {{planned}} prévus ({{count}} bloc)",
+    "resultTitle_other": "Planner : {{status}} · {{achieved}} sur {{planned}} prévus ({{count}} blocs)",
+    "plannedLine": "{{status}} · {{planned}} prévus",
+    "plannedTitle": "{{name}} : {{status}}, {{planned}} prévus. Ouvrir dans le Planner."
+  },
+  "stackingExport": {
+    "title": "Export pour empilement",
+    "close": "Fermer",
+    "intro": "Les lights que vous gardez, avec les darks, flats, flat darks et bias de la bibliothèque de calibration qui leur correspondent, dans un ZIP prêt pour votre logiciel d’empilement.",
+    "nights": "Nuits",
+    "layout": "Organisation",
+    "wbpp": "PixInsight WBPP",
+    "siril": "Siril",
+    "wbppHint": "Une seule arborescence ; WBPP classe les poses d’après leurs en-têtes. Plusieurs nuits vont dans des dossiers NIGHT_<date> : ajoutez NIGHT comme mot-clé de regroupement pour que chaque nuit utilise ses propres flats.",
+    "sirilHint": "Un dossier par nuit et par filtre avec lights, darks, flats et biases, comme l’attendent les scripts de prétraitement de Siril. Les darks sont répétés dans chaque dossier.",
+    "includeNotKept": "Inclure les sous-poses non gardées",
+    "planFailed": "Impossible d’apparier les poses de calibration.",
+    "matching": "Appariement des poses de calibration…",
+    "summary": "{{lights}} lights · {{calibration}} poses de calibration · {{size}}",
+    "excluded_one": "{{count}} non gardée écartée",
+    "excluded_other": "{{count}} non gardées écartées",
+    "ready": "Calibration complète",
+    "problems_one": "{{count}} problème",
+    "problems_other": "{{count}} problèmes",
+    "fixHint": "Ajoutez ou associez les poses manquantes, puis rouvrez cette fenêtre. Vous pouvez quand même exporter : les logiciels ignorent ce qui manque.",
+    "openLibrary": "Ouvrir la bibliothèque de calibration",
+    "building": "Création du ZIP",
+    "progress": "{{done}} / {{total}} fichiers",
+    "cancel": "Annuler",
+    "started": "Téléchargement lancé.",
+    "failed": "L’export a échoué.",
+    "download": "Télécharger le ZIP",
+    "noFilter": "Sans filtre",
+    "gain": "gain {{value}}",
+    "lights_one": "{{count}} light",
+    "lights_other": "{{count}} lights",
+    "lightsKept": "{{kept}} / {{total}} gardées",
+    "frames_one": "{{count}} pose",
+    "frames_other": "{{count}} poses",
+    "attached": "associés",
+    "sameNight": "même nuit",
+    "biasNotNeeded": "Inutile : les flat darks calibrent les flats",
+    "flatDarkNotNeeded": "Aucun : le bias calibre les flats",
+    "row": {
+      "dark": "Darks",
+      "flat": "Flats",
+      "flatDark": "Flat darks",
+      "bias": "Bias"
+    },
+    "issue": {
+      "no_dark": "Aucun dark à {{exposure}} s, gain {{gain}}, bin {{bin}}",
+      "dark_temp_far": "Les darks les plus proches sont à {{delta}} °C ({{bundle}})",
+      "dark_expired": "Plus ancien que la validité dark/bias réglée dans les paramètres",
+      "no_flat": "Aucun flat pour {{filter}}",
+      "flat_other_night": "Pris à {{days}} j de cette nuit : vérifiez que rien n’a bougé dans le train optique",
+      "no_flat_calibration": "Ni flat darks ni bias pour calibrer les flats",
+      "bias_expired": "Bias plus ancien que la validité dark/bias réglée dans les paramètres",
+      "unknown_settings": "Temps de pose introuvable dans l’en-tête FITS et le nom du fichier : les darks peuvent ne pas correspondre"
+    },
+    "selectAll": "Tout sélectionner",
+    "selectNone": "Tout désélectionner",
+    "noNights": "Aucune nuit de cet objet n’a de sous-poses.",
+    "notMeasured_one": "La qualité des sous-poses du {{nights}} n’est pas encore mesurée : toutes ses sous-poses sont exportées. Mesurez-la pour écarter les mauvaises.",
+    "notMeasured_other": "La qualité des sous-poses de {{count}} nuits ({{nights}}) n’est pas encore mesurée : toutes leurs sous-poses sont exportées. Mesurez-les pour écarter les mauvaises.",
+    "notMeasuredViewer": "Un administrateur peut la mesurer.",
+    "measure_one": "Mesurer {{count}} sous-pose",
+    "measure_other": "Mesurer {{count}} sous-poses",
+    "measuring": "Mesure de la qualité des sous-poses {{done}} / {{total}}"
   }
 }

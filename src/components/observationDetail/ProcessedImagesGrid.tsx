@@ -260,7 +260,7 @@ export function ProcessedImagesGrid({
                     const label = processedFormatLabel(img.originalName);
                     if (!label) return null;
                     return (
-                      <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide bg-black/60 text-white/80 pointer-events-none">
+                      <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[0.5625rem] font-bold tracking-wide bg-black/60 text-white/80 pointer-events-none">
                         {label}
                       </div>
                     );
@@ -284,13 +284,13 @@ export function ProcessedImagesGrid({
                     <p className={`text-xs truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{img.originalName}</p>
                   )}
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <p className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                    <p className={`text-[0.625rem] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                       {formatDate(new Date(img.uploadedAt), { month: 'short', day: 'numeric', year: 'numeric' })}
                     </p>
                     {img.runDates && img.runDates.length > 1 && (
                       <span
                         title={t('observationDetail.processedImagesGrid.combinesNights', { count: img.runDates.length, list: img.runDates.join(', ') })}
-                        className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium ${
+                        className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[0.5625rem] font-medium ${
                           isDark ? 'bg-accent-500/10 text-accent-400' : 'bg-accent-50 text-accent-600'
                         }`}
                       >
@@ -312,7 +312,7 @@ export function ProcessedImagesGrid({
               }`}
             >
               <Upload className="w-5 h-5" />
-              <span className="text-[11px] font-medium">{t('observationDetail.processedImagesGrid.addMore')}</span>
+              <span className="text-[0.6875rem] font-medium">{t('observationDetail.processedImagesGrid.addMore')}</span>
             </button>
           </div>
         </div>

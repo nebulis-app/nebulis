@@ -62,15 +62,32 @@ describe('user-corrected object types reach the library grid', () => {
 
   it('does not blank an enriched description the catalog has no value for', () => {
     // Enrichment stores the Wikipedia extract in the same column, so a catalog
-    // entry with no description must leave it alone.
+    // entry with no description must leave it alone. M31 can't exercise this:
+    // the bundled catalog describes it, so its text would replace the seed.
+    // A user-named target has no catalog entry and so no description.
+    const customId = 'MyBackyardTarget';
+    db.prepare('DELETE FROM libraryObjects WHERE objectId = ?').run(customId);
+    db.prepare(
+      `INSERT INTO libraryObjects (objectId, folderName, fileCount, lastImport, objectType, description)
+       VALUES (?, ?, 0, ?, ?, ?)`,
+    ).run(customId, customId, new Date().toISOString(), 'Galaxy', 'Enriched from Wikipedia.');
+
+    expect(applyCatalogMetaToLibraryObject(customId)).toBe(true);
+
+    const row = db
+      .prepare<[string], { description: string | null }>('SELECT description FROM libraryObjects WHERE objectId = ?')
+      .get(customId);
+    expect(row?.description).toBe('Enriched from Wikipedia.');
+  });
+
+  it('replaces a stored description with the catalog text when the catalog has one', () => {
     db.prepare('UPDATE libraryObjects SET description = ? WHERE objectId = ?')
       .run('Enriched from Wikipedia.', OBJECT_ID);
-    saveOverride(OBJECT_ID, { type: 'Galaxy' }, null);
     applyCatalogMetaToLibraryObject(OBJECT_ID);
     const row = db
       .prepare<[string], { description: string | null }>('SELECT description FROM libraryObjects WHERE objectId = ?')
       .get(OBJECT_ID);
-    expect(row?.description).toBeTruthy();
+    expect(row?.description).toMatch(/^The Andromeda Galaxy is the nearest large spiral galaxy/);
   });
 
   it('reports a miss for an id that is not in the library', () => {

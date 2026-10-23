@@ -130,7 +130,7 @@ export function ArchiveDestinationModal({
   const sub = isDark ? 'text-slate-500' : 'text-slate-400';
   const subText = isDark ? 'text-slate-400' : 'text-slate-500';
   const btnBase =
-    'px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+    'px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
   const btnPrimary = 'bg-accent-500 text-white hover:bg-accent-600';
   const btnSubtle = isDark
     ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
@@ -515,7 +515,7 @@ export function ArchiveDestinationModal({
 
             {testResult && (
               <div
-                className={`flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-[12px] leading-relaxed ${
+                className={`flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-[0.75rem] leading-relaxed ${
                   testResult.ok
                     ? isDark
                       ? 'bg-emerald-500/10 text-emerald-200/90'
@@ -581,7 +581,7 @@ export function ArchiveDestinationModal({
             )}
 
             {!networkSupported && (
-              <p className={`text-[12px] leading-relaxed ${subText}`}>{t('archiveDestination.unsupported')}</p>
+              <p className={`text-[0.75rem] leading-relaxed ${subText}`}>{t('archiveDestination.unsupported')}</p>
             )}
           </>
         )}
@@ -654,7 +654,7 @@ function NetworkField({
 }) {
   return (
     <div>
-      <label className={`mb-1.5 block text-[13px] font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`} htmlFor={id}>
+      <label className={`mb-1.5 block text-[0.8125rem] font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`} htmlFor={id}>
         {label}
       </label>
       <input

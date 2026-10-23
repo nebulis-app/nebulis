@@ -168,7 +168,7 @@ function OfflineCatalogCard({
               {t('offlineCatalog.wipeAndReset')}
             </button>
             {status.errors > 0 && !isBusy && (
-              <span className={`text-[11px] ml-auto ${isDark ? 'text-amber-500/70' : 'text-amber-600/70'}`}>
+              <span className={`text-[0.6875rem] ml-auto ${isDark ? 'text-amber-500/70' : 'text-amber-600/70'}`}>
                 {t('offlineCatalog.itemsFailed', { count: status.errors })}
               </span>
             )}
@@ -271,18 +271,18 @@ function PackStatesRow({ isDark, packStates, activePhase, processed, total }: {
               {t('offlineCatalog.packStates.assetPacks')}
             </p>
             {isInstalling ? (
-              <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+              <span className={`inline-flex items-center gap-1 text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full ${
                 isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-100 text-accent-600'
               }`}>
                 <RotateCw className="w-2.5 h-2.5 animate-spin" />
                 {phaseInfo?.badge ?? t('offlineCatalog.packStates.downloading')}
               </span>
             ) : packStates.length > 0 ? (
-              <span className={`text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              <span className={`text-[0.6875rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                 {t('offlineCatalog.packStates.autoUpdated')}
               </span>
             ) : (
-              <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+              <span className={`inline-flex items-center gap-1 text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full ${
                 isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'
               }`}>
                 <XCircle className="w-2.5 h-2.5" />
@@ -300,7 +300,7 @@ function PackStatesRow({ isDark, packStates, activePhase, processed, total }: {
                 />
               </div>
               {total > 0 && (
-                <span className={`text-[10px] tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                <span className={`text-[0.625rem] tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                   {t('offlineCatalog.packStates.progressOf', { processed, total, unit: phaseInfo?.unit ?? t('offlineCatalog.packStates.unitPacks') })}
                 </span>
               )}
@@ -308,7 +308,7 @@ function PackStatesRow({ isDark, packStates, activePhase, processed, total }: {
           )}
 
           {!isInstalling && packStates.length === 0 && (
-            <p className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            <p className={`text-[0.6875rem] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
               {t('offlineCatalog.packStates.prebuiltDescription')}
             </p>
           )}
@@ -318,7 +318,7 @@ function PackStatesRow({ isDark, packStates, activePhase, processed, total }: {
               {packStates.map(ps => (
                 <span
                   key={ps.tier}
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium ${
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[0.6875rem] font-medium ${
                     isDark ? 'bg-slate-700/60 text-slate-300' : 'bg-slate-100 text-slate-600'
                   }`}
                 >
@@ -409,17 +409,17 @@ function TleCatalogCard({ isDark }: { isDark: boolean }) {
 
   const statusBadge = status && (
     status.isStale ? (
-      <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-50 text-amber-600'}`}>
+      <span className={`inline-flex items-center gap-1 text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-50 text-amber-600'}`}>
         <AlertCircle className="w-2.5 h-2.5" />
         {t('tleCatalog.stale')}
       </span>
     ) : status.count > 0 ? (
-      <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
+      <span className={`inline-flex items-center gap-1 text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
         <CheckCircle2 className="w-2.5 h-2.5" />
         {t('tleCatalog.current')}
       </span>
     ) : (
-      <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
+      <span className={`inline-flex items-center gap-1 text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
         <XCircle className="w-2.5 h-2.5" />
         {t('tleCatalog.notLoaded')}
       </span>
@@ -435,7 +435,7 @@ function TleCatalogCard({ isDark }: { isDark: boolean }) {
     >
       <div className="p-4 sm:p-5">
         {status && (
-          <div className={`flex flex-col gap-1 text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+          <div className={`flex flex-col gap-1 text-[0.6875rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
             {status.count > 0 && (
               <span>{t('tleCatalog.satelliteCount', { count: status.count })}</span>
             )}
@@ -462,7 +462,7 @@ function TleCatalogCard({ isDark }: { isDark: boolean }) {
           </div>
         )}
         {status?.lastError && (
-          <div className={`mt-3 flex items-start gap-2 rounded-lg p-2.5 text-[11px] ${
+          <div className={`mt-3 flex items-start gap-2 rounded-lg p-2.5 text-[0.6875rem] ${
             isDark ? 'bg-red-500/10 text-red-300' : 'bg-red-50 text-red-700'
           }`}>
             <AlertCircle className="w-3.5 h-3.5 mt-px shrink-0" />

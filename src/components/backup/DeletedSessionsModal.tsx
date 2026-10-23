@@ -109,14 +109,14 @@ export function DeletedSessionsModal({
               return (
                 <li key={key} className="flex items-center justify-between gap-3 py-2.5">
                   <div className="min-w-0">
-                    <p className={`truncate text-[13px] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                    <p className={`truncate text-[0.8125rem] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                       <span>{session.objectName || session.folderName}</span>
                       <span className={`ml-1.5 font-normal ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                         {formatSessionDate(session.date)}
                       </span>
                     </p>
                     {session.deletedAt && (
-                      <p className={`text-[12px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                      <p className={`text-[0.75rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                         {t('deletedSessionsModal.deletedAt', { time: formatRelativeTime(session.deletedAt) })}
                       </p>
                     )}

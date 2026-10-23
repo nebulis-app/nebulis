@@ -5,6 +5,7 @@ import { ZoomIn, ZoomOut, RotateCw, Contrast, Satellite, Loader2, Clock, Zap, Al
 import { identifySatellites, type SatelliteTrailResult } from '../lib/api/observations';
 import { fetchBinary } from '../lib/api/client';
 import { parseFits, renderFitsToCanvas } from '../lib/fits';
+import { FITS_GC_MS } from './lightbox/prefetchFits';
 
 interface FitsViewerProps {
   url: string;
@@ -78,6 +79,7 @@ export function FitsViewer({
     queryKey: ['fits-binary', url],
     queryFn: async ({ signal }) => parseFits(await fetchBinary(url, signal, t), t),
     staleTime: Infinity,
+    gcTime: FITS_GC_MS,
     retry: false,
   });
   const fitsData = fitsQuery.data ?? null;
@@ -98,10 +100,12 @@ export function FitsViewer({
     // Short-circuit only when we've already run a fresh identifyOnly call for this file,
     // or when the scan found no trail (nothing to identify).
     if (satResult && (satIdentifyDone || !satResult.trailDetected)) { setSatModalOpen(true); return; }
+    // The Identify buttons only render with a filePath; this narrows it.
+    if (!filePath) return;
     setSatDetecting(true);
     setSatError(null);
     try {
-      const result = await identifySatellites(filePath!);
+      const result = await identifySatellites(filePath);
       if (result.locationRequired) {
         setShowLocationPrompt(true);
         setLocationGeoError(null);
@@ -118,6 +122,8 @@ export function FitsViewer({
   }, [satResult, satIdentifyDone, filePath, t]);
 
   const handleShareLocation = useCallback(async () => {
+    // Only reachable after an identify call, which needs a filePath.
+    if (!filePath) return;
     setLocationGeoError(null);
     setSatDetecting(true);
     try {
@@ -126,7 +132,7 @@ export function FitsViewer({
       );
       const { latitude, longitude } = position.coords;
       setShowLocationPrompt(false);
-      const result = await identifySatellites(filePath!, latitude, longitude);
+      const result = await identifySatellites(filePath, latitude, longitude);
       setSatIdentifyDone(true);
       setSatResult(result);
       setSatModalOpen(true);
@@ -414,7 +420,7 @@ export function FitsViewer({
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[0.6875rem] font-bold flex-shrink-0 ${
                           sat.duringExposure
                             ? isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-200 text-amber-800'
                             : isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500'
@@ -427,7 +433,7 @@ export function FitsViewer({
                               {sat.satellite}
                             </span>
                             {sat.duringExposure && (
-                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                              <span className={`text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full ${
                                 isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-700'
                               }`}>
                                 {t('fitsViewer.duringExposure')}

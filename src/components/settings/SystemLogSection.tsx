@@ -81,135 +81,138 @@ export function SystemLogSection({ isDark }: { isDark: boolean }) {
   const hasFilters = search.trim() !== '' || category !== '' || level !== '';
 
   return (
-    <Sec
-      title={t('systemLog.title')}
-      description={t('systemLog.description')}
-      isDark={isDark}
-      actions={
-        confirmClear ? (
-          <div className="flex items-center gap-2">
+    <>
+      <Sec
+        title={t('systemLog.title')}
+        description={t('systemLog.description')}
+        isDark={isDark}
+        actions={
+          confirmClear ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setConfirmClear(false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
+                  isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                {t('systemLog.cancel')}
+              </button>
+              <button
+                onClick={() => clearMutation.mutate()}
+                disabled={clearMutation.isPending}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500 text-white hover:bg-red-600 disabled:opacity-50"
+              >
+                {clearMutation.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+                {t('systemLog.confirmClear')}
+              </button>
+            </div>
+          ) : (
             <button
-              onClick={() => setConfirmClear(false)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
-                isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
+              onClick={() => setConfirmClear(true)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-red-400' : 'text-slate-500 hover:bg-slate-100 hover:text-red-600'
               }`}
             >
-              {t('systemLog.cancel')}
+              <Trash2 className="w-3.5 h-3.5" />
+              {t('systemLog.clearLog')}
             </button>
+          )
+        }
+      >
+        {/* Filters */}
+        <div className={`flex flex-wrap items-center gap-2.5 border-b px-5 py-3.5 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
+            <input
+              type="text"
+              value={search}
+              onChange={e => updateFilter(() => setSearch(e.target.value))}
+              placeholder={t('systemLog.searchPlaceholder')}
+              className={`${inputClass} !py-2 !pl-9 text-[0.8125rem]`}
+            />
+          </div>
+          <select
+            value={category}
+            onChange={e => {
+              // '' is the "All categories" option, and anything the guard
+              // rejects falls back to it rather than being asserted into the union.
+              const v = e.target.value;
+              updateFilter(() => setCategory(isSystemLogCategory(v) ? v : ''));
+            }}
+            className={`${inputClass} !w-auto !py-2 text-[0.8125rem]`}
+          >
+            <option value="">{t('systemLog.allCategories')}</option>
+            {SYSTEM_LOG_CATEGORIES.map(c => (
+              <option key={c} value={c}>{t(`systemLog.category.${c}`)}</option>
+            ))}
+          </select>
+          <select
+            value={level}
+            onChange={e => {
+              const v = e.target.value;
+              updateFilter(() => setLevel(isSystemLogLevel(v) ? v : ''));
+            }}
+            className={`${inputClass} !w-auto !py-2 text-[0.8125rem]`}
+          >
+            <option value="">{t('systemLog.allLevels')}</option>
+            {SYSTEM_LOG_LEVELS.map(l => (
+              <option key={l} value={l}>{t(`systemLog.level.${l}`)}</option>
+            ))}
+          </select>
+
+          {data && data.total > 0 && (
+            <span className={`ml-auto text-xs tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              {formatNumber(data.total)}
+            </span>
+          )}
+        </div>
+
+        {isLoading && !data ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-4 h-4 animate-spin text-accent-500" />
+          </div>
+        ) : !data || data.entries.length === 0 ? (
+          <p className={`px-5 py-6 text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            {hasFilters ? t('systemLog.noResultsFiltered') : t('systemLog.noResultsEmpty')}
+          </p>
+        ) : (
+          <ul className={`divide-y ${isDark ? 'divide-slate-800/70' : 'divide-slate-100'}`}>
+            {data.entries.map(entry => (
+              <LogRow key={entry.id} entry={entry} isDark={isDark} />
+            ))}
+          </ul>
+        )}
+
+        {totalPages > 1 && (
+          <div className={`flex items-center justify-center gap-1 border-t px-5 py-3 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
             <button
-              onClick={() => clearMutation.mutate()}
-              disabled={clearMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500 text-white hover:bg-red-600 disabled:opacity-50"
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              disabled={page === 0}
+              aria-label={t('systemLog.previousPage')}
+              className={`rounded-lg p-1.5 transition disabled:opacity-30 ${
+                isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'
+              }`}
             >
-              {clearMutation.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
-              {t('systemLog.confirmClear')}
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className={`text-xs tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              {page + 1} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+              aria-label={t('systemLog.nextPage')}
+              className={`rounded-lg p-1.5 transition disabled:opacity-30 ${
+                isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'
+              }`}
+            >
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
-        ) : (
-          <button
-            onClick={() => setConfirmClear(true)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-red-400' : 'text-slate-500 hover:bg-slate-100 hover:text-red-600'
-            }`}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            {t('systemLog.clearLog')}
-          </button>
-        )
-      }
-    >
-      {/* Filters */}
-      <div className={`flex flex-wrap items-center gap-2.5 border-b px-5 py-3.5 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-        <div className="relative flex-1 min-w-[180px]">
-          <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
-          <input
-            type="text"
-            value={search}
-            onChange={e => updateFilter(() => setSearch(e.target.value))}
-            placeholder={t('systemLog.searchPlaceholder')}
-            className={`${inputClass} !py-2 !pl-9 text-[13px]`}
-          />
-        </div>
-        <select
-          value={category}
-          onChange={e => {
-            // '' is the "All categories" option, and anything the guard
-            // rejects falls back to it rather than being asserted into the union.
-            const v = e.target.value;
-            updateFilter(() => setCategory(isSystemLogCategory(v) ? v : ''));
-          }}
-          className={`${inputClass} !w-auto !py-2 text-[13px]`}
-        >
-          <option value="">{t('systemLog.allCategories')}</option>
-          {SYSTEM_LOG_CATEGORIES.map(c => (
-            <option key={c} value={c}>{t(`systemLog.category.${c}`)}</option>
-          ))}
-        </select>
-        <select
-          value={level}
-          onChange={e => {
-            const v = e.target.value;
-            updateFilter(() => setLevel(isSystemLogLevel(v) ? v : ''));
-          }}
-          className={`${inputClass} !w-auto !py-2 text-[13px]`}
-        >
-          <option value="">{t('systemLog.allLevels')}</option>
-          {SYSTEM_LOG_LEVELS.map(l => (
-            <option key={l} value={l}>{t(`systemLog.level.${l}`)}</option>
-          ))}
-        </select>
-
-        {data && data.total > 0 && (
-          <span className={`ml-auto text-xs tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            {formatNumber(data.total)}
-          </span>
         )}
-      </div>
+      </Sec>
 
-      {isLoading && !data ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="w-4 h-4 animate-spin text-accent-500" />
-        </div>
-      ) : !data || data.entries.length === 0 ? (
-        <p className={`px-5 py-6 text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-          {hasFilters ? t('systemLog.noResultsFiltered') : t('systemLog.noResultsEmpty')}
-        </p>
-      ) : (
-        <ul className={`divide-y ${isDark ? 'divide-slate-800/70' : 'divide-slate-100'}`}>
-          {data.entries.map(entry => (
-            <LogRow key={entry.id} entry={entry} isDark={isDark} />
-          ))}
-        </ul>
-      )}
-
-      {totalPages > 1 && (
-        <div className={`flex items-center justify-center gap-1 border-t px-5 py-3 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-          <button
-            onClick={() => setPage(p => Math.max(0, p - 1))}
-            disabled={page === 0}
-            aria-label={t('systemLog.previousPage')}
-            className={`rounded-lg p-1.5 transition disabled:opacity-30 ${
-              isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'
-            }`}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <span className={`text-xs tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            {page + 1} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-            disabled={page >= totalPages - 1}
-            aria-label={t('systemLog.nextPage')}
-            className={`rounded-lg p-1.5 transition disabled:opacity-30 ${
-              isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'
-            }`}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-    </Sec>
+    </>
   );
 }
 

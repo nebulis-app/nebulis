@@ -52,6 +52,7 @@ function buildPlan(
   includeFits: boolean,
   archiveAll: boolean,
   telescopeId: string | null,
+  opticalConfigId: string | null,
 ): ImportCommitPlan {
   const objects = edits
     .filter(e => !e.skip)
@@ -72,6 +73,7 @@ function buildPlan(
     importFits: includeFits,
     archiveAllFiles: archiveAll,
     telescopeId,
+    opticalConfigId: telescopeId ? opticalConfigId : null,
   };
 }
 
@@ -81,6 +83,7 @@ export function FolderImportWizard({
   includeFits = true,
   archiveAll = false,
   telescopeId = null,
+  opticalConfigId = null,
   tmpId = null,
   onClose,
   onDone,
@@ -90,6 +93,8 @@ export function FolderImportWizard({
   includeFits?: boolean;
   archiveAll?: boolean;
   telescopeId?: string | null;
+  /** Optical configuration of that telescope; null = detect from the FITS. */
+  opticalConfigId?: string | null;
   // Set only when rootPath is a staged upload (ImportModal's upload flow), so
   // this wizard can drop the staging dir if the user cancels before commit.
   // A commit that starts and finishes (even via cancelImport) already deletes
@@ -259,7 +264,7 @@ export function FolderImportWizard({
 
   const handleCommit = () => {
     if (totals.objects === 0 || totals.files === 0) return;
-    commitMutation.mutate(buildPlan(rootPath, edits, includeSubframes, includeFits, archiveAll, telescopeId));
+    commitMutation.mutate(buildPlan(rootPath, edits, includeSubframes, includeFits, archiveAll, telescopeId, opticalConfigId));
   };
 
   const handleClose = () => {
@@ -503,6 +508,10 @@ function CommitProgress({
   const { t } = useTranslation('library');
   const subText = isDark ? 'text-slate-400' : 'text-slate-500';
   const pct = filesTotal > 0 ? Math.min(100, Math.round((filesDone / filesTotal) * 100)) : 0;
+  // Every file is accounted for but the server has not reported done: it is
+  // saving objects, looking up catalog details and warming thumbnails. Say so
+  // rather than leaving a full bar and a frozen count that looks hung.
+  const finishing = !cancelling && filesTotal > 0 && filesDone >= filesTotal;
 
   if (phase === 'done' && error) {
     return (
@@ -548,9 +557,13 @@ function CommitProgress({
           <div className="h-full bg-accent-500 transition-all" style={{ width: `${pct}%` }} />
         </div>
         <p className={`text-sm mt-3 ${subText}`}>
-          {cancelling ? t('folderImportWizard.cancellingProgress') : t('folderImportWizard.importingProgress')}{' '}
-          {t('folderImportWizard.progressOf', { done: filesDone, total: t('folderImportWizard.filesCount', { count: filesTotal }) })}
-          {objectsTotal > 0 ? t('folderImportWizard.progressObject', { current: Math.min(objectsDone + 1, objectsTotal), total: objectsTotal }) : ''}
+          {finishing
+            ? t('folderImportWizard.finishingProgress')
+            : <>
+                {cancelling ? t('folderImportWizard.cancellingProgress') : t('folderImportWizard.importingProgress')}{' '}
+                {t('folderImportWizard.progressOf', { done: filesDone, total: t('folderImportWizard.filesCount', { count: filesTotal }) })}
+                {objectsTotal > 0 ? t('folderImportWizard.progressObject', { current: Math.min(objectsDone + 1, objectsTotal), total: objectsTotal }) : ''}
+              </>}
         </p>
       </div>
     </div>

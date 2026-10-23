@@ -1,89 +1,19 @@
-import {
-  Settings,
-  User,
-  Telescope,
-  Compass,
-  HardDrive,
-  AlertTriangle,
-  ScrollText,
-  Download,
-  Library,
-  Info,
-} from 'lucide-react';
 import { cloneElement, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getUpdateStatus } from '../../lib/api/update';
 import { TourAnchor } from '../tour/TourAnchor';
+import { SettingsSearch, type SettingsSearchTarget } from './SettingsSearch';
 
-export interface SettingsNavItem {
-  id: string;
-  labelKey: string;
-}
-
-interface SettingsNavGroup {
-  id: string;
-  labelKey: string;
-  icon: React.ComponentType<{ className?: string }>;
-  danger?: boolean;
-  adminOnly?: boolean;
-  /** Sub-navigation for groups dense enough to need it. Absent groups render
-   *  as a single flat pane, same as before this file existed. */
-  items?: SettingsNavItem[];
-}
-
-/** Ids are load-bearing: `Settings.tsx` reads `?tab=` from three external deep
- *  links (TonightPanel, BackupStatus, and Settings' own What's New link), so
- *  they stay stable even where the label shown to the user has changed
- *  (`hardware` → "Telescopes", `danger` → "Advanced").
- *
- * `labelKey` rather than `label`: this array is built at module load, before
- * any component (and its useTranslation() hook) exists, so it cannot carry
- * translated text directly — consumers resolve it with t(labelKey, { ns:
- * 'settings' }). */
-export const SETTINGS_NAV: SettingsNavGroup[] = [
-  { id: 'general', labelKey: 'nav.general', icon: Settings },
-  { id: 'library', labelKey: 'nav.library', icon: Library },
-  { id: 'updates', labelKey: 'nav.updates', icon: Download, adminOnly: true },
-  {
-    id: 'account',
-    labelKey: 'nav.account',
-    icon: User,
-    adminOnly: true,
-    items: [
-      { id: 'users', labelKey: 'nav.users' },
-      { id: 'devices', labelKey: 'nav.devices' },
-    ],
-  },
-  { id: 'hardware', labelKey: 'nav.hardware', icon: Telescope, adminOnly: true },
-  { id: 'sky', labelKey: 'nav.sky', icon: Compass, adminOnly: true },
-  {
-    id: 'storage',
-    labelKey: 'nav.storage',
-    icon: HardDrive,
-    adminOnly: true,
-    items: [
-      { id: 'location', labelKey: 'nav.location' },
-      // A bare "Archive" in the nav, which the user asked for. This codebase also has
-      // a calibration archive, so the section title stays "External archive" and the
-      // copy says "archive disk" throughout: the short nav label is disambiguated by
-      // what it opens, not by repeating the qualifier in the menu.
-      { id: 'archive', labelKey: 'nav.archive' },
-      { id: 'linked', labelKey: 'nav.linked' },
-      { id: 'backups', labelKey: 'nav.backups' },
-      { id: 'cleanup', labelKey: 'nav.cleanup' },
-    ],
-  },
-  { id: 'log', labelKey: 'nav.log', icon: ScrollText, adminOnly: true },
-  { id: 'danger', labelKey: 'nav.danger', icon: AlertTriangle, danger: true, adminOnly: true },
-  { id: 'about', labelKey: 'nav.about', icon: Info },
-];
+import { SETTINGS_SECTION_LABELS, visibleSettingsNav } from './settingsNavItems';
 
 interface Props {
   activeGroupId: string;
   activeItemId: string | null;
   onNavigateGroup: (id: string) => void;
   onNavigateItem: (id: string) => void;
+  onSearchSelect: (target: SettingsSearchTarget) => void;
   isDark: boolean;
   isAdmin?: boolean;
 }
@@ -93,11 +23,12 @@ export function SettingsNav({
   activeItemId,
   onNavigateGroup,
   onNavigateItem,
+  onSearchSelect,
   isDark,
   isAdmin = true,
 }: Props) {
   const { t } = useTranslation('settings');
-  const visible = SETTINGS_NAV.filter(g => !g.adminOnly || isAdmin);
+  const visible = visibleSettingsNav(isAdmin);
 
   // Same query key as SoftwareUpdateCard / the top nav's Settings badge, so
   // this rides their cache instead of firing its own request.
@@ -114,22 +45,33 @@ export function SettingsNav({
       {/* Desktop: sticky left sidebar. Hidden below `lg`, where the strip
           below takes over. */}
       <nav className="hidden lg:block sticky top-24 w-56 shrink-0 self-start">
-        <div className={`px-2.5 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] ${
-          isDark ? 'text-slate-600' : 'text-slate-400'
-        }`}>
-          {t('sidebarHeading')}
+        <div className="mb-4 px-0.5">
+          <SettingsSearch isDark={isDark} isAdmin={isAdmin} onSelect={onSearchSelect} />
         </div>
         <ul className="space-y-0.5">
-          {visible.map(group => {
+          {visible.map((group, index) => {
+            const startsSection = index > 0 && group.section !== visible[index - 1].section;
+            const sectionLabelKey = SETTINGS_SECTION_LABELS[group.section];
             const Icon = group.icon;
             const isActive = group.id === activeGroupId;
             const isDanger = group.danger;
             return (
-              <li key={group.id}>
+              <li key={group.id} className={startsSection ? 'mt-3' : undefined}>
+                {startsSection && (
+                  sectionLabelKey ? (
+                    <div className={`px-2.5 pb-1 pt-1 text-[0.625rem] font-semibold uppercase tracking-[0.14em] ${
+                      isDark ? 'text-slate-500' : 'text-slate-500'
+                    }`}>
+                      {t(sectionLabelKey)}
+                    </div>
+                  ) : (
+                    <div aria-hidden className={`mx-2.5 mb-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`} />
+                  )
+                )}
                 <TourAnchor id={`settings-nav-${group.id}`}>
                 <button
                   onClick={() => onNavigateGroup(group.id)}
-                  className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium transition-colors ${
+                  className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.8125rem] font-medium transition-colors ${
                     isActive
                       ? isDanger
                         ? isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'
@@ -141,15 +83,20 @@ export function SettingsNav({
                 >
                   <Icon className="w-4 h-4 shrink-0" />
                   {t(group.labelKey)}
+                  {group.items && group.items.length > 1 && (
+                    isActive
+                      ? <ChevronDown className="ml-auto w-3.5 h-3.5 shrink-0 opacity-60" />
+                      : <ChevronRight className="ml-auto w-3.5 h-3.5 shrink-0 opacity-40" />
+                  )}
                   {group.id === 'updates' && hasUpdateAvailable && (
-                    <span className="ml-auto flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none shrink-0">
+                    <span className="ml-auto flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[0.625rem] font-bold leading-none shrink-0">
                       1
                     </span>
                   )}
                 </button>
                 </TourAnchor>
 
-                {group.items && (
+                {group.items && isActive && (
                   <ul className={`mt-0.5 ml-[1.125rem] space-y-0.5 border-l pl-3.5 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
                     {group.items.map(item => {
                       const itemActive = item.id === activeItemId;
@@ -157,7 +104,7 @@ export function SettingsNav({
                         <li key={item.id}>
                           <button
                             onClick={() => onNavigateItem(item.id)}
-                            className={`block w-full rounded-md px-2.5 py-1.5 text-left text-[12.5px] font-medium transition-colors ${
+                            className={`block w-full rounded-md px-2.5 py-1.5 text-left text-[0.7812rem] font-medium transition-colors ${
                               itemActive
                                 ? isDark ? 'text-accent-400' : 'text-accent-700'
                                 : isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-800'
@@ -181,6 +128,9 @@ export function SettingsNav({
           the active group has items — this is the "top tabs + sub-tabs"
           layout kept alive as the responsive fallback for the sidebar above. */}
       <div className="lg:hidden">
+        <div className="pb-3">
+          <SettingsSearch isDark={isDark} isAdmin={isAdmin} onSelect={onSearchSelect} />
+        </div>
         <TabStrip
           activeId={activeGroupId}
           items={visible.map(g => ({
@@ -280,7 +230,7 @@ function TabStrip({
               ref={el => { refs.current[item.id] = el; }}
               onClick={() => onSelect(item.id)}
               className={`relative flex items-center gap-2 h-full whitespace-nowrap font-medium transition-colors ${
-                compact ? 'px-3 text-[12px]' : 'px-4 text-[13px]'
+                compact ? 'px-3 text-[0.75rem]' : 'px-4 text-[0.8125rem]'
               } ${
                 isActive
                   ? isItemDanger
@@ -294,7 +244,7 @@ function TabStrip({
               {Icon && <Icon className="w-4 h-4" />}
               {item.label}
               {item.badge && (
-                <span className="absolute top-1.5 right-1.5 flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
+                <span className="absolute top-1.5 right-1.5 flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[0.5625rem] font-bold leading-none">
                   1
                 </span>
               )}

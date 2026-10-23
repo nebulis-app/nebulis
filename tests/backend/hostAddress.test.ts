@@ -146,7 +146,7 @@ describe('client and server host validation agree', () => {
 
   it.each(rejected)('both reject %j', (input) => {
     expect(() => validateHostAddress(input)).toThrow();
-    expect(hostAddressError(input)).toEqual(expect.any(String));
+    expect(hostAddressError(input)).toEqual(expect.stringMatching(/\S/));
   });
 
   it('reports the same message for the case users actually hit', () => {

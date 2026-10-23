@@ -6,7 +6,7 @@ export type TelescopeKind = typeof TELESCOPE_KINDS[number];
  *  every "is this a known kind?" check narrows instead of casting. Mirrored on
  *  the frontend at src/lib/telescopePresets.ts. */
 export function isTelescopeKind(value: string): value is TelescopeKind {
-  return (TELESCOPE_KINDS as readonly string[]).includes(value);
+  return TELESCOPE_KINDS.some((entry) => entry === value);
 }
 
 /** True when this kind uses Dwarf's session-folder layout (vs SeeStar's object-folder)

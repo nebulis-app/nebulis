@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  Loader2, Download, Trash2, FileImage, Image, Pencil, Contrast, Star, Share2,
+  Download, FileImage, Image, Contrast,
 } from 'lucide-react';
 import { deleteLibraryFile } from '../lib/api/library';
 import { isLinkedPath } from '../lib/linkedPaths';
@@ -19,9 +19,17 @@ import { useZoomPan } from './lightbox/useZoomPan';
 import { zoomControlsFromPan, useFitsZoomControls } from './lightbox/zoomControls';
 import { useLightboxKeys } from './lightbox/useLightboxKeys';
 import { useAdjacentPreload } from './lightbox/useAdjacentPreload';
+import { prefetchFits } from './lightbox/prefetchFits';
 import { shareImage, shareOutcomeMessage } from './lightbox/shareImage';
+import { useAnnotatedExport } from './lightbox/useAnnotatedExport';
 import { sessionFileMeta, processedImageMeta } from './lightbox/itemMeta';
-import { LB_ICON_BTN, LB_TEXT_BTN, LB_DANGER_BTN } from './lightbox/chrome';
+import { AnnotationOverlay } from './lightbox/AnnotationOverlay';
+import { LightboxActions, AnnotateToggle } from './lightbox/LightboxActions';
+import { AnnotationDock } from './lightbox/AnnotationDock';
+import { useDockReserve } from './lightbox/dockReserve';
+import { fadesEstimate, zoomRatio } from '../lib/annotateFade';
+import { AnnotationInfoCard } from './lightbox/AnnotationInfoCard';
+import { useImageAnnotations } from './lightbox/useImageAnnotations';
 import type { ThumbEntry } from './lightbox/LightboxThumbStrip';
 
 export type GalleryItem =
@@ -49,6 +57,13 @@ interface Props {
    *  "edit and save back into session X" doesn't have a single X to target)
    *  rather than wiring a handler that would silently do nothing. */
   hideEditButton?: boolean;
+  /** Reviewing a night's frames: `K` keeps and `X` rejects the frame on screen (pressing it again goes back to
+   *  following the grade), and the same two buttons sit in the toolbar. Only set by the frame list; every other
+   *  caller leaves it off and the keys do nothing. */
+  frameReview?: {
+    stateFor: (path: string) => 'keep' | 'reject' | null;
+    toggle: (path: string, which: 'keep' | 'reject') => void;
+  };
 }
 
 /** `<img>` src for an item, or null when the format cannot be rendered.
@@ -83,6 +98,7 @@ export function GalleryModal({
   deletingProcessedId,
   objectName,
   hideEditButton,
+  frameReview,
 }: Props) {
   const { t } = useTranslation('library');
   const queryClient = useQueryClient();
@@ -102,6 +118,8 @@ export function GalleryModal({
   // session while fullscreen should stay fullscreen), reset only when the
   // whole viewer closes, via the same open-transition snapshot below.
   const [immersive, setImmersive] = useState(false);
+  // Object rings and names over the picture; stays on while paging.
+  const [annotate, setAnnotate] = useState(false);
 
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flash = useCallback((msg: string | null) => {
@@ -136,6 +154,21 @@ export function GalleryModal({
     : false;
 
   const zp = useZoomPan(index);
+  const annotatePath = item && !isFits && !noPreview
+    ? (item.kind === 'file' ? item.file.path : item.img.path)
+    : null;
+  const annotations = useImageAnnotations(annotatePath, annotate);
+  const selectedAnnotation = annotations.visibleData?.annotations.find(a => a.id === annotations.selectedId) ?? null;
+  const dock = useDockReserve();
+  // The tile is hidden once a zoomed picture leaves it no room, which is exactly when an estimate starts to look wrong,
+  // so the first time the rings fade the reason is said once, as a brief notice.
+  const estimateFaded = annotate && annotations.data?.quality === 'approximate'
+    && fadesEstimate('approximate', zoomRatio(zp.zoom, zp.fitZoom));
+  const wasFaded = useRef(false);
+  useEffect(() => {
+    if (estimateFaded && !wasFaded.current) flash(t('annotate.zoomedToast'));
+    wasFaded.current = estimateFaded;
+  }, [estimateFaded, flash, t]);
   const fits = useFitsZoomControls();
   const imageZoom = useMemo(() => zoomControlsFromPan(zp), [zp]);
 
@@ -165,6 +198,22 @@ export function GalleryModal({
 
   const srcs = useMemo(() => localItems.map(displaySrc), [localItems]);
   useAdjacentPreload(srcs, index);
+
+  // FITS frames are not images the browser can warm, so the neighbours are downloaded, parsed and prepared here.
+  // Held back a moment so the frame being shown gets the first go at the CPU.
+  const stretchNow = fits.stretch;
+  useEffect(() => {
+    if (!isOpen) return;
+    const urls = [index + 1, index - 1].flatMap(i => {
+      const it = localItems[i];
+      if (!it) return [];
+      if (it.kind === 'file') return it.file.type === 'fits' ? [it.file.downloadUrl] : [];
+      return isFitsProcessed(it.img.originalName) ? [it.img.url] : [];
+    });
+    if (urls.length === 0) return;
+    const timer = window.setTimeout(() => prefetchFits(queryClient, urls, stretchNow), 300);
+    return () => window.clearTimeout(timer);
+  }, [isOpen, index, localItems, queryClient, stretchNow]);
 
   const navigate = useCallback((dir: -1 | 1) => {
     setIndex(prev => {
@@ -208,6 +257,16 @@ export function GalleryModal({
     a.download = fileName;
     a.click();
   }, [downloadUrl, fileName]);
+
+  const exporter = useAnnotatedExport({
+    data: annotate ? annotations.visibleData : undefined,
+    original: item && downloadUrl ? { url: downloadUrl, name: fileName } : null,
+    previewUrl: src,
+    title: meta.title,
+    plainDownload: handleDownload,
+    plainShare: handleShare,
+    flash,
+  });
 
   /**
    * Removes the item at `index` from the local list and lands on a sensible
@@ -259,6 +318,9 @@ export function GalleryModal({
     }
   }, [pendingDelete, queryClient, objectId, date, onDeleteProcessed, removeCurrent, flash, t]);
 
+  // Review keys and buttons act on a raw session frame only, and only for an administrator (the server refuses others).
+  const reviewPath = frameReview && isAdmin && item?.kind === 'file' ? item.file.path : null;
+  const reviewState = reviewPath && frameReview ? frameReview.stateFor(reviewPath) : null;
   const canDelete = isAdmin && !!item;
   const busyDelete = deleting || (item?.kind === 'processed' && deletingProcessedId === item.img.id);
 
@@ -270,7 +332,9 @@ export function GalleryModal({
     // Escape backs out one level at a time: out of fullscreen first, then
     // out of the viewer, matching what Modal's own Escape/backdrop handling
     // does for the dialog itself (see LightboxFrame's effectiveOnClose).
-    onClose: immersive ? () => setImmersive(false) : onClose,
+    onClose: immersive
+      ? () => setImmersive(false)
+      : selectedAnnotation ? () => annotations.select(null) : onClose,
     onFit: isFits ? fits.controls.setFit : zp.setFit,
     onActualSize: isFits ? fits.controls.setActualSize : zp.setActualSize,
     onZoomIn: isFits ? fits.controls.zoomIn : imageZoom.zoomIn,
@@ -279,11 +343,13 @@ export function GalleryModal({
     // (unrelated) sense of "up", and rotating a calibration frame view isn't
     // a thing anyone needs here. Nor for a format with no preview to rotate.
     onRotate: isFits || noPreview ? undefined : zp.rotate,
-    onDownload: handleDownload,
+    onDownload: exporter.download,
     onDelete: canDelete ? () => setPendingDelete(item) : undefined,
+    onKeep: reviewPath ? () => frameReview?.toggle(reviewPath, 'keep') : undefined,
+    onReject: reviewPath ? () => frameReview?.toggle(reviewPath, 'reject') : undefined,
     // Escape must reach the confirmation dialog, not tear down the viewer
     // underneath it.
-    suspended: !!pendingDelete,
+    suspended: !!pendingDelete || exporter.asking,
   }, isOpen);
 
   const thumbs = useMemo<ThumbEntry[]>(() => localItems.map(entry => {
@@ -335,76 +401,32 @@ export function GalleryModal({
   const shareable = !noPreview && !!src;
 
   const actions = (
-    <>
-      {/* No header source exists for a processed FITS restack (only raw
-          session files have one), so this stays file-only. */}
-      {isFits && item.kind === 'file' && (
-        <button
-          type="button"
-          onClick={() => onHeaderFileClick(item.file)}
-          className={`${LB_TEXT_BTN} text-teal-300 hover:text-teal-200`}
-        >
-          {t('galleryModal.fitsHeader')}
-        </button>
-      )}
-
-      {isAdmin && shareable && !isFits && !hideEditButton && (
-        <button
-          type="button"
-          onClick={() => onEditImage(
-            item.kind === 'file' ? item.file.downloadUrl : item.img.url,
-            fileName,
-            item.kind === 'file' ? 'telescope' : 'processed',
-            item.kind === 'file'
-              ? (/\.jpe?g$/i.test(item.file.name) ? { kind: 'telescope', path: item.file.path } : undefined)
-              : { kind: 'processed', id: item.img.id },
-          )}
-          title={t('galleryModal.editImage')}
-          aria-label={t('galleryModal.editImage')}
-          className={LB_ICON_BTN}
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-      )}
-
-      {shareable && (
-        <button type="button" onClick={handleShare} disabled={sharing} title={t('imageViewer.share')} aria-label={t('imageViewer.share')} className={LB_ICON_BTN}>
-          {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-        </button>
-      )}
-
-      <a href={downloadUrl} download={fileName} title={t('imageViewer.downloadKey')} aria-label={t('imageViewer.download')} className={LB_ICON_BTN}>
-        <Download className="h-4 w-4" />
-      </a>
-
-      {isAdmin && item.kind === 'processed' && (
-        <button
-          type="button"
-          onClick={() => onSetAsGallery(item.img)}
-          disabled={!!settingGalleryId}
-          title={t('objectDetail.processedSection.setAsGallery')}
-          aria-label={t('objectDetail.processedSection.setAsGallery')}
-          className={LB_ICON_BTN}
-        >
-          {settingGalleryId === item.img.id
-            ? <Loader2 className="h-4 w-4 animate-spin" />
-            : <Star className="h-4 w-4" />}
-        </button>
-      )}
-
-      {canDelete && (
-        <button
-          type="button"
-          onClick={() => setPendingDelete(item)}
-          disabled={busyDelete}
-          title={t('objectDetail.processedSection.delete')}
-          aria-label={t('objectDetail.processedSection.delete')}
-          className={LB_DANGER_BTN}
-        >
-          {busyDelete ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-        </button>
-      )}
-    </>
+    <LightboxActions
+      review={reviewPath ? { state: reviewState, onToggle: decision => frameReview?.toggle(reviewPath, decision) } : undefined}
+      // No header source exists for a processed FITS restack (only raw
+      // session files have one), so this stays file-only.
+      onFitsHeader={isFits && item.kind === 'file' ? () => onHeaderFileClick(item.file) : undefined}
+      onEdit={isAdmin && shareable && !isFits && !hideEditButton
+        ? () => onEditImage(
+          item.kind === 'file' ? item.file.downloadUrl : item.img.url,
+          fileName,
+          item.kind === 'file' ? 'telescope' : 'processed',
+          item.kind === 'file'
+            ? (/\.jpe?g$/i.test(item.file.name) ? { kind: 'telescope', path: item.file.path } : undefined)
+            : { kind: 'processed', id: item.img.id },
+        )
+        : undefined}
+      share={shareable ? { busy: sharing, onShare: exporter.share } : undefined}
+      download={{
+        href: downloadUrl,
+        fileName,
+        onClick: e => { if (exporter.burnable) { e.preventDefault(); exporter.download(); } },
+      }}
+      setAsGallery={isAdmin && item.kind === 'processed'
+        ? { busy: !!settingGalleryId, onClick: () => onSetAsGallery(item.img) }
+        : undefined}
+      remove={canDelete ? { busy: busyDelete, onClick: () => setPendingDelete(item) } : undefined}
+    />
   );
 
   const stretchControl = isFits ? (
@@ -428,6 +450,7 @@ export function GalleryModal({
       <LightboxFrame
         isOpen
         onClose={onClose}
+        onEscape={selectedAnnotation ? () => annotations.select(null) : undefined}
         dialogTitle={t('imageViewer.dialogTitle', { name: meta.title })}
         titleIcon={isFits
           ? <FileImage className="h-4.5 w-4.5 flex-shrink-0 text-teal-300" />
@@ -442,7 +465,9 @@ export function GalleryModal({
         zoom={noPreview ? undefined : (isFits ? fits.controls : imageZoom)}
         extraControls={stretchControl}
         actions={actions}
-        onRotate={isFits || noPreview ? undefined : zp.rotate}
+        viewActions={annotatePath
+          ? <AnnotateToggle active={annotate} quality={annotations.data?.quality ?? null} onToggle={() => setAnnotate(v => !v)} />
+          : undefined}
         immersive={canGoImmersive && immersive}
         onToggleImmersive={canGoImmersive ? () => setImmersive(v => !v) : undefined}
         thumbs={thumbs}
@@ -499,12 +524,14 @@ export function GalleryModal({
             />
           </div>
         ) : (
+          <>
           <LightboxPane
             zpRef={zp.containerRef}
             isPanning={zp.isPanning}
             canPan={zp.overflows}
             handlers={zp.paneHandlers}
             flush={canGoImmersive && immersive}
+            reserve={dock.reserve}
           >
             {src && (
               <LightboxImage
@@ -512,11 +539,30 @@ export function GalleryModal({
                 thumbSrc={item.kind === 'file' ? thumbSrcFor(item.file) : undefined}
                 alt={meta.title}
                 zp={zp}
+                overlay={annotate && annotatePath && annotations.visibleData
+                  ? <AnnotationOverlay data={annotations.visibleData} zp={zp} selectedId={annotations.selectedId} onSelect={annotations.select} />
+                  : null}
               />
             )}
+            {annotate && annotatePath && selectedAnnotation && (
+              <AnnotationInfoCard annotation={selectedAnnotation} onClose={() => annotations.select(null)} />
+            )}
           </LightboxPane>
+          {/* Sized to the free strip beside the picture, hidden when there is none: never over the picture, never moving it. */}
+          {annotate && annotatePath && !(canGoImmersive && immersive) && (
+            <AnnotationDock
+              annotations={annotations}
+              canInstall={isAdmin}
+              zoomedPastEstimate={fadesEstimate('approximate', zoomRatio(zp.zoom, zp.fitZoom))}
+              zp={zp}
+              onReserve={dock.onReserve}
+            />
+          )}
+          </>
         )}
       </LightboxFrame>
+
+      {exporter.dialog}
 
       {pendingDelete && (
         <ConfirmModal

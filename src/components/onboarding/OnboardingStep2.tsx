@@ -23,7 +23,7 @@ import type { ConnectionType } from '../../lib/api/telescopes';
 import { hostAddressError } from '../../lib/hostAddress';
 import { DwarfLocalPathPicker } from '../ui/DwarfLocalPathPicker';
 import { LocalPathPicker } from '../ui/LocalPathPicker';
-import { HelpBlockText } from '../settings/HelpBlockText';
+import { HelpBlockText } from '../ui/HelpBlockText';
 
 export type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 

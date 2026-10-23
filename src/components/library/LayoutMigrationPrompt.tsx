@@ -137,11 +137,11 @@ export function LayoutMigrationPrompt() {
             <li>{t('layoutMigration.pointNames')}</li>
             <li>{t('layoutMigration.pointWait')}</li>
           </ul>
-          <p className={`text-[13px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+          <p className={`text-[0.8125rem] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
             {t('layoutMigration.countInfo', { count: flatObjects })}
           </p>
           {error && (
-            <p role="alert" className={`text-[13px] ${isDark ? 'text-red-300' : 'text-red-700'}`}>{error}</p>
+            <p role="alert" className={`text-[0.8125rem] ${isDark ? 'text-red-300' : 'text-red-700'}`}>{error}</p>
           )}
           <div className="flex flex-col gap-2 pt-2">
             <button onClick={run} disabled={starting} className={primary}>
@@ -163,7 +163,7 @@ export function LayoutMigrationPrompt() {
           <div className={`h-2 rounded-full overflow-hidden ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>
             <div className="h-full bg-accent-500 transition-all duration-300" style={{ width: `${progressPct}%` }} />
           </div>
-          <p className={`text-[13px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+          <p className={`text-[0.8125rem] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
             {t('layoutMigration.pointWait')}
           </p>
         </div>

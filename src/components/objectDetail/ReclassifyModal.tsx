@@ -29,7 +29,7 @@ function otherNames(r: DsoEntry): { designations: string[]; common: string[] } {
 function ObjectNames({ entry, isDark }: { entry: DsoEntry; isDark: boolean }) {
   const { designations, common } = otherNames(entry);
   const hasName = entry.name.toLowerCase() !== entry.id.toLowerCase();
-  const pill = 'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium leading-4';
+  const pill = 'inline-flex items-center rounded-full px-2 py-0.5 text-[0.6875rem] font-medium leading-4';
   const idCls = isDark ? 'bg-accent-500/15 text-accent-300' : 'bg-accent-500/10 text-accent-700';
   const desigCls = isDark ? 'bg-slate-700/70 text-slate-300' : 'bg-slate-200 text-slate-700';
   const commonCls = isDark ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-100 text-sky-800';

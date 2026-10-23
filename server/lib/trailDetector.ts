@@ -167,7 +167,7 @@ export type FitsBitpix = typeof SUPPORTED_BITPIX[number];
 
 /** Narrows a parsed BITPIX header value to one this detector can decode. */
 export function isFitsBitpix(value: number): value is FitsBitpix {
-  return (SUPPORTED_BITPIX as readonly number[]).includes(value);
+  return SUPPORTED_BITPIX.some((entry) => entry === value);
 }
 
 /**
@@ -191,7 +191,7 @@ export type BayerPattern = typeof CFA_PATTERNS[number];
 
 /** Narrows a raw BAYERPAT header string to a known CFA layout. */
 export function isBayerPattern(value: string): value is BayerPattern {
-  return (CFA_PATTERNS as readonly string[]).includes(value);
+  return CFA_PATTERNS.some((entry) => entry === value);
 }
 
 export interface FitsImageData {

@@ -11,7 +11,7 @@ import { CATALOG_DESCRIPTION_STATUSES } from '../types/catalog.js';
 export const CATALOG_TIERS = ['messier', 'caldwell', 'popular', 'extended', 'sharpless'] as const;
 export type CatalogTier = (typeof CATALOG_TIERS)[number];
 export function isCatalogTier(value: string): value is CatalogTier {
-  return (CATALOG_TIERS as readonly string[]).includes(value);
+  return CATALOG_TIERS.some((entry) => entry === value);
 }
 
 // ─── index.json ─────────────────────────────────────────────────────────────
@@ -76,8 +76,12 @@ export type DescriptionEntry = z.infer<typeof DescriptionEntry>;
 
 // ─── credits.json (embedded in each pack) ───────────────────────────────────
 
+// `curated` is a picture chosen by hand (server/data/catalog-images); it is
+// stored in the Hubble slot so servers that predate it still find it.
+export const CREDIT_SOURCES = ['hubble', 'dss2', 'nasa', 'curated', 'vphas'] as const;
+
 const CreditEntry = z.object({
-  source:     z.enum(['hubble', 'dss2', 'nasa']),
+  source:     z.enum(CREDIT_SOURCES),
   credit:     z.string(),
   licenseUrl: z.string(),
 });

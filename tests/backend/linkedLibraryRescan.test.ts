@@ -27,6 +27,7 @@ const SETTINGS = { importJpg: true, importFits: true, importSubFrames: true };
 const roots: string[] = [];
 
 afterAll(() => {
+  vi.unstubAllGlobals();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
   for (const r of roots) fs.rmSync(r, { recursive: true, force: true });
 });
@@ -227,7 +228,7 @@ describe('nicknames learned from folder labels', () => {
   function labelledRoot(): string {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nebulis-rescan-source-'));
     roots.push(root);
-    const dir = path.join(root, '1. Caldwell Objects', 'C 1 - Polarissima Cluster');
+    const dir = path.join(root, '1. Caldwell Objects', 'C 1 - Cepheus Old Cluster');
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'Stacked_60_C 1_20.0s_IRCUT_20260524-231230.jpg'), 'x');
     return root;
@@ -236,12 +237,12 @@ describe('nicknames learned from folder labels', () => {
   it('stores the name on the object, shows it in the scan, and returns it with the library list', async () => {
     const root = labelledRoot();
     const scan = scanSource(root, SETTINGS);
-    expect(scan.objects[0]).toMatchObject({ objectId: 'NGC188', aliases: ['C1'], nicknames: ['Polarissima Cluster'] });
+    expect(scan.objects[0]).toMatchObject({ objectId: 'NGC188', aliases: ['C1'], nicknames: ['Cepheus Old Cluster'] });
 
     commitSource(root, SETTINGS, { label: 'x' });
     const stored = db.prepare('SELECT nicknames FROM libraryObjects WHERE objectId = ?').get('NGC188') as { nicknames: string };
-    expect(JSON.parse(stored.nicknames)).toEqual(['Polarissima Cluster']);
-    expect(getLocalObjects('u').find(o => o.id === 'NGC188')?.nicknames).toEqual(['Polarissima Cluster']);
+    expect(JSON.parse(stored.nicknames)).toEqual(['Cepheus Old Cluster']);
+    expect(getLocalObjects('u').find(o => o.id === 'NGC188')?.nicknames).toEqual(['Cepheus Old Cluster']);
   });
 });
 

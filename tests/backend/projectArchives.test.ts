@@ -48,16 +48,20 @@ function stagedFile(name: string, contents = 'zip bytes'): string {
 }
 
 describe('isProjectArchiveName / projectArchiveMimeType', () => {
-  it('accepts only .zip, case-insensitively', () => {
+  it('accepts .zip plus the PixInsight project formats, case-insensitively', () => {
     expect(isProjectArchiveName('project.zip')).toBe(true);
     expect(isProjectArchiveName('Project.ZIP')).toBe(true);
+    expect(isProjectArchiveName('icons.xpsm')).toBe(true);
+    expect(isProjectArchiveName('M31.PXIPROJECT')).toBe(true);
     expect(isProjectArchiveName('project.rar')).toBe(false);
     expect(isProjectArchiveName('project.xisf')).toBe(false);
     expect(isProjectArchiveName('project')).toBe(false);
   });
 
-  it('always reports application/zip', () => {
+  it('reports application/zip for zips and octet-stream for PixInsight project files', () => {
     expect(projectArchiveMimeType()).toBe('application/zip');
+    expect(projectArchiveMimeType('a.zip')).toBe('application/zip');
+    expect(projectArchiveMimeType('icons.xpsm')).toBe('application/octet-stream');
   });
 });
 

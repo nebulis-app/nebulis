@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { checkMoonProximity, moonThresholdForIllumination } from '../../server/lib/moonProximity';
+import { checkMoonProximity, moonThresholdForIllumination, moonVerdictFor } from '../../server/lib/moonProximity';
 
 // This is "the canonical implementation used by the planner's scheduling and
 // verdict endpoints" per the header comment in server/lib/moonProximity.ts,
@@ -80,5 +80,37 @@ describe('checkMoonProximity — moon above the horizon, verdict bands', () => {
     expect(warning.minSeparation).toBe(ok.minSeparation);
     expect(caution.moonAltAtWorst).toBe(ok.moonAltAtWorst);
     expect(warning.moonAltAtWorst).toBe(ok.moonAltAtWorst);
+  });
+});
+
+describe('narrowband tolerance', () => {
+  const ra = 0;
+  const dec = 20;
+  const when = new Date('2025-06-21T13:00:00Z'); // ~33.7° from the Moon (above)
+
+  it('is 15 + illum * 0.25, much closer to the Moon than broadband', () => {
+    expect(moonThresholdForIllumination(0, 'narrowband')).toBe(15);
+    expect(moonThresholdForIllumination(100, 'narrowband')).toBe(40);
+    expect(moonThresholdForIllumination(100, 'broadband')).toBe(85);
+  });
+
+  it('keeps a block 34° from a 60% Moon fine in narrowband while broadband warns', () => {
+    const bb = checkMoonProximity(ra, dec, LAT, LON, when, when, 60, 5, 'UTC', 'broadband');
+    const nb = checkMoonProximity(ra, dec, LAT, LON, when, when, 60, 5, 'UTC', 'narrowband');
+    expect(bb.verdict).toBe('warning');
+    expect(nb.verdict).toBe('ok');
+    expect(nb.minSeparation).toBe(bb.minSeparation);
+  });
+
+  it('says narrowband in the reason when the narrowband check fails', () => {
+    const nb = checkMoonProximity(ra, dec, LAT, LON, when, when, 100, 5, 'UTC', 'narrowband');
+    expect(nb.verdict).toBe('caution');
+    expect(nb.reason).toBe('Moon 34° away at 13:00 (recommended ≥ 40° at 100% illumination, narrowband)');
+  });
+
+  it('bands verdicts the same way for both filters', () => {
+    expect(moonVerdictFor(Infinity, 40)).toBe('ok');
+    expect(moonVerdictFor(30, 40)).toBe('caution');
+    expect(moonVerdictFor(20, 40)).toBe('warning');
   });
 });

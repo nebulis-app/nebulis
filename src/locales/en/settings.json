@@ -17,7 +17,19 @@
     "about": "About",
     "archive": "Archive",
     "linked": "Linked folders",
-    "cleanup": "Cleanup"
+    "cleanup": "Cleanup",
+    "features": "Integrations",
+    "apiKeys": "API keys",
+    "alerts": "Alerts",
+    "display": "Display",
+    "organization": "Organization",
+    "processing": "Processing",
+    "maintenance": "Maintenance",
+    "catalogs": "Catalog data",
+    "sites": "Observing sites",
+    "sectionEquipment": "Equipment",
+    "sectionSystem": "System",
+    "sectionAdvanced": "Advanced"
   },
   "page": {
     "viewOnlyBanner": "View-only mode. Contact an admin to make changes.",
@@ -61,6 +73,15 @@
     "nebulaBackdrop": {
       "label": "Nebula backdrop",
       "description": "Sets a faint deep-sky image and starfield behind the app, showing through the gaps between panels. Works with the Dark theme; the Space theme already has its own."
+    },
+    "uiScale": {
+      "label": "Interface size",
+      "description": "Make everything larger or smaller on this device. 100% is the automatic size for your screen.",
+      "reset": "Reset"
+    },
+    "compactBanners": {
+      "label": "Compact page banners",
+      "description": "Fold the banner at the top of every page to one slim row with the page's key figures. The arrow on a banner still opens it. Turning this on or off resets each page to match."
     }
   },
   "navigation": {
@@ -244,17 +265,21 @@
     "display": {
       "title": "Display",
       "description": "How object cards and slideshow show images and information.",
-      "referenceImage": {
-        "label": "Reference image",
-        "description": "Catalog imagery from Hubble, DSS2, NASA, and Caldwell. Rich color, wide availability."
-      },
-      "myTelescopeImages": {
-        "label": "My telescope images",
-        "description": "Your own captures, for every object you have imaged."
+      "cardPictures": {
+        "label": "Object card pictures",
+        "description": "Reference uses catalog imagery from Hubble, DSS2, NASA and Caldwell: rich color, and it works for every object. My telescope uses your own captures, for objects you have imaged.",
+        "reference": "Reference",
+        "telescope": "My telescope"
       },
       "galleryProcessedOnly": {
         "label": "Gallery: Show processed images only",
         "description": "Gallery opens with the \"Processed only\" filter on by default."
+      },
+      "objectPages": {
+        "label": "Object pages",
+        "description": "Combined shows every picture of an object on one page. Classic shows a grid of observations that you open one at a time. Classic may be removed in a future version, so tell us what you would miss.",
+        "nights": "Classic",
+        "media": "Combined"
       },
       "slideshowShowInfo": {
         "label": "Slideshow: Show object information",
@@ -285,6 +310,14 @@
       "groupCompanions": {
         "label": "Credit objects in the same frame",
         "description": "Other catalog objects that were also in the frame of something you imaged count as imaged too. Example: imaging M42 also counts M43. Turn off to count only the objects you aimed at."
+      },
+      "autoSolve": {
+        "label": "Solve new pictures automatically",
+        "description": "The server works out where each stacked picture points, in the background and only while the library is otherwise idle, so object names appear instantly and exactly when you tap Annotate. It downloads the free ASTAP plate solver (about 100 MB) the first time. Pictures that can't be solved are remembered and left alone."
+      },
+      "autoMeasure": {
+        "label": "Analyze frames after import",
+        "description": "Scores every new raw frame in the background once an import has finished, so the Subframes list is already filled in when you open a night. It reads each FITS file, so it is off by default. Opening a night still analyzes it on demand either way."
       }
     },
     "calibration": {
@@ -295,6 +328,22 @@
         "description": "A sensor's dark current and read noise drift as it ages, so a bundle older than this is flagged Expired on the Calibrations page and can be deleted from there. Flats and flat-darks aren't affected, they're matched to a session instead of aged out.",
         "unit": "days"
       }
+    },
+    "filterAliases": {
+      "title": "Filter aliases",
+      "description": "Merge filter names written differently by your capture software, so integration per filter counts them together. Common spellings (Ha, H-alpha, OIII, SII, L, R, G, B) are already merged.",
+      "empty": "No aliases yet.",
+      "aliasPlaceholder": "Name in your files",
+      "canonicalPlaceholder": "Count as",
+      "remove": "Remove alias",
+      "add": "Add alias",
+      "cancel": "Cancel",
+      "save": "Save aliases",
+      "saveFailed": "Could not save the aliases."
+    },
+    "processing": {
+      "title": "Processing",
+      "description": "What runs on your frames once they are imported."
     }
   },
   "softwareUpdate": {
@@ -462,6 +511,9 @@
     "skyMapped": "sky mapped",
     "setVisibleSky": "Set visible sky",
     "setAsDefault": "Set as default",
+    "skyNotMapped": "Sky not mapped",
+    "bortle": "Bortle {{class}}",
+    "mapAria": "Map of your observing sites",
     "edit": "Edit",
     "cannotDeleteLast": "Cannot delete the last observing site. Add another first.",
     "modal": {
@@ -631,7 +683,8 @@
     "connected": "Connected",
     "localServer": {
       "title": "Local Server",
-      "description": "Host machine running this dashboard."
+      "description": "Host machine running this dashboard.",
+      "appDataNote": "Everything Nebulis keeps on this disk: the database, thumbnails, backups and caches, plus your library unless it has been moved. The rest of the used space is other files on this disk."
     },
     "libraryDrive": {
       "title": "Library Drive",
@@ -658,6 +711,12 @@
       "oldest": "Oldest",
       "newest": "Newest",
       "noData": "No storage data available"
+    },
+    "showAll": "Show all {{count}}",
+    "showFewer": "Show fewer",
+    "libraryContents": {
+      "title": "Library contents",
+      "description": "Space used by each object in your library."
     }
   },
   "connectionSection": {
@@ -688,6 +747,7 @@
     "syncingNow": "Syncing this telescope now",
     "anotherImportRunning": "Another import is in progress",
     "syncNow": "Sync now (pull new files from this telescope)",
+    "autoImportLabel": "Auto-import",
     "autoImportOn": "Auto-import on: click to disable",
     "autoImportOff": "Auto-import off: click to enable",
     "moveSessions": "Move all sessions to another telescope",
@@ -819,6 +879,10 @@
         "label": "Videos (.avi, .mp4)",
         "description": "Lunar and planetary video captures."
       },
+      "calibration": {
+        "label": "Sync calibration frames",
+        "description": "Copy the device's calibration frames (SeeStar dark library, Dwarf CALI_FRAME, ASIAIR Dark, Flat and Bias) into the calibration library on every sync. They appear on the Calibrations page."
+      },
       "archiveAll": {
         "label": "Archive everything",
         "description": "Copy every file on the device, overriding the five choices above. Includes sub-frames, per-frame thumbnails, working and calibration images, rejected frames, logs, and unrecognized types, with the device's folder structure preserved. Files Nebulis cannot display are stored and downloadable. This can be very large."
@@ -879,7 +943,14 @@
       "lights": "stacked or single-shot finals (required)",
       "subframes": "individual sub-frames (optional)",
       "metaJson": "optional per-session metadata"
-    }
+    },
+    "photoTitle": "Photo",
+    "photoHelp": "Your own picture of this telescope. Only you and the people you share Nebulis with see it. A cut-out on a transparent background looks best.",
+    "photoChoose": "Choose photo",
+    "photoChange": "Change photo",
+    "photoRemove": "Remove",
+    "photoUploading": "Uploading…",
+    "photoAlt": "Photo of {{name}}"
   },
   "subtitle": {
     "general": "Appearance and units.",
@@ -888,12 +959,19 @@
     "accountDevices": "Phones and Apple TVs linked to your account.",
     "accountUsers": "The people who can sign in to this library.",
     "hardware": "Telescopes and camera connections.",
-    "sky": "Observing site, catalogs, and external data sources.",
+    "sky": "Where you observe from.",
     "storage": "Where library data lives and how it stays in sync.",
     "log": "Sign-ins, user and telescope changes, syncs, and other admin activity.",
     "danger": "Diagnostics, cleanup tools, and destructive actions.",
     "about": "Why Nebulis exists, and who built it.",
-    "libraryCleanup": "Reclaim disk space by removing files you no longer need."
+    "libraryCleanup": "Reclaim disk space by removing files you no longer need.",
+    "features": "Optional integrations. Each one stays off until you turn it on.",
+    "apiKeys": "Personal keys for PixInsight and other tools. A key acts as you.",
+    "alerts": "Get told when a clear night is coming or an import is done.",
+    "libraryOrganization": "How objects are named, grouped, and counted.",
+    "libraryProcessing": "What Nebulis does with frames after they arrive.",
+    "maintenance": "Tasks the server runs on its own each night.",
+    "catalogs": "Offline imagery and satellite data kept on this server."
   },
   "transportEditor": {
     "kindLabel": {
@@ -961,7 +1039,17 @@
     "searchPlaceholder": "City, state, country…",
     "clearLocation": "Clear location",
     "searchHelp": "Type a city to auto-fill coordinates and timezone",
-    "noMatches": "No matches found"
+    "noMatches": "No matches found",
+    "photosLabel": "Photos",
+    "photosHelp": "Pictures of this site, for your own reference. You can also add them from the iPhone and iPad app.",
+    "photosAdd": "Add photos",
+    "photosUploading": "Uploading {{done}} of {{total}}",
+    "photosSaveFirst": "Save the site first, then you can add photos.",
+    "photosEmpty": "No photos yet.",
+    "photosRemove": "Remove photo",
+    "photosOpen": "Open photo",
+    "photosCaptionPlaceholder": "Add a caption",
+    "photosUploadFailed": "Could not upload {{name}}: {{reason}}"
   },
   "enterCodeModal": {
     "title": "Link an Apple TV",
@@ -1383,7 +1471,7 @@
     "repaired": "Repaired {{count}} item(s).",
     "unreadable_one": "1 file or folder could not be checked, so it is not counted above and the repairs above are switched off. Check that the library drive is healthy, then scan again.",
     "unreadable_other": "{{count}} files or folders could not be checked, so they are not counted above and the repairs above are switched off. Check that the library drive is healthy, then scan again.",
-    "note": "Repairs never delete image files. Objects whose folder is gone go to the trash and can be restored.",
+    "note": "Repairs only remove records, with one exception: Remove duplicates deletes the second copy of a file after confirming it is identical to the one it keeps. Objects whose folder is gone go to the trash and can be restored.",
     "stale": {
       "title": "Missing files",
       "detail": "Records for files no longer on disk, across {{objects}} object(s).",
@@ -1405,11 +1493,231 @@
       "detail": "Stored as flat, but the folder is organized by night. The same fix runs at every startup.",
       "fix": "Fix flags"
     },
+    "duplicates": {
+      "title": "Duplicate files",
+      "detail": "The same capture stored in two folders of one object, across {{objects}} objects. Cleaning up keeps the telescope-named copy and deletes the other once the bytes are verified identical.",
+      "fix": "Remove duplicates"
+    },
     "flat": {
       "title": "Flat-layout objects",
       "detail": "Files not yet sorted into per-night folders. Reorganizing moves files.",
       "progress": "Reorganizing… {{done}} / {{total}}",
       "fix": "Reorganize"
     }
+  },
+  "featuresSection": {
+    "title": "Integrations",
+    "description": "Turn on the extras you use. Turned-off features add nothing to your server.",
+    "pixinsight": {
+      "label": "PixInsight integration",
+      "description": "Serve the Nebulis Connector script so PixInsight can install and update it, and browse your library from inside PixInsight.",
+      "repoLabel": "PixInsight repository URL",
+      "repoDescription": "Add this under Resources > Updates > Manage Repositories in PixInsight (keep the trailing slash). Save first.",
+      "copy": "Copy URL",
+      "setup": "Next: create an API key, then follow the PixInsight guide in Help.",
+      "createKey": "Create an API key"
+    }
+  },
+  "apiKeys": {
+    "title": "API keys",
+    "description": "Let PixInsight and other tools use Nebulis as you, without your password.",
+    "note": "{{used}} of {{max}} keys used. A key has your access: an admin key can change things, a viewer key is read-only.",
+    "allNote": "Every key on this server. Revoking one signs that tool out immediately.",
+    "mine": "Mine",
+    "all": "Everyone",
+    "newKey": "New key",
+    "nameLabel": "Key name",
+    "namePlaceholder": "Name it after the computer, e.g. Studio iMac",
+    "create": "Create key",
+    "cancel": "Cancel",
+    "createFailed": "Could not create the key",
+    "loading": "Loading keys",
+    "createdTitle": "Key created: {{name}}",
+    "copyOnce": "Copy it now. It is shown once and cannot be recovered; if you lose it, revoke it and make a new one.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "dismiss": "Dismiss",
+    "none": "No API keys yet",
+    "noneHint": "Create one to connect PixInsight.",
+    "created": "Created {{when}}",
+    "lastUsed": "used {{when}}",
+    "neverUsed": "never used",
+    "justNow": "just now",
+    "deletedUser": "deleted user",
+    "revoke": "Revoke",
+    "revokeAria": "Revoke {{name}}",
+    "revokeTitle": "Revoke \"{{name}}\"?",
+    "revokeMessage": "The tool using the key starting {{prefix}} loses access immediately. This cannot be undone.",
+    "revokeConfirm": "Revoke key"
+  },
+  "alerts": {
+    "title": "Alert channels",
+    "description": "Phones and services that get what Nebulis notices on its own.",
+    "add": "Add channel",
+    "actionFailed": "That didn't work. Try again.",
+    "saveFailed": "Could not save the channel.",
+    "loadFailed": "Could not load alerts.",
+    "loading": "Loading…",
+    "empty": "No alert channel yet.",
+    "emptyHint": "Add an ntfy topic, or a Discord, Slack or webhook URL. An iPhone appears here by itself once you turn on alerts in the Nebulis app.",
+    "noEvents": "No events selected, so nothing is sent.",
+    "lastSent": "Last sent {{when}}",
+    "lastFailed": "Last attempt {{when}} failed: {{error}}",
+    "testSent": "Test alert sent.",
+    "testFailed": "Test failed: {{error}}",
+    "enabledLabel": "Send alerts to {{name}}",
+    "test": "Test",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleteConfirm": "Delete “{{name}}”? Nothing more will be sent there.",
+    "cancel": "Cancel",
+    "save": "Save",
+    "addTitle": "Add an alert channel",
+    "editTitle": "Edit the alert channel",
+    "kindLabel": "Send to",
+    "kindHelp": {
+      "ntfy": "Push notifications on your phone with the free ntfy app: subscribe to a topic in the app, then paste the topic URL here. Pick a name hard to guess, or add ?auth=… for a protected server.",
+      "discord": "In Discord: channel settings → Integrations → Webhooks → New webhook → Copy webhook URL.",
+      "slack": "In Slack: create an app with Incoming Webhooks, add one to a channel, then copy its URL.",
+      "webhook": "Nebulis posts JSON (event, title, message, data) to this URL, for Home Assistant, n8n or your own scripts."
+    },
+    "nameLabel": "Name",
+    "namePlaceholder": {
+      "ntfy": "My phone",
+      "discord": "Astro server",
+      "slack": "Observatory channel",
+      "webhook": "Home Assistant"
+    },
+    "urlLabel": "URL",
+    "urlPlaceholder": {
+      "ntfy": "https://ntfy.sh/my-nebulis-topic",
+      "discord": "https://discord.com/api/webhooks/…",
+      "slack": "https://hooks.slack.com/services/…",
+      "webhook": "https://homeassistant.local:8123/api/webhook/nebulis"
+    },
+    "urlKeep": "Leave empty to keep the current URL.",
+    "secretLabel": "Signing secret (optional)",
+    "secretHelp": "When set, each request carries X-Nebulis-Signature: sha256=HMAC of the body, so the receiver can check it comes from Nebulis.",
+    "secretClear": "Remove the secret",
+    "eventsLabel": "Events",
+    "event": {
+      "night": {
+        "clear": {
+          "short": "Clear night",
+          "label": "Clear night ahead",
+          "help": "Each evening, when the forecast has enough clear dark hours at the active site."
+        },
+        "dew": {
+          "short": "Dew warning",
+          "label": "Dew warning",
+          "help": "Sent shortly before the dew is expected to form, once a night, only on nights clear enough to image. Choose how far ahead below."
+        }
+      },
+      "import": {
+        "finished": {
+          "short": "Import done",
+          "label": "Import finished",
+          "help": "When an import brings new files, with the objects it touched."
+        },
+        "failed": {
+          "short": "Import failed",
+          "label": "Import failed",
+          "help": "When an import stops on an error."
+        }
+      },
+      "update": {
+        "available": {
+          "short": "Update",
+          "label": "Update available",
+          "help": "Once per new Nebulis version."
+        }
+      }
+    },
+    "language": "Message language",
+    "languageHelp": "Language of the alert texts, for every channel.",
+    "kind": {
+      "ntfy": "ntfy",
+      "discord": "Discord",
+      "slack": "Slack",
+      "webhook": "Webhook"
+    },
+    "clearNight": {
+      "title": "Clear night ahead",
+      "description": "The evening check behind the “Clear night ahead” alert, for the active site.",
+      "checkTime": "Check at",
+      "checkTimeHelp": "Local time at the active site. The check runs once per night.",
+      "minClearHours": "Send when at least",
+      "minClearHoursHelp": "Clear hours of darkness still ahead of the check.",
+      "hours_one": "{{count}} clear hour",
+      "hours_other": "{{count}} clear hours",
+      "maxCloud": "An hour is clear up to",
+      "maxCloudHelp": "Cloud cover from the forecast. Hours likely to rain never count.",
+      "cloudPct": "{{pct}}% clouds",
+      "preview": "Check tonight now",
+      "noListener": "No channel or iPhone has “Clear night” selected, so the check does not run.",
+      "listeners_one": "Sent to {{count}} channel or iPhone.",
+      "listeners_other": "Sent to {{count}} channels and iPhones.",
+      "tonight": "Tonight:",
+      "lastCheck": "Last check {{when}}:",
+      "summary": "{{clear}} h clear out of {{dark}} h of darkness, best from {{start}} to {{end}}, Moon {{moon}}%",
+      "reason": {
+        "sent": "alert sent",
+        "not_clear_enough": "under the minimum, not sent",
+        "no_forecast": "no forecast available",
+        "no_dark_window": "no astronomical darkness tonight",
+        "no_site": "set a location for the active site first",
+        "preview": "preview only"
+      },
+      "sendToPhones": "Send to iPhones",
+      "sendToPhonesHelp": "Sends tonight's alert to your iPhones now, as it would go out, whether or not tonight qualifies.",
+      "sentToPhones_one": "Sent to {{count}} iPhone.",
+      "sentToPhones_other": "Sent to {{count}} iPhones.",
+      "phoneFailed": "Could not send to {{name}}: {{error}}",
+      "phoneNoExtras": "None of your iPhones has an extra line turned on yet, so this was the basic alert. Use the pencil on an iPhone to add Tonight's plan or Dew risk, then send again.",
+      "next": {
+        "now": "The evening check is due now. It sends only if at least {{hours}} clear hours are ahead.",
+        "today": "Next check: tonight at {{time}}. It sends only if at least {{hours}} clear hours are ahead.",
+        "tomorrow": "Tonight's check has run. Next check: tomorrow at {{time}}."
+      },
+      "sendDew": "Send dew warning to iPhones",
+      "sendDewHelp": "Sends the dew warning to your iPhones now. If tonight has no dew risk it uses example times so you can see how it looks.",
+      "sentDew_one": "Dew warning sent to {{count}} iPhone.",
+      "sentDew_other": "Dew warning sent to {{count}} iPhones.",
+      "dewSample": "Tonight has no dew risk, so this one used example times."
+    },
+    "phones": {
+      "testBuild": "Test build",
+      "removeConfirm": "Remove “{{name}}”? It stops getting alerts until you turn them on again in the app.",
+      "removedByApple": "This phone no longer accepts notifications from Nebulis, so it was removed. Turn alerts on in the app to add it again.",
+      "extras": "Clear night adds: {{list}}",
+      "edit": "Choose alerts",
+      "editLabel": "Choose alerts for {{name}}",
+      "editTitle": "Alerts for {{name}}",
+      "kind": "iPhone"
+    },
+    "detail": {
+      "group": "Extra lines for the clear night alert",
+      "plan": {
+        "label": "Tonight's plan",
+        "help": "Adds what you have planned for tonight. On an iPhone, tapping the alert then opens the Planner."
+      },
+      "dew": {
+        "label": "Dew risk",
+        "help": "Adds when the air is expected to reach the dew point, and the night's low, so you know whether to bring a dew heater."
+      },
+      "leadLabel": "Send it",
+      "lead": "{{time}} before",
+      "leadHours_one": "{{count}} hour",
+      "leadHours_other": "{{count}} hours",
+      "leadMinutes_one": "{{count}} minute",
+      "leadMinutes_other": "{{count}} minutes",
+      "dewRow": "Dew warning: {{time}} before the dew"
+    }
+  },
+  "search": {
+    "label": "Find a setting",
+    "placeholder": "Search settings…",
+    "clear": "Clear search",
+    "noResults": "No matching settings"
   }
 }

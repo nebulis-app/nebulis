@@ -6,6 +6,7 @@ import App from './App';
 import { reloadOnceForStaleChunk } from './lib/chunkReload';
 import './i18n';
 import './index.css';
+import { initUiScale } from './hooks/useUiScale';
 
 // Vite dispatches this when a module preload or a wrapped dynamic import fails.
 // The usual cause in production is a tab whose index.html predates the build the
@@ -31,7 +32,14 @@ const queryClient = new QueryClient({
   },
 });
 
-createRoot(document.getElementById('root')!).render(
+// index.html always ships #root; failing loudly here is what createRoot(null)
+// did anyway, just with a clearer message.
+const rootElement = document.getElementById('root');
+if (!rootElement) throw new Error('Nebulis: missing #root element in index.html');
+
+initUiScale();
+
+createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>

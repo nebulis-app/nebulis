@@ -31,11 +31,12 @@ export const EMPTY_FORM: ArchiveConfig = {
 
 /** The four groups the settings fall into. The setup wizard walks them in this order
  *  and the overview edits them one at a time. */
-export type ArchiveGroup = 'disk' | 'copy' | 'schedule' | 'cleanup';
+export const ARCHIVE_GROUPS = ['disk', 'copy', 'schedule', 'cleanup'] as const;
+export type ArchiveGroup = (typeof ARCHIVE_GROUPS)[number];
 
 /** The steps of setup in the order they are walked. The last is not a group of settings
  *  but the review before anything is switched on. */
-export const WIZARD_STEPS = ['disk', 'copy', 'schedule', 'cleanup', 'review'] as const;
+export const WIZARD_STEPS = [...ARCHIVE_GROUPS, 'review'] as const;
 export type WizardStep = (typeof WIZARD_STEPS)[number];
 
 /** `HH:MM` for a `type="time"` input. That input always speaks 24-hour time on the

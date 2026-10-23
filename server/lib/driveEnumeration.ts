@@ -76,7 +76,7 @@ async function readDeviceIdAtRoot(root: string): Promise<string | null> {
       const text = buf.subarray(0, bytesRead).toString('utf8');
       const parsed: unknown = JSON.parse(text);
       if (parsed && typeof parsed === 'object' && 'deviceId' in parsed) {
-        const id = (parsed as { deviceId: unknown }).deviceId;
+        const id = parsed.deviceId;
         return typeof id === 'string' && id.length > 0 ? id : null;
       }
       return null;
@@ -110,7 +110,7 @@ async function inspectRoot(root: string): Promise<DetectedDrive | undefined> {
   if (!looksLikeAsiair) {
     const usbRoot = entries.find(e => e.toLowerCase() === ASIAIR_USB_ROOT_DIR.toLowerCase());
     if (usbRoot) {
-      const inner = await fs.readdir(path.join(root, usbRoot)).catch(() => [] as string[]);
+      const inner = await fs.readdir(path.join(root, usbRoot)).catch((): string[] => []);
       if (ASIAIR_HALLMARK_DIRS.some(h => inner.includes(h))) {
         looksLikeAsiair = true;
         asiairSubPath = usbRoot;

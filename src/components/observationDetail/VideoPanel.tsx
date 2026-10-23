@@ -51,7 +51,7 @@ export function VideoPanel({ videos, date }: { videos: SessionFile[]; date: stri
                   ) : (
                     <div className={`w-full h-full flex flex-col items-center justify-center gap-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                       <Film className="w-7 h-7" />
-                      <span className="text-[11px] font-medium">
+                      <span className="text-[0.6875rem] font-medium">
                         {t('observationDetail.videoPanel.downloadToPlay', { ext: file.name.split('.').pop()?.toUpperCase() })}
                       </span>
                     </div>
@@ -63,7 +63,7 @@ export function VideoPanel({ videos, date }: { videos: SessionFile[]; date: stri
                     <p className={`text-xs font-medium truncate ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                       {file.name}
                     </p>
-                    <p className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                    <p className={`text-[0.625rem] mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                       {[isTimelapse ? t('observationDetail.videoPanel.timelapse') : t('observationDetail.videoPanel.video'), dateLabel].filter(Boolean).join(' · ')}
                     </p>
                   </div>

@@ -3,11 +3,14 @@ import {
   buildForecast,
   getForecastCacheEntry,
   setForecastCacheEntry,
+  snapshotNightConditions,
   markForecastRequested,
   isUsableForecast,
   CACHE_TTL_MS,
   REFRESH_MIN_AGE_MS,
+  forecastSiteKey,
 } from '../lib/forecastCache.js';
+import { getNightConditions } from '../lib/nightConditions.js';
 import { resolveSite } from '../lib/observingSites.js';
 import { burstyRateLimiter } from '../middleware/rateLimit.js';
 
@@ -77,6 +80,7 @@ router.get('/', burstyRateLimiter, async (req: Request, res: Response) => {
     const now = Date.now();
     if (isUsableForecast(data)) {
       setForecastCacheEntry({ data, fetchedAt: now, lat: resolvedLat, lon: resolvedLon, lastRequestedAt: now });
+      snapshotNightConditions(data, resolvedLat, resolvedLon);
       res.apiSuccess(data);
       return;
     }
@@ -102,6 +106,26 @@ router.get('/', burstyRateLimiter, async (req: Request, res: Response) => {
     const message = err instanceof Error ? err.message : 'Forecast fetch failed';
     res.apiError(500, 'FORECAST_FAILED', message);
   }
+});
+
+// ─── A past night's weather, as it was recorded ─────────────────
+// GET /api/v1/forecast/recorded?night=2026-10-06&lat=&lon=
+// The hourly conditions kept for that night at that forecast grid cell (see lib/nightConditions.ts): the forecast snapshot,
+// which alone has seeing, else an archive row. `conditions` is null when nothing was kept; clients then fall back to their
+// own archive lookup.
+router.get('/recorded', (req: Request, res: Response) => {
+  const night = String(req.query.night ?? '');
+  const lat = Number(req.query.lat), lon = Number(req.query.lon);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(night)) {
+    res.apiError(400, 'VALIDATION_ERROR', 'Nights look like 2026-10-08');
+    return;
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    res.apiError(400, 'INVALID_COORDS', 'Valid latitude (-90 to 90) and longitude (-180 to 180) required');
+    return;
+  }
+  const key = forecastSiteKey(lat, lon);
+  res.apiSuccess({ conditions: getNightConditions(key, night, 'forecast') ?? getNightConditions(key, night, 'archive') });
 });
 
 export { router as forecastRouter };

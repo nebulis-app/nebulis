@@ -8,7 +8,7 @@
  * pinned while scrolling is a slim bar of controls.
  */
 import { useCallback, useState, useMemo, useDeferredValue } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { SearchX, Telescope } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -50,7 +50,9 @@ export function CatalogBoard() {
   // an open modal, either pointing at the wrong object or needing an effect
   // to reset it. Looking the id up in the current array handles both the
   // "still visible" and "filtered away" cases with no extra state.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // `?object=` deep-links straight to an object's modal (the My Catalog wall's "Plan it").
+  const [searchParams] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('object'));
   const [planOpen, setPlanOpen] = useState(false);
 
   const progressQuery = useQuery({
@@ -173,6 +175,7 @@ export function CatalogBoard() {
         typeFilter={typeFilter}
         onTypeFilterChange={setTypeFilter}
         onPlan={canPlan ? () => setPlanOpen(true) : null}
+        catalogId={catalog}
       />
 
       <div className="mt-6">

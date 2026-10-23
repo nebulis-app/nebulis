@@ -18,19 +18,42 @@
     "raDec": "AR {{ra}}h · Dec {{dec}}°",
     "closeDetails": "Cerrar detalles",
     "addToTonight": "Añadir a esta noche",
-    "moonOkTonight": "La Luna no interferirá esta noche ({{percent}}% iluminada).",
-    "moonWarningTonight": "La Luna se acerca a {{deg}}° a las {{time}} ({{percent}}% iluminada); puede velar los detalles tenues.",
     "referenceImageAlt": "Imagen de referencia de {{name}}",
     "referenceImage": "Imagen de referencia",
     "setLocationForSky": "Configura tu ubicación en Configuración para ver dónde se sitúa esto en tu cielo.",
-    "skyShownAt": "Cielo mostrado a las {{time}}. Desplaza la curva de abajo para cambiar la hora.",
-    "skyShownAtHighest": "Cielo mostrado a las {{time}} (punto más alto esta noche). Desplaza la curva de abajo para cambiar la hora.",
+    "skyShownAt": "A las {{time}} · arrastra el gráfico para cambiar la hora",
+    "skyShownAtHighest": "A las {{time}} (punto más alto) · arrastra el gráfico para cambiar la hora",
+    "altSummary": "Máximo {{alt}}° a las {{peakTime}} · sobre {{min}}° de {{from}} a {{to}} ({{duration}})",
+    "altSummaryNever": "Máximo {{alt}}° a las {{peakTime}} · no supera el mínimo esta noche",
+    "moonAllFine": "Luna iluminada al {{percent}}% esta noche: sin problema para banda ancha y banda estrecha.",
+    "descMore": "Mostrar más",
+    "descLess": "Mostrar menos",
+    "statPeak": "Máximo",
+    "statAbove": "Sobre {{min}}°",
+    "statNeverAbove": "No supera el mínimo esta noche",
+    "statAboveRange": "{{from}} a {{to}} · {{duration}}",
+    "scheduledWindow": "Programado de {{start}} a {{end}}",
     "noCatalogDescription": "No hay ninguna descripción de catálogo disponible para este objeto.",
     "readMoreWikipedia": "Leer más en Wikipedia →",
     "altitudeTonight": "Altitud esta noche (de mediodía a mediodía, hora local)",
-    "setLocationForAltitude": "Configura tu ubicación en Configuración para ver la curva de altitud."
+    "setLocationForAltitude": "Configura tu ubicación en Configuración para ver la curva de altitud.",
+    "moonTonight": "Luna esta noche: {{percent}} % iluminada.",
+    "moonBand": {
+      "broadband": "Banda ancha:",
+      "narrowband": "Banda estrecha:"
+    },
+    "moonBandOk": "sin problema.",
+    "moonBandWarning": "se acerca a {{deg}}° a las {{time}} (necesita ≥ {{min}}°).",
+    "blockFilter": "Filtro",
+    "blockFilterOption": {
+      "unset": "Sin definir",
+      "broadband": "Banda ancha",
+      "narrowband": "Banda estrecha"
+    }
   },
   "nightHero": {
+    "collapse": "Contraer cabecera",
+    "expand": "Expandir cabecera",
     "rises": "Sale {{time}}",
     "sets": "Se pone {{time}}",
     "averageCloud": "{{percent}}% de nubosidad media.",
@@ -45,15 +68,25 @@
     "hourByHour": "hora a hora",
     "moon": "Luna",
     "litPercent": "{{percent}}% iluminada",
-    "planMyNight": "Planificar mi noche"
+    "planMyNight": "Planificar mi noche",
+    "filterAdviceTitle": "Según la Luna durante las horas oscuras de la noche",
+    "filterAdvice": {
+      "broadband": "Noche de banda ancha",
+      "narrowband": "Noche de banda estrecha",
+      "broadbandUntil": "Banda ancha hasta las {{time}}, luego banda estrecha",
+      "broadbandFrom": "Banda estrecha, banda ancha desde las {{time}}"
+    }
   },
   "scheduleTimeline": {
+    "emptyNight": "Aún no hay nada planificado para esta noche.",
+    "copyLastNightCount_one": "Copiar la noche anterior ({{count}} bloque)",
+    "copyLastNightCount_other": "Copiar la noche anterior ({{count}} bloques)",
     "nightSchedule": "Horario nocturno",
     "plannedOfDark": "<1>{{planned}}</1> de {{dark}} planificado",
     "targetCount_one": "{{count}} objetivo",
     "targetCount_other": "{{count}} objetivos",
     "clearest": "Más despejado de {{start}} a {{end}}",
-    "dark": "Oscuridad de {{start}} a {{end}} ({{hours}}h)",
+    "dark": "Oscuridad de {{start}} a {{end}} ({{duration}})",
     "forecastFor": "Pronóstico para las {{time}}",
     "weatherTitle": "{{time}} · {{label}} {{score}} · {{cloud}}% nubes{{tail}}",
     "clickForForecast": ". Haz clic para ver el pronóstico completo.",
@@ -80,7 +113,17 @@
     "removeScheduledBlock": "Quitar bloque programado",
     "remove": "Quitar",
     "resizeTop": "Redimensionar arriba",
-    "resizeBottom": "Redimensionar abajo"
+    "resizeBottom": "Redimensionar abajo",
+    "narrowbandOk": "banda estrecha OK",
+    "moonNbOk": "Luna · BE OK",
+    "band": {
+      "broadband": "Banda ancha (L, RGB, color sin filtro)",
+      "narrowband": "Banda estrecha (Ha, OIII, SII, doble banda)"
+    },
+    "bandShort": {
+      "broadband": "BA",
+      "narrowband": "BE"
+    }
   },
   "libraryPanel": {
     "filterAll": "Todos",
@@ -93,16 +136,25 @@
     "peaksBelowMinimum": "Alcanza solo {{maxAlt}}°, por debajo de tu mínimo de {{minAlt}}°",
     "peaksTonight": "Alcanza solo {{maxAlt}}° esta noche",
     "targets": "Objetivos",
-    "upThisNight_one": "{{count}} visible esta noche",
-    "upThisNight_other": "{{count}} visibles esta noche",
-    "searchPlaceholder": "Buscar M81, NGC 7000, Orión...",
+    "countOfUp_one": "{{shown}} de {{count}} visible esta noche",
+    "countOfUp_other": "{{shown}} de {{count}} visibles esta noche",
+    "searchPlaceholderAll": "Buscar entre {{total}}: M81, NGC 7000...",
+    "viewLabel": "Vista",
+    "viewButton": "Vista",
+    "viewShow": "Mostrar",
+    "scopeAll": "Todos los objetivos",
+    "scopeAllHint": "Todo lo visible esta noche",
+    "scopeWishlistHint": "Solo objetivos marcados con estrella",
+    "scopeNotImaged": "Aún sin fotografiar",
+    "scopeNotImagedHint": "Oculta los objetivos que ya están en tu biblioteca",
+    "viewTitle": "Opciones de orden y lista",
+    "viewSort": "Orden",
+    "viewList": "Lista",
     "clearSearch": "Borrar búsqueda",
     "matches_one": "{{count}} coincidencia",
     "matches_other": "{{count}} coincidencias",
     "matchesOf_one": "{{shown}} de {{count}} coincidencia",
     "matchesOf_other": "{{shown}} de {{count}} coincidencias",
-    "popularPicks_one": "{{count}} objeto popular. Busca para llegar al resto.",
-    "popularPicks_other": "{{count}} objetos populares. Busca para llegar al resto.",
     "hideBlockedTitle": "Ocultar objetos que nunca entran en una celda visible esta noche",
     "hideBlocked": "Ocultar bloqueados",
     "noTargetsMatch": "Ningún objetivo coincide con tus filtros.",
@@ -112,7 +164,7 @@
     "alreadyInLibrary": "Ya está en tu biblioteca",
     "notInVisibleSky": "No está en tu cielo visible esta noche",
     "peaksAt": "{{deg}}°",
-    "peaksAtAround": "{{deg}}° · {{time}}",
+    "peaksAtAround": "{{deg}}° · máx. {{time}}",
     "peaksAtTitle": "Alcanza {{deg}}° esta noche",
     "peaksAtAroundTitle": "Alcanza {{deg}}° hacia las {{time}}",
     "showDetailsFor": "Mostrar detalles de {{name}}",
@@ -128,12 +180,27 @@
     "removeFromWishlist": "Quitar de la lista de deseos",
     "addToWishlistFor": "Añadir {{name}} a la lista de deseos",
     "removeFromWishlistFor": "Quitar {{name}} de la lista de deseos",
-    "showAltitudeChart": "Mostrar altitud esta noche",
-    "hideAltitudeChart": "Ocultar altitud esta noche",
-    "showAltitudeChartFor": "Mostrar altitud esta noche para {{name}}",
-    "hideAltitudeChartFor": "Ocultar altitud esta noche para {{name}}"
+    "showMore": "Mostrar altura y filtros",
+    "hideMore": "Ocultar altura y filtros",
+    "showMoreFor": "Mostrar altura y filtros de {{name}}",
+    "hideDetailsFor": "Ocultar altura y filtros de {{name}}",
+    "orderLabel": "Orden",
+    "orderBest": "Mejores esta noche",
+    "orderConditions": "Mejores condiciones",
+    "orderBestTitle": "Ordenado por Mejores esta noche: lo bien situado que está un objetivo y lo que merece la pena fotografiarlo",
+    "orderConditionsTitle": "Ordenado por Mejores condiciones: lo bien situado que está un objetivo esta noche",
+    "openExploreTitle": "Encontrar más objetivos para esta noche en Explorar",
+    "findMoreInExplore": "Encontrar más en Explorar"
   },
   "nightStrip": {
+    "legendLabel": "Leyenda",
+    "legendTitle": "Qué significan las barras y los puntos",
+    "legendRating": "Valoración del tiempo",
+    "legendRatingHint": "Longitud y color de la barra",
+    "legendPlanned": "Bloques planificados",
+    "legendPlannedHint": "Ya tienes un plan para esta noche",
+    "legendMoon": "Fase lunar",
+    "legendMoonHint": "Luna esa noche",
     "previousNight": "Noche anterior",
     "nextNight": "Noche siguiente",
     "pickADate": "Elige una fecha",
@@ -204,7 +271,9 @@
     "scheduleAtHighestOn": "Programar en su punto más alto disponible, el {{date}}",
     "loadingWindow": "Comprobando cuándo es visible...",
     "windowUnavailable": "No se encontraron las coordenadas de este objeto.",
-    "setLocationForWindow": "Configura tu ubicación en Ajustes para ver la mejor ventana de captura."
+    "setLocationForWindow": "Configura tu ubicación en Ajustes para ver la mejor ventana de captura.",
+    "openInPlanner": "Abrir {{name}} en el planificador",
+    "findSimilar": "Encontrar más como {{name}} en Explorar"
   },
   "wishlistHero": {
     "title": "Lista de deseos",
@@ -257,7 +326,8 @@
     "removeFromWishlist": "Quitar de la lista de deseos",
     "addToWishlist": "Añadir a la lista de deseos",
     "viewLargerImage": "Ver imagen más grande",
-    "referenceImageAlt": "Imagen de referencia de {{id}}"
+    "referenceImageAlt": "Imagen de referencia de {{id}}",
+    "planNight": "Planificar una noche"
   },
   "planCalendar": {
     "previousMonth": "Mes anterior",
@@ -291,10 +361,7 @@
   },
   "skyChart": {
     "moon": "Luna",
-    "dirText": "{{compass}} · {{az}}° · alt {{alt}}°",
-    "moonLitAway": "Luna {{percent}}% iluminada · a {{deg}}°",
-    "tooClose": " · demasiado cerca",
-    "moonBelowHorizon": "Luna bajo el horizonte",
+    "dirText": "{{compass}} · {{az}}°",
     "looking": "Mirando hacia {{dir}}",
     "belowHorizonNow": " · bajo el horizonte ahora"
   },
@@ -338,7 +405,23 @@
     "replaceTitle": "¿Sustituir el plan de {{nightLabel}}?",
     "replaceMessage_one": "Esto elimina el {{count}} objetivo ya programado para {{nightLabel}} y lo sustituye por estos {{newCount}}.",
     "replaceMessage_other": "Esto elimina los {{count}} objetivos ya programados para {{nightLabel}} y los sustituye por estos {{newCount}}.",
-    "replace": "Sustituir"
+    "replace": "Sustituir",
+    "favorGoals": "Dar prioridad a los objetos con tiempo pendiente para sus objetivos",
+    "goalsComplete": "Objetivos alcanzados, excluidos: {{names}}",
+    "goalFilterTitle": "Filtro {{filter}}: quedan {{duration}} antes de este bloque",
+    "avoidClouds": "Saltar las horas nubladas (previsión)",
+    "cloudThresholdLabel": "Límite de nubosidad",
+    "cloudThreshold": "más de {{pct}} % de nubes",
+    "forecastUnavailable": "No hay previsión para esta noche, así que el plan no tiene en cuenta el tiempo.",
+    "skippedCloudy": "Sin asignar: previsión de más de {{pct}} % de nubes",
+    "skippedRange": "{{start}}–{{end}} ({{pct}} %)",
+    "allCloudy": "La previsión está nublada durante todo el intervalo.",
+    "cloudPct": "{{pct}} % de nubes",
+    "dewRisk": "Riesgo de rocío: temperatura cercana al punto de rocío",
+    "seeingExcellent": "Seeing excelente",
+    "seeingGood": "Buen seeing",
+    "seeingAverage": "Seeing medio",
+    "seeingPoor": "Seeing malo"
   },
   "planShareModal": {
     "observationPlan": "Plan de observación",
@@ -355,5 +438,38 @@
     "preparing": "Preparando…",
     "shareImage": "Compartir imagen",
     "saveImage": "Guardar imagen"
+  },
+  "integrationRemaining": {
+    "left": "faltan {{duration}} · {{filter}}",
+    "title": "{{filter}}: {{done}} de {{goal}}",
+    "noFilter": "Sin filtro",
+    "complete": "Objetivos alcanzados",
+    "completeTitle": "Todos los objetivos de integración de este objeto se han alcanzado"
+  },
+  "planOutcome": {
+    "status": {
+      "upcoming": "Próximo",
+      "in_progress": "En curso",
+      "awaiting_import": "Esperando imágenes",
+      "done": "Hecho",
+      "partial": "Parcial",
+      "missed": "Perdido",
+      "skipped": "Omitido"
+    },
+    "achieved": "{{achieved}} / {{planned}}",
+    "awaitingImportHint": "La hora de este bloque ya pasó. Importa las imágenes del telescopio para confirmarlo.",
+    "title_one": "{{status}} · {{count}} subtoma en la biblioteca",
+    "title_other": "{{status}} · {{count}} subtomas en la biblioteca",
+    "repeatTomorrow": "Volver a planificar la noche siguiente",
+    "markSkipped": "Marcar como omitido",
+    "unskip": "Quitar la marca de omitido"
+  },
+  "filterSuggestion": {
+    "complete": "Objetivos de integración alcanzados para este objeto.",
+    "suggest": "Filtro: {{filter}}, quedan {{left}}",
+    "noneTonight": "Todos los filtros con tiempo pendiente son de banda ancha y la Luna está demasiado cerca.",
+    "use": "Usar {{filter}}",
+    "inUse": "En uso",
+    "ruledOut": "Luna demasiado cerca para banda ancha: {{filters}}"
   }
 }

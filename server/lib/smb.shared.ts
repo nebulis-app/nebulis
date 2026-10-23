@@ -3,6 +3,7 @@
  */
 import path from 'path';
 import type { TelescopeProfile } from './telescopes.js';
+import { childProcessOutput, errnoCode } from './errors.js';
 
 export const BASE_PATH = 'MyWorks';
 
@@ -298,12 +299,13 @@ export function classifySmbError(err: unknown, backend: 'smbclient' | 'mount'): 
   // A plain Error this layer threw (the hostname guard) has no command line.
   if (/^No (?:SeeStar|hostname)/.test(err.message)) return err.message;
 
-  const e = err as { stdout?: string; stderr?: string; code?: string };
+  const stderr = childProcessOutput(err, 'stderr');
+  const stdout = childProcessOutput(err, 'stdout');
   const raw = backend === 'mount'
-    ? scrubSmbSecrets(`${err.message}\n${e.stderr ?? ''}`)
-    : scrubSmbSecrets(`${e.stderr ?? ''}\n${e.stdout ?? ''}`);
+    ? scrubSmbSecrets(`${err.message}\n${stderr ?? ''}`)
+    : scrubSmbSecrets(`${stderr ?? ''}\n${stdout ?? ''}`);
 
-  if (backend === 'smbclient' && (e.code === 'ENOENT' || /\bENOENT\b/.test(err.message))) {
+  if (backend === 'smbclient' && (errnoCode(err) === 'ENOENT' || /\bENOENT\b/.test(err.message))) {
     return 'smbclient is not installed on the server';
   }
   const ntStatus = raw.match(/NT_STATUS_[A-Z0-9_]+/);

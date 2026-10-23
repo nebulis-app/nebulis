@@ -15,8 +15,10 @@
 import { memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDraggable } from '@dnd-kit/core';
-import { Search, Eye, EyeOff, Info, MoonStar, ArrowUp, Check, Plus, Shuffle, Star, ChevronRight, X } from 'lucide-react';
+import { Search, Info, MoonStar, ArrowUp, Check, Plus, Star, ChevronRight, Compass, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { IntegrationRemainingChips } from './IntegrationRemainingChips';
+import { LibraryViewMenu, type TargetOrder, type TargetScope } from './LibraryViewMenu';
 import { rankTargets, resultsWithoutTarget, serverResultKeys, targetMatches } from '../../lib/plannerSearch';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { useTheme } from '../../hooks/useTheme';
@@ -26,7 +28,7 @@ import { searchDsoCatalog, type PlannerTarget } from '../../lib/api/planner';
 import { filterRecommendations } from '../../lib/filterRecommendations';
 import { typeInClass } from '../../lib/objectCategories';
 import { variedMix } from '../../lib/variedMix';
-import { FilterRecommendationChip } from '../catalogs/FilterRecommendationPanel';
+import { FilterRecommendationChip } from '../ui/FilterRecommendationPanel';
 import type { LibraryDragData } from './dragData';
 import { computeAltitudeCurve } from '../../lib/altaz';
 import { AltitudeChart } from '../AltitudeChart';
@@ -55,7 +57,7 @@ interface UnobservableEntry {
   reason: string;
 }
 
-type LibraryFilter = 'all' | 'galaxies' | 'nebulae' | 'clusters' | 'wishlist';
+type LibraryFilter = 'all' | 'galaxies' | 'nebulae' | 'clusters';
 
 /** Default-view size. With no search/filter, only this many popular targets
  *  render. Picked so the DOM stays light on first paint; anything beyond is
@@ -71,12 +73,11 @@ const FILTER_LABEL_KEY: Record<LibraryFilter, string> = {
   galaxies: 'libraryPanel.filterGalaxies',
   nebulae: 'libraryPanel.filterNebulae',
   clusters: 'libraryPanel.filterClusters',
-  wishlist: 'libraryPanel.filterWishlist',
 };
 
 /** Chip render order. Object.keys() returns string[], so listing the filters
  *  explicitly keeps the array typed without asserting over Object.keys. */
-const FILTER_ORDER: readonly LibraryFilter[] = ['all', 'galaxies', 'nebulae', 'clusters', 'wishlist'];
+const FILTER_ORDER: readonly LibraryFilter[] = ['all', 'galaxies', 'nebulae', 'clusters'];
 
 interface LibraryPanelProps {
   targets: PlannerTarget[];
@@ -97,6 +98,23 @@ interface LibraryPanelProps {
   /** Ids already on this night's timeline, shown as a tick instead of a plus. */
   scheduledIds?: Set<string>;
   observerTimezone?: string;
+  /** Opens Explore on this night, listing what is up, best first. Omitted hides the button. */
+  onOpenExplore?: () => void;
+}
+
+/** How the list is ordered. "Best tonight" is the order Explore uses too (conditions blended with how rewarding the
+ *  target is, computed by the server); "Best conditions" is the planner score alone. */
+const ORDER_KEY = 'nebulis-planner-target-order';
+
+function readOrder(): TargetOrder {
+  try { return localStorage.getItem(ORDER_KEY) === 'conditions' ? 'conditions' : 'best'; } catch { return 'best'; }
+}
+
+/** A stable copy ordered for display. Older servers send neither field, which leaves their own order untouched. */
+function orderTargets(targets: PlannerTarget[], order: TargetOrder): PlannerTarget[] {
+  const key = (t: PlannerTarget) => (order === 'best' ? (t.tonightRank ?? t.bestTonightScore) : t.bestTonightScore);
+  if (!targets.some(t => key(t) != null)) return targets;
+  return [...targets].sort((a, b) => (key(b) ?? 0) - (key(a) ?? 0));
 }
 
 export function LibraryPanel({
@@ -112,13 +130,22 @@ export function LibraryPanel({
   onQuickAdd,
   scheduledIds,
   observerTimezone,
+  onOpenExplore,
 }: LibraryPanelProps) {
   const { t } = useTranslation('planner');
   const { isDark } = useTheme();
   const [query, setQuery] = useState(initialQuery);
   const [filter, setFilter] = useState<LibraryFilter>('all');
+  // Which of the targets to show, apart from their type: everything, only the starred, or only what has no pictures yet.
+  const [scope, setScope] = useState<TargetScope>('all');
   const [hideBlocked, setHideBlocked] = useState(false);
   const [varied, setVaried] = useState(false);
+  const [order, setOrderState] = useState<TargetOrder>(readOrder);
+  const setOrder = useCallback((next: TargetOrder) => {
+    setOrderState(next);
+    try { localStorage.setItem(ORDER_KEY, next); } catch { /* private mode: the choice just won't persist */ }
+  }, []);
+  const sortedTargets = useMemo(() => orderTargets(targets, order), [targets, order]);
 
   // The rig currently in effect for framing previews (Settings → Telescopes,
   // or the Framing modal's saved override) — used below to badge each row
@@ -167,7 +194,7 @@ export function LibraryPanel({
    *  In that mode we scan all 2000+ targets so they can find anything. With no
    *  query and the "all" filter we instead show a curated default list — see
    *  popularDefault below. */
-  const isNarrowing = deferredQuery.trim().length > 0 || filter !== 'all';
+  const isNarrowing = deferredQuery.trim().length > 0 || filter !== 'all' || scope !== 'all';
 
   // Backfill from the full DSO catalog while searching. Objects that never
   // clear the horizon tonight are absent from `targets` (the server drops
@@ -187,11 +214,12 @@ export function LibraryPanel({
 
   const filtered = useMemo(() => {
     if (isNarrowing) {
-      const matched = targets.filter(t => {
+      const matched = sortedTargets.filter(t => {
         if (filter === 'galaxies' && !typeInClass(t.type, 'galaxy')) return false;
         if (filter === 'nebulae' && !typeInClass(t.type, 'nebula')) return false;
         if (filter === 'clusters' && !typeInClass(t.type, 'cluster')) return false;
-        if (filter === 'wishlist' && !wishlist.idSet.has(t.id)) return false;
+        if (scope === 'wishlist' && !wishlist.idSet.has(t.id)) return false;
+        if (scope === 'notImaged' && t.isAlreadyImaged) return false;
         if (deferredQuery && !targetMatches(t, deferredQuery, serverKeys)) return false;
         return true;
       });
@@ -207,16 +235,16 @@ export function LibraryPanel({
     const push = (t: PlannerTarget) => { if (!seen.has(t.id)) { seen.add(t.id); out.push(t); } };
 
     // Already-imaged objects are always relevant, so pin them at the top.
-    for (const t of targets) if (t.isAlreadyImaged) push(t);
+    for (const t of sortedTargets) if (t.isAlreadyImaged) push(t);
 
-    // Then fill with popular objects sorted by tonight's max altitude.
-    const popular = targets.filter(t => t.commonNames.length > 0);
+    // Then fill with popular objects in the chosen order (Best tonight by default).
+    const popular = sortedTargets.filter(t => t.commonNames.length > 0);
     for (const t of popular) {
       if (out.length >= POPULAR_LIMIT) break;
       push(t);
     }
     return out;
-  }, [targets, filter, deferredQuery, isNarrowing, wishlist.idSet, serverKeys]);
+  }, [sortedTargets, filter, scope, deferredQuery, isNarrowing, wishlist.idSet, serverKeys]);
 
   // Pre-compute per-row visibility against the sky map. Skipped when the
   // observer location or night window is missing.
@@ -251,7 +279,7 @@ export function LibraryPanel({
   // reason they're unobservable. Hidden when "Hide blocked" is on (these are the
   // most blocked of all) or when filtering by a category tab.
   const unobservable = useMemo<UnobservableEntry[]>(() => {
-    if (hideBlocked || filter !== 'all' || trimmedQuery.length === 0) return [];
+    if (hideBlocked || filter !== 'all' || scope !== 'all' || trimmedQuery.length === 0) return [];
     const results = dsoSearchQuery.data?.results;
     if (!results) return [];
     const out: UnobservableEntry[] = [];
@@ -280,26 +308,44 @@ export function LibraryPanel({
       });
     }
     return out;
-  }, [dsoSearchQuery.data, targets, hideBlocked, filter, trimmedQuery, observerLat, observerLon, nightStart, nightEnd, minAlt, t]);
+  }, [dsoSearchQuery.data, targets, hideBlocked, filter, scope, trimmedQuery, observerLat, observerLon, nightStart, nightEnd, minAlt, t]);
 
   return (
     <div
-      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border ${
+      className={`@container flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border ${
         isDark ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-white'
       }`}
     >
       <div className={`space-y-2.5 border-b p-3 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
         <div className="flex items-center justify-between gap-2">
           <h2 className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>{t('libraryPanel.targets')}</h2>
-          <span className={`text-[11px] tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-            {t('libraryPanel.upThisNight', { count: targets.length })}
-          </span>
+          <div className="flex min-w-0 items-center gap-2">
+            {onOpenExplore && (
+              <button
+                type="button"
+                onClick={onOpenExplore}
+                title={t('libraryPanel.openExploreTitle')}
+                aria-label={t('libraryPanel.openExploreTitle')}
+                className={`rounded-md p-1 transition ${isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}
+              >
+                <Compass className="h-4 w-4" />
+              </button>
+            )}
+            <span className={`truncate text-[0.6875rem] tabular-nums ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+              {isNarrowing
+                ? (hiddenCount > 0
+                    ? t('libraryPanel.matchesOf', { count: afterHide.length, shown: visibleRows.length })
+                    : t('libraryPanel.matches', { count: afterHide.length }))
+                : t('libraryPanel.countOfUp', { count: targets.length, shown: visibleRows.length })}
+            </span>
+          </div>
         </div>
-        <div className="relative">
+        <div className="flex items-stretch gap-2">
+        <div className="relative min-w-0 flex-1">
           <Search className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
           <input
             type="text"
-            placeholder={t('libraryPanel.searchPlaceholder')}
+            placeholder={t('libraryPanel.searchPlaceholderAll', { total: targets.length })}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
@@ -325,6 +371,18 @@ export function LibraryPanel({
             </button>
           )}
         </div>
+        <LibraryViewMenu
+          order={order}
+          onOrderChange={setOrder}
+          hideBlocked={hideBlocked}
+          onHideBlockedChange={setHideBlocked}
+          scope={scope}
+          onScopeChange={setScope}
+          varied={varied}
+          onVariedChange={setVaried}
+          isDark={isDark}
+        />
+        </div>
         <div className="flex flex-wrap gap-1.5">
           {FILTER_ORDER.map(f => (
             <button
@@ -342,55 +400,17 @@ export function LibraryPanel({
             </button>
           ))}
         </div>
-        {/* Paired with the count it affects, on its own row, rather than
-            wedged into the category-filter pills above: it's a visibility
-            toggle, not another category, and grouping it with All/Galaxies/
-            Nebulae/etc. read as a mismatched extra pill that wrapped alone. */}
-        <div className="flex items-center justify-between gap-2">
-          <span className={`min-w-0 truncate text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-            {isNarrowing
-              ? (hiddenCount > 0
-                  ? t('libraryPanel.matchesOf', { count: afterHide.length, shown: visibleRows.length })
-                  : t('libraryPanel.matches', { count: afterHide.length }))
-              : t('libraryPanel.popularPicks', { count: visibleRows.length })}
-          </span>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <button
-              onClick={() => setVaried(v => !v)}
-              className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs transition ${
-                varied
-                  ? 'bg-amber-500 text-white'
-                  : isDark
-                    ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-              title={t('libraryPanel.variedMixTitle')}
-            >
-              <Shuffle className="h-3 w-3" />
-              {t('libraryPanel.variedMix')}
-            </button>
-            <button
-              onClick={() => setHideBlocked(v => !v)}
-              className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs transition ${
-                hideBlocked
-                  ? 'bg-amber-500 text-white'
-                  : isDark
-                    ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-              title={t('libraryPanel.hideBlockedTitle')}
-            >
-              {hideBlocked ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-              {t('libraryPanel.hideBlocked')}
-            </button>
-          </div>
-        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {visibleRows.length === 0 && unobservable.length === 0 && (
           <div className={`p-6 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             {t('libraryPanel.noTargetsMatch')}
+            {onOpenExplore && (
+              <button type="button" onClick={onOpenExplore} className="mt-2 block w-full font-medium text-accent-500 hover:underline">
+                {t('libraryPanel.findMoreInExplore')}
+              </button>
+            )}
           </div>
         )}
         {visibleRows.map(target => (
@@ -421,7 +441,7 @@ export function LibraryPanel({
         )}
         {unobservable.length > 0 && (
           <>
-            <div className={`flex items-center gap-2 px-3 pt-4 pb-2 text-[11px] font-medium uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+            <div className={`flex items-center gap-2 px-3 pt-4 pb-2 text-[0.6875rem] font-medium uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
               <MoonStar className="w-3.5 h-3.5" />
               {t('libraryPanel.notObservableHeading')}
             </div>
@@ -527,15 +547,14 @@ const LibraryRow = memo(function LibraryRow({
         type="button"
         onClick={(e) => { e.stopPropagation(); onToggleExpand(target.id); }}
         onPointerDown={(e) => e.stopPropagation()}
-        disabled={!hasLocation}
         aria-expanded={isExpanded}
-        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-30 ${
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition ${
           isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
         }`}
         aria-label={isExpanded
-          ? t('libraryPanel.hideAltitudeChartFor', { name: target.name })
-          : t('libraryPanel.showAltitudeChartFor', { name: target.name })}
-        title={isExpanded ? t('libraryPanel.hideAltitudeChart') : t('libraryPanel.showAltitudeChart')}
+          ? t('libraryPanel.hideDetailsFor', { name: target.name })
+          : t('libraryPanel.showMoreFor', { name: target.name })}
+        title={isExpanded ? t('libraryPanel.hideMore') : t('libraryPanel.showMore')}
       >
         <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
       </button>
@@ -549,10 +568,10 @@ const LibraryRow = memo(function LibraryRow({
         />
         {target.isAlreadyImaged && (
           <span
-            className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white ring-2 ring-slate-900"
+            className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-white ring-2 ring-slate-900"
             title={t('libraryPanel.alreadyInLibrary')}
           >
-            <Check className="h-2.5 w-2.5" />
+            <Check className="h-2 w-2" strokeWidth={3} />
           </span>
         )}
       </div>
@@ -561,6 +580,9 @@ const LibraryRow = memo(function LibraryRow({
           <span className={`truncate text-sm font-medium ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
             {formatObjectName(target.id, target.name)}
           </span>
+          {inWishlist && (
+            <Star className="h-3 w-3 shrink-0 fill-current text-amber-400" aria-label={t('libraryPanel.removeFromWishlist')} />
+          )}
         </div>
         {metaParts.length > 0 && (
           <div className={`truncate text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
@@ -572,23 +594,24 @@ const LibraryRow = memo(function LibraryRow({
             what keeps this line from wrapping once the filter chip is on it. */}
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
           {blockedBySky ? (
-            <span className="text-[10px] text-amber-500">{t('libraryPanel.notInVisibleSky')}</span>
+            <span className="text-[0.625rem] text-amber-500">{t('libraryPanel.notInVisibleSky')}</span>
           ) : (
             <span
               title={peakAt
                 ? t('libraryPanel.peaksAtAroundTitle', { deg: Math.round(target.maxAlt), time: peakAt })
                 : t('libraryPanel.peaksAtTitle', { deg: Math.round(target.maxAlt) })}
-              className={`flex items-center gap-1 text-[10px] tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-500'}`}
+              className={`flex items-center gap-1 text-[0.625rem] tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-500'}`}
             >
               <ArrowUp className="h-2.5 w-2.5" />
               {peakAt ? t('libraryPanel.peaksAtAround', { deg: Math.round(target.maxAlt), time: peakAt }) : t('libraryPanel.peaksAt', { deg: Math.round(target.maxAlt) })}
             </span>
           )}
           {fit && fitStrings && <FitBadge tag={fit.tag} label={fitStrings.short} title={fitStrings.label} isDark={isDark} />}
-          <FilterRecommendationChip recommendations={filterRec} isDark={isDark} />
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="relative flex shrink-0 items-center gap-1">
+        {/* Star and info appear on hover (and stay put on touch screens, where there is no hover), so the name keeps the room. */}
+        <div className={`lib-row-secondary flex items-center gap-1 rounded-full ${isDark ? 'bg-slate-900/95' : 'bg-white'}`}>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onToggleWishlist(target.id); }}
@@ -618,6 +641,7 @@ const LibraryRow = memo(function LibraryRow({
         >
           <Info className="h-3.5 w-3.5" />
         </button>
+        </div>
         {onQuickAdd && (
           <button
             type="button"
@@ -644,17 +668,23 @@ const LibraryRow = memo(function LibraryRow({
         )}
       </div>
     </div>
-    {isExpanded && hasLocation && (
-      <div className="px-3 pb-2">
-        <AltitudeChart
-          ra={target.ra}
-          dec={target.dec}
-          lat={observerLat as number}
-          lon={observerLon as number}
-          minAlt={minAlt ?? undefined}
-          timeZone={observerTimezone}
-          isDark={isDark}
-        />
+    {isExpanded && (
+      <div className="space-y-2 px-3 pb-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <FilterRecommendationChip recommendations={filterRec} isDark={isDark} />
+          <IntegrationRemainingChips objectId={target.id} isDark={isDark} />
+        </div>
+        {hasLocation && (
+          <AltitudeChart
+            ra={target.ra}
+            dec={target.dec}
+            lat={observerLat}
+            lon={observerLon}
+            minAlt={minAlt ?? undefined}
+            timeZone={observerTimezone}
+            isDark={isDark}
+          />
+        )}
       </div>
     )}
     </div>
@@ -702,7 +732,7 @@ const UnobservableRow = memo(function UnobservableRow({ entry, onShowDetails, is
             entry.magnitude != null ? t('libraryPanel.magnitude', { value: entry.magnitude.toFixed(1) }) : null,
           ].filter((part): part is string => !!part).join(' · ')}
         </div>
-        <div className="text-[10px] text-slate-500 mt-0.5">{entry.reason}</div>
+        <div className="text-[0.625rem] text-slate-500 mt-0.5">{entry.reason}</div>
       </div>
       <button
         type="button"

@@ -53,6 +53,7 @@
 
 import { spawnSync, execFile } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -319,6 +320,26 @@ function gitRevision() {
 const selected = only ? STAGES.filter(s => s.name === only) : STAGES;
 if (only && selected.length === 0) {
   console.error(`Unknown stage "${only}". Available: ${STAGES.map(s => s.name).join(', ')}`);
+  process.exit(2);
+}
+
+/**
+ * The e2e stage starts its own Vite server on this port (playwright.config.ts). This run sets CI, which turns
+ * Playwright's reuse of an existing server off, so a dev server already on the port makes the stage fail in
+ * milliseconds with no test run behind it, after the slow stages before it have already spent minutes. Look first.
+ */
+const E2E_PORT = 5173;
+const portInUse = port => new Promise(resolve => {
+  const socket = net.createConnection({ port, host: 'localhost' });
+  socket.setTimeout(750, () => { socket.destroy(); resolve(false); });
+  socket.once('connect', () => { socket.destroy(); resolve(true); });
+  socket.once('error', () => resolve(false));
+});
+if (selected.some(s => s.name === 'e2e') && await portInUse(E2E_PORT)) {
+  console.error(
+    `Port ${E2E_PORT} is already in use, so the e2e stage cannot start its own server (this run sets CI, which turns ` +
+    `reuse off). Stop the dev server (npm run dev) and run again, or run "npx playwright test" on its own to use it.`,
+  );
   process.exit(2);
 }
 

@@ -16,7 +16,7 @@ import { Modal } from '../ui/Modal';
 import { SkippedNotice } from '../SkippedNotice';
 import { ImportStepIndicator } from '../ImportStepIndicator';
 import { CatalogPicker, ObjectReviewCard, type ObjectEdit } from './ObjectReviewCard';
-import { LinkRefreshChoice } from './LinkRefreshChoice';
+import { LinkRefreshChoice } from '../ui/LinkRefreshChoice';
 
 type Phase = 'scanning' | 'review' | 'schedule' | 'linking' | 'done';
 

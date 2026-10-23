@@ -18,7 +18,7 @@ const BASE_URL =
   'https://science.nasa.gov/mission/hubble/science/explore-the-night-sky/hubble-messier-catalog';
 const USER_AGENT = 'Nebulis/1.0 (astronomy companion app)';
 const TIMEOUT_MS = 12_000;
-const IMAGE_WIDTH = 600;
+const IMAGE_WIDTH = 1200;
 
 export interface MessierEntry {
   /** Messier number (1-110) */

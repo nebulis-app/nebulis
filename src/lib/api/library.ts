@@ -1,7 +1,8 @@
-import type { AstroObject, Session, ProcessedImage, ProjectArchive, SessionCaptureSummary, ProcessingStatus, GalleryCrop } from '../../types';
+import type { AstroObject, Session, ProcessedImage, ProjectArchive, SessionCaptureSummary, ProcessingStatus, GalleryCrop, SessionFile } from '../../types';
 export type { ProcessedImage, ProjectArchive, ProcessingStatus };
 import { fetchJSON, authHeaders, BASE } from './client';
 import type { ConnectionType as TransportKind } from './telescopes';
+import { currentThemeId } from '../catalogImage';
 
 // FITS header inspection
 type FitsValue = string | number | boolean;
@@ -132,11 +133,6 @@ export const getLibraryArchive = (telescopeId?: string) =>
   fetchJSON<{ path: string; folders: ArchivedFolder[] }>(
     telescopeId ? `/library/archive?telescopeId=${encodeURIComponent(telescopeId)}` : '/library/archive',
   );
-
-/** Every scope (telescope id, or null for the shared unscoped bucket) that
- *  currently has archived data. */
-export const getArchiveScopes = () =>
-  fetchJSON<Array<string | null>>('/library/archive/scopes');
 
 /** Mirrors server/lib/library/calibrationFolders.ts's CalibrationFrameType,
  *  plus 'mixed' for Dwarf's blended CALI_FRAME folder. */
@@ -283,14 +279,6 @@ export const detachCalibrationBundle = (attachmentId: string) =>
   fetchJSON<{ detached: boolean }>(
     `/library/calibrations/attach/${encodeURIComponent(attachmentId)}`,
     { method: 'DELETE' },
-  );
-
-/** Every attachment on one object (both whole-object and any per-session
- *  ones), or — with a date — just what resolves for that one session (a
- *  session-specific pick wins over the whole-object one, per type). */
-export const getCalibrationAttachments = (objectId: string, date?: string) =>
-  fetchJSON<{ attachments: CalibrationAttachmentSummary[] }>(
-    `/library/calibrations/attachments?objectId=${encodeURIComponent(objectId)}${date ? `&date=${encodeURIComponent(date)}` : ''}`,
   );
 
 /** Permanently deletes one bias/dark bundle's files from the archive —
@@ -512,12 +500,7 @@ export async function createManualObservation(params: {
   if (params.telescopeId) formData.append('telescopeId', params.telescopeId);
 
   const res = await fetch(`${BASE}/library/manual-observations`, { method: 'POST', headers: authHeaders(), body: formData });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body?.error?.message || body?.error || res.statusText);
-  }
-  const body = await res.json();
-  return (body.data ?? body) as { objectId: string; date: string };
+  return parseObjectDateResult(await readUploadResult(res), 'Manual observation');
 }
 
 export const toggleFavorite = (objectId: string, isFavorite: boolean) =>
@@ -618,6 +601,9 @@ export interface ImportCommitPlan {
   /** Telescope to tag every session created by this import with, or null to
    *  leave sessions untagged. */
   telescopeId?: string | null;
+  /** Optical configuration of that telescope (e.g. the reducer); absent or
+   *  null = detect it from the FITS focal length. */
+  opticalConfigId?: string | null;
 }
 
 /** Phase 1: scan a server-readable folder and return the import plan.
@@ -653,6 +639,49 @@ export const commitFolderImport = (plan: ImportCommitPlan) =>
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (value === null || typeof value !== 'object') return null;
   return Object.fromEntries(Object.entries(value));
+}
+
+/** Mirrors the `body?.error?.message || body?.error || fallback` chain the
+ *  multipart upload helpers below used inline: the server's error envelope
+ *  message, else a bare string `error`, else the HTTP status text. (Unlike
+ *  `errorMessage` in client.ts this does not translate server codes; these
+ *  call sites never did.) */
+function uploadErrorText(body: unknown, fallback: string): string {
+  const error = asRecord(body)?.error;
+  const message = asRecord(error)?.message;
+  if (typeof message === 'string' && message) return message;
+  if (typeof error === 'string' && error) return error;
+  return fallback;
+}
+
+/** Shared tail of the raw-`fetch` multipart uploads (fetchJSON can't be used:
+ *  it forces a JSON content type). Throws the server's error text on a
+ *  non-2xx, otherwise returns the unwrapped `{ ok, data }` payload — still
+ *  `unknown`, for the caller's parser to validate. */
+async function readUploadResult(res: Response): Promise<unknown> {
+  if (!res.ok) {
+    const body: unknown = await res.json().catch(() => ({}));
+    throw new Error(uploadErrorText(body, res.statusText));
+  }
+  const body: unknown = await res.json();
+  return asRecord(body)?.data ?? body;
+}
+
+function requireRecord(value: unknown, what: string): Record<string, unknown> {
+  const v = asRecord(value);
+  if (!v) throw new Error(`${what} response is not an object`);
+  return v;
+}
+
+function requireString(v: Record<string, unknown>, key: string, what: string): string {
+  const x = v[key];
+  if (typeof x !== 'string') throw new Error(`${what} response missing string \`${key}\``);
+  return x;
+}
+
+function parseObjectDateResult(value: unknown, what: string): { objectId: string; date: string } {
+  const v = requireRecord(value, what);
+  return { objectId: requireString(v, 'objectId', what), date: requireString(v, 'date', what) };
 }
 
 /**
@@ -845,15 +874,22 @@ export async function uploadFolderTemp(
 
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
-            const body = JSON.parse(xhr.responseText);
-            resolve(body?.data ?? body);
+            const body: unknown = JSON.parse(xhr.responseText);
+            const v = requireRecord(asRecord(body)?.data ?? body, 'Upload batch');
+            const { fileCount } = v;
+            if (typeof fileCount !== 'number') throw new Error('Upload batch response missing number `fileCount`');
+            resolve({
+              tmpPath: requireString(v, 'tmpPath', 'Upload batch'),
+              tmpId: requireString(v, 'tmpId', 'Upload batch'),
+              fileCount,
+            });
           } catch {
             reject(new Error('Invalid response from server'));
           }
         } else {
           try {
-            const body = JSON.parse(xhr.responseText);
-            reject(new Error(body?.error?.message || body?.error || xhr.statusText));
+            const body: unknown = JSON.parse(xhr.responseText);
+            reject(new Error(uploadErrorText(body, xhr.statusText)));
           } catch {
             reject(new Error(xhr.statusText));
           }
@@ -934,12 +970,11 @@ export async function uploadGalleryImage(objectId: string, file: File): Promise<
     headers: authHeaders(),
     body: formData,
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body?.error?.message || body?.error || res.statusText);
-  }
-  const body = await res.json();
-  return (body.data ?? body) as { objectId: string; galleryImage: string };
+  const v = requireRecord(await readUploadResult(res), 'Gallery image upload');
+  return {
+    objectId: requireString(v, 'objectId', 'Gallery image upload'),
+    galleryImage: requireString(v, 'galleryImage', 'Gallery image upload'),
+  };
 }
 
 interface StackedImage {
@@ -985,12 +1020,7 @@ export async function uploadProcessedImage(
     `${BASE}/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/processed-images`,
     { method: 'POST', headers: authHeaders(), body: formData }
   );
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body?.error?.message || body?.error || res.statusText);
-  }
-  const body = await res.json();
-  return parseProcessedImage(body?.data ?? body);
+  return parseProcessedImage(await readUploadResult(res));
 }
 
 /** Overwrite an existing processed image's file in place, keeping its id,
@@ -1007,12 +1037,7 @@ export async function overwriteProcessedImage(
     `${BASE}/library/objects/${encodeURIComponent(objectId)}/processed-images/${encodeURIComponent(id)}`,
     { method: 'PUT', headers: authHeaders(), body: formData },
   );
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body?.error?.message || body?.error || res.statusText);
-  }
-  const body = await res.json();
-  return parseProcessedImage(body?.data ?? body);
+  return parseProcessedImage(await readUploadResult(res));
 }
 
 /** Object-scoped processed-image upload, no session date. The image is filed
@@ -1029,12 +1054,7 @@ export async function uploadObjectProcessedImage(
     `${BASE}/library/objects/${encodeURIComponent(objectId)}/processed-images`,
     { method: 'POST', headers: authHeaders(), body: formData },
   );
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body?.error?.message || body?.error || res.statusText);
-  }
-  const body = await res.json();
-  return parseProcessedImage(body?.data ?? body);
+  return parseProcessedImage(await readUploadResult(res));
 }
 
 /** Promote a telescope-side file already in the library to a processed image
@@ -1079,9 +1099,6 @@ export interface ProcessingRun {
   createdAt: string;
   dates: string[];
 }
-
-export const getProcessingRuns = (objectId: string) =>
-  fetchJSON<ProcessingRun[]>(`/library/objects/${encodeURIComponent(objectId)}/processing-runs`);
 
 export const createProcessingRun = (
   objectId: string,
@@ -1169,15 +1186,15 @@ export function uploadProjectArchive(
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
-          const body = JSON.parse(xhr.responseText);
-          resolve(parseProjectArchive(body?.data ?? body));
+          const body: unknown = JSON.parse(xhr.responseText);
+          resolve(parseProjectArchive(asRecord(body)?.data ?? body));
         } catch {
           reject(new Error('Invalid response from server'));
         }
       } else {
         try {
-          const body = JSON.parse(xhr.responseText);
-          reject(new Error(body?.error?.message || body?.error || xhr.statusText));
+          const body: unknown = JSON.parse(xhr.responseText);
+          reject(new Error(uploadErrorText(body, xhr.statusText)));
         } catch {
           reject(new Error(xhr.statusText || `Upload failed (${xhr.status})`));
         }
@@ -1210,11 +1227,25 @@ export const getLibraryObjectThumbnailUrl = (
   version?: string | null,
 ) => {
   const v = version ? `&v=${encodeURIComponent(version)}` : '';
-  return `${BASE}/library/objects/${encodeURIComponent(objectId)}/thumbnail?w=${w}&h=${h}${v}`;
+  // Built-in artwork is drawn per theme, so the theme is part of the URL.
+  const theme = version?.startsWith('builtin:') ? `&theme=${currentThemeId()}` : '';
+  return `${BASE}/library/objects/${encodeURIComponent(objectId)}/thumbnail?w=${w}&h=${h}${v}${theme}`;
 };
 
 export const getLibraryFileThumbnailUrl = (filePath: string, w = 400, h = 400) =>
   `${BASE}/library/file/thumbnail?path=${encodeURIComponent(filePath)}&w=${w}&h=${h}`;
+
+/** What has been done with one object, and its best own picture. Mirrors server/lib/library/cluster.ts. */
+export interface LibraryClusterItem {
+  objectId: string;
+  processedCount: number;
+  stackedCount: number;
+  subCount: number;
+  image: { path: string; kind: 'processed' | 'telescope'; aspect: number } | null;
+}
+
+/** Feeds the Library's Mosaic view: sizes tiles by how much each object has been worked on. */
+export const getLibraryCluster = () => fetchJSON<LibraryClusterItem[]>('/library/cluster');
 
 export async function uploadLibraryFile(
   objectId: string,
@@ -1224,20 +1255,22 @@ export async function uploadLibraryFile(
    *  "Save") instead of writing a new "…E.jpg" variant ("Save as new
    *  version"). */
   overwritePath?: string,
+  /** The edit cropped, rotated or flipped the frame, so the picture no longer matches its FITS header. */
+  geometryChanged = false,
 ): Promise<{ objectId: string; date: string; filename: string }> {
   const formData = new FormData();
   formData.append('image', file, file.name);
   if (overwritePath) formData.append('overwritePath', overwritePath);
+  if (overwritePath && geometryChanged) formData.append('geometryChanged', '1');
   const res = await fetch(
     `${BASE}/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/library-files`,
     { method: 'POST', headers: authHeaders(), body: formData }
   );
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body?.error?.message || body?.error || res.statusText);
-  }
-  const body = await res.json();
-  return (body.data ?? body) as { objectId: string; date: string; filename: string };
+  const v = requireRecord(await readUploadResult(res), 'Library file upload');
+  return {
+    ...parseObjectDateResult(v, 'Library file upload'),
+    filename: requireString(v, 'filename', 'Library file upload'),
+  };
 }
 
 // Whole-object ZIP download (locally-imported files, no SMB).
@@ -1292,6 +1325,8 @@ export const startSubframesArchive = (
   filters?: string[],
   includeVariants?: boolean,
   sirilLayout?: boolean,
+  /** Leave out the sub-frames not kept (rejected, or graded bad by Frame Analysis). */
+  keptOnly?: boolean,
 ) =>
   fetchJSON<{ jobId: string; filesTotal: number }>(
     `/library/download/objects/${encodeURIComponent(objectId)}/subframes`,
@@ -1302,6 +1337,7 @@ export const startSubframesArchive = (
         ...(filters ? { filters } : {}),
         ...(includeVariants ? { includeVariants: true } : {}),
         ...(sirilLayout ? { sirilLayout: true } : {}),
+        ...(keptOnly ? { keptOnly: true } : {}),
       }),
     },
   );
@@ -1350,6 +1386,8 @@ export interface LibraryImage {
   /** True for a user-uploaded post-processing result, false for a raw
    *  telescope file. Drives the Gallery page's "Processed only" filter. */
   isProcessed: boolean;
+  /** Made or changed in the image editor. */
+  isEdited: boolean;
 }
 
 /** Paginated response envelope for /library/all-images. */
@@ -1379,6 +1417,101 @@ export const toggleImageFavorite = (imagePath: string, isFavorite: boolean) =>
     { method: isFavorite ? 'POST' : 'DELETE', body: JSON.stringify({ imagePath }) }
   );
 
+// ─── Object media ("All media" object page) ─────────────────────────────────
+// Mirrors server/lib/library/objectMedia.ts, which is the source of truth.
+
+export type MediaKind = 'processed' | 'telescope' | 'sub' | 'project' | 'video';
+export type MediaTabId = MediaKind | 'all';
+export type MediaGroupBy = 'night' | 'telescope' | 'filter' | 'type' | 'none';
+export type MediaSort = 'newest' | 'oldest' | 'time';
+
+export interface MediaTelescope { id: string; name: string; color: string }
+
+export interface MediaItem {
+  id: string;
+  kind: MediaKind;
+  objectId: string;
+  recordId?: string;
+  name: string;
+  title?: string;
+  software?: string;
+  date: string | null;
+  runDates?: string[] | null;
+  telescope: MediaTelescope | null;
+  exposure: string | null;
+  filter: string | null;
+  frameCount: number | null;
+  format: string;
+  size: number;
+  capturedAt: string | null;
+  isFavorite: boolean;
+  previewable: boolean;
+  path: string;
+  thumbUrl: string | null;
+  previewUrl: string | null;
+  downloadUrl: string;
+  videoUrl?: string;
+  isImage: boolean;
+  isFits: boolean;
+  groupKey: string;
+  file?: SessionFile;
+  processed?: ProcessedImage;
+  project?: ProjectArchive;
+}
+
+export interface MediaGroup {
+  key: string;
+  /** A display value (date, filter, telescope name), or one of the tokens
+   *  `across`, `projects`, `none`, which the UI translates. */
+  label: string;
+  date: string | null;
+  telescope: MediaTelescope | null;
+  count: number;
+  subCount: number;
+  frames: number;
+  exposure: string | null;
+  integrationSec: number | null;
+  pinned: boolean;
+}
+
+export interface ObjectMedia {
+  counts: Record<MediaTabId, number>;
+  facets: {
+    telescopes: Array<MediaTelescope & { count: number }>;
+    filters: Array<{ value: string; count: number }>;
+    nights: Array<{ date: string; count: number }>;
+    formats: Array<{ value: string; count: number }>;
+  };
+  groups: MediaGroup[];
+  items: MediaItem[];
+  total: number;
+  nextOffset: number | null;
+}
+
+export interface ObjectMediaParams {
+  kind: MediaTabId;
+  group: MediaGroupBy;
+  sort: MediaSort;
+  telescope?: string;
+  filter?: string;
+  night?: string;
+  from?: string;
+  to?: string;
+  format?: string;
+  favorites?: boolean;
+  offset?: number;
+  limit?: number;
+}
+
+export function getObjectMedia(objectId: string, params: ObjectMediaParams): Promise<ObjectMedia> {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === '' || v === false) continue;
+    qs.set(k, v === true ? '1' : String(v));
+  }
+  return fetchJSON<ObjectMedia>(`/library/objects/${encodeURIComponent(objectId)}/media?${qs}`);
+}
+
 // ─── File location ("where do these files live") ─────────────────────────────
 
 export interface DiskLocation {
@@ -1404,3 +1537,145 @@ export const getObjectLocation = (objectId: string, date?: string) =>
   fetchJSON<ObjectLocation>(
     `/library/objects/${encodeURIComponent(objectId)}/location${date ? `?date=${encodeURIComponent(date)}` : ''}`,
   );
+
+// ─── Integration per filter + goals ──────────────────────────────────────────
+// Mirrors server/lib/library/integration.ts. `filter: null` is the "no filter"
+// bucket (one-shot colour camera without a wheel, or no FILTER keyword).
+
+export interface NightIntegration {
+  date: string;
+  frames: number;
+  exposureSec: number;
+}
+
+export interface FilterIntegration {
+  filter: string | null;
+  frames: number;
+  exposureSec: number;
+  goalSec: number | null;
+  nights: NightIntegration[];
+}
+
+export interface IntegrationBreakdown {
+  objectId: string;
+  totalFrames: number;
+  totalExposureSec: number;
+  unreadableFrames: number;
+  filters: FilterIntegration[];
+}
+
+export interface IntegrationGoal {
+  filter: string | null;
+  goalSec: number;
+}
+
+export interface FilterAlias {
+  alias: string;
+  canonical: string;
+}
+
+export const getIntegrationByFilter = (objectId: string) =>
+  fetchJSON<IntegrationBreakdown>(`/library/objects/${encodeURIComponent(objectId)}/integration/filters`);
+
+export const saveIntegrationGoals = (objectId: string, goals: IntegrationGoal[]) =>
+  fetchJSON<IntegrationGoal[]>(
+    `/library/objects/${encodeURIComponent(objectId)}/integration/goals`,
+    { method: 'PUT', body: JSON.stringify({ goals }) },
+  );
+
+export const getFilterAliases = () => fetchJSON<FilterAlias[]>('/library/filter-aliases');
+
+export const saveFilterAliases = (aliases: FilterAlias[]) =>
+  fetchJSON<FilterAlias[]>('/library/filter-aliases', { method: 'PUT', body: JSON.stringify({ aliases }) });
+
+export interface FilterRemaining {
+  filter: string | null;
+  goalSec: number;
+  exposureSec: number;
+  remainingSec: number;
+}
+
+export interface ObjectIntegrationProgress {
+  objectId: string;
+  filters: FilterRemaining[];
+  complete: boolean;
+}
+
+/** Progress toward integration goals, for every library object that has one. */
+export const getIntegrationProgress = () =>
+  fetchJSON<ObjectIntegrationProgress[]>('/library/integration/progress');
+
+// ── Stacking export: kept lights + matched calibration, as a ZIP ──
+export type StackingCalType = 'bias' | 'dark' | 'flat' | 'flatDark';
+export type StackingIssueCode =
+  | 'no_dark' | 'dark_temp_far' | 'dark_expired' | 'no_flat' | 'flat_other_night'
+  | 'no_flat_calibration' | 'bias_expired' | 'unknown_settings';
+
+export interface StackingIssue {
+  code: StackingIssueCode;
+  severity: 'error' | 'warning';
+  params?: Record<string, string | number>;
+}
+
+export interface StackingCalibration {
+  type: StackingCalType;
+  name: string;
+  scope: string | null;
+  folderName: string;
+  key: string;
+  source: 'attached' | 'matched';
+  fileCount: number;
+  bytes: number;
+  exposureSec: number | null;
+  gain: number | null;
+  binning: number | null;
+  sensorTempC: number | null;
+  filter: string | null;
+  capturedAt: string | null;
+  isExpired: boolean;
+  deltaTempC?: number;
+  deltaDays?: number;
+}
+
+export interface StackingPlanGroup {
+  id: string;
+  night: string;
+  filter: string | null;
+  exposureSec: number | null;
+  gain: number | null;
+  binning: number | null;
+  sensorTempC: number | null;
+  frames: number;
+  kept: number;
+  bytes: number;
+  dark: StackingCalibration | null;
+  flat: StackingCalibration | null;
+  flatDark: StackingCalibration | null;
+  bias: StackingCalibration | null;
+  issues: StackingIssue[];
+}
+
+export interface StackingPlan {
+  objectId: string;
+  nights: string[];
+  includeNotKept: boolean;
+  groups: StackingPlanGroup[];
+  /** Nights with raw frames that have no analysis yet (counted as kept until measured). */
+  unmeasuredByNight: Record<string, number>;
+  totals: { lights: number; excluded: number; calibrationFrames: number; bytes: number; errors: number; warnings: number };
+}
+
+export type StackingLayout = 'wbpp' | 'siril';
+
+export const getStackingPlan = (objectId: string, dates: string[], includeNotKept: boolean) =>
+  fetchJSON<StackingPlan>(`/library/objects/${encodeURIComponent(objectId)}/stacking-export/plan`, {
+    method: 'POST',
+    body: JSON.stringify({ dates, includeNotKept }),
+  });
+
+/** Starts the ZIP build; poll it with getSubframesArchiveStatus like the sub-frame download. */
+export const startStackingExport = (objectId: string, dates: string[], includeNotKept: boolean, layout: StackingLayout) =>
+  fetchJSON<{ jobId: string; filesTotal: number }>(`/library/objects/${encodeURIComponent(objectId)}/stacking-export`, {
+    method: 'POST',
+    body: JSON.stringify({ dates, includeNotKept, layout }),
+  });

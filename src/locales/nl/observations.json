@@ -86,7 +86,9 @@
     "showingRange": "{{from}}–{{to}} van {{total}} waarnemingen weergegeven",
     "previousPage": "Vorige pagina",
     "nextPage": "Volgende pagina",
-    "pageOfTotal": "{{page}} / {{totalPages}}"
+    "pageOfTotal": "{{page}} / {{totalPages}}",
+    "columnRig": "Opstelling",
+    "noRig": "Geen telescoop"
   },
   "toolbar": {
     "viewGroup": "Weergave",
@@ -98,7 +100,8 @@
     "today": "Vandaag",
     "allTelescopes": "Alle telescopen",
     "filterByTelescope": "Filter op telescoop",
-    "share": "Delen"
+    "share": "Delen",
+    "allTrains": "{{name}} (alle opstellingen)"
   },
   "newObservationForm": {
     "objectLabel": "Object",
@@ -166,7 +169,16 @@
       "capturedOn": "Opgenomen met {{name}}. Klik om andere sessies van deze telescoop te bekijken.",
       "reassignTitle": "Toewijzen aan een andere telescoop",
       "reassignTo": "Toewijzen aan",
-      "reassignFailed": "Opnieuw toewijzen is mislukt"
+      "reassignFailed": "Opnieuw toewijzen is mislukt",
+      "opticsTitle": "Optische opstelling",
+      "opticsAuto": "Automatisch",
+      "opticsAutoFits": "FITS: {{focal}}",
+      "opticsAutoNone": "niet gevonden",
+      "opticsSource": {
+        "manual": "Gekozen voor deze nacht",
+        "fits": "Afgeleid uit de brandpuntsafstand in de FITS",
+        "only": "Enige configuratie van de telescoop"
+      }
     },
     "objectPanel": {
       "about": "Over {{name}}",
@@ -212,6 +224,8 @@
     "subframesPanel": {
       "scanTrails": "Sporen scannen",
       "scanTrailsTitle": "Scan alle FITS-subframes op satellietsporen",
+      "analyzeFrames": "Opnames analyseren",
+      "analyzeFramesTitle": "Elke ruwe opname van deze nacht meten en wolken, sterstrepen, onscherpte, strepen en ruis markeren",
       "telescopeOfflineTitle": "De telescoop is offline. Maak verbinding om subframes te downloaden.",
       "downloadFromTelescopeTitle": "Download alle onbewerkte subframes van deze sessie van de telescoop naar je bibliotheek",
       "syncSubs": "Subframes synchroniseren",
@@ -221,11 +235,6 @@
       "downloadFailed": "Downloaden mislukt",
       "zipping": "Inpakken {{done}}/{{total}}…",
       "deleteAllTitle": "Verwijder alle subframes voor deze sessie",
-      "frameTitle": "{{name}} (frame {{index}} van {{total}})",
-      "showingSampled": "{{shown}} van {{total}} weergegeven, verspreid over de sessie geselecteerd",
-      "showingAll": "Alle {{total}} weergegeven",
-      "viewAll": "Bekijk alle {{total}}",
-      "openViewer": "Viewer openen",
       "empty": "Nog geen subframes gedownload. Verbind je telescoop en kies Subframes synchroniseren om ze te downloaden."
     },
     "sessionFileGrid": {
@@ -259,6 +268,13 @@
       "addMore": "Meer toevoegen",
       "moveToImages": "Markeren als onbewerkt"
     },
+    "nightPanel": {
+      "title": "Die nacht",
+      "syncHint": "Synchroniseer subframes om te zien wanneer je hebt opgenomen",
+      "imaged": "Opgenomen {{range}}",
+      "cloud": "{{label}} · {{percent}}% bewolking",
+      "moon": "Maan {{percent}}%"
+    },
     "hero": {
       "breadcrumb": "Navigatiepad",
       "observations": "Waarnemingen",
@@ -281,6 +297,7 @@
       "deleteTitle": "Waarneming verwijderen"
     },
     "page": {
+      "sessionDetails": "Sessiedetails",
       "unknownDate": "Onbekende datum",
       "rawFitsOnly": "Alleen onbewerkte FITS-frames",
       "noImagesCaptured": "Geen opnamen gemaakt",
@@ -439,7 +456,153 @@
       "filterTypesSelected_other": "{{selected}} van {{count}} filtertypen geselecteerd",
       "selectAtLeastOneFilter": "Selecteer ten minste één filtertype",
       "back": "Terug",
-      "discardSelection": "Je sessieselectie verwerpen?"
+      "discardSelection": "Je sessieselectie verwerpen?",
+      "keptOnlyOption": "Alleen bewaarde subframes",
+      "keptOnlyHint": "Laat subframes weg die als slecht beoordeeld zijn of in de kwaliteitsweergave van de nacht zijn uitgevinkt. Nog niet gemeten nachten gaan volledig mee."
+    },
+    "frameAnalysisModal": {
+      "title": "Beeldkwaliteit",
+      "measuring": "Bezig met meten: {{done}} van {{total}}",
+      "framesMeasured_one": "{{count}} opname gemeten",
+      "framesMeasured_other": "{{count}} opnames gemeten",
+      "stop": "Stoppen",
+      "measureAgain": "Opnieuw meten",
+      "measureAgainTitle": "De opgeslagen metingen van deze nacht verwijderen en alle opnames opnieuw inlezen",
+      "close": "Sluiten",
+      "loadFailed": "De opnames konden niet worden geanalyseerd",
+      "noFrames": "Geen ruwe FITS-subopnames voor deze nacht. Synchroniseer ze eerst vanaf de telescoop.",
+      "noMatch": "Geen opnames komen overeen met dit filter.",
+      "waiting": "Wacht",
+      "notMeasured": "Niet gemeten",
+      "unreadable": "Kon niet worden gelezen: {{reason}}",
+      "typicalFrame": "Een typische opname van deze nacht: {{stars}} sterren, sterren {{fwhm}} px breed, {{elongation}} keer langer dan breed. Elke opname wordt hieraan afgemeten.",
+      "filterLabel": "Tonen",
+      "sortLabel": "Sorteren",
+      "filters": {
+        "all": "Alle",
+        "good": "Goed",
+        "flagged": "Gemarkeerd",
+        "bad": "Slecht"
+      },
+      "sorts": {
+        "score": "Score",
+        "time": "Tijd",
+        "stars": "Sterren",
+        "sharpness": "Scherpte",
+        "roundness": "Rondheid"
+      },
+      "grades": {
+        "good": "Goed",
+        "fair": "Matig",
+        "bad": "Slecht"
+      },
+      "gradeCount": {
+        "good": "{{count}} goed",
+        "fair": "{{count}} matig",
+        "bad": "{{count}} slecht"
+      },
+      "flags": {
+        "clouds": "Wolken",
+        "trails": "Sterstrepen",
+        "soft": "Zachte sterren",
+        "streak": "Streep",
+        "noStars": "Geen sterren",
+        "noisy": "Ruisig"
+      },
+      "stats": {
+        "stars": "Sterren",
+        "width": "Breedte",
+        "round": "Rondheid",
+        "noise": "Ruis",
+        "signal": "Signaal",
+        "pixels": "{{value}} px",
+        "times": "{{value}}×"
+      },
+      "reasons": {
+        "noStars": "Slechts {{stars}} sterren gevonden, tegenover ongeveer {{typical}} in een typische opname van deze nacht. De lucht was bewolkt of de optiek was beslagen.",
+        "clouds": "{{stars}} sterren tegenover ongeveer {{typical}} in een typische opname ({{percent}}% minder).",
+        "cloudsBrighter": "De lucht is ook helderder, wat gebeurt bij wolken die van onderaf worden verlicht.",
+        "trailsPlain": "Sterren zijn {{ratio}} keer langer dan breed. De telescoop bewoog of werd geschud tijdens de belichting.",
+        "trailsPlainAngle": "Sterren zijn {{ratio}} keer langer dan breed, uitgerekt richting {{angle}}°. De telescoop bewoog of werd geschud tijdens de belichting.",
+        "trailsSlight": "Sterren zijn {{ratio}} keer langer dan breed. Een lichte uitsmering die na het stacken nauwelijks zichtbaar is.",
+        "trailsSlightAngle": "Sterren zijn {{ratio}} keer langer dan breed, uitgerekt richting {{angle}}°. Een lichte uitsmering die na het stacken nauwelijks zichtbaar is.",
+        "soft": "Sterren zijn {{fwhm}} px breed tegenover {{typical}} px normaal: onscherp of onrustige lucht.",
+        "streak": "Een rechte streep kruist de opname onder ongeveer {{angle}}° (een satelliet of vliegtuig). Stacken met afwijzing haalt hem meestal weg.",
+        "noisy": "De achtergrondruis ligt {{percent}}% boven die van de typische opname van de nacht."
+      },
+      "selectHint": "Klik op opnames om ze te selecteren.",
+      "selectedCount_one": "{{count}} opname geselecteerd",
+      "selectedCount_other": "{{count}} opnames geselecteerd",
+      "selectBad": "Alle slechte selecteren",
+      "selectFlagged": "Gemarkeerde selecteren",
+      "clear": "Wissen",
+      "discard": "Weggooien…",
+      "keepFrames": "Opnames behouden",
+      "confirmDiscard_one": "{{count}} opname definitief uit je bibliotheek verwijderen?",
+      "confirmDiscard_other": "{{count}} opnames definitief uit je bibliotheek verwijderen?",
+      "confirmDiscardLinked_one": "{{count}} opname definitief verwijderen? {{linked}} staat in een gekoppelde map, dus het origineel wordt van schijf verwijderd en Nebulis heeft geen andere kopie.",
+      "confirmDiscardLinked_other": "{{count}} opnames definitief verwijderen? {{linked}} staan in een gekoppelde map, dus de originelen worden van schijf verwijderd en Nebulis heeft geen andere kopieën.",
+      "discardFailures": "{{removed}} weggegooid. {{count}} konden niet worden verwijderd:\n{{details}}",
+      "nightLabel": "Nacht",
+      "nightOption": "{{date}} ({{count}})",
+      "selectFrame": "{{name}} selecteren",
+      "markKeep": "Behouden",
+      "markReject": "Afkeuren",
+      "followGrade": "Markering wissen"
+    },
+    "frameList": {
+      "notMeasuredTitle": "Open de nacht om de frames te meten.",
+      "measuredOfTitle": "De frameanalyse loopt nog of is voor deze nacht onderbroken.",
+      "allClearTitle": "Alle {{count}} frames gemeten. Geen wolken, sterspoeren of strepen gevonden.",
+      "flaggedTitle": "Sommige frames tonen wolken, sterspoeren, strepen, zachte scherpte of ruis. Open de nacht om ze te beoordelen.",
+      "openFrame": "Frame openen",
+      "allClearShort": "Ziet er goed uit",
+      "measuredOf": "{{measured}} van {{total}} gemeten",
+      "allClear": "Geen wolken, sterstrepen of strepen gevonden",
+      "flagged": "{{flagged}} gemarkeerd",
+      "flaggedAndBad": "{{flagged}} gemarkeerd · {{bad}} slecht",
+      "flaggedOnly": "Alleen gemarkeerd",
+      "previews": "Voorbeelden",
+      "notMeasured": "Niet gemeten",
+      "moreFlags": "+{{count}}",
+      "longestGap": "Langste pauze {{duration}} om {{time}}",
+      "timelineLabel": "Eén streepje per opname door de nacht, gekleurd naar cijfer",
+      "column": {
+        "time": "Tijd",
+        "score": "Score",
+        "flags": "Markeringen",
+        "stars": "Sterren",
+        "fwhm": "Breedte px",
+        "round": "Spoor",
+        "noise": "Ruis",
+        "snr": "Signaal",
+        "sky": "Hemel",
+        "file": "Bestand"
+      },
+      "sortHint": {
+        "time": "Sorteren op opnametijd",
+        "score": "Sorteren op score, slechtste eerst",
+        "flags": "Sorteren op hoeveel er mis is met de opname",
+        "stars": "Sorteren op gevonden sterren",
+        "fwhm": "Sorteren op sterbreedte (FWHM) in pixels, scherpste eerst",
+        "round": "Sorteren op rekking van de sterren: 1,00 is rond, hoger is uitgerekt",
+        "noise": "Sorteer op achtergrondruis, laagste eerst. Lager is schoner.",
+        "snr": "Sorteer op signaal: hoeveel de helderste sterren boven de ruis uitsteken (×). Hoger is beter.",
+        "sky": "Sorteer op helderheid van de hemel (ruwe waarden). Een sprong tussen frames kan wolken, nevel of de maan betekenen.",
+        "file": "Sorteren op bestandsnaam"
+      },
+      "menu": {
+        "open": "Openen",
+        "download": "Downloaden",
+        "copyLink": "Link kopiëren",
+        "copied": "Gekopieerd"
+      },
+      "exportCsv": "CSV exporteren",
+      "exportCsvTitle": "De metingen van deze nacht downloaden als CSV, met een kolom \"accepted\" voor PixInsight- of Siril-scripts",
+      "review": {
+        "keep": "Behouden",
+        "reject": "Afgekeurd"
+      }
     },
     "satelliteTrailScanModal": {
       "title": "Satellietspoordetectie",
@@ -536,5 +699,85 @@
     "moreCount_one": "+{{count}} meer",
     "moreCount_other": "+{{count}} meer",
     "approximate": "bij benadering"
+  },
+  "planOutcome": {
+    "status": {
+      "upcoming": "Gepland",
+      "in_progress": "Bezig",
+      "awaiting_import": "Wacht op import",
+      "done": "Klaar",
+      "partial": "Gedeeltelijk",
+      "missed": "Gemist",
+      "skipped": "Overgeslagen"
+    },
+    "achievedOfPlanned": "{{achieved}}/{{planned}}",
+    "resultTitle_one": "Planner: {{status}} · {{achieved}} van {{planned}} gepland ({{count}} blok)",
+    "resultTitle_other": "Planner: {{status}} · {{achieved}} van {{planned}} gepland ({{count}} blokken)",
+    "plannedLine": "{{status}} · {{planned}} gepland",
+    "plannedTitle": "{{name}}: {{status}}, {{planned}} gepland. Openen in de planner."
+  },
+  "stackingExport": {
+    "title": "Exporteren om te stacken",
+    "close": "Sluiten",
+    "intro": "De lights die je bewaart, met de darks, flats, flat darks en bias uit de kalibratiebibliotheek die erbij passen, in één ZIP klaar voor je stacksoftware.",
+    "nights": "Nachten",
+    "layout": "Indeling",
+    "wbpp": "PixInsight WBPP",
+    "siril": "Siril",
+    "wbppHint": "Eén mappenboom; WBPP sorteert de opnamen op hun headers. Meerdere nachten staan in NIGHT_<datum>-mappen: voeg NIGHT toe als groeperingssleutel zodat elke nacht zijn eigen flats krijgt.",
+    "sirilHint": "Eén map per nacht en filter met lights, darks, flats en biases, zoals de voorbewerkingsscripts van Siril verwachten. Darks worden in elke map herhaald.",
+    "includeNotKept": "Niet bewaarde subframes meenemen",
+    "planFailed": "Kalibratieopnamen konden niet worden gekoppeld.",
+    "matching": "Kalibratieopnamen koppelen…",
+    "summary": "{{lights}} lights · {{calibration}} kalibratieopnamen · {{size}}",
+    "excluded_one": "{{count}} niet bewaard weggelaten",
+    "excluded_other": "{{count}} niet bewaard weggelaten",
+    "ready": "Kalibratie compleet",
+    "problems_one": "{{count}} probleem",
+    "problems_other": "{{count}} problemen",
+    "fixHint": "Voeg de ontbrekende opnamen toe of koppel ze, en open dit venster opnieuw. Exporteren kan toch: stackprogramma’s slaan over wat ontbreekt.",
+    "openLibrary": "Kalibratiebibliotheek openen",
+    "building": "ZIP wordt gemaakt",
+    "progress": "{{done}} / {{total}} bestanden",
+    "cancel": "Annuleren",
+    "started": "Download gestart.",
+    "failed": "De export is mislukt.",
+    "download": "ZIP downloaden",
+    "noFilter": "Geen filter",
+    "gain": "gain {{value}}",
+    "lights_one": "{{count}} light",
+    "lights_other": "{{count}} lights",
+    "lightsKept": "{{kept}} / {{total}} bewaard",
+    "frames_one": "{{count}} opname",
+    "frames_other": "{{count}} opnamen",
+    "attached": "gekoppeld",
+    "sameNight": "zelfde nacht",
+    "biasNotNeeded": "Niet nodig: flat darks kalibreren de flats",
+    "flatDarkNotNeeded": "Geen: bias kalibreert de flats",
+    "row": {
+      "dark": "Darks",
+      "flat": "Flats",
+      "flatDark": "Flat darks",
+      "bias": "Bias"
+    },
+    "issue": {
+      "no_dark": "Geen darks op {{exposure}} s, gain {{gain}}, bin {{bin}}",
+      "dark_temp_far": "Dichtstbijzijnde darks liggen {{delta}} °C ernaast ({{bundle}})",
+      "dark_expired": "Ouder dan de dark/bias-geldigheid in Instellingen",
+      "no_flat": "Geen flats voor {{filter}}",
+      "flat_other_night": "Genomen {{days}} d van deze nacht: controleer of er niets in de optische trein verschoven is",
+      "no_flat_calibration": "Geen flat darks of bias om de flats te kalibreren",
+      "bias_expired": "Bias ouder dan de dark/bias-geldigheid in Instellingen",
+      "unknown_settings": "Belichtingstijd niet gevonden in de FITS-header of de bestandsnaam: darks passen misschien niet"
+    },
+    "selectAll": "Alles selecteren",
+    "selectNone": "Niets selecteren",
+    "noNights": "Geen enkele nacht van dit object heeft subframes.",
+    "notMeasured_one": "De kwaliteit van de subframes van {{nights}} is nog niet gemeten, dus ze gaan allemaal mee. Meet ze om de slechte weg te laten.",
+    "notMeasured_other": "De kwaliteit van de subframes van {{count}} nachten ({{nights}}) is nog niet gemeten, dus ze gaan allemaal mee. Meet ze om de slechte weg te laten.",
+    "notMeasuredViewer": "Een beheerder kan ze meten.",
+    "measure_one": "{{count}} subframe meten",
+    "measure_other": "{{count}} subframes meten",
+    "measuring": "Kwaliteit van de subframes meten {{done}} / {{total}}"
   }
 }

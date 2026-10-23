@@ -123,7 +123,7 @@ describe('client and server share validation agree', () => {
 
   it.each(rejected)('both reject %j', (input) => {
     expect(() => parseShareName(input)).toThrow();
-    expect(shareNameError(input)).toEqual(expect.any(String));
+    expect(shareNameError(input)).toEqual(expect.stringMatching(/\S/));
   });
 
   it('reports the same message for the case users actually hit', () => {

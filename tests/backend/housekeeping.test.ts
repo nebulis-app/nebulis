@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterAll, afterEach, beforeEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -200,8 +200,14 @@ describe('purgeJunkFiles', () => {
 describe('auto-import watchdog (tick)', () => {
   beforeEach(() => {
     setLibraryMigrating(false);
-    // Reset any lock state a previous test in this suite left behind.
+    // Reset any lock state a previous test in this suite left behind: both the
+    // in-memory flag and the DB row (resetting only the row leaves
+    // importStatus.running true, so the next claimImportLock() fails).
+    releaseImportLock();
     stmts.setImportRunning.run(0, null);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('force-releases a lock held past the stale window and logs loudly', async () => {
@@ -221,11 +227,9 @@ describe('auto-import watchdog (tick)', () => {
 
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     await tick();
-    // Loud log line, naming how long the lock was stuck. Assert before
-    // restoring — mockRestore() clears recorded calls.
-    const sawStaleLockError = errorSpy.mock.calls.some(call => String(call[0]).includes('over 6 hours'));
-    errorSpy.mockRestore();
-    expect(sawStaleLockError).toBe(true);
+    // Loud log line, naming how long the lock was stuck. (afterEach restores
+    // the spy even when an assertion below fails.)
+    expect(errorSpy.mock.calls.some(call => String(call[0]).includes('over 6 hours'))).toBe(true);
 
     // The stale claim was replaced by a fresh one for the due telescope's
     // run, not left stuck at the 7-hour-old timestamp.
@@ -234,21 +238,20 @@ describe('auto-import watchdog (tick)', () => {
     expect(Date.now() - Date.parse(startedAt!)).toBeLessThan(5000);
 
     // Let the resumed (local, empty-dir) import finish so it doesn't leak
-    // into a later test.
+    // into a later test. Generous budget: on a loaded machine the old 3 s
+    // wait (inside the 5 s default test timeout) was the tight spot here.
     await vi.waitFor(() => {
       expect(getImportStatus().running).toBe(false);
-    }, { timeout: 3000, interval: 20 });
-  });
+    }, { timeout: 10_000, interval: 20 });
+  }, 15_000);
 
   it('does not touch a lock that is merely busy (not stale)', async () => {
     expect(claimImportLock()).toBe(true);
     // Freshly claimed — nowhere near the 6-hour staleness window.
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     await tick();
-    const sawStaleLockError = errorSpy.mock.calls.some(call => String(call[0]).includes('over 6 hours'));
-    errorSpy.mockRestore();
 
-    expect(sawStaleLockError).toBe(false);
+    expect(errorSpy.mock.calls.some(call => String(call[0]).includes('over 6 hours'))).toBe(false);
     // Still held by the original (simulated) caller — tick() must not have
     // force-released or reclaimed it.
     expect(claimImportLock()).toBe(false);
@@ -280,7 +283,7 @@ describe('import lock ownership (runId)', () => {
     // already visible the instant this call returns — no need to await it.
     const runPromise = runImport(undefined, undefined, { telescopeId: profile.id, manual: true });
     const mintedRunId = getImportStatus().runId;
-    expect(mintedRunId).toBeTruthy();
+    expect(mintedRunId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     expect(getImportStatus().running).toBe(true);
 
     // Simulates a run that was force-released as stale by the watchdog and

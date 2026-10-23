@@ -1,6 +1,6 @@
 import type { TelescopeKind } from '../telescopePresets';
 export type { TelescopeKind };
-import { fetchJSON } from './client';
+import { fetchJSON, BASE, authHeaders, errorMessage } from './client';
 
 /** The string the API returns in place of a stored password. The UI shows it in
  *  the password field and sends it back unchanged when the user does not retype
@@ -82,6 +82,10 @@ export interface TelescopeProfile {
   /** Also keep files Nebulis has no use for, so this telescope's folder can be
    *  a complete copy of the device. Does not override the per-type toggles. */
   archiveAllFiles: boolean;
+  /** Copy the device's calibration frames (SeeStar darklibrary, Dwarf
+   *  CALI_FRAME, ASIAIR Dark/Flat/Bias) into the calibration library on every
+   *  sync. On by default. */
+  syncCalibrationFrames: boolean;
   /** When true (default), the importer reads/writes `.nebulis.dat` on the
    *  device's storage root so the same physical telescope reached over SMB
    *  and USB resolves to one logical device. Power users can disable it. */
@@ -99,6 +103,8 @@ export interface TelescopeProfile {
    *  nothing can auto-detect which optical train is physically attached.
    *  Null means "use the oldest config" (or a generic fallback with none). */
   activeOpticalConfigId: string | null;
+  /** Changes whenever the owner's picture of this telescope does; null when it has none. */
+  photoVersion?: number | null;
 }
 
 /** One named optical setup on a telescope profile — e.g. "Native" vs. "0.8x
@@ -171,6 +177,7 @@ type TelescopeCreateInput =
     | 'deviceId' | 'transports' | 'activeTransportId' | 'pinnedTransportId'
     | 'importJpg' | 'importFits' | 'importThumbnails' | 'importSubFrames' | 'importVideos'
     | 'archiveAllFiles'
+    | 'syncCalibrationFrames'
     | 'trackDeviceIdentity'
     | 'opticalConfigs' | 'activeOpticalConfigId'
   >
@@ -183,6 +190,7 @@ type TelescopeCreateInput =
     importSubFrames?: boolean;
     importVideos?: boolean;
     archiveAllFiles?: boolean;
+    syncCalibrationFrames?: boolean;
     trackDeviceIdentity?: boolean;
   };
 interface TelescopeUpdateInput extends Partial<Omit<TelescopeProfile, 'id' | 'createdAt'>> {}
@@ -359,6 +367,14 @@ export const deleteTelescopeOpticalConfig = (profileId: string, configId: string
     { method: 'DELETE' },
   );
 
+/** Set which optical configuration of its telescope shot a session, or null
+ *  to let the FITS focal length decide. */
+export const setSessionOptics = (objectId: string, date: string, opticalConfigId: string | null) =>
+  fetchJSON<{ updated: boolean; opticalConfigId: string | null }>(
+    `/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/optics`,
+    { method: 'PUT', body: JSON.stringify({ opticalConfigId }) },
+  );
+
 /** Reassign a session (objectId + date) to a different telescope. */
 export const reassignSessionTelescope = (
   objectId: string,
@@ -369,3 +385,25 @@ export const reassignSessionTelescope = (
     `/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/telescope`,
     { method: 'PUT', body: JSON.stringify({ telescopeId }) },
   );
+
+
+// ─── The owner's picture of a telescope ─────────────────────────────────
+
+/** Readable without a token, so it works as an <img> src. `version` is the profile's photoVersion, so a new picture is a new URL. */
+export const telescopePhotoUrl = (id: string, version?: number | null) =>
+  `${BASE}/telescopes/${encodeURIComponent(id)}/photo${version ? `?v=${version}` : ''}`;
+
+export async function uploadTelescopePhoto(id: string, file: File): Promise<{ photoVersion: number }> {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  // fetchJSON forces a JSON content type, which would break the multipart boundary.
+  const res = await fetch(`${BASE}/telescopes/${encodeURIComponent(id)}/photo`, { method: 'PUT', headers: authHeaders(), body: form });
+  const body: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(errorMessage(body, res.statusText));
+  const data = (body as { data?: { photoVersion: number } }).data;
+  if (!data) throw new Error('Upload response had no picture');
+  return data;
+}
+
+export const deleteTelescopePhoto = (id: string) =>
+  fetchJSON<{ deleted: boolean }>(`/telescopes/${encodeURIComponent(id)}/photo`, { method: 'DELETE' });

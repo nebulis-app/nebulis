@@ -348,6 +348,22 @@ You can configure both Wi-Fi and USB for the same telescope. Seestar Hub then us
 
 ---
 
+### Explore: finding something to photograph
+
+Open **Explore** in the top bar.
+
+1. Type any name or catalog number in the search box (for example `Pelican`, `M42`, `NGC 7000`, `Caldwell 14`). Matches appear as you type. Click **+** to add one to your wishlist, or click the row to open it.
+2. Under **Browse by kind**, click a tile (Galaxies, Emission nebulae, and so on) to see the best objects of that kind from your observing site. Use **Up tonight**, **Visible from here** or **Everything** to filter, and the sort buttons to reorder.
+3. Tick **Fits my scope** to keep only objects that fit one frame of your telescope. Each card also shows **Fits**, **Tight**, **Tiny** or **Mosaic** for your current field of view (set under Settings -> Telescopes or in the Framing tool).
+4. Each card shows when the object can be seen: **Up tonight**, **Best Oct to Dec**, **Low from here** or **Never rises here**.
+5. On a card, **Wishlist** saves it and **Plan tonight** puts a block in tonight's plan. Open the object and choose **Plan a night** to pick from the next 30 nights.
+
+Explore works without internet. The browse tiles are part of the app. Pictures of objects are saved on the server the first time they are shown and are never deleted, and running **Download catalog images** (Settings) while online saves the best-ranked objects in every category ahead of time.
+
+**Planner, Explore and Wishlist work together.** Everywhere, "Best tonight" blends how well a target is placed with how rewarding it is to shoot. In the Planner, the **Order** menu above the target list switches to **Best conditions** (the planner score alone), and the compass button opens Explore on the night you are planning, showing what is up then. On an Explore card, the crosshair button opens the Planner on that night with the object searched for. On a Wishlist card, hover to get the same Planner button and a compass button that opens the Explore tile the object belongs to.
+
+Use the site picker at the top right to see Explore from another observing site. This only changes Explore, not your active site.
+
 ### How to Add a Target to the Wishlist
 
 1. Click **Planner** in the navigation menu.

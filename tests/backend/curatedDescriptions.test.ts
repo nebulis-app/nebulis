@@ -23,7 +23,9 @@ describe('curatedDescriptions', () => {
     // The /info route looks up by raw object id (e.g. "M1", "M16"), so the JSON
     // keys must be the same bare ids the catalog uses.
     for (const id of ['M1', 'M31', 'M42']) {
-      expect(getCuratedDescription(id), `expected curated entry for ${id}`).not.toBeNull();
+      const entry = getCuratedDescription(id);
+      expect(entry, `expected curated entry for ${id}`).not.toBeNull();
+      expect(entry!.extract.trim(), `empty extract for ${id}`).not.toBe('');
     }
   });
 

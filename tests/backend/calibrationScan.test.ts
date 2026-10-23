@@ -29,6 +29,35 @@ function writeFrame(dir: string, name: string) {
   fs.writeFileSync(path.join(dir, name), 'frame-bytes');
 }
 
+describe('a preview picture beside its raw frame', () => {
+  it('is the same image as the frame, so it is not counted twice (SeeStar darklibrary)', () => {
+    const lib = path.join(getArchiveDir(null), 'darklibrary');
+    writeFrame(lib, 'MasterDark_5_30.0s_26.0C_20261014-192837.fit');
+    writeFrame(lib, 'MasterDark_5_30.0s_26.0C_20261014-192837.jpg');
+    writeFrame(lib, 'MasterDark_5_30.0s_26.0C_20261014-192837_thn.jpg');
+    // A picture with no raw frame of its own is a frame in its own right.
+    writeFrame(lib, 'Lonely_dark_note.jpg');
+
+    try {
+      const group = listCalibrationLibrary().find(g => g.folderName === 'darklibrary')!;
+      expect(group.type).toBe('dark');
+      expect(group.fileCount).toBe(2);
+      const names = group.subfolders.flatMap(sub => sub.files.map(f => f.name)).sort();
+      expect(names).toEqual(['Lonely_dark_note.jpg', 'MasterDark_5_30.0s_26.0C_20261014-192837.fit']);
+      const master = group.subfolders.flatMap(sub => sub.files).find(f => f.name.endsWith('.fit'))!;
+      expect(master.info).toMatchObject({ exposureSec: 30, sensorTempC: 26 });
+    } finally {
+      // The archive is shared by the tests below, which assert exactly which groups exist.
+      fs.rmSync(lib, { recursive: true, force: true });
+    }
+  });
+
+  it('previewNamesOf matches by stem within a folder, case-insensitively, and only for pictures', async () => {
+    const { previewNamesOf } = await import('../../server/lib/library/calibrationScan');
+    expect([...previewNamesOf(['a.fit', 'a.jpg', 'A.PNG', 'b.jpg', 'c.fits', 'c.fits.txt'])].sort()).toEqual(['A.PNG', 'a.jpg']);
+  });
+});
+
 describe('listCalibrationLibrary', () => {
   it('groups the unscoped archive by frame type, with subfolders and parsed filename metadata', () => {
     const unscopedBias = path.join(getArchiveDir(null), 'Bias', 'G100_TECm8');

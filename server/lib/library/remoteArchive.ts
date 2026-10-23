@@ -12,6 +12,7 @@
  * it comes from `resolveArchiveDestination` in archiveFolders.ts, so a live
  * sync and a folder-import wizard run treat a repeat identically.
  */
+import fs from 'fs';
 import path from 'path';
 import { smbListDir } from '../smb.js';
 import type { TelescopeProfile } from '../telescopes.js';
@@ -60,6 +61,8 @@ export interface RemoteArchiveCandidate {
   /** Path relative to the archive root, posix-style: `CALI_FRAME/dark_001.fits`. */
   relPath: string;
   size: number;
+  /** Device-reported modification time (ISO), when the transport lists one. */
+  mtime?: string;
 }
 
 /**
@@ -106,7 +109,7 @@ export async function collectRemoteArchiveCandidates(
         await visit(remotePath, relPath, depth + 1);
         continue;
       }
-      out.push({ remotePath, relPath, size: e.size ?? 0 });
+      out.push({ remotePath, relPath, size: e.size ?? 0, ...(e.mtime ? { mtime: e.mtime } : {}) });
     }
   };
 
@@ -127,9 +130,17 @@ export async function downloadToArchive(
   profile: TelescopeProfile,
   candidates: readonly RemoteArchiveCandidate[],
   archiveDir: string,
-  opts: { shouldCancel?: () => boolean; onFile?: (bytes: number) => void } = {},
-): Promise<ArchiveCopyResult> {
-  const result: ArchiveCopyResult = { copied: 0, alreadyPresent: 0, failed: 0, bytesCopied: 0 };
+  opts: {
+    shouldCancel?: () => boolean;
+    onFile?: (bytes: number) => void;
+    /** A file whose size or device mtime differs from the archived copy
+     *  replaces it in place (the old copy is kept under `.replaced/`) instead
+     *  of landing beside it as `name (1).ext`. For a device that regenerates
+     *  files under the same names, like SeeStar's dark library. */
+    replaceChanged?: boolean;
+  } = {},
+): Promise<ArchiveCopyResult & { replaced: number }> {
+  const result: ArchiveCopyResult & { replaced: number } = { copied: 0, alreadyPresent: 0, failed: 0, bytesCopied: 0, replaced: 0 };
   if (candidates.length === 0) return result;
 
   // Only a 'local' transport's remotePath is a real filesystem path (see
@@ -142,9 +153,21 @@ export async function downloadToArchive(
     ? (remotePath: string) => path.resolve(profile.localPath, remotePath)
     : undefined;
 
+  const replacedStamp = new Date().toISOString().replace(/[:.]/g, '-');
   for (const candidate of candidates) {
     if (opts.shouldCancel?.()) break;
     try {
+      if (opts.replaceChanged) {
+        const outcome = await copyReplacingChanged(profile, candidate, archiveDir, replacedStamp);
+        if (outcome === 'present') result.alreadyPresent++;
+        else {
+          result.copied++;
+          if (outcome === 'replaced') result.replaced++;
+          result.bytesCopied += candidate.size;
+        }
+        opts.onFile?.(candidate.size);
+        continue;
+      }
       const sourceAbsPath = resolveSourceAbsPath?.(candidate.remotePath);
       const { destPath, alreadyPresent } = await resolveArchiveDestination(archiveDir, candidate.relPath, candidate.size, sourceAbsPath);
       if (alreadyPresent) {
@@ -163,4 +186,63 @@ export async function downloadToArchive(
     }
   }
   return result;
+}
+
+/** Device clocks are coarse and FTP/SMB listings round differently, so two
+ *  times within this window count as the same. */
+const MTIME_TOLERANCE_MS = 2000;
+
+/** Hidden, so the Calibrations page and every archive sweep skip it. */
+const REPLACED_DIR_NAME = '.replaced';
+
+/**
+ * Copy one candidate into `archiveDir`, replacing an archived copy that no
+ * longer matches the device. "Matches" is same size and, when the device
+ * reported one, a modification time within MTIME_TOLERANCE_MS: the archived
+ * file is stamped with the device's mtime after copying, so equality means
+ * "unchanged since I copied it" and survives a device clock that is wrong.
+ *
+ * The new bytes land in `<dest>.part` and are renamed over the old file, and
+ * the old file is moved to `.replaced/<stamp>/<relPath>` first, so a dropped
+ * connection never leaves the archive without a usable copy.
+ */
+async function copyReplacingChanged(
+  profile: TelescopeProfile,
+  candidate: RemoteArchiveCandidate,
+  archiveDir: string,
+  stamp: string,
+): Promise<'present' | 'copied' | 'replaced'> {
+  const segments = candidate.relPath.split('/');
+  const destPath = path.join(archiveDir, ...segments);
+  await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+
+  const remoteMs = candidate.mtime ? Date.parse(candidate.mtime) : Number.NaN;
+  const existing = await fs.promises.stat(destPath).then(s => (s.isFile() ? s : null), () => null);
+  if (existing && existing.size === candidate.size
+      && (Number.isNaN(remoteMs) || Math.abs(existing.mtimeMs - remoteMs) <= MTIME_TOLERANCE_MS)) {
+    return 'present';
+  }
+
+  const partPath = `${destPath}.part`;
+  try {
+    await copyTransportFile(candidate.remotePath, partPath, profile);
+    const onDisk = (await fs.promises.stat(partPath)).size;
+    if (candidate.size > 0 && onDisk !== candidate.size) {
+      throw new Error(`copied ${onDisk} of ${candidate.size} bytes`);
+    }
+    if (!Number.isNaN(remoteMs)) {
+      const when = new Date(remoteMs);
+      await fs.promises.utimes(partPath, when, when);
+    }
+    if (existing) {
+      const keptPath = path.join(archiveDir, REPLACED_DIR_NAME, stamp, ...segments);
+      await fs.promises.mkdir(path.dirname(keptPath), { recursive: true });
+      await fs.promises.rename(destPath, keptPath);
+    }
+    await fs.promises.rename(partPath, destPath);
+  } catch (err) {
+    await fs.promises.rm(partPath, { force: true });
+    throw err;
+  }
+  return existing ? 'replaced' : 'copied';
 }

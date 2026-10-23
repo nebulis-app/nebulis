@@ -9,7 +9,9 @@
  * import entry points call it.
  */
 import { logEvent } from '../systemLog.js';
+import { emitAlert } from '../alerts/delivery.js';
 import { stmts } from './objects.js';
+import { invalidateSessionFocal, fitsFocalForSession } from './sessionOptics.js';
 import type { ImportStatus, TouchedObject, TouchedSession } from './importTypes.js';
 
 export type ImportHistorySource = 'telescope' | 'folder' | 'subframe';
@@ -99,9 +101,51 @@ export function writeImportHistory(status: ImportStatus, acc: ImportHistoryAccum
   } catch (err) {
     console.warn('[import] insertHistory failed:', err instanceof Error ? err.message : err);
   }
+  // Nights that received files may now carry a FOCALLEN they did not
+  // before: re-read it now (one header per night touched), so the run ends
+  // with its sessions' optical train known rather than on a timer.
+  if (newFilesCount > 0 && acc.sessionsTouched.size > 0) {
+    try {
+      for (const sess of acc.sessionsTouched.values()) {
+        invalidateSessionFocal(sess.objectId, sess.date);
+        fitsFocalForSession(sess.objectId, sess.date);
+      }
+    } catch (err) {
+      console.warn('[import] optics refresh failed:', err instanceof Error ? err.message : err);
+    }
+  }
   try {
     logSyncHistoryEvent(acc.source, status, newFilesCount);
   } catch (err) {
     console.warn('[import] sync-history log failed:', err instanceof Error ? err.message : err);
   }
+  try {
+    alertImport(acc, status, newFilesCount);
+  } catch (err) {
+    console.warn('[import] alert failed:', err instanceof Error ? err.message : err);
+  }
+}
+
+/**
+ * `import.finished` when a run brought new files, `import.failed` when it
+ * ended on an error. A cancelled run, or a scheduled tick that found nothing,
+ * sends nothing: alerts are for things worth a look.
+ */
+function alertImport(acc: ImportHistoryAccumulators, status: ImportStatus, newFilesCount: number): void {
+  if (status.cancelled) return;
+  const type = status.error ? 'import.failed' : newFilesCount > 0 ? 'import.finished' : null;
+  if (!type) return;
+  emitAlert({
+    type,
+    occurredAt: new Date().toISOString(),
+    data: {
+      source: acc.source,
+      telescopeName: status.telescopeName,
+      newFiles: newFilesCount,
+      objects: Array.from(acc.objectsTouched.values()).map(o => ({ objectId: o.objectId, name: o.name, isNew: o.isNew })),
+      sessions: Array.from(acc.sessionsTouched.values()).map(s => ({ objectId: s.objectId, objectName: s.objectName, date: s.date })),
+      manual: status.manual,
+      error: status.error || null,
+    },
+  });
 }

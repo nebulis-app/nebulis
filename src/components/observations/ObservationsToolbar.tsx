@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { TelescopeProfile } from '../../lib/api/telescopes';
 import { MonthYearMenu } from './MonthYearMenu';
+import { formatFocal } from '../../lib/rigLabel';
 
 export type ObservationsView = 'calendar' | 'list' | 'map';
 
@@ -26,7 +27,8 @@ export const ALL_TELESCOPES_FILTER = '__all__';
 interface Props {
   view: ObservationsView;
   onViewChange: (v: ObservationsView) => void;
-  /** Empty when fewer than two telescopes are configured, which hides the filter. */
+  /** Empty when there is only one rig (one telescope with at most one
+   *  optical train), which hides the filter. */
   telescopes: TelescopeProfile[];
   telescopeFilter: string;
   onTelescopeFilterChange: (id: string) => void;
@@ -156,7 +158,7 @@ export function ObservationsToolbar({
 
         {/* Telescope filter + Share */}
         <div className="flex flex-wrap items-center gap-2 sm:justify-self-end">
-          {telescopes.length >= 2 && (
+          {telescopes.length > 0 && (
             /**
              * `appearance-none` is load-bearing. A native select honours
              * `padding-left` in Chromium but clamps it in Safari, so the leading
@@ -179,9 +181,23 @@ export function ObservationsToolbar({
                   focus:outline-none focus:ring-2 focus:ring-accent-500/40 ${controlBase}`}
               >
                 <option value={ALL_TELESCOPES_FILTER}>{t('toolbar.allTelescopes')}</option>
-                {telescopes.map(scope => (
-                  <option key={scope.id} value={scope.id}>{scope.name}</option>
-                ))}
+                {telescopes.map(scope => {
+                  const configs = scope.opticalConfigs ?? [];
+                  // A telescope with several optical trains also offers each
+                  // train on its own (value `telescopeId|configId`).
+                  return configs.length >= 2 ? (
+                    <optgroup key={scope.id} label={scope.name}>
+                      <option value={scope.id}>{t('toolbar.allTrains', { name: scope.name })}</option>
+                      {configs.map(c => (
+                        <option key={c.id} value={`${scope.id}|${c.id}`}>
+                          {`${scope.name} · ${c.name} · ${formatFocal(c.focalLengthMm)}`}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : (
+                    <option key={scope.id} value={scope.id}>{scope.name}</option>
+                  );
+                })}
               </select>
               <ChevronDown
                 className={`pointer-events-none absolute right-3 h-3.5 w-3.5 ${

@@ -35,6 +35,8 @@ const ObservationsWorldMap = lazyRoute(() =>
 );
 import type { ObservationsWorldMapHandle } from '../components/ObservationsWorldMap';
 import { listTelescopes, type TelescopeProfile } from '../lib/api/telescopes';
+import { listPlanNights } from '../lib/api/plannedSessions';
+import { indexPlanByDate } from '../lib/planNights';
 import { useTheme } from '../hooks/useTheme';
 import { nightSafeColor } from '../lib/nightSafeColor';
 import { cleanCatalogId, formatObjectName } from '../lib/utils';
@@ -47,6 +49,15 @@ function obsName(obs: ObservationSummary): string {
 }
 
 export function ObservationsCalendar() {
+  const [visiblePerDay, setVisiblePerDay] = useState(3);
+  // Reserve the scrollbar's width on this page so the centred calendar never
+  // slides sideways when a scrollbar appears or goes away (hovering a preview).
+  useEffect(() => {
+    const root = document.documentElement;
+    const previous = root.style.scrollbarGutter;
+    root.style.scrollbarGutter = 'stable';
+    return () => { root.style.scrollbarGutter = previous; };
+  }, []);
   const { t } = useTranslation('observations');
   const { isDark, isNight, isSpace } = useTheme();
   /** Null until the user picks a month, so the landing month can follow the
@@ -129,7 +140,9 @@ export function ObservationsCalendar() {
     queryKey: ['telescopes'],
     queryFn: listTelescopes,
   });
-  const showTelescopeUI = telescopes.length >= 2;
+  // Two telescopes, or one with several optical trains: either way nights
+  // come from more than one rig and the filter/rig column are worth showing.
+  const showTelescopeUI = telescopes.length >= 2 || telescopes.some(s => (s.opticalConfigs?.length ?? 0) >= 2);
   const [view, setView] = useState<ObservationsView>('calendar');
   const [telescopeFilter, setTelescopeFilter] = useState<string>(ALL_TELESCOPES_FILTER);
 
@@ -147,10 +160,17 @@ export function ObservationsCalendar() {
   }, [telescopes]);
   // If the selected telescope was removed, fall back to "All" during render
   // rather than via a corrective setState-in-effect.
+  // A filter is a telescope id, or `telescopeId|configId` for one optical
+  // train of it (the server's rigKey shape).
+  const filterTelescopeId = telescopeFilter.split('|')[0]!;
   const effectiveTelescopeFilter =
-    telescopeFilter === ALL_TELESCOPES_FILTER || telescopeById.has(telescopeFilter)
+    telescopeFilter === ALL_TELESCOPES_FILTER || telescopeById.has(filterTelescopeId)
       ? telescopeFilter
       : ALL_TELESCOPES_FILTER;
+  const matchesTelescopeFilter = (o: { telescopeId: string | null; rigKey?: string }) =>
+    effectiveTelescopeFilter.includes('|')
+      ? o.rigKey === effectiveTelescopeFilter
+      : o.telescopeId === effectiveTelescopeFilter;
 
   // Close expanded popover on outside click or Escape
   useEffect(() => {
@@ -182,12 +202,16 @@ export function ObservationsCalendar() {
   const filteredObservations = useMemo(() => {
     if (!observations) return [];
     if (effectiveTelescopeFilter === ALL_TELESCOPES_FILTER) return observations;
-    return observations.filter(o => o.telescopeId === effectiveTelescopeFilter);
+    return observations.filter(matchesTelescopeFilter);
+    // matchesTelescopeFilter only reads effectiveTelescopeFilter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [observations, effectiveTelescopeFilter]);
 
   const filteredLocations = useMemo(() => {
     if (effectiveTelescopeFilter === ALL_TELESCOPES_FILTER) return locations;
-    return locations.filter(l => l.telescopeId === effectiveTelescopeFilter);
+    // Map points carry no optical train: one train's filter shows its telescope.
+    const scopeId = effectiveTelescopeFilter.split('|')[0];
+    return locations.filter(l => l.telescopeId === scopeId);
   }, [locations, effectiveTelescopeFilter]);
 
   /** Most recent recorded night, which decides the landing month. */
@@ -250,6 +274,27 @@ export function ObservationsCalendar() {
     }
     return map;
   }, [filteredObservations]);
+
+  // Plan vs actual for the month on screen: Planner blocks summed per object
+  // and night (server/lib/planOutcome.ts). Best-effort — a failure just
+  // leaves the calendar as it was.
+  const planRange = useMemo(() => {
+    const { year, month } = currentMonth;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const last = new Date(year, month + 1, 0).getDate();
+    return { from: `${year}-${pad(month + 1)}-01`, to: `${year}-${pad(month + 1)}-${pad(last)}` };
+  }, [currentMonth]);
+  const { data: planNights = [] } = useQuery({
+    queryKey: ['plan-nights', planRange.from, planRange.to],
+    queryFn: () => listPlanNights(planRange.from, planRange.to),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const planByDate = useMemo(() => {
+    const objectIdsByDate = new Map<string, string[]>();
+    for (const [date, list] of observationsByDate) objectIdsByDate.set(date, list.map(o => o.objectId));
+    return indexPlanByDate(planNights, objectIdsByDate);
+  }, [planNights, observationsByDate]);
 
   // Calendar grid generation
   const calendarDays = useMemo(() => {
@@ -440,7 +485,12 @@ export function ObservationsCalendar() {
         filteredLabel={
           effectiveTelescopeFilter === ALL_TELESCOPES_FILTER
             ? null
-            : telescopeById.get(effectiveTelescopeFilter)?.name ?? null
+            : (() => {
+              const [scopeId, configId] = effectiveTelescopeFilter.split('|');
+              const scope = telescopeById.get(scopeId!);
+              const config = configId ? scope?.opticalConfigs?.find(c => c.id === configId) : undefined;
+              return scope ? [scope.name, config?.name].filter(Boolean).join(' · ') : null;
+            })()
         }
       />
       </TourAnchor>
@@ -451,7 +501,7 @@ export function ObservationsCalendar() {
       <ObservationsToolbar
         view={view}
         onViewChange={setView}
-        telescopes={telescopes}
+        telescopes={showTelescopeUI ? telescopes : []}
         telescopeFilter={effectiveTelescopeFilter}
         onTelescopeFilterChange={setTelescopeFilter}
         onShare={canShare ? () => setShareModal(view) : null}
@@ -521,8 +571,10 @@ export function ObservationsCalendar() {
         </div>
       ) : (
         <MonthGrid
+          onVisiblePerDayChange={setVisiblePerDay}
           days={calendarDays}
           observationsByDate={observationsByDate}
+          planByDate={planByDate}
           monthLabel={monthLabel}
           today={today}
           nearestDate={nearestDate}
@@ -581,7 +633,7 @@ export function ObservationsCalendar() {
         // Flip above if there isn't enough room below
         if (popupTop + 260 > window.innerHeight - 8) popupTop = Math.max(8, expandedDayRect.top - 260 - 4);
 
-        const overflowObs = (observationsByDate.get(expandedDay) ?? []).slice(3);
+        const overflowObs = (observationsByDate.get(expandedDay) ?? []).slice(visiblePerDay);
         const dateLabel = formatDate(new Date(expandedDay + 'T12:00:00'), { month: 'short', day: 'numeric' });
 
         return (
@@ -592,7 +644,7 @@ export function ObservationsCalendar() {
             }`}
             style={{ position: 'fixed', top: popupTop, left: popupLeft, width: POPUP_W, zIndex: 50 }}
           >
-            <div className={`text-[11px] font-medium px-2 py-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            <div className={`text-[0.6875rem] font-medium px-2 py-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
               {t('calendarPage.moreAtDate', { count: overflowObs.length, date: dateLabel })}
             </div>
             {overflowObs.map(obs => {
@@ -661,8 +713,9 @@ function ObservationHoverPreview({
   isDark: boolean;
 }) {
   const { t } = useTranslation('observations');
-  const PREVIEW_W = 220;
-  const PREVIEW_H = 220;
+  // Same size tiers as the calendar grid: small screens keep the original 220px.
+  const PREVIEW_W = window.innerWidth >= 2400 ? 320 : window.innerWidth >= 1800 ? 270 : 220;
+  const PREVIEW_H = PREVIEW_W;
   const GAP = 10;
 
   // Default to the right of the entry; flip to the left when there isn't

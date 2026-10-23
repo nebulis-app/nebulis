@@ -7,6 +7,7 @@ import { fetchLocationInfo, searchLocations, type GeocodeSearchResult } from '..
 import { useClickOutside } from '../../hooks/useClickOutside';
 import { getInputClass, getLabelClass, getHelperClass } from './SettingsUI';
 import { Modal } from '../ui/Modal';
+import { SitePhotosSection } from './SitePhotosSection';
 
 /**
  * Create/edit modal for a single observing site: name, coordinates
@@ -237,6 +238,8 @@ export function SiteEditorModal({
             />
             <p className={helperClass}>{t('siteEditorModal.minAltitudeHelp')}</p>
           </div>
+
+          <SitePhotosSection isDark={isDark} siteId={existing?.id} />
         </div>
 
         <div className={`flex items-center justify-end gap-3 px-5 pb-5`}>

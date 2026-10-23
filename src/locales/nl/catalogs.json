@@ -51,7 +51,8 @@
     "planTonightTitle": "Plan vannacht met nog niet gefotografeerde {{label}}-objecten",
     "planTonight": "Vannacht plannen",
     "inFrameNote_one": "Inclusief {{count}} gefotografeerd in het beeld van een ander object",
-    "inFrameNote_other": "Inclusief {{count}} gefotografeerd in het beeld van andere objecten"
+    "inFrameNote_other": "Inclusief {{count}} gefotografeerd in het beeld van andere objecten",
+    "myCatalog": "Mijn {{label}}-catalogus"
   },
   "catalogPanel": {
     "ariaLabel": "{{label}}-catalogus, {{imaged}} van {{total}} objecten gefotografeerd",
@@ -62,7 +63,10 @@
     "complete": "Voltooid",
     "toGo_one": "{{count}} resterend",
     "toGo_other": "{{count}} resterend",
-    "openBoard": "Overzicht openen"
+    "openBoard": "Overzicht openen",
+    "myCatalog": "Mijn {{label}}",
+    "myCatalogAria_one": "Mijn {{label}}-catalogus, {{count}} afbeelding",
+    "myCatalogAria_other": "Mijn {{label}}-catalogus, {{count}} afbeeldingen"
   },
   "catalogTile": {
     "imagedAriaLabel": "{{id}}, {{name}}, gefotografeerd",
@@ -253,5 +257,246 @@
     "saveFraming": "Kadrering opslaan bij deze sessie",
     "framingSaved": "Opgeslagen",
     "fovDisclaimer": "Het gezichtsveld is bij benadering. Slimme telescopen hebben een altazimutale montering, waardoor het beeldveld tijdens een sessie draait."
+  },
+  "wall": {
+    "title": "Mijn {{label}}-catalogus",
+    "backToBoard": "{{label}}-overzicht",
+    "filterAria": "Afbeeldingen tonen",
+    "filter": {
+      "all": "Alle",
+      "processed": "Bewerkt",
+      "telescope": "Telescoop"
+    },
+    "mosaic": "Mozaïek",
+    "uniform": "Gelijk",
+    "layoutMosaic": "Overschakelen naar mozaïekindeling",
+    "layoutUniform": "Overschakelen naar indeling met gelijke tegels",
+    "processed": "Bewerkt",
+    "telescope": "Telescoop",
+    "inFrame": "In beeld",
+    "openObject": "{{name}} openen",
+    "emptyAria": "{{label}}, nog niet gefotografeerd",
+    "notImaged": "Nog niet gefotografeerd",
+    "addWishlist": "Aan verlanglijst toevoegen",
+    "removeWishlist": "Van verlanglijst verwijderen",
+    "planIt": "Plannen",
+    "loadFailed": "Je catalogus kon niet worden geladen. Probeer de pagina te vernieuwen.",
+    "empty": "Je hebt nog niets uit de {{label}}-catalogus gefotografeerd. Je beelden vullen deze muur zodra je ze toevoegt.",
+    "edit": {
+      "start": "Indeling bewerken",
+      "done": "Klaar",
+      "cancel": "Annuleren",
+      "resetWall": "Muur terugzetten",
+      "resetTile": "Deze tegel terugzetten",
+      "hint": "Sleep aan een hoek of gebruik de grootteknop. Wijzigingen worden opgeslagen met Klaar.",
+      "chooseImage": "Afbeelding kiezen",
+      "size": "Tegelgrootte",
+      "sizeAria": "Formaat van {{id}} wijzigen",
+      "auto": "Automatisch",
+      "dragAria": "Slepen om het formaat van {{id}} te wijzigen",
+      "close": "Sluiten",
+      "focusHint": "Sleep het kader om het te verplaatsen, sleep een hoek of gebruik de schuifregelaar om in te zoomen. Het kader is het deel dat op de tegel staat.",
+      "frameHint": "Alles in het kader staat op de tegel. Zoom in om slechts één deel van de afbeelding te tonen.",
+      "cropPreview": "Tegelvoorbeeld ({{cols}} × {{rows}})",
+      "yourImages": "Jouw afbeeldingen van dit object",
+      "noImages": "Geen afbeeldingen om te tonen.",
+      "saveFailed": "Je indeling kon niet worden opgeslagen. Probeer het opnieuw."
+    },
+    "poster": {
+      "open": "Poster delen",
+      "title": "Poster delen",
+      "previewAlt": "Voorbeeld van de poster",
+      "format": "Formaat",
+      "formats": {
+        "wide": "Breed 4K",
+        "story": "Story",
+        "square": "Vierkant",
+        "print": "Druk A2"
+      },
+      "imagedOnly": "Alleen objecten die ik heb gefotografeerd",
+      "labels": "Catalogusnummers tonen",
+      "jpeg": "Opslaan als JPG in plaats van PNG",
+      "titleField": "Titel",
+      "subtitleField": "Ondertitel",
+      "subtitlePlaceholder": "Je naam, locatie of jaar",
+      "download": "Downloaden",
+      "rendering": "Bezig met maken…",
+      "copy": "Afbeelding kopiëren",
+      "share": "Delen…",
+      "downloaded": "Poster opgeslagen.",
+      "copied": "Gekopieerd naar het klembord.",
+      "shareFallback": "Bestanden delen is hier niet mogelijk, dus de poster is gedownload.",
+      "failed": "De poster kon niet worden gemaakt. Probeer een kleiner formaat.",
+      "brand": "Nebulis-logo en -naam toevoegen",
+      "brandSide": {
+        "left": "Links",
+        "right": "Rechts",
+        "bottomRight": "Rechtsonder"
+      }
+    },
+    "statsTile": "{{imaged}} / {{total}}"
+  },
+  "explore": {
+    "hero": {
+      "title": "Verkennen",
+      "subtitle": "Vind iets wat de moeite waard is om te fotograferen. Zoek op een naam of catalogusnummer, of blader door de hemel per soort object.",
+      "site": "Waarneemlocatie",
+      "setLocation": "Stel je locatie in om te zien wat je kunt fotograferen"
+    },
+    "search": {
+      "label": "De hemel doorzoeken",
+      "placeholder": "Zoek een naam of nummer: Pelikaan, M42, NGC 7000, C14, Sh2-155",
+      "clear": "Zoekopdracht wissen",
+      "results": "Zoekresultaten",
+      "bestOfConstellation": "Beste objecten in {{name}}",
+      "constellationCount_one": "{{count}} object",
+      "constellationCount_other": "{{count}} objecten",
+      "noResults": "Niets gevonden voor \"{{query}}\"",
+      "seeAll": "Alle {{count}} resultaten bekijken",
+      "addNamed": "{{name}} toevoegen aan verlanglijst",
+      "addHint": "Toevoegen aan verlanglijst (Ctrl+Enter)"
+    },
+    "visibility": {
+      "tonight": "Vannacht zichtbaar",
+      "bestMonth": "Meest geschikt in {{month}}",
+      "bestRange": "Best van {{from}} tot {{to}}",
+      "inSeason": "In het seizoen",
+      "low": "Laag vanaf hier",
+      "never": "Komt hier nooit op",
+      "upOn": "Zichtbaar op {{date}}"
+    },
+    "card": {
+      "mag": "mag {{value}}",
+      "maxAlt": "Max. hoogte",
+      "best": "Beste",
+      "magLabel": "Mag.",
+      "open": "{{name}} openen",
+      "imaged": "Dit object heb je al gefotografeerd",
+      "onWishlist": "Op je verlanglijst",
+      "added": "Toegevoegd",
+      "add": "Verlanglijst",
+      "planTonight": "Plan vannacht",
+      "notUpTonight": "Vannacht niet zichtbaar vanaf jouw locatie",
+      "planned": "Toegevoegd aan vannacht",
+      "noRoom": "Vannacht geen vrij tijdvak",
+      "planFailed": "Plannen mislukt",
+      "openPlanner": "Openen in de planner",
+      "openPlannerNamed": "{{name}} tonen in de planner"
+    },
+    "tile": {
+      "total": "{{formatted}} objecten",
+      "visibleHere": "{{formatted}} zichtbaar vanaf hier",
+      "upTonight": "{{formatted}} vannacht zichtbaar"
+    },
+    "categories": {
+      "showpieces": {
+        "label": "Paradepaardjes",
+        "blurb": "Met de hand gekozen favorieten",
+        "intro": "Een korte lijst van de meest gefotografeerde objecten, gekozen omdat ze ook met een kleine telescoop de moeite waard zijn."
+      },
+      "galaxies": {
+        "label": "Sterrenstelsels",
+        "blurb": "Spiralen, ellipsen en stelsels van opzij",
+        "intro": "Andere sterrensteden. De grote, heldere komen eerst. Zwakke stelsels hebben veel uren nodig, controleer dus grootte en helderheid voordat je er een nacht aan besteedt."
+      },
+      "galaxy-groups": {
+        "label": "Stelselgroepen",
+        "blurb": "Paren, trio's en compacte groepen",
+        "intro": "Sterrenstelsels die aan de hemel dicht bij elkaar staan. Ze geven kleine beeldvelden die goed passen bij een korte brandpuntsafstand."
+      },
+      "emission-nebulae": {
+        "label": "Emissienevels",
+        "blurb": "Gloeiende waterstofwolken en sterrenkraamkamers",
+        "intro": "Gaswolken die door jonge sterren oplichten. Ze gloeien rood in waterstof-alfa, dus een dualbandfilter helpt veel onder een lichte hemel."
+      },
+      "planetary-nebulae": {
+        "label": "Planetaire nevels",
+        "blurb": "Gasschillen rond stervende sterren",
+        "intro": "Klein, helder en vaak kleurrijk. Veel zijn piepklein, dus een langere brandpuntsafstand toont de meeste details."
+      },
+      "supernova-remnants": {
+        "label": "Supernovaresten",
+        "blurb": "Overblijfselen van ontplofte sterren",
+        "intro": "Fijne, ijle draden van sterren die zijn ontploft. Ze zijn zwak en belonen lange belichtingen onder een donkere hemel."
+      },
+      "dark-reflection": {
+        "label": "Donkere nevels en reflectienevels",
+        "blurb": "Stofwolken, verlicht en onverlicht",
+        "intro": "Stof dat sterlicht tegenhoudt of verstrooit. Blauwe reflectienevels zie je onder bijna elke hemel. Donkere nevels hebben een heldere achtergrond nodig."
+      },
+      "clusters": {
+        "label": "Sterrenhopen",
+        "blurb": "Open en bolvormige hopen",
+        "intro": "Open sterrenhopen zijn losse families van jonge sterren. Bolhopen zijn dichte bollen van oude sterren. Korte belichtingen werken goed."
+      }
+    },
+    "best": {
+      "title": "Het beste van vannacht vanaf jouw locatie",
+      "seeAll": "Alles bekijken",
+      "titleOn": "Het beste op {{date}}"
+    },
+    "browse": {
+      "title": "Bladeren per soort",
+      "myWishlist": "Mijn verlanglijst ({{count}})"
+    },
+    "results": {
+      "back": "Terug naar Verkennen",
+      "forQuery": "Resultaten voor \"{{query}}\"",
+      "inConstellation": "Het beste in {{name}}",
+      "all": "Alles",
+      "count": "{{formatted}} objecten",
+      "loading": "Laden",
+      "empty": "Geen objecten voldoen aan deze filters.",
+      "showEverything": "Alles tonen, ook wat hier nooit opkomt",
+      "loadMore": "Meer laden",
+      "bestTonight": "Beste vannacht",
+      "bestOn": "Het beste op {{date}}"
+    },
+    "filters": {
+      "visibility": "Tonen",
+      "tonight": "Vannacht zichtbaar",
+      "here": "Zichtbaar vanaf hier",
+      "all": "Alles",
+      "notImaged": "Nog niet gefotografeerd",
+      "sort": "Sorteren",
+      "fitsScope": "Past bij mijn telescoop",
+      "fitsScopeHint": "Objecten die in één beeld van {{scope}} passen",
+      "upOn": "Zichtbaar op {{date}}"
+    },
+    "sort": {
+      "best": "Beste",
+      "tonight": "Beste vannacht",
+      "bright": "Helderste",
+      "large": "Grootste",
+      "name": "Naam"
+    },
+    "planNight": {
+      "title": "{{name}} plannen",
+      "subtitle": "De komende 30 nachten vanaf jouw locatie. Sterren markeren de beste drie.",
+      "loading": "De komende 30 nachten worden bekeken",
+      "noLocation": "Stel je waarneemlocatie in om een nacht te plannen.",
+      "never": "Dit object komt vanaf jouw locatie niet hoog genoeg.",
+      "best": "Beste nacht",
+      "altHours": "Tot {{alt}}° gedurende {{hours}} u",
+      "moon": {
+        "ok": "Maan {{illum}}%, geen probleem",
+        "caution": "Maan {{illum}}%, wat dichtbij",
+        "warning": "Maan {{illum}}%, te dichtbij"
+      },
+      "plan": "Plannen",
+      "planned": "Gepland",
+      "noRoom": "Geen vrij tijdvak",
+      "noWindow": "Geen donker venster",
+      "failed": "Plannen mislukt",
+      "geometryNote": "Alleen gebaseerd op hoogte en maan. Bekijk de voorspelling voor bewolking.",
+      "openPlanner": "Planner openen",
+      "close": "Sluiten",
+      "bestNights": "Beste nachten",
+      "allNights": "Komende 30 nachten"
+    },
+    "night": {
+      "showing": "Toont {{date}}, de nacht die in de planner is gekozen.",
+      "backToTonight": "Terug naar vannacht"
+    }
   }
 }

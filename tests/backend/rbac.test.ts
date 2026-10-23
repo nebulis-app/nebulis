@@ -31,8 +31,10 @@ describe('requireAdmin middleware', () => {
 
   it('calls next() for admin role', () => {
     const next = vi.fn();
-    requireAdmin(makeReq('admin'), makeRes(), next);
+    const res = makeRes();
+    requireAdmin(makeReq('admin'), res, next);
     expect(next).toHaveBeenCalledOnce();
+    expect(res.apiError).not.toHaveBeenCalled();
   });
 
   it('returns 403 when userRole is undefined (apiAuth sets admin before requireAdmin runs)', () => {

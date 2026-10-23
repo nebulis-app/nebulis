@@ -177,7 +177,11 @@ export function SkyChart({ objectName, ra, dec, lat, lon, time, isDark }: SkyCha
       const H = cssH;
       const cx = W / 2;
       const horizonY = H * HORIZON_FRAC;
-      const pxPerDeg = W / HFOV;
+      // Zoom out just enough to keep a high target on the picture: at a fixed
+      // scale a target past ~70° altitude sat on or above the top edge.
+      const roomAbove = horizonY - H * 0.12;
+      const pxPerDeg = target.alt > 0 ? Math.min(W / HFOV, roomAbove / target.alt) : W / HFOV;
+      const hfov = W / pxPerDeg;
       const centerAz = target.az;
 
       // Map an (alt, az) sky point to canvas coords in this projection.
@@ -242,7 +246,7 @@ export function SkyChart({ objectName, ra, dec, lat, lon, time, isDark }: SkyCha
       }
 
       // ── Stars ──
-      const half = HFOV / 2 + 6;
+      const half = hfov / 2 + 6;
       for (const [sRa, sDec, mag] of SKY_STARS) {
         const { alt, az } = altAz(sRa / 15, sDec, lat, lon, time);
         if (alt < -2) continue;
@@ -258,35 +262,99 @@ export function SkyChart({ objectName, ra, dec, lat, lon, time, isDark }: SkyCha
         ctx.fill();
       }
 
+      // Where the moon sits, and what its label says. Worked out here because
+      // the constellation names below must keep clear of it.
+      const dazMoon = angleDiff(moon.az, centerAz);
+      // A moon past the edge is pinned to that edge with an arrow, so it can be
+      // found rather than looked for.
+      const moonOffscreen = Math.abs(dazMoon) > hfov / 2;
+      const moonEdge = 28;
+      const moonAt = moon.alt > -1 && (!moonOffscreen || moon.alt > 0)
+        ? {
+            x: moonOffscreen ? (dazMoon > 0 ? W - moonEdge : moonEdge) : cx + dazMoon * pxPerDeg,
+            y: Math.max(moonEdge, horizonY - moon.alt * pxPerDeg),
+          }
+        : null;
+      const moonTooClose = moonSeparation < moonThreshold;
+      const moonLabel = moonTooClose ? `${t('skyChart.moon')} · ${Math.round(moonSeparation)}°` : t('skyChart.moon');
+
+      // Boxes the constellation names must stay clear of: the target's ring and
+      // name, the moon's glyph and label, and each name already placed.
+      type Box = { x0: number; y0: number; x1: number; y1: number };
+      const taken: Box[] = [];
+      const addBox = (x0: number, y0: number, x1: number, y1: number) => taken.push({ x0: x0 - 3, y0: y0 - 3, x1: x1 + 3, y1: y1 + 3 });
+      const overlaps = (b: Box) => taken.some(o => b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0);
+      {
+        const rt = project(target.alt, target.az);
+        ctx.font = 'bold 11px system-ui, sans-serif';
+        const half = ctx.measureText(objectName).width / 2;
+        const nx = Math.min(W - 4 - half, Math.max(4 + half, rt.x));
+        const ny = rt.y < 28 ? rt.y + 26 : rt.y - 16;
+        addBox(nx - half, ny - 11, nx + half, ny + 3);
+        addBox(rt.x - 16, rt.y - 16, rt.x + 16, rt.y + 16);
+        if (moonAt) {
+          ctx.font = `${moonTooClose ? 'bold ' : ''}10px system-ui, sans-serif`;
+          const mhalf = ctx.measureText(moonLabel).width / 2;
+          addBox(moonAt.x - 13, moonAt.y - 13, moonAt.x + 13, moonAt.y + 13);
+          addBox(moonAt.x - mhalf, moonAt.y + 14, moonAt.x + mhalf, moonAt.y + 27);
+        }
+      }
+
       // ── Constellation labels (prominent ones only) ──
+      // Most prominent first, so when two names collide the lesser one is the
+      // one dropped.
       ctx.fillStyle = isNight ? 'rgba(153,42,42,0.55)' : isDark ? 'rgba(148,163,184,0.55)' : 'rgba(203,213,225,0.7)';
       ctx.font = '10px system-ui, sans-serif';
       ctx.textAlign = 'center';
-      for (const c of SKY_CONSTELLATION_LABELS) {
-        if (c.rank > 2) continue;
+      const prominent = SKY_CONSTELLATION_LABELS.filter(c => c.rank <= 2).sort((p, q) => p.rank - q.rank);
+      for (const c of prominent) {
         const { alt, az } = altAz(c.ra / 15, c.dec, lat, lon, time);
         if (alt < 3) continue;
         const daz = angleDiff(az, centerAz);
-        if (Math.abs(daz) > HFOV / 2 - 4) continue;
-        ctx.fillText(c.name.toUpperCase(), cx + daz * pxPerDeg, horizonY - alt * pxPerDeg);
+        if (Math.abs(daz) > hfov / 2 - 4) continue;
+        const label = c.name.toUpperCase();
+        const lx = cx + daz * pxPerDeg;
+        const ly = horizonY - alt * pxPerDeg;
+        // A label cut off at the edge ("SSIOPEIA") reads worse than none.
+        const half = ctx.measureText(label).width / 2;
+        if (lx - half < 4 || lx + half > W - 4) continue;
+        const box = { x0: lx - half, y0: ly - 9, x1: lx + half, y1: ly + 3 };
+        if (overlaps({ x0: box.x0 - 3, y0: box.y0 - 3, x1: box.x1 + 3, y1: box.y1 + 3 })) continue;
+        ctx.fillText(label, lx, ly);
+        addBox(box.x0, box.y0, box.x1, box.y1);
       }
       ctx.textAlign = 'left';
 
       // ── Moon (position + phase) ──
-      if (moon.alt > -1) {
-        const dazMoon = angleDiff(moon.az, centerAz);
-        if (Math.abs(dazMoon) <= HFOV / 2) {
-          const mx = cx + dazMoon * pxPerDeg;
-          const my = horizonY - moon.alt * pxPerDeg;
-          // Real Moon is ~0.5°, a sub-pixel dot at this FOV — draw it exaggerated
-          // so the phase is legible, like other finder charts do.
-          drawMoonGlyph(ctx, mx, my, 11, moon.fraction, moon.phase, isDark, isNight);
-          ctx.fillStyle = isNight ? 'rgba(204,51,51,0.85)' : isDark ? 'rgba(226,232,240,0.85)' : 'rgba(241,245,249,0.95)';
-          ctx.font = '10px system-ui, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(t('skyChart.moon'), mx, my + 24);
-          ctx.textAlign = 'left';
+      if (moonAt) {
+        const mx = moonAt.x;
+        const my = moonAt.y;
+        // Real Moon is ~0.5°, a sub-pixel dot at this FOV — draw it exaggerated
+        // so the phase is legible, like other finder charts do.
+        drawMoonGlyph(ctx, mx, my, 11, moon.fraction, moon.phase, isDark, isNight);
+        // The separation is said on the moon itself, and only when it is near
+        // enough to matter (amber, then red); the planner's Moon card carries
+        // the night's verdict.
+        const nearlyTooClose = moonSeparation < moonThreshold - 15;
+        ctx.fillStyle = isNight
+          ? 'rgba(204,51,51,0.85)'
+          : moonTooClose
+            ? (nearlyTooClose ? '#fb7185' : '#f59e0b')
+            : isDark ? 'rgba(226,232,240,0.85)' : 'rgba(241,245,249,0.95)';
+        ctx.font = `${moonTooClose ? 'bold ' : ''}10px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(moonLabel, mx, my + 24);
+        if (moonOffscreen) {
+          const dir = dazMoon > 0 ? 1 : -1;
+          const ax = mx + dir * 17;
+          ctx.beginPath();
+          ctx.moveTo(ax + dir * 5, my);
+          ctx.lineTo(ax - dir * 1, my - 5);
+          ctx.lineTo(ax - dir * 1, my + 5);
+          ctx.closePath();
+          ctx.fill();
         }
+        ctx.textAlign = 'left';
       }
 
       // ── Horizon line ──
@@ -301,7 +369,7 @@ export function SkyChart({ objectName, ra, dec, lat, lon, time, isDark }: SkyCha
       ctx.textAlign = 'center';
       for (const card of CARDINALS) {
         const daz = angleDiff(card.az, centerAz);
-        if (Math.abs(daz) > HFOV / 2) continue;
+        if (Math.abs(daz) > hfov / 2) continue;
         const x = cx + daz * pxPerDeg;
         ctx.strokeStyle = isNight ? 'rgba(153,42,42,0.6)' : isDark ? 'rgba(74,222,128,0.6)' : 'rgba(34,197,94,0.7)';
         ctx.lineWidth = 1;
@@ -338,7 +406,9 @@ export function SkyChart({ objectName, ra, dec, lat, lon, time, isDark }: SkyCha
       ctx.font = 'bold 11px system-ui, sans-serif';
       ctx.textAlign = 'center';
       const labelY = reticle.y < 28 ? reticle.y + 26 : reticle.y - 16;
-      ctx.fillText(objectName, reticle.x, labelY);
+      // Kept inside the chart: the object can sit near an edge, where its centred name would be cut off.
+      const nameHalf = ctx.measureText(objectName).width / 2;
+      ctx.fillText(objectName, Math.min(W - 4 - nameHalf, Math.max(4 + nameHalf, reticle.x)), labelY);
       ctx.textAlign = 'left';
     };
 
@@ -346,25 +416,9 @@ export function SkyChart({ objectName, ra, dec, lat, lon, time, isDark }: SkyCha
     const ro = new ResizeObserver(draw);
     ro.observe(wrap);
     return () => ro.disconnect();
-  }, [target, moon, ra, dec, lat, lon, time, isDark, isNight, objectName, t]);
+  }, [target, moon, moonSeparation, moonThreshold, ra, dec, lat, lon, time, isDark, isNight, objectName, t]);
 
-  const dirText = t('skyChart.dirText', { compass: azToCompass(target.az, t), az: Math.round(target.az), alt: Math.round(target.alt) });
-
-  // Moon readout: only meaningful while it's up. Color tracks the same
-  // proximity verdict the planner uses — amber within 15° of the threshold,
-  // red past it, neutral when comfortably clear.
-  const moonUp = moon.alt > 0;
-  const moonTone = !moonUp
-    ? (isDark ? 'text-slate-600' : 'text-slate-400')
-    : moonSeparation >= moonThreshold
-      ? (isDark ? 'text-slate-500' : 'text-slate-500')
-      : moonSeparation >= moonThreshold - 15
-        ? 'text-amber-500'
-        : 'text-rose-500';
-  const moonText = moonUp
-    ? t('skyChart.moonLitAway', { percent: Math.round(moon.fraction * 100), deg: Math.round(moonSeparation) })
-      + (moonSeparation < moonThreshold ? t('skyChart.tooClose') : '')
-    : t('skyChart.moonBelowHorizon');
+  const dirText = t('skyChart.dirText', { compass: azToCompass(target.az, t), az: Math.round(target.az) });
 
   return (
     <div className="space-y-2">
@@ -376,11 +430,10 @@ export function SkyChart({ objectName, ra, dec, lat, lon, time, isDark }: SkyCha
       >
         <canvas ref={canvasRef} className="block h-full w-full" />
       </div>
-      <p className={`text-[11px] text-center ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+      <p className={`text-[0.6875rem] text-center ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
         {t('skyChart.looking', { dir: dirText })}
         {target.alt <= 0 ? t('skyChart.belowHorizonNow') : ''}
       </p>
-      <p className={`text-[11px] text-center ${moonTone}`}>{moonText}</p>
     </div>
   );
 }

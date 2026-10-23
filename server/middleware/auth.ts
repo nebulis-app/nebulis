@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { timingSafeEqual } from 'crypto';
-import { verifyToken, getUserCount, getUserById, type UserRole } from '../lib/auth.js';
+import { verifyToken, getUserCount, getUserById, verifyApiKey, type UserRole } from '../lib/auth.js';
 import { getApiKey } from '../lib/telescopes.js';
 import { isDeviceActive, touchDevice } from '../lib/devicePairing.js';
 import { verifyDownloadToken } from '../lib/downloadToken.js';
@@ -188,7 +188,14 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
       req.path.match(/^\/library\/fits-thumbnail(\?|\/|$)/) ||
       req.path.match(/^\/library\/tiff-thumbnail(\?|\/|$)/) ||
       req.path.match(/^\/library\/objects\/[^/]+\/thumbnail(\?|\/|$)/) ||
+      // Observing-site pictures: <img> sends no header. The id is a random UUID and the route only
+      // reads (writes stay behind requireAdmin).
+      req.path.match(/^\/sites\/photos\/[0-9a-f-]{36}(\?|\/|$)/) ||
+      // The owner's picture of a telescope: <img> sends no header. Random UUID id, read only.
+      req.path.match(/^\/telescopes\/[0-9a-f-]{36}\/photo(\?|$)/) ||
       req.path.match(/^\/library\/processed-images\//) ||
+      // Fixed built-in artwork for the gallery-image picker; <img> sends no header.
+      req.path.match(/^\/library\/builtin-art\/[a-z]+(\?|$)/) ||
       // Pre-built subframe ZIPs served by one-time token (the token IS the
       // credential — see the 3-phase flow in routes/library.ts). The
       // whole-object ZIP route (`/library/download/objects/:id`) is handled
@@ -231,7 +238,17 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
       // Not a valid JWT — try as API key below
     }
 
-    // Try as API key — API key holders get admin access
+    // Personal API key (neb-…): acts as its owner, with the owner's role.
+    const personal = verifyApiKey(token);
+    if (personal) {
+      req.userId = personal.userId;
+      req.username = personal.username;
+      req.userRole = personal.role;
+      req.viaApiKey = true;
+      return next();
+    }
+
+    // Legacy global API key — API key holders get admin access
     const configuredKey = getApiKey();
     if (configuredKey && safeEqual(token, configuredKey)) {
       req.userRole = 'admin';
@@ -243,6 +260,14 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
   const rawHeaderKey = req.headers['x-api-key'];
   const headerKey = typeof rawHeaderKey === 'string' ? rawHeaderKey : undefined;
   if (headerKey) {
+    const personal = verifyApiKey(headerKey);
+    if (personal) {
+      req.userId = personal.userId;
+      req.username = personal.username;
+      req.userRole = personal.role;
+      req.viaApiKey = true;
+      return next();
+    }
     const configuredKey = getApiKey();
     if (configuredKey && safeEqual(headerKey, configuredKey)) {
       req.userRole = 'admin';

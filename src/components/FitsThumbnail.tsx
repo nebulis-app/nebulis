@@ -129,7 +129,7 @@ export const FitsThumbnail = memo(function FitsThumbnail({
       {state === 'error' && (
         <div className={`w-full h-full flex flex-col items-center justify-center gap-1 ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
           <AlertCircle className={`w-4 h-4 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
-          <span className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+          <span className={`text-[0.625rem] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
             {error ?? t('genericShort')}
           </span>
         </div>

@@ -21,8 +21,11 @@ import { extract } from 'tar';
 
 // Matches the exact filenames the server expects in sky-cache/:
 //   images/hubble_M1.webp, images/M1_master.jpg, descriptions.json, credits.json
+// A hubble_ name carries the object's canonical id as written, so solar system
+// objects (hubble_Amalthea.webp) have lowercase letters. The _master.jpg names are
+// uppercased by the builder (archiveNameFor), so they stay uppercase-only.
 const ALLOWED_PATH_RE =
-  /^images\/(hubble_[A-Z0-9_-]+\.webp|sh2_[0-9]+_hubble_[A-Z0-9_]+\.webp|[A-Z0-9_-]+_master\.jpg)$|^(descriptions|credits)\.json$/;
+  /^images\/(hubble_[A-Za-z0-9_-]+\.webp|sh2_[0-9]+_hubble_[A-Z0-9_]+\.webp|[A-Z0-9_-]+_master\.jpg)$|^(descriptions|credits)\.json$/;
 
 export interface UnpackResult {
   /** Absolute paths of files that were written to destDir. */

@@ -13,6 +13,7 @@
     "forecast": "Weersverwachting",
     "planner": "Planner",
     "wishlist": "Verlanglijst",
+    "explore": "Verkennen",
     "catalogs": "Catalogi",
     "calibrations": "Kalibraties",
     "settings": "Instellingen",
@@ -207,6 +208,9 @@
     "manageLocations": "Locaties beheren..."
   },
   "altitudeChart": {
+    "peakAt": "Hoogste punt vannacht, {{time}}",
+    "atTimePeak": "Om {{time}} · maximum {{peak}}° om {{peakTime}}",
+    "peakAtTime": "Maximum om {{time}}",
     "currentAltitude": "Huidige hoogte",
     "moonLabel": "Maan",
     "moonStripSpan": "Invloed van maanlicht, {{start}} tot {{end}}"
@@ -325,5 +329,9 @@
     "title": "Er ging iets mis",
     "description": "Er is een onverwachte fout opgetreden. Vernieuw de pagina om verder te gaan.",
     "reloadPage": "Pagina opnieuw laden"
+  },
+  "heroToggle": {
+    "collapse": "Banner inklappen",
+    "expand": "Banner uitklappen"
   }
 }

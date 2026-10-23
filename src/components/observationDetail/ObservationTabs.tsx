@@ -77,7 +77,7 @@ export function ObservationTabs({ active, onChange, counts, onDropFileOnProcesse
               onDropFileOnProcessed?.(filePath);
             } : undefined}
             title={isDropTarget ? t('observationDetail.tabs.dropToMarkProcessed') : undefined}
-            className={`font-display text-[13px] font-medium inline-flex items-center gap-2 px-3.5 py-2.5 border-b-2 -mb-px whitespace-nowrap transition ${
+            className={`font-display text-[0.8125rem] font-medium inline-flex items-center gap-2 px-3.5 py-2.5 border-b-2 -mb-px whitespace-nowrap transition ${
               acceptsDrop && dragActive && !isDropTarget ? `rounded-t-lg outline-dashed outline-2 -outline-offset-2 outline-accent-500/60 animate-pulse ${accentText}` : ''
             } ${
               isDropTarget
@@ -89,7 +89,7 @@ export function ObservationTabs({ active, onChange, counts, onDropFileOnProcesse
           >
             {acceptsDrop && (dragActive || isDropTarget) ? t('observationDetail.tabs.dropToMarkProcessed') : label}
             {count != null && !(acceptsDrop && (dragActive || isDropTarget)) && (
-              <span className={`text-[11px] font-sans tabular-nums px-1.5 py-px rounded-full ${
+              <span className={`text-[0.6875rem] font-sans tabular-nums px-1.5 py-px rounded-full ${
                 isActive
                   ? isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-300 text-accent-700'
                   : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-100 text-slate-500'

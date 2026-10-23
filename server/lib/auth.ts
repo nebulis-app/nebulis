@@ -5,11 +5,12 @@
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { randomBytes, randomUUID } from 'crypto';
+import { randomBytes, randomUUID, createHash } from 'crypto';
 import { DATA_DIR } from './paths.js';
 import path from 'path';
 import db from './db.js';
 import { isRecord } from './typeGuards.js';
+import { USER_ROLES, type UserRole } from './types/userRole.js';
 
 function loadJwtSecret(): string {
   if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
@@ -29,11 +30,10 @@ const JWT_SECRET = loadJwtSecret();
 
 const TOKEN_EXPIRY = '30d';
 
-export const USER_ROLES = ['admin', 'viewer'] as const;
-export type UserRole = (typeof USER_ROLES)[number];
+export { USER_ROLES, type UserRole } from './types/userRole.js';
 
 function isUserRole(value: unknown): value is UserRole {
-  return typeof value === 'string' && (USER_ROLES as readonly string[]).includes(value);
+  return typeof value === 'string' && USER_ROLES.some((entry) => entry === value);
 }
 
 export interface User {
@@ -56,6 +56,26 @@ export interface AuthToken {
 type PublicUser = Omit<User, 'passwordHash'>;
 interface CountRow { c: number }
 
+export interface UserApiKeySummary {
+  id: string;
+  userId: string;
+  /** First characters of the key, safe to display (`neb-1a2b3c…`). */
+  keyPrefix: string;
+  name: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
+export interface UserApiKeyWithOwner extends UserApiKeySummary {
+  /** Null when the owning account no longer exists. */
+  ownerUsername: string | null;
+  ownerDisplayName: string | null;
+}
+
+/** Keys a user may hold at once. */
+export const MAX_API_KEYS_PER_USER = 5;
+export const API_KEY_PREFIX = 'neb-';
+
 // Typed prepared statements — shapes propagate to `.get()` / `.all()`.
 // SQL trust boundary: column types are enforced by the users CREATE TABLE in db.ts.
 const stmts = {
@@ -73,6 +93,30 @@ const stmts = {
   updateProfile: db.prepare('UPDATE users SET displayName = ?, email = ? WHERE id = ?'),
   bumpTokenVersion: db.prepare('UPDATE users SET tokenVersion = tokenVersion + 1 WHERE id = ?'),
   getTokenVersion: db.prepare<[string], { tokenVersion: number }>('SELECT tokenVersion FROM users WHERE id = ?'),
+  insertApiKey: db.prepare(
+    'INSERT INTO userApiKeys (id, userId, keyHash, keyPrefix, name, createdAt, lastUsedAt, revokedAt) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)'
+  ),
+  getApiKeyByHash: db.prepare<[string], { id: string; userId: string; username: string; role: UserRole; lastUsedAt: number | null }>(
+    `SELECT k.id, k.userId, u.username, u.role, k.lastUsedAt
+       FROM userApiKeys k JOIN users u ON u.id = k.userId
+      WHERE k.keyHash = ? AND k.revokedAt IS NULL`
+  ),
+  getUserApiKeys: db.prepare<[string], UserApiKeySummary>(
+    `SELECT id, userId, keyPrefix, name, createdAt, lastUsedAt
+       FROM userApiKeys WHERE userId = ? AND revokedAt IS NULL
+      ORDER BY createdAt DESC, id DESC`
+  ),
+  getAllApiKeys: db.prepare<[], UserApiKeyWithOwner>(
+    `SELECT k.id, k.userId, k.keyPrefix, k.name, k.createdAt, k.lastUsedAt,
+            u.username AS ownerUsername, u.displayName AS ownerDisplayName
+       FROM userApiKeys k LEFT JOIN users u ON u.id = k.userId
+      WHERE k.revokedAt IS NULL
+      ORDER BY k.createdAt DESC, k.id DESC`
+  ),
+  revokeApiKeyForUser: db.prepare('UPDATE userApiKeys SET revokedAt = ? WHERE id = ? AND userId = ? AND revokedAt IS NULL'),
+  revokeApiKeyAny: db.prepare('UPDATE userApiKeys SET revokedAt = ? WHERE id = ? AND revokedAt IS NULL'),
+  deleteApiKeysForUser: db.prepare('DELETE FROM userApiKeys WHERE userId = ?'),
+  touchApiKey: db.prepare('UPDATE userApiKeys SET lastUsedAt = ? WHERE id = ?'),
 };
 
 export async function registerUser(
@@ -182,8 +226,12 @@ export function getAllUsers(): Array<Omit<User, 'passwordHash'>> {
 }
 
 export function deleteUser(userId: string): boolean {
-  const result = stmts.delete.run(userId);
-  return result.changes > 0;
+  // A deleted user's keys must stop working at once; the userApiKeys join would
+  // already reject them, but dropping the rows keeps the table honest.
+  return db.transaction(() => {
+    stmts.deleteApiKeysForUser.run(userId);
+    return stmts.delete.run(userId).changes > 0;
+  })();
 }
 
 export async function updateUserPassword(userId: string, newPassword: string): Promise<boolean> {
@@ -233,4 +281,65 @@ function generateToken(user: User): AuthToken {
       role: user.role,
     },
   };
+}
+
+// ─── Personal API keys ──────────────────────────────────────────────────────
+
+const hashApiKey = (key: string): string => createHash('sha256').update(key).digest('hex');
+
+/** `lastUsedAt` is only rewritten when it is older than this, so a busy plugin does not write per request. */
+const LAST_USED_GRANULARITY_MS = 60_000;
+
+/**
+ * Creates a key for `userId`. The raw key is returned once and never stored (only its SHA-256).
+ * The per-user cap is enforced here so no caller can bypass it.
+ * @throws if the user is unknown or already holds {@link MAX_API_KEYS_PER_USER} keys.
+ */
+export function createApiKeyForUser(
+  userId: string,
+  name: string,
+): { id: string; apiKey: string; keyPrefix: string; name: string } {
+  if (!getUserById(userId)) throw new Error('User not found');
+  if (stmts.getUserApiKeys.all(userId).length >= MAX_API_KEYS_PER_USER) {
+    throw new Error(`Limit of ${MAX_API_KEYS_PER_USER} API keys reached`);
+  }
+  const id = `key_${randomUUID()}`;
+  const apiKey = `${API_KEY_PREFIX}${randomBytes(24).toString('hex')}`;
+  const keyPrefix = `${apiKey.slice(0, 10)}…`;
+  const label = name.trim().slice(0, 50) || 'API key';
+  stmts.insertApiKey.run(id, userId, hashApiKey(apiKey), keyPrefix, label, Date.now());
+  return { id, apiKey, keyPrefix, name: label };
+}
+
+export function getUserApiKeys(userId: string): UserApiKeySummary[] {
+  return stmts.getUserApiKeys.all(userId);
+}
+
+/** Every active key with its owner, for the admin view. */
+export function getAllApiKeys(): UserApiKeyWithOwner[] {
+  return stmts.getAllApiKeys.all();
+}
+
+/** Revokes a key. With `asAdmin` the owner check is skipped. Returns false when no active key matched. */
+export function revokeApiKey(keyId: string, actingUserId: string, asAdmin: boolean): boolean {
+  const res = asAdmin
+    ? stmts.revokeApiKeyAny.run(Date.now(), keyId)
+    : stmts.revokeApiKeyForUser.run(Date.now(), keyId, actingUserId);
+  return res.changes > 0;
+}
+
+/**
+ * Resolves a personal API key to its owner. Returns null for anything that is not an active
+ * `neb-` key. The role is the owner's current role, so demoting a user demotes their keys.
+ * The legacy global key (`appSettings.apiKey`) is deliberately not handled here.
+ */
+export function verifyApiKey(key: string): { userId: string; username: string; role: UserRole } | null {
+  if (typeof key !== 'string' || !key.startsWith(API_KEY_PREFIX)) return null;
+  const match = stmts.getApiKeyByHash.get(hashApiKey(key));
+  if (!match) return null;
+  const now = Date.now();
+  if (match.lastUsedAt === null || now - match.lastUsedAt > LAST_USED_GRANULARITY_MS) {
+    try { stmts.touchApiKey.run(now, match.id); } catch { /* usage stamp is best effort */ }
+  }
+  return { userId: match.userId, username: match.username, role: match.role };
 }

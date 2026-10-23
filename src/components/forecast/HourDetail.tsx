@@ -44,7 +44,7 @@ function BreakdownBar({ label, value, detail, isDark }: {
       <div className={`h-1.5 overflow-hidden rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>
         <div className={`h-full rounded-full ${barColor} transition-all duration-500 ease-out`} style={{ width: `${value}%` }} />
       </div>
-      <span className={`mt-1 block text-[10.5px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>{detail}</span>
+      <span className={`mt-1 block text-[0.6562rem] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>{detail}</span>
     </div>
   );
 }
@@ -53,7 +53,7 @@ function Stat({ children, isDark, title }: { children: React.ReactNode; isDark: 
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] tabular-nums ring-1 ring-inset ${
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.6875rem] tabular-nums ring-1 ring-inset ${
         isDark ? 'bg-slate-800/60 text-slate-400 ring-slate-700/60' : 'bg-slate-100 text-slate-500 ring-slate-200'
       }`}
     >
@@ -98,7 +98,7 @@ export function HourDetail({
         <ScoreDial score={vis.score} size={104} label={scoreLabel(vis.score, t)} />
 
         <div className="min-w-[16rem] flex-1">
-          <div className={`text-[11px] font-medium uppercase tracking-[0.16em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+          <div className={`text-[0.6875rem] font-medium uppercase tracking-[0.16em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
             {formatTime(hour.time, timeZone)}
           </div>
           <div className="mt-1.5 flex items-start gap-2">
@@ -123,7 +123,7 @@ export function HourDetail({
               </Stat>
             )}
             {hour.precipProb > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/12 px-2.5 py-1 text-[11px] tabular-nums text-amber-500 ring-1 ring-inset ring-amber-500/25">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/12 px-2.5 py-1 text-[0.6875rem] tabular-nums text-amber-500 ring-1 ring-inset ring-amber-500/25">
                 <CloudRain className="h-3 w-3" />{t('hourDetail.precip', { percent: hour.precipProb })}
               </span>
             )}

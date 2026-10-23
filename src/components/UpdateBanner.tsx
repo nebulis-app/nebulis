@@ -66,7 +66,7 @@ export function UpdateBanner() {
         type="button"
         onClick={() => apply.mutate()}
         disabled={!canInstall || apply.isPending || apply.isSuccess}
-        className={`flex-shrink-0 px-3 py-1 rounded-md text-[13px] font-semibold transition-colors ${
+        className={`flex-shrink-0 px-3 py-1 rounded-md text-[0.8125rem] font-semibold transition-colors ${
           isDark ? 'bg-accent-500 text-slate-950 hover:bg-accent-400' : 'bg-accent-600 text-white hover:bg-accent-500'
         } disabled:opacity-50`}
       >

@@ -92,7 +92,7 @@ router.get('/objects/:objectId', (req: Request, res: Response) => {
     const folderName = getObjectFolderName(objectId);
     // getObjectFolderName falls back to the raw objectId on a DB miss, so a
     // crafted objectId with traversal tokens would otherwise escape
-    // LIBRARY_DIR. Mirror the guard used in download.ts/library.ts.
+    // LIBRARY_DIR. resolveContainedObjectDir (lib/library/objects.ts) guards it.
     const objDir = resolveContainedObjectDir(objectId);
     if (!objDir) {
       res.apiError(400, 'INVALID_OBJECT_ID', 'Object id resolves outside the library');
@@ -297,18 +297,19 @@ router.get('/objects/:objectId/subs', (req: Request, res: Response) => {
       return;
     }
 
-    const files = fs.readdirSync(subDir)
+    const subDirPath = subDir;
+    const files = fs.readdirSync(subDirPath)
       .filter(isRealFile)
       .map(fname => {
         const parsed = parseFilename(fname);
-        const fullPath = path.join(subDir!, fname);
+        const fullPath = path.join(subDirPath, fname);
         const stat = fs.statSync(fullPath);
         const category = getFileCategory(fname);
         return {
           name: fname,
           size: stat.size,
           type: category,
-          fileType: parsed.type as 'stacked' | 'sub' | 'thumbnail' | 'video' | 'other',
+          fileType: parsed.type,
           subIndex: parsed.subIndex || null,
           path: `${objectId}/${fname}`,
           exposure: parsed.exposure || null,

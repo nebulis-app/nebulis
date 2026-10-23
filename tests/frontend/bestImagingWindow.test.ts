@@ -47,10 +47,14 @@ describe('computeBestImagingWindow', () => {
     }
   });
 
-  it('windowStart and windowEnd are non-null when object is ever visible', () => {
+  it('reports M42\'s season as Sep through Mar from 40°N', () => {
+    // M42 clears the default 20° floor Jan–Mar and Sep–Dec (Apr–Aug it is a
+    // daytime object), so the wrapped window is Sep → Mar.
     const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON);
-    expect(w.windowStart).not.toBeNull();
-    expect(w.windowEnd).not.toBeNull();
+    expect(w.windowStart).toBe('Sep');
+    expect(w.windowEnd).toBe('Mar');
+    expect(w.months.filter(m => m.aboveMinAlt).map(m => m.label))
+      .toEqual(['Jan', 'Feb', 'Mar', 'Sep', 'Oct', 'Nov', 'Dec']);
   });
 
   it('an object at the south pole is never visible from 40°N', () => {

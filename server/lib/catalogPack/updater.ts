@@ -14,6 +14,9 @@ import { PackIndex, type CatalogTier } from './manifest.js';
 import { getAllPackStates } from './state.js';
 import { installCatalogPacks } from './install.js';
 import { getPrefetchStatus, startPrefetch } from '../catalogPrefetch.js';
+import { findTiersWithStaleMasters } from './heal.js';
+import { DATA_DIR } from '../paths.js';
+import path from 'node:path';
 
 const PACK_INDEX_URL = 'https://downloads.nebulis.app/catalog/v1/index.json';
 const PACK_INDEX_SIG_URL = 'https://downloads.nebulis.app/catalog/v1/index.json.sig';
@@ -100,15 +103,27 @@ async function runCheckAndUpdatePacks(prewarm: PrewarmFn): Promise<void> {
       }
     }
 
-    if (tiersToUpdate.length === 0) return;
+    // Tiers already at the current version can still hold Hubble masters that
+    // are not the pack's (written by an old scraper, kept by the installer's
+    // no-overwrite guard). Checked against the signed manifest hashes, which
+    // costs no archive download; only a tier that fails the check reinstalls.
+    const upToDate = installedStates
+      .map(s => s.tier)
+      .filter(tier => !tiersToUpdate.includes(tier));
+    const repairTiers = await findTiersWithStaleMasters(
+      index, upToDate, path.join(DATA_DIR, 'sky-cache'), controller.signal,
+    );
+    const toInstall = [...tiersToUpdate, ...repairTiers];
+
+    if (toInstall.length === 0) return;
 
     if (getPrefetchStatus().running) {
       console.log('[packUpdater] prefetch job running — deferring update');
       return;
     }
 
-    console.log(`[packUpdater] installing updates for: ${tiersToUpdate.join(', ')}`);
-    await installCatalogPacks(tiersToUpdate, controller.signal, prewarm);
+    console.log(`[packUpdater] installing updates for: ${toInstall.join(', ')}`);
+    await installCatalogPacks(toInstall, controller.signal, prewarm, { forceTiers: repairTiers });
     console.log('[packUpdater] update complete');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

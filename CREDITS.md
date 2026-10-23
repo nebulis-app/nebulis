@@ -27,6 +27,16 @@ need a visible in-app credit.
 
 The same table is kept in machine-readable form in `src/lib/heroImagery.ts`.
 
+The Explore page's browse tiles use six of the banners above, plus two more from
+the same library in `src/assets/explore/` (960x600 WebP, attention-cropped):
+
+| File | Subject | Credit | NASA id |
+|---|---|---|---|
+| `sombrero-galaxy.webp` | The Sombrero Galaxy, M104 | NASA/ESA and The Hubble Heritage Team (STScI/AURA) | `PIA15226` |
+| `antennae-galaxies.webp` | The Antennae Galaxies | NASA, ESA, and the Hubble Heritage Team (STScI/AURA) | `GSFC_20171208_Archive_e001327` |
+
+Both are kept in machine-readable form in `src/lib/exploreArt.ts`.
+
 ## Sky survey imagery
 
 Catalog object images are cut from the Digitized Sky Survey (DSS2), fetched on

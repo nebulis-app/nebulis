@@ -3,16 +3,16 @@ import { SHARPLESS_CATALOG } from '../../server/lib/sharplessCatalog';
 import { resolveCanonicalId } from '../../server/lib/catalogAliases';
 import { getCatalogEntry } from '../../server/data/catalog';
 import { raToHours, decToDegs } from '../../server/lib/astroCalc';
-import openNgc from '../../server/data/openngc.json';
+import { LISTED_ROWS as openNgc } from '../../server/lib/dsoCatalogData';
 
 // The Sharpless cross-references are scraped from Wikipedia text. Sh2-1 once came out
 // as IC1470 (a Cepheus nebula 120 deg away, really Sh2-156), which put the wrong
 // position and image on its board tile and credited Sh2-1 whenever IC1470 was imaged.
 
-const MAX_SEP_DEG = 3; // keep in step with scripts/build-sharpless-catalog.ts
+const MAX_SEP_DEG = 3;
 
 const POSITIONS = new Map<string, { raDeg: number; decDeg: number }>();
-for (const r of openNgc as Array<{ id: string; ngcName?: string | null; messier?: number | string | null; ra?: number | null; dec?: number | null }>) {
+for (const r of openNgc) {
   if (r.ra == null || r.dec == null) continue;
   const pos = { raDeg: r.ra * 15, decDeg: r.dec };
   POSITIONS.set(r.id.toUpperCase().replace(/\s+/g, ''), pos);

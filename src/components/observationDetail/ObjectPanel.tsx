@@ -23,7 +23,7 @@ interface ObjectInfoLike {
   wikiUrl?: string | null;
 }
 
-export function ObjectPanel({ displayName, info, magnitude, distanceLy, alsoKnownAs }: {
+export function ObjectPanel({ displayName, info, magnitude, distanceLy, alsoKnownAs, hideHeader = false }: {
   displayName: string;
   info: ObjectInfoLike | undefined;
   magnitude: number | null | undefined;
@@ -31,6 +31,8 @@ export function ObjectPanel({ displayName, info, magnitude, distanceLy, alsoKnow
   /** Other catalog names for the same object. Optional: an observation is about
    *  one night and does not need them, while the object page does. */
   alsoKnownAs?: string[];
+  /** Omit the "About X" heading when the caller already shows it. */
+  hideHeader?: boolean;
 }) {
   const { isDark, isNight, isSpace } = useTheme();
   const { t } = useTranslation('observations');
@@ -54,10 +56,10 @@ export function ObjectPanel({ displayName, info, magnitude, distanceLy, alsoKnow
   const hasDescription = !!info?.description;
 
   return (
-    <SessionPanel title={t('observationDetail.objectPanel.about', { name: displayName })} icon={Info}>
+    <SessionPanel title={t('observationDetail.objectPanel.about', { name: displayName })} icon={Info} hideHeader={hideHeader}>
       {hasDescription && (
-        <p className={`text-[13px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-          {info!.description}
+        <p className={`text-[0.8125rem] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+          {info?.description}
         </p>
       )}
 
@@ -77,7 +79,7 @@ export function ObjectPanel({ displayName, info, magnitude, distanceLy, alsoKnow
         <div className={`mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t pt-4 ${
           isDark ? 'border-slate-800' : 'border-slate-100'
         }`}>
-          <span className={`text-[10.5px] font-medium uppercase tracking-[0.12em] ${
+          <span className={`text-[0.6562rem] font-medium uppercase tracking-[0.12em] ${
             isDark ? 'text-slate-500' : 'text-slate-400'
           }`}>
             {t('observationDetail.objectPanel.alsoKnownAs')}
@@ -85,7 +87,7 @@ export function ObjectPanel({ displayName, info, magnitude, distanceLy, alsoKnow
           {alsoKnownAs.map(aka => (
             <span
               key={aka}
-              className={`rounded-md px-2 py-0.5 text-[12px] font-medium ${
+              className={`rounded-md px-2 py-0.5 text-[0.75rem] font-medium ${
                 isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'
               }`}
             >
@@ -100,7 +102,7 @@ export function ObjectPanel({ displayName, info, magnitude, distanceLy, alsoKnow
           href={info.wikiUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className={`mt-4 inline-flex items-center gap-1.5 text-[13px] font-medium transition hover:underline ${accentText}`}
+          className={`mt-4 inline-flex items-center gap-1.5 text-[0.8125rem] font-medium transition hover:underline ${accentText}`}
         >
           <ExternalLink className="h-3.5 w-3.5" />
           {t('observationDetail.objectPanel.readOnWikipedia')}

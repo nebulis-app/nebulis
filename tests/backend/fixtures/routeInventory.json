@@ -1,5 +1,154 @@
 [
   {
+    "method": "GET",
+    "path": "/alerts",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/alerts/channels",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/alerts/channels/:id",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/alerts/channels/:id",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/alerts/channels/:id/test",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/alerts/clear-night/preview",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/alerts/clear-night/send-to-phones",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/alerts/config",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/alerts/devices",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/alerts/devices/:id",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/alerts/devices/:id",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/alerts/devices/:id",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/alerts/devices/:id/test",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/alerts/dew/send-to-phones",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/alerts/push-info",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/annotate",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/annotate/auto-solve",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/annotate/auto-solve/run",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/annotate/solve",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/annotate/solver",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/annotate/solver/install",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
     "method": "POST",
     "path": "/auth/login",
     "guards": [
@@ -219,7 +368,37 @@
   },
   {
     "method": "GET",
+    "path": "/catalogs/:catalog/wall",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/catalogs/:catalog/wall/overrides",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/catalogs/:catalog/wall/overrides",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
     "path": "/catalogs/best-window",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/catalogs/wall/images/:objectId",
     "guards": [
       "<anonymous>"
     ]
@@ -303,9 +482,221 @@
   },
   {
     "method": "GET",
+    "path": "/explore/best-tonight",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/explore/browse",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/explore/categories",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/explore/next-good-nights/:objectId",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/explore/search",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
     "path": "/forecast",
     "guards": [
       "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/forecast/recorded",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/gear",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/gear",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/gear/:id",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/gear/:id",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/gear/:id",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/gear/:id/archive",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/gear/:id/unarchive",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/gear/kits",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/gear/kits",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/gear/kits/:id",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/gear/kits/:id",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/gear/kits/:id/checks",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/gear/kits/:id/checks",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/gear/kits/:id/checks",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/journal",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/journal",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/journal/:id",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/journal/:id",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/journal/:id",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/journal/:id/attachments",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/journal/attachments/:id",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/journal/attachments/:id",
+    "guards": [
       "<anonymous>"
     ]
   },
@@ -326,6 +717,20 @@
   {
     "method": "GET",
     "path": "/library/archive/scopes",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/library/builtin-art",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/library/builtin-art/:id",
     "guards": [
       "<anonymous>"
     ]
@@ -381,6 +786,13 @@
     "path": "/library/calibrations/download/link",
     "guards": [
       "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/library/cluster",
+    "guards": [
       "<anonymous>"
     ]
   },
@@ -470,6 +882,30 @@
   },
   {
     "method": "GET",
+    "path": "/library/file-original",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/library/file/replace",
+    "guards": [
+      "requireAdmin",
+      "multerMiddleware",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/library/file/restore-original",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
     "path": "/library/file/thumbnail",
     "guards": [
       "<anonymous>",
@@ -478,8 +914,39 @@
   },
   {
     "method": "GET",
+    "path": "/library/filter-aliases",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/library/filter-aliases",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
     "path": "/library/fits-thumbnail",
     "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/library/frame-analysis/measure",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/library/frame-analysis/review",
+    "guards": [
+      "requireAdmin",
       "<anonymous>"
     ]
   },
@@ -592,6 +1059,13 @@
     ]
   },
   {
+    "method": "GET",
+    "path": "/library/integration/progress",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
     "method": "POST",
     "path": "/library/manual-observations",
     "guards": [
@@ -698,6 +1172,21 @@
   },
   {
     "method": "GET",
+    "path": "/library/objects/:objectId/integration/filters",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/library/objects/:objectId/integration/goals",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
     "path": "/library/objects/:objectId/linked-files",
     "guards": [
       "requireAdmin",
@@ -707,6 +1196,13 @@
   {
     "method": "GET",
     "path": "/library/objects/:objectId/location",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/library/objects/:objectId/media",
     "guards": [
       "<anonymous>"
     ]
@@ -831,6 +1327,28 @@
     ]
   },
   {
+    "method": "GET",
+    "path": "/library/objects/:objectId/sessions/:date/frame-analysis",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/library/objects/:objectId/sessions/:date/frame-analysis.csv",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/library/objects/:objectId/sessions/:date/frame-analysis/measure",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
     "method": "POST",
     "path": "/library/objects/:objectId/sessions/:date/library-files",
     "guards": [
@@ -842,6 +1360,14 @@
   {
     "method": "POST",
     "path": "/library/objects/:objectId/sessions/:date/move",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/library/objects/:objectId/sessions/:date/optics",
     "guards": [
       "requireAdmin",
       "<anonymous>"
@@ -955,6 +1481,22 @@
     "method": "GET",
     "path": "/library/objects/:objectId/stacked-images",
     "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/library/objects/:objectId/stacking-export",
+    "guards": [
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/library/objects/:objectId/stacking-export/plan",
+    "guards": [
+      "<anonymous>",
       "<anonymous>"
     ]
   },
@@ -1280,6 +1822,13 @@
   },
   {
     "method": "GET",
+    "path": "/planned-sessions/nights",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
     "path": "/planner",
     "guards": [
       "<anonymous>"
@@ -1426,6 +1975,28 @@
     ]
   },
   {
+    "method": "GET",
+    "path": "/settings/api-keys",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/settings/api-keys",
+    "guards": [
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/settings/api-keys/:id",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
     "method": "POST",
     "path": "/settings/debug-logging/disable",
     "guards": [
@@ -1538,6 +2109,22 @@
   },
   {
     "method": "GET",
+    "path": "/sites/:id/photos",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/sites/:id/photos",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
     "path": "/sites/active",
     "guards": [
       "<anonymous>"
@@ -1548,6 +2135,36 @@
     "path": "/sites/active",
     "guards": [
       "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/sites/photos/:photoId",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/sites/photos/:photoId",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/sites/photos/:photoId",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/sky-events",
+    "guards": [
       "<anonymous>"
     ]
   },
@@ -1989,6 +2606,29 @@
   {
     "method": "PUT",
     "path": "/telescopes/:id/optical-configs/:cid",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/telescopes/:id/photo",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/telescopes/:id/photo",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/telescopes/:id/photo",
     "guards": [
       "requireAdmin",
       "<anonymous>"

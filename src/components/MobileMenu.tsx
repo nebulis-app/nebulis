@@ -60,7 +60,7 @@ export function MobileMenu() {
                 ? 'bg-slate-900 border-slate-800'
                 : 'bg-white border-slate-200'
         }`}>
-          <div className={`px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider border-b ${
+          <div className={`px-4 py-2.5 text-[0.6875rem] font-semibold uppercase tracking-wider border-b ${
             isDark ? 'text-slate-500 border-slate-800' : 'text-slate-400 border-slate-100'
           }`}>
             {t('mobileMenu.connectYourDevice')}
@@ -103,7 +103,7 @@ export function MobileMenu() {
             </button>
           </div>
 
-          <div className={`px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider border-t ${
+          <div className={`px-4 py-2.5 text-[0.6875rem] font-semibold uppercase tracking-wider border-t ${
             isDark ? 'text-slate-500 border-slate-800' : 'text-slate-400 border-slate-100'
           }`}>
             {t('mobileMenu.getNebulisOnYourDevice')}

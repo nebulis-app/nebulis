@@ -7,7 +7,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { getLibraryDir, withTimeout, LIBRARY_IO_TIMEOUT_MS } from '../libraryPath.js';
+import { getLibraryDir, withTimeout, TimeoutError, LIBRARY_SERVE_IO_TIMEOUT_MS } from '../libraryPath.js';
 import db from '../db.js';
 import { getSettingsData } from '../telescopes.js';
 import type { TransportKind } from '../telescopeTransports.js';
@@ -34,6 +34,7 @@ import {
   resolverFor,
   deleteLibraryFileRow,
   deleteLibraryFileRowsForObject,
+  moveLibraryFileRow,
   writeObjectManifest,
 } from './libraryFiles.js';
 import { listObjectFiles, getObjectLayout } from './libraryLayout.js';
@@ -42,6 +43,7 @@ import { setDesignationRedirect } from './designationRedirects.js';
 import { deleteCaptureInfoForObject } from './captureInfo.js';
 import { getStartrailsObjectId, patchStartrailsObjectMeta } from './dwarfStartrails.js';
 import { getVideosObjectId, patchVideosObjectMeta } from './dwarfVideos.js';
+import { looksLikeComet, isMovingObject } from './movingObject.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -55,7 +57,7 @@ import { getVideosObjectId, patchVideosObjectMeta } from './dwarfVideos.js';
 export type ProcessingStatus = 'unprocessed' | 'processing' | 'processed';
 export const PROCESSING_STATUSES: readonly ProcessingStatus[] = ['unprocessed', 'processing', 'processed'];
 export function isProcessingStatus(value: unknown): value is ProcessingStatus {
-  return typeof value === 'string' && (PROCESSING_STATUSES as readonly string[]).includes(value);
+  return typeof value === 'string' && PROCESSING_STATUSES.some((entry) => entry === value);
 }
 
 export interface LibraryIndex {
@@ -131,6 +133,12 @@ export interface LibrarySessionRow {
   /** Where the cached weather above was fetched. NULL predates the columns. */
   weatherLat: number | null;
   weatherLon: number | null;
+  /** Optical train the user chose for this session; NULL = let the files
+   *  decide. See server/lib/library/sessionOptics.ts. */
+  opticalConfigId: string | null;
+  /** FOCALLEN from the session's FITS, cached once `focalResolved` is 1. */
+  fileFocalMm: number | null;
+  focalResolved: number;
 }
 
 export interface LibraryMetaRow {
@@ -634,99 +642,66 @@ db.prepare('CREATE INDEX IF NOT EXISTS idx_projectArchives_object ON projectArch
 }
 
 /**
- * Normalize library directories that contain spaces in their names by merging
- * them into their space-free equivalents (e.g. "NGC 7331/" → "NGC7331/").
+ * Undo the folder rename an earlier startup repair (`repairSpaceDirectories`)
+ * did to objects whose folder name contains spaces ("C 5/" → "C5/").
  *
- * This is needed because:
- *  - SeeStar sometimes names folders with spaces ("NGC 7331")
- *  - The space-stripping DB migration preserved folderName with spaces to avoid
- *    breaking file access, but never renamed the physical directory
- *  - repairAliasDirectories creates canonical dirs (no spaces) when it moves
- *    alias files, leaving two directories for the same object
+ * That repair renamed the directory and rewrote `libraryObjects.folderName`,
+ * but every `libraryFiles.relPath` still began with the original spaced name,
+ * so each affected object lost all of its files (the page showed "No images
+ * yet" while the folder was full). It also broke the rule that a library keeps
+ * the folder naming of the system it came from. The repair no longer runs;
+ * this puts back what it changed.
  *
- * Run before repairAliasDirectories so alias repair always finds the right target.
- * Safe to run on every startup — idempotent once space dirs are gone.
+ * Deliberately narrow, because it renames a directory: it acts only when the
+ * file records of an object all agree on one folder name that does not exist on
+ * disk, the object's current folder name is exactly that name with its spaces
+ * removed, and that folder does exist. Anything else (both folders present, a
+ * rename that is not purely space-stripping, records that disagree) is left
+ * alone and logged. The file records are never touched: they were right all
+ * along. Idempotent, and a no-op once nothing is out of step.
  */
-export function repairSpaceDirectories(): void {
+export function restoreSpaceStrippedFolders(): number {
+  let restored = 0;
   try {
     const LIBRARY_DIR = getLibraryDir();
-    if (!fs.existsSync(LIBRARY_DIR)) return;
+    if (!fs.existsSync(LIBRARY_DIR)) return 0;
 
-    for (const entry of fs.readdirSync(LIBRARY_DIR, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      if (isReservedLibraryDir(entry.name)) continue;
-      const noSpaceName = entry.name.replace(/\s+/g, '');
-      if (noSpaceName === entry.name) continue; // no spaces — nothing to do
+    const objects = db.prepare<[], { objectId: string; folderName: string | null }>(
+      'SELECT objectId, folderName FROM libraryObjects WHERE deleted = 0',
+    ).all();
+    const recorded = db.prepare<[string], { folder: string }>(
+      `SELECT DISTINCT substr(relPath, 1, instr(relPath, '/') - 1) AS folder
+         FROM libraryFiles WHERE objectId = ? AND sourceId IS NULL AND instr(relPath, '/') > 0`,
+    );
 
-      const spaceDir = path.join(LIBRARY_DIR, entry.name);
-      const canonDir = path.join(LIBRARY_DIR, noSpaceName);
+    for (const { objectId, folderName } of objects) {
+      if (!folderName) continue;
+      const folders = recorded.all(objectId).map(r => r.folder);
+      if (folders.length !== 1) continue;
+      const original = folders[0];
+      if (original === folderName) continue;
+      if (original.replace(/\s+/g, '') !== folderName) continue;
 
+      const fromDir = path.join(LIBRARY_DIR, folderName);
+      const toDir = path.join(LIBRARY_DIR, original);
+      if (!fs.existsSync(fromDir)) continue;
+      if (fs.existsSync(toDir)) {
+        console.warn(`[library] FolderRestore: "${original}/" and "${folderName}/" both exist for ${objectId}; leaving both as they are`);
+        continue;
+      }
       try {
-        if (!fs.existsSync(canonDir)) {
-          // No canonical dir yet: atomic rename (fast path, no file-by-file copy).
-          fs.renameSync(spaceDir, canonDir);
-          console.log(`[library] SpaceRepair: renamed "${entry.name}/" → "${noSpaceName}/"`);
-        } else {
-          // Both dirs exist (e.g. "NGC 7331" + "NGC7331"): merge space dir into
-          // canonical dir, then remove the now-empty space dir.
-          _mergeIntoDir(spaceDir, canonDir);
-          try {
-            if (fs.readdirSync(spaceDir).length === 0) fs.rmdirSync(spaceDir);
-          } catch { /* ignore — non-empty means some files couldn't be moved */ }
-          console.log(`[library] SpaceRepair: merged "${entry.name}/" into "${noSpaceName}/"`);
-        }
-
-        // Update DB: find row by old folderName (space) or by objectId (no-space)
-        // and normalise folderName + recount files.
-        const row =
-          db.prepare<[string], { objectId: string }>(
-            'SELECT objectId FROM libraryObjects WHERE folderName = ?'
-          ).get(entry.name) ??
-          db.prepare<[string], { objectId: string }>(
-            'SELECT objectId FROM libraryObjects WHERE objectId = ?'
-          ).get(noSpaceName);
-
-        if (row) {
-          const fileCount = _countFiles(canonDir);
-          db.prepare('UPDATE libraryObjects SET folderName = ?, fileCount = ? WHERE objectId = ?')
-            .run(noSpaceName, fileCount, row.objectId);
-        }
+        fs.renameSync(fromDir, toDir);
+        db.prepare('UPDATE libraryObjects SET folderName = ? WHERE objectId = ?').run(original, objectId);
+        restored++;
+        console.log(`[library] FolderRestore: renamed "${folderName}/" back to "${original}/" for ${objectId}`);
       } catch (err) {
-        console.warn(`[library] SpaceRepair: "${entry.name}":`, err instanceof Error ? err.message : err);
+        console.warn(`[library] FolderRestore: ${objectId}:`, err instanceof Error ? err.message : err);
       }
     }
   } catch (err) {
-    console.warn('[library] repairSpaceDirectories failed:', err instanceof Error ? err.message : err);
+    console.warn('[library] restoreSpaceStrippedFolders failed:', err instanceof Error ? err.message : err);
   }
-}
-
-function _mergeIntoDir(from: string, to: string): void {
-  for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
-    const src = path.join(from, entry.name);
-    const dst = path.join(to, entry.name);
-    if (entry.isFile()) {
-      if (!fs.existsSync(dst)) {
-        fs.renameSync(src, dst);
-      } else {
-        // Destination already has this file — the source copy is a duplicate.
-        // Delete it so the space directory can be fully emptied and removed.
-        fs.unlinkSync(src);
-      }
-    } else if (entry.isDirectory()) {
-      if (!fs.existsSync(dst)) {
-        fs.renameSync(src, dst); // subdir doesn't exist in target — move whole thing
-      } else {
-        _mergeIntoDir(src, dst);
-        try { fs.rmdirSync(src); } catch { /* non-empty, leave it */ }
-      }
-    }
-  }
-}
-
-function _countFiles(dir: string): number {
-  return fs.readdirSync(dir).filter(f => {
-    try { return fs.statSync(path.join(dir, f)).isFile(); } catch { return false; }
-  }).length;
+  return restored;
 }
 
 /**
@@ -767,6 +742,9 @@ export function repairAliasDirectories(): void {
           const dst = path.join(targetDir, fname);
           if (!fs.existsSync(dst)) {
             fs.renameSync(src, dst);
+            // Keep the file's record pointing at its new address (no-op when
+            // the file has no row).
+            moveLibraryFileRow(`${entry.name}/${fname}`, canonical, canonRow.folderName, fname);
             moved++;
           }
         }
@@ -1132,23 +1110,7 @@ export function getLibraryObjectNames() {
 
 // ─── Catalog metadata helpers ───────────────────────────────────────────────
 
-/**
- * True when an object id reads as a comet designation. Comets are not in the
- * deep-sky catalogs, so this folder-name shape is the only signal.
- *
- *   periodic   "161PHartley-IRAS", "10P Tempel", "220P_McNaught", bare "1P"
- *   provisional "C/2023 A3", "C-2023 A3", "P/2010 H2", "C2023A3"
- *
- * Whole-string and strict on purpose: "3C273", "NGC7000", "M31_mosaic" and
- * Caldwell "C14" must never match. C/D periodic forms require a trailing name
- * so a bare "12C" is not claimed.
- */
-export function looksLikeComet(objectId: string): boolean {
-  const id = objectId.trim();
-  if (/^\d{1,4}P(?:[\s_/-]*[A-Za-z][A-Za-z'-]*.*)?$/i.test(id)) return true;
-  if (/^\d{1,4}[CD][\s_/-]*[A-Za-z][A-Za-z'-]+/i.test(id)) return true;
-  return /^[CPDXI][\s/_-]?\d{4}[\s_]?[A-Z]{1,2}\d*/i.test(id) && !/^C\d{1,3}$/i.test(id);
-}
+export { looksLikeComet };
 
 /** Resolve catalog metadata for an object ID and persist it to the DB row. */
 export function resolveCatalogMeta(objectId: string): {
@@ -1159,8 +1121,8 @@ export function resolveCatalogMeta(objectId: string): {
   const normalized = normalizeCatalogId(objectId);
   const entry = getCatalogEntry(normalized) || getCatalogEntry(objectId);
 
-  // getCatalogEntry walks solar system -> catalog-curated.json -> Caldwell
-  // alias -> OpenNGC -> Messier, but never curated-descriptions.json, which is
+  // getCatalogEntry walks solar system -> curated layer -> Caldwell alias ->
+  // listed rows -> Messier, but historically not the separate description file, which was
   // only read by the /catalog/* routes. An object whose only curated text
   // lives there (e.g. IC 342's description, keyed "C5") would import with a
   // blank description and stay blank on offline hubs where the Wikipedia
@@ -1930,7 +1892,8 @@ export function getLocalObjects(userId = '', search = '') {
     if (
       exposedGalleryImage &&
       obj.galleryImageUserSet &&
-      !exposedGalleryImage.startsWith('catalog-source:')
+      !exposedGalleryImage.startsWith('catalog-source:') &&
+      !exposedGalleryImage.startsWith('builtin:')
     ) {
       try {
         const abs = path.join(LIBRARY_DIR, exposedGalleryImage);
@@ -1958,6 +1921,9 @@ export function getLocalObjects(userId = '', search = '') {
       sizeArcmin: obj.sizeArcmin || null,
       hasSubFrames: false,
       thumbnailUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(obj.objectId)}/thumbnail`,
+      // A comet or asteroid with no picture of its own has nothing to show: the card draws its placeholder at once
+      // instead of asking the thumbnail route for an image that cannot exist.
+      hasThumbnail: Boolean(exposedGalleryImage) || !isMovingObject(obj.objectId, objectType),
       sessionsUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(obj.objectId)}/sessions`,
       filesUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(obj.objectId)}/files`,
       subFramesUrl: null,
@@ -2023,9 +1989,11 @@ export async function getLocalFile(relativePath: string): Promise<{ data: Buffer
   // otherwise block the whole event loop for as long as the OS's SMB client
   // takes to give up, on every raw file view/download.
   try {
-    const data = await withTimeout(fs.promises.readFile(fullPath), LIBRARY_IO_TIMEOUT_MS);
+    const data = await withTimeout(fs.promises.readFile(fullPath), LIBRARY_SERVE_IO_TIMEOUT_MS);
     return { data, name: filename };
-  } catch {
+  } catch (err) {
+    // A slow disk is not a missing file: let the route answer 503 (retryable) rather than a 404.
+    if (err instanceof TimeoutError) throw err;
     return null;
   }
 }

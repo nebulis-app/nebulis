@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { Download, Image, Heart, Share2, Loader2, Trash2 } from 'lucide-react';
+import { Image } from 'lucide-react';
 import { getLibraryFileThumbnailUrl, deleteLibraryFile, type LibraryImage } from '../../lib/api/library';
 import { isLinkedPath } from '../../lib/linkedPaths';
 import { LightboxFrame, LightboxPane } from '../lightbox/LightboxFrame';
@@ -12,7 +12,14 @@ import { zoomControlsFromPan } from '../lightbox/zoomControls';
 import { useLightboxKeys } from '../lightbox/useLightboxKeys';
 import { useAdjacentPreload } from '../lightbox/useAdjacentPreload';
 import { shareImage, shareOutcomeMessage } from '../lightbox/shareImage';
-import { LB_ICON_BTN, LB_DANGER_BTN } from '../lightbox/chrome';
+import { useAnnotatedExport } from '../lightbox/useAnnotatedExport';
+import { AnnotationOverlay } from '../lightbox/AnnotationOverlay';
+import { LightboxActions, AnnotateToggle } from '../lightbox/LightboxActions';
+import { AnnotationDock } from '../lightbox/AnnotationDock';
+import { useDockReserve } from '../lightbox/dockReserve';
+import { fadesEstimate, zoomRatio } from '../../lib/annotateFade';
+import { AnnotationInfoCard } from '../lightbox/AnnotationInfoCard';
+import { useImageAnnotations } from '../lightbox/useImageAnnotations';
 import type { ThumbEntry } from '../lightbox/LightboxThumbStrip';
 import { ConfirmModal } from '../ConfirmModal';
 
@@ -22,6 +29,8 @@ interface ImageViewerProps {
   isAdmin: boolean;
   onClose: () => void;
   onToggleFavorite: (img: LibraryImage) => void;
+  /** Opens the image editor on a picture. Omit to hide the Edit action. */
+  onEditImage?: (img: LibraryImage) => void;
 }
 
 /**
@@ -34,7 +43,7 @@ interface ImageViewerProps {
  * accessible dialog.
  */
 export function ImageViewer({
-  images: rawImages, initialIndex, isAdmin, onClose, onToggleFavorite,
+  images: rawImages, initialIndex, isAdmin, onClose, onToggleFavorite, onEditImage,
 }: ImageViewerProps) {
   const { t } = useTranslation('library');
   const queryClient = useQueryClient();
@@ -43,6 +52,9 @@ export function ImageViewer({
   const [status, setStatus] = useState<string | null>(null);
   // AstroBin-style fullscreen, left on across navigation like GalleryModal's.
   const [immersive, setImmersive] = useState(false);
+  // Object rings and names over the picture. Left on across navigation, like
+  // fullscreen, so paging through a night stays annotated.
+  const [annotate, setAnnotate] = useState(false);
 
   // Deleted paths are hidden immediately rather than waiting on the parent's
   // query to refetch, the same reasoning GalleryModal's `localItems` snapshot
@@ -80,6 +92,18 @@ export function ImageViewer({
   const zoom = useMemo(() => zoomControlsFromPan(zp), [zp]);
 
   const image = images[index];
+  const annotations = useImageAnnotations(image?.path, annotate);
+  const selectedAnnotation = annotations.visibleData?.annotations.find(a => a.id === annotations.selectedId) ?? null;
+  const dock = useDockReserve();
+  // The tile is hidden once a zoomed picture leaves it no room, which is exactly when an estimate starts to look wrong,
+  // so the first time the rings fade the reason is said once, as a brief notice.
+  const estimateFaded = annotate && annotations.data?.quality === 'approximate'
+    && fadesEstimate('approximate', zoomRatio(zp.zoom, zp.fitZoom));
+  const wasFaded = useRef(false);
+  useEffect(() => {
+    if (estimateFaded && !wasFaded.current) flash(t('annotate.zoomedToast'));
+    wasFaded.current = estimateFaded;
+  }, [estimateFaded, flash, t]);
 
   // Display + preload the bounded 2048 px preview tier, never the raw original.
   // A processed TIFF master can be 100-200 MB and stalls the tab; even a large
@@ -118,6 +142,16 @@ export function ImageViewer({
     a.click();
   }, [image]);
 
+  const exporter = useAnnotatedExport({
+    data: annotate ? annotations.visibleData : undefined,
+    original: image ? { url: image.downloadUrl, name: image.name } : null,
+    previewUrl: image?.previewUrl ?? null,
+    title: image?.objectName || image?.name || '',
+    plainDownload: handleDownload,
+    plainShare: handleShare,
+    flash,
+  });
+
   const confirmDelete = useCallback(async () => {
     // Re-entry guard: the confirm dialog stays mounted through the request, so
     // a double-click would otherwise fire two DELETEs for the same path.
@@ -150,18 +184,20 @@ export function ImageViewer({
     onLast: () => setIndex(images.length - 1),
     // Escape backs out of fullscreen first, then out of the viewer — see
     // GalleryModal's identical handling and LightboxFrame's effectiveOnClose.
-    onClose: immersive ? () => setImmersive(false) : onClose,
+    onClose: immersive
+      ? () => setImmersive(false)
+      : selectedAnnotation ? () => annotations.select(null) : onClose,
     onFit: zp.setFit,
     onActualSize: zp.setActualSize,
     onZoomIn: zoom.zoomIn,
     onZoomOut: zoom.zoomOut,
     onRotate: zp.rotate,
-    onDownload: handleDownload,
+    onDownload: exporter.download,
     onDelete: canDelete ? () => setPendingDelete(image) : undefined,
     onToggleFavorite: image ? () => onToggleFavorite(image) : undefined,
     // Escape must reach the confirmation dialog, not tear down the viewer
     // underneath it.
-    suspended: !!pendingDelete,
+    suspended: !!pendingDelete || exporter.asking,
   });
 
   const thumbs = useMemo<ThumbEntry[]>(() => images.map(img => ({
@@ -169,7 +205,7 @@ export function ImageViewer({
     label: `${img.objectName || img.name}${img.date !== 'unknown' ? `, ${img.date}` : ''}`,
     content: (
       <img
-        src={getLibraryFileThumbnailUrl(img.path, 56, 56)}
+        src={getLibraryFileThumbnailUrl(img.path, 160, 160)}
         alt=""
         className="w-full h-full object-cover"
         loading="lazy"
@@ -180,37 +216,17 @@ export function ImageViewer({
   if (!image) return null;
 
   const actions = (
-    <>
-      <button
-        type="button"
-        onClick={() => onToggleFavorite(image)}
-        title={image.isFavorite ? t('imageViewer.removeFromFavoritesKey') : t('imageViewer.addToFavoritesKey')}
-        aria-label={image.isFavorite ? t('imageViewer.removeFromFavorites') : t('imageViewer.addToFavorites')}
-        aria-pressed={image.isFavorite}
-        className={`${LB_ICON_BTN} ${image.isFavorite ? 'text-rose-400 hover:text-rose-300' : ''}`}
-      >
-        <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
-      </button>
-      <button type="button" onClick={handleShare} disabled={sharing} title={t('imageViewer.share')} aria-label={t('imageViewer.share')} className={LB_ICON_BTN}>
-        {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-      </button>
-      <a href={image.downloadUrl} download={image.name} title={t('imageViewer.downloadKey')} aria-label={t('imageViewer.download')} className={LB_ICON_BTN}>
-        <Download className="h-4 w-4" />
-      </a>
-
-      {canDelete && (
-        <button
-          type="button"
-          onClick={() => setPendingDelete(image)}
-          disabled={deleting}
-          title={t('objectDetail.processedSection.delete')}
-          aria-label={t('objectDetail.processedSection.delete')}
-          className={LB_DANGER_BTN}
-        >
-          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-        </button>
-      )}
-    </>
+    <LightboxActions
+      onEdit={isAdmin && onEditImage && /\.(jpe?g|png|webp)$/i.test(image.name) ? () => onEditImage(image) : undefined}
+      favorite={{ isFavorite: image.isFavorite, onToggle: () => onToggleFavorite(image) }}
+      share={{ busy: sharing, onShare: exporter.share }}
+      download={{
+        href: image.downloadUrl,
+        fileName: image.name,
+        onClick: e => { if (exporter.burnable) { e.preventDefault(); exporter.download(); } },
+      }}
+      remove={canDelete ? { busy: deleting, onClick: () => setPendingDelete(image) } : undefined}
+    />
   );
 
   const subtitle = [
@@ -235,6 +251,7 @@ export function ImageViewer({
       <LightboxFrame
         isOpen
         onClose={onClose}
+        onEscape={selectedAnnotation ? () => annotations.select(null) : undefined}
         dialogTitle={t('imageViewer.dialogTitle', { name: displayName })}
         titleIcon={<Image className="h-4.5 w-4.5 flex-shrink-0 text-accent-400" />}
         title={title}
@@ -246,7 +263,7 @@ export function ImageViewer({
         onSelectIndex={setIndex}
         zoom={zoom}
         actions={actions}
-        onRotate={zp.rotate}
+        viewActions={<AnnotateToggle active={annotate} quality={annotations.data?.quality ?? null} onToggle={() => setAnnotate(v => !v)} />}
         immersive={immersive}
         onToggleImmersive={() => setImmersive(v => !v)}
         thumbs={thumbs}
@@ -263,15 +280,34 @@ export function ImageViewer({
           canPan={zp.overflows}
           handlers={zp.paneHandlers}
           flush={immersive}
+          reserve={dock.reserve}
         >
           <LightboxImage
             src={image.previewUrl}
             thumbSrc={getLibraryFileThumbnailUrl(image.path, 400, 400)}
             alt={image.objectName || image.name}
             zp={zp}
+            overlay={annotate && annotations.visibleData
+              ? <AnnotationOverlay data={annotations.visibleData} zp={zp} selectedId={annotations.selectedId} onSelect={annotations.select} />
+              : null}
           />
+          {annotate && selectedAnnotation && (
+            <AnnotationInfoCard annotation={selectedAnnotation} onClose={() => annotations.select(null)} />
+          )}
         </LightboxPane>
+        {/* Sized to the free strip beside the picture, hidden when there is none: never over the picture, never moving it. */}
+        {annotate && !immersive && (
+          <AnnotationDock
+            annotations={annotations}
+            canInstall={isAdmin}
+            zoomedPastEstimate={fadesEstimate('approximate', zoomRatio(zp.zoom, zp.fitZoom))}
+            zp={zp}
+            onReserve={dock.onReserve}
+          />
+        )}
       </LightboxFrame>
+
+      {exporter.dialog}
 
       {pendingDelete && (
         <ConfirmModal

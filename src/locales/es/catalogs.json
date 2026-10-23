@@ -51,7 +51,8 @@
     "planTonightTitle": "Planificar esta noche con objetos de {{label}} aún sin fotografiar",
     "planTonight": "Planificar esta noche",
     "inFrameNote_one": "Incluye {{count}} en el encuadre de otro objeto",
-    "inFrameNote_other": "Incluye {{count}} en el encuadre de otros objetos"
+    "inFrameNote_other": "Incluye {{count}} en el encuadre de otros objetos",
+    "myCatalog": "Mi catálogo {{label}}"
   },
   "catalogPanel": {
     "ariaLabel": "Catálogo {{label}}, {{imaged}} de {{total}} objetos fotografiados",
@@ -62,7 +63,10 @@
     "complete": "Completo",
     "toGo_one": "{{count}} pendiente",
     "toGo_other": "{{count}} pendientes",
-    "openBoard": "Abrir tablero"
+    "openBoard": "Abrir tablero",
+    "myCatalog": "Mi {{label}}",
+    "myCatalogAria_one": "Mi catálogo {{label}}, {{count}} imagen",
+    "myCatalogAria_other": "Mi catálogo {{label}}, {{count}} imágenes"
   },
   "catalogTile": {
     "imagedAriaLabel": "{{id}}, {{name}}, fotografiado",
@@ -253,5 +257,246 @@
     "saveFraming": "Guardar encuadre para esta sesión",
     "framingSaved": "Guardado",
     "fovDisclaimer": "Los valores del campo de visión son aproximados. Los telescopios inteligentes son alt-az, por lo que el ángulo real de la toma rota durante una sesión."
+  },
+  "wall": {
+    "title": "Mi catálogo {{label}}",
+    "backToBoard": "Tablero {{label}}",
+    "filterAria": "Mostrar imágenes",
+    "filter": {
+      "all": "Todas",
+      "processed": "Procesadas",
+      "telescope": "Telescopio"
+    },
+    "mosaic": "Mosaico",
+    "uniform": "Uniforme",
+    "layoutMosaic": "Cambiar a diseño de mosaico",
+    "layoutUniform": "Cambiar a diseño de mismo tamaño",
+    "processed": "Procesada",
+    "telescope": "Telescopio",
+    "inFrame": "En el encuadre",
+    "openObject": "Abrir {{name}}",
+    "emptyAria": "{{label}}, aún sin fotografiar",
+    "notImaged": "Aún sin fotografiar",
+    "addWishlist": "Añadir a la lista de deseos",
+    "removeWishlist": "Quitar de la lista de deseos",
+    "planIt": "Planificar",
+    "loadFailed": "No se pudo cargar tu catálogo. Prueba a recargar la página.",
+    "empty": "Aún no has fotografiado nada del catálogo {{label}}. Tus imágenes llenarán este muro a medida que las añadas.",
+    "edit": {
+      "start": "Editar diseño",
+      "done": "Listo",
+      "cancel": "Cancelar",
+      "resetWall": "Restablecer muro",
+      "resetTile": "Restablecer este mosaico",
+      "hint": "Arrastra una esquina o usa el botón de tamaño. Los cambios se guardan al pulsar Listo.",
+      "chooseImage": "Elegir imagen",
+      "size": "Tamaño del mosaico",
+      "sizeAria": "Cambiar el tamaño de {{id}}",
+      "auto": "Automático",
+      "dragAria": "Arrastrar para cambiar el tamaño de {{id}}",
+      "close": "Cerrar",
+      "focusHint": "Arrastra el recuadro para moverlo; arrastra una esquina o usa el control para ampliar. El recuadro es la parte que se muestra en la ficha.",
+      "frameHint": "Todo lo que queda dentro del recuadro se muestra en la ficha. Amplía para destacar solo una parte de la imagen.",
+      "cropPreview": "Vista previa del mosaico ({{cols}} × {{rows}})",
+      "yourImages": "Tus imágenes de este objeto",
+      "noImages": "No hay imágenes que mostrar.",
+      "saveFailed": "No se pudo guardar tu diseño. Inténtalo de nuevo."
+    },
+    "poster": {
+      "open": "Compartir póster",
+      "title": "Compartir póster",
+      "previewAlt": "Vista previa del póster",
+      "format": "Formato",
+      "formats": {
+        "wide": "Panorámico 4K",
+        "story": "Historia",
+        "square": "Cuadrado",
+        "print": "Impresión A2"
+      },
+      "imagedOnly": "Solo los objetos que he fotografiado",
+      "labels": "Mostrar números de catálogo",
+      "jpeg": "Guardar como JPG en lugar de PNG",
+      "titleField": "Título",
+      "subtitleField": "Subtítulo",
+      "subtitlePlaceholder": "Tu nombre, lugar o año",
+      "download": "Descargar",
+      "rendering": "Generando…",
+      "copy": "Copiar imagen",
+      "share": "Compartir…",
+      "downloaded": "Póster guardado.",
+      "copied": "Copiado al portapapeles.",
+      "shareFallback": "Aquí no se pueden compartir archivos, así que se descargó el póster.",
+      "failed": "No se pudo crear el póster. Prueba con un formato más pequeño.",
+      "brand": "Añadir el logotipo y el nombre de Nebulis",
+      "brandSide": {
+        "left": "Izquierda",
+        "right": "Derecha",
+        "bottomRight": "Abajo a la derecha"
+      }
+    },
+    "statsTile": "{{imaged}} / {{total}}"
+  },
+  "explore": {
+    "hero": {
+      "title": "Explorar",
+      "subtitle": "Encuentra algo que merezca una foto. Busca por cualquier nombre o número de catálogo, o recorre el cielo por tipo de objeto.",
+      "site": "Lugar de observación",
+      "setLocation": "Indica tu ubicación para ver qué puedes fotografiar"
+    },
+    "search": {
+      "label": "Buscar en el cielo",
+      "placeholder": "Busca un nombre o número: Pelícano, M42, NGC 7000, C14, Sh2-155",
+      "clear": "Borrar búsqueda",
+      "results": "Resultados de la búsqueda",
+      "bestOfConstellation": "Mejores objetos en {{name}}",
+      "constellationCount_one": "{{count}} objeto",
+      "constellationCount_other": "{{count}} objetos",
+      "noResults": "No se encontró nada para «{{query}}»",
+      "seeAll": "Ver los {{count}} resultados",
+      "addNamed": "Añadir {{name}} a la lista de deseos",
+      "addHint": "Añadir a la lista de deseos (Ctrl+Intro)"
+    },
+    "visibility": {
+      "tonight": "Visible esta noche",
+      "bestMonth": "Mejor en {{month}}",
+      "bestRange": "Mejor de {{from}} a {{to}}",
+      "inSeason": "De temporada",
+      "low": "Bajo desde aquí",
+      "never": "Nunca sale aquí",
+      "upOn": "Visible el {{date}}"
+    },
+    "card": {
+      "mag": "mag {{value}}",
+      "maxAlt": "Alt. máx.",
+      "best": "Mejor",
+      "magLabel": "Mag.",
+      "open": "Abrir {{name}}",
+      "imaged": "Ya has fotografiado este objeto",
+      "onWishlist": "En tu lista de deseos",
+      "added": "Añadido",
+      "add": "Lista de deseos",
+      "planTonight": "Planificar hoy",
+      "notUpTonight": "No es visible esta noche desde tu lugar",
+      "planned": "Añadido a esta noche",
+      "noRoom": "No hay hueco libre esta noche",
+      "planFailed": "No se pudo planificar",
+      "openPlanner": "Abrir en el planificador",
+      "openPlannerNamed": "Mostrar {{name}} en el planificador"
+    },
+    "tile": {
+      "total": "{{formatted}} objetos",
+      "visibleHere": "{{formatted}} visibles desde aquí",
+      "upTonight": "{{formatted}} visibles esta noche"
+    },
+    "categories": {
+      "showpieces": {
+        "label": "Imprescindibles",
+        "blurb": "Favoritos seleccionados a mano",
+        "intro": "Una lista corta de los objetos más fotografiados, elegidos porque merecen la pena incluso con un telescopio pequeño."
+      },
+      "galaxies": {
+        "label": "Galaxias",
+        "blurb": "Espirales, elípticas y galaxias de canto",
+        "intro": "Otras ciudades de estrellas. Primero van las grandes y brillantes. Las galaxias débiles necesitan muchas horas, así que revisa tamaño y brillo antes de dedicarles una noche."
+      },
+      "galaxy-groups": {
+        "label": "Grupos de galaxias",
+        "blurb": "Parejas, tríos y grupos compactos",
+        "intro": "Galaxias que están muy juntas en el cielo. Dan campos pequeños que van bien con una distancia focal corta."
+      },
+      "emission-nebulae": {
+        "label": "Nebulosas de emisión",
+        "blurb": "Nubes de hidrógeno brillantes y cunas de estrellas",
+        "intro": "Nubes de gas iluminadas por estrellas jóvenes. Brillan en rojo en hidrógeno alfa, así que un filtro de doble banda ayuda mucho con cielos iluminados."
+      },
+      "planetary-nebulae": {
+        "label": "Nebulosas planetarias",
+        "blurb": "Capas de gas alrededor de estrellas moribundas",
+        "intro": "Pequeñas, brillantes y a menudo coloridas. Muchas son diminutas, así que una distancia focal larga muestra más detalle."
+      },
+      "supernova-remnants": {
+        "label": "Restos de supernova",
+        "blurb": "Escombros de estrellas que explotaron",
+        "intro": "Filamentos finos y delicados de estrellas que explotaron. Son débiles y premian las exposiciones largas con cielos oscuros."
+      },
+      "dark-reflection": {
+        "label": "Nebulosas oscuras y de reflexión",
+        "blurb": "Nubes de polvo, iluminadas y sin iluminar",
+        "intro": "Polvo que bloquea o dispersa la luz de las estrellas. Las nebulosas de reflexión azules se ven desde casi cualquier cielo. Las oscuras necesitan un fondo brillante."
+      },
+      "clusters": {
+        "label": "Cúmulos estelares",
+        "blurb": "Cúmulos abiertos y globulares",
+        "intro": "Los cúmulos abiertos son familias sueltas de estrellas jóvenes. Los globulares son bolas densas de estrellas viejas. Con exposiciones cortas basta."
+      }
+    },
+    "best": {
+      "title": "Lo mejor esta noche desde tu lugar",
+      "seeAll": "Ver todo",
+      "titleOn": "Lo mejor el {{date}}"
+    },
+    "browse": {
+      "title": "Explorar por tipo",
+      "myWishlist": "Mi lista de deseos ({{count}})"
+    },
+    "results": {
+      "back": "Volver a Explorar",
+      "forQuery": "Resultados para «{{query}}»",
+      "inConstellation": "Lo mejor en {{name}}",
+      "all": "Todo",
+      "count": "{{formatted}} objetos",
+      "loading": "Cargando",
+      "empty": "Ningún objeto coincide con estos filtros.",
+      "showEverything": "Mostrar todo, incluso lo que nunca sale aquí",
+      "loadMore": "Cargar más",
+      "bestTonight": "Mejores esta noche",
+      "bestOn": "Lo mejor el {{date}}"
+    },
+    "filters": {
+      "visibility": "Mostrar",
+      "tonight": "Visible esta noche",
+      "here": "Visible desde aquí",
+      "all": "Todo",
+      "notImaged": "Aún sin fotografiar",
+      "sort": "Ordenar",
+      "fitsScope": "Cabe en mi telescopio",
+      "fitsScopeHint": "Objetos que caben en un solo encuadre de {{scope}}",
+      "upOn": "Visible el {{date}}"
+    },
+    "sort": {
+      "best": "Mejores",
+      "tonight": "Mejores esta noche",
+      "bright": "Más brillantes",
+      "large": "Más grandes",
+      "name": "Nombre"
+    },
+    "planNight": {
+      "title": "Planificar {{name}}",
+      "subtitle": "Las próximas 30 noches desde tu lugar. Las estrellas marcan las tres mejores.",
+      "loading": "Revisando las próximas 30 noches",
+      "noLocation": "Indica tu lugar de observación para planificar una noche.",
+      "never": "Este objeto no sube lo suficiente desde tu lugar.",
+      "best": "Mejor noche",
+      "altHours": "Hasta {{alt}}° durante {{hours}} h",
+      "moon": {
+        "ok": "Luna {{illum}} %, sin problema",
+        "caution": "Luna {{illum}} %, algo cerca",
+        "warning": "Luna {{illum}} %, demasiado cerca"
+      },
+      "plan": "Planificar",
+      "planned": "Planificado",
+      "noRoom": "Sin hueco libre",
+      "noWindow": "Sin ventana oscura",
+      "failed": "No se pudo planificar",
+      "geometryNote": "Solo tiene en cuenta la altura y la Luna. Revisa la previsión por si hay nubes.",
+      "openPlanner": "Abrir el planificador",
+      "close": "Cerrar",
+      "bestNights": "Mejores noches",
+      "allNights": "Próximas 30 noches"
+    },
+    "night": {
+      "showing": "Mostrando el {{date}}, la noche elegida en el planificador.",
+      "backToTonight": "Volver a esta noche"
+    }
   }
 }

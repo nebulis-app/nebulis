@@ -24,6 +24,7 @@ const SETTINGS = { importJpg: true, importFits: true, importSubFrames: true };
 const roots: string[] = [];
 
 afterAll(() => {
+  vi.unstubAllGlobals();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
   for (const r of roots) fs.rmSync(r, { recursive: true, force: true });
 });

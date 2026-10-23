@@ -24,11 +24,9 @@ import db from '../db.js';
 import { stmts as objectStmts } from './objects.js';
 import { findCalibrationBundle } from './calibrationScan.js';
 import type { CalibrationFrameType } from './calibrationFolders.js';
+import type { AttachableCalibrationType, CalibrationAttachment, CalibrationAttachmentSummary } from './calibrationAttachmentTypes.js';
 
-/** Only flats and flat-darks are session-specific enough to need this — see
- *  the file header. Attaching a bias/dark/mixed bundle is rejected upstream
- *  (the route layer), not silently allowed here. */
-export type AttachableCalibrationType = Extract<CalibrationFrameType, 'flat' | 'flatDark'>;
+export type { AttachableCalibrationType, CalibrationAttachment, CalibrationAttachmentSummary } from './calibrationAttachmentTypes.js';
 
 export function isAttachableCalibrationType(type: CalibrationFrameType | 'mixed'): type is AttachableCalibrationType {
   return type === 'flat' || type === 'flatDark';
@@ -39,23 +37,13 @@ export function isAttachableCalibrationType(type: CalibrationFrameType | 'mixed'
  *  db.ts's schema comment for why this is `''` rather than `NULL`. */
 export const WHOLE_OBJECT_DATE = '';
 
-export interface CalibrationAttachment {
-  id: string;
-  objectId: string;
-  /** '' means "whole object" — see WHOLE_OBJECT_DATE. */
-  date: string;
-  calibrationType: AttachableCalibrationType;
-  scope: string | null;
-  folderName: string;
-  settingsKey: string;
-  createdAt: string;
-}
-
 interface AttachmentRow {
   id: string;
   objectId: string;
   date: string;
-  calibrationType: string;
+  /** Only ever written by attachCalibrationBundle, whose input is typed
+   *  AttachableCalibrationType, so the column holds nothing else. */
+  calibrationType: AttachableCalibrationType;
   scope: string | null;
   folderName: string;
   settingsKey: string;
@@ -67,7 +55,7 @@ function toAttachment(row: AttachmentRow): CalibrationAttachment {
     id: row.id,
     objectId: row.objectId,
     date: row.date,
-    calibrationType: row.calibrationType as AttachableCalibrationType,
+    calibrationType: row.calibrationType,
     scope: row.scope,
     folderName: row.folderName,
     settingsKey: row.settingsKey,
@@ -147,9 +135,9 @@ export function attachCalibrationBundle(input: {
   // Re-select rather than trust the freshly-generated id: attaching a bundle
   // that is already attached keeps that row's original id (ON CONFLICT UPDATE
   // never touches the primary key).
-  return toAttachment(
-    selectSlotStmt.get(input.objectId, date, input.calibrationType, input.scope, input.folderName, input.settingsKey)!,
-  );
+  const row = selectSlotStmt.get(input.objectId, date, input.calibrationType, input.scope, input.folderName, input.settingsKey);
+  if (!row) throw new Error(`[calibrationAttachments] row for ${input.objectId}/${date} missing right after upsert`);
+  return toAttachment(row);
 }
 
 /** True if a row was deleted. */
@@ -185,13 +173,6 @@ export function resolveAttachmentsForSession(objectId: string, date: string): Ca
     out.push(...rows.map(toAttachment));
   }
   return out;
-}
-
-export interface CalibrationAttachmentSummary extends CalibrationAttachment {
-  /** Display name for the attached object, or its folder name when it has no
-   *  resolved catalog name — never absent, so the UI never has to fall back
-   *  to a bare id. */
-  objectName: string;
 }
 
 /** Every place (object, and optionally a specific session) one exact bundle

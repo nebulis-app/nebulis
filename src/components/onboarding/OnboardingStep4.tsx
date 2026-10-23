@@ -82,7 +82,7 @@ export function OnboardingStep4({
     importJpg && t('step3.stackedImagesLabel'),
     importFits && t('step3.fitsFilesLabel'),
     importSubFrames && t('step3.subframesLabel'),
-  ].filter(Boolean) as string[];
+  ].filter((item): item is string => typeof item === 'string' && item.length > 0);
 
   return (
     <>

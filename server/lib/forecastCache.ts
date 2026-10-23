@@ -15,6 +15,8 @@ import { getSettingsData } from './telescopes.js';
 import { addDaysToDateKey, localDateKey, timeZoneOrLocal, zonedDateTimeToUtc } from './timezone.js';
 import { observingNightDateKey } from './telescopeFiles.js';
 import { TEMPERATURE_UNITS, WIND_SPEED_UNITS } from './types/appSettings.js';
+import { isRecord } from './typeGuards.js';
+import { recordNightConditions } from './nightConditions.js';
 
 export interface ForecastHour {
   time: string;          // ISO timestamp
@@ -210,9 +212,9 @@ export function map7TimerCloud(code: number): number {
 export function interpolateSeeingTransparency(
   hours: Array<{ seeing: number | null; transparency: number | null }>,
 ): void {
-  const anchors = hours
-    .map((h, i) => ({ i, seeing: h.seeing, transparency: h.transparency }))
-    .filter(p => p.seeing !== null);
+  const anchors = hours.flatMap((h, i) =>
+    h.seeing !== null ? [{ i, seeing: h.seeing, transparency: h.transparency }] : [],
+  );
 
   for (let i = 0; i < hours.length; i++) {
     if (hours[i].seeing !== null) continue;
@@ -220,7 +222,7 @@ export function interpolateSeeingTransparency(
     const next = anchors.find(p => p.i > i);
     if (prev && next) {
       const t = (i - prev.i) / (next.i - prev.i);
-      hours[i].seeing = Math.round(prev.seeing! * (1 - t) + next.seeing! * t);
+      hours[i].seeing = Math.round(prev.seeing * (1 - t) + next.seeing * t);
       if (prev.transparency !== null && next.transparency !== null) {
         hours[i].transparency = Math.round(prev.transparency * (1 - t) + next.transparency * t);
       }
@@ -305,8 +307,10 @@ export async function buildForecast(lat: number, lon: number) {
   // unrecognized or malformed identifier for some coordinate (a polar or
   // oceanic point, an API-side quirk) reached the client unvalidated and
   // crashed the Forecast page's own unguarded Intl.DateTimeFormat call.
+  const rawOpenMeteoTimezone: unknown = openMeteo?.timezone;
+  const openMeteoTimezone = typeof rawOpenMeteoTimezone === 'string' ? rawOpenMeteoTimezone : undefined;
   const forecastTimezone = timeZoneOrLocal(
-    (openMeteo?.timezone as string | undefined) || getActiveSite().timezone,
+    openMeteoTimezone || getActiveSite().timezone,
   );
 
   // Build hourly forecast from Open-Meteo (primary)
@@ -452,12 +456,10 @@ export async function buildForecast(lat: number, lon: number) {
   // `wind` stays km/h, the client converts. Served here so iOS/Android don't
   // each need a separate settings round-trip just to pick °F vs °C.
   const settings = getSettingsData();
-  const temperatureUnit = (TEMPERATURE_UNITS as readonly string[]).includes(String(settings.temperatureUnit))
-    ? (settings.temperatureUnit as string)
-    : 'fahrenheit';
-  const windUnit = (WIND_SPEED_UNITS as readonly string[]).includes(String(settings.windSpeedUnit))
-    ? (settings.windSpeedUnit as string)
-    : 'mph';
+  const temperatureUnit: string =
+    TEMPERATURE_UNITS.find((unit) => unit === settings.temperatureUnit) ?? 'fahrenheit';
+  const windUnit: string =
+    WIND_SPEED_UNITS.find((unit) => unit === settings.windSpeedUnit) ?? 'mph';
 
   return {
     location: { lat, lon },
@@ -482,9 +484,25 @@ export async function buildForecast(lat: number, lon: number) {
  * recovery for the first ten minutes.
  */
 export function isUsableForecast(data: unknown): boolean {
-  if (!data || typeof data !== 'object') return false;
-  const d = data as { hourly?: unknown; sources?: { weather?: unknown } | null };
-  return Array.isArray(d.hourly) && d.hourly.length > 0 && d.sources?.weather != null;
+  if (!isRecord(data)) return false;
+  const { hourly, sources } = data;
+  return Array.isArray(hourly) && hourly.length > 0 && isRecord(sources) && sources.weather != null;
+}
+
+/**
+ * Keep this forecast's hours for the logbook. Called wherever a usable forecast
+ * is cached, so every fetch, whether a client asked or the hourly refresh ran,
+ * adds to the record of the night. Takes `unknown` because the cache does.
+ */
+export function snapshotNightConditions(data: unknown, lat: number, lon: number): void {
+  if (!isUsableForecast(data) || !isRecord(data) || !Array.isArray(data.hourly)) return;
+  recordNightConditions({
+    siteKey: forecastSiteKey(lat, lon),
+    lat, lon,
+    timezone: typeof data.timezone === 'string' ? data.timezone : '',
+    hourly: data.hourly as ForecastHour[],
+    rate: rateNightConditions,
+  });
 }
 
 // ─── Background refresh ─────────────────────────────────────────
@@ -516,6 +534,7 @@ export async function refreshForecastCache(): Promise<void> {
         continue;
       }
       setForecastCacheEntry({ data, fetchedAt: Date.now(), lat, lon });
+      snapshotNightConditions(data, lat, lon);
       console.log(`[forecast] Cache refreshed for ${forecastSiteKey(lat, lon)}`);
     } catch (err) {
       console.error('[forecast] Background refresh failed:', err instanceof Error ? err.message : err);

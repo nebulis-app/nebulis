@@ -8,37 +8,26 @@
  *
  * Priority: M# > NGC#/IC# > Sh2-N > C# (Caldwell resolves to NGC/IC)
  *
- * The alias map is DERIVED, not hand-written: the ~110 NGC→Messier entries
- * come from OpenNGC's own `messier` cross-references, the ~107 Caldwell entries
- * from CALDWELL_TO_NGC, and the Sharpless entries from the Sharpless catalog's
- * ngcRef / messierRef. Only the genuinely non-derivable cases are listed by
- * hand in MANUAL_ALIASES. tests/backend/aliasResolution.test.ts pins the
- * result against a snapshot of the old hand-written map.
+ * The alias map is read off server/data/dso-catalog.json: each record's id is
+ * the canonical id and every other designation on it (Messier, NGC/IC,
+ * Caldwell, Sharpless, Melotte, LBN, historical duplicate numbers) is an alias
+ * of it. Only the Moon/Sun capture-mode names are listed here, since they are
+ * not deep-sky objects. tests/backend/aliasResolution.test.ts pins the result.
  *
- * Note: M24 (Sagittarius Star Cloud), M40 (Winnecke 4), and M45 (Pleiades)
- * have no NGC/IC designations so no alias is needed for them.
+ * Note: a canonical id is a storage key. Changing which record a designation
+ * sits on rekeys library objects and moves their files at the next boot (see
+ * the alias migration in library/objects.ts), so a designation belongs on a
+ * record only when it is the same physical object.
  */
-import openNgcJson from '../data/openngc.json';
-import { CALDWELL_TO_NGC } from './caldwellCatalog.js';
-import { SHARPLESS_CATALOG } from './sharplessCatalog.js';
+import { DSO_RECORDS, displayDesignation, normalizeCatalogNumber } from './dsoCatalogData.js';
 
-const collapse = (s: string): string =>
-  s.toUpperCase().replace(/\s+/g, '').replace(/^(NGC|IC)0*(\d)/, '$1$2');
+const collapse = (s: string): string => normalizeCatalogNumber(s) ?? s.toUpperCase().replace(/\s+/g, '');
 
 /**
- * Genuinely non-derivable aliases. Each earns its place:
- *  - C9 (Cave Nebula) has no NGC/IC designation and shares its position with
- *    Sh2-155, which outranks Caldwell.
- *  - M102 is a historical dispute; NGC 5866 (Spindle Galaxy) is the modern
- *    consensus identification.
- *  - IC 2118 and NGC 1909 are both in live use for the Witch Head Nebula.
- *  - Different telescopes name the Moon and Sun differently (Dwarf uses
- *    "Lunar"/"Solar" capture modes; Seestar uses "Moon"/"Sun").
+ * Different telescopes name the Moon and Sun differently (Dwarf uses
+ * "Lunar"/"Solar" capture modes; Seestar uses "Moon"/"Sun").
  */
 const MANUAL_ALIASES: ReadonlyArray<readonly [string, string]> = [
-  ['C9', 'SH2-155'],
-  ['M102', 'NGC5866'],
-  ['NGC1909', 'IC2118'],
   ['LUNAR', 'Moon'],
   ['SOLAR', 'Sun'],
 ];
@@ -46,40 +35,14 @@ const MANUAL_ALIASES: ReadonlyArray<readonly [string, string]> = [
 /** Maps normalised alias (uppercase, no spaces) → canonical ID string. */
 const ALIASES: Map<string, string> = (() => {
   const m = new Map<string, string>();
-  const put = (alias: string, canonical: string) => {
-    const k = collapse(alias);
-    if (k && !m.has(k)) m.set(k, canonical);
-  };
-
-  // NGC/IC → Messier, from OpenNGC's own `messier` cross-references. A Messier
-  // row's ngcName is its primary NGC number; designation-shaped commonNames
-  // carry secondary ones (M76's row lists both NGC650 and NGC651).
-  if (Array.isArray(openNgcJson)) {
-    for (const row of openNgcJson as Array<Record<string, unknown>>) {
-      if (!row || typeof row !== 'object' || row.messier == null) continue;
-      const mId = `M${row.messier as string | number}`;
-      // Only NGC/IC-shaped cross-refs. Some rows carry ngcName "M040" or
-      // "Mel022" (Melotte), which are not useful "also known as" designations.
-      const refs = [row.ngcName, ...((row.commonNames as string[] | undefined) ?? [])];
-      for (const ref of refs) {
-        if (typeof ref === 'string' && /^(NGC|IC)\d/.test(collapse(ref))) put(ref, mId);
-      }
+  for (const record of DSO_RECORDS) {
+    for (const d of record.designations) {
+      if (d === record.id) continue;
+      const k = collapse(d);
+      if (k && !m.has(k)) m.set(k, record.id);
     }
   }
-
-  // Sharpless → Messier / NGC / IC, from the Sharpless catalog's cross-refs.
-  // Messier wins over NGC when both are present (same physical nebula).
-  for (const e of SHARPLESS_CATALOG) {
-    if (e.messierRef) put(e.id, collapse(e.messierRef));
-    else if (e.ngcRef) put(e.id, collapse(e.ngcRef));
-  }
-
-  // Caldwell C# → NGC/IC, from the Caldwell catalog. C9/C41/C99 are absent
-  // there by design (no NGC/IC, or already keyed by C-number in OpenNGC).
-  for (const [num, ngc] of Object.entries(CALDWELL_TO_NGC)) put(`C${num}`, ngc);
-
   for (const [alias, canonical] of MANUAL_ALIASES) m.set(collapse(alias), canonical);
-
   return m;
 })();
 
@@ -97,32 +60,22 @@ const ALIASES: Map<string, string> = (() => {
  * an underscore, a word) means it is not a bare designation.
  */
 const DESIGNATION_RE =
-  /^(?:SH2-\d+|(?:NGC|IC|CED|VDB|LBN|LDN|UGC|PGC|ARP|MEL|STOCK|HCG|M|C|B)\d+[A-Z]?)$/;
+  /^(?:SH2-\d+|(?:NGC|IC|CED|VDB|LBN|LDN|UGC|PGC|ARP|MEL|CR|STOCK|HCG|M|C|B)\d+[A-Z]?)$/;
 
 /**
  * Fold a catalog designation into one canonical spelling: uppercase, no
- * spaces, no zero-padding after an NGC/IC prefix, and the Sharpless form
+ * spaces, no zero-padding after any catalog prefix, and the Sharpless form
  * written as "SH2-N". Idempotent, and a no-op for anything that is not a
  * catalog designation.
  *
  *   "ngc 224"      → "NGC224"
- *   "NGC0224"      → "NGC224"
+ *   "NGC0224"      → "NGC224"     "Mel022" → "MEL22"
  *   "Sh2-155" / "sharpless 155" → "SH2-155"
  *   "Caldwell 5"   → "C5"      "Messier 31" → "M31"
  *   "My Nebula"    → "My Nebula"  (unchanged)
  */
 export function normalizeDesignation(id: string): string {
-  let s = id.trim().toUpperCase().replace(/\s+/g, '');
-  s = s
-    .replace(/^SHARPLESS-?/, 'SH2-')
-    .replace(/^SH2-?(\d)/, 'SH2-$1')
-    .replace(/^CALDWELL-?(\d)/, 'C$1')
-    .replace(/^MESSIER-?(\d)/, 'M$1')
-    .replace(/^BARNARD-?(\d)/, 'B$1');
-  if (!DESIGNATION_RE.test(s)) return id.trim();
-  // Collapse zero-padding: "NGC0224" → "NGC224", "IC0405" → "IC405".
-  s = s.replace(/^(NGC|IC)0*(\d)/, '$1$2');
-  return s;
+  return normalizeCatalogNumber(id) ?? id.trim();
 }
 
 /**
@@ -134,14 +87,7 @@ export function normalizeDesignation(id: string): string {
  * to enforce.
  */
 export function isDesignationShaped(id: string): boolean {
-  let s = id.trim().toUpperCase().replace(/\s+/g, '');
-  s = s
-    .replace(/^SHARPLESS-?/, 'SH2-')
-    .replace(/^SH2-?(\d)/, 'SH2-$1')
-    .replace(/^CALDWELL-?(\d)/, 'C$1')
-    .replace(/^MESSIER-?(\d)/, 'M$1')
-    .replace(/^BARNARD-?(\d)/, 'B$1');
-  return DESIGNATION_RE.test(s);
+  return normalizeCatalogNumber(id) !== null;
 }
 
 /**
@@ -154,29 +100,80 @@ export function isDesignationShaped(id: string): boolean {
  */
 export function resolveCanonicalId(id: string): string {
   const key = normalizeDesignation(id).toUpperCase().replace(/\s+/g, '');
-  if (ALIASES.has(key)) return ALIASES.get(key)!;
+  const alias = ALIASES.get(key);
+  if (alias !== undefined) return alias;
   // Not an alias: a recognised designation still comes back normalized so
   // "ngc 224" and "NGC0224" key the same object; free text is left alone.
+  // Checked first: an out-of-range number ("NGC2244389") also fits DESIGNATION_RE.
+  const folded = foldDescriptiveName(id);
+  if (folded) return resolveCanonicalId(folded);
   return DESIGNATION_RE.test(key) ? key : id;
+}
+
+/** The word after a designation that makes a name a variant of it (the same list normalizeCatalogId strips). */
+const VARIANT_TAIL = /^(?:mosai[ck]|mosiac|panel|ha|oiii|sii|sho|hoo|rgb|lrgb|nb|narrowband|broadband|luminance|lum|bicolor|tricolor|hargb|photo|video)\d*$/i;
+
+/** Highest number each catalog has, so a longer digit run cannot be a real designation. */
+const MAX_CATALOG_NUMBER: Readonly<Record<string, number>> = { NGC: 7840, IC: 5386, M: 110 };
+
+/**
+ * The designation a free-text target name starts with, when the rest is only a
+ * description or a stray number. Telescopes name targets "NGC 2244 Satellite
+ * Cluster" or "10P Tempel"; left alone those became objects of their own that
+ * never grouped with NGC 2244 or 10P.
+ *
+ *   "NGC2244SatelliteCluster", "NGC 2244 Satellite Cluster" → "NGC2244"
+ *   "10PTempel", "161PHartley-IRAS"                        → "10P", "161P"
+ *   "NGC2244389" (an out-of-range number: a frame count ran onto the name) → "NGC2244"
+ *
+ * Whole-string and strict, for the reason DESIGNATION_RE explains: the tail must
+ * begin a new capitalised word, so "NGC7318A", "M31_mosaic" and "C2023A3" never
+ * match. Returns null when the name is not of this shape.
+ */
+export function foldDescriptiveName(id: string): string | null {
+  const s = id.trim().replace(/\s+/g, '');
+  // An imaging variant ("M16Ha", "NGC7000Narrowband") is its own object, grouped under the base at display time; folding it onto
+  // the base would merge two different pictures of one target.
+  if (VARIANT_TAIL.test(s.replace(/^(?:NGC|IC|M|\d{1,4}P)\d*/i, ''))) return null;
+  const periodic = s.match(/^(\d{1,4}P)(?=[A-Z][a-z])[A-Za-z][A-Za-z'-]*$/);
+  if (periodic) return periodic[1];
+  const named = s.match(/^(NGC|IC|M)(\d{1,4})(?=[A-Z][a-z])[A-Za-z][A-Za-z'-]*$/);
+  if (named) {
+    const max = MAX_CATALOG_NUMBER[named[1]];
+    return Number(named[2]) >= 1 && Number(named[2]) <= max ? `${named[1]}${Number(named[2])}` : null;
+  }
+  // Six or seven digits: a four-digit number with a two or three digit count after it.
+  const run = s.match(/^(NGC|IC)([1-9]\d{5,6})$/i);
+  if (run) {
+    const prefix = run[1].toUpperCase();
+    const max = MAX_CATALOG_NUMBER[prefix];
+    if (Number(run[2]) <= max) return null;
+    // Longest leading number that is a real designation, leaving 2 or 3 stray digits.
+    for (let len = Math.min(4, run[2].length - 2); len >= 1; len--) {
+      const n = Number(run[2].slice(0, len));
+      if (run[2].length - len <= 3 && n >= 1 && n <= max) return `${prefix}${n}`;
+    }
+  }
+  return null;
 }
 
 /** Reverse map: canonical ID (uppercase) → all aliases that resolve to it. */
 const REVERSE_ALIASES = new Map<string, string[]>();
 for (const [alias, canonical] of ALIASES) {
   const c = canonical.toUpperCase();
-  if (!REVERSE_ALIASES.has(c)) REVERSE_ALIASES.set(c, []);
-  REVERSE_ALIASES.get(c)!.push(alias);
+  const list = REVERSE_ALIASES.get(c);
+  if (list) list.push(alias);
+  else REVERSE_ALIASES.set(c, [alias]);
 }
 
 /**
- * Return all Caldwell/Sharpless alias strings that point at this canonical ID.
- * Returns human-readable forms: 'C13', 'Sh2-298', etc.
+ * Return every alias that points at this canonical ID (Messier, NGC/IC,
+ * Caldwell, Sharpless, Melotte, LBN, duplicate numbers), in display form:
+ * 'C13', 'Sh2-298', 'Mel22'.
  */
 export function getAliasesFor(canonicalId: string): string[] {
   const key = canonicalId.toUpperCase().replace(/\s+/g, '');
-  return (REVERSE_ALIASES.get(key) ?? []).map(a =>
-    a.startsWith('SH2-') ? `Sh2-${a.slice(4)}` : a,
-  );
+  return (REVERSE_ALIASES.get(key) ?? []).map(displayDesignation);
 }
 
 /** All known aliases that map to the given canonical ID (e.g. "NGC7331" → ["C30"]). */

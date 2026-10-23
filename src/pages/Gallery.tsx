@@ -2,10 +2,15 @@ import { useState, useMemo, useEffect, useRef, useDeferredValue } from 'react';
 import { useQuery, useMutation, useMutationState, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Search, Telescope, AlertCircle, Filter, Download, RotateCw, Upload, PlusCircle, Star, ChevronDown, LayoutGrid, Grid3x3, SlidersHorizontal, X } from 'lucide-react';
-import { getLibraryObjects, getLibraryObjectFilters, triggerImport, getImportStatus } from '../lib/api/library';
+import { Search, Telescope, AlertCircle, Filter, Download, RotateCw, Upload, PlusCircle, Star, ChevronDown, LayoutGrid, LayoutDashboard, Grid3x3, SlidersHorizontal, X } from 'lucide-react';
+import {
+  getLibraryObjects, getLibraryObjectFilters, getLibraryCluster, triggerImport, getImportStatus,
+  getLibraryFileThumbnailUrl, getLibraryObjectThumbnailUrl,
+} from '../lib/api/library';
 import { listTelescopes } from '../lib/api/telescopes';
 import { ObjectCard } from '../components/ObjectCard';
+import { MosaicWall, type MosaicTile } from '../components/mosaic/MosaicWall';
+import { mosaicScore } from '../lib/mosaic/mosaicPacker';
 import { PROCESSING_STATUS_ORDER, processingStatusLabel } from '../lib/processingStatus';
 import type { ProcessingStatus } from '../types';
 import { LibraryHero } from '../components/library/LibraryHero';
@@ -22,6 +27,7 @@ import { FilterSection, Pill, TypeFilterSection, ActiveFilterChips, PopoverReset
 import { TOOLBAR_BTN, POPOVER, popoverSurface } from '../components/filters/toolbarStyles';
 import { buildTypeFilters, countGroupChips, matchesFilter, ALL_FILTER_ID, FAVORITES_FILTER_ID } from '../lib/objectTypeFilters';
 import { isOptionValue } from '../lib/typeGuards';
+import { isObjectFavoriteVars, type ObjectFavoriteVars } from '../lib/favoriteMutations';
 import { compareDesignations, catalogFamilyOf, CATALOG_FAMILY_ORDER, type CatalogFamily } from '../lib/designationSort';
 
 type SortKey = 'catalog-asc' | 'name-asc' | 'name-desc' | 'session-date-desc' | 'session-date-asc' | 'session-count-desc' | 'import-desc';
@@ -37,6 +43,14 @@ const SORT_OPTIONS: { value: SortKey; labelKey: string }[] = [
   { value: 'session-count-desc', labelKey: 'gallery.sortOptions.mostSessions' },
   { value: 'import-desc',        labelKey: 'gallery.sortOptions.recentlyImported' },
 ];
+
+type LayoutMode = 'grid' | 'mosaic';
+const LAYOUT_STORAGE_KEY = 'nebulis-library-layout';
+const MOSAIC_LABELS_STORAGE_KEY = 'nebulis-mosaic-labels';
+
+function readStoredLayout(): LayoutMode {
+  try { return localStorage.getItem(LAYOUT_STORAGE_KEY) === 'mosaic' ? 'mosaic' : 'grid'; } catch { return 'grid'; }
+}
 
 const NAME_COLLATION: Intl.CollatorOptions = { numeric: true, sensitivity: 'base' };
 
@@ -125,7 +139,7 @@ export function Gallery() {
   const [search, setSearch] = useState('');
   const [activeFilterId, setActiveFilterId] = useState<string>(ALL_FILTER_ID);
   const [telescopeFilter, setTelescopeFilter] = useState<string>(ALL_TELESCOPES_FILTER);
-  const [processingFilter, setProcessingFilter] = useState<string>(ALL_PROCESSING_FILTER);
+  const [processingFilter, setProcessingFilter] = useState<ProcessingStatus | typeof ALL_PROCESSING_FILTER>(ALL_PROCESSING_FILTER);
   const [showImportModal, setShowImportModal] = useState(false);
   const [linkTarget, setLinkTarget] = useState<{ path: string; subframes: boolean; fits: boolean } | null>(null);
   // Set when the user steps back out of the link review: the import dialog reopens on its options step with these.
@@ -136,6 +150,7 @@ export function Gallery() {
   const [wizardFits, setWizardFits] = useState(true);
   const [wizardArchiveAll, setWizardArchiveAll] = useState(false);
   const [wizardTelescopeId, setWizardTelescopeId] = useState<string | null>(null);
+  const [wizardOpticalConfigId, setWizardOpticalConfigId] = useState<string | null>(null);
   const [wizardTmpId, setWizardTmpId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>(readStoredSort);
   const [groupKey, setGroupKey] = useState<GroupKey>(readStoredGroup);
@@ -147,6 +162,7 @@ export function Gallery() {
   const addRef = useRef<HTMLDivElement>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(readCollapsed);
   const [columns, setColumns] = useState<number>(readStoredColumns);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(readStoredLayout);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -169,15 +185,19 @@ export function Gallery() {
   // Favorites chip reacts immediately without either card writing into the
   // shared query cache. No setQueryData, no rollback; the overlay disappears
   // on its own once each mutation settles and 'library-objects' re-fetches.
-  const pendingFavorites = useMutationState<{ objectId: string; next: boolean }>({
+  const pendingFavorites = useMutationState<ObjectFavoriteVars | null>({
     filters: { mutationKey: ['toggle-object-favorite'], status: 'pending' },
-    select: m => m.state.variables as { objectId: string; next: boolean },
+    select: m => (isObjectFavoriteVars(m.state.variables) ? m.state.variables : null),
   });
   const objectsWithPendingFavorites = useMemo(() => {
     if (!objects) return objects;
     if (pendingFavorites.length === 0) return objects;
-    const overlay = new Map(pendingFavorites.map(p => [p.objectId, p.next]));
-    return objects.map(o => (overlay.has(o.id) ? { ...o, isFavorite: overlay.get(o.id)! } : o));
+    const overlay = new Map<string, boolean>();
+    for (const p of pendingFavorites) if (p) overlay.set(p.objectId, p.next);
+    return objects.map(o => {
+      const pending = overlay.get(o.id);
+      return pending === undefined ? o : { ...o, isFavorite: pending };
+    });
   }, [objects, pendingFavorites]);
 
   // Granular filters for every distinct object type in the library, with
@@ -250,6 +270,11 @@ export function Gallery() {
     });
   }
 
+  function applyLayout(mode: LayoutMode) {
+    setLayoutMode(mode);
+    try { localStorage.setItem(LAYOUT_STORAGE_KEY, mode); } catch { /* ignore */ }
+  }
+
   function applyColumns(n: number) {
     setColumns(n);
     try { localStorage.setItem(COLUMNS_STORAGE_KEY, String(n)); } catch { /* ignore */ }
@@ -308,8 +333,10 @@ export function Gallery() {
     const s = deferredSearch.toLowerCase().trim();
     // "messier 81" → "m81", "caldwell 20" → "c20", "sharpless 298" → "sh2-298"
     const numbered = s.match(/^(messier|caldwell|sharpless)\s*(\d+)$/);
-    const effectiveTerm = numbered
-      ? `${CATALOG_FAMILIES.find(f => f.name === numbered[1])!.prefix}${numbered[2]}`
+    // The regex alternation is exactly the family names, so this always hits.
+    const numberedFamily = numbered ? CATALOG_FAMILIES.find(f => f.name === numbered[1]) : undefined;
+    const effectiveTerm = numbered && numberedFamily
+      ? `${numberedFamily.prefix}${numbered[2]}`
       : s;
     // Bare family keyword (≥3 chars, no number) → show the whole catalog.
     const family = !numbered && s.length >= 3
@@ -404,8 +431,64 @@ export function Gallery() {
       a.order - b.order || a.label.localeCompare(b.label));
   }, [filtered, groupKey, objectFilters]);
 
+  // The Mosaic sizes each object by how much has been done with it. Only fetched once the layout is chosen; if the
+  // totals cannot be loaded the wall still shows, sized by the number of nights.
+  const mosaicOn = layoutMode === 'mosaic';
+  const { data: clusterStats, isError: clusterFailed } = useQuery({
+    queryKey: ['library-cluster'],
+    queryFn: getLibraryCluster,
+    enabled: mosaicOn,
+    staleTime: 60_000,
+  });
+
+  const mosaicTiles = useMemo<MosaicTile[]>(() => {
+    if (!mosaicOn || !filtered) return [];
+    const byObject = new Map((clusterStats ?? []).map(c => [c.objectId, c]));
+    const tiles: MosaicTile[] = [];
+    for (const obj of filtered) {
+      let processed = 0;
+      let stacks = 0;
+      let subs = 0;
+      let best: { path: string; kind: string } | null = null;
+      for (const id of [obj.id, ...(obj.variants ?? []).map(v => v.objectId)]) {
+        const c = byObject.get(id);
+        if (!c) continue;
+        processed += c.processedCount;
+        stacks += c.stackedCount;
+        subs += c.subCount;
+        if (c.image && (!best || (c.image.kind === 'processed' && best.kind !== 'processed'))) best = c.image;
+      }
+      // An older server, or a failed fetch: nights stand in for stacks so sizes still vary.
+      if (clusterFailed && stacks === 0) stacks = obj.sessionCount ?? 0;
+      const parts: string[] = [];
+      if (processed > 0) parts.push(t('mosaic.processed', { count: processed }));
+      if (stacks > 0) parts.push(t('mosaic.stacks', { count: stacks }));
+      if (subs > 0) parts.push(t('mosaic.subs', { count: subs }));
+      const title = obj.name || obj.catalogId || obj.id;
+      const subtitle = obj.catalogId && obj.catalogId.toLowerCase() !== title.toLowerCase() ? obj.catalogId : undefined;
+      const picture = best?.path;
+      // With the totals loaded, an object that has no picture of its own would be a blank hole on the wall.
+      if (!picture && !clusterFailed && clusterStats) continue;
+      tiles.push({
+        id: obj.id,
+        title,
+        subtitle,
+        detail: parts.length > 0 ? parts.join(' · ') : t('mosaic.nothing'),
+        score: mosaicScore(processed, stacks, subs),
+        href: `/object/${encodeURIComponent(obj.id)}`,
+        // Their own best picture; an object with none falls back to its card thumbnail so no tile is blank.
+        imageUrl: (px: number) => picture
+          ? getLibraryFileThumbnailUrl(picture, px, px)
+          : getLibraryObjectThumbnailUrl(obj.id, px, px, obj.galleryImageVersion),
+      });
+    }
+    return tiles;
+  }, [mosaicOn, filtered, clusterStats, clusterFailed, t]);
+  const mosaicHidden = mosaicOn && filtered ? filtered.length - mosaicTiles.length : 0;
+
   const compact = columns >= COMPACT_FROM_COLUMNS;
-  const gridStyle = { '--lib-cols': columns } as React.CSSProperties;
+  // Custom properties aren't in CSSProperties; the intersection names this one.
+  const gridStyle: React.CSSProperties & { '--lib-cols': number } = { '--lib-cols': columns };
 
   // The hero describes the whole library, so it ignores the search box and the
   // type chips. It does honor the telescope facet (a persistent lens on the
@@ -430,7 +513,7 @@ export function Gallery() {
     if (scope) activeChips.push({ key: 'scope', label: scope.name, clear: () => setTelescopeFilter(ALL_TELESCOPES_FILTER) });
   }
   if (processingFilter !== ALL_PROCESSING_FILTER) {
-    activeChips.push({ key: 'status', label: processingStatusLabel(processingFilter as ProcessingStatus, t), clear: () => setProcessingFilter(ALL_PROCESSING_FILTER) });
+    activeChips.push({ key: 'status', label: processingStatusLabel(processingFilter, t), clear: () => setProcessingFilter(ALL_PROCESSING_FILTER) });
   }
   const activeFilterCount = activeChips.length;
   function clearAllActive() {
@@ -569,6 +652,32 @@ export function Gallery() {
           >
             <Star className={`w-4 h-4 ${effectiveFilterId === FAVORITES_FILTER_ID ? 'fill-current' : ''}`} />
           </button>
+
+          {/* Grid or Mosaic: the same objects, laid out as cards or as one wall of pictures. */}
+          <div role="group" aria-label={t('mosaic.layout')} className={`flex items-center p-0.5 rounded-full ring-1 ring-inset ${
+            isDark ? 'bg-slate-900/70 ring-slate-700/60' : 'bg-white ring-slate-200'
+          }`}>
+            {([
+              { mode: 'grid' as const, icon: LayoutGrid, label: t('mosaic.grid') },
+              { mode: 'mosaic' as const, icon: LayoutDashboard, label: t('mosaic.mosaic') },
+            ]).map(opt => (
+              <button
+                key={opt.mode}
+                type="button"
+                onClick={() => applyLayout(opt.mode)}
+                aria-pressed={layoutMode === opt.mode}
+                aria-label={opt.label}
+                title={opt.label}
+                className={`flex items-center justify-center w-9 h-9 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50 ${
+                  layoutMode === opt.mode
+                    ? isDark ? 'bg-accent-500/20 text-accent-400' : 'bg-accent-500 text-white'
+                    : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <opt.icon className="w-4 h-4" />
+              </button>
+            ))}
+          </div>
 
           {/* View: layout only (grouping, sort, grid size). */}
           <div ref={viewRef} className="relative">
@@ -714,7 +823,24 @@ export function Gallery() {
           <p className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
             {t('gallery.objectCount', { count: filtered.length })}
           </p>
-          {groups ? (
+          {mosaicOn ? (
+            <div className="space-y-2">
+              {clusterFailed && (
+                <p className="text-xs text-slate-500">{t('mosaic.estimated')}</p>
+              )}
+              <MosaicWall
+                tiles={mosaicTiles}
+                onOpen={id => navigate(`/object/${encodeURIComponent(id)}`)}
+                labelsStorageKey={MOSAIC_LABELS_STORAGE_KEY}
+                ariaLabel={t('mosaic.objectsLabel')}
+                shareFileBase="nebulis-library"
+              />
+              <p className="text-xs text-slate-500">
+                {t('mosaic.hint')}
+                {mosaicHidden > 0 && ` ${t('mosaic.hiddenNoPicture', { count: mosaicHidden })}`}
+              </p>
+            </div>
+          ) : groups ? (
             <div className="space-y-6">
               {groups.map(g => {
                 const collapsed = collapsedGroups.has(g.id);
@@ -828,12 +954,13 @@ export function Gallery() {
         <ImportModal
           resume={resumeLink ?? undefined}
           onClose={() => { setShowImportModal(false); setResumeLink(null); }}
-          onReview={(folderPath, includeSubframes, includeFits, telescopeId, archiveAll, tmpId) => {
+          onReview={(folderPath, includeSubframes, includeFits, telescopeId, archiveAll, tmpId, opticalConfigId) => {
             setShowImportModal(false);
             setWizardSubframes(includeSubframes);
             setWizardFits(includeFits);
             setWizardArchiveAll(archiveAll);
             setWizardTelescopeId(telescopeId);
+            setWizardOpticalConfigId(opticalConfigId);
             setWizardTmpId(tmpId);
             setWizardPath(folderPath);
           }}
@@ -879,6 +1006,7 @@ export function Gallery() {
           includeFits={wizardFits}
           archiveAll={wizardArchiveAll}
           telescopeId={wizardTelescopeId}
+          opticalConfigId={wizardOpticalConfigId}
           tmpId={wizardTmpId}
           onClose={() => { setWizardPath(null); setWizardTmpId(null); }}
           onDone={() => queryClient.invalidateQueries({ queryKey: ['library-objects'] })}

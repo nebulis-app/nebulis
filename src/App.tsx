@@ -33,8 +33,11 @@ const HelpPage = lazyRoute(() => import('./pages/HelpPage').then(m => ({ default
 const LinkDevicePage = lazyRoute(() => import('./pages/LinkDevicePage'));
 const CatalogsHub = lazyRoute(() => import('./pages/CatalogsHub').then(m => ({ default: m.CatalogsHub })));
 const CatalogBoard = lazyRoute(() => import('./pages/CatalogBoard').then(m => ({ default: m.CatalogBoard })));
+const MyCatalogWall = lazyRoute(() => import('./pages/MyCatalogWall').then(m => ({ default: m.MyCatalogWall })));
 const CalibrationLibrary = lazyRoute(() => import('./pages/CalibrationLibrary').then(m => ({ default: m.CalibrationLibrary })));
 const WishlistPage = lazyRoute(() => import('./pages/WishlistPage').then(m => ({ default: m.WishlistPage })));
+const ExplorePage = lazyRoute(() => import('./pages/ExplorePage').then(m => ({ default: m.ExplorePage })));
+const ExploreCategoryPage = lazyRoute(() => import('./pages/ExploreCategoryPage').then(m => ({ default: m.ExploreCategoryPage })));
 import { LoginModal } from './components/LoginModal';
 import { ConnectionErrorScreen } from './components/ConnectionErrorScreen';
 import { SyncSubframesProvider } from './contexts/SyncSubframesContext';
@@ -153,8 +156,11 @@ function AppShell({ onboardingDismissed }: { onboardingDismissed: boolean }) {
               <Route path="/forecast" element={<ForecastPage />} />
               <Route path="/planner" element={<PlannerPage />} />
               <Route path="/wishlist" element={<WishlistPage />} />
+              <Route path="/explore" element={<ExplorePage />} />
+              <Route path="/explore/:category" element={<ExploreCategoryPage />} />
               <Route path="/catalogs" element={<CatalogsHub />} />
               <Route path="/catalogs/:catalog" element={<CatalogBoard />} />
+              <Route path="/catalogs/:catalog/mine" element={<MyCatalogWall />} />
               <Route path="/calibrations" element={<CalibrationLibrary />} />
               <Route path="/backup" element={<BackupStatus />} />
               <Route path="/settings" element={<SettingsPage />} />

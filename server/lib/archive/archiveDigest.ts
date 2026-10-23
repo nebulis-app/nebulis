@@ -10,6 +10,11 @@ import { createHash } from 'crypto';
 export async function sha256File(filePath: string): Promise<string> {
   const hash = createHash('sha256');
   const stream = fs.createReadStream(filePath);
-  for await (const chunk of stream) hash.update(chunk as Buffer);
+  for await (const chunk of stream) {
+    // No encoding is set on the stream, so every chunk is a Buffer; check rather than assert.
+    const bytes: unknown = chunk;
+    if (!Buffer.isBuffer(bytes)) throw new TypeError(`sha256File: unexpected non-Buffer chunk reading ${filePath}`);
+    hash.update(bytes);
+  }
   return hash.digest('hex');
 }

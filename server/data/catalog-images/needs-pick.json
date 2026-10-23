@@ -1,0 +1,202 @@
+[
+  {
+    "id": "M4",
+    "reason": "NASA picture has a red \"New Image\" banner"
+  },
+  {
+    "id": "M5",
+    "reason": "NASA picture has a red \"New Image\" banner"
+  },
+  {
+    "id": "M10",
+    "reason": "NASA picture has a red \"New Image\" banner"
+  },
+  {
+    "id": "M20",
+    "reason": "NASA picture has a red \"New Image\" banner"
+  },
+  {
+    "id": "M32",
+    "reason": "NASA picture has a red \"New Image\" banner"
+  },
+  {
+    "id": "M58",
+    "reason": "NASA picture has a red \"New Image\" banner"
+  },
+  {
+    "id": "M64",
+    "reason": "NASA picture has a red \"New Image\" banner"
+  },
+  {
+    "id": "M101",
+    "reason": "NASA picture has a red \"New Image\" banner"
+  },
+  {
+    "id": "NGC4236",
+    "reason": "NASA picture has labels, inset boxes and connector lines"
+  },
+  {
+    "id": "NGC2403",
+    "reason": "NASA picture has a white arrow"
+  },
+  {
+    "id": "NGC6888",
+    "reason": "NASA picture has an inset panel and frame lines"
+  },
+  {
+    "id": "Ganymede",
+    "reason": "picture is a labelled map diagram"
+  },
+  {
+    "id": "Io",
+    "reason": "picture is an artist illustration of a spacecraft, not Io"
+  },
+  {
+    "id": "Amalthea",
+    "reason": "picture is a three-panel diagram"
+  },
+  {
+    "id": "Deimos",
+    "reason": "picture shows Mars and both moons"
+  },
+  {
+    "id": "Triton",
+    "reason": "picture is a flat map or false-colour map, not a view of the moon"
+  },
+  {
+    "id": "Hyperion",
+    "reason": "picture is a flat map or false-colour map, not a view of the moon"
+  },
+  {
+    "id": "Mimas",
+    "reason": "moon is tiny, cropped or the picture is a ragged cut-out"
+  },
+  {
+    "id": "Rhea",
+    "reason": "moon is tiny, cropped or the picture is a ragged cut-out"
+  },
+  {
+    "id": "Titania",
+    "reason": "moon is tiny, cropped or the picture is a ragged cut-out"
+  },
+  {
+    "id": "Europa",
+    "reason": "moon is tiny, cropped or the picture is a ragged cut-out"
+  },
+  {
+    "id": "Enceladus",
+    "reason": "moon is tiny, cropped or the picture is a ragged cut-out"
+  },
+  {
+    "id": "Mercury",
+    "reason": "moon is tiny, cropped or the picture is a ragged cut-out"
+  },
+  {
+    "id": "Ariel",
+    "reason": "moon is tiny, cropped or the picture is a ragged cut-out"
+  },
+  {
+    "id": "NGC3115",
+    "reason": "both show the same sparse star field; neither shows its object"
+  },
+  {
+    "id": "NGC188",
+    "reason": "both show the same sparse star field; neither shows its object"
+  },
+  {
+    "id": "M44",
+    "reason": "Hubble picture is an empty deep field, not the Beehive Cluster"
+  },
+  {
+    "id": "NGC7000",
+    "reason": "picture is one star close-up with a black hole, not the North America Nebula"
+  },
+  {
+    "id": "M65",
+    "reason": "Hubble mosaic has a black stepped area with no data"
+  },
+  {
+    "id": "NGC40",
+    "reason": "Hubble mosaic has a black stepped area with no data"
+  },
+  {
+    "id": "NGC246",
+    "reason": "Hubble mosaic has a black stepped area with no data"
+  },
+  {
+    "id": "NGC869",
+    "reason": "Hubble mosaic has a black stepped area with no data"
+  },
+  {
+    "id": "NGC2477",
+    "reason": "Hubble mosaic has a black stepped area with no data"
+  },
+  {
+    "id": "NGC4945",
+    "reason": "Hubble mosaic has a black stepped area with no data"
+  },
+  {
+    "id": "NGC6231",
+    "reason": "Hubble mosaic has a black stepped area with no data"
+  },
+  {
+    "id": "M31",
+    "reason": "Hubble picture is a thin strip of the galaxy edge"
+  },
+  {
+    "id": "NGC253",
+    "reason": "Hubble picture is a thin strip of the galaxy edge"
+  },
+  {
+    "id": "NGC4244",
+    "reason": "Hubble picture is a thin strip of the galaxy edge"
+  },
+  {
+    "id": "NGC4565",
+    "reason": "Hubble picture is a thin strip of the galaxy edge"
+  },
+  {
+    "id": "NGC4631",
+    "reason": "Hubble picture is a thin strip of the galaxy edge"
+  },
+  {
+    "id": "M48",
+    "reason": "Hubble picture does not show the whole object (a few stars, blur or an interior patch)"
+  },
+  {
+    "id": "M67",
+    "reason": "Hubble picture does not show the whole object (a few stars, blur or an interior patch)"
+  },
+  {
+    "id": "NGC2516",
+    "reason": "Hubble picture does not show the whole object (a few stars, blur or an interior patch)"
+  },
+  {
+    "id": "M78",
+    "reason": "Hubble picture does not show the whole object (a few stars, blur or an interior patch)"
+  },
+  {
+    "id": "M27",
+    "reason": "Hubble picture does not show the whole object (a few stars, blur or an interior patch)"
+  },
+  {
+    "id": "M33",
+    "reason": "Hubble picture does not show the whole object (a few stars, blur or an interior patch)"
+  },
+  {
+    "id": "NGC6822",
+    "reason": "Hubble picture does not show the whole object (a few stars, blur or an interior patch)"
+  },
+  {
+    "id": "IC2602",
+    "reason": "new Caldwell 102 (Southern Pleiades): no picture in any published pack"
+  },
+  {
+    "id": "IC2944",
+    "reason": "Hubble picture has a black stepped area with no data (found by the new notch check)"
+  },
+  {
+    "id": "SH2-155",
+    "reason": "Cave Nebula (Caldwell 9): Hubble picture has a black stepped area with no data (found by the new notch check)"
+  }
+]

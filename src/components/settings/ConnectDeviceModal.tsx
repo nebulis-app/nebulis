@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trans, useTranslation } from 'react-i18next';
 import { X, Smartphone, CheckCircle2, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
-import { createDeviceQr, getDeviceQrStatus, type DeviceQrEnrollment } from '../../lib/api';
+import { createDeviceQr, getDeviceQrStatus, type DeviceQrEnrollment } from '../../lib/api/devices';
 import { Modal } from '../ui/Modal';
 
 /**
@@ -177,7 +177,7 @@ export function ConnectDeviceModal({ isDark, onClose }: { isDark: boolean; onClo
             </div>
 
             {enrollment?.url && !expired && (
-              <p className={`mt-3 text-center text-[11px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+              <p className={`mt-3 text-center text-[0.6875rem] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                 {t('connectDeviceModal.cantScanPrefix')}{' '}
                 <span className={`font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{enrollment.url}</span>
               </p>

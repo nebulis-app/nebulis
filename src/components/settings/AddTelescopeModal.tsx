@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { X, RotateCw, HelpCircle, Telescope as TelescopeIcon, Check, Wifi, WifiOff, Usb, Network, Settings2, ChevronDown, Frame, Radar, Pin, Pencil, Trash2, Plus, ArrowLeft, ArrowRight } from 'lucide-react';
-import { HelpBlockText } from './HelpBlockText';
+import { HelpBlockText } from '../ui/HelpBlockText';
 import {
   createTelescope,
   updateTelescope,
@@ -40,6 +40,27 @@ import { hostAddressError } from '../../lib/hostAddress';
 import { getInputClass, getLabelClass, getHelperClass } from './SettingsUI';
 import { Modal } from '../ui/Modal';
 import { FileTypeToggle } from '../ui/FileTypeToggle';
+import { TelescopePhotoEditor } from './TelescopePhotoEditor';
+
+/** The generic folder layout drawn in the "Other telescope" help panel. Each
+ *  line may carry an i18n key for the trailing `← comment`. */
+const GENERIC_LAYOUT_TREE: ReadonlyArray<{ text: string; commentKey?: string }> = [
+  { text: '<share root>/' },
+  { text: '├── M31/', commentKey: 'addTelescopeModal.genericLayoutTree.objectFolder' },
+  { text: '│   ├── 2026-04-26_2030/', commentKey: 'addTelescopeModal.genericLayoutTree.sessionFolder' },
+  { text: '│   │   ├── lights/', commentKey: 'addTelescopeModal.genericLayoutTree.lights' },
+  { text: '│   │   │   ├── M31_stacked.fit' },
+  { text: '│   │   │   └── M31_stacked.jpg' },
+  { text: '│   │   ├── subframes/', commentKey: 'addTelescopeModal.genericLayoutTree.subframes' },
+  { text: '│   │   │   ├── M31_001.fit' },
+  { text: '│   │   │   └── M31_002.fit' },
+  { text: '│   │   └── meta.json', commentKey: 'addTelescopeModal.genericLayoutTree.metaJson' },
+  { text: '│   └── 2026-05-03_2115/' },
+  { text: '│       └── lights/...' },
+  { text: '├── NGC1788/' },
+  { text: '│   └── 2026-04-15_2200/' },
+  { text: '│       └── lights/...' },
+];
 
 /**
  * Add/Edit Telescope modal — creates or updates a `TelescopeProfile`.
@@ -98,6 +119,9 @@ export function AddTelescopeModal({
     existing?.importSubFrames ?? initialKind === 'asiair',
   );
   const [archiveAllFiles, setArchiveAllFiles] = useState(existing?.archiveAllFiles ?? false);
+  // On by default: calibration frames have nowhere else to go, and Dwarf and
+  // ASIAIR have always been copied. Mirrors the server default.
+  const [syncCalibrationFrames, setSyncCalibrationFrames] = useState(existing?.syncCalibrationFrames ?? true);
   const [importVideos, setImportVideos] = useState(existing?.importVideos ?? false);
   // Toggle for the hidden `.nebulis.dat` device-tracking file. On by default
   // so SMB + USB transports of the same telescope merge into one logical
@@ -231,6 +255,7 @@ export function AddTelescopeModal({
       importThumbnails,
       importSubFrames,
       archiveAllFiles,
+      syncCalibrationFrames,
       importVideos: importVideos || archiveAllFiles,
       trackDeviceIdentity,
     }),
@@ -310,6 +335,7 @@ export function AddTelescopeModal({
         importThumbnails,
         importSubFrames,
         archiveAllFiles,
+        syncCalibrationFrames,
         importVideos,
         trackDeviceIdentity,
       };
@@ -848,23 +874,7 @@ export function AddTelescopeModal({
                     {t('addTelescopeModal.genericLayoutIntro')}
                   </p>
                   <pre className={`overflow-x-auto p-3 rounded-lg ${isDark ? 'bg-slate-900 text-slate-300' : 'bg-white text-slate-700'} border ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-                    {([
-                      { text: '<share root>/' },
-                      { text: '├── M31/', commentKey: 'addTelescopeModal.genericLayoutTree.objectFolder' },
-                      { text: '│   ├── 2026-04-26_2030/', commentKey: 'addTelescopeModal.genericLayoutTree.sessionFolder' },
-                      { text: '│   │   ├── lights/', commentKey: 'addTelescopeModal.genericLayoutTree.lights' },
-                      { text: '│   │   │   ├── M31_stacked.fit' },
-                      { text: '│   │   │   └── M31_stacked.jpg' },
-                      { text: '│   │   ├── subframes/', commentKey: 'addTelescopeModal.genericLayoutTree.subframes' },
-                      { text: '│   │   │   ├── M31_001.fit' },
-                      { text: '│   │   │   └── M31_002.fit' },
-                      { text: '│   │   └── meta.json', commentKey: 'addTelescopeModal.genericLayoutTree.metaJson' },
-                      { text: '│   └── 2026-05-03_2115/' },
-                      { text: '│       └── lights/...' },
-                      { text: '├── NGC1788/' },
-                      { text: '│   └── 2026-04-15_2200/' },
-                      { text: '│       └── lights/...' },
-                    ] as { text: string; commentKey?: string }[]).map((line, i) => (
+                    {GENERIC_LAYOUT_TREE.map((line, i) => (
                       <div key={i}>{line.commentKey ? `${line.text}  ← ${t(line.commentKey)}` : line.text}</div>
                     ))}
                   </pre>
@@ -975,7 +985,7 @@ export function AddTelescopeModal({
                             {t(`addTelescopeModal.presets.${id}.label`)}
                           </span>
                           {id === recommendedPreset && (
-                            <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-100 text-emerald-700'}`}>
+                            <span className={`text-[0.6875rem] font-medium px-1.5 py-0.5 rounded-full ${isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-100 text-emerald-700'}`}>
                               {t('addTelescopeModal.recommended')}
                             </span>
                           )}
@@ -1039,6 +1049,15 @@ export function AddTelescopeModal({
                 />
               </div>
             )}
+            <div className="pt-2">
+              <FileTypeToggle
+                label={t('addTelescopeModal.fileTypes.calibration.label')}
+                description={t('addTelescopeModal.fileTypes.calibration.description')}
+                checked={syncCalibrationFrames}
+                onChange={setSyncCalibrationFrames}
+                isDark={isDark}
+              />
+            </div>
           </div>
 
           {/* Optical configurations — only for kinds with no known fixed field
@@ -1049,6 +1068,7 @@ export function AddTelescopeModal({
               Configs attach to a profile id, so this only exists once one has
               been saved: the add flow leaves it out and the editor appears on
               the next Edit. */}
+          {!wizard && existing && <TelescopePhotoEditor profile={existing} isDark={isDark} />}
           {!wizard && showOptics && existing && (
             <OpticalConfigsEditor
               profile={existing}
@@ -1231,7 +1251,7 @@ function StepIndicator({ step, isDark }: { step: 1 | 2 | 3; isDark: boolean }) {
         return (
           <li key={key} className="flex items-center gap-2" aria-current={active ? 'step' : undefined}>
             <span
-              className={`flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-semibold ${
+              className={`flex items-center justify-center w-5 h-5 rounded-full text-[0.6875rem] font-semibold ${
                 active
                   ? 'bg-accent-500 text-white'
                   : done
@@ -1397,7 +1417,7 @@ function OpticalConfigsEditor({
                   <div className={`text-sm font-medium truncate ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
                     {cfg.name}
                     {isActive && (
-                      <span className={`ml-1.5 text-[10px] font-semibold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{t('addTelescopeModal.activeLabel')}</span>
+                      <span className={`ml-1.5 text-[0.625rem] font-semibold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{t('addTelescopeModal.activeLabel')}</span>
                     )}
                   </div>
                   <div className={`text-xs truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>

@@ -3,11 +3,15 @@ import fs from 'fs';
 import path from 'path';
 import type { Router } from 'express';
 
+import { annotateRouter } from '../../server/routes/annotate';
 import { authRouter } from '../../server/routes/auth';
 import { catalogRouter } from '../../server/routes/catalog';
 import { catalogsRouter } from '../../server/routes/catalogs';
 import { devicesRouter } from '../../server/routes/devices';
+import { exploreRouter } from '../../server/routes/explore';
 import { forecastRouter } from '../../server/routes/forecast';
+import { gearRouter } from '../../server/routes/gear';
+import { journalRouter } from '../../server/routes/journal';
 import { libraryRouter } from '../../server/routes/library';
 import { metaRouter } from '../../server/routes/meta';
 import { notesRouter } from '../../server/routes/notes';
@@ -21,8 +25,10 @@ import { reportsRouter } from '../../server/routes/reports';
 import { satelliteRouter } from '../../server/routes/satellite';
 import { settingsRouter } from '../../server/routes/settings';
 import { sitesRouter } from '../../server/routes/sites';
+import { skyEventsRouter } from '../../server/routes/skyEvents';
 import { storageRouter } from '../../server/routes/storage';
 import { systemLogRouter } from '../../server/routes/systemLog';
+import { alertsRouter } from '../../server/routes/alerts';
 import { telescopeRouter } from '../../server/routes/telescope';
 import { telescopesRouter } from '../../server/routes/telescopes';
 import { wishlistRouter } from '../../server/routes/wishlist';
@@ -66,7 +72,11 @@ const V1_MOUNTS: Array<[prefix: string, routerName: string]> = [
   ['/observations', 'observationsRouter'],
   ['/satellite', 'satelliteRouter'],
   ['/library', 'libraryRouter'],
+  ['/annotate', 'annotateRouter'],
   ['/planner', 'plannerRouter'],
+  ['/sky-events', 'skyEventsRouter'],
+  ['/gear', 'gearRouter'],
+  ['/journal', 'journalRouter'],
   ['/dso', 'plannerRouter'], // alias mounted alongside /planner
   ['/wishlist', 'wishlistRouter'],
   ['/planned-sessions', 'plannedSessionsRouter'],
@@ -76,15 +86,21 @@ const V1_MOUNTS: Array<[prefix: string, routerName: string]> = [
   ['/devices', 'devicesRouter'],
   ['/meta', 'metaRouter'],
   ['/catalogs', 'catalogsRouter'],
+  ['/explore', 'exploreRouter'],
   ['/system-log', 'systemLogRouter'],
+  ['/alerts', 'alertsRouter'],
 ];
 
 const ROUTERS: Record<string, Router> = {
+  annotateRouter,
   authRouter,
   catalogRouter,
   catalogsRouter,
   devicesRouter,
+  exploreRouter,
   forecastRouter,
+  gearRouter,
+  journalRouter,
   libraryRouter,
   metaRouter,
   notesRouter,
@@ -98,8 +114,10 @@ const ROUTERS: Record<string, Router> = {
   satelliteRouter,
   settingsRouter,
   sitesRouter,
+  skyEventsRouter,
   storageRouter,
   systemLogRouter,
+  alertsRouter,
   telescopeRouter,
   telescopesRouter,
   wishlistRouter,

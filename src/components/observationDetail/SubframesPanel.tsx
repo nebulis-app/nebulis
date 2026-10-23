@@ -1,38 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Satellite, Download, Trash2, ArrowRight } from 'lucide-react';
-import { FitsThumbnail } from '../FitsThumbnail';
+import { Satellite, ScanSearch, Download, Trash2 } from 'lucide-react';
+import { NightFrameList } from '../frameAnalysis/NightFrameList';
 import { useTheme } from '../../hooks/useTheme';
 import type { SessionFile } from '../../types';
-import { thumbSrcFor } from '../../lib/sessionImageSrc';
 
-/** Smallest a tile may be. Tiles stretch past this to consume the leftover
- *  pixels of the row, so the strip always ends flush with the panel edge. */
-const MIN_TILE = 64;
-/** gap-1.5 */
-const GAP = 6;
-
-/**
- * Evenly spaced indices across [0, total), endpoints included, so the strip
- * represents the whole session rather than only its first few minutes. The
- * returned values are real indices into the subframe list, which is what the
- * viewer needs to open on the frame that was clicked.
- *
- * To go back to a plain "first N frames" strip, return
- * `Array.from({ length: Math.min(count, total) }, (_, i) => i)`.
- */
-function sampleIndices(total: number, count: number): number[] {
-  if (count >= total) return Array.from({ length: total }, (_, i) => i);
-  if (count <= 1) return [0];
-  return Array.from({ length: count }, (_, i) => Math.round((i * (total - 1)) / (count - 1)));
-}
-
-/** Telescope subframes tray: a single row of tiles that always fills the panel
- *  width exactly. The row renders as many columns as fit at MIN_TILE and no
- *  more, so it can never wrap and strand a tile on a second row. What is hidden
- *  is stated in the footer instead of in an overflow tile.
- *  The ResizeObserver measurement is entirely local to this panel. */
+/** Telescope subframes: the controls for the night's raw frames, and under them the frame list with every
+ *  frame's score, flags and star measurements (see NightFrameList). */
 export function SubframesPanel({
+  objectId,
+  objectName,
+  date,
   subFrames,
   isAdmin,
   telescopeOnline,
@@ -40,9 +17,13 @@ export function SubframesPanel({
   onDownloadToComputer,
   onOpenSync,
   onScanTrails,
+  onAnalyzeFrames,
   onDeleteAllSubframes,
-  onOpenGallery,
+  onFramesDeleted,
 }: {
+  objectId: string;
+  objectName: string;
+  date: string;
   subFrames: SessionFile[];
   isAdmin: boolean;
   telescopeOnline: boolean;
@@ -50,31 +31,14 @@ export function SubframesPanel({
   onDownloadToComputer: () => void;
   onOpenSync: () => void;
   onScanTrails: () => void;
+  onAnalyzeFrames: () => void;
   onDeleteAllSubframes: () => void;
-  onOpenGallery: (index: number, source?: 'files' | 'subframes') => void;
+  /** Called after frames were deleted from the list, so the page refreshes its counts. */
+  onFramesDeleted: () => void;
 }) {
   const { isDark } = useTheme();
   const { t } = useTranslation('observations');
   const hasSubFrames = subFrames.length > 0;
-
-  // Measured on the grid itself, which carries no padding of its own, so
-  // clientWidth is exactly the space the tiles have to divide up.
-  const subFramesRowRef = useRef<HTMLDivElement>(null);
-  const [columns, setColumns] = useState(16);
-  useEffect(() => {
-    const el = subFramesRowRef.current;
-    if (!el) return;
-    const measure = () => {
-      setColumns(Math.max(1, Math.floor((el.clientWidth + GAP) / (MIN_TILE + GAP))));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const shownIndices = sampleIndices(subFrames.length, columns);
-  const hiddenCount = subFrames.length - shownIndices.length;
 
   return (
     <div className={`rounded-2xl border min-w-0 flex flex-col ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
@@ -82,6 +46,20 @@ export function SubframesPanel({
           panel and carries its count, so the bar is only its controls. */}
       <div className={`flex items-center justify-end p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
         <div className="flex items-center gap-2">
+          {isAdmin && hasSubFrames && subFrames.some(f => f.type === 'fits') && (
+            <button
+              onClick={onAnalyzeFrames}
+              title={t('observationDetail.subframesPanel.analyzeFramesTitle')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                isDark
+                  ? 'border-slate-700 text-slate-300 hover:text-slate-100 hover:bg-slate-800'
+                  : 'border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50'
+              }`}
+            >
+              <ScanSearch className="w-3.5 h-3.5" />
+              {t('observationDetail.subframesPanel.analyzeFrames')}
+            </button>
+          )}
           {isAdmin && hasSubFrames && subFrames.some(f => f.type === 'fits') && (
             <button
               onClick={onScanTrails}
@@ -159,63 +137,15 @@ export function SubframesPanel({
       </div>
 
       {subFrames.length > 0 ? (
-        <>
-          <div className="p-3">
-            <div
-              ref={subFramesRowRef}
-              className="grid gap-1.5"
-              // An explicit column count, rather than flex-wrap or auto-fill,
-              // is what guarantees a single row: the tiles divide up whatever
-              // width there is instead of overflowing onto a second line when
-              // the measurement is a pixel off.
-              style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
-            >
-              {shownIndices.map(idx => {
-                const file = subFrames[idx];
-                return (
-                  <button
-                    key={file.path}
-                    onClick={() => onOpenGallery(idx, 'subframes')}
-                    title={t('observationDetail.subframesPanel.frameTitle', { name: file.name, index: idx + 1, total: subFrames.length })}
-                    className={`aspect-square rounded-lg overflow-hidden border-2 ${
-                      isDark ? 'border-slate-700 hover:border-slate-500 bg-slate-800' : 'border-slate-200 hover:border-slate-400 bg-slate-100'
-                    }`}
-                  >
-                    {file.type === 'fits' ? (
-                      <FitsThumbnail url={file.downloadUrl} thumbUrl={file.thumbUrl} stretch={1.0} isDark={isDark} />
-                    ) : (
-                      <img
-                        src={thumbSrcFor(file)}
-                        alt={file.name}
-                        className="w-full h-full object-cover"
-                        onError={e => { if (e.target instanceof HTMLImageElement) e.target.style.display = 'none'; }}
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className={`px-4 py-2.5 border-t flex items-center justify-between gap-3 ${
-            isDark ? 'border-slate-800' : 'border-slate-200'
-          }`}>
-            <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              {hiddenCount > 0
-                ? t('observationDetail.subframesPanel.showingSampled', { shown: shownIndices.length, total: subFrames.length })
-                : t('observationDetail.subframesPanel.showingAll', { total: subFrames.length })}
-            </span>
-            <button
-              onClick={() => onOpenGallery(0, 'subframes')}
-              className={`flex items-center gap-1.5 text-xs font-medium transition flex-shrink-0 ${
-                isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {hiddenCount > 0 ? t('observationDetail.subframesPanel.viewAll', { total: subFrames.length }) : t('observationDetail.subframesPanel.openViewer')}
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </>
+        <div className="p-3">
+          <NightFrameList
+            objectId={objectId}
+            objectName={objectName}
+            date={date}
+            isAdmin={isAdmin}
+            onFramesDeleted={onFramesDeleted}
+          />
+        </div>
       ) : (
         <div className={`p-8 text-center ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
           {t('observationDetail.subframesPanel.empty')}

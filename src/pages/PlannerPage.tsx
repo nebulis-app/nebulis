@@ -16,7 +16,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData, skipToken } from '@tanstack/react-query';
+import { isRecord } from '../lib/typeGuards';
 import {
   DndContext,
   DragOverlay,
@@ -27,7 +28,7 @@ import {
   type DragMoveEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { CalendarRange, CalendarPlus, Check, ListTree, Frame, Moon, Telescope } from 'lucide-react';
+import { CalendarRange, CalendarPlus, Check, Copy, ListTree, Frame, Moon, Share2, Sparkles, Telescope } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../hooks/useTheme';
 import { getPlannerTargets, getForecastForSite, getBlockVerdicts, type ForecastHour, type PlannerTarget } from '../lib/api/planner';
@@ -40,7 +41,7 @@ import { getCatalogThumbnailUrl } from '../lib/catalogImage';
 import { LocationPrompt } from '../components/LocationPrompt';
 import { AltitudeChart } from '../components/AltitudeChart';
 import { SkyChart } from '../components/planner/SkyChart';
-import { computeAltitudeCurve, buildTonightWindow } from '../lib/altaz';
+import { computeAltitudeCurve, buildObservingWindow } from '../lib/altaz';
 import { LibraryPanel } from '../components/planner/LibraryPanel';
 import { ScheduleTimeline } from '../components/planner/ScheduleTimeline';
 import { VisibleSkyEditor } from '../components/ui/VisibleSkyEditor';
@@ -48,7 +49,7 @@ import { AltitudeBandChart } from '../components/planner/AltitudeBandChart';
 import { PlanCalendar } from '../components/planner/PlanCalendar';
 import { NightHero } from '../components/planner/NightHero';
 import { NightStrip, type StripNight } from '../components/planner/NightStrip';
-import { PlannerActions } from '../components/planner/PlannerActions';
+import { PlannerActions, VisibleSkyButton } from '../components/planner/PlannerActions';
 import { WishlistPanel } from '../components/planner/WishlistPanel';
 import { useWishlist } from '../hooks/useWishlist';
 import type { WishlistItem } from '../lib/api/wishlist';
@@ -60,7 +61,7 @@ import { useResolvedFov } from '../hooks/useResolvedFov';
 import { classifyFit, fitDisplayStrings, objectExtentArcmin } from '../lib/telescopeFov';
 import { FitBadge } from '../components/FitBadge';
 import { filterRecommendations } from '../lib/filterRecommendations';
-import { FilterRecommendationPanel } from '../components/catalogs/FilterRecommendationPanel';
+import { FilterRecommendationPanel } from '../components/ui/FilterRecommendationPanel';
 import {
   dateFromKey,
   formatPlannerDate,
@@ -73,6 +74,7 @@ import {
 import {
   bestSlotFor,
   findGaps,
+  formatDuration,
   hoursInWindow,
   moonPhaseNameFor,
   moonUpIntervals,
@@ -96,7 +98,11 @@ import {
   type BlockVisibilityResult,
   type VisibleSkyMap,
 } from '../lib/visibilityCheck';
-import { checkMoonProximity, type MoonProximityResult } from '../lib/moonProximity';
+import { checkMoonProximity, type FilterBand, type MoonProximityResult } from '../lib/moonProximity';
+import { nightFilterAdvice } from '../lib/nightFilterAdvice';
+import { suggestFilter } from '../lib/filterSuggestion';
+import { useIntegrationProgress } from '../hooks/useIntegrationProgress';
+import { FilterSuggestionPanel } from '../components/planner/FilterSuggestionPanel';
 import { AutoPlanModal } from '../components/planner/AutoPlanModal';
 import { PlanShareModal } from '../components/planner/PlanShareModal';
 import { TourAnchor } from '../components/tour/TourAnchor';
@@ -127,14 +133,16 @@ export function PlannerPage() {
   const wishlist = useWishlist();
   const location = useLocation();
   const navigate = useNavigate();
-  const navState = location.state as { searchQuery?: string; focusDate?: string; openWishlist?: boolean } | null;
-  const initialSearch = navState?.searchQuery ?? '';
+  // Router state is untyped; each field is read with its own check.
+  const navState: unknown = location.state;
+  const navRecord = isRecord(navState) ? navState : null;
+  const initialSearch = typeof navRecord?.searchQuery === 'string' ? navRecord.searchQuery : '';
   // When arriving from "Plan Tonight" on a catalog, open on the night the plan
   // was scheduled into rather than the planner's own default "today".
-  const initialFocusDate = navState?.focusDate;
+  const initialFocusDate = typeof navRecord?.focusDate === 'string' ? navRecord.focusDate : undefined;
   // Set when the Wishlist page's "Minimize" button sent us back here — reopen
   // the popup instead of landing on a bare Planner.
-  const initialOpenWishlist = navState?.openWishlist ?? false;
+  const initialOpenWishlist = navRecord?.openWishlist === true;
 
   // ── Observing site ───────────────────────────────────────────────────────
   // Every location/sky value below (coordinates, minAlt, horizon, visible-sky
@@ -266,6 +274,24 @@ export function PlannerPage() {
   });
   const sessions = useMemo(() => sessionsQuery.data ?? [], [sessionsQuery.data]);
 
+  // How many blocks the night before holds, so "Copy last night" can say what it will copy and stay out of the way when
+  // there is nothing to copy. Shifted from this night's server window by the same day the copy itself uses.
+  const prevNightQuery = useQuery({
+    queryKey: ['planned-sessions', 'prev', timelineStartIso, timelineEndIso],
+    enabled: timelineStartIso != null && timelineEndIso != null,
+    staleTime: 30_000,
+    queryFn: () => {
+      const DAY = 24 * 60 * 60 * 1000;
+      return timelineStartIso && timelineEndIso
+        ? listPlannedSessions({
+            from: new Date(new Date(timelineStartIso).getTime() - DAY).toISOString(),
+            to: new Date(new Date(timelineEndIso).getTime() - DAY).toISOString(),
+          })
+        : Promise.resolve([]);
+    },
+  });
+  const prevNightCount = prevNightQuery.data?.length ?? 0;
+
   const visibleSkyMap: VisibleSkyMap | null =
     currentSite?.visibleSkyMap?.length === SKY_MAP_CELLS ? currentSite.visibleSkyMap : null;
 
@@ -274,8 +300,9 @@ export function PlannerPage() {
   // and altitude rather than showing a made-up rating.
   const forecastQuery = useQuery({
     queryKey: ['forecast', effectiveSiteId],
-    queryFn: () => getForecastForSite(effectiveSiteId!),
-    enabled: effectiveSiteId != null && observerLat != null && observerLon != null,
+    queryFn: effectiveSiteId != null && observerLat != null && observerLon != null
+      ? () => getForecastForSite(effectiveSiteId)
+      : skipToken,
     staleTime: 600_000,
   });
   const forecastHourly = useMemo(() => forecastQuery.data?.hourly ?? [], [forecastQuery.data]);
@@ -416,7 +443,7 @@ export function PlannerPage() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['planned-sessions'] }),
   });
   const updateMut = useMutation({
-    mutationFn: (vars: { id: number; patch: { startTime?: string; endTime?: string; framingSetup?: string } }) =>
+    mutationFn: (vars: { id: number; patch: { startTime?: string; endTime?: string; framingSetup?: string; filterBand?: FilterBand | null; filter?: string | null } }) =>
       updatePlannedSession(vars.id, vars.patch),
     onMutate: async (vars) => {
       await queryClient.cancelQueries({ queryKey: ['planned-sessions'] });
@@ -515,6 +542,10 @@ export function PlannerPage() {
     dec: number;
     majorAxisArcmin: number | null;
     framingSetup: string | null;
+    filterBand?: FilterBand | null;
+    filter?: string | null;
+    start?: Date;
+    end?: Date;
   } | null>(null);
   // Jumped straight to from the timeline block's own framing shortcut icon
   // (only shown when that block already has a saved mosaic), bypassing the
@@ -706,6 +737,8 @@ export function PlannerPage() {
             dec: s.dec,
             startTime: newStart.toISOString(),
             endTime: newEnd.toISOString(),
+            filterBand: s.filterBand ?? null,
+            filter: s.filter ?? null,
           });
         }),
       );
@@ -738,7 +771,7 @@ export function PlannerPage() {
     let cancelled = false;
     const timer = setTimeout(() => {
       getBlockVerdicts(
-        sessions.map(s => ({ id: String(s.id), ra: s.ra, dec: s.dec, start: new Date(s.startTime), end: new Date(s.endTime) })),
+        sessions.map(s => ({ id: String(s.id), ra: s.ra, dec: s.dec, start: new Date(s.startTime), end: new Date(s.endTime), band: s.filterBand ?? null })),
         observerLat,
         observerLon,
         illum,
@@ -783,6 +816,11 @@ export function PlannerPage() {
 
   const scheduledIds = useMemo(() => new Set(sessions.map(s => s.objectId)), [sessions]);
 
+  // Bound to a local so the onSaveFraming closure keeps the null-narrowing
+  // (a property path like detailsSession.sessionId doesn't stay narrowed
+  // inside a callback).
+  const detailsSessionId = detailsSession?.sessionId ?? null;
+
   // Full target lookup for SessionDetailsModal's "Add to Tonight" button —
   // detailsSession only carries the narrow fields the modal needs to render,
   // not the full PlannerTarget handleQuickAdd requires.
@@ -808,6 +846,15 @@ export function PlannerPage() {
     const last = moonIntervals.find(m => m.end < timelineEnd.getTime() - 60_000);
     return last ? new Date(last.end) : null;
   }, [moonIntervals, timelineEnd]);
+
+  // Broadband or narrowband for the night, from the Moon over the dark window.
+  const nightMoonIllumination = planner?.moonIllumination ?? null;
+  const filterAdvice = useMemo(() => {
+    if (observerLat == null || observerLon == null || !nightStart || !nightEnd || nightMoonIllumination == null) return null;
+    return nightFilterAdvice({
+      darkStart: nightStart, darkEnd: nightEnd, lat: observerLat, lon: observerLon, moonIllumination: nightMoonIllumination,
+    });
+  }, [observerLat, observerLon, nightStart, nightEnd, nightMoonIllumination]);
 
   const twilight = useMemo(
     () => (observerLat != null && observerLon != null ? twilightMarksFor(selectedDate, observerLat, observerLon) : null),
@@ -1028,6 +1075,7 @@ export function PlannerPage() {
   // once at the end rather than firing the optimistic createMut per block,
   // which would thrash the cache and the connection pool. Errors propagate to
   // AutoPlanModal.handleApply, which surfaces them instead of silently closing.
+  const integrationProgressFor = useIntegrationProgress();
   const applyAutoPlan = useCallback(
     async (blocks: PlanBlock[], clearFirst: boolean) => {
       if (clearFirst && timelineStartIso && timelineEndIso) {
@@ -1040,6 +1088,16 @@ export function PlannerPage() {
         await Promise.all(current.filter(s => s.id > 0).map(s => deletePlannedSession(s.id)));
       }
       for (const b of blocks) {
+        // An object with integration goals gets the filter with the most time
+        // left that the Moon allows on this block: the plan's own pick when it
+        // was built favouring goals, else worked out here. Others keep the
+        // plan's band.
+        const pick = b.filter !== undefined
+          ? { filter: b.filter, band: b.filterBand }
+          : suggestFilter(integrationProgressFor(b.target.id), {
+            minSeparation: b.moonSeparation,
+            illumination: nightMoonIllumination ?? 0,
+          });
         await createPlannedSession({
           objectId: b.target.id,
           objectName: b.target.name,
@@ -1047,11 +1105,13 @@ export function PlannerPage() {
           dec: b.target.dec,
           startTime: b.start.toISOString(),
           endTime: b.end.toISOString(),
+          filterBand: pick?.band ?? b.filterBand ?? null,
+          filter: pick?.filter ?? null,
         });
       }
       await queryClient.invalidateQueries({ queryKey: ['planned-sessions'] });
     },
-    [queryClient, timelineStartIso, timelineEndIso],
+    [queryClient, timelineStartIso, timelineEndIso, integrationProgressFor, nightMoonIllumination],
   );
 
   const stepDate = useCallback((days: number) => {
@@ -1099,6 +1159,10 @@ export function PlannerPage() {
       dec: s.dec,
       majorAxisArcmin: planner?.targets.find(t => t.id === s.objectId)?.majorAxisArcmin ?? null,
       framingSetup: s.framingSetup,
+      filterBand: s.filterBand ?? null,
+      filter: s.filter ?? null,
+      start: new Date(s.startTime),
+      end: new Date(s.endTime),
     });
   }, [planner?.targets]);
   // Memoized for the same reason as the other block-row callbacks above:
@@ -1193,8 +1257,67 @@ export function PlannerPage() {
       scheduledIds={scheduledIds}
       onQuickAdd={hasWindow ? handleQuickAdd : undefined}
       onShowDetails={handleShowTargetDetails}
+      onOpenExplore={() => navigate(`/explore/all?visibility=tonight&sort=tonight&night=${selectedDateKey}`)}
     />
   );
+
+  const canShareNight = sessions.length > 0 && hasWindow;
+  const scheduleActions = (
+    <>
+      {sessions.length > 0 && prevNightCount > 0 && (
+        <button
+          type="button"
+          onClick={handleCopyFromPrevNight}
+          disabled={copyingPrevNight}
+          title={t('plannerActions.copyLastNightTitle')}
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+        >
+          <Copy className="h-3 w-3" />
+          {copyingPrevNight ? t('plannerActions.copying') : t('plannerActions.copyLastNight')}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => setShareOpen(true)}
+        disabled={!canShareNight}
+        aria-label={t('plannerActions.share')}
+        title={canShareNight ? t('plannerActions.shareTitle') : t('plannerActions.nothingToShare')}
+        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-white/60"
+      >
+        <Share2 className="h-3.5 w-3.5" />
+      </button>
+    </>
+  );
+  // A night with nothing on it offers the two ways to start, front and centre, rather than a bare canvas.
+  const emptyNight = sessions.length === 0 ? (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/10 bg-slate-950/60 px-4 py-3">
+      <span className="text-sm text-white/70">{t('scheduleTimeline.emptyNight')}</span>
+      <div className="flex flex-wrap items-center gap-2">
+        {canAutoPlan && (
+          <button
+            type="button"
+            onClick={openAutoPlan}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-600"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {t('nightHero.planMyNight')}
+          </button>
+        )}
+        {prevNightCount > 0 && (
+          <button
+            type="button"
+            onClick={handleCopyFromPrevNight}
+            disabled={copyingPrevNight}
+            title={t('plannerActions.copyLastNightTitle')}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white/80 ring-1 ring-inset ring-white/15 transition hover:bg-white/10 disabled:opacity-40"
+          >
+            <Copy className="h-3.5 w-3.5" />
+            {copyingPrevNight ? t('plannerActions.copying') : t('scheduleTimeline.copyLastNightCount', { count: prevNightCount })}
+          </button>
+        )}
+      </div>
+    </div>
+  ) : null;
 
   const schedulePane = hasWindow ? (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-inset ring-white/10 hero-panel">
@@ -1227,6 +1350,8 @@ export function PlannerPage() {
           observerTimezone={observerTimezone}
           onShowDetails={handleShowSessionDetails}
           onShowFraming={handleShowFraming}
+          headerActions={scheduleActions}
+          emptyState={emptyNight}
         />
       </div>
       {/* The band chart squeezes a 12-hour axis into the pane width, so it is
@@ -1266,6 +1391,7 @@ export function PlannerPage() {
         moonPhase={planner?.moonPhase ?? 'Unknown'}
         moonRise={moonRise}
         moonSet={moonSet}
+        filterAdvice={filterAdvice}
         timeZone={observerTimezone}
         accent={accent}
         canAutoPlan={canAutoPlan}
@@ -1277,15 +1403,22 @@ export function PlannerPage() {
           />
         }
         siteControl={observerLat != null && observerLon != null && (
-          <SitePicker
-            isDark={isDark}
-            accentText={accentText}
-            sites={sites}
-            currentSite={currentSite}
-            fallbackLabel={`${observerLat.toFixed(2)}, ${observerLon.toFixed(2)}`}
-            onSelect={(id) => setActiveSiteMut.mutate(id)}
-            isSwitching={setActiveSiteMut.isPending}
-          />
+          <div className="flex items-center gap-2">
+            <VisibleSkyButton
+              onClick={() => setSkyEditorOpen(true)}
+              skyLabel={skyConfigured ? `${visibleCellCount} / ${SKY_MAP_CELLS}` : t('plannerPage.skyNotSet')}
+              isSet={skyConfigured}
+            />
+            <SitePicker
+              isDark={isDark}
+              accentText={accentText}
+              sites={sites}
+              currentSite={currentSite}
+              fallbackLabel={`${observerLat.toFixed(2)}, ${observerLon.toFixed(2)}`}
+              onSelect={(id) => setActiveSiteMut.mutate(id)}
+              isSwitching={setActiveSiteMut.isPending}
+            />
+          </div>
         )}
       />
       </TourAnchor>
@@ -1302,12 +1435,6 @@ export function PlannerPage() {
         />
         <PlannerActions
           isDark={isDark}
-          onEditSky={() => setSkyEditorOpen(true)}
-          skyLabel={skyConfigured ? `${visibleCellCount} / ${SKY_MAP_CELLS}` : t('plannerPage.skyNotSet')}
-          onCopyPrevious={handleCopyFromPrevNight}
-          isCopying={copyingPrevNight}
-          canShare={sessions.length > 0 && hasWindow}
-          onShare={() => setShareOpen(true)}
           wishlistCount={wishlist.items.length}
           onOpenWishlist={() => setWishlistOpen(true)}
         />
@@ -1343,7 +1470,7 @@ export function PlannerPage() {
           <CalendarRange className="h-4 w-4" />
           {t('plannerPage.scheduleTab')}
           {sessions.length > 0 && (
-            <span className="ml-1 rounded-full bg-accent-500 px-1.5 text-[10px] font-semibold text-white tabular-nums">
+            <span className="ml-1 rounded-full bg-accent-500 px-1.5 text-[0.625rem] font-semibold text-white tabular-nums">
               {sessions.length}
             </span>
           )}
@@ -1352,7 +1479,7 @@ export function PlannerPage() {
 
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd}>
         <div
-          className={`grid h-[clamp(30rem,76vh,58rem)] min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(19rem,32%)_1fr] transition-opacity duration-200 ${
+          className={`grid h-[clamp(30rem,76vh,90rem)] min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(19rem,32%)_1fr] transition-opacity duration-200 ${
             plannerQuery.isFetching ? 'opacity-60' : ''
           }`}
         >
@@ -1370,7 +1497,7 @@ export function PlannerPage() {
           {activeLibraryDrag && (
             <div className="pointer-events-none rounded-xl border border-accent-400 bg-slate-900/95 px-3 py-2 text-sm font-medium text-slate-100 shadow-2xl">
               {formatObjectName(activeLibraryDrag.objectId, activeLibraryDrag.objectName)}
-              <div className="mt-0.5 text-[11px] opacity-80">{t('plannerPage.dropToSchedule')}</div>
+              <div className="mt-0.5 text-[0.6875rem] opacity-80">{t('plannerPage.dropToSchedule')}</div>
             </div>
           )}
         </DragOverlay>
@@ -1496,8 +1623,8 @@ export function PlannerPage() {
           minAlt={currentSite?.minAlt}
           isDark={isDark}
           framingSetup={detailsSession.framingSetup}
-          onSaveFraming={detailsSession.sessionId != null
-            ? (json: string) => updateMutate({ id: detailsSession.sessionId!, patch: { framingSetup: json } })
+          onSaveFraming={detailsSessionId != null
+            ? (json: string) => updateMutate({ id: detailsSessionId, patch: { framingSetup: json } })
             : undefined}
           onQuickAdd={detailsSession.sessionId == null && hasWindow && detailsTarget
             ? () => handleQuickAdd(detailsTarget)
@@ -1506,6 +1633,23 @@ export function PlannerPage() {
           isAlreadyImaged={detailsTarget?.isAlreadyImaged}
           libraryObjectId={detailsTarget?.libraryObjectId}
           moonIllumination={planner?.moonIllumination}
+          filterBand={detailsSession.filterBand}
+          onSetFilterBand={detailsSession.sessionId != null
+            ? (band: FilterBand | null) => {
+                // A filter picked earlier no longer fits a band set by hand.
+                updateMutate({ id: detailsSession.sessionId!, patch: { filterBand: band, filter: null } });
+                setDetailsSession(d => (d ? { ...d, filterBand: band, filter: null } : d));
+              }
+            : undefined}
+          blockStart={detailsSession.start ?? null}
+          blockEnd={detailsSession.end ?? null}
+          filter={detailsSession.filter}
+          onSetFilter={detailsSession.sessionId != null
+            ? (name: string | null, band: FilterBand) => {
+                updateMutate({ id: detailsSession.sessionId!, patch: { filter: name, filterBand: band } });
+                setDetailsSession(d => (d ? { ...d, filter: name, filterBand: band } : d));
+              }
+            : undefined}
           onClose={() => setDetailsSession(null)}
         />
       )}
@@ -1576,7 +1720,7 @@ function SaveIndicator({ isPending }: { isPending: boolean }) {
   if (!isPending && !showSaved) return null;
 
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] normal-case tracking-normal text-white/50">
+    <span className="inline-flex items-center gap-1 text-[0.625rem] normal-case tracking-normal text-white/50">
       {isPending ? (
         <>
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
@@ -1621,6 +1765,18 @@ interface SessionDetailsModalProps {
   libraryObjectId?: string | null;
   /** Tonight's moon illumination (0-100), for the moon-proximity check. */
   moonIllumination?: number;
+  /** The scheduled block's filter type; undefined for an unscheduled target. */
+  filterBand?: FilterBand | null;
+  /** Sets the block's filter type (null = not set). Absent for an
+   *  unscheduled target, which has no block to set it on. */
+  onSetFilterBand?: (band: FilterBand | null) => void;
+  /** The scheduled block's window, for its own Moon check. */
+  blockStart?: Date | null;
+  blockEnd?: Date | null;
+  /** The filter picked for the block, if any. */
+  filter?: string | null;
+  /** Picks a filter (and its band) for the block. */
+  onSetFilter?: (filter: string | null, band: FilterBand) => void;
   onClose: () => void;
 }
 
@@ -1644,6 +1800,12 @@ function SessionDetailsModal({
   isAlreadyImaged,
   libraryObjectId,
   moonIllumination,
+  filterBand,
+  onSetFilterBand,
+  blockStart,
+  blockEnd,
+  filter,
+  onSetFilter,
   onClose,
 }: SessionDetailsModalProps) {
   const { t } = useTranslation('planner');
@@ -1654,17 +1816,39 @@ function SessionDetailsModal({
   // Default the sky chart to the object's highest point tonight, the natural
   // "when should I image this" moment. Falls back to now when we can't compute
   // a curve (no location). Sample the planner's dark window if we have one,
-  // else the local noon-to-noon window the altitude chart uses.
+  // else the sunset-to-sunrise window the altitude chart uses.
   const bestTime = useMemo(() => {
     if (!hasLocation) return new Date();
     const { start, end } = nightStart && nightEnd
       ? { start: nightStart, end: nightEnd }
-      : buildTonightWindow(new Date(), observerTimezone);
+      : buildObservingWindow(new Date(), observerLat!, observerLon!, observerTimezone);
     const curve = computeAltitudeCurve(ra, dec, observerLat, observerLon, start, end, 5);
     let best = curve[0];
     for (const s of curve) if (s.alt > best.alt) best = s;
     return best?.time ?? new Date();
   }, [hasLocation, ra, dec, observerLat, observerLon, observerTimezone, nightStart, nightEnd]);
+
+  // The numbers the altitude curve is read for: when it peaks, and for how long it stays above the site's minimum.
+  const altStats = useMemo(() => {
+    if (!hasLocation) return null;
+    const { start, end } = nightStart && nightEnd
+      ? { start: nightStart, end: nightEnd }
+      : buildObservingWindow(new Date(), observerLat!, observerLon!, observerTimezone);
+    const step = 5;
+    const curve = computeAltitudeCurve(ra, dec, observerLat, observerLon, start, end, step);
+    if (curve.length === 0) return null;
+    let peak = curve[0];
+    for (const sample of curve) if (sample.alt > peak.alt) peak = sample;
+    const floor = minAlt ?? 0;
+    const above = curve.filter(sample => sample.alt >= floor);
+    return {
+      peak,
+      floor,
+      above: above.length > 0
+        ? { from: above[0].time, to: new Date(above[above.length - 1].time.getTime() + step * 60_000), minutes: above.length * step }
+        : null,
+    };
+  }, [hasLocation, ra, dec, observerLat, observerLon, observerTimezone, nightStart, nightEnd, minAlt]);
 
   // Scrubbing the altitude chart drives the sky chart's moment. Null = not
   // scrubbing, so we fall back to the best-altitude default.
@@ -1692,12 +1876,27 @@ function SessionDetailsModal({
   // verdict, the same heuristic ScheduledImagingBlock uses for blocks
   // already on the timeline.
   const moonCheck = useMemo(() => {
-    if (!hasLocation || moonIllumination == null) return null;
+    // Re-checked on the values themselves (hasLocation is the same test) so
+    // the coordinates narrow without non-null assertions.
+    if (observerLat == null || observerLon == null || moonIllumination == null) return null;
     const { start, end } = nightStart && nightEnd
       ? { start: nightStart, end: nightEnd }
-      : buildTonightWindow(new Date(), observerTimezone);
-    return checkMoonProximity(ra, dec, observerLat!, observerLon!, start, end, moonIllumination, 10, observerTimezone);
-  }, [hasLocation, ra, dec, observerLat, observerLon, nightStart, nightEnd, moonIllumination, observerTimezone]);
+      : buildObservingWindow(new Date(), observerLat!, observerLon!, observerTimezone);
+    const check = (band: FilterBand) =>
+      checkMoonProximity(ra, dec, observerLat, observerLon, start, end, moonIllumination, 10, observerTimezone, band);
+    return { broadband: check('broadband'), narrowband: check('narrowband') };
+  }, [ra, dec, observerLat, observerLon, nightStart, nightEnd, moonIllumination, observerTimezone]);
+
+  // The block's own closest approach (the night's for an unscheduled target),
+  // for the filter suggestion.
+  const suggestionMoon = useMemo(() => {
+    if (!hasLocation || moonIllumination == null) return null;
+    if (blockStart && blockEnd) {
+      const c = checkMoonProximity(ra, dec, observerLat!, observerLon!, blockStart, blockEnd, moonIllumination, 10, observerTimezone);
+      return { minSeparation: c.minSeparation, illumination: moonIllumination };
+    }
+    return moonCheck ? { minSeparation: moonCheck.broadband.minSeparation, illumination: moonIllumination } : null;
+  }, [hasLocation, moonIllumination, blockStart, blockEnd, ra, dec, observerLat, observerLon, observerTimezone, moonCheck]);
 
   const referenceUrl = getCatalogThumbnailUrl(objectId, majorAxisArcmin);
 
@@ -1705,6 +1904,7 @@ function SessionDetailsModal({
   const fit = useMemo(() => classifyFit(fov, objectExtentArcmin(null, majorAxisArcmin)), [fov, majorAxisArcmin]);
   const fitStrings = useMemo(() => (fit ? fitDisplayStrings(fit, tCatalogs) : null), [fit, tCatalogs]);
   const [framingOpen, setFramingOpen] = useState(false);
+  const [descExpanded, setDescExpanded] = useState(false);
 
   useEffect(() => {
     // Guard against framingOpen: FramingModal below is a nested overlay with
@@ -1746,7 +1946,7 @@ function SessionDetailsModal({
                 <FitBadge tag={fit.tag} label={fitStrings.short} title={fitStrings.label} isDark={isDark} />
               )}
               {isAlreadyImaged && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium text-white bg-emerald-500">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.6875rem] font-medium text-white bg-emerald-500">
                   {t('wishlistObjectModal.imaged')}
                 </span>
               )}
@@ -1777,15 +1977,27 @@ function SessionDetailsModal({
               src={referenceUrl}
               alt={t('plannerPage.referenceImageAlt', { name: objectName })}
               loading="lazy"
-              className={`w-36 h-36 shrink-0 rounded-xl overflow-hidden border object-cover ${
+              className={`${description ? 'w-36 h-36' : 'w-20 h-20'} shrink-0 rounded-xl overflow-hidden border object-cover ${
                 isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-slate-100'
               }`}
             />
             <div className="min-w-0">
               {description ? (
-                <p className={`text-sm leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                  {description}
-                </p>
+                <>
+                  <p className={`text-sm leading-relaxed ${descExpanded ? '' : 'line-clamp-3'} ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                    {description}
+                  </p>
+                  {description.length > 220 && (
+                    <button
+                      type="button"
+                      onClick={() => setDescExpanded(v => !v)}
+                      aria-expanded={descExpanded}
+                      className={`mr-4 mt-2 text-xs ${isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      {descExpanded ? t('plannerPage.descLess') : t('plannerPage.descMore')}
+                    </button>
+                  )}
+                </>
               ) : (
                 <p className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
                   {t('plannerPage.noCatalogDescription')}
@@ -1819,7 +2031,7 @@ function SessionDetailsModal({
                 below it. min-h-fit lets it grow past that when the text needs
                 more room than the square gives it, which is what happens on
                 narrower screens. */}
-            <div className="flex flex-col gap-4 sm:aspect-square sm:min-h-fit">
+            <div className="flex flex-col gap-4">
               {filterRec && <FilterRecommendationPanel recommendations={filterRec} isDark={isDark} />}
               {/* Altitude takes whatever height this column has left over, so
                   the moon verdict below stays tight under the curve and the
@@ -1844,28 +2056,98 @@ function SessionDetailsModal({
                 </div>
               )}
 
+              {altStats && (
+                <p className={`text-xs tabular-nums ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                  {altStats.above
+                    ? t('plannerPage.altSummary', {
+                        alt: Math.round(altStats.peak.alt),
+                        peakTime: formatHm(altStats.peak.time, observerTimezone),
+                        min: Math.round(altStats.floor),
+                        from: formatHm(altStats.above.from, observerTimezone),
+                        to: formatHm(altStats.above.to, observerTimezone),
+                        duration: formatDuration(altStats.above.minutes),
+                      })
+                    : t('plannerPage.altSummaryNever', {
+                        alt: Math.round(altStats.peak.alt),
+                        peakTime: formatHm(altStats.peak.time, observerTimezone),
+                      })}
+                </p>
+              )}
+
               {/* Moon tonight — worst-case proximity across the whole dark
                   window, so "should I even bother with this tonight" has one
                   answer instead of requiring a mental read of the sky tracker
                   at every scrub position. */}
-              {moonCheck && (
-                <div className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs leading-snug ${
-                  moonCheck.verdict === 'ok'
-                    ? isDark ? 'bg-slate-800/50 text-slate-400' : 'bg-slate-100 text-slate-500'
-                    : moonCheck.verdict === 'caution'
-                      ? 'bg-amber-500/10 text-amber-500 border border-amber-500/30'
-                      : 'bg-red-500/10 text-red-400 border border-red-500/30'
-                }`}>
-                  <Moon className="w-3.5 h-3.5 shrink-0" />
-                  <span>
-                    {moonCheck.verdict === 'ok'
-                      ? t('plannerPage.moonOkTonight', { percent: Math.round(moonIllumination ?? 0) })
-                      : t('plannerPage.moonWarningTonight', {
-                          deg: Math.round(moonCheck.minSeparation),
-                          time: moonCheck.worstAt ? formatHm(moonCheck.worstAt, observerTimezone) : '',
-                          percent: Math.round(moonIllumination ?? 0),
-                        })}
-                  </span>
+              {moonCheck && (() => {
+                // The card takes the colour of the block's own filter type, or
+                // of broadband when none is set (the stricter of the two).
+                const shown = moonCheck[filterBand ?? 'broadband'];
+                const line = (band: FilterBand) => {
+                  const c = moonCheck[band];
+                  return (
+                    <div key={band} className={filterBand && filterBand !== band ? 'opacity-60' : ''}>
+                      <span className="font-medium">{t(`plannerPage.moonBand.${band}`)}</span>{' '}
+                      {c.verdict === 'ok'
+                        ? t('plannerPage.moonBandOk')
+                        : t('plannerPage.moonBandWarning', {
+                            deg: Math.round(c.minSeparation),
+                            time: c.worstAt ? formatHm(c.worstAt, observerTimezone) : '',
+                            min: Math.round(c.threshold),
+                          })}
+                    </div>
+                  );
+                };
+                return (
+                  <div className={`flex items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-xs leading-snug ${
+                    shown.verdict === 'ok'
+                      ? isDark ? 'bg-slate-800/50 text-slate-400' : 'bg-slate-100 text-slate-500'
+                      : shown.verdict === 'caution'
+                        ? 'bg-amber-500/10 text-amber-500 border border-amber-500/30'
+                        : 'bg-red-500/10 text-red-400 border border-red-500/30'
+                  }`}>
+                    <Moon className="mt-0.5 w-3.5 h-3.5 shrink-0" />
+                    {moonCheck.broadband.verdict === 'ok' && moonCheck.narrowband.verdict === 'ok' ? (
+                      <div>{t('plannerPage.moonAllFine', { percent: Math.round(moonIllumination ?? 0) })}</div>
+                    ) : (
+                      <div className="space-y-0.5">
+                        <div>{t('plannerPage.moonTonight', { percent: Math.round(moonIllumination ?? 0) })}</div>
+                        {line('broadband')}
+                        {line('narrowband')}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              <FilterSuggestionPanel
+                objectId={objectId}
+                moon={suggestionMoon}
+                currentFilter={filter}
+                onUse={onSetFilter}
+                isDark={isDark}
+              />
+              {onSetFilterBand && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{t('plannerPage.blockFilter')}</span>
+                  <div className={`inline-flex overflow-hidden rounded-lg border ${isDark ? 'border-slate-700' : 'border-slate-200'}`} role="group" aria-label={t('plannerPage.blockFilter')}>
+                    {([null, 'broadband', 'narrowband'] as const).map(b => {
+                      const active = (filterBand ?? null) === b;
+                      return (
+                        <button
+                          key={b ?? 'unset'}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => onSetFilterBand(b)}
+                          className={`px-2.5 py-1 font-medium transition ${
+                            active
+                              ? isDark ? 'bg-accent-500/15 text-accent-300' : 'bg-accent-50 text-accent-700'
+                              : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                        >
+                          {t(`plannerPage.blockFilterOption.${b ?? 'unset'}`)}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -1895,7 +2177,7 @@ function SessionDetailsModal({
                 // state keeps the modal still while scrubbing. min-h, not a
                 // fixed height: a longer translation can still take a third
                 // line rather than being clipped.
-                <p className={`mt-1.5 min-h-[3em] text-center text-[11px] leading-normal ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+                <p className={`mt-1.5 min-h-[2.5em] text-center text-[0.6875rem] leading-normal ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
                   {scrubTime
                     ? t('plannerPage.skyShownAt', { time: formatHm(skyTime, observerTimezone) })
                     : t('plannerPage.skyShownAtHighest', { time: formatHm(skyTime, observerTimezone) })}
@@ -1916,7 +2198,7 @@ function SessionDetailsModal({
             to the same neutral outline as Framing & Mosaic to leave exactly one
             solid button; the green "Imaged" badge in the header already says the
             object is in your library. */}
-        {(FRAMING_MOSAIC_ENABLED || onQuickAdd || isScheduled || (isAlreadyImaged && libraryObjectId)) && (
+        {(FRAMING_MOSAIC_ENABLED || onQuickAdd || isScheduled || (blockStart && blockEnd) || (isAlreadyImaged && libraryObjectId)) && (
           <div className={`shrink-0 flex flex-wrap gap-2 p-5 pt-3 border-t ${isDark ? 'border-slate-700/40' : 'border-slate-200'}`}>
             {isScheduled ? (
               <>
@@ -1934,6 +2216,12 @@ function SessionDetailsModal({
                   </button>
                 )}
               </>
+            ) : blockStart && blockEnd ? (
+              // Opened from a block already on the timeline: nothing to add, so say what is scheduled instead of leaving the slot empty.
+              <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium tabular-nums ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                <Check className="w-4 h-4" />
+                {t('plannerPage.scheduledWindow', { start: formatHm(blockStart, observerTimezone), end: formatHm(blockEnd, observerTimezone) })}
+              </span>
             ) : onQuickAdd ? (
               <button
                 onClick={onQuickAdd}

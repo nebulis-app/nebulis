@@ -25,7 +25,7 @@ import {
   type TransportKind,
 } from './telescopeTransports.js';
 import { isUpdateChannel } from './appUpdate/manifest.js';
-import { isPreferredCatalog } from './types/appSettings.js';
+import { isPreferredCatalog, isObjectPageLayout } from './types/appSettings.js';
 
 export type { TelescopeKind, TransportKind };
 
@@ -67,6 +67,10 @@ export interface TelescopeProfile {
   /** Keep files Nebulis has no use for, so this telescope's library folder can
    *  be a complete copy of the device. See classifyImportFile. */
   archiveAllFiles: boolean;
+  /** Copy this device's calibration frames (SeeStar `darklibrary`, Dwarf
+   *  CALI_FRAME/DWARF_DARK, ASIAIR Dark/Flat/Bias) into the archive on every
+   *  sync. On by default; see syncCalibrationFrames in import.ts. */
+  syncCalibrationFrames: boolean;
   /** When true (default), the import pipeline reads/writes `.nebulis.dat`
    *  on this device's storage root so the same physical telescope reached
    *  over SMB and USB resolves to one logical device. Disable for firmware
@@ -118,6 +122,7 @@ interface TelescopeProfileRow {
   importSubFrames: number;
   importVideos: number;
   archiveAllFiles: number;
+  syncCalibrationFrames: number;
   trackDeviceIdentity: number;
   pinnedTransportId: string | null;
   activeOpticalConfigId: string | null;
@@ -133,11 +138,11 @@ const profileStmts = {
   getAll: db.prepare<[], TelescopeProfileRow>('SELECT * FROM telescopeProfiles ORDER BY createdAt ASC'),
   getById: db.prepare<[string], TelescopeProfileRow>('SELECT * FROM telescopeProfiles WHERE id = ?'),
   insert: db.prepare(
-    `INSERT INTO telescopeProfiles (id, name, model, hostname, shareName, username, password, isActive, createdAt, kind, color, autoImportEnabled, autoImportInterval, connectionType, localPath, importJpg, importFits, importThumbnails, importSubFrames, importVideos, archiveAllFiles, trackDeviceIdentity, activeOpticalConfigId)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO telescopeProfiles (id, name, model, hostname, shareName, username, password, isActive, createdAt, kind, color, autoImportEnabled, autoImportInterval, connectionType, localPath, importJpg, importFits, importThumbnails, importSubFrames, importVideos, archiveAllFiles, syncCalibrationFrames, trackDeviceIdentity, activeOpticalConfigId)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ),
   update: db.prepare(
-    `UPDATE telescopeProfiles SET name = ?, model = ?, hostname = ?, shareName = ?, username = ?, password = ?, kind = ?, color = ?, autoImportEnabled = ?, autoImportInterval = ?, connectionType = ?, localPath = ?, importJpg = ?, importFits = ?, importThumbnails = ?, importSubFrames = ?, importVideos = ?, archiveAllFiles = ?, trackDeviceIdentity = ?, pinnedTransportId = ?, activeOpticalConfigId = ? WHERE id = ?`
+    `UPDATE telescopeProfiles SET name = ?, model = ?, hostname = ?, shareName = ?, username = ?, password = ?, kind = ?, color = ?, autoImportEnabled = ?, autoImportInterval = ?, connectionType = ?, localPath = ?, importJpg = ?, importFits = ?, importThumbnails = ?, importSubFrames = ?, importVideos = ?, archiveAllFiles = ?, syncCalibrationFrames = ?, trackDeviceIdentity = ?, pinnedTransportId = ?, activeOpticalConfigId = ? WHERE id = ?`
   ),
   delete: db.prepare('DELETE FROM telescopeProfiles WHERE id = ?'),
   count: db.prepare<[], { c: number }>('SELECT COUNT(*) as c FROM telescopeProfiles'),
@@ -192,7 +197,11 @@ const appSettingsStmts = {
     nightlyForecastLastRun = ?,
     nightlyMaintenanceEnabled = ?,
     calibrationExpiryDays = ?,
-    groupCatalogCompanions = ?
+    groupCatalogCompanions = ?,
+    pixinsightEnabled = ?,
+    objectPageLayout = ?,
+    annotateAutoSolve = ?,
+    autoMeasureFrames = ?
     WHERE id = 1`),
   setApiKey: db.prepare('UPDATE appSettings SET apiKey = ? WHERE id = 1'),
 };
@@ -264,6 +273,9 @@ function rowToProfile(row: TelescopeProfileRow): TelescopeProfile {
     importSubFrames: Boolean(row.importSubFrames),
     importVideos: Boolean(row.importVideos),
     archiveAllFiles: Boolean(row.archiveAllFiles),
+    syncCalibrationFrames: row.syncCalibrationFrames === null || row.syncCalibrationFrames === undefined
+      ? true
+      : Boolean(row.syncCalibrationFrames),
     // Legacy rows pre-migration have NULL here; default to true so existing
     // installs keep the tracking they had until the user opts out.
     trackDeviceIdentity: row.trackDeviceIdentity === null || row.trackDeviceIdentity === undefined
@@ -321,6 +333,10 @@ interface AppSettingsRow {
   nightlyMaintenanceEnabled: number;
   calibrationExpiryDays: number;
   groupCatalogCompanions: number;
+  pixinsightEnabled: number;
+  objectPageLayout: string; // 'nights' (Classic) | 'media' (Combined)
+  annotateAutoSolve: number;
+  autoMeasureFrames: number;
 }
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -389,6 +405,10 @@ function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
     nightlyMaintenanceEnabled: Boolean(row.nightlyMaintenanceEnabled ?? 1),
     calibrationExpiryDays: typeof row.calibrationExpiryDays === 'number' ? row.calibrationExpiryDays : 180,
     groupCatalogCompanions: Boolean(row.groupCatalogCompanions ?? 1),
+    pixinsightEnabled: Boolean(row.pixinsightEnabled ?? 0),
+    objectPageLayout: isObjectPageLayout(row.objectPageLayout) ? row.objectPageLayout : 'media',
+    annotateAutoSolve: Boolean(row.annotateAutoSolve ?? 1),
+    autoMeasureFrames: Boolean(row.autoMeasureFrames ?? 0),
   };
 }
 
@@ -443,6 +463,10 @@ function saveSettingsRow(data: Record<string, unknown>): void {
     boolToInt(data.nightlyMaintenanceEnabled, 1),
     num(data.calibrationExpiryDays, 180),
     boolToInt(data.groupCatalogCompanions, 1),
+    boolToInt(data.pixinsightEnabled, 0),
+    isObjectPageLayout(data.objectPageLayout) ? data.objectPageLayout : 'media',
+    boolToInt(data.annotateAutoSolve, 1),
+    boolToInt(data.autoMeasureFrames, 0),
   );
   settingsCache = null;
 }
@@ -546,6 +570,7 @@ export function createProfile(data: Partial<TelescopeProfile>): TelescopeProfile
     localPath: data.localPath ?? '',
     deviceId: null,
     archiveAllFiles: data.archiveAllFiles ?? false,
+    syncCalibrationFrames: data.syncCalibrationFrames ?? true,
     importJpg: data.importJpg ?? true,
     importFits: data.importFits ?? true,
     importThumbnails: data.importThumbnails ?? false,
@@ -572,6 +597,7 @@ export function createProfile(data: Partial<TelescopeProfile>): TelescopeProfile
     profile.importSubFrames ? 1 : 0,
     profile.importVideos ? 1 : 0,
     profile.archiveAllFiles ? 1 : 0,
+    profile.syncCalibrationFrames ? 1 : 0,
     profile.trackDeviceIdentity ? 1 : 0,
     profile.activeOpticalConfigId,
   );
@@ -620,6 +646,7 @@ export function updateProfile(id: string, data: Partial<TelescopeProfile>): Tele
     updated.importSubFrames ? 1 : 0,
     updated.importVideos ? 1 : 0,
     updated.archiveAllFiles ? 1 : 0,
+    updated.syncCalibrationFrames ? 1 : 0,
     updated.trackDeviceIdentity ? 1 : 0,
     updated.pinnedTransportId ?? null,
     updated.activeOpticalConfigId ?? null,

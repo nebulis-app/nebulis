@@ -13,7 +13,7 @@
  */
 import { useTranslation } from 'react-i18next';
 import { CalendarDays } from 'lucide-react';
-import { HeroBackdrop } from '../ui/HeroBackdrop';
+import { CollapsibleHero, HeroSummary } from '../ui/CollapsibleHero';
 import { PAGE_HERO } from '../../lib/heroImagery';
 import type { MonthBucket, ObservationTotals } from '../../lib/observationStats';
 import { formatDate, formatNumber } from '../../lib/formatLocale';
@@ -65,27 +65,16 @@ export function ObservationsHero({
   }
 
   return (
-    <section
-      className="relative overflow-hidden rounded-3xl bg-slate-950 hero-panel"
+    <CollapsibleHero
+      page="observations"
+      image={PAGE_HERO.observations}
+      intensity={0.34}
+      accent={accent}
+      icon={<CalendarDays className="h-5 w-5 sm:h-7 sm:w-7" style={{ color: accent }} />}
+      title={t('hero.title')}
+      summary={totals.sessions === 0 ? undefined : <HeroSummary stats={stats} />}
+      contentClassName="flex flex-col gap-7 p-4 sm:p-6 lg:flex-row lg:items-center lg:gap-10"
     >
-      {/* Lower than the Library banner's: the year chart sits over the right
-          half of this one, and its bars have to stay readable. */}
-      <HeroBackdrop image={PAGE_HERO.observations} intensity={0.34} />
-
-      <div
-        className="pointer-events-none absolute inset-0 opacity-70"
-        style={{ background: `radial-gradient(90% 140% at 8% 0%, ${accent}1f 0%, transparent 60%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 opacity-50"
-        style={{ background: `radial-gradient(70% 130% at 95% 100%, ${accent}14 0%, transparent 62%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 rounded-3xl"
-        style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10)' }}
-      />
-
-      <div className="relative flex flex-col gap-7 p-4 sm:p-6 lg:flex-row lg:items-center lg:gap-10">
         {/* The record */}
         <div className="min-w-0 lg:w-[38%] lg:shrink-0">
           <h1 className="font-display flex items-center gap-2.5 text-xl font-bold tracking-tight text-white sm:text-4xl">
@@ -93,7 +82,7 @@ export function ObservationsHero({
             {t('hero.title')}
           </h1>
 
-          <p className="mt-2 hidden text-[13px] text-white/55 sm:block">
+          <p className="mt-2 hidden text-[0.8125rem] text-white/55 sm:block">
             {totals.sessions === 0
               ? t('hero.emptyHint')
               : span}
@@ -109,7 +98,7 @@ export function ObservationsHero({
                   <div className="font-display text-2xl font-bold leading-none tracking-tight text-white tabular-nums">
                     {value}
                   </div>
-                  <div className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/45">
+                  <div className="mt-1.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-white/45">
                     {label}
                   </div>
                 </div>
@@ -130,7 +119,6 @@ export function ObservationsHero({
             accent={accent}
           />
         </div>
-      </div>
-    </section>
+    </CollapsibleHero>
   );
 }

@@ -18,7 +18,7 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Library } from 'lucide-react';
-import { HeroBackdrop } from '../ui/HeroBackdrop';
+import { CollapsibleHero, HeroSummary } from '../ui/CollapsibleHero';
 import { PAGE_HERO } from '../../lib/heroImagery';
 import type { AstroObject } from '../../types';
 import { formatDate, formatRelativeDuration, formatNumber } from '../../lib/formatLocale';
@@ -126,27 +126,15 @@ export function LibraryHero({ objects, accent, filteredLabel }: Props) {
   if (lastNight) stats.push({ value: lastNightLabel(lastNight, t), label: t('libraryHero.stats.lastObservation'), prose: true });
 
   return (
-    <section
-      className="relative overflow-hidden rounded-3xl bg-slate-950 hero-panel"
+    <CollapsibleHero
+      page="library"
+      image={PAGE_HERO.library}
+      accent={accent}
+      icon={<Library className="h-5 w-5 sm:h-7 sm:w-7" style={{ color: accent }} />}
+      title={t('libraryHero.title')}
+      summary={empty ? undefined : <HeroSummary stats={stats} />}
+      contentClassName="flex hero-min-h flex-col justify-center p-4 sm:p-6"
     >
-      <HeroBackdrop image={PAGE_HERO.library} />
-
-      <div
-        className="pointer-events-none absolute inset-0 opacity-70"
-        style={{ background: `radial-gradient(90% 140% at 8% 0%, ${accent}1f 0%, transparent 60%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 opacity-50"
-        style={{ background: `radial-gradient(70% 130% at 95% 100%, ${accent}14 0%, transparent 62%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 rounded-3xl"
-        style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10)' }}
-      />
-
-      {/* min-height, not more padding: the artwork needs a band tall enough to
-          read as a nebula rather than a smear, and the stats do not fill it. */}
-      <div className="relative flex hero-min-h flex-col justify-center p-4 sm:p-6">
         {/* The collection. Held to a share of the width on a wide screen so the
             artwork behind has somewhere to be seen. */}
         <div className="min-w-0 lg:max-w-[52%]">
@@ -159,7 +147,7 @@ export function LibraryHero({ objects, accent, filteredLabel }: Props) {
               numbers the object grid shows on the very next scroll, so on a
               phone they cost more space than they earn: hidden there, the
               title alone leaves room for the grid to start immediately. */}
-          <p className="mt-2 hidden text-[13px] text-white/55 sm:block">
+          <p className="mt-2 hidden text-[0.8125rem] text-white/55 sm:block">
             {empty ? (
               t('libraryHero.emptyHint')
             ) : (
@@ -191,7 +179,7 @@ export function LibraryHero({ objects, accent, filteredLabel }: Props) {
                   }`}>
                     {value}
                   </div>
-                  <div className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/45">
+                  <div className="mt-1.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-white/45">
                     {label}
                   </div>
                 </div>
@@ -200,7 +188,6 @@ export function LibraryHero({ objects, accent, filteredLabel }: Props) {
           )}
         </div>
 
-      </div>
-    </section>
+    </CollapsibleHero>
   );
 }

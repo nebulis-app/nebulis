@@ -17,7 +17,19 @@
     "about": "À propos",
     "archive": "Archive",
     "linked": "Dossiers liés",
-    "cleanup": "Nettoyage"
+    "cleanup": "Nettoyage",
+    "features": "Intégrations",
+    "apiKeys": "Clés d’API",
+    "alerts": "Alertes",
+    "display": "Affichage",
+    "organization": "Organisation",
+    "processing": "Traitement",
+    "maintenance": "Maintenance",
+    "catalogs": "Données de catalogue",
+    "sites": "Sites d'observation",
+    "sectionEquipment": "Équipement",
+    "sectionSystem": "Système",
+    "sectionAdvanced": "Avancé"
   },
   "page": {
     "viewOnlyBanner": "Mode lecture seule. Contactez un administrateur pour effectuer des modifications.",
@@ -61,6 +73,15 @@
     "nebulaBackdrop": {
       "label": "Fond de nébuleuse",
       "description": "Place une image discrète de ciel profond et un champ d'étoiles derrière l'application, visible entre les espaces des panneaux. Fonctionne avec le thème Sombre ; le thème Espace a déjà le sien."
+    },
+    "uiScale": {
+      "label": "Taille de l'interface",
+      "description": "Agrandit ou réduit tout sur cet appareil. 100 % correspond à la taille automatique pour votre écran.",
+      "reset": "Réinitialiser"
+    },
+    "compactBanners": {
+      "label": "Bannières de page compactes",
+      "description": "Réduit la bannière en haut de chaque page à une ligne fine avec les chiffres clés. La flèche de la bannière permet toujours de l'ouvrir. Activer ou désactiver cette option réinitialise chaque page en conséquence."
     }
   },
   "navigation": {
@@ -244,17 +265,21 @@
     "display": {
       "title": "Affichage",
       "description": "Comment les cartes d'objet et le diaporama affichent les images et les informations.",
-      "referenceImage": {
-        "label": "Image de référence",
-        "description": "Images de catalogue de Hubble, DSS2, NASA et Caldwell. Couleurs riches, large disponibilité."
-      },
-      "myTelescopeImages": {
-        "label": "Mes images de télescope",
-        "description": "Vos propres captures, pour chaque objet que vous avez photographié."
+      "cardPictures": {
+        "label": "Images des cartes d'objet",
+        "description": "Référence utilise des images de catalogue de Hubble, DSS2, NASA et Caldwell : des couleurs riches, disponibles pour tous les objets. Mon télescope utilise vos propres prises de vue, pour les objets que vous avez photographiés.",
+        "reference": "Référence",
+        "telescope": "Mon télescope"
       },
       "galleryProcessedOnly": {
         "label": "Galerie : afficher uniquement les images traitées",
         "description": "La galerie s'ouvre avec le filtre \"Traitées uniquement\" activé par défaut."
+      },
+      "objectPages": {
+        "label": "Pages d'objet",
+        "description": "La vue Combinée affiche toutes les images d'un objet sur une seule page. La vue Classique affiche une grille d'observations que vous ouvrez une par une. La vue Classique pourrait disparaître dans une prochaine version, dites-nous donc ce qui vous manquerait.",
+        "nights": "Classique",
+        "media": "Combinée"
       },
       "slideshowShowInfo": {
         "label": "Diaporama : afficher les informations de l'objet",
@@ -285,6 +310,14 @@
       "groupCompanions": {
         "label": "Compter les objets du même champ",
         "description": "Les autres objets du catalogue qui se trouvaient dans le champ d'un objet photographié comptent aussi comme photographiés. Exemple : photographier M42 compte aussi M43. Désactiver pour ne compter que les objets visés."
+      },
+      "autoSolve": {
+        "label": "Résoudre automatiquement les nouvelles images",
+        "description": "Le serveur détermine en arrière-plan où pointe chaque image empilée, uniquement lorsque la bibliothèque est par ailleurs inactive, afin que les noms d'objets s'affichent instantanément et avec précision quand vous touchez Annoter. Il télécharge le résolveur gratuit ASTAP (environ 100 Mo) la première fois. Les images impossibles à résoudre sont mémorisées et laissées de côté."
+      },
+      "autoMeasure": {
+        "label": "Analyser les images après l’import",
+        "description": "Évalue en arrière-plan chaque nouvelle image brute une fois l’import terminé, pour que la liste des sous-images soit déjà remplie à l’ouverture d’une nuit. Chaque fichier FITS est lu, c’est donc désactivé par défaut. Ouvrir une nuit l’analyse toujours à la demande."
       }
     },
     "calibration": {
@@ -295,6 +328,22 @@
         "description": "Le courant d'obscurité et le bruit de lecture d'un capteur dérivent avec le temps, donc un lot plus ancien que cette valeur est marqué Expiré sur la page Calibrations et peut y être supprimé. Les flats et flat-darks ne sont pas concernés, ils sont associés à une session plutôt que soumis à expiration.",
         "unit": "jours"
       }
+    },
+    "filterAliases": {
+      "title": "Alias de filtres",
+      "description": "Regroupez les noms de filtres écrits différemment par votre logiciel d’acquisition, pour que l’intégration par filtre les compte ensemble. Les écritures courantes (Ha, H-alpha, OIII, SII, L, R, G, B) sont déjà regroupées.",
+      "empty": "Aucun alias pour l’instant.",
+      "aliasPlaceholder": "Nom dans vos fichiers",
+      "canonicalPlaceholder": "Compter comme",
+      "remove": "Retirer l’alias",
+      "add": "Ajouter un alias",
+      "cancel": "Annuler",
+      "save": "Enregistrer les alias",
+      "saveFailed": "Impossible d’enregistrer les alias."
+    },
+    "processing": {
+      "title": "Traitement",
+      "description": "Ce qui s'exécute sur vos images après l'import."
     }
   },
   "softwareUpdate": {
@@ -462,6 +511,9 @@
     "skyMapped": "ciel cartographié",
     "setVisibleSky": "Définir le ciel visible",
     "setAsDefault": "Définir par défaut",
+    "skyNotMapped": "Ciel non cartographié",
+    "bortle": "Bortle {{class}}",
+    "mapAria": "Carte de vos sites d'observation",
     "edit": "Modifier",
     "cannotDeleteLast": "Impossible de supprimer le dernier site d'observation. Ajoutez-en un autre d'abord.",
     "modal": {
@@ -631,7 +683,8 @@
     "connected": "Connecté",
     "localServer": {
       "title": "Serveur local",
-      "description": "Machine hôte exécutant ce tableau de bord."
+      "description": "Machine hôte exécutant ce tableau de bord.",
+      "appDataNote": "Tout ce que Nebulis conserve sur ce disque : la base de données, les miniatures, les sauvegardes et les caches, plus votre bibliothèque si elle n'a pas été déplacée. Le reste de l'espace utilisé correspond à d'autres fichiers de ce disque."
     },
     "libraryDrive": {
       "title": "Lecteur de bibliothèque",
@@ -658,6 +711,12 @@
       "oldest": "Plus ancien",
       "newest": "Plus récent",
       "noData": "Aucune donnée de stockage disponible"
+    },
+    "showAll": "Tout afficher ({{count}})",
+    "showFewer": "Afficher moins",
+    "libraryContents": {
+      "title": "Contenu de la bibliothèque",
+      "description": "Espace occupé par chaque objet de votre bibliothèque."
     }
   },
   "connectionSection": {
@@ -688,6 +747,7 @@
     "syncingNow": "Synchronisation de ce télescope en cours",
     "anotherImportRunning": "Une autre importation est en cours",
     "syncNow": "Synchroniser maintenant (récupérer les nouveaux fichiers de ce télescope)",
+    "autoImportLabel": "Import auto",
     "autoImportOn": "Importation automatique activée : cliquer pour désactiver",
     "autoImportOff": "Importation automatique désactivée : cliquer pour activer",
     "moveSessions": "Déplacer toutes les sessions vers un autre télescope",
@@ -819,6 +879,10 @@
         "label": "Vidéos (.avi, .mp4)",
         "description": "Captures vidéo lunaires et planétaires."
       },
+      "calibration": {
+        "label": "Synchroniser les images de calibration",
+        "description": "Copie les images de calibration de l'appareil (bibliothèque de darks du SeeStar, CALI_FRAME du Dwarf, Dark, Flat et Bias de l'ASIAIR) dans la bibliothèque de calibration à chaque synchronisation. Elles apparaissent sur la page Calibrations."
+      },
       "archiveAll": {
         "label": "Tout archiver",
         "description": "Copie tous les fichiers de l'appareil, en remplaçant les cinq choix ci-dessus. Inclut les sous-poses, les miniatures par pose, les images de travail et de calibration, les poses rejetées, les journaux et les types non reconnus, en conservant la structure de dossiers de l'appareil. Les fichiers que Nebulis ne peut pas afficher sont stockés et téléchargeables. Cela peut être très volumineux."
@@ -879,7 +943,14 @@
       "lights": "finales empilées ou en pose unique (obligatoire)",
       "subframes": "sous-poses individuelles (facultatif)",
       "metaJson": "métadonnées facultatives par session"
-    }
+    },
+    "photoTitle": "Photo",
+    "photoHelp": "Votre propre image de ce télescope. Seuls vous et les personnes avec qui vous partagez Nebulis la voient. Un détourage sur fond transparent rend mieux.",
+    "photoChoose": "Choisir une photo",
+    "photoChange": "Changer la photo",
+    "photoRemove": "Retirer",
+    "photoUploading": "Envoi en cours…",
+    "photoAlt": "Photo de {{name}}"
   },
   "subtitle": {
     "general": "Apparence et unités.",
@@ -888,12 +959,19 @@
     "accountDevices": "Téléphones et Apple TV liés à votre compte.",
     "accountUsers": "Les personnes pouvant se connecter à cette bibliothèque.",
     "hardware": "Télescopes et connexions caméra.",
-    "sky": "Site d'observation, catalogues et sources de données externes.",
+    "sky": "D'où vous observez.",
     "storage": "Où vivent les données de la bibliothèque et comment elles restent synchronisées.",
     "log": "Connexions, changements d'utilisateurs et de télescopes, synchronisations et autre activité administrative.",
     "danger": "Diagnostics, outils de nettoyage et actions destructrices.",
     "about": "Pourquoi Nebulis existe, et qui l'a créé.",
-    "libraryCleanup": "Libérez de l'espace disque en supprimant les fichiers inutiles."
+    "libraryCleanup": "Libérez de l'espace disque en supprimant les fichiers inutiles.",
+    "features": "Intégrations facultatives. Chacune reste désactivée tant que vous ne l’activez pas.",
+    "apiKeys": "Clés personnelles pour PixInsight et d’autres outils. Une clé agit en votre nom.",
+    "alerts": "Soyez prévenu d’une nuit dégagée ou d’un import terminé.",
+    "libraryOrganization": "Comment les objets sont nommés, regroupés et comptés.",
+    "libraryProcessing": "Ce que Nebulis fait des images une fois arrivées.",
+    "maintenance": "Tâches que le serveur exécute seul chaque nuit.",
+    "catalogs": "Imagerie hors ligne et données de satellites conservées sur ce serveur."
   },
   "transportEditor": {
     "kindLabel": {
@@ -961,7 +1039,17 @@
     "searchPlaceholder": "Ville, région, pays…",
     "clearLocation": "Effacer la position",
     "searchHelp": "Tapez une ville pour remplir automatiquement les coordonnées et le fuseau horaire",
-    "noMatches": "Aucun résultat trouvé"
+    "noMatches": "Aucun résultat trouvé",
+    "photosLabel": "Photos",
+    "photosHelp": "Des images de ce site, pour vous y retrouver. Vous pouvez aussi les ajouter depuis l'app iPhone et iPad.",
+    "photosAdd": "Ajouter des photos",
+    "photosUploading": "Envoi de {{done}} sur {{total}}",
+    "photosSaveFirst": "Enregistrez d'abord le site, puis ajoutez des photos.",
+    "photosEmpty": "Aucune photo pour le moment.",
+    "photosRemove": "Supprimer la photo",
+    "photosOpen": "Ouvrir la photo",
+    "photosCaptionPlaceholder": "Ajouter une légende",
+    "photosUploadFailed": "Impossible d'envoyer {{name}} : {{reason}}"
   },
   "enterCodeModal": {
     "title": "Lier un Apple TV",
@@ -1383,7 +1471,7 @@
     "repaired": "{{count}} élément(s) réparé(s).",
     "unreadable_one": "1 fichier ou dossier n'a pas pu être vérifié, il n'est donc pas compté ci-dessus et les réparations ci-dessus sont désactivées. Vérifiez que le disque de la bibliothèque est en bon état, puis relancez l'analyse.",
     "unreadable_other": "{{count}} fichiers ou dossiers n'ont pas pu être vérifiés, ils ne sont donc pas comptés ci-dessus et les réparations ci-dessus sont désactivées. Vérifiez que le disque de la bibliothèque est en bon état, puis relancez l'analyse.",
-    "note": "Les réparations ne suppriment jamais de fichiers image. Les objets sans dossier vont dans la corbeille et peuvent être restaurés.",
+    "note": "Les réparations ne suppriment que des enregistrements, avec une exception : Supprimer les doublons efface la seconde copie d'un fichier après avoir confirmé qu'elle est identique à celle conservée. Les objets dont le dossier a disparu vont à la corbeille et peuvent être restaurés.",
     "stale": {
       "title": "Fichiers manquants",
       "detail": "Enregistrements de fichiers absents du disque, sur {{objects}} objet(s).",
@@ -1405,11 +1493,231 @@
       "detail": "Enregistré à plat, mais le dossier est organisé par nuit. La même correction s'exécute à chaque démarrage.",
       "fix": "Corriger les indicateurs"
     },
+    "duplicates": {
+      "title": "Fichiers en double",
+      "detail": "La même capture est stockée dans deux dossiers d'un objet, sur {{objects}} objets. Le nettoyage conserve la copie nommée par le télescope et supprime l'autre une fois les octets vérifiés identiques.",
+      "fix": "Supprimer les doublons"
+    },
     "flat": {
       "title": "Objets à structure plate",
       "detail": "Fichiers pas encore rangés par nuit. La réorganisation déplace des fichiers.",
       "progress": "Réorganisation… {{done}} / {{total}}",
       "fix": "Réorganiser"
     }
+  },
+  "featuresSection": {
+    "title": "Intégrations",
+    "description": "Activez les extras que vous utilisez. Les fonctionnalités désactivées n’ajoutent rien à votre serveur.",
+    "pixinsight": {
+      "label": "Intégration PixInsight",
+      "description": "Publie le script Nebulis Connector pour que PixInsight puisse l’installer et le mettre à jour, et pour parcourir votre bibliothèque depuis PixInsight.",
+      "repoLabel": "URL du dépôt PixInsight",
+      "repoDescription": "Ajoutez-la dans PixInsight sous Resources > Updates > Manage Repositories (avec la barre oblique finale). Enregistrez d’abord.",
+      "copy": "Copier l’URL",
+      "setup": "Ensuite : créez une clé, puis suivez le guide PixInsight dans l’Aide.",
+      "createKey": "Créer une clé d’API"
+    }
+  },
+  "apiKeys": {
+    "title": "Clés d’API",
+    "description": "Laissez PixInsight et d’autres outils utiliser Nebulis en votre nom, sans votre mot de passe.",
+    "note": "{{used}} clé(s) sur {{max}}. Une clé a vos droits : une clé admin peut modifier, une clé lecteur est en lecture seule.",
+    "allNote": "Toutes les clés de ce serveur. Révoquer une clé déconnecte aussitôt l’outil concerné.",
+    "mine": "Les miennes",
+    "all": "Toutes",
+    "newKey": "Nouvelle clé",
+    "nameLabel": "Nom de la clé",
+    "namePlaceholder": "Nommez-la d’après l’ordinateur, p. ex. iMac du studio",
+    "create": "Créer la clé",
+    "cancel": "Annuler",
+    "createFailed": "Impossible de créer la clé",
+    "loading": "Chargement des clés",
+    "createdTitle": "Clé créée : {{name}}",
+    "copyOnce": "Copiez-la maintenant. Elle n’est affichée qu’une fois et ne peut pas être récupérée ; si vous la perdez, révoquez-la et créez-en une autre.",
+    "copy": "Copier",
+    "copied": "Copiée",
+    "dismiss": "Fermer",
+    "none": "Aucune clé d’API pour l’instant",
+    "noneHint": "Créez-en une pour connecter PixInsight.",
+    "created": "Créée {{when}}",
+    "lastUsed": "utilisée {{when}}",
+    "neverUsed": "jamais utilisée",
+    "justNow": "à l’instant",
+    "deletedUser": "utilisateur supprimé",
+    "revoke": "Révoquer",
+    "revokeAria": "Révoquer {{name}}",
+    "revokeTitle": "Révoquer « {{name}} » ?",
+    "revokeMessage": "L’outil qui utilise la clé commençant par {{prefix}} perd l’accès immédiatement. Cette action est irréversible.",
+    "revokeConfirm": "Révoquer la clé"
+  },
+  "alerts": {
+    "title": "Canaux d’alerte",
+    "description": "Téléphones et services qui reçoivent ce que Nebulis remarque tout seul.",
+    "add": "Ajouter un canal",
+    "actionFailed": "Ça n’a pas marché. Réessayez.",
+    "saveFailed": "Impossible d’enregistrer le canal.",
+    "loadFailed": "Impossible de charger les alertes.",
+    "loading": "Chargement…",
+    "empty": "Aucun canal d’alerte pour l’instant.",
+    "emptyHint": "Ajoutez un sujet ntfy ou une URL Discord, Slack ou webhook. Un iPhone apparaît ici tout seul dès que vous activez les alertes dans l’app Nebulis.",
+    "noEvents": "Aucun événement choisi : rien n’est envoyé.",
+    "lastSent": "Dernier envoi {{when}}",
+    "lastFailed": "Dernière tentative {{when}} en échec : {{error}}",
+    "testSent": "Alerte de test envoyée.",
+    "testFailed": "Échec du test : {{error}}",
+    "enabledLabel": "Envoyer les alertes à {{name}}",
+    "test": "Tester",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "deleteConfirm": "Supprimer « {{name}} » ? Plus rien n’y sera envoyé.",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "addTitle": "Ajouter un canal d’alerte",
+    "editTitle": "Modifier le canal d’alerte",
+    "kindLabel": "Envoyer vers",
+    "kindHelp": {
+      "ntfy": "Notifications sur votre téléphone avec l’app gratuite ntfy : abonnez-vous à un sujet dans l’app, puis collez ici l’URL du sujet. Choisissez un nom difficile à deviner, ou ajoutez ?auth=… pour un serveur protégé.",
+      "discord": "Dans Discord : paramètres du salon → Intégrations → Webhooks → Nouveau webhook → Copier l’URL du webhook.",
+      "slack": "Dans Slack : créez une app avec Incoming Webhooks, ajoutez-en un à un canal, puis copiez son URL.",
+      "webhook": "Nebulis envoie du JSON (événement, titre, message, données) à cette URL, pour Home Assistant, n8n ou vos propres scripts."
+    },
+    "nameLabel": "Nom",
+    "namePlaceholder": {
+      "ntfy": "Mon téléphone",
+      "discord": "Serveur astro",
+      "slack": "Canal observatoire",
+      "webhook": "Home Assistant"
+    },
+    "urlLabel": "URL",
+    "urlPlaceholder": {
+      "ntfy": "https://ntfy.sh/my-nebulis-topic",
+      "discord": "https://discord.com/api/webhooks/…",
+      "slack": "https://hooks.slack.com/services/…",
+      "webhook": "https://homeassistant.local:8123/api/webhook/nebulis"
+    },
+    "urlKeep": "Laissez vide pour garder l’URL actuelle.",
+    "secretLabel": "Secret de signature (facultatif)",
+    "secretHelp": "S’il est défini, chaque requête porte X-Nebulis-Signature: sha256=HMAC du corps, pour que le destinataire vérifie qu’elle vient de Nebulis.",
+    "secretClear": "Supprimer le secret",
+    "eventsLabel": "Événements",
+    "event": {
+      "night": {
+        "clear": {
+          "short": "Nuit dégagée",
+          "label": "Nuit dégagée prévue",
+          "help": "Chaque soir, quand la prévision annonce assez d’heures de nuit noire dégagées au site actif."
+        },
+        "dew": {
+          "short": "Alerte rosée",
+          "label": "Alerte rosée",
+          "help": "Envoyée peu avant la rosée attendue, une fois par nuit, seulement les nuits assez dégagées pour photographier. Choisissez ci-dessous l’avance."
+        }
+      },
+      "import": {
+        "finished": {
+          "short": "Import terminé",
+          "label": "Import terminé",
+          "help": "Quand un import apporte de nouveaux fichiers, avec les objets concernés."
+        },
+        "failed": {
+          "short": "Échec d’import",
+          "label": "Échec de l’import",
+          "help": "Quand un import s’arrête sur une erreur."
+        }
+      },
+      "update": {
+        "available": {
+          "short": "Mise à jour",
+          "label": "Mise à jour disponible",
+          "help": "Une fois par nouvelle version de Nebulis."
+        }
+      }
+    },
+    "language": "Langue des messages",
+    "languageHelp": "Langue des textes d’alerte, pour tous les canaux.",
+    "kind": {
+      "ntfy": "ntfy",
+      "discord": "Discord",
+      "slack": "Slack",
+      "webhook": "Webhook"
+    },
+    "clearNight": {
+      "title": "Nuit dégagée prévue",
+      "description": "La vérification du soir derrière l’alerte « Nuit dégagée prévue », pour le site actif.",
+      "checkTime": "Vérifier à",
+      "checkTimeHelp": "Heure locale du site actif. La vérification a lieu une fois par nuit.",
+      "minClearHours": "Envoyer à partir de",
+      "minClearHoursHelp": "Heures de nuit noire dégagées restant après la vérification.",
+      "hours_one": "{{count}} heure dégagée",
+      "hours_other": "{{count}} heures dégagées",
+      "maxCloud": "Une heure est dégagée jusqu’à",
+      "maxCloudHelp": "Couverture nuageuse de la prévision. Les heures probablement pluvieuses ne comptent jamais.",
+      "cloudPct": "{{pct}} % de nuages",
+      "preview": "Vérifier cette nuit maintenant",
+      "noListener": "Aucun canal ni iPhone n’a « Nuit dégagée » coché : la vérification ne tourne pas.",
+      "listeners_one": "Envoyée à {{count}} canal ou iPhone.",
+      "listeners_other": "Envoyée à {{count}} canaux et iPhones.",
+      "tonight": "Cette nuit :",
+      "lastCheck": "Dernière vérification {{when}} :",
+      "summary": "{{clear}} h dégagées sur {{dark}} h de nuit noire, meilleur créneau de {{start}} à {{end}}, Lune à {{moon}} %",
+      "reason": {
+        "sent": "alerte envoyée",
+        "not_clear_enough": "sous le minimum, non envoyée",
+        "no_forecast": "pas de prévision disponible",
+        "no_dark_window": "pas de nuit astronomique cette nuit",
+        "no_site": "définissez d’abord la position du site actif",
+        "preview": "aperçu seulement"
+      },
+      "sendToPhones": "Envoyer aux iPhone",
+      "sendToPhonesHelp": "Envoie dès maintenant l’alerte de ce soir à vos iPhone, telle qu’elle partirait, même si la nuit n’atteint pas le seuil.",
+      "sentToPhones_one": "Envoyé à {{count}} iPhone.",
+      "sentToPhones_other": "Envoyé à {{count}} iPhone.",
+      "phoneFailed": "Envoi impossible à {{name}} : {{error}}",
+      "phoneNoExtras": "Aucun de vos iPhone n’a de ligne supplémentaire activée, c’était donc l’alerte de base. Utilisez le crayon d’un iPhone pour ajouter le plan de ce soir ou le risque de rosée, puis renvoyez.",
+      "next": {
+        "now": "La vérification du soir est due maintenant. Elle n’envoie que s’il reste au moins {{hours}} heures dégagées.",
+        "today": "Prochaine vérification : ce soir à {{time}}. Elle n’envoie que s’il reste au moins {{hours}} heures dégagées.",
+        "tomorrow": "La vérification de ce soir a eu lieu. Prochaine vérification : demain à {{time}}."
+      },
+      "sendDew": "Envoyer l’alerte rosée aux iPhone",
+      "sendDewHelp": "Envoie maintenant l’alerte rosée à vos iPhone. S’il n’y a pas de risque de rosée cette nuit, des heures d’exemple sont utilisées.",
+      "sentDew_one": "Alerte rosée envoyée à {{count}} iPhone.",
+      "sentDew_other": "Alerte rosée envoyée à {{count}} iPhone.",
+      "dewSample": "Pas de risque de rosée cette nuit, des heures d’exemple ont donc été utilisées."
+    },
+    "phones": {
+      "testBuild": "Version de test",
+      "removeConfirm": "Retirer « {{name}} » ? Il ne recevra plus d’alertes tant que vous ne les réactivez pas dans l’app.",
+      "removedByApple": "Ce téléphone n’accepte plus les notifications de Nebulis, il a donc été retiré. Activez les alertes dans l’app pour le rajouter.",
+      "extras": "Nuit dégagée ajoute : {{list}}",
+      "edit": "Choisir les alertes",
+      "editLabel": "Choisir les alertes de {{name}}",
+      "editTitle": "Alertes de {{name}}",
+      "kind": "iPhone"
+    },
+    "detail": {
+      "group": "Lignes supplémentaires de l’alerte nuit dégagée",
+      "plan": {
+        "label": "Plan de ce soir",
+        "help": "Ajoute ce que vous avez prévu pour ce soir. Sur l’iPhone, un toucher sur l’alerte ouvre alors le Planificateur."
+      },
+      "dew": {
+        "label": "Risque de rosée",
+        "help": "Ajoute le moment où l’air devrait atteindre le point de rosée et la température minimale de la nuit, pour savoir s’il faut un chauffage anti-buée."
+      },
+      "leadLabel": "Envoyer",
+      "lead": "{{time}} avant",
+      "leadHours_one": "{{count}} heure",
+      "leadHours_other": "{{count}} heures",
+      "leadMinutes_one": "{{count}} minute",
+      "leadMinutes_other": "{{count}} minutes",
+      "dewRow": "Alerte rosée : {{time}} avant la rosée"
+    }
+  },
+  "search": {
+    "label": "Trouver un réglage",
+    "placeholder": "Rechercher un réglage…",
+    "clear": "Effacer la recherche",
+    "noResults": "Aucun réglage correspondant"
   }
 }

@@ -7,7 +7,7 @@ import type { ArchiveDestinationState } from '../../lib/api/storage';
  *  buttons, not outlined ones: outline is not used for section actions anywhere else. */
 export function archiveStyles(isDark: boolean) {
   const btnBase =
-    'px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+    'px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
   return {
     btnBase,
     btnPrimary: 'bg-accent-500 text-white hover:bg-accent-600',
@@ -19,13 +19,13 @@ export function archiveStyles(isDark: boolean) {
     divider: isDark ? 'border-slate-800/70' : 'border-slate-100',
     subText: isDark ? 'text-slate-500' : 'text-slate-400',
     strongText: isDark ? 'text-slate-200' : 'text-slate-800',
-    noticeClass: `rounded-lg px-3.5 py-3 text-[12px] leading-relaxed ${
+    noticeClass: `rounded-lg px-3.5 py-3 text-[0.75rem] leading-relaxed ${
       isDark ? 'bg-emerald-500/10 text-emerald-200/90' : 'bg-emerald-50 text-emerald-900'
     }`,
-    errorClass: `rounded-lg px-3.5 py-3 text-[12px] leading-relaxed ${
+    errorClass: `rounded-lg px-3.5 py-3 text-[0.75rem] leading-relaxed ${
       isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'
     }`,
-    warningClass: `flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-[12px] leading-relaxed ${
+    warningClass: `flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-[0.75rem] leading-relaxed ${
       isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'
     }`,
     dangerBox: `rounded-xl border p-4 ${

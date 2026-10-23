@@ -18,19 +18,42 @@
     "raDec": "RA {{ra}}u · Dec {{dec}}°",
     "closeDetails": "Details sluiten",
     "addToTonight": "Toevoegen aan vannacht",
-    "moonOkTonight": "De maan hindert vannacht niet ({{percent}}% verlicht).",
-    "moonWarningTonight": "De maan komt om {{time}} op minder dan {{deg}}° van dit object ({{percent}}% verlicht). Maanlicht kan zwakke details overstralen.",
     "referenceImageAlt": "Referentiebeeld van {{name}}",
     "referenceImage": "Referentiebeeld",
     "setLocationForSky": "Stel je locatie in via Instellingen om te zien waar dit object aan je hemel staat.",
-    "skyShownAt": "Hemel om {{time}}. Kies een ander tijdstip in de grafiek hieronder.",
-    "skyShownAtHighest": "Hemel om {{time}} (hoogste stand vannacht). Kies een ander tijdstip in de grafiek hieronder.",
+    "skyShownAt": "Om {{time}} · sleep over de grafiek om de tijd te wijzigen",
+    "skyShownAtHighest": "Om {{time}} (hoogste punt) · sleep over de grafiek om de tijd te wijzigen",
+    "altSummary": "Hoogste punt {{alt}}° om {{peakTime}} · boven {{min}}° van {{from}} tot {{to}} ({{duration}})",
+    "altSummaryNever": "Hoogste punt {{alt}}° om {{peakTime}} · vannacht niet boven het minimum",
+    "moonAllFine": "Maan vannacht {{percent}}% verlicht: geen probleem voor breedband en smalband.",
+    "descMore": "Meer tonen",
+    "descLess": "Minder tonen",
+    "statPeak": "Piek",
+    "statAbove": "Boven {{min}}°",
+    "statNeverAbove": "Deze nacht niet boven het minimum",
+    "statAboveRange": "{{from}} tot {{to}} · {{duration}}",
+    "scheduledWindow": "Gepland {{start}} tot {{end}}",
     "noCatalogDescription": "Voor dit object is geen catalogusbeschrijving beschikbaar.",
     "readMoreWikipedia": "Lees meer op Wikipedia →",
     "altitudeTonight": "Hoogte vannacht (van middag tot middag, lokale tijd)",
-    "setLocationForAltitude": "Stel je locatie in via Instellingen om de hoogtecurve te bekijken."
+    "setLocationForAltitude": "Stel je locatie in via Instellingen om de hoogtecurve te bekijken.",
+    "moonTonight": "Maan vannacht: {{percent}}% verlicht.",
+    "moonBand": {
+      "broadband": "Breedband:",
+      "narrowband": "Smalband:"
+    },
+    "moonBandOk": "geen probleem.",
+    "moonBandWarning": "komt om {{time}} tot {{deg}}° (nodig ≥ {{min}}°).",
+    "blockFilter": "Filter",
+    "blockFilterOption": {
+      "unset": "Niet ingesteld",
+      "broadband": "Breedband",
+      "narrowband": "Smalband"
+    }
   },
   "nightHero": {
+    "collapse": "Koptekst inklappen",
+    "expand": "Koptekst uitklappen",
     "rises": "Opkomst {{time}}",
     "sets": "Ondergang {{time}}",
     "averageCloud": "{{percent}}% gemiddelde bewolking.",
@@ -45,15 +68,25 @@
     "hourByHour": "per uur",
     "moon": "Maan",
     "litPercent": "{{percent}}% verlicht",
-    "planMyNight": "Plan mijn nacht"
+    "planMyNight": "Plan mijn nacht",
+    "filterAdviceTitle": "Op basis van de maan tijdens de donkere uren",
+    "filterAdvice": {
+      "broadband": "Breedbandnacht",
+      "narrowband": "Smalbandnacht",
+      "broadbandUntil": "Breedband tot {{time}}, daarna smalband",
+      "broadbandFrom": "Smalband, breedband vanaf {{time}}"
+    }
   },
   "scheduleTimeline": {
+    "emptyNight": "Voor deze nacht is nog niets gepland.",
+    "copyLastNightCount_one": "Vorige nacht kopiëren ({{count}} blok)",
+    "copyLastNightCount_other": "Vorige nacht kopiëren ({{count}} blokken)",
     "nightSchedule": "Nachtplanning",
     "plannedOfDark": "<1>{{planned}}</1> van {{dark}} gepland",
     "targetCount_one": "{{count}} object",
     "targetCount_other": "{{count}} objecten",
     "clearest": "Beste omstandigheden van {{start}} tot {{end}}",
-    "dark": "Donker {{start}} tot {{end}} ({{hours}}h)",
+    "dark": "Donker {{start}} tot {{end}} ({{duration}})",
     "forecastFor": "Weersverwachting voor {{time}}",
     "weatherTitle": "{{time}} · {{label}} {{score}} · {{cloud}}% bewolking{{tail}}",
     "clickForForecast": ". Klik voor de volledige weersverwachting.",
@@ -80,7 +113,17 @@
     "removeScheduledBlock": "Gepland blok verwijderen",
     "remove": "Verwijderen",
     "resizeTop": "Begintijd aanpassen",
-    "resizeBottom": "Eindtijd aanpassen"
+    "resizeBottom": "Eindtijd aanpassen",
+    "narrowbandOk": "smalband OK",
+    "moonNbOk": "Maan · SB OK",
+    "band": {
+      "broadband": "Breedband (L, RGB, kleur zonder filter)",
+      "narrowband": "Smalband (Ha, OIII, SII, dualband)"
+    },
+    "bandShort": {
+      "broadband": "BB",
+      "narrowband": "SB"
+    }
   },
   "libraryPanel": {
     "filterAll": "Alles",
@@ -93,16 +136,25 @@
     "peaksBelowMinimum": "Bereikt maximaal {{maxAlt}}°, onder je minimum van {{minAlt}}°",
     "peaksTonight": "Bereikt deze nacht slechts {{maxAlt}}°",
     "targets": "Objecten",
-    "upThisNight_one": "{{count}} zichtbaar deze nacht",
-    "upThisNight_other": "{{count}} zichtbaar deze nacht",
-    "searchPlaceholder": "Zoek M81, NGC 7000, Orion...",
+    "countOfUp_one": "{{shown}} van {{count}} zichtbaar deze nacht",
+    "countOfUp_other": "{{shown}} van {{count}} zichtbaar deze nacht",
+    "searchPlaceholderAll": "Zoek in alle {{total}}: M81, NGC 7000...",
+    "viewLabel": "Weergave",
+    "viewButton": "Weergave",
+    "viewShow": "Tonen",
+    "scopeAll": "Alle doelen",
+    "scopeAllHint": "Alles wat deze nacht zichtbaar is",
+    "scopeWishlistHint": "Alleen doelen met een ster",
+    "scopeNotImaged": "Nog niet gefotografeerd",
+    "scopeNotImagedHint": "Verberg doelen die al in je bibliotheek staan",
+    "viewTitle": "Sorteer- en lijstopties",
+    "viewSort": "Sorteren",
+    "viewList": "Lijst",
     "clearSearch": "Zoekopdracht wissen",
     "matches_one": "{{count}} resultaat",
     "matches_other": "{{count}} resultaten",
     "matchesOf_one": "{{shown}} van {{count}} resultaat",
     "matchesOf_other": "{{shown}} van {{count}} resultaten",
-    "popularPicks_one": "{{count}} populair object. Zoek om de overige objecten te vinden.",
-    "popularPicks_other": "{{count}} populaire objecten. Zoek om de overige objecten te vinden.",
     "hideBlockedTitle": "Verberg objecten die deze nacht nooit in een zichtbaar deel van je hemel komen",
     "hideBlocked": "Niet-zichtbare verbergen",
     "noTargetsMatch": "Geen objecten komen overeen met je filters.",
@@ -112,7 +164,7 @@
     "alreadyInLibrary": "Staat al in je bibliotheek",
     "notInVisibleSky": "Deze nacht niet in je zichtbare hemelgebied",
     "peaksAt": "{{deg}}°",
-    "peaksAtAround": "{{deg}}° · {{time}}",
+    "peaksAtAround": "{{deg}}° · piek {{time}}",
     "peaksAtTitle": "Bereikt deze nacht een maximale hoogte van {{deg}}°",
     "peaksAtAroundTitle": "Bereikt rond {{time}} een maximale hoogte van {{deg}}°",
     "showDetailsFor": "Toon details voor {{name}}",
@@ -128,12 +180,27 @@
     "removeFromWishlist": "Verwijderen uit verlanglijst",
     "addToWishlistFor": "Voeg {{name}} toe aan verlanglijst",
     "removeFromWishlistFor": "Verwijder {{name}} uit verlanglijst",
-    "showAltitudeChart": "Hoogtecurve voor deze nacht tonen",
-    "hideAltitudeChart": "Hoogtecurve voor deze nacht verbergen",
-    "showAltitudeChartFor": "Hoogtecurve voor deze nacht tonen voor {{name}}",
-    "hideAltitudeChartFor": "Hoogtecurve voor deze nacht verbergen voor {{name}}"
+    "showMore": "Hoogte en filters tonen",
+    "hideMore": "Hoogte en filters verbergen",
+    "showMoreFor": "Hoogte en filters van {{name}} tonen",
+    "hideDetailsFor": "Hoogte en filters van {{name}} verbergen",
+    "orderLabel": "Volgorde",
+    "orderBest": "Beste vannacht",
+    "orderConditions": "Beste omstandigheden",
+    "orderBestTitle": "Gesorteerd op Beste vannacht: hoe goed een doel staat en hoe de moeite waard het is",
+    "orderConditionsTitle": "Gesorteerd op Beste omstandigheden: hoe goed een doel vannacht staat",
+    "openExploreTitle": "Meer doelen voor deze nacht vinden in Verkennen",
+    "findMoreInExplore": "Meer vinden in Verkennen"
   },
   "nightStrip": {
+    "legendLabel": "Legenda",
+    "legendTitle": "Wat de balken en stippen betekenen",
+    "legendRating": "Weerbeoordeling",
+    "legendRatingHint": "Lengte en kleur van de balk",
+    "legendPlanned": "Geplande blokken",
+    "legendPlannedHint": "Je hebt al een plan voor deze nacht",
+    "legendMoon": "Maanfase",
+    "legendMoonHint": "Maan op die nacht",
     "previousNight": "Vorige nacht",
     "nextNight": "Volgende nacht",
     "pickADate": "Kies een datum",
@@ -204,7 +271,9 @@
     "scheduleAtHighestOn": "Inplannen op het beschikbare tijdstip waarop het object op {{date}} het hoogst staat",
     "loadingWindow": "Controleren wanneer dit object zichtbaar is...",
     "windowUnavailable": "De coördinaten van dit object konden niet worden gevonden.",
-    "setLocationForWindow": "Stel je locatie in via Instellingen om de beste opnameperiode te zien."
+    "setLocationForWindow": "Stel je locatie in via Instellingen om de beste opnameperiode te zien.",
+    "openInPlanner": "{{name}} openen in de planner",
+    "findSimilar": "Meer zoals {{name}} vinden in Verkennen"
   },
   "wishlistHero": {
     "title": "Verlanglijst",
@@ -257,7 +326,8 @@
     "removeFromWishlist": "Verwijderen uit verlanglijst",
     "addToWishlist": "Toevoegen aan verlanglijst",
     "viewLargerImage": "Bekijk grotere afbeelding",
-    "referenceImageAlt": "Referentiebeeld van {{id}}"
+    "referenceImageAlt": "Referentiebeeld van {{id}}",
+    "planNight": "Een nacht plannen"
   },
   "planCalendar": {
     "previousMonth": "Vorige maand",
@@ -291,10 +361,7 @@
   },
   "skyChart": {
     "moon": "Maan",
-    "dirText": "{{compass}} · {{az}}° · hoogte {{alt}}°",
-    "moonLitAway": "Maan {{percent}}% verlicht · {{deg}}° afstand",
-    "tooClose": " · te dichtbij",
-    "moonBelowHorizon": "Maan onder de horizon",
+    "dirText": "{{compass}} · {{az}}°",
     "looking": "Blikrichting {{dir}}",
     "belowHorizonNow": " · nu onder de horizon"
   },
@@ -338,7 +405,23 @@
     "replaceTitle": "De planning voor {{nightLabel}} vervangen?",
     "replaceMessage_one": "Hiermee verwijder je {{count}} ingepland object voor {{nightLabel}} en vervang je het door deze selectie ({{newCount}}).",
     "replaceMessage_other": "Hiermee verwijder je de {{count}} objecten die al zijn ingepland voor {{nightLabel}} en vervang je ze door deze selectie ({{newCount}}).",
-    "replace": "Vervangen"
+    "replace": "Vervangen",
+    "favorGoals": "Objecten met resterende tijd voor hun doelen voorrang geven",
+    "goalsComplete": "Doelen bereikt, weggelaten: {{names}}",
+    "goalFilterTitle": "Filter {{filter}}: nog {{duration}} vóór dit blok",
+    "avoidClouds": "Bewolkte uren overslaan (verwachting)",
+    "cloudThresholdLabel": "Grens voor bewolking",
+    "cloudThreshold": "boven {{pct}}% bewolking",
+    "forecastUnavailable": "Geen weersverwachting voor deze nacht, dus het plan houdt geen rekening met het weer.",
+    "skippedCloudy": "Leeg gelaten: verwachting boven {{pct}}% bewolking",
+    "skippedRange": "{{start}}–{{end}} ({{pct}}%)",
+    "allCloudy": "De verwachting is bewolkt voor het hele tijdvak.",
+    "cloudPct": "{{pct}}% bewolking",
+    "dewRisk": "Kans op dauw: temperatuur dicht bij het dauwpunt",
+    "seeingExcellent": "Uitstekende seeing",
+    "seeingGood": "Goede seeing",
+    "seeingAverage": "Gemiddelde seeing",
+    "seeingPoor": "Slechte seeing"
   },
   "planShareModal": {
     "observationPlan": "Waarneemplanning",
@@ -355,5 +438,38 @@
     "preparing": "Voorbereiden…",
     "shareImage": "Afbeelding delen",
     "saveImage": "Afbeelding opslaan"
+  },
+  "integrationRemaining": {
+    "left": "nog {{duration}} · {{filter}}",
+    "title": "{{filter}}: {{done}} van {{goal}}",
+    "noFilter": "Geen filter",
+    "complete": "Doelen bereikt",
+    "completeTitle": "Alle integratiedoelen voor dit object zijn bereikt"
+  },
+  "planOutcome": {
+    "status": {
+      "upcoming": "Gepland",
+      "in_progress": "Bezig",
+      "awaiting_import": "Wacht op beelden",
+      "done": "Klaar",
+      "partial": "Gedeeltelijk",
+      "missed": "Gemist",
+      "skipped": "Overgeslagen"
+    },
+    "achieved": "{{achieved}} / {{planned}}",
+    "awaitingImportHint": "De tijd van dit blok is voorbij. Importeer de beelden van de telescoop om het te bevestigen.",
+    "title_one": "{{status}} · {{count}} subframe in de bibliotheek",
+    "title_other": "{{status}} · {{count}} subframes in de bibliotheek",
+    "repeatTomorrow": "Opnieuw plannen voor de volgende nacht",
+    "markSkipped": "Markeren als overgeslagen",
+    "unskip": "Markering overgeslagen weghalen"
+  },
+  "filterSuggestion": {
+    "complete": "Integratiedoelen voor dit object bereikt.",
+    "suggest": "Filter: {{filter}}, nog {{left}}",
+    "noneTonight": "Alle filters met resterende tijd zijn breedband, en de maan staat te dichtbij.",
+    "use": "{{filter}} gebruiken",
+    "inUse": "In gebruik",
+    "ruledOut": "Maan te dichtbij voor breedband: {{filters}}"
   }
 }

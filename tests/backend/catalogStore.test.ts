@@ -86,7 +86,7 @@ describe('catalogStore', () => {
   it('every program member resolves to a real canonical id', () => {
     for (const rec of getAllCuratedRecords()) {
       if (rec.programs.length === 0) continue;
-      expect(resolveCanonicalId(rec.canonicalId)).toBeTruthy();
+      expect(resolveCanonicalId(rec.canonicalId), rec.canonicalId).toBe(rec.canonicalId);
     }
   });
 });

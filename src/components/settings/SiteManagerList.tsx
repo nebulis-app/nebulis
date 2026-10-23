@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { MapPin, Plus, Pencil, Trash2, Star, Sparkles, Compass } from 'lucide-react';
+import { MapPin, Pencil, Trash2, Star, Sparkles, Compass } from 'lucide-react';
 import { getSites, deleteSite, setDefaultSite, updateSite, type ObservingSite } from '../../lib/api/sites';
+import { AddListButton } from './SettingsUI';
+import { SitesMap } from './SitesMap';
 import { SiteEditorModal } from './SiteEditorModal';
 import { VisibleSkyEditor } from '../ui/VisibleSkyEditor';
 import { ConfirmModal } from '../ConfirmModal';
@@ -18,13 +20,14 @@ import type { VisibleSkyMap } from '../../lib/visibilityCheck';
  * active" — editing site B's mask must not require switching to site B
  * first.
  */
-export function SiteManagerList({ isDark }: { isDark: boolean }) {
+export function SiteManagerList({ isDark, showMap = false }: { isDark: boolean; showMap?: boolean }) {
   const { t } = useTranslation('settings');
   const queryClient = useQueryClient();
   const [showAddModal, setShowAddModal] = useState(false);
   const [editing, setEditing] = useState<ObservingSite | null>(null);
   const [editingSky, setEditingSky] = useState<ObservingSite | null>(null);
   const [deleting, setDeleting] = useState<ObservingSite | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data: sites = [] } = useQuery({
     queryKey: ['sites'],
@@ -92,12 +95,16 @@ export function SiteManagerList({ isDark }: { isDark: boolean }) {
         <p className="mb-3 text-sm text-red-400">{mutationError}</p>
       )}
 
+      {showMap && <SitesMap sites={sites} selectedId={selectedId} onSelect={setSelectedId} isDark={isDark} />}
+
       <div className="space-y-2 mb-3">
         {sites.map(site => (
           <SiteRow
             key={site.id}
             site={site}
             isDark={isDark}
+            highlighted={selectedId === site.id}
+            onHover={(on) => setSelectedId(on ? site.id : null)}
             onEdit={() => setEditing(site)}
             onSetSky={() => setEditingSky(site)}
             onSetDefault={() => setDefaultMutation.mutate(site.id)}
@@ -108,17 +115,9 @@ export function SiteManagerList({ isDark }: { isDark: boolean }) {
         ))}
       </div>
 
-      <button
-        onClick={() => setShowAddModal(true)}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition w-full justify-center ${
-          isDark
-            ? 'bg-slate-900 border-slate-700 text-slate-300 hover:border-teal-500/50 hover:bg-slate-800/50'
-            : 'bg-white border-slate-200 text-slate-700 hover:border-teal-300 hover:bg-teal-50/50'
-        }`}
-      >
-        <Plus className="w-4 h-4" />
+      <AddListButton isDark={isDark} onClick={() => setShowAddModal(true)}>
         {t('siteManager.addSite')}
-      </button>
+      </AddListButton>
     </div>
   );
 }
@@ -126,6 +125,8 @@ export function SiteManagerList({ isDark }: { isDark: boolean }) {
 function SiteRow({
   site,
   isDark,
+  highlighted,
+  onHover,
   onEdit,
   onSetSky,
   onSetDefault,
@@ -135,6 +136,8 @@ function SiteRow({
 }: {
   site: ObservingSite;
   isDark: boolean;
+  highlighted: boolean;
+  onHover: (on: boolean) => void;
   onEdit: () => void;
   onSetSky: () => void;
   onSetDefault: () => void;
@@ -143,17 +146,18 @@ function SiteRow({
   isPending: boolean;
 }) {
   const { t } = useTranslation('settings');
-  const hasLocation = site.latitude != null && site.longitude != null;
   const hasSkyMap = site.visibleSkyMap.length > 0;
 
   return (
     <div
       onClick={onEdit}
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
       className={`group flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition ${
         isDark
           ? 'bg-slate-900 border-slate-700 hover:border-accent-400'
           : 'bg-white border-slate-200 hover:border-accent-400'
-      }`}
+      } ${highlighted ? 'border-accent-400' : ''}`}
     >
       <div className={`shrink-0 p-2 rounded-lg ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
         <MapPin className={`w-4 h-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
@@ -165,7 +169,7 @@ function SiteRow({
             {site.name}
           </span>
           {site.isDefault && (
-            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium border shrink-0 ${
+            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[0.625rem] font-medium border shrink-0 ${
               isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-700 border-amber-200'
             }`}>
               <Star className="w-2.5 h-2.5" /> {t('siteManager.default')}
@@ -173,21 +177,21 @@ function SiteRow({
           )}
         </div>
         <p className={`text-xs mt-0.5 truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-          {hasLocation ? `${site.latitude!.toFixed(4)}, ${site.longitude!.toFixed(4)}` : t('siteManager.noCoordinates')}
-          {' · '}{t('siteManager.minAlt', { degrees: site.minAlt })}
-          {hasSkyMap && (
-            <span className="inline-flex items-center gap-1 ml-1">
-              <Sparkles className="w-3 h-3 inline" /> {t('siteManager.skyMapped')}
-            </span>
-          )}
+          {site.latitude != null && site.longitude != null ? `${site.latitude.toFixed(4)}, ${site.longitude.toFixed(4)}` : t('siteManager.noCoordinates')}
         </p>
+        <div className={`mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+          {site.timezone && <span>{site.timezone}</span>}
+          {site.bortleClass != null && <span>{t('siteManager.bortle', { class: site.bortleClass })}</span>}
+          <span>{t('siteManager.minAlt', { degrees: site.minAlt })}</span>
+          <span className={`inline-flex items-center gap-1 ${hasSkyMap ? '' : isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+            <Sparkles className="w-3 h-3" /> {hasSkyMap ? t('siteManager.skyMapped') : t('siteManager.skyNotMapped')}
+          </span>
+        </div>
       </div>
 
-      {/* Hover-revealed on a pointer device, but there is no hover on a
-          touchscreen, so these actions (including the only way to delete or
-          un-default a site) would be invisible and effectively unreachable on
-          mobile without the `opacity-100` floor below `sm:`. */}
-      <div className="flex items-center gap-1 shrink-0 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+      {/* Always visible: hiding these until hover made "set as default" and
+          the sky map undiscoverable, and unreachable on touchscreens. */}
+      <div className="flex items-center gap-1 shrink-0">
         <button
           onClick={e => { e.stopPropagation(); onSetSky(); }}
           title={t('siteManager.setVisibleSky')}
@@ -195,18 +199,22 @@ function SiteRow({
         >
           <Compass className="w-4 h-4" />
         </button>
-        {!site.isDefault && (
-          <button
-            onClick={e => { e.stopPropagation(); onSetDefault(); }}
-            disabled={isPending}
-            title={t('siteManager.setAsDefault')}
-            className={`p-2 rounded-lg transition disabled:opacity-40 ${
-              isDark ? 'text-slate-400 hover:text-amber-400 hover:bg-slate-800' : 'text-slate-500 hover:text-amber-600 hover:bg-slate-100'
-            }`}
-          >
-            <Star className="w-4 h-4" />
-          </button>
-        )}
+        {/* Every row gets the star so the icon columns line up: filled and
+            inert on the default site, an outline button that sets it on the
+            others. */}
+        <button
+          onClick={e => { e.stopPropagation(); if (!site.isDefault) onSetDefault(); }}
+          disabled={isPending || site.isDefault}
+          aria-pressed={site.isDefault}
+          title={site.isDefault ? t('siteManager.default') : t('siteManager.setAsDefault')}
+          className={`p-2 rounded-lg transition ${
+            site.isDefault
+              ? 'cursor-default text-amber-400'
+              : `disabled:opacity-40 ${isDark ? 'text-slate-400 hover:text-amber-400 hover:bg-slate-800' : 'text-slate-500 hover:text-amber-600 hover:bg-slate-100'}`
+          }`}
+        >
+          <Star className={`w-4 h-4 ${site.isDefault ? 'fill-current' : ''}`} />
+        </button>
         <button
           onClick={e => { e.stopPropagation(); onEdit(); }}
           title={t('siteManager.edit')}

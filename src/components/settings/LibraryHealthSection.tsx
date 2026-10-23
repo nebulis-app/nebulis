@@ -65,7 +65,7 @@ export function LibraryHealthSection({ isDark }: { isDark: boolean }) {
 
   const subtle = isDark ? 'text-slate-400' : 'text-slate-600';
   const busy = scan.isPending || repair.isPending;
-  const btn = `px-3 py-1.5 rounded-lg text-[12.5px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+  const btn = `px-3 py-1.5 rounded-lg text-[0.7812rem] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
     isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
   }`;
 
@@ -73,12 +73,12 @@ export function LibraryHealthSection({ isDark }: { isDark: boolean }) {
     <li key={key} className="flex items-center gap-3 px-3.5 py-3">
       {count === 0
         ? <CheckCircle2 className={`w-4 h-4 shrink-0 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
-        : <span className={`w-4 h-4 shrink-0 rounded-full text-[10px] font-bold flex items-center justify-center ${isDark ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-100 text-amber-800'}`}>!</span>}
+        : <span className={`w-4 h-4 shrink-0 rounded-full text-[0.625rem] font-bold flex items-center justify-center ${isDark ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-100 text-amber-800'}`}>!</span>}
       <div className="min-w-0 flex-1">
-        <div className={`text-[13px] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+        <div className={`text-[0.8125rem] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
           {title} <span className={`tabular-nums ${subtle}`}>· {count.toLocaleString()}</span>
         </div>
-        <div className={`text-[11.5px] ${subtle}`}>{detail}</div>
+        <div className={`text-[0.7188rem] ${subtle}`}>{detail}</div>
       </div>
       {count > 0 && action && (
         <button onClick={action.run} disabled={busy || action.disabled} className={btn}>{action.label}</button>
@@ -100,13 +100,13 @@ export function LibraryHealthSection({ isDark }: { isDark: boolean }) {
     >
       <div className="px-5 py-5 space-y-4">
         {notice && (
-          <div className={`rounded-lg px-3.5 py-3 text-[12px] ${isDark ? 'bg-emerald-500/10 text-emerald-200/90' : 'bg-emerald-50 text-emerald-900'}`}>{notice}</div>
+          <div className={`rounded-lg px-3.5 py-3 text-[0.75rem] ${isDark ? 'bg-emerald-500/10 text-emerald-200/90' : 'bg-emerald-50 text-emerald-900'}`}>{notice}</div>
         )}
         {error && (
-          <div className={`rounded-lg px-3.5 py-3 text-[12px] ${isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'}`}>{error}</div>
+          <div className={`rounded-lg px-3.5 py-3 text-[0.75rem] ${isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'}`}>{error}</div>
         )}
         {!result ? (
-          <p className={`text-[13px] ${subtle}`}>{t('libraryHealth.intro')}</p>
+          <p className={`text-[0.8125rem] ${subtle}`}>{t('libraryHealth.intro')}</p>
         ) : (
           <>
             <ul className={`rounded-lg border divide-y ${isDark ? 'border-slate-800 divide-slate-800' : 'border-slate-200 divide-slate-100'}`}>
@@ -124,6 +124,10 @@ export function LibraryHealthSection({ isDark }: { isDark: boolean }) {
               {row('drift', t('libraryHealth.drift.title'), t('libraryHealth.drift.detail'),
                 result.layoutDrift,
                 { label: t('libraryHealth.drift.fix'), run: () => repair.mutate('layoutDrift') })}
+              {row('duplicates', t('libraryHealth.duplicates.title'),
+                t('libraryHealth.duplicates.detail', { objects: result.duplicateFiles.objects }),
+                result.duplicateFiles.count,
+                { label: t('libraryHealth.duplicates.fix'), run: () => repair.mutate('duplicateFiles') })}
               {row('flat', t('libraryHealth.flat.title'),
                 renestRunning && renest
                   ? t('libraryHealth.flat.progress', { done: renest.renest.objectsDone, total: renest.renest.objectsTotal })
@@ -132,16 +136,16 @@ export function LibraryHealthSection({ isDark }: { isDark: boolean }) {
                 { label: t('libraryHealth.flat.fix'), run: () => startReorg.mutate(), disabled: renestRunning })}
             </ul>
             {result.missingObjects.length > 0 && (
-              <p className={`text-[11.5px] ${subtle}`}>
+              <p className={`text-[0.7188rem] ${subtle}`}>
                 {t('libraryHealth.missing.list', { names: result.missingObjects.map(o => o.objectId).join(', ') })}
               </p>
             )}
             {result.unreadable > 0 && (
-              <div className={`rounded-lg px-3.5 py-3 text-[12px] ${isDark ? 'bg-amber-500/10 text-amber-200/90' : 'bg-amber-50 text-amber-900'}`}>
+              <div className={`rounded-lg px-3.5 py-3 text-[0.75rem] ${isDark ? 'bg-amber-500/10 text-amber-200/90' : 'bg-amber-50 text-amber-900'}`}>
                 {t('libraryHealth.unreadable', { count: result.unreadable })}
               </div>
             )}
-            <p className={`text-[11.5px] ${subtle}`}>{t('libraryHealth.note')}</p>
+            <p className={`text-[0.7188rem] ${subtle}`}>{t('libraryHealth.note')}</p>
           </>
         )}
       </div>

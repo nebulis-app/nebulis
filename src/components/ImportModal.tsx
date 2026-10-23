@@ -17,6 +17,7 @@ import { formatBytes } from '../lib/utils';
 import { Modal } from './ui/Modal';
 import { CloseConfirm } from './ui/CloseConfirm';
 import { ServerFolderPicker } from './folderImport/ServerFolderPicker';
+import { formatFocal } from '../lib/rigLabel';
 
 interface PickedFile {
   file: File;
@@ -104,7 +105,7 @@ export function ImportModal({ onClose, onReview, onLink, resume }: {
   resume?: { path: string; includeSubframes: boolean };
   /** Index the chosen server folder in place instead of copying it. */
   onLink?: (folderPath: string, includeSubframes: boolean, includeFits: boolean) => void;
-  onReview: (folderPath: string, includeSubframes: boolean, includeFits: boolean, telescopeId: string | null, archiveAll: boolean, tmpId: string | null) => void;
+  onReview: (folderPath: string, includeSubframes: boolean, includeFits: boolean, telescopeId: string | null, archiveAll: boolean, tmpId: string | null, opticalConfigId: string | null) => void;
 }) {
   const { isDark } = useTheme();
   const { t } = useTranslation('library');
@@ -128,6 +129,8 @@ export function ImportModal({ onClose, onReview, onLink, resume }: {
   const includeFits = true;
 
   const [telescopeId, setTelescopeId] = useState('');
+  // '' = detect from the FITS focal length (see sessionOptics.ts).
+  const [opticalConfigId, setOpticalConfigId] = useState('');
   // Set while an upload is in flight so the discard path can actually stop
   // it. Without this, dismissing the modal mid-upload left the batch loop
   // running in the background, and its eventual resolution could still fire
@@ -189,6 +192,7 @@ export function ImportModal({ onClose, onReview, onLink, resume }: {
   // The selected telescope's local-mirror transport path, if it has one —
   // offered as a one-click starting point in the folder browser so the user
   // doesn't have to hunt for a folder Nebulis already knows about.
+  const chosenConfigs = activeTelescopes.find(scope => scope.id === telescopeId)?.opticalConfigs ?? [];
   const suggestedFolderPath = activeTelescopes
     .find(scope => scope.id === telescopeId)
     ?.transports?.find(tr => tr.kind === 'local' && tr.localPath)?.localPath ?? null;
@@ -372,7 +376,7 @@ export function ImportModal({ onClose, onReview, onLink, resume }: {
       // dialog from also trying to discard it (e.g. on a lingering unmount).
       tmpIdRef.current = null;
       setPhase('done');
-      onReview(result.tmpPath, includeSubframes, includeFits, telescopeId || null, archiveAll, result.tmpId);
+      onReview(result.tmpPath, includeSubframes, includeFits, telescopeId || null, archiveAll, result.tmpId, opticalConfigId || null);
     } catch (err) {
       // A cancelled upload already unmounted (or is about to) via the discard
       // path — don't flash an error or bounce the phase back to 'staging' on
@@ -492,7 +496,7 @@ export function ImportModal({ onClose, onReview, onLink, resume }: {
 
   function startImport() {
     if (chosen === 'link' && serverTarget && onLink) onLink(serverTarget, includeSubframes, includeFits);
-    else if (chosen === 'copy' && serverTarget) onReview(serverTarget, includeSubframes, includeFits, telescopeId || null, archiveAll, null);
+    else if (chosen === 'copy' && serverTarget) onReview(serverTarget, includeSubframes, includeFits, telescopeId || null, archiveAll, null, opticalConfigId || null);
     else if (chosen === 'upload') void handleUpload();
   }
 
@@ -725,7 +729,7 @@ export function ImportModal({ onClose, onReview, onLink, resume }: {
                 <select
                   id="import-captured-with"
                   value={telescopeId}
-                  onChange={e => setTelescopeId(e.target.value)}
+                  onChange={e => { setTelescopeId(e.target.value); setOpticalConfigId(''); }}
                   className={`w-full px-3 py-2 rounded-lg border text-sm outline-none transition ${
                     isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-800'
                   }`}
@@ -737,6 +741,27 @@ export function ImportModal({ onClose, onReview, onLink, resume }: {
                 </select>
                 <p className={`text-xs ${mutedText}`}>{t('importModal.capturedWithHint')}</p>
               </div>
+              {chosenConfigs.length > 0 && (
+                <div className="space-y-1.5">
+                  <label htmlFor="import-optics" className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                    {t('importModal.opticalTrain')}
+                  </label>
+                  <select
+                    id="import-optics"
+                    value={opticalConfigId}
+                    onChange={e => setOpticalConfigId(e.target.value)}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm outline-none transition ${
+                      isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-800'
+                    }`}
+                  >
+                    <option value="">{t('importModal.opticalTrainAuto')}</option>
+                    {chosenConfigs.map(c => (
+                      <option key={c.id} value={c.id}>{`${c.name} · ${formatFocal(c.focalLengthMm)}`}</option>
+                    ))}
+                  </select>
+                  <p className={`text-xs ${mutedText}`}>{t('importModal.opticalTrainHint')}</p>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -900,7 +925,7 @@ function MethodCard({
           {t(`importModal.method.${method}.title`)}
         </span>
         {recommended && (
-          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${isDark ? 'bg-accent-500/20 text-accent-300' : 'bg-accent-100 text-accent-700'}`}>
+          <span className={`px-1.5 py-0.5 rounded text-[0.625rem] font-semibold uppercase tracking-wide ${isDark ? 'bg-accent-500/20 text-accent-300' : 'bg-accent-100 text-accent-700'}`}>
             {t('importModal.recommended')}
           </span>
         )}

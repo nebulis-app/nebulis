@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Sun, Moon, Settings, Library, Sparkles, EyeOff, CloudMoon, Calendar, Crosshair, RefreshCw, HelpCircle, LogOut, ShieldCheck, Eye, Images, BookOpen, Aperture, Telescope, ChevronDown, Star, Menu, X } from 'lucide-react';
-import { useState, useRef, useLayoutEffect, cloneElement, isValidElement, type ReactElement } from 'react';
+import { Sun, Moon, Settings, Library, Sparkles, EyeOff, CloudMoon, Calendar, Crosshair, RefreshCw, HelpCircle, LogOut, ShieldCheck, Eye, Images, BookOpen, Aperture, Telescope, ChevronDown, Star, Compass, Menu, X } from 'lucide-react';
+import { useState, useRef, useLayoutEffect, cloneElement, type ReactElement } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
@@ -52,7 +52,9 @@ const NAV_STRIP_CLEARANCE = 24;
  *  anticipates (it already does this for SETTINGS_NAV). */
 export const NAV_LINK_CONFIG: Record<NavItemId, {
   to: string;
-  icon: ReactNode;
+  /** Always an element (never a bare string/fragment) so the compact nav can
+   *  `cloneElement` it with a smaller className without asserting the type. */
+  icon: ReactElement<{ className?: string }>;
   isActive: (pathname: string) => boolean;
   tourAnchorId?: string;
 }> = {
@@ -73,6 +75,9 @@ export const NAV_LINK_CONFIG: Record<NavItemId, {
   },
   wishlist: {
     to: '/wishlist', icon: <Star className="w-4 h-4" />, isActive: (p) => p.startsWith('/wishlist'),
+  },
+  explore: {
+    to: '/explore', icon: <Compass className="w-4 h-4" />, isActive: (p) => p.startsWith('/explore'),
   },
   catalogs: {
     to: '/catalogs', icon: <BookOpen className="w-4 h-4" />, isActive: (p) => p.startsWith('/catalogs'),
@@ -358,7 +363,7 @@ export function Layout({ children }: LayoutProps) {
               ? 'bg-slate-950/80 border-slate-800'
               : 'bg-white/80 border-slate-200'
       }`}>
-        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[112.5rem] mx-auto px-4 sm:px-6 lg:px-8">
           <div ref={navBarRef} className="relative flex items-center justify-between h-16">
             {/* Logo */}
             <Link to="/" ref={navLogoRef} className="flex items-center gap-3 group">
@@ -385,8 +390,8 @@ export function Layout({ children }: LayoutProps) {
             >
               {visibleNavItems.map(item => {
                 const cfg = NAV_LINK_CONFIG[item.id];
-                const icon = isCompactNav && isValidElement(cfg.icon)
-                  ? cloneElement(cfg.icon as ReactElement<{ className?: string }>, { className: 'w-3.5 h-3.5' })
+                const icon = isCompactNav
+                  ? cloneElement(cfg.icon, { className: 'w-3.5 h-3.5' })
                   : cfg.icon;
                 const link = (
                   <NavLink
@@ -487,7 +492,7 @@ export function Layout({ children }: LayoutProps) {
                       <div className={`flex items-center justify-between gap-2 px-3 py-2 border-b ${
                         isDark ? 'border-slate-800' : 'border-slate-100'
                       }`}>
-                        <span className={`text-[11px] font-semibold uppercase tracking-wider ${
+                        <span className={`text-[0.6875rem] font-semibold uppercase tracking-wider ${
                           isDark ? 'text-slate-500' : 'text-slate-400'
                         }`}>
                           {t('layout.telescopesHeading', { count: allStatus.length })}
@@ -496,7 +501,7 @@ export function Layout({ children }: LayoutProps) {
                           <button
                             onClick={() => syncMutation.mutate({ all: true })}
                             disabled={isSyncing || syncMutation.isPending}
-                            className={`inline-flex items-center gap-1 text-[11px] font-medium disabled:opacity-40 ${
+                            className={`inline-flex items-center gap-1 text-[0.6875rem] font-medium disabled:opacity-40 ${
                               isDark ? 'text-accent-400 hover:text-accent-300' : 'text-accent-600 hover:text-accent-500'
                             }`}
                           >
@@ -533,7 +538,7 @@ export function Layout({ children }: LayoutProps) {
                             <div className={`font-medium truncate ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
                               {s.name}
                             </div>
-                            <div className={`text-[11px] truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                            <div className={`text-[0.6875rem] truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                               {!s.configured
                                 ? t('layout.noHostConfigured')
                                 : s.online
@@ -668,7 +673,7 @@ export function Layout({ children }: LayoutProps) {
                         </div>
                         {/* Role badge */}
                         {currentUser && (
-                          <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ml-auto ${
+                          <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.625rem] font-semibold ml-auto ${
                             currentUser.role === 'admin'
                               ? isNight
                                 ? 'bg-red-950/40 text-red-500'
@@ -692,7 +697,7 @@ export function Layout({ children }: LayoutProps) {
 
                     {/* Theme picker */}
                     <div className={`px-3 py-2.5`}>
-                      <p className={`text-[10px] font-semibold uppercase tracking-wider mb-2 px-1 ${
+                      <p className={`text-[0.625rem] font-semibold uppercase tracking-wider mb-2 px-1 ${
                         isNight ? 'text-red-900' : isDark ? 'text-slate-600' : 'text-slate-400'
                       }`}>{t('layout.themeHeading')}</p>
                       <div className="grid grid-cols-2 gap-1">
@@ -783,7 +788,7 @@ export function Layout({ children }: LayoutProps) {
                   : 'bg-white/98 border-slate-200'
           }`}
         >
-          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 py-2">
+          <div className="max-w-[112.5rem] mx-auto px-4 sm:px-6 py-2">
             <div className="portrait:grid portrait:grid-cols-2 portrait:sm:grid-cols-3 portrait:md:grid-cols-4 portrait:gap-1 landscape:flex landscape:flex-nowrap landscape:gap-1 landscape:overflow-x-auto landscape:pb-1 no-scrollbar">
               {visibleNavItems.map(item => {
                 const cfg = NAV_LINK_CONFIG[item.id];
@@ -811,7 +816,7 @@ export function Layout({ children }: LayoutProps) {
                     {item.id === 'settings' && hasUpdateAvailable && (
                       <span
                         aria-hidden
-                        className="ml-auto flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none"
+                        className="ml-auto flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[0.5625rem] font-bold leading-none"
                       >
                         1
                       </span>
@@ -830,7 +835,12 @@ export function Layout({ children }: LayoutProps) {
       )}
 
       {/* Main content */}
-      <main id="main-content" className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main
+        id="main-content"
+        // The observations calendar is the one page that gains from the extra
+        // room on very wide displays; grids elsewhere would just stretch.
+        className={`${location.pathname === '/observations' ? 'max-w-[112.5rem] min-[2200px]:max-w-[135rem]' : 'max-w-[112.5rem]'} mx-auto px-4 sm:px-6 lg:px-8 py-8`}
+      >
         <LibraryUnavailableBanner />
         {children}
       </main>
@@ -887,7 +897,7 @@ function NavUpdateBadge() {
   return (
     <span
       aria-hidden
-      className="absolute -top-1 -right-1 flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none"
+      className="absolute -top-1 -right-1 flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[0.5625rem] font-bold leading-none"
     >
       1
     </span>

@@ -555,6 +555,7 @@ export interface LibraryAnalysis {
   missingObjects: Array<{ objectId: string; folderName: string; fileRecords: number }>;
   missingObjectCount: number;
   layoutDrift: number;
+  duplicateFiles: { count: number; objects: number; bytes: number };
   flatObjects: number;
   missingProcessed: { count: number; objects: number };
   /** Paths that could not be checked. While non-zero, repairs refuse to run. */
@@ -562,7 +563,7 @@ export interface LibraryAnalysis {
   ranAt: string;
 }
 
-export type RepairCategory = 'staleRecords' | 'missingObjects' | 'layoutDrift' | 'missingProcessed';
+export type RepairCategory = 'staleRecords' | 'missingObjects' | 'layoutDrift' | 'missingProcessed' | 'duplicateFiles';
 
 export const analyzeLibrary = () => fetchJSON<LibraryAnalysis>('/storage/analyze');
 

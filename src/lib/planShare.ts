@@ -380,7 +380,9 @@ export function drawPlanShareCard(
   }
 
   // ── Elevation graph ─────────────────────────────────────────────────────────
-  if (hasElev) {
+  // Same test as hasElev, spelled out so the coordinates narrow to numbers
+  // inside the per-session callback below.
+  if (observerLat != null && observerLon != null) {
     const top = y;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -450,7 +452,7 @@ export function drawPlanShareCard(
         const en = Date.parse(s.endTime);
         if (Number.isNaN(st) || Number.isNaN(en)) return;
         const color = blockColor(idx);
-        const curve = computeAltitudeCurve(s.ra, s.dec, observerLat!, observerLon!, new Date(st), new Date(en), 5);
+        const curve = computeAltitudeCurve(s.ra, s.dec, observerLat, observerLon, new Date(st), new Date(en), 5);
         if (curve.length) {
           ctx.strokeStyle = color;
           ctx.lineWidth = 1.5;

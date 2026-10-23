@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, skipToken } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Check, Database, Loader2, X } from 'lucide-react';
 
@@ -41,7 +41,7 @@ export function ArchiveDiskModal({ isDark, onClose }: { isDark: boolean; onClose
   const objects = useQuery({ queryKey: ['archive-contents'], queryFn: getArchivedObjects });
   const files = useQuery({
     queryKey: ['archive-contents', folder],
-    queryFn: () => getArchivedFiles(folder as string),
+    queryFn: folder !== null ? () => getArchivedFiles(folder) : skipToken,
     enabled: folder !== null,
   });
 
@@ -160,7 +160,7 @@ export function ArchiveDiskModal({ isDark, onClose }: { isDark: boolean; onClose
         <div className="space-y-2 px-5 pt-4">
           {notice && (
             <div
-              className={`rounded-lg px-3.5 py-3 text-[12px] leading-relaxed ${
+              className={`rounded-lg px-3.5 py-3 text-[0.75rem] leading-relaxed ${
                 isDark ? 'bg-emerald-500/10 text-emerald-200/90' : 'bg-emerald-50 text-emerald-900'
               }`}
             >
@@ -169,7 +169,7 @@ export function ArchiveDiskModal({ isDark, onClose }: { isDark: boolean; onClose
           )}
           {error && (
             <div
-              className={`rounded-lg px-3.5 py-3 text-[12px] leading-relaxed ${
+              className={`rounded-lg px-3.5 py-3 text-[0.75rem] leading-relaxed ${
                 isDark ? 'bg-red-500/10 text-red-200/90' : 'bg-red-50 text-red-900'
               }`}
             >
@@ -213,7 +213,7 @@ export function ArchiveDiskModal({ isDark, onClose }: { isDark: boolean; onClose
                       {' · '}
                       {formatBytes(object.bytes)}
                     </span>
-                    <span className={`mt-0.5 block text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+                    <span className={`mt-0.5 block text-[0.6875rem] ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
                       {object.objectId === null
                         ? t('archiveDisk.notInLibrary')
                         : t('archiveDisk.missingLocally', { count: object.missingLocally })}
@@ -239,10 +239,10 @@ export function ArchiveDiskModal({ isDark, onClose }: { isDark: boolean; onClose
                   className="h-4 w-4 shrink-0 rounded accent-accent-500"
                 />
                 <span className="min-w-0 flex-1">
-                  <span className={`block truncate text-[13px] ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                  <span className={`block truncate text-[0.8125rem] ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                     {file.relPath}
                   </span>
-                  <span className={`block text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                  <span className={`block text-[0.6875rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                     {formatBytes(file.bytes)}
                     {file.isSubframe ? ` · ${t('archiveDisk.subframe')}` : ''}
                     {file.presentLocally ? ` · ${t('archiveDisk.presentLocally')}` : ` · ${t('archiveDisk.missing')}`}
@@ -255,7 +255,7 @@ export function ArchiveDiskModal({ isDark, onClose }: { isDark: boolean; onClose
       </div>
 
       {folder !== null && (
-        <p className={`px-5 pb-3 text-[12px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+        <p className={`px-5 pb-3 text-[0.75rem] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
           {t('archiveDisk.restoreNote')}
         </p>
       )}

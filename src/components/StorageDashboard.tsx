@@ -24,6 +24,94 @@ type LibSortKey = 'name' | 'size' | 'fileCount';
 type SortDir = 'asc' | 'desc';
 
 const PAGE_SIZE = 10;
+// Rows shown before "Show all". Keeps each table from dominating the page.
+const COLLAPSED_ROWS = 5;
+
+interface DiskUsage {
+  usedFormatted: string;
+  totalFormatted: string;
+  freeFormatted: string;
+  usedPercent: number;
+}
+
+function usageColor(pct: number): 'red' | 'yellow' | 'emerald' {
+  return pct >= 90 ? 'red' : pct >= 75 ? 'yellow' : 'emerald';
+}
+
+function DiskBar({ disk, isDark }: { disk: DiskUsage; isDark: boolean }) {
+  const { t } = useTranslation('settings');
+  const color = usageColor(disk.usedPercent);
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between text-sm">
+        <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>
+          <span className="font-semibold">{disk.usedFormatted}</span>{' '}
+          {t('storageDashboard.usedOfMiddle')}{' '}
+          <span className="font-semibold">{disk.totalFormatted}</span>
+        </span>
+        <span className={`font-mono font-semibold ${
+          color === 'red' ? 'text-red-500' : color === 'yellow' ? 'text-yellow-500' : 'text-emerald-500'
+        }`}>
+          {disk.usedPercent}%
+        </span>
+      </div>
+      <div className={`h-3 rounded-full overflow-hidden ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${
+            color === 'red' ? 'bg-red-500' : color === 'yellow' ? 'bg-yellow-500' : 'bg-emerald-500'
+          }`}
+          style={{ width: `${disk.usedPercent}%` }}
+        />
+      </div>
+      <div className={`flex justify-between text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+        <span>{t('storageDashboard.free', { amount: disk.freeFormatted })}</span>
+        <span>{t('storageDashboard.total', { amount: disk.totalFormatted })}</span>
+      </div>
+    </div>
+  );
+}
+
+function StatLine({ label, value, note, isDark }: { label: string; value: string; note?: string; isDark: boolean }) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{label}</span>
+        <span className={`text-lg font-bold font-display ${isDark ? 'text-white' : 'text-slate-900'}`}>{value}</span>
+      </div>
+      {note && <p className={`mt-1 text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{note}</p>}
+    </div>
+  );
+}
+
+function PathRow({ label, path, iconClass, isDark }: { label: string; path: string; iconClass: string; isDark: boolean }) {
+  return (
+    <div className={`flex items-center gap-3 p-3 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}>
+      <FolderOpen className={`w-4 h-4 shrink-0 ${iconClass}`} />
+      <div className="min-w-0">
+        <p className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{label}</p>
+        <p className={`text-sm font-mono truncate ${isDark ? 'text-slate-300' : 'text-slate-700'}`} title={path}>{path}</p>
+      </div>
+    </div>
+  );
+}
+
+function ExpandToggle({ expanded, total, onToggle, isDark }: { expanded: boolean; total: number; onToggle: () => void; isDark: boolean }) {
+  const { t } = useTranslation('settings');
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      className={`w-full px-4 py-3 text-xs font-medium border-t transition-colors ${
+        isDark
+          ? 'border-slate-800 text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+          : 'border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+      }`}
+    >
+      {expanded ? t('storageDashboard.showFewer') : t('storageDashboard.showAll', { count: total })}
+    </button>
+  );
+}
 
 export function StorageDashboard({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useTranslation('settings');
@@ -38,6 +126,8 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
   const [libSortKey, setLibSortKey] = useState<LibSortKey>('size');
   const [libSortDir, setLibSortDir] = useState<SortDir>('desc');
   const [libPage, setLibPage] = useState(0);
+  const [libExpanded, setLibExpanded] = useState(false);
+  const [telExpanded, setTelExpanded] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['storage-stats'],
@@ -126,6 +216,8 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
 
   const libTotalPages = Math.ceil(libSorted.length / PAGE_SIZE);
   const libPaginated = libSorted.slice(libPage * PAGE_SIZE, (libPage + 1) * PAGE_SIZE);
+  const libVisible = libExpanded ? libPaginated : libSorted.slice(0, COLLAPSED_ROWS);
+  const telVisible = telExpanded ? paginated : sorted.slice(0, COLLAPSED_ROWS);
 
   const cardClass = `rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`;
   const tileClass = `p-4 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`;
@@ -264,243 +356,165 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
         </div>
       )}
 
-      {/* ── Local Server Storage ──────────────────────────────────── */}
-      <Sec
-        title={t('storageDashboard.localServer.title')}
-        description={t('storageDashboard.localServer.description')}
-        isDark={isDark}
-        actions={
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-            isDark ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700'
-          }`}>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            {t('storageDashboard.online')}
-          </span>
-        }
-      >
-      <div className="p-5 space-y-5">
-        {systemStorage ? (
-          <>
-            {/* Disk usage bar */}
-            {systemStorage.disk ? (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>
-                    <span className="font-semibold">{systemStorage.disk.usedFormatted}</span>{' '}
-                    {t('storageDashboard.usedOfMiddle')}{' '}
-                    <span className="font-semibold">{systemStorage.disk.totalFormatted}</span>
-                  </span>
-                  <span className={`font-mono font-semibold ${
-                    systemStorage.disk.usedPercent >= 90 ? 'text-red-500'
-                    : systemStorage.disk.usedPercent >= 75 ? 'text-yellow-500'
-                    : 'text-emerald-500'
-                  }`}>
-                    {systemStorage.disk.usedPercent}%
-                  </span>
-                </div>
-                <div className={`h-3 rounded-full overflow-hidden ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-                  <div
-                    className={`h-full rounded-full transition-all duration-700 ${
-                      systemStorage.disk.usedPercent >= 90 ? 'bg-red-500'
-                      : systemStorage.disk.usedPercent >= 75 ? 'bg-yellow-500'
-                      : 'bg-emerald-500'
-                    }`}
-                    style={{ width: `${systemStorage.disk.usedPercent}%` }}
+      {/* ── Disks ─────────────────────────────────────────────────────
+          Local Server and Library Drive are the same kind of card (a disk and
+          how full it is), so they sit side by side. The Library Drive card
+          only exists once the library has been moved to a separate drive; with
+          one card the grid simply has one column. */}
+      <div className="mt-10 first:mt-0 grid gap-x-6 lg:grid-cols-2">
+        <div>
+          <Sec
+            title={t('storageDashboard.localServer.title')}
+            description={t('storageDashboard.localServer.description')}
+            isDark={isDark}
+            actions={
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                isDark ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700'
+              }`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                {t('storageDashboard.online')}
+              </span>
+            }
+          >
+            <div className="p-5 space-y-4">
+              {systemStorage ? (
+                <>
+                  {systemStorage.disk ? (
+                    <DiskBar disk={systemStorage.disk} isDark={isDark} />
+                  ) : (
+                    <p className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{t('storageDashboard.diskInfoUnavailable')}</p>
+                  )}
+                  {/* App Data only counts what Nebulis itself keeps in its data folder, so
+                      it legitimately reads far below "used" on a nearly full disk.
+                      The note says where the rest went. */}
+                  <StatLine
+                    isDark={isDark}
+                    label={t('storageDashboard.appData')}
+                    value={systemStorage.dataDir.sizeFormatted}
+                    note={t('storageDashboard.localServer.appDataNote')}
                   />
+                  <PathRow isDark={isDark} label={t('storageDashboard.dataDirectory')} path={systemStorage.dataDir.path} iconClass="text-teal-400" />
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <div className={`h-3 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'} animate-pulse`} />
+                  <div className={`h-12 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-slate-100'} animate-pulse`} />
                 </div>
-                <div className={`flex justify-between text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                  <span>{t('storageDashboard.free', { amount: systemStorage.disk.freeFormatted })}</span>
-                  <span>{t('storageDashboard.total', { amount: systemStorage.disk.totalFormatted })}</span>
-                </div>
-              </div>
-            ) : (
-              <p className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{t('storageDashboard.diskInfoUnavailable')}</p>
-            )}
-
-            {/* Stat tiles */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className={tileClass}>
-                <p className={tileLabel}>{t('storageDashboard.diskTotal')}</p>
-                <p className={tileValue}>{systemStorage.disk?.totalFormatted ?? '-'}</p>
-              </div>
-              <div className={tileClass}>
-                <p className={tileLabel}>{t('storageDashboard.diskFree')}</p>
-                <p className={tileValue}>{systemStorage.disk?.freeFormatted ?? '-'}</p>
-              </div>
-              <div className={tileClass}>
-                <p className={tileLabel}>{t('storageDashboard.appData')}</p>
-                <p className={tileValue}>{systemStorage.dataDir.sizeFormatted}</p>
-              </div>
+              )}
             </div>
+          </Sec>
+        </div>
 
-            {/* Data directory path */}
-            <div className={`flex items-center gap-3 p-3 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}>
-              <FolderOpen className="w-4 h-4 text-teal-400 shrink-0" />
-              <div className="min-w-0">
-                <p className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('storageDashboard.dataDirectory')}</p>
-                <p className={`text-sm font-mono truncate ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{systemStorage.dataDir.path}</p>
+        {systemStorage?.libraryDisk && (
+          <div className="mt-10 lg:mt-0">
+            <Sec
+              title={t('storageDashboard.libraryDrive.title')}
+              description={t('storageDashboard.libraryDrive.description')}
+              isDark={isDark}
+              actions={
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                  isDark ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700'
+                }`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  {t('storageDashboard.connected')}
+                </span>
+              }
+            >
+              <div className="p-5 space-y-4">
+                <DiskBar disk={systemStorage.libraryDisk} isDark={isDark} />
+                {/* Library Size only ever covers this app's own library folder,
+                    so it legitimately reads far below the drive's Total/Free
+                    when the drive also holds unrelated data. The note says so
+                    it isn't mistaken for a miscalculation. */}
+                <StatLine
+                  isDark={isDark}
+                  label={t('storageDashboard.librarySize')}
+                  value={libraryStorage ? formatBytes(libSorted.reduce((s, o) => s + o.size, 0)) : '-'}
+                  note={t('storageDashboard.libraryDrive.librarySizeNote')}
+                />
+                <PathRow isDark={isDark} label={t('storageDashboard.libraryLocation')} path={systemStorage.libraryDisk.path} iconClass="text-blue-400" />
               </div>
-            </div>
-          </>
-        ) : (
-          <div className="space-y-3">
-            <div className={`h-3 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'} animate-pulse`} />
-            <div className="grid grid-cols-3 gap-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className={`h-20 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-slate-100'} animate-pulse`} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Library objects table */}
-        {libSorted.length > 0 && (
-          <div className={`-mx-5 -mb-5 mt-2 overflow-hidden rounded-b-2xl border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className={isDark ? 'bg-slate-800/60' : 'bg-slate-50'}>
-                    <LibSortHeader label={t('storageDashboard.libraryTable.object')} field="name" />
-                    <LibSortHeader label={t('storageDashboard.libraryTable.totalSize')} field="size" />
-                    <LibSortHeader label={t('storageDashboard.libraryTable.files')} field="fileCount" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {libPaginated.map((obj, idx) => (
-                    <tr
-                      key={obj.objectId}
-                      className={`transition-colors ${
-                        isDark
-                          ? `hover:bg-slate-800/50 ${idx !== libPaginated.length - 1 ? 'border-b border-slate-800/50' : ''}`
-                          : `hover:bg-slate-50 ${idx !== libPaginated.length - 1 ? 'border-b border-slate-100' : ''}`
-                      }`}
-                    >
-                      <td className={`px-4 py-3.5 font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                        <div className="flex items-center gap-2">
-                          <Image className="w-4 h-4 text-teal-400 shrink-0" />
-                          <Link
-                            to={`/object/${encodeURIComponent(obj.objectId)}`}
-                            className={`truncate rounded transition-colors hover:underline ${
-                              isDark ? 'hover:text-accent-300' : 'hover:text-accent-700'
-                            }`}
-                          >
-                            {obj.name}
-                          </Link>
-                        </div>
-                      </td>
-                      <td className={`px-4 py-3.5 tabular-nums ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{obj.sizeFormatted}</td>
-                      <td className={`px-4 py-3.5 tabular-nums ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{formatNumber(obj.fileCount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {libTotalPages > 1 && (
-              <Pagination
-                page={libPage}
-                totalPages={libTotalPages}
-                onPrev={() => setLibPage(p => p - 1)}
-                onNext={() => setLibPage(p => p + 1)}
-                total={libSorted.length}
-                pageSize={PAGE_SIZE}
-              />
-            )}
-          </div>
-        )}
-
-        {libraryStorage && libSorted.length === 0 && (
-          <div className={`text-center py-8 space-y-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            <Trash2 className="w-7 h-7 mx-auto opacity-30" />
-            <p className="text-sm">{t('storageDashboard.libraryTable.noObjects')}</p>
+            </Sec>
           </div>
         )}
       </div>
-      </Sec>
 
-      {/* ── Library Drive ─────────────────────────────────────────────
-          Shown only when the library has been moved to a separate drive.
-          The Local Server card above covers the boot volume; this reports the
-          external drive the library now lives on. */}
-      {systemStorage?.libraryDisk && (
+      {/* ── Library contents ──────────────────────────────────────────
+          What is stored in the library, per object. It used to sit inside the
+          Local Server card, which read as if these were files on the host disk
+          even when the library lives on a separate drive. */}
+      {libraryStorage && (
         <Sec
-          title={t('storageDashboard.libraryDrive.title')}
-          description={t('storageDashboard.libraryDrive.description')}
+          title={t('storageDashboard.libraryContents.title')}
+          description={t('storageDashboard.libraryContents.description')}
           isDark={isDark}
-          actions={
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-              isDark ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700'
-            }`}>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              {t('storageDashboard.connected')}
-            </span>
-          }
         >
-        <div className="p-5 space-y-5">
-          {/* Disk usage bar */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>
-                <span className="font-semibold">{systemStorage.libraryDisk.usedFormatted}</span>{' '}
-                {t('storageDashboard.usedOfMiddle')}{' '}
-                <span className="font-semibold">{systemStorage.libraryDisk.totalFormatted}</span>
-              </span>
-              <span className={`font-mono font-semibold ${
-                systemStorage.libraryDisk.usedPercent >= 90 ? 'text-red-500'
-                : systemStorage.libraryDisk.usedPercent >= 75 ? 'text-yellow-500'
-                : 'text-emerald-500'
-              }`}>
-                {systemStorage.libraryDisk.usedPercent}%
-              </span>
+          {libSorted.length > 0 ? (
+            <div className="overflow-hidden rounded-2xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className={isDark ? 'bg-slate-800/60' : 'bg-slate-50'}>
+                      <LibSortHeader label={t('storageDashboard.libraryTable.object')} field="name" />
+                      <LibSortHeader label={t('storageDashboard.libraryTable.totalSize')} field="size" />
+                      <LibSortHeader label={t('storageDashboard.libraryTable.files')} field="fileCount" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {libVisible.map((obj, idx) => (
+                      <tr
+                        key={obj.objectId}
+                        className={`transition-colors ${
+                          isDark
+                            ? `hover:bg-slate-800/50 ${idx !== libVisible.length - 1 ? 'border-b border-slate-800/50' : ''}`
+                            : `hover:bg-slate-50 ${idx !== libVisible.length - 1 ? 'border-b border-slate-100' : ''}`
+                        }`}
+                      >
+                        <td className={`px-4 py-3.5 font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                          <div className="flex items-center gap-2">
+                            <Image className="w-4 h-4 text-teal-400 shrink-0" />
+                            <Link
+                              to={`/object/${encodeURIComponent(obj.objectId)}`}
+                              className={`truncate rounded transition-colors hover:underline ${
+                                isDark ? 'hover:text-accent-300' : 'hover:text-accent-700'
+                              }`}
+                            >
+                              {obj.name}
+                            </Link>
+                          </div>
+                        </td>
+                        <td className={`px-4 py-3.5 tabular-nums ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{obj.sizeFormatted}</td>
+                        <td className={`px-4 py-3.5 tabular-nums ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{formatNumber(obj.fileCount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {libExpanded && libTotalPages > 1 && (
+                <Pagination
+                  page={libPage}
+                  totalPages={libTotalPages}
+                  onPrev={() => setLibPage(p => p - 1)}
+                  onNext={() => setLibPage(p => p + 1)}
+                  total={libSorted.length}
+                  pageSize={PAGE_SIZE}
+                />
+              )}
+              {libSorted.length > COLLAPSED_ROWS && (
+                <ExpandToggle
+                  isDark={isDark}
+                  expanded={libExpanded}
+                  total={libSorted.length}
+                  onToggle={() => { setLibExpanded(e => !e); setLibPage(0); }}
+                />
+              )}
             </div>
-            <div className={`h-3 rounded-full overflow-hidden ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-              <div
-                className={`h-full rounded-full transition-all duration-700 ${
-                  systemStorage.libraryDisk.usedPercent >= 90 ? 'bg-red-500'
-                  : systemStorage.libraryDisk.usedPercent >= 75 ? 'bg-yellow-500'
-                  : 'bg-emerald-500'
-                }`}
-                style={{ width: `${systemStorage.libraryDisk.usedPercent}%` }}
-              />
+          ) : (
+            <div className={`text-center py-8 space-y-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              <Trash2 className="w-7 h-7 mx-auto opacity-30" />
+              <p className="text-sm">{t('storageDashboard.libraryTable.noObjects')}</p>
             </div>
-            <div className={`flex justify-between text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              <span>{t('storageDashboard.free', { amount: systemStorage.libraryDisk.freeFormatted })}</span>
-              <span>{t('storageDashboard.total', { amount: systemStorage.libraryDisk.totalFormatted })}</span>
-            </div>
-          </div>
-
-          {/* Stat tiles */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className={tileClass}>
-              <p className={tileLabel}>{t('storageDashboard.diskTotal')}</p>
-              <p className={tileValue}>{systemStorage.libraryDisk.totalFormatted}</p>
-            </div>
-            <div className={tileClass}>
-              <p className={tileLabel}>{t('storageDashboard.diskFree')}</p>
-              <p className={tileValue}>{systemStorage.libraryDisk.freeFormatted}</p>
-            </div>
-            <div className={tileClass}>
-              <p className={tileLabel}>{t('storageDashboard.librarySize')}</p>
-              <p className={tileValue}>{libraryStorage ? formatBytes(libSorted.reduce((s, o) => s + o.size, 0)) : '-'}</p>
-            </div>
-          </div>
-
-          {/* Library Size only ever covers this app's own library folder, so
-              it legitimately reads far below Total/Free when the drive also
-              holds unrelated data — spelled out here so that isn't mistaken
-              for a miscalculation. */}
-          <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            {t('storageDashboard.libraryDrive.librarySizeNote')}
-          </p>
-
-          {/* Library path */}
-          <div className={`flex items-center gap-3 p-3 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}>
-            <FolderOpen className="w-4 h-4 text-blue-400 shrink-0" />
-            <div className="min-w-0">
-              <p className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('storageDashboard.libraryLocation')}</p>
-              <p className={`text-sm font-mono truncate ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{systemStorage.libraryDisk.path}</p>
-            </div>
-          </div>
-        </div>
+          )}
         </Sec>
       )}
 
@@ -556,13 +570,13 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
                       </tr>
                     </thead>
                     <tbody>
-                      {paginated.map((obj, idx) => (
+                      {telVisible.map((obj, idx) => (
                         <tr
                           key={obj.id}
                           className={`transition-colors ${
                             isDark
-                              ? `hover:bg-slate-800/50 ${idx !== paginated.length - 1 ? 'border-b border-slate-800/50' : ''}`
-                              : `hover:bg-slate-50 ${idx !== paginated.length - 1 ? 'border-b border-slate-100' : ''}`
+                              ? `hover:bg-slate-800/50 ${idx !== telVisible.length - 1 ? 'border-b border-slate-800/50' : ''}`
+                              : `hover:bg-slate-50 ${idx !== telVisible.length - 1 ? 'border-b border-slate-100' : ''}`
                           }`}
                         >
                           <td className={`px-4 py-3.5 font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
@@ -598,7 +612,7 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
                     </tbody>
                   </table>
                 </div>
-                {totalPages > 1 && (
+                {telExpanded && totalPages > 1 && (
                   <Pagination
                     page={page}
                     totalPages={totalPages}
@@ -606,6 +620,14 @@ export function StorageDashboard({ embedded = false }: { embedded?: boolean } = 
                     onNext={() => setPage(p => p + 1)}
                     total={sorted.length}
                     pageSize={PAGE_SIZE}
+                  />
+                )}
+                {sorted.length > COLLAPSED_ROWS && (
+                  <ExpandToggle
+                    isDark={isDark}
+                    expanded={telExpanded}
+                    total={sorted.length}
+                    onToggle={() => { setTelExpanded(e => !e); setPage(0); }}
                   />
                 )}
               </div>

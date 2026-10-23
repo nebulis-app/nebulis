@@ -118,14 +118,14 @@ export function NightOutlookCard({ night, hours, isDark, windUnit, timeZone }: P
             >
               {night.score}
             </p>
-            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: hex }}>
+            <p className="mt-1 text-[0.6875rem] font-semibold uppercase tracking-[0.12em]" style={{ color: hex }}>
               {translateScoreRating(t, night.rating)}
             </p>
           </div>
         </div>
 
         <div className="mt-4">
-          <div className={`mb-1 text-[10.5px] font-medium uppercase tracking-[0.14em] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+          <div className={`mb-1 text-[0.6562rem] font-medium uppercase tracking-[0.14em] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
             {t('nightOutlookCard.cloudCoverThroughNight')}
           </div>
           <CloudSparkline hours={hours} isDark={isDark} isNight={isNight} />

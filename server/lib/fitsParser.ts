@@ -87,6 +87,17 @@ export function parseFitsHeader(buffer: Buffer): FitsHeader {
   return { cards, values };
 }
 
+/**
+ * Byte offset of the first data block: the END card, rounded up to a whole 2880-byte block. Throws when the
+ * header never ends, so a file that is not FITS cannot be read as pixels.
+ */
+export function fitsDataOffset(buffer: Buffer): number {
+  for (let off = 0; off + 80 <= buffer.length; off += 80) {
+    if (buffer.toString('ascii', off, off + 8) === 'END     ') return Math.ceil((off + 80) / 2880) * 2880;
+  }
+  throw new Error('FITS header END card not found');
+}
+
 export type SubFrameGrade = 'excellent' | 'good' | 'fair' | 'poor' | 'bad';
 
 export interface SubFrameScore {

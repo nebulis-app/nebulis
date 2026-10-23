@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Info } from 'lucide-react';
+import { Info, Plus } from 'lucide-react';
 import { useClickOutside } from '../../hooks/useClickOutside';
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -43,21 +43,7 @@ export function Toggle({
   );
 }
 
-export function getInputClass(isDark: boolean): string {
-  return `w-full px-4 py-2.5 rounded-xl border text-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/30 ${
-    isDark
-      ? 'bg-slate-800/80 border-slate-700/80 text-slate-200 placeholder-slate-600 focus:border-accent-500/40'
-      : 'bg-white border-slate-200 text-slate-800 placeholder-slate-400 focus:border-accent-400'
-  }`;
-}
-
-export function getLabelClass(isDark: boolean): string {
-  return `block text-[13px] font-medium mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-600'}`;
-}
-
-export function getHelperClass(isDark: boolean): string {
-  return `text-xs mt-1.5 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`;
-}
+export { getInputClass, getLabelClass, getHelperClass } from '../ui/formClasses';
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /* New primitives — Sec / Row / Seg / RadioCard. Used by the redesign.        */
@@ -78,14 +64,14 @@ export function Sec({
   actions?: ReactNode;
 }) {
   return (
-    <section className="mt-10 first:mt-0">
+    <section className="mt-10 first:mt-0" data-setting-label={title}>
       <div className="flex items-end justify-between gap-6 mb-3 px-1">
         <div className="min-w-0">
-          <h3 className={`text-[15px] font-semibold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+          <h3 className={`text-[0.9375rem] font-semibold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
             {title}
           </h3>
           {description && (
-            <p className={`text-[13px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+            <p className={`text-[0.8125rem] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
               {description}
             </p>
           )}
@@ -120,15 +106,19 @@ export function Row({
   label,
   description,
   isDark,
+  badge,
   children,
 }: {
   label: string;
   description?: string;
   isDark: boolean;
+  /** Small pill after the label, e.g. "Beta". */
+  badge?: string;
   children: ReactNode;
 }) {
   return (
     <div
+      data-setting-label={label}
       // The control column used to be WIDER than the text column (1.4fr vs
       // 1fr) even though a Toggle is 42px and right-aligned into empty space,
       // while the label+description column — genuinely prose — was starving
@@ -140,9 +130,16 @@ export function Row({
       }`}
     >
       <div className="min-w-0 flex items-center gap-1.5">
-        <div className={`text-[13px] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+        <div className={`text-[0.8125rem] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
           {label}
         </div>
+        {badge && (
+          <span className={`shrink-0 rounded-full border px-2 py-px text-[0.625rem] font-semibold uppercase tracking-wider ${
+            isDark ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-amber-300 bg-amber-50 text-amber-700'
+          }`}>
+            {badge}
+          </span>
+        )}
         {description && <InfoTooltip text={description} isDark={isDark} />}
       </div>
       <div className="min-w-0 flex items-center justify-start md:justify-end">
@@ -254,7 +251,7 @@ function InfoTooltip({ text, isDark }: { text: string; isDark: boolean }) {
           ref={tooltipRef}
           role="tooltip"
           style={style}
-          className={`z-20 w-64 rounded-lg border px-3 py-2 text-[12px] leading-relaxed shadow-lg ${
+          className={`z-20 w-64 rounded-lg border px-3 py-2 text-[0.75rem] leading-relaxed shadow-lg ${
             isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-600'
           }`}
         >
@@ -295,13 +292,13 @@ export function RowGroup({
         isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50/70 border-slate-100'
       }`}
     >
-      <div className={`text-[10px] font-semibold uppercase tracking-[0.1em] ${
+      <div className={`text-[0.625rem] font-semibold uppercase tracking-[0.1em] ${
         isDark ? 'text-slate-500' : 'text-slate-400'
       }`}>
         {label}
       </div>
       {description && (
-        <p className={`text-[12px] mt-1 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+        <p className={`text-[0.75rem] mt-1 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
           {description}
         </p>
       )}
@@ -339,7 +336,7 @@ export function Seg<T extends string>({
             key={opt.id}
             onClick={() => onChange(opt.id)}
             disabled={disabled}
-            className={`px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-[0.75rem] font-medium transition-colors ${
               disabled ? 'cursor-not-allowed' : ''
             } ${
               active
@@ -395,14 +392,45 @@ export function RadioCard<T extends string>({
           {preview}
         </div>
       )}
-      <div className={`text-[13px] font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>
+      <div className={`text-[0.8125rem] font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>
         {title}
       </div>
       {description && (
-        <p className={`text-[12px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+        <p className={`text-[0.75rem] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
           {description}
         </p>
       )}
+    </button>
+  );
+}
+
+/**
+ * The full-width "Add ..." button at the foot of a list (telescopes, observing
+ * sites). A tinted accent outline: it reads as the pane's main action without
+ * a solid fill competing with the toggles and stars in the rows above. Uses
+ * the accent-* tokens so it follows the Night and Space themes.
+ */
+export function AddListButton({
+  onClick,
+  children,
+  isDark,
+}: {
+  onClick: () => void;
+  children: ReactNode;
+  isDark: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition ${
+        isDark
+          ? 'border-accent-500/40 bg-accent-500/10 text-accent-300 hover:border-accent-400/70 hover:bg-accent-500/20'
+          : 'border-accent-500/40 bg-accent-500/10 text-accent-700 hover:border-accent-500/70 hover:bg-accent-500/20'
+      }`}
+    >
+      <Plus className="h-4 w-4" />
+      {children}
     </button>
   );
 }

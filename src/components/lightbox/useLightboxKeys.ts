@@ -14,6 +14,9 @@ interface LightboxKeyActions {
   onDownload?: () => void;
   onDelete?: () => void;
   onToggleFavorite?: () => void;
+  /** Keep / reject the frame on screen. Only set where the viewer is reviewing a night's frames. */
+  onKeep?: () => void;
+  onReject?: () => void;
   /**
    * Suspends every shortcut. Set while a nested dialog is open (a delete
    * confirmation, the FITS header modal) so Escape dismisses that dialog
@@ -50,6 +53,8 @@ export function useLightboxKeys(actions: LightboxKeyActions, enabled = true) {
     const handle = (e: KeyboardEvent) => {
       const a = ref.current;
       if (a.suspended) return;
+      // The image editor opens over the viewer and has its own shortcuts (Escape closes only the editor).
+      if (document.querySelector('[data-image-editor]')) return;
       if (isTypingTarget(e.target)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
@@ -71,6 +76,12 @@ export function useLightboxKeys(actions: LightboxKeyActions, enabled = true) {
           break;
         case 'Delete': case 'Backspace':
           if (a.onDelete) { e.preventDefault(); a.onDelete(); }
+          break;
+        case 'k': case 'K':
+          if (a.onKeep) { e.preventDefault(); a.onKeep(); }
+          break;
+        case 'x': case 'X':
+          if (a.onReject) { e.preventDefault(); a.onReject(); }
           break;
         case 'l': case 'L':
           if (a.onToggleFavorite) { e.preventDefault(); a.onToggleFavorite(); }

@@ -29,6 +29,7 @@ import {
   type CalibrationFrameType,
 } from './calibrationFolders.js';
 import { isHiddenOrSystemFile } from '../telescopeFiles.js';
+import type { CalibrationAttachmentSummary } from './calibrationAttachmentTypes.js';
 import { getAllProfiles, getSettingsData } from '../telescopes.js';
 import { ASIAIR_MODE_FOLDERS } from '../walkers/asiairWalker.js';
 
@@ -135,7 +136,7 @@ export interface CalibrationSettingsGroup {
    *  pure filesystem read with no database — and populated afterward by the
    *  `/calibrations` route, which is the one place calibration data and the
    *  attachments table meet. */
-  attachments?: import('./calibrationAttachments.js').CalibrationAttachmentSummary[];
+  attachments?: CalibrationAttachmentSummary[];
 }
 
 export interface CalibrationSubfolder {
@@ -200,7 +201,9 @@ function scanTypeFolder(dir: string, folderName: string): CalibrationSubfolder[]
 
   const subfolders: CalibrationSubfolder[] = [];
 
-  const flatFiles = topEntries.filter(e => e.isFile() && !isHiddenOrSystemFile(e.name) && !isThumbnailPreview(e.name));
+  const loose = topEntries.filter(e => e.isFile() && !isHiddenOrSystemFile(e.name) && !isThumbnailPreview(e.name));
+  const previews = previewNamesOf(loose.map(e => e.name));
+  const flatFiles = loose.filter(e => !previews.has(e.name));
   if (flatFiles.length > 0) {
     subfolders.push(buildSubfolder(dir, folderName, flatFiles.map(e => e.name)));
   }
@@ -214,6 +217,16 @@ function scanTypeFolder(dir: string, folderName: string): CalibrationSubfolder[]
   }
 
   return subfolders.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
+
+const RAW_FRAME_EXT = /\.(?:fit|fits|fts|xisf)$/i;
+const PREVIEW_PICTURE_EXT = /\.(?:jpe?g|png)$/i;
+
+/** A picture beside a raw frame of the same name (`MasterDark_5_30.0s_26.0C_20261014-192837.fit` and its `.jpg`) is that frame's
+ *  preview, the same image twice, so it is not a second frame. Names are compared within one folder. */
+export function previewNamesOf(fileNames: string[]): Set<string> {
+  const rawStems = new Set(fileNames.filter(n => RAW_FRAME_EXT.test(n)).map(n => n.replace(RAW_FRAME_EXT, '').toLowerCase()));
+  return new Set(fileNames.filter(n => PREVIEW_PICTURE_EXT.test(n) && rawStems.has(n.replace(PREVIEW_PICTURE_EXT, '').toLowerCase())));
 }
 
 function collectFileNamesRecursive(dir: string, depth: number): string[] {
@@ -235,7 +248,8 @@ function collectFileNamesRecursive(dir: string, depth: number): string[] {
     if (!entry.isFile() || isHiddenOrSystemFile(entry.name) || isThumbnailPreview(entry.name)) continue;
     names.push(entry.name);
   }
-  return names;
+  const previews = previewNamesOf(names.filter(n => !n.includes(path.sep)));
+  return previews.size > 0 ? names.filter(n => !previews.has(n)) : names;
 }
 
 function buildSubfolder(dir: string, name: string, relativeFileNames: string[]): CalibrationSubfolder {
@@ -452,16 +466,23 @@ function finishSettingsGroup(
  * depending on which side of the boundary each one happened to drift to.
  */
 function clusterByTemperature(files: readonly CalibrationFile[]): Array<{ files: CalibrationFile[]; representative: number }> {
-  const sorted = [...files].sort((a, b) => a.info!.sensorTempC! - b.info!.sensorTempC!);
+  // The caller passes only files that carry a reading; pairing each file with
+  // its temperature up front lets the arithmetic below use a plain number.
+  const sorted = files
+    .flatMap(file => {
+      const temp = file.info?.sensorTempC;
+      return temp === undefined ? [] : [{ file, temp }];
+    })
+    .sort((a, b) => a.temp - b.temp);
   const clusters: Array<{ files: CalibrationFile[]; representative: number }> = [];
 
   let start = 0;
   for (let i = 1; i <= sorted.length; i++) {
-    const endOfCluster = i === sorted.length || sorted[i].info!.sensorTempC! - sorted[i - 1].info!.sensorTempC! > TEC_TOLERANCE_C;
+    const endOfCluster = i === sorted.length || sorted[i].temp - sorted[i - 1].temp > TEC_TOLERANCE_C;
     if (!endOfCluster) continue;
-    const clusterFiles = sorted.slice(start, i);
-    const mean = clusterFiles.reduce((sum, f) => sum + f.info!.sensorTempC!, 0) / clusterFiles.length;
-    clusters.push({ files: clusterFiles, representative: Math.round(mean * 10) / 10 });
+    const cluster = sorted.slice(start, i);
+    const mean = cluster.reduce((sum, entry) => sum + entry.temp, 0) / cluster.length;
+    clusters.push({ files: cluster.map(entry => entry.file), representative: Math.round(mean * 10) / 10 });
     start = i;
   }
   return clusters;
@@ -542,7 +563,7 @@ function scopeLabel(scope: string | null, profilesById: Map<string, string>): st
  *  (the common case) silently never appear here at all — a top-level
  *  `readdirSync` alone only ever sees `Plan`/`Autorun`, never `Dark` itself. */
 function isAsiairModeFolder(name: string): boolean {
-  return (ASIAIR_MODE_FOLDERS as readonly string[]).some(m => m.toLowerCase() === name.toLowerCase());
+  return ASIAIR_MODE_FOLDERS.some(m => m.toLowerCase() === name.toLowerCase());
 }
 
 function buildGroup(

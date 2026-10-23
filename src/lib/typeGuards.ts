@@ -31,3 +31,12 @@ export function isOptionValue<T extends string>(
 ): value is T {
   return options.some(o => o.value === value);
 }
+
+/**
+ * True for any non-null, non-array object (same as the server's isRecord), narrowing it to a string-keyed record whose
+ * values are still `unknown`, so each field read needs its own check. For
+ * untyped inputs like `location.state` and parsed JSON.
+ */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}

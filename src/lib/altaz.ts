@@ -3,8 +3,9 @@
  * Ported from server/lib/astroCalc.ts — units and formulas must match
  * exactly so the chart agrees with the planner's stored altitudes.
  *
- * Pure functions, no dependencies.
+ * Pure functions; the one dependency is suncalc, for sunset and sunrise.
  */
+import SunCalc from 'suncalc';
 
 const DEG = Math.PI / 180;
 const RAD = 180 / Math.PI;
@@ -178,4 +179,36 @@ function wallTimeToUtc(year: number, month: number, day: number, hour: number, t
     utcMs += delta;
   }
   return new Date(utcMs);
+}
+
+/**
+ * The window worth charting for tonight: sunset to the next sunrise at the
+ * observer's site. The noon-to-noon window spent about a third of its width on
+ * daylight, which cannot be imaged, so the curve was squeezed and its ends
+ * showed meaningless daytime altitudes.
+ *
+ * Once this night's sunrise has passed, the window moves on to the coming
+ * night, so a daytime viewer sees tonight rather than the one just finished.
+ * Falls back to the noon-to-noon window where the sun does not set and rise
+ * (polar summer and winter).
+ */
+export function buildObservingWindow(
+  now: Date,
+  lat: number,
+  lon: number,
+  timeZone?: string,
+): { start: Date; end: Date } {
+  const valid = (d: Date) => d instanceof Date && !Number.isNaN(d.getTime());
+  const forNoonWindow = (at: Date) => {
+    const noon = buildTonightWindow(at, timeZone);
+    const sunset = SunCalc.getTimes(noon.start, lat, lon).sunset;
+    const sunrise = SunCalc.getTimes(noon.end, lat, lon).sunrise;
+    if (!valid(sunset) || !valid(sunrise) || sunrise <= sunset) return { noon, window: null };
+    return { noon, window: { start: sunset, end: sunrise } };
+  };
+  let { noon, window } = forNoonWindow(now);
+  if (window && now.getTime() > window.end.getTime()) {
+    ({ noon, window } = forNoonWindow(new Date(now.getTime() + 24 * 3_600_000)));
+  }
+  return window ?? noon;
 }

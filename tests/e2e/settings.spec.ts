@@ -265,6 +265,20 @@ test.describe('Settings Page', () => {
     await expect(page.getByText(/from the horizon/i)).toBeVisible();
   });
 
+  // ─── Header ───────────────────────────────────────────────────────────────
+
+  test('the collapsed header keeps the version beside the Release notes button', async ({ page }) => {
+    // Expanded, the version is the large figure on the right; collapsed, the slim bar carries it as text beside the button.
+    await page.getByRole('button', { name: /collapse/i }).first().click();
+    const bar = page.locator('section').filter({ has: page.getByRole('button', { name: /expand/i }) }).first();
+    await expect(bar.getByRole('button', { name: 'Release notes' })).toBeVisible();
+    await expect(bar.getByText('v1.0.0')).toBeVisible();
+    await expect(bar.getByText('v1.0.0')).toHaveAttribute('title', /build 1/i);
+    // Expanding again brings the big figure back and takes the small one out of the bar.
+    await page.getByRole('button', { name: /expand/i }).first().click();
+    await expect(page.getByText('v1.0.0')).toHaveCount(1);
+  });
+
   // ─── Import status ────────────────────────────────────────────────────────
 
   test('import status section shows last run', async ({ page }) => {

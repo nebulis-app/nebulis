@@ -28,6 +28,7 @@
 import { randomUUID } from 'crypto';
 import db from './db.js';
 import { SKY_MAP_CELLS } from './skyMapConfig.js';
+import { deleteSitePhotosFor } from './sitePhotos.js';
 
 export interface ObservingSite {
   id: string;
@@ -368,6 +369,8 @@ export function deleteSite(id: string): { deleted: boolean; reason?: string } {
       if (next) stmts.setDefault.run(next.id);
     }
   })();
+
+  deleteSitePhotosFor(id);
 
   // Drop a now-dangling active pointer so getActiveSite doesn't have to.
   if ((stmts.activeSiteId.get()?.activeSiteId ?? '') === id) stmts.setActiveSiteId.run('');

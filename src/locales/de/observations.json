@@ -86,7 +86,9 @@
     "showingRange": "{{from}}–{{to}} von {{total}} Beobachtungen angezeigt",
     "previousPage": "Vorherige Seite",
     "nextPage": "Nächste Seite",
-    "pageOfTotal": "{{page}} / {{totalPages}}"
+    "pageOfTotal": "{{page}} / {{totalPages}}",
+    "columnRig": "Setup",
+    "noRig": "Kein Teleskop"
   },
   "toolbar": {
     "viewGroup": "Ansicht",
@@ -98,7 +100,8 @@
     "today": "Heute",
     "allTelescopes": "Alle Teleskope",
     "filterByTelescope": "Nach Teleskop filtern",
-    "share": "Teilen"
+    "share": "Teilen",
+    "allTrains": "{{name}} (alle Aufbauten)"
   },
   "newObservationForm": {
     "objectLabel": "Objekt",
@@ -166,7 +169,16 @@
       "capturedOn": "Aufgenommen mit {{name}}. Klicken, um weitere Sitzungen zu sehen.",
       "reassignTitle": "Einem anderen Teleskop zuordnen",
       "reassignTo": "Zuordnen zu",
-      "reassignFailed": "Zuordnung fehlgeschlagen"
+      "reassignFailed": "Zuordnung fehlgeschlagen",
+      "opticsTitle": "Optischer Aufbau",
+      "opticsAuto": "Automatisch",
+      "opticsAutoFits": "FITS: {{focal}}",
+      "opticsAutoNone": "nicht erkannt",
+      "opticsSource": {
+        "manual": "Für diese Nacht gewählt",
+        "fits": "Aus der Brennweite in den FITS ermittelt",
+        "only": "Einzige Konfiguration des Teleskops"
+      }
     },
     "objectPanel": {
       "about": "Über {{name}}",
@@ -212,6 +224,8 @@
     "subframesPanel": {
       "scanTrails": "Spuren scannen",
       "scanTrailsTitle": "Alle FITS-Subframes auf Satellitenspuren scannen",
+      "analyzeFrames": "Bilder analysieren",
+      "analyzeFramesTitle": "Jedes Rohbild dieser Nacht messen und Wolken, Sternspuren, Unschärfe, Streifen und Rauschen markieren",
       "telescopeOfflineTitle": "Teleskop ist offline. Verbinde dich, um Subs herunterzuladen.",
       "downloadFromTelescopeTitle": "Alle rohen Subframes dieser Sitzung vom Teleskop in deine Bibliothek herunterladen",
       "syncSubs": "Subs synchronisieren",
@@ -221,11 +235,6 @@
       "downloadFailed": "Download fehlgeschlagen",
       "zipping": "Wird gezippt {{done}}/{{total}}…",
       "deleteAllTitle": "Alle Subframes dieser Sitzung löschen",
-      "frameTitle": "{{name}} (Bild {{index}} von {{total}})",
-      "showingSampled": "{{shown}} von {{total}} angezeigt, über die Sitzung verteilt",
-      "showingAll": "Alle {{total}} angezeigt",
-      "viewAll": "Alle {{total}} ansehen",
-      "openViewer": "Betrachter öffnen",
       "empty": "Noch keine Subframes heruntergeladen. Verbinde dein Teleskop und nutze \"Subs herunterladen\", um sie zu synchronisieren."
     },
     "sessionFileGrid": {
@@ -259,6 +268,13 @@
       "addMore": "Weitere hinzufügen",
       "moveToImages": "Als unbearbeitet markieren"
     },
+    "nightPanel": {
+      "title": "Diese Nacht",
+      "syncHint": "Subframes synchronisieren, um den Aufnahmezeitraum zu sehen",
+      "imaged": "Aufgenommen {{range}}",
+      "cloud": "{{label}} · {{percent}}% Bewölkung",
+      "moon": "Mond {{percent}}%"
+    },
     "hero": {
       "breadcrumb": "Brotkrumen",
       "observations": "Beobachtungen",
@@ -281,6 +297,7 @@
       "deleteTitle": "Beobachtung löschen"
     },
     "page": {
+      "sessionDetails": "Sitzungsdetails",
       "unknownDate": "Unbekanntes Datum",
       "rawFitsOnly": "Nur rohe FITS-Bilder",
       "noImagesCaptured": "Keine Bilder aufgenommen",
@@ -439,7 +456,153 @@
       "filterTypesSelected_other": "{{selected}} von {{count}} Filtertypen ausgewählt",
       "selectAtLeastOneFilter": "Wähle mindestens einen Filtertyp aus",
       "back": "Zurück",
-      "discardSelection": "Sitzungsauswahl verwerfen?"
+      "discardSelection": "Sitzungsauswahl verwerfen?",
+      "keptOnlyOption": "Nur behaltene Einzelbilder",
+      "keptOnlyHint": "Lässt Einzelbilder weg, die als schlecht bewertet oder in der Qualitätsansicht der Nacht abgewählt wurden. Noch nicht gemessene Nächte gehen vollständig mit."
+    },
+    "frameAnalysisModal": {
+      "title": "Bildqualität",
+      "measuring": "Messe {{done}} von {{total}}",
+      "framesMeasured_one": "{{count}} Bild gemessen",
+      "framesMeasured_other": "{{count}} Bilder gemessen",
+      "stop": "Stopp",
+      "measureAgain": "Erneut messen",
+      "measureAgainTitle": "Gespeicherte Messungen dieser Nacht verwerfen und alle Bilder erneut einlesen",
+      "close": "Schließen",
+      "loadFailed": "Die Bilder konnten nicht analysiert werden",
+      "noFrames": "Keine FITS-Rohbilder für diese Nacht. Synchronisiere sie zuerst vom Teleskop.",
+      "noMatch": "Keine Bilder passen zu diesem Filter.",
+      "waiting": "Wartet",
+      "notMeasured": "Nicht gemessen",
+      "unreadable": "Konnte nicht gelesen werden: {{reason}}",
+      "typicalFrame": "Ein typisches Bild dieser Nacht: {{stars}} Sterne, Sterne {{fwhm}} px breit, {{elongation}}-mal länger als breit. Jedes Bild wird daran gemessen.",
+      "filterLabel": "Anzeigen",
+      "sortLabel": "Sortieren",
+      "filters": {
+        "all": "Alle",
+        "good": "Gut",
+        "flagged": "Markiert",
+        "bad": "Schlecht"
+      },
+      "sorts": {
+        "score": "Wertung",
+        "time": "Zeit",
+        "stars": "Sterne",
+        "sharpness": "Schärfe",
+        "roundness": "Rundheit"
+      },
+      "grades": {
+        "good": "Gut",
+        "fair": "Mittel",
+        "bad": "Schlecht"
+      },
+      "gradeCount": {
+        "good": "{{count}} Gut",
+        "fair": "{{count}} Mittel",
+        "bad": "{{count}} Schlecht"
+      },
+      "flags": {
+        "clouds": "Wolken",
+        "trails": "Sternspuren",
+        "soft": "Weiche Sterne",
+        "streak": "Streifen",
+        "noStars": "Keine Sterne",
+        "noisy": "Rauschig"
+      },
+      "stats": {
+        "stars": "Sterne",
+        "width": "Breite",
+        "round": "Rundheit",
+        "noise": "Rauschen",
+        "signal": "Signal",
+        "pixels": "{{value}} px",
+        "times": "{{value}}×"
+      },
+      "reasons": {
+        "noStars": "Nur {{stars}} Sterne gefunden, gegenüber etwa {{typical}} in einem typischen Bild dieser Nacht. Der Himmel war bedeckt oder die Optik beschlagen.",
+        "clouds": "{{stars}} Sterne gegenüber etwa {{typical}} in einem typischen Bild ({{percent}}% weniger).",
+        "cloudsBrighter": "Der Himmel ist auch heller, wie es bei von unten beleuchteten Wolken der Fall ist.",
+        "trailsPlain": "Sterne sind {{ratio}}-mal länger als breit. Das Teleskop hat sich während der Belichtung bewegt oder wurde erschüttert.",
+        "trailsPlainAngle": "Sterne sind {{ratio}}-mal länger als breit und in Richtung {{angle}}° gezogen. Das Teleskop hat sich während der Belichtung bewegt oder wurde erschüttert.",
+        "trailsSlight": "Sterne sind {{ratio}}-mal länger als breit. Eine leichte Verschmierung, die nach dem Stacken kaum zu sehen ist.",
+        "trailsSlightAngle": "Sterne sind {{ratio}}-mal länger als breit und in Richtung {{angle}}° gezogen. Eine leichte Verschmierung, die nach dem Stacken kaum zu sehen ist.",
+        "soft": "Sterne sind {{fwhm}} px breit gegenüber typischen {{typical}} px: unscharf oder unruhige Luft.",
+        "streak": "Ein gerader Streifen quert das Bild bei etwa {{angle}}° (ein Satellit oder Flugzeug). Stacking mit Ausreißerrejektion entfernt ihn meist.",
+        "noisy": "Das Hintergrundrauschen liegt {{percent}}% über dem typischen Bild der Nacht."
+      },
+      "selectHint": "Klicke auf Bilder, um sie auszuwählen.",
+      "selectedCount_one": "{{count}} Bild ausgewählt",
+      "selectedCount_other": "{{count}} Bilder ausgewählt",
+      "selectBad": "Alle schlechten auswählen",
+      "selectFlagged": "Markierte auswählen",
+      "clear": "Leeren",
+      "discard": "Verwerfen…",
+      "keepFrames": "Bilder behalten",
+      "confirmDiscard_one": "{{count}} Bild endgültig aus der Bibliothek löschen?",
+      "confirmDiscard_other": "{{count}} Bilder endgültig aus der Bibliothek löschen?",
+      "confirmDiscardLinked_one": "{{count}} Bild endgültig löschen? {{linked}} davon liegt in einem verknüpften Ordner, daher wird das Original von der Festplatte gelöscht und Nebulis hat keine weitere Kopie.",
+      "confirmDiscardLinked_other": "{{count}} Bilder endgültig löschen? {{linked}} davon liegen in einem verknüpften Ordner, daher werden die Originale von der Festplatte gelöscht und Nebulis hat keine weiteren Kopien.",
+      "discardFailures": "{{removed}} verworfen. {{count}} konnten nicht entfernt werden:\n{{details}}",
+      "nightLabel": "Nacht",
+      "nightOption": "{{date}} ({{count}})",
+      "selectFrame": "{{name}} auswählen",
+      "markKeep": "Behalten",
+      "markReject": "Verwerfen",
+      "followGrade": "Markierung entfernen"
+    },
+    "frameList": {
+      "notMeasuredTitle": "Öffne die Nacht, um ihre Frames zu messen.",
+      "measuredOfTitle": "Die Frame-Analyse läuft noch oder wurde für diese Nacht abgebrochen.",
+      "allClearTitle": "Alle {{count}} Frames gemessen. Keine Wolken, Sternspuren oder Streifen gefunden.",
+      "flaggedTitle": "Einige Frames zeigen Wolken, Sternspuren, Streifen, weiche Schärfe oder Rauschen. Öffne die Nacht, um sie zu prüfen.",
+      "openFrame": "Frame öffnen",
+      "allClearShort": "Sieht gut aus",
+      "measuredOf": "{{measured}} von {{total}} gemessen",
+      "allClear": "Keine Wolken, Sternspuren oder Streifen gefunden",
+      "flagged": "{{flagged}} markiert",
+      "flaggedAndBad": "{{flagged}} markiert · {{bad}} schlecht",
+      "flaggedOnly": "Nur markierte",
+      "previews": "Vorschauen",
+      "notMeasured": "Nicht gemessen",
+      "moreFlags": "+{{count}}",
+      "longestGap": "Längste Pause {{duration}} um {{time}}",
+      "timelineLabel": "Eine Markierung je Bild über die Nacht, nach Note gefärbt",
+      "column": {
+        "time": "Zeit",
+        "score": "Wertung",
+        "flags": "Markierungen",
+        "stars": "Sterne",
+        "fwhm": "Breite px",
+        "round": "Spur",
+        "noise": "Rauschen",
+        "snr": "Signal",
+        "sky": "Himmel",
+        "file": "Datei"
+      },
+      "sortHint": {
+        "time": "Nach Aufnahmezeit sortieren",
+        "score": "Nach Wertung sortieren, schlechteste zuerst",
+        "flags": "Danach sortieren, wie viel am Bild nicht stimmt",
+        "stars": "Nach gefundenen Sternen sortieren",
+        "fwhm": "Nach Sternbreite (FWHM) in Pixeln sortieren, schärfste zuerst",
+        "round": "Nach Sternstreckung sortieren: 1,00 ist rund, höher ist gezogen",
+        "noise": "Nach Hintergrundrauschen sortieren, leisestes zuerst. Niedriger ist sauberer.",
+        "snr": "Nach Signal sortieren: wie weit die hellsten Sterne über dem Rauschen liegen (×). Höher ist besser.",
+        "sky": "Nach Himmelshelligkeit sortieren (Rohwerte). Ein Sprung zwischen Bildern kann Wolken, Dunst oder den Mond bedeuten.",
+        "file": "Nach Dateiname sortieren"
+      },
+      "menu": {
+        "open": "Öffnen",
+        "download": "Herunterladen",
+        "copyLink": "Link kopieren",
+        "copied": "Kopiert"
+      },
+      "exportCsv": "CSV exportieren",
+      "exportCsvTitle": "Die Werte dieser Nacht als CSV herunterladen, mit einer Spalte „accepted“ für PixInsight- oder Siril-Skripte",
+      "review": {
+        "keep": "Behalten",
+        "reject": "Verworfen"
+      }
     },
     "satelliteTrailScanModal": {
       "title": "Satellitenspur-Erkennung",
@@ -536,5 +699,85 @@
     "moreCount_one": "+{{count}} weitere",
     "moreCount_other": "+{{count}} weitere",
     "approximate": "ungefähr"
+  },
+  "planOutcome": {
+    "status": {
+      "upcoming": "Geplant",
+      "in_progress": "Läuft",
+      "awaiting_import": "Import ausstehend",
+      "done": "Erledigt",
+      "partial": "Teilweise",
+      "missed": "Verpasst",
+      "skipped": "Übersprungen"
+    },
+    "achievedOfPlanned": "{{achieved}}/{{planned}}",
+    "resultTitle_one": "Planer: {{status}} · {{achieved}} von {{planned}} geplant ({{count}} Block)",
+    "resultTitle_other": "Planer: {{status}} · {{achieved}} von {{planned}} geplant ({{count}} Blöcke)",
+    "plannedLine": "{{status}} · {{planned}} geplant",
+    "plannedTitle": "{{name}}: {{status}}, {{planned}} geplant. Im Planer öffnen."
+  },
+  "stackingExport": {
+    "title": "Export zum Stacken",
+    "close": "Schließen",
+    "intro": "Die behaltenen Lights mit den passenden Darks, Flats, Flat-Darks und Bias aus der Kalibrierbibliothek, in einem ZIP für deine Stacking-Software.",
+    "nights": "Nächte",
+    "layout": "Aufbau",
+    "wbpp": "PixInsight WBPP",
+    "siril": "Siril",
+    "wbppHint": "Ein Ordnerbaum; WBPP sortiert die Aufnahmen anhand ihrer Header. Mehrere Nächte liegen in NIGHT_<Datum>-Ordnern: NIGHT als Gruppierungsschlüssel hinzufügen, damit jede Nacht ihre eigenen Flats bekommt.",
+    "sirilHint": "Ein Ordner pro Nacht und Filter mit lights, darks, flats und biases, wie es die Vorverarbeitungsskripte von Siril erwarten. Darks werden in jedem Ordner wiederholt.",
+    "includeNotKept": "Nicht behaltene Einzelbilder einschließen",
+    "planFailed": "Kalibrierbilder konnten nicht zugeordnet werden.",
+    "matching": "Kalibrierbilder werden zugeordnet…",
+    "summary": "{{lights}} Lights · {{calibration}} Kalibrierbilder · {{size}}",
+    "excluded_one": "{{count}} nicht behaltenes ausgelassen",
+    "excluded_other": "{{count}} nicht behaltene ausgelassen",
+    "ready": "Kalibrierung vollständig",
+    "problems_one": "{{count}} Problem",
+    "problems_other": "{{count}} Probleme",
+    "fixHint": "Fehlende Aufnahmen hinzufügen oder zuordnen und diesen Dialog erneut öffnen. Exportieren geht trotzdem: Stacking-Programme überspringen Fehlendes.",
+    "openLibrary": "Kalibrierbibliothek öffnen",
+    "building": "ZIP wird erstellt",
+    "progress": "{{done}} / {{total}} Dateien",
+    "cancel": "Abbrechen",
+    "started": "Download gestartet.",
+    "failed": "Der Export ist fehlgeschlagen.",
+    "download": "ZIP herunterladen",
+    "noFilter": "Kein Filter",
+    "gain": "Gain {{value}}",
+    "lights_one": "{{count}} Light",
+    "lights_other": "{{count}} Lights",
+    "lightsKept": "{{kept}} / {{total}} behalten",
+    "frames_one": "{{count}} Aufnahme",
+    "frames_other": "{{count}} Aufnahmen",
+    "attached": "zugeordnet",
+    "sameNight": "gleiche Nacht",
+    "biasNotNeeded": "Nicht nötig: Flat-Darks kalibrieren die Flats",
+    "flatDarkNotNeeded": "Keine: Bias kalibriert die Flats",
+    "row": {
+      "dark": "Darks",
+      "flat": "Flats",
+      "flatDark": "Flat-Darks",
+      "bias": "Bias"
+    },
+    "issue": {
+      "no_dark": "Keine Darks mit {{exposure}} s, Gain {{gain}}, Bin {{bin}}",
+      "dark_temp_far": "Nächste Darks liegen {{delta}} °C daneben ({{bundle}})",
+      "dark_expired": "Älter als die in den Einstellungen festgelegte Dark/Bias-Gültigkeit",
+      "no_flat": "Keine Flats für {{filter}}",
+      "flat_other_night": "{{days}} T von dieser Nacht entfernt aufgenommen: prüfen, ob sich im optischen Zug etwas bewegt hat",
+      "no_flat_calibration": "Weder Flat-Darks noch Bias zum Kalibrieren der Flats",
+      "bias_expired": "Bias älter als die in den Einstellungen festgelegte Dark/Bias-Gültigkeit",
+      "unknown_settings": "Belichtungszeit weder im FITS-Header noch im Dateinamen gefunden: Darks passen evtl. nicht"
+    },
+    "selectAll": "Alle auswählen",
+    "selectNone": "Keine auswählen",
+    "noNights": "Keine Nacht dieses Objekts hat Einzelbilder.",
+    "notMeasured_one": "Die Qualität der Einzelbilder vom {{nights}} ist noch nicht gemessen, daher werden alle exportiert. Miss sie, um die schlechten auszulassen.",
+    "notMeasured_other": "Die Qualität der Einzelbilder von {{count}} Nächten ({{nights}}) ist noch nicht gemessen, daher werden alle exportiert. Miss sie, um die schlechten auszulassen.",
+    "notMeasuredViewer": "Ein Admin kann sie messen.",
+    "measure_one": "{{count}} Einzelbild messen",
+    "measure_other": "{{count}} Einzelbilder messen",
+    "measuring": "Qualität der Einzelbilder wird gemessen {{done}} / {{total}}"
   }
 }

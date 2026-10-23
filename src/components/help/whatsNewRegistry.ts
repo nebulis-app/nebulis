@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import { WhatsNewV20Modal } from './WhatsNewV20Modal';
+import { WhatsNewV22Modal } from './WhatsNewV22Modal';
 
 /** Props every hand-built "What's New" reel accepts.
  *
@@ -26,6 +27,7 @@ export interface EnhancedWhatsNewProps {
  *  react-hooks/static-components. */
 export const ENHANCED_WHATS_NEW: Record<string, ComponentType<EnhancedWhatsNewProps>> = {
   '2.0': WhatsNewV20Modal,
+  '2.2': WhatsNewV22Modal,
 };
 
 /** "1.5.1" to "1.5". Anything unparseable is returned whole, which simply

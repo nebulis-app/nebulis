@@ -3,12 +3,11 @@ export type { CatalogEntry };
 import { SOLAR_SYSTEM_MAP } from './solar-system-catalog.js';
 import { isRecord } from '../lib/typeGuards.js';
 
-// ─── Curated catalog (with descriptions) ────────────────────────────
-// Hand-maintained. Add an object by appending an entry to catalog-curated.json:
-// { id, name, type, constellation, description, ra, dec, distanceLy?,
-//   magnitude?, majorAxisArcmin?, wikiUrl? }. Coordinates are sexagesimal
-// strings ("02h 26m 32s" / "+62° 02′ 30″") or decimal (RA in hours).
-import curatedJson from './catalog-curated.json';
+// ─── Catalog data ────────────────────────────────────────────────────
+// Every object is one record in server/data/dso-catalog.json, edited by hand
+// (see server/lib/dsoCatalogData.ts for the fields). This module reads two
+// views of it: the curated layer (descriptions) and the listed browse rows.
+import { CURATED_ROWS, LISTED_ROWS, recordFor, displayDesignation, designationRank } from '../lib/dsoCatalogData.js';
 
 /** Runtime validator matching CatalogEntry's required (non-optional) fields. */
 function isCatalogEntry(value: unknown): value is CatalogEntry {
@@ -25,28 +24,25 @@ function isCatalogEntry(value: unknown): value is CatalogEntry {
 
 function parseCuratedJson(data: unknown): CatalogEntry[] {
   if (!Array.isArray(data)) {
-    throw new Error('[catalog] catalog-curated.json: expected top-level array');
+    throw new Error('[catalog] curated rows: expected an array');
   }
   const entries = data.filter(isCatalogEntry);
   if (entries.length < data.length) {
-    console.warn(`[catalog] catalog-curated.json: dropped ${data.length - entries.length} entr(ies) missing required fields`);
+    console.warn(`[catalog] curated rows: dropped ${data.length - entries.length} entr(ies) missing required fields`);
   }
   return entries;
 }
 
-const catalog: CatalogEntry[] = parseCuratedJson(curatedJson);
+const catalog: CatalogEntry[] = parseCuratedJson(CURATED_ROWS);
 const curatedMap = new Map(catalog.map(e => [e.id.toUpperCase(), e]));
 
-// ─── OpenNGC: comprehensive catalog of 12,000+ NGC/IC/Messier objects ──
-// Source: https://github.com/mattiaverga/OpenNGC (CC BY-SA 4.0)
-// Imported once as static JSON — no API calls needed.
+// ─── Listed rows: the browse catalog ─────────────────────────────────
+// Originally OpenNGC (https://github.com/mattiaverga/OpenNGC, CC BY-SA 4.0)
+// filtered to what a smart telescope can image.
 
-// Inlined at bundle time by tsup/esbuild — no runtime file access needed.
-import openNgcJson from './openngc.json';
 import { caldwellToNgcId } from '../lib/caldwellCatalog.js';
 import { mergeOverride, entryFromOverride } from '../lib/catalogOverrides.js';
-import { getAliasesFor, expandSearchAliases, normalizeDesignation, resolveCanonicalId } from '../lib/catalogAliases.js';
-import { getCuratedRecord } from '../lib/catalogStore.js';
+import { expandSearchAliases, normalizeDesignation, resolveCanonicalId } from '../lib/catalogAliases.js';
 import { getSharplessEntry, sharplessToCatalogEntry } from '../lib/sharplessCatalog.js';
 
 interface OpenNGCEntry {
@@ -79,21 +75,21 @@ function isOpenNGCEntry(value: unknown): value is OpenNGCEntry {
 
 function parseOpenNgcJson(data: unknown): OpenNGCEntry[] {
   if (!Array.isArray(data)) {
-    throw new Error('[catalog] openngc.json: expected top-level array');
+    throw new Error('[catalog] listed rows: expected an array');
   }
   // Filter (not spot-check) so a malformed bundle surfaces at boot, not on
   // the first lookup, and any individual bad rows don't ride along mistyped.
   const entries = data.filter(isOpenNGCEntry);
   if (data.length > 0 && entries.length === 0) {
-    throw new Error('[catalog] openngc.json: no entries matched the expected shape');
+    throw new Error('[catalog] listed rows: no entries matched the expected shape');
   }
   if (entries.length < data.length) {
-    console.warn(`[catalog] openngc.json: dropped ${data.length - entries.length} entr(ies) missing required id/type strings`);
+    console.warn(`[catalog] listed rows: dropped ${data.length - entries.length} entr(ies) missing required id/type strings`);
   }
   return entries;
 }
 
-const openNgcData: OpenNGCEntry[] = parseOpenNgcJson(openNgcJson);
+const openNgcData: OpenNGCEntry[] = parseOpenNgcJson(LISTED_ROWS);
 
 // Build lookup maps: by ID, by Messier designation, by NGC cross-reference
 // name, and by "duplicate observation" common name (the historical NGC
@@ -213,6 +209,23 @@ function lookupCatalogEntry(id: string): CatalogEntry | undefined {
   // 4. Sharpless catalog (Sh2-N emission nebulae)
   const sharpless = getSharplessEntry(key);
   if (sharpless) return sharplessToCatalogEntry(sharpless, id);
+
+  // 5. Lookup-only records: the fainter NGC/IC objects that are not browsed
+  //    but should still resolve to a real object (type, position) on import.
+  const record = recordFor(key);
+  if (record && record.ra != null && record.dec != null) {
+    return {
+      id: record.id,
+      name: record.name,
+      type: record.type,
+      constellation: record.constellation ?? '',
+      magnitude: record.magnitude ?? undefined,
+      description: '',
+      ra: String(record.ra),
+      dec: String(record.dec),
+      majorAxisArcmin: record.sizeArcmin,
+    };
+  }
 
   return undefined;
 }
@@ -384,87 +397,25 @@ export function getAllCatalogEntries(): CatalogEntry[] {
   return catalog;
 }
 
-/** Catalog-number pattern — strings matching these are alternate designations,
- *  not human-readable common names, so they go in the AKA list separately. */
-const CATALOG_ID_RE = /^(NGC|IC|M|UGC|PGC|B|SH2-|LBN|LDN)\s*\d+$/i;
-
-/** Common names for objects that have no OpenNGC entry (mostly Sharpless nebulae). */
-const MANUAL_COMMON_NAMES: Record<string, string[]> = {
-  'B33':     ['Horsehead Nebula'],
-  'SH2-101': ['Tulip Nebula'],
-  'SH2-129': ['Flying Bat Nebula'],
-  'SH2-155': ['Cave Nebula'],
-  'SH2-240': ['Spaghetti Nebula', 'Simeis 147'],
-};
-
 /**
- * Build the "Also known as" list for an object: NGC cross-references,
- * Messier numbers, Caldwell designations, Sharpless designations, and
- * any common names stored in OpenNGC.
+ * The "Also known as" list for an object: every other catalog number on its
+ * record (Messier, NGC/IC, Caldwell, Sharpless, Melotte first; survey numbers
+ * such as LBN and UGC last) and its other common names, in display form.
+ * Never repeats the id that was asked for or the object's display name.
  */
 export function getAlsoKnownAs(id: string): string[] {
-  const key = id.toUpperCase().replace(/\s+/g, '');
-  const names: string[] = [];
-
-  // Look up the OpenNGC entry — either directly (M# ids are stored under "M101" etc.)
-  // or via the ngcName reverse map (NGC5457 → find M101's entry).
-  const entry = openNgcMap.get(key) ?? ngcNameToEntry.get(key);
-
-  if (entry) {
-    // Always include NGC/IC cross-reference (ngcName) and Messier number when present,
-    // regardless of which ID was used for the lookup. This ensures M51's AKA includes
-    // "NGC5194" AND "M51" itself, matching the behaviour of NGC-primary objects whose
-    // self-referential ngcName already causes them to appear in their own AKA list.
-    if (entry.ngcName && !names.includes(entry.ngcName)) {
-      names.push(entry.ngcName);
-    }
-    if (entry.messier != null) {
-      const mStr = `M${entry.messier}`;
-      if (!names.includes(mStr)) names.push(mStr);
-    }
-    // Common names from OpenNGC — skip strings that are really catalog IDs
-    for (const cn of entry.commonNames ?? []) {
-      if (cn && !CATALOG_ID_RE.test(cn) && !names.includes(cn)) names.push(cn);
-    }
-    // Catalog-ID-style alternate designations from commonNames (NGC651, etc.)
-    for (const cn of entry.commonNames ?? []) {
-      if (cn && CATALOG_ID_RE.test(cn) && !names.includes(cn)) names.push(cn);
-    }
-  }
-
-  // Sharpless designation itself (so "Lion Nebula" lists "Sh2-132" the same way
-  // an NGC-primary object lists its own NGC number above).
-  const sharpless = getSharplessEntry(key);
-  if (sharpless) {
-    const shId = sharpless.id.replace(/^SH2-/i, 'Sh2-');
-    if (!names.includes(shId)) names.push(shId);
-  }
-
-  // Manual common names for objects not in OpenNGC
-  for (const cn of MANUAL_COMMON_NAMES[key] ?? []) {
-    if (!names.includes(cn)) names.push(cn);
-  }
-
-  // Caldwell and Sharpless designations via reverse alias map
-  for (const alias of getAliasesFor(id)) {
-    if (!names.includes(alias)) names.push(alias);
-  }
-
-  // Curated record designations and common name, so the curated file is the
-  // one place to add an "also known as" (replacing the old MANUAL_COMMON_NAMES
-  // drift point). Normalised designations are formatted back to display form.
-  const record = getCuratedRecord(id);
-  if (record) {
-    const selfNorm = key.replace(/^(NGC|IC)0*(\d)/, '$1$2');
-    for (const d of record.designations) {
-      if (d === selfNorm) continue;
-      const display = d.startsWith('SH2-') ? `Sh2-${d.slice(4)}` : d;
-      if (!names.includes(display)) names.push(display);
-    }
-    if (record.name && record.name !== record.canonicalId && !names.includes(record.name)) {
-      names.push(record.name);
-    }
-  }
-
-  return names;
+  const record = recordFor(id) ?? recordFor(resolveCanonicalId(id));
+  if (!record) return [];
+  const asked = normalizeDesignation(id).toUpperCase().replace(/\s+/g, '');
+  const others = record.designations
+    .filter(d => d !== asked)
+    .sort((a, b) => designationRank(a) - designationRank(b));
+  const surveyRank = designationRank('LDN1');
+  const display = record.name.toLowerCase();
+  const names = record.names.filter(n => n.toLowerCase() !== display);
+  return [
+    ...others.filter(d => designationRank(d) < surveyRank).map(displayDesignation),
+    ...names,
+    ...others.filter(d => designationRank(d) >= surveyRank).map(displayDesignation),
+  ];
 }

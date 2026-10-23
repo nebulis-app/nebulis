@@ -1,4 +1,4 @@
-import { fetchJSON } from './client';
+import { fetchJSON, BASE, authHeaders, errorMessage } from './client';
 
 /**
  * Observing sites — the places (and skies) the user observes from. Replaces
@@ -104,3 +104,47 @@ export const reassignSessionSite = (objectId: string, date: string, siteId: stri
     `/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/site`,
     { method: 'PUT', body: JSON.stringify({ siteId }) },
   );
+
+/** A picture attached to an observing site (the garden, the skyline, where the tripod stands). */
+export interface SitePhoto {
+  id: string;
+  siteId: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  caption: string;
+  createdAt: string;
+}
+
+export const getSitePhotos = (siteId: string) =>
+  fetchJSON<SitePhoto[]>(`/sites/${encodeURIComponent(siteId)}/photos`);
+
+/** Readable without a token, so it works as an <img> src. `width` asks for a JPEG preview. */
+export const sitePhotoUrl = (photoId: string, width?: number) =>
+  `${BASE}/sites/photos/${encodeURIComponent(photoId)}${width ? `?w=${width}` : ''}`;
+
+export async function uploadSitePhoto(siteId: string, file: File, caption = ''): Promise<SitePhoto> {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  if (caption) form.append('caption', caption);
+  // fetchJSON forces a JSON content type, which would break the multipart boundary.
+  const res = await fetch(`${BASE}/sites/${encodeURIComponent(siteId)}/photos`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: form,
+  });
+  const body: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(errorMessage(body, res.statusText));
+  const data = (body as { data?: SitePhoto }).data;
+  if (!data) throw new Error('Upload response had no picture');
+  return data;
+}
+
+export const updateSitePhotoCaption = (photoId: string, caption: string) =>
+  fetchJSON<SitePhoto>(`/sites/photos/${encodeURIComponent(photoId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ caption }),
+  });
+
+export const deleteSitePhoto = (photoId: string) =>
+  fetchJSON<{ deleted: boolean }>(`/sites/photos/${encodeURIComponent(photoId)}`, { method: 'DELETE' });

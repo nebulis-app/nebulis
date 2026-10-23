@@ -11,10 +11,41 @@
  */
 import table from '../data/catalog-companions.json';
 import { frameRadiusDeg } from './companionGeometry.js';
+import { isRecord } from './typeGuards.js';
 
-interface CompanionTable { version: number; maxSepDeg: number; pairs: Record<string, Array<[string, number]>> }
+type CompanionPairs = Record<string, Array<[string, number]>>;
 
-const PAIRS = (table as unknown as CompanionTable).pairs;
+/**
+ * Read the `pairs` map out of the bundled JSON, checking every member tuple.
+ *
+ * TypeScript infers the JSON import's `pairs` as an object of `(string | number)[][]`,
+ * which is not the `[id, sepDeg]` tuple shape the rest of this module reads. Rather
+ * than assert the shape, each entry is checked: a malformed member (wrong arity or
+ * types) is dropped instead of becoming `undefined`/NaN at lookup time. The build
+ * script only ever writes well-formed tuples, so on the shipped file this keeps
+ * every entry.
+ */
+function parseCompanionPairs(raw: unknown): CompanionPairs {
+  const out: CompanionPairs = {};
+  if (!isRecord(raw) || !isRecord(raw.pairs)) return out;
+  for (const [hostId, members] of Object.entries(raw.pairs)) {
+    if (!Array.isArray(members)) continue;
+    // Array.isArray narrows `unknown` to `any[]`; re-widen so every element is checked.
+    const memberList: readonly unknown[] = members;
+    const list: Array<[string, number]> = [];
+    for (const member of memberList) {
+      if (!Array.isArray(member)) continue;
+      const tuple: readonly unknown[] = member;
+      const memberId = tuple[0];
+      const sepDeg = tuple[1];
+      if (typeof memberId === 'string' && typeof sepDeg === 'number') list.push([memberId, sepDeg]);
+    }
+    out[hostId] = list;
+  }
+  return out;
+}
+
+const PAIRS: CompanionPairs = parseCompanionPairs(table);
 
 export interface HostLink { hostId: string; sepDeg: number }
 

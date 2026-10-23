@@ -170,7 +170,7 @@ export async function resolveAsiairRoot(profile: TelescopeProfile): Promise<stri
 
 function isAsiairTopLevelFolder(name: string): boolean {
   const lower = name.toLowerCase();
-  return (ASIAIR_MODE_FOLDERS as readonly string[]).some(m => m.toLowerCase() === lower)
+  return ASIAIR_MODE_FOLDERS.some(m => m.toLowerCase() === lower)
     || lower === ASIAIR_LIVE_FOLDER.toLowerCase();
 }
 
@@ -212,7 +212,8 @@ export async function discoverAsiairObjects(profile: TelescopeProfile): Promise<
       obj = { folderName: rawName, subFolderName: null, _asiairRoot: root, _asiairSources: [] };
       byTarget.set(key, obj);
     }
-    obj._asiairSources!.push(source);
+    if (obj._asiairSources) obj._asiairSources.push(source);
+    else obj._asiairSources = [source];
   };
 
   for (const mode of ASIAIR_MODE_FOLDERS) {

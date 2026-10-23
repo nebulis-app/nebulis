@@ -1,8 +1,8 @@
 {
   "name": "nebulis-web",
   "private": true,
-  "version": "2.1.2",
-  "buildNumber": 292,
+  "version": "2.2.0",
+  "buildNumber": 293,
   "type": "module",
   "packageManager": "pnpm@10.30.3",
   "scripts": {
@@ -17,13 +17,13 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "help:shots": "tsx scripts/capture-help-screenshots.ts",
     "test:all": "node scripts/verify.mjs --all --lab --open",
     "test:autodiscovery": "node scripts/test-autodiscovery.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
-    "update-catalog": "node scripts/download-catalog.mjs",
-    "sharpless:refresh": "npx tsx scripts/build-sharpless-catalog.ts",
-    "catalog:populate": "npx tsx scripts/populate-curated-layer.ts",
+    "catalog:pick": "npx tsx scripts/catalog-pick.ts",
+    "catalog:load-local": "npx tsx scripts/catalog-load-local.ts",
     "catalog:distances": "npx tsx scripts/build-client-distances.ts",
     "catalog:distances:check": "npx tsx scripts/build-client-distances.ts --check",
     "catalog:companions": "npx tsx scripts/build-catalog-companions.ts",
@@ -68,6 +68,7 @@
     "tar": "^7.5.22",
     "tz-lookup": "^6.1.25",
     "undici": "^7.29.1",
+    "wrangler": "^4.151.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -128,7 +129,12 @@
       "browserslist": "^4.28.7",
       "nanoid": "^3.3.18",
       "undici": "^7.29.1",
-      "basic-ftp@<=6.2.0": ">=6.2.1"
+      "basic-ftp@<=6.2.0": ">=6.2.1",
+      "source-map-js@>=1.0.0 <1.2.2": ">=1.2.2",
+      "proxy-addr@>=1.1.0 <2.0.8": ">=2.0.8",
+      "fast-copy@>=3.0.0 <3.1.0": ">=3.1.0",
+      "sharp@<0.35.5": ">=0.35.5",
+      "shell-quote@>=1.8.4 <1.11.0": ">=1.11.0"
     },
     "onlyBuiltDependencies": [
       "better-sqlite3",

@@ -17,6 +17,8 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 import { scanImportFolder } from '../../server/lib/library/folderScan';
 import { commitFolderImport } from '../../server/lib/library/import';
 import { createProfile } from '../../server/lib/telescopes';
+import { addOpticalConfig } from '../../server/lib/telescopeOpticalConfigs';
+import { stmts } from '../../server/lib/library/objects';
 import { LIBRARY_DIR } from '../../server/lib/paths';
 
 const DARK = 'Dark_60s_Bin1_20240320-235959_0018.fit';
@@ -94,6 +96,30 @@ describe('folder import of an ASIAIR tree', () => {
     expect(flatEntry).toContain(path.join('Plan', 'Flat'));
     // ...and they never became library objects.
     expect(fs.existsSync(path.join(LIBRARY_DIR, 'Dark'))).toBe(false);
+
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('stamps the chosen optical configuration on the imported nights, and only one of that telescope', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'asiair-optics-'));
+    fs.mkdirSync(path.join(root, 'M42'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'M42', LIGHT), 'light');
+    const profile = createProfile({ name: 'Elendil', kind: 'asiair' });
+    const other = createProfile({ name: 'Other', kind: 'asiair' });
+    const reducer = addOpticalConfig(profile.id, { name: 'Reducer', focalLengthMm: 456, sensorWidthMm: 11.1, sensorHeightMm: 6.3 });
+    const foreign = addOpticalConfig(other.id, { name: 'Foreign', focalLengthMm: 250, sensorWidthMm: 11.1, sensorHeightMm: 6.3 });
+    const plan = (configId: string) => ({
+      rootPath: root, importFits: true, importSubFrames: true, telescopeId: profile.id, opticalConfigId: configId,
+      objects: [{ folderName: 'M42', targetObjectId: 'M42', targetFolderName: 'M42', sessionMap: { '2024-03-20': '2024-03-20' } }],
+    });
+
+    await commitFolderImport(plan(reducer.id));
+    expect(stmts.getSession.get('M42', '2024-03-20')).toMatchObject({ telescopeId: profile.id, opticalConfigId: reducer.id });
+
+    if (fs.existsSync(LIBRARY_DIR)) fs.rmSync(LIBRARY_DIR, { recursive: true, force: true });
+    stmts.clearSessions.run('M42');
+    await commitFolderImport(plan(foreign.id));
+    expect(stmts.getSession.get('M42', '2024-03-20')?.opticalConfigId).not.toBe(foreign.id);
 
     fs.rmSync(root, { recursive: true, force: true });
   });

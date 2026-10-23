@@ -20,6 +20,7 @@ import {
   countSkip,
   summarizeSkips,
   classifyImportFile,
+  SKIP_LABELS,
   type SkipTally,
 } from '../../server/lib/library/importFilter';
 import {
@@ -90,7 +91,10 @@ describe('skip tally', () => {
       const tally: SkipTally = new Map();
       countSkip(tally, decision.reason);
       const [summary] = summarizeSkips(tally);
-      expect(summary.label, `no label for ${decision.reason}`).toBeTruthy();
+      expect(summary.label, `no label for ${decision.reason}`).toBe(SKIP_LABELS[decision.reason]);
+      // Wording, not the raw code echoed back.
+      expect(summary.label).not.toBe(decision.reason);
+      expect(summary.label).toMatch(/\s/);
     }
   });
 });
@@ -191,7 +195,10 @@ describe('runImport reports what it left on the telescope', () => {
     // Largest group first, so the UI list needs no sorting of its own.
     expect(skipped[0].reason).toBe('failed-frame');
     // Every entry carries display wording, not just a code.
-    for (const entry of skipped) expect(entry.label).toBeTruthy();
+    for (const entry of skipped) {
+      expect(entry.label).toBe(SKIP_LABELS[entry.reason]);
+      expect(entry.label).toMatch(/\s/);
+    }
 
     // The run must still import the one good file. A skip report that came at
     // the cost of dropping real files would be worse than no report.

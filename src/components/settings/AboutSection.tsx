@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Coffee, ExternalLink, Mail } from 'lucide-react';
 import { Sec } from './SettingsUI';
+import { DataSourcesSection } from './DataSourcesSection';
 import qrCode from '../../assets/about/buy-me-a-coffee-qr.svg';
 
 const COFFEE_URL = 'https://buymeacoffee.com/brent873';
@@ -12,21 +13,21 @@ export function AboutSection({ isDark }: { isDark: boolean }) {
     <>
       <Sec title={t('about.title')} isDark={isDark}>
         <div className="p-5 space-y-4">
-          <p className={`text-[13.5px] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+          <p className={`text-[0.8438rem] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
             {t('about.story1')}
           </p>
-          <p className={`text-[13.5px] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+          <p className={`text-[0.8438rem] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
             {t('about.story2')}
           </p>
           <div>
-            <p className={`text-[13px] font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+            <p className={`text-[0.8125rem] font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
               {t('about.creatorByline')}
             </p>
             <a
               href="https://nebulis.app"
               target="_blank"
               rel="noopener noreferrer"
-              className={`block text-[13px] font-medium mt-0.5 ${isDark ? 'text-accent-400 hover:underline' : 'text-accent-700 hover:underline'}`}
+              className={`block text-[0.8125rem] font-medium mt-0.5 ${isDark ? 'text-accent-400 hover:underline' : 'text-accent-700 hover:underline'}`}
             >
               nebulis.app
             </a>
@@ -41,7 +42,7 @@ export function AboutSection({ isDark }: { isDark: boolean }) {
           }`}>
             <Mail className="w-4 h-4" />
           </div>
-          <p className={`text-[13px] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+          <p className={`text-[0.8125rem] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
             {t('about.feedbackBefore')}{' '}
             <a
               href={`mailto:${SUPPORT_EMAIL}`}
@@ -65,7 +66,7 @@ export function AboutSection({ isDark }: { isDark: boolean }) {
             className={`w-28 h-28 rounded-lg border shrink-0 ${isDark ? 'border-slate-700 bg-white p-1.5' : 'border-slate-200 bg-white p-1.5'}`}
           />
           <div className="min-w-0">
-            <p className={`text-[13px] mb-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+            <p className={`text-[0.8125rem] mb-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
               {t('about.scanOrLink')}
             </p>
             <a
@@ -85,6 +86,8 @@ export function AboutSection({ isDark }: { isDark: boolean }) {
           </div>
         </div>
       </Sec>
+
+      <DataSourcesSection isDark={isDark} />
     </>
   );
 }

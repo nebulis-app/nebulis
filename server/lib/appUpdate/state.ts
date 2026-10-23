@@ -69,8 +69,27 @@ export function getUpdateStatus(): UpdateStatus & { applyRequested: boolean } {
   return { ...status, applyRequested: isApplyRequested() };
 }
 
+type UpdateAvailableListener = (status: UpdateStatus) => void;
+const updateAvailableListeners: UpdateAvailableListener[] = [];
+
+/** Called each time a status update says a newer version is available (the
+ *  listener decides whether it has already announced that version). Kept as a
+ *  listener so this module stays free of the alerts code and its database. */
+export function onUpdateAvailable(listener: UpdateAvailableListener): void {
+  updateAvailableListeners.push(listener);
+}
+
 export function setUpdateStatus(patch: Partial<UpdateStatus>): void {
   status = { ...status, ...patch };
+  if (status.updateAvailable && status.latestVersion) {
+    for (const listener of updateAvailableListeners) {
+      try {
+        listener(status);
+      } catch (err) {
+        console.warn('[appUpdate] update listener failed:', err instanceof Error ? err.message : err);
+      }
+    }
+  }
 }
 
 /**

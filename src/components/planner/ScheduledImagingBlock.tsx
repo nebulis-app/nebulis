@@ -16,12 +16,14 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { AlertTriangle, ArrowUp, Frame, GripVertical, Info, Moon, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { IntegrationRemainingChips } from './IntegrationRemainingChips';
 import { formatHm, SNAP_MINUTES, TIMELINE_GUTTER_PX } from './scheduleGeometry';
 import { useTheme } from '../../hooks/useTheme';
 import type { PlannedSession } from '../../lib/api/plannedSessions';
 import type { VisibilityVerdict } from '../../lib/visibilityCheck';
 import type { MoonVerdict } from '../../lib/moonProximity';
 import type { BlockDragData } from './dragData';
+import { PlanOutcomeActions, PlanOutcomeChip, PlanOutcomeIcon } from './PlanOutcomeBadge';
 
 const MIN_IMAGING_ALT = 20;
 
@@ -56,6 +58,9 @@ interface ScheduledImagingBlockProps {
   moonVerdict: MoonVerdict;
   /** Plain-English moon reason, empty when no concern. */
   moonReason: string;
+  /** The same closest approach judged for narrowband, when the block is not
+   *  narrowband already: lets it say a narrowband filter would be fine. */
+  narrowbandVerdict?: MoonVerdict;
   hasOverlap: boolean;
   laneIndex: number;
   laneCount: number;
@@ -86,6 +91,7 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
   maxAlt,
   moonVerdict,
   moonReason,
+  narrowbandVerdict,
   hasOverlap,
   laneIndex,
   laneCount,
@@ -139,6 +145,10 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
   const compact = height < COMPACT_HEIGHT;
   const tiny = height < TINY_HEIGHT;
 
+  const band = session.filterBand ?? null;
+  // The Moon is too close for broadband, but a narrowband filter would cope.
+  const narrowbandWouldDo = moonVerdict !== 'ok' && band !== 'narrowband' && narrowbandVerdict === 'ok';
+
   // One line of warning text, worst first. Below the compact threshold there is
   // no room for it and the tooltip carries the detail instead.
   const warning = belowHorizon
@@ -146,7 +156,7 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
     : verdict === 'none' || verdict === 'partial'
       ? verdictReason
       : moonVerdict !== 'ok'
-        ? moonReason
+        ? narrowbandWouldDo ? `${moonReason} · ${t('scheduledImagingBlock.narrowbandOk')}` : moonReason
         : lowInSky && minAlt != null
           ? t('scheduledImagingBlock.lowInSky', { deg: Math.round(minAlt) })
           : hasOverlap
@@ -199,12 +209,17 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
         <div className="flex min-w-0 flex-1 flex-col justify-start gap-0.5">
           <div className="flex min-w-0 items-center gap-1.5">
             <GripVertical className="h-3 w-3 shrink-0 opacity-40" />
+            <PlanOutcomeIcon outcome={session.outcome} />
             <span className="truncate text-sm font-semibold">{displayName ?? session.objectName}</span>
-            {isSaving && <span className="shrink-0 text-[10px] opacity-60">{t('scheduledImagingBlock.saving')}</span>}
+            {isSaving && <span className="shrink-0 text-[0.625rem] opacity-60">{t('scheduledImagingBlock.saving')}</span>}
           </div>
 
-          <div className="text-[11px] text-white/60 tabular-nums">
-            {t('scheduledImagingBlock.timeRange', { start: formatHm(start, observerTimezone), end: formatHm(end, observerTimezone) })}
+          <div className="flex min-w-0 items-center gap-1.5 text-[0.6875rem] text-white/60 tabular-nums">
+            <span className="shrink-0">
+              {t('scheduledImagingBlock.timeRange', { start: formatHm(start, observerTimezone), end: formatHm(end, observerTimezone) })}
+            </span>
+            {/* Compact blocks hide the chip row, so the outcome rides on the time line. */}
+            {compact && !tiny && <PlanOutcomeChip outcome={session.outcome} />}
           </div>
 
           {!compact && (
@@ -215,10 +230,17 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
                   {t('scheduledImagingBlock.altitudeRange', { min: Math.round(minAlt), max: Math.round(maxAlt) })}
                 </Chip>
               )}
+              {(band || session.filter) && (
+                <Chip tone="ok">
+                  <span title={band ? t(`scheduledImagingBlock.band.${band}`) : undefined}>
+                    {session.filter || t(`scheduledImagingBlock.bandShort.${band!}`)}
+                  </span>
+                </Chip>
+              )}
               {moonVerdict !== 'ok' && (
                 <Chip tone={moonVerdict === 'warning' ? 'bad' : 'warn'}>
                   <Moon className="h-2.5 w-2.5" />
-                  {t('scheduledImagingBlock.moon')}
+                  {narrowbandWouldDo ? t('scheduledImagingBlock.moonNbOk') : t('scheduledImagingBlock.moon')}
                 </Chip>
               )}
               {hasOverlap && (
@@ -227,11 +249,13 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
                   {t('scheduledImagingBlock.overlap')}
                 </Chip>
               )}
+              <PlanOutcomeChip outcome={session.outcome} />
+              <IntegrationRemainingChips objectId={session.objectId} isDark tone="block" />
             </div>
           )}
 
           {!compact && !isSaving && warning && (
-            <div className={`truncate text-[10.5px] ${bad ? 'text-red-300' : 'text-amber-300'}`}>
+            <div className={`truncate text-[0.6562rem] ${bad ? 'text-red-300' : 'text-amber-300'}`}>
               {warning}
             </div>
           )}
@@ -240,6 +264,7 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
 
       {!isSaving && (
         <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 opacity-70 transition group-hover:opacity-100">
+          <PlanOutcomeActions session={session} />
           {session.framingSetup && onShowFraming && (
             <button
               onClick={(e) => { e.stopPropagation(); onShowFraming(session); }}
@@ -273,7 +298,7 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
       )}
 
       {height >= LONG_BLOCK_HEIGHT && (
-        <div className="absolute bottom-1.5 left-3.5 text-[10px] text-white/35 tabular-nums">
+        <div className="absolute bottom-1.5 left-3.5 text-[0.625rem] text-white/35 tabular-nums">
           {t('scheduledImagingBlock.until', { time: formatHm(end, observerTimezone) })}
         </div>
       )}
@@ -293,7 +318,7 @@ function Chip({ tone, children }: { tone: 'ok' | 'warn' | 'bad'; children: React
         ? 'bg-amber-500/15 text-amber-300 ring-amber-400/25'
         : 'bg-white/[0.07] text-white/65 ring-white/10';
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium tabular-nums ring-1 ring-inset ${cls}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.625rem] font-medium tabular-nums ring-1 ring-inset ${cls}`}>
       {children}
     </span>
   );

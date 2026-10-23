@@ -183,6 +183,11 @@ export interface CommitPlan {
   /** Telescope to stamp every session created by this import with, or null/
    *  absent to leave sessions untagged. */
   telescopeId?: string | null;
+  /** Optical configuration of that telescope the files were shot through
+   *  (e.g. the reducer), stamped on the same sessions. Absent = let the FITS
+   *  focal length decide (see sessionOptics.ts). Ignored without telescopeId
+   *  or when it is not one of that telescope's configurations. */
+  opticalConfigId?: string | null;
 }
 
 /** Key used for the unsorted (no-derivable-date) bucket in a sessionMap. */

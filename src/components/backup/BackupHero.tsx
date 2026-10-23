@@ -13,7 +13,7 @@
  */
 import { Trans, useTranslation } from 'react-i18next';
 import { FolderSync, Download, RefreshCw, X, Clock, AlertTriangle, Ban } from 'lucide-react';
-import { HeroBackdrop } from '../ui/HeroBackdrop';
+import { CollapsibleHero } from '../ui/CollapsibleHero';
 import { PAGE_HERO } from '../../lib/heroImagery';
 import { formatBytes } from '../../lib/utils';
 import { formatDuration, formatEta, formatRelativeShort } from '../../lib/timeFormat';
@@ -105,26 +105,93 @@ export function BackupHero({
   // panel under the hero, with the error text and its timestamp.
   const lastRunIso = failed ? rollup.lastSuccessAt : (rollup.lastSuccessAt ?? status?.lastRun ?? null);
 
+  const statusLine = (
+          running ? (
+            warming ? (
+              <Trans
+                i18nKey="backupHero.buildingThumbnails"
+                ns="library"
+                count={warming.total}
+                values={{ count: warming.total }}
+                components={{ 1: <span className="text-white/80" /> }}
+              />
+            ) : status?.currentObject ? (
+              status.telescopeName ? (
+                <Trans
+                  i18nKey="backupHero.copyingObjectFrom"
+                  ns="library"
+                  values={{ object: status.currentObject, telescope: status.telescopeName }}
+                  components={{ 1: <span className="text-white/80" />, 3: <span className="text-white/80" /> }}
+                />
+              ) : (
+                <Trans
+                  i18nKey="backupHero.copyingObject"
+                  ns="library"
+                  values={{ object: status.currentObject }}
+                  components={{ 1: <span className="text-white/80" /> }}
+                />
+              )
+            ) : t('backupHero.lookingForCaptures')
+          ) : failed ? (
+            // The panel below names the failure. This says what it means for
+            // the library, which is the part a person actually wants.
+            <span className="inline-flex items-center gap-1.5">
+              {status?.cancelled
+                ? <Ban className="h-3.5 w-3.5 shrink-0 text-amber-300" />
+                : <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-300" />}
+              {status?.cancelled
+                ? t('backupHero.stoppedPartway')
+                : t('backupHero.waitingOnTelescope')}
+            </span>
+          ) : lastRunIso ? (
+            <>{t('backupHero.upToDate')}</>
+          ) : (
+            t('backupHero.noSyncYet')
+          )
+  );
+
+  const actionButton = (
+      running ? (
+        // Thumbnail warming is a quick local pass with no cancellation hook
+        // of its own, so cancelling then would sit and do nothing until it
+        // finished anyway. The button is only offered during the transfer.
+        !warming && status?.runId ? (
+          <button
+            onClick={onCancel}
+            disabled={cancelPending}
+            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-full border border-white/20 px-4 py-2.5 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-50 sm:w-auto"
+          >
+            <X className="h-4 w-4" />
+            {cancelPending ? t('backupHero.cancelling') : t('backupHero.cancel')}
+          </button>
+        ) : null
+      ) : (
+        <button
+          onClick={onSync}
+          disabled={syncDisabled}
+          title={syncDisabled ? t('backupHero.noTelescopeReachable') : undefined}
+          className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+          style={{ background: accent, boxShadow: `0 8px 24px -12px ${accent}` }}
+        >
+          {syncPending
+            ? <RefreshCw className="h-4 w-4 animate-spin" />
+            : <Download className="h-4 w-4" />}
+          {syncLabel}
+        </button>
+      )
+  );
+
   return (
-    <section
-      className="relative overflow-hidden rounded-3xl bg-slate-950 hero-panel"
+    <CollapsibleHero
+      page="backup"
+      image={PAGE_HERO.backup}
+      accent={accent}
+      icon={<FolderSync className="h-5 w-5 sm:h-7 sm:w-7" style={{ color: accent }} />}
+      title={t('backupHero.title')}
+      summary={running ? <>{statusLine} <span className="font-semibold text-white/80">{percent}%</span></> : statusLine}
+      actions={actionButton}
+      contentClassName="flex hero-min-h flex-col justify-center gap-6 p-4 sm:p-6"
     >
-      <HeroBackdrop image={PAGE_HERO.backup} />
-
-      <div
-        className="pointer-events-none absolute inset-0 opacity-70"
-        style={{ background: `radial-gradient(90% 140% at 8% 0%, ${accent}1f 0%, transparent 60%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 opacity-50"
-        style={{ background: `radial-gradient(70% 130% at 95% 100%, ${accent}14 0%, transparent 62%)` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 rounded-3xl"
-        style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10)' }}
-      />
-
-      <div className="relative flex hero-min-h flex-col justify-center gap-6 p-4 sm:p-6">
         {/* Stacks on a phone: side by side, the title wraps to two lines and the
             button crowds it. */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -134,80 +201,10 @@ export function BackupHero({
               {t('backupHero.title')}
             </h1>
 
-            <p className="mt-2 text-[13px] text-white/55">
-              {running ? (
-                warming ? (
-                  <Trans
-                    i18nKey="backupHero.buildingThumbnails"
-                    ns="library"
-                    count={warming.total}
-                    values={{ count: warming.total }}
-                    components={{ 1: <span className="text-white/80" /> }}
-                  />
-                ) : status?.currentObject ? (
-                  status.telescopeName ? (
-                    <Trans
-                      i18nKey="backupHero.copyingObjectFrom"
-                      ns="library"
-                      values={{ object: status.currentObject, telescope: status.telescopeName }}
-                      components={{ 1: <span className="text-white/80" />, 3: <span className="text-white/80" /> }}
-                    />
-                  ) : (
-                    <Trans
-                      i18nKey="backupHero.copyingObject"
-                      ns="library"
-                      values={{ object: status.currentObject }}
-                      components={{ 1: <span className="text-white/80" /> }}
-                    />
-                  )
-                ) : t('backupHero.lookingForCaptures')
-              ) : failed ? (
-                // The panel below names the failure. This says what it means for
-                // the library, which is the part a person actually wants.
-                <span className="inline-flex items-center gap-1.5">
-                  {status?.cancelled
-                    ? <Ban className="h-3.5 w-3.5 shrink-0 text-amber-300" />
-                    : <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-300" />}
-                  {status?.cancelled
-                    ? t('backupHero.stoppedPartway')
-                    : t('backupHero.waitingOnTelescope')}
-                </span>
-              ) : lastRunIso ? (
-                <>{t('backupHero.upToDate')}</>
-              ) : (
-                t('backupHero.noSyncYet')
-              )}
-            </p>
+            <p className="mt-2 text-[0.8125rem] text-white/55">{statusLine}</p>
           </div>
 
-          {running ? (
-            // Thumbnail warming is a quick local pass with no cancellation hook
-            // of its own, so cancelling then would sit and do nothing until it
-            // finished anyway. The button is only offered during the transfer.
-            !warming && status?.runId ? (
-              <button
-                onClick={onCancel}
-                disabled={cancelPending}
-                className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-full border border-white/20 px-4 py-2.5 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-50 sm:w-auto"
-              >
-                <X className="h-4 w-4" />
-                {cancelPending ? t('backupHero.cancelling') : t('backupHero.cancel')}
-              </button>
-            ) : null
-          ) : (
-            <button
-              onClick={onSync}
-              disabled={syncDisabled}
-              title={syncDisabled ? t('backupHero.noTelescopeReachable') : undefined}
-              className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
-              style={{ background: accent, boxShadow: `0 8px 24px -12px ${accent}` }}
-            >
-              {syncPending
-                ? <RefreshCw className="h-4 w-4 animate-spin" />
-                : <Download className="h-4 w-4" />}
-              {syncLabel}
-            </button>
-          )}
+          {actionButton}
         </div>
 
         {running && status
@@ -226,8 +223,7 @@ export function BackupHero({
               lastRunIso={lastRunIso}
               lastRunFailed={failed}
             />}
-      </div>
-    </section>
+    </CollapsibleHero>
   );
 }
 
@@ -266,7 +262,7 @@ function LiveProgress({
   return (
     <div className="space-y-3">
       <div className="flex items-baseline justify-between gap-4">
-        <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/45">
+        <span className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-white/45">
           {warming ? t('backupHero.generatingThumbnails') : t('backupHero.syncingInProgress')}
         </span>
         <span className="flex items-center gap-3 text-xs text-white/45">
@@ -300,7 +296,7 @@ function LiveProgress({
             <div className="font-display text-base font-bold leading-none tracking-tight text-white tabular-nums">
               {value}
             </div>
-            <div className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/45">
+            <div className="mt-1.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-white/45">
               {label}
             </div>
           </div>
@@ -360,7 +356,7 @@ function IdleStats({
           }`}>
             {value}
           </div>
-          <div className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/45">
+          <div className="mt-1.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-white/45">
             {label}
           </div>
         </div>

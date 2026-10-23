@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTheme, type Theme, THEME_OPTIONS } from '../../hooks/useTheme';
 import { useLanguage } from '../../hooks/useLanguage';
+import { useUiScale, UI_SCALE_MIN, UI_SCALE_MAX, UI_SCALE_STEP } from '../../hooks/useUiScale';
+import { useCompactBanners } from '../../hooks/useCollapsedHero';
 import { useNavVisibility, type NavItemId } from '../../hooks/useNavVisibility';
 import type { Settings as SettingsType } from '../../types';
 import { Sec, Row, Seg, RadioCard, Toggle, getInputClass } from './SettingsUI';
-import { NightlyMaintenanceSection } from './NightlyMaintenanceSection';
-import { Library, Images, Calendar, CloudMoon, Crosshair, Star, BookOpen, Aperture, Settings as SettingsIcon, HelpCircle, GripVertical, Lock } from 'lucide-react';
+import { Library, Images, Calendar, CloudMoon, Crosshair, Star, Compass, BookOpen, Aperture, Settings as SettingsIcon, HelpCircle, GripVertical, Lock } from 'lucide-react';
 
 const NAV_ITEM_ICONS: Record<NavItemId, React.ReactNode> = {
   library:       <Library className="w-4 h-4" />,
@@ -15,6 +16,7 @@ const NAV_ITEM_ICONS: Record<NavItemId, React.ReactNode> = {
   forecast:      <CloudMoon className="w-4 h-4" />,
   planner:       <Crosshair className="w-4 h-4" />,
   wishlist:      <Star className="w-4 h-4" />,
+  explore:       <Compass className="w-4 h-4" />,
   catalogs:      <BookOpen className="w-4 h-4" />,
   calibrations:  <Aperture className="w-4 h-4" />,
   settings:      <SettingsIcon className="w-4 h-4" />,
@@ -65,6 +67,16 @@ export function GeneralSection({
   const { t } = useTranslation('common');
   const { t: tSettings } = useTranslation('settings');
   const { theme, setTheme, nebulaBackdrop, setNebulaBackdrop } = useTheme();
+  const [compactBanners, setCompactBanners] = useCompactBanners();
+  const [uiScale, setUiScale] = useUiScale();
+  // The slider drags a draft value and applies it on release: resizing the page
+  // under the pointer while it is held makes the thumb jump away from the cursor.
+  const [scaleDraft, setScaleDraft] = useState<number | null>(null);
+  const shownScale = scaleDraft ?? uiScale;
+  const commitScale = () => {
+    if (scaleDraft !== null) setUiScale(scaleDraft);
+    setScaleDraft(null);
+  };
   const { language, setLanguage, languages } = useLanguage();
   const { isVisible, toggle, isLocked, orderedItems, reorderItems, moveItem } = useNavVisibility();
   const [draggedId, setDraggedId] = useState<NavItemId | null>(null);
@@ -89,7 +101,7 @@ export function GeneralSection({
               const match = languages.find(l => l.code === code);
               if (match) setLanguage(match.code);
             }}
-            className={`${getInputClass(isDark)} !w-auto !py-2 text-[13px]`}
+            className={`${getInputClass(isDark)} !w-auto !py-2 text-[0.8125rem]`}
           >
             {languages.map(l => (
               <option key={l.code} value={l.code}>{l.label}</option>
@@ -132,6 +144,47 @@ export function GeneralSection({
             disabled={theme !== 'dark'}
           />
         </Row>
+        <Row
+          label={tSettings('appearance.uiScale.label')}
+          description={tSettings('appearance.uiScale.description')}
+          isDark={isDark}
+        >
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              aria-label={tSettings('appearance.uiScale.label')}
+              min={UI_SCALE_MIN}
+              max={UI_SCALE_MAX}
+              step={UI_SCALE_STEP}
+              value={shownScale}
+              onChange={(e) => setScaleDraft(Number(e.target.value))}
+              onPointerUp={commitScale}
+              onKeyUp={commitScale}
+              onBlur={commitScale}
+              className="w-36 accent-accent-500"
+            />
+            <span className={`w-10 text-right text-[0.8125rem] tabular-nums ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              {Math.round(shownScale * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={() => { setScaleDraft(null); setUiScale(1); }}
+              disabled={shownScale === 1}
+              className={`rounded-lg px-2.5 py-1 text-xs font-medium transition disabled:opacity-40 ${
+                isDark ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {tSettings('appearance.uiScale.reset')}
+            </button>
+          </div>
+        </Row>
+        <Row
+          label={tSettings('appearance.compactBanners.label')}
+          description={tSettings('appearance.compactBanners.description')}
+          isDark={isDark}
+        >
+          <Toggle checked={compactBanners} onChange={setCompactBanners} />
+        </Row>
       </Sec>
 
       {/* Navigation — every top-menu tab, reorderable by drag-and-drop (or the
@@ -142,7 +195,12 @@ export function GeneralSection({
         description={tSettings('navigation.description')}
         isDark={isDark}
       >
-        {orderedItems.map(item => {
+        {/* Two columns from md up, filled column by column (1-6 down the left,
+            7-11 down the right) so the order reads top to bottom, and each row
+            carries its position number so it is never ambiguous. -mb-px hides
+            the last row's divider. md:grid-rows-6 must stay ceil(items / 2). */}
+        <div className="-mb-px grid grid-cols-1 md:grid-flow-col md:grid-cols-2 md:grid-rows-6">
+        {orderedItems.map((item, index) => {
           const locked = isLocked(item.id);
           const isDragging = draggedId === item.id;
           const isDragOver = dragOverId === item.id && draggedId !== null && draggedId !== item.id;
@@ -166,7 +224,7 @@ export function GeneralSection({
                 setDraggedId(null);
                 setDragOverId(null);
               }}
-              className={`relative grid grid-cols-[auto_minmax(220px,2fr)_minmax(0,1fr)] items-center gap-3 md:gap-8 px-5 py-3.5 border-b last:border-b-0 transition-colors ${
+              className={`relative flex items-center gap-3 px-4 py-2.5 border-b ${index < Math.ceil(orderedItems.length / 2) ? 'md:border-r' : ''} transition-colors ${
                 isDark ? 'border-slate-800/70' : 'border-slate-100'
               } ${isDragging ? 'opacity-40' : ''}`}
             >
@@ -193,15 +251,18 @@ export function GeneralSection({
               >
                 <GripVertical className="w-4 h-4" />
               </button>
-              <div className="min-w-0 flex items-center gap-2">
+              <div className="min-w-0 flex-1 flex items-center gap-2">
+                <span className={`w-5 shrink-0 text-right text-[0.6875rem] tabular-nums ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                  {index + 1}
+                </span>
                 <span className={isDark ? 'text-slate-500' : 'text-slate-400'}>
                   {NAV_ITEM_ICONS[item.id]}
                 </span>
-                <span className={`text-[13px] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                <span className={`text-[0.8125rem] font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                   {t(item.labelKey)}
                 </span>
                 {locked && (
-                  <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-full ${
+                  <span className={`inline-flex items-center gap-1 text-[0.6875rem] font-medium px-1.5 py-0.5 rounded-full ${
                     isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-100 text-slate-400'
                   }`}>
                     <Lock className="w-2.5 h-2.5" />
@@ -209,12 +270,13 @@ export function GeneralSection({
                   </span>
                 )}
               </div>
-              <div className="min-w-0 flex items-center justify-start md:justify-end">
+              <div className="shrink-0 flex items-center">
                 <Toggle checked={isVisible(item.id)} onChange={() => toggle(item.id)} disabled={locked} />
               </div>
             </div>
           );
         })}
+        </div>
       </Sec>
 
       {/* Units */}
@@ -246,9 +308,6 @@ export function GeneralSection({
           />
         </Row>
       </Sec>
-
-      {/* Nightly maintenance */}
-      <NightlyMaintenanceSection isDark={isDark} form={form} setForm={setForm} />
     </>
   );
 }

@@ -109,7 +109,7 @@ export function SoftwareUpdateCard({
               type="button"
               onClick={() => check.mutate()}
               disabled={check.isPending}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium border transition-colors ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[0.8125rem] font-medium border transition-colors ${
                 isDark
                   ? 'border-slate-700 text-slate-200 hover:bg-slate-800'
                   : 'border-slate-200 text-slate-700 hover:bg-slate-50'
@@ -159,7 +159,7 @@ export function SoftwareUpdateCard({
               type="button"
               onClick={() => apply.mutate()}
               disabled={apply.isPending || apply.isSuccess || (status.platform === 'win-x64' && !status.staged)}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-colors ${
+              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[0.8125rem] font-semibold transition-colors ${
                 isDark ? 'bg-accent-500 text-slate-950 hover:bg-accent-400' : 'bg-accent-600 text-white hover:bg-accent-500'
               } disabled:opacity-50`}
             >

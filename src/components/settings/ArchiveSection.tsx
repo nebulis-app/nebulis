@@ -323,7 +323,7 @@ export function ArchiveSection({ isDark }: { isDark: boolean }) {
   if (isLoading) {
     return (
       <Sec title={t('archive.title')} description={t('archive.description')} isDark={isDark}>
-        <p className={`px-5 py-5 text-[13px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+        <p className={`px-5 py-5 text-[0.8125rem] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
           {t('archive.loading')}
         </p>
       </Sec>
@@ -434,10 +434,10 @@ function ArchiveIntro({
   const s = archiveStyles(isDark);
   return (
     <div className="px-5 py-6">
-      <div className={`text-[14px] font-semibold ${s.strongText}`}>
+      <div className={`text-[0.875rem] font-semibold ${s.strongText}`}>
         {configured ? t('archive.intro.offTitle') : t('archive.intro.title')}
       </div>
-      <p className={`mt-1.5 max-w-xl text-[13px] leading-relaxed ${s.subText}`}>
+      <p className={`mt-1.5 max-w-xl text-[0.8125rem] leading-relaxed ${s.subText}`}>
         {configured ? t('archive.intro.offBody') : t('archive.intro.body')}
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">

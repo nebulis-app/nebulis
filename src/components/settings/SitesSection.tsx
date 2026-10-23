@@ -26,7 +26,7 @@ export function SitesSection({ isDark }: { isDark: boolean }) {
       isDark={isDark}
     >
       <div className="p-4 sm:p-5">
-        <SiteManagerList isDark={isDark} />
+        <SiteManagerList isDark={isDark} showMap />
       </div>
     </Sec>
   );

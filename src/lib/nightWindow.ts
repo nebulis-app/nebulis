@@ -43,6 +43,18 @@ export function plannerToday(now: Date = new Date(), timeZone?: string): Date {
  * evening. Returns null at observatories where the sun never sets enough
  * (polar summer / high latitudes mid-summer).
  */
+/**
+ * Mean solar noon at the observer's longitude for the calendar day encoded in
+ * `date`'s local Y/M/D (the planner convention: `date` names the observer's
+ * day, not an instant). SunCalc snaps to the transit nearest the instant it is
+ * given, so anchoring at the browser's noon picks the wrong day whenever the
+ * browser's timezone is far from the observer's. Longitude needs no tz lookup.
+ */
+export function observerNoonAnchor(date: Date, lon: number, dayOffset: number): Date {
+  const utcNoon = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate() + dayOffset, 12, 0, 0);
+  return new Date(utcNoon - (lon / 15) * 3_600_000);
+}
+
 export function nightWindowFor(date: Date, lat: number, lon: number): { start: Date; end: Date } | null {
   const eveningAnchor = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
   const next = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 12, 0, 0);

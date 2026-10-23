@@ -92,7 +92,7 @@ describe('StatPill', () => {
       <StatPill icon={<span />} label="Dark hours" value="8.9h" />,
     );
     expect(html).toContain('8.9h');
-    expect(html).not.toContain('mt-1.5 text-[11px]');
+    expect(html).not.toContain('mt-1.5 text-[0.6875rem]');
   });
 
   it('renders an action only when one is given', () => {

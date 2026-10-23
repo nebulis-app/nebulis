@@ -13,6 +13,7 @@
     "forecast": "Pronóstico",
     "planner": "Planificador",
     "wishlist": "Lista de deseos",
+    "explore": "Explorar",
     "catalogs": "Catálogos",
     "calibrations": "Calibraciones",
     "settings": "Configuración",
@@ -207,6 +208,9 @@
     "manageLocations": "Gestionar ubicaciones..."
   },
   "altitudeChart": {
+    "peakAt": "Máximo esta noche, {{time}}",
+    "atTimePeak": "A las {{time}} · máximo {{peak}}° a las {{peakTime}}",
+    "peakAtTime": "Máximo a las {{time}}",
     "currentAltitude": "Altitud actual",
     "moonLabel": "Luna",
     "moonStripSpan": "Interferencia lunar de {{start}} a {{end}}"
@@ -325,5 +329,9 @@
     "title": "Algo salió mal",
     "description": "Se produjo un error inesperado. Actualiza la página para continuar.",
     "reloadPage": "Actualizar página"
+  },
+  "heroToggle": {
+    "collapse": "Contraer banner",
+    "expand": "Expandir banner"
   }
 }

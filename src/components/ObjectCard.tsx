@@ -9,6 +9,7 @@ import type { AstroObject } from '../types';
 import { processingStatusLabel } from '../lib/processingStatus';
 import { useTheme } from '../hooks/useTheme';
 import { nightSafeColor } from '../lib/nightSafeColor';
+import { LibraryIntegrationRemainingChips } from './planner/IntegrationRemainingChips';
 
 interface ObjectCardProps {
   object: AstroObject;
@@ -63,7 +64,9 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes,
     .slice(0, 3)
     .join(' · ');
   const [imgLoaded, setImgLoaded] = useState(false);
-  const [imgError, setImgError] = useState(false);
+  const [loadFailed, setImgError] = useState(false);
+  // The server says up front when there is nothing to fetch, so the placeholder shows with no request.
+  const imgError = loadFailed || object.hasThumbnail === false;
   const queryClient = useQueryClient();
 
   // Pass `galleryImageVersion` as the cache-buster: it combines the user's
@@ -199,7 +202,7 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes,
               this is a status to be seen at a glance, not an action to keep quiet. */}
           {object.processingStatus && object.processingStatus !== 'unprocessed' && (
             <span
-              className={`px-2 py-1 rounded-full text-[10px] font-medium leading-none whitespace-nowrap backdrop-blur-sm ring-1 ring-inset ${
+              className={`px-2 py-1 rounded-full text-[0.625rem] font-medium leading-none whitespace-nowrap backdrop-blur-sm ring-1 ring-inset ${
                 object.processingStatus === 'processing'
                   ? 'bg-amber-500/20 text-amber-300 ring-amber-400/30'
                   : 'bg-emerald-500/20 text-emerald-300 ring-emerald-400/30'
@@ -242,7 +245,7 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes,
         )}
 
         <div className={`${compact ? 'hidden' : 'flex'} flex-wrap items-center gap-1.5 sm:gap-2 mt-2 sm:mt-3 -ml-1.5 sm:-ml-2.5`}>
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-medium truncate max-w-full ${
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[0.6875rem] sm:text-xs font-medium truncate max-w-full ${
             getTypeColor(object.type, isDark)
           }`}>
             {object.type}
@@ -272,6 +275,15 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes,
             </span>
           )}
         </div>
+
+        {/* Campaign progress ("4h left · D2") for objects with integration
+            goals; renders nothing otherwise. Hidden on the compact grid,
+            like the metadata row above. */}
+        {!compact && (
+          <div className="mt-2 flex flex-wrap items-center gap-1 empty:hidden">
+            <LibraryIntegrationRemainingChips libraryObjectId={object.id} isDark={isDark} />
+          </div>
+        )}
 
       </div>
     </Link>

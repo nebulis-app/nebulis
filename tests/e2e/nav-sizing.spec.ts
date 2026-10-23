@@ -17,15 +17,15 @@ import { mockAllRoutes } from './fixtures/mocks';
 
 const ALL_NAV_IDS = [
   'library', 'gallery', 'observations', 'forecast', 'planner',
-  'wishlist', 'catalogs', 'calibrations', 'settings', 'help',
+  'wishlist', 'explore', 'catalogs', 'calibrations', 'settings', 'help',
 ];
 
-/** Nine items, every one except Calibrations. This is not the shipped default
+/** Nine items, every one except Calibrations and Explore. This is not the shipped default
  *  set (Forecast is off by default too); it is the width the "full size in the
  *  gap" case below was measured and tuned against, so it is pinned here on
  *  purpose. Changing which nine ids these are means re-checking that test's
  *  1470px expectations. */
-const DEFAULT_NAV_IDS = ALL_NAV_IDS.filter(id => id !== 'calibrations');
+const DEFAULT_NAV_IDS = ALL_NAV_IDS.filter(id => id !== 'calibrations' && id !== 'explore');
 
 /** Turn every nav item in `ids` on. `settings` is always visible regardless;
  *  the seeded keys mark each hidden-by-default item's one-time default as
@@ -120,10 +120,13 @@ test.describe('Top nav sizing', () => {
 
   test('a compact strip slides clear of the cluster instead of overlapping it', async ({ page }) => {
     // Wide enough for the compact labels to fit the gap, too narrow for that
-    // gap to be split evenly around the bar's centre.
+    // gap to be split evenly around the bar's centre. Every item is on here
+    // (eleven, including the two that are off by default), which needs about
+    // 40px more than the ten it was first tuned against: 1400px overlaps the
+    // status cluster, 1440px clears it.
     await seedNavItems(page);
     await mockAllRoutes(page);
-    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/planner');
 
     await expect.poll(async () => (await navMetrics(page)).fontSize).toBe(12);

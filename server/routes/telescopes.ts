@@ -2,6 +2,9 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
 import fs from 'fs/promises';
+import os from 'os';
+import { randomUUID } from 'crypto';
+import multer from 'multer';
 import type { TelescopeProfile } from '../lib/telescopes.js';
 import {
   getAllProfiles,
@@ -40,6 +43,14 @@ import {
   type TransportKind,
 } from '../lib/telescopeTransports.js';
 import { readIdentity, writeIdentityIfMissing } from '../lib/deviceIdentity.js';
+import {
+  TELESCOPE_PHOTO_LIMITS,
+  TelescopePhotoError,
+  deleteTelescopePhoto,
+  getTelescopePhotoPath,
+  setTelescopePhoto,
+  telescopePhotoVersion,
+} from '../lib/telescopePhotos.js';
 import { invalidateDeviceCache } from '../lib/smbCache.js';
 import { invalidateFtpCache } from '../lib/smb.ftp.js';
 import {
@@ -133,6 +144,7 @@ const TelescopeProfileBodySchema = z.object({
   kind: TelescopeKindSchema.optional(),
   color: z.string().optional(),
   archiveAllFiles: z.boolean().optional(),
+  syncCalibrationFrames: z.boolean().optional(),
   autoImportEnabled: z.boolean().optional(),
   autoImportInterval: z.number().int().min(0).optional(),
   connectionType: z.enum(TRANSPORT_KINDS).optional(),
@@ -238,6 +250,8 @@ router.get('/', (_req: Request, res: Response) => {
       // reimplementing the mount-presence check client-side.
       activeTransportId: selectActiveTransport(p.id, transports)?.id ?? null,
       opticalConfigs: getOpticalConfigsForProfile(p.id),
+      // Changes when the owner's picture of this telescope does; null when it has none. Fetch it from /:id/photo.
+      photoVersion: telescopePhotoVersion(p.id),
     };
   });
   res.apiSuccess(profiles);
@@ -428,6 +442,75 @@ router.delete('/:id/transports/:tid', requireAdmin, (req: Request, res: Response
   res.apiSuccess({ deleted: true });
 });
 
+// ─── The owner's picture of a telescope ─────────────────────────────────────
+
+const photoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+    filename: (_req, _file, cb) => cb(null, `nebulis_scopephoto_${randomUUID()}`),
+  }),
+  limits: { fileSize: TELESCOPE_PHOTO_LIMITS.bytes, files: 1 },
+});
+
+// GET /api/v1/telescopes/:id/photo   The picture (WebP). 404 when the telescope has none.
+router.get('/:id/photo', (req: Request, res: Response) => {
+  const file = getTelescopePhotoPath(String(req.params.id));
+  if (!file) {
+    res.apiError(404, 'NOT_FOUND', 'This telescope has no picture');
+    return;
+  }
+  res.setHeader('Content-Type', 'image/webp');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // The client adds ?v=<photoVersion>, so a changed picture is a new URL and an unchanged one can be kept.
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  // The data folder may sit under a dot-folder (a Docker volume, ~/.nebulis), which sendFile refuses by default.
+  res.sendFile(file, { dotfiles: 'allow' }, (err) => {
+    if (err && !res.headersSent) res.apiError(404, 'NOT_FOUND', 'This telescope has no picture');
+  });
+});
+
+// PUT /api/v1/telescopes/:id/photo   multipart: one picture in "file"
+router.put('/:id/photo', requireAdmin, (req: Request, res: Response) => {
+  photoUpload.single('file')(req, res, (err: unknown) => {
+    void (async () => {
+      if (err) {
+        const tooBig = (err as { code?: string }).code === 'LIMIT_FILE_SIZE';
+        res.apiError(tooBig ? 413 : 400, tooBig ? 'FILE_TOO_LARGE' : 'UPLOAD_FAILED',
+          tooBig ? `Pictures can be up to ${TELESCOPE_PHOTO_LIMITS.bytes / 1024 / 1024} MB` : 'The upload could not be read');
+        return;
+      }
+      const id = String(req.params.id);
+      const tempPath = req.file?.path;
+      if (!getProfileById(id)) {
+        if (tempPath) await fs.rm(tempPath, { force: true });
+        res.apiError(404, 'NOT_FOUND', 'Telescope profile not found');
+        return;
+      }
+      if (!tempPath) {
+        res.apiError(400, 'NO_IMAGE', 'No picture was uploaded');
+        return;
+      }
+      try {
+        res.apiSuccess({ photoVersion: await setTelescopePhoto(id, tempPath) });
+      } catch (e) {
+        if (e instanceof TelescopePhotoError) { res.apiError(422, e.code, e.message); return; }
+        res.apiError(500, 'PHOTO_FAILED', e instanceof Error ? e.message : 'The picture could not be saved');
+      }
+    })();
+  });
+});
+
+// DELETE /api/v1/telescopes/:id/photo
+router.delete('/:id/photo', requireAdmin, (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  if (!getProfileById(id)) {
+    res.apiError(404, 'NOT_FOUND', 'Telescope profile not found');
+    return;
+  }
+  deleteTelescopePhoto(id);
+  res.apiSuccess({ deleted: true });
+});
+
 // ─── Optical configurations (Framing & Mosaic FOV preview) ─────────────────
 // One profile can carry several — e.g. the same ASIAIR-controlled OTA imaged
 // natively and again through a reducer/flattener, each a different focal
@@ -555,6 +638,7 @@ router.delete('/:id', requireAdmin, (req: Request, res: Response) => {
   const profile = getProfileById(id);
   const deleted = deleteProfile(id);
   if (deleted) {
+    deleteTelescopePhoto(id);
     logEvent({
       category: 'telescope',
       event: 'removed',

@@ -7,11 +7,11 @@
  * really only valid for the session(s) it was shot for).
  */
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, skipToken } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { X, Search, Loader2, AlertCircle, Check } from 'lucide-react';
 import { getLibraryObjects, getLibrarySessions, attachCalibrationBundle, type CalibrationAttachmentSummary } from '../lib/api/library';
-import { getInputClass } from './settings/SettingsUI';
+import { getInputClass } from './ui/formClasses';
 import { Modal } from './ui/Modal';
 
 /** "Whole object" is stored server-side as the empty string (see
@@ -53,7 +53,7 @@ export function AttachCalibrationModal({
 
   const { data: sessions, isLoading: sessionsLoading } = useQuery({
     queryKey: ['library-sessions-for-attach', objectId],
-    queryFn: () => getLibrarySessions(objectId!),
+    queryFn: objectId !== null ? () => getLibrarySessions(objectId) : skipToken,
     enabled: objectId !== null,
   });
 
@@ -161,7 +161,7 @@ export function AttachCalibrationModal({
               </div>
 
               <div>
-                <label className={`block text-[13px] font-medium mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                <label className={`block text-[0.8125rem] font-medium mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                   {t('calibrations.attachModal.appliesTo')}
                 </label>
                 <select

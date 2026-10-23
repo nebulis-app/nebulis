@@ -163,7 +163,7 @@ function HistoryRow({
                 // Amber marks the cable, sky marks the network. FTP is a network
                 // transport, so it groups with SMB rather than falling into the
                 // USB colour by being "not smb".
-                <span className={`ml-1 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
+                <span className={`ml-1 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[0.625rem] font-medium ${
                   entry.transportKind === 'local'
                     ? (isDark ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-700 border-amber-200')
                     : (isDark ? 'bg-sky-500/15 text-sky-300 border-sky-500/30' : 'bg-sky-50 text-sky-700 border-sky-200')
@@ -328,7 +328,7 @@ function SyncDetailBody({
                 {entry.error}
               </p>
               {entry.telescopeName && (
-                <p className={`text-[11px] ${
+                <p className={`text-[0.6875rem] ${
                   entry.cancelled
                     ? (isDark ? 'text-amber-300/60' : 'text-amber-600/80')
                     : (isDark ? 'text-red-300/60' : 'text-red-600/80')
@@ -428,7 +428,7 @@ function TouchedSection({
 function NewBadge({ isNew, isDark }: { isNew: boolean; isDark: boolean }) {
   const { t } = useTranslation('library');
   return (
-    <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
+    <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[0.625rem] font-medium ${
       isNew
         ? (isDark ? 'bg-accent-500/15 text-accent-300 border-accent-500/30' : 'bg-accent-50 text-accent-700 border-accent-200')
         : (isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-slate-100 text-slate-500 border-slate-200')

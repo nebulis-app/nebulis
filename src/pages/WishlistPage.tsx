@@ -20,7 +20,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, skipToken } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle, ArrowLeft, Download, Minimize2, Plus, Upload } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
@@ -31,9 +31,9 @@ import { getSettings } from '../lib/api/settings';
 import { bestSlotFor } from '../lib/plannerNight';
 import { DEFAULT_BLOCK_MINUTES, MIN_BLOCK_MINUTES, clampTime, minutesBetween, snapToGrid } from '../components/planner/scheduleGeometry';
 import { WishlistHero } from '../components/planner/WishlistHero';
-import { AddToWishlistModal } from '../components/planner/AddToWishlistModal';
 import { WishlistList } from '../components/planner/WishlistList';
 import { WISHLIST_PRIORITIES, type WishlistItem, type WishlistPriority } from '../lib/api/wishlist';
+import { isOneOf, isRecord } from '../lib/typeGuards';
 
 /** Portable shape for export/import: the server-assigned id and addedAt are
  *  left out on export (a re-import mints its own) and ignored on import if
@@ -51,13 +51,11 @@ interface WishlistExportEntry {
 }
 
 function isValidPriority(v: unknown): v is WishlistPriority {
-  return typeof v === 'string' && (WISHLIST_PRIORITIES as readonly string[]).includes(v);
+  return typeof v === 'string' && isOneOf(WISHLIST_PRIORITIES, v);
 }
 
 function isExportEntry(v: unknown): v is WishlistExportEntry {
-  return typeof v === 'object' && v !== null
-    && typeof (v as Record<string, unknown>).objectId === 'string'
-    && typeof (v as Record<string, unknown>).name === 'string';
+  return isRecord(v) && typeof v.objectId === 'string' && typeof v.name === 'string';
 }
 
 function downloadWishlist(items: WishlistItem[]) {
@@ -92,13 +90,13 @@ export function WishlistPage() {
   // any other way (top nav, a direct link, a refresh) means there's no
   // Planner popup underneath to return to or minimize back into, so that
   // row doesn't make sense.
-  const fromPlanner = Boolean((location.state as { fromPlanner?: boolean } | null)?.fromPlanner);
+  const navState: unknown = location.state;
+  const fromPlanner = isRecord(navState) && Boolean(navState.fromPlanner);
   const queryClient = useQueryClient();
   const wishlist = useWishlist();
   const [addingAll, setAddingAll] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [scheduleWarning, setScheduleWarning] = useState<string | null>(null);
-  const [addModalOpen, setAddModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const plannerQuery = useQuery({
@@ -118,8 +116,9 @@ export function WishlistPage() {
 
   const sessionsQuery = useQuery({
     queryKey: ['planned-sessions', nightStart, nightEnd],
-    queryFn: () => listPlannedSessions({ from: nightStart!, to: nightEnd! }),
-    enabled: nightStart != null && nightEnd != null,
+    queryFn: nightStart != null && nightEnd != null
+      ? () => listPlannedSessions({ from: nightStart, to: nightEnd })
+      : skipToken,
   });
   const sessions = useMemo(() => sessionsQuery.data ?? [], [sessionsQuery.data]);
   const scheduledIds = useMemo(() => new Set(sessions.map(s => s.objectId)), [sessions]);
@@ -275,13 +274,9 @@ export function WishlistPage() {
 
       <div>
         {/* Page-level actions in one row: list title, and import/export/add.
-            "Find things to image" used to sit inline here as a full search
-            field, right on top of WishlistList's own narrower "search your
-            wishlist" filter field below — two nearly-identical search bars
-            stacked that close together read as an accidental duplicate.
-            It's a button + modal now (AddToWishlistModal), same shape as
-            Import/Export, so this row stays one line of actions rather than
-            a line of actions plus a full-width input. */}
+            "Add target" opens Explore, the catalog-wide search and browse,
+            rather than a search field here that would sit right on top of
+            WishlistList's own "search your wishlist" filter. */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <h2 className={`text-base font-semibold shrink-0 ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
             {t('wishlistPage.yourWishlist')}
@@ -319,7 +314,7 @@ export function WishlistPage() {
               {t('wishlistPage.export')}
             </button>
             <button
-              onClick={() => setAddModalOpen(true)}
+              onClick={() => navigate('/explore')}
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold bg-amber-500 hover:bg-amber-600 text-white transition"
             >
               <Plus className="w-4 h-4" />
@@ -359,25 +354,6 @@ export function WishlistPage() {
         />
       </div>
 
-      <AddToWishlistModal
-        isOpen={addModalOpen}
-        onClose={() => setAddModalOpen(false)}
-        idSet={wishlist.idSet}
-        wishlistItems={wishlist.items}
-        onAdd={wishlist.add}
-        onSetPriority={wishlist.setPriority}
-        onSetNotes={wishlist.setNotes}
-        onRemove={wishlist.remove}
-        targets={planner?.targets ?? []}
-        observerLat={observerLat}
-        observerLon={observerLon}
-        minAlt={minAlt}
-        moonIllumination={planner?.moonIllumination}
-        observerTimezone={observerTimezone}
-        isDark={isDark}
-        isNight={isNight}
-        isSpace={isSpace}
-      />
     </div>
   );
 }

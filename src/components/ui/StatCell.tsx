@@ -13,7 +13,7 @@ export function StatCell({
 }) {
   return (
     <div className={`flex flex-col gap-0.5 p-3 rounded-lg ${isDark ? 'bg-slate-800/50' : 'bg-slate-100/70'}`}>
-      <span className={`text-[9.5px] font-semibold uppercase tracking-[0.16em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+      <span className={`text-[0.5938rem] font-semibold uppercase tracking-[0.16em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
         {label}
       </span>
       <span className={`text-sm font-bold leading-tight ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>

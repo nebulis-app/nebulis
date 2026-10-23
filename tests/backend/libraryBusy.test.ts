@@ -99,6 +99,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  vi.unstubAllGlobals();
   await new Promise<void>(resolve => server.close(() => resolve()));
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
 });

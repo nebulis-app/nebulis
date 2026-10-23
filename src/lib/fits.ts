@@ -376,12 +376,37 @@ function mtf(x: number, m: number): number {
  * `targetBg`. Statistics are computed on a sparse sample for speed.
  */
 function computeAutoStretch(data: Float32Array | Float64Array, targetBg: number, sampleRate = 8): StretchParams {
-  const sampled: number[] = [];
+  // Same numbers every time for a plane and a target, and the slider asks for the same plane again and again.
+  let byTarget = stretchCache.get(data);
+  if (!byTarget) { byTarget = new Map(); stretchCache.set(data, byTarget); }
+  const cacheKey = `${targetBg}:${sampleRate}`;
+  const cached = byTarget.get(cacheKey);
+  if (cached) return cached;
+  const params = measureAutoStretch(data, targetBg, sampleRate);
+  byTarget.set(cacheKey, params);
+  return params;
+}
+
+/** Warms everything a first render of this frame needs (debayer and the stretch of each plane), so showing it later is only drawing. */
+export function warmFitsForView(fits: FitsData, stretch: number) {
+  const targetBg = sliderToTargetBg(stretch);
+  const planes = getViewerPlanes(fits);
+  if (planes) for (const plane of [planes.r, planes.g, planes.b]) computeAutoStretch(plane, targetBg);
+  else computeAutoStretch(fits.imageData, targetBg);
+}
+
+const stretchCache = new WeakMap<Float32Array | Float64Array, Map<string, StretchParams>>();
+
+function measureAutoStretch(data: Float32Array | Float64Array, targetBg: number, sampleRate: number): StretchParams {
+  // A typed array sorts numerically without a comparator, several times faster than a plain array of numbers.
+  const all = new Float64Array(Math.ceil(data.length / sampleRate));
+  let count = 0;
   for (let i = 0; i < data.length; i += sampleRate) {
     const v = data[i];
-    if (Number.isFinite(v)) sampled.push(v);
+    if (Number.isFinite(v)) all[count++] = v;
   }
-  sampled.sort((a, b) => a - b);
+  const sampled = all.subarray(0, count);
+  sampled.sort();
   const n = sampled.length;
   if (n === 0) return { lo: 0, hi: 1, m: 0.5 };
 

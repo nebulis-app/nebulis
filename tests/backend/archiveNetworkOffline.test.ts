@@ -330,6 +330,8 @@ describe('with the share mounted and adopted', () => {
 
     expect(await listArchivedObjects(getArchiveConfig())).toMatchObject({ objects: [] });
     expect((await runArchive(getArchiveConfig())).reason).toBe('destination-unusable');
+    // The refusal came from probing the configured host on the SMB port.
+    expect(tcpProbeMock).toHaveBeenCalledWith('nas.local', 445, 2000);
   });
 });
 

@@ -112,7 +112,7 @@ export function ReassignTelescopeModal({
 
               <div className="flex items-center gap-3">
                 {/* Source — read-only */}
-                <div className={`flex-1 rounded-lg border px-3 py-2 ${
+                <div className={`flex-1 min-w-0 rounded-lg border px-3 py-2 ${
                   isDark ? 'bg-slate-800/50 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
                 }`}>
                   <div className="flex items-center gap-2 min-w-0">
@@ -120,7 +120,7 @@ export function ReassignTelescopeModal({
                       className="w-2.5 h-2.5 rounded-full shrink-0"
                       style={{ backgroundColor: nightSafeColor(source.color || '#8b5cf6', isNight) }}
                     />
-                    <span className="text-sm truncate">{source.name}</span>
+                    <span className="text-sm truncate" title={source.name}>{source.name}</span>
                   </div>
                 </div>
 
@@ -128,7 +128,7 @@ export function ReassignTelescopeModal({
 
                 {/* Target — picker */}
                 {candidates.length === 0 ? (
-                  <div className={`flex-1 rounded-lg border px-3 py-2 text-sm italic ${
+                  <div className={`flex-1 min-w-0 rounded-lg border px-3 py-2 text-sm italic ${
                     isDark ? 'bg-slate-800/50 border-slate-700 text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-400'
                   }`}>
                     {t('reassignTelescopeModal.noOtherTelescope')}
@@ -137,7 +137,7 @@ export function ReassignTelescopeModal({
                   <select
                     value={targetId}
                     onChange={e => setTargetId(e.target.value)}
-                    className={`flex-1 rounded-lg border px-3 py-2 text-sm ${
+                    className={`flex-1 min-w-0 rounded-lg border px-3 py-2 text-sm ${
                       isDark
                         ? 'bg-slate-800 border-slate-700 text-slate-200'
                         : 'bg-white border-slate-200 text-slate-700'

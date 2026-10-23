@@ -5,7 +5,7 @@ const NGC188 = { catalogName: 'NGC188', aliases: ['C1'] };
 
 describe('nicknamesFromFolderNames', () => {
   it('takes the name after the designation in a labelled folder', () => {
-    expect(nicknamesFromFolderNames(['C 1 - Polarissima Cluster'], 'NGC188', NGC188)).toEqual(['Polarissima Cluster']);
+    expect(nicknamesFromFolderNames(['C 1 - Cepheus Old Cluster'], 'NGC188', NGC188)).toEqual(['Cepheus Old Cluster']);
   });
 
   it('drops a name the catalog already gives, however it is spelled', () => {
@@ -20,7 +20,7 @@ describe('nicknamesFromFolderNames', () => {
   });
 
   it('skips _sub folders and de-duplicates', () => {
-    expect(nicknamesFromFolderNames(['C 1_sub', 'C 1 - Polarissima Cluster', 'C 1 - Polarissima  cluster'], 'NGC188', NGC188)).toEqual(['Polarissima Cluster']);
+    expect(nicknamesFromFolderNames(['C 1_sub', 'C 1 - Cepheus Old Cluster', 'C 1 - Cepheus Old  cluster'], 'NGC188', NGC188)).toEqual(['Cepheus Old Cluster']);
   });
 });
 

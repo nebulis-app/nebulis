@@ -86,7 +86,9 @@
     "showingRange": "Showing {{from}}–{{to}} of {{total}} observations",
     "previousPage": "Previous page",
     "nextPage": "Next page",
-    "pageOfTotal": "{{page}} / {{totalPages}}"
+    "pageOfTotal": "{{page}} / {{totalPages}}",
+    "columnRig": "Rig",
+    "noRig": "No telescope"
   },
   "toolbar": {
     "viewGroup": "View",
@@ -98,7 +100,8 @@
     "today": "Today",
     "allTelescopes": "All telescopes",
     "filterByTelescope": "Filter by telescope",
-    "share": "Share"
+    "share": "Share",
+    "allTrains": "{{name}} (all trains)"
   },
   "newObservationForm": {
     "objectLabel": "Object",
@@ -166,7 +169,16 @@
       "capturedOn": "Captured on {{name}}. Click to see its other sessions.",
       "reassignTitle": "Reassign to a different telescope",
       "reassignTo": "Reassign to",
-      "reassignFailed": "Reassignment failed"
+      "reassignFailed": "Reassignment failed",
+      "opticsTitle": "Optical train",
+      "opticsAuto": "Automatic",
+      "opticsAutoFits": "FITS: {{focal}}",
+      "opticsAutoNone": "not detected",
+      "opticsSource": {
+        "manual": "Chosen for this night",
+        "fits": "Matched from the focal length in the FITS",
+        "only": "The telescope's only configuration"
+      }
     },
     "objectPanel": {
       "about": "About {{name}}",
@@ -212,6 +224,8 @@
     "subframesPanel": {
       "scanTrails": "Scan Trails",
       "scanTrailsTitle": "Scan all FITS subframes for satellite trails",
+      "analyzeFrames": "Analyze Frames",
+      "analyzeFramesTitle": "Measure every raw frame of this night and flag clouds, star trails, soft focus, streaks and noise",
       "telescopeOfflineTitle": "Telescope is offline. Connect to download subs.",
       "downloadFromTelescopeTitle": "Download all raw subframes for this session from the telescope to your library",
       "syncSubs": "Sync Subs",
@@ -221,11 +235,6 @@
       "downloadFailed": "Download failed",
       "zipping": "Zipping {{done}}/{{total}}…",
       "deleteAllTitle": "Delete all subframes for this session",
-      "frameTitle": "{{name}} (frame {{index}} of {{total}})",
-      "showingSampled": "Showing {{shown}} of {{total}}, sampled across the session",
-      "showingAll": "Showing all {{total}}",
-      "viewAll": "View all {{total}}",
-      "openViewer": "Open viewer",
       "empty": "No subframes downloaded yet. Connect your telescope and use Download Subs to sync them."
     },
     "sessionFileGrid": {
@@ -259,6 +268,13 @@
       "addMore": "Add more",
       "moveToImages": "Mark as unprocessed"
     },
+    "nightPanel": {
+      "title": "That night",
+      "syncHint": "Sync subframes to see when you captured",
+      "imaged": "Imaged {{range}}",
+      "cloud": "{{label}} · {{percent}}% cloud",
+      "moon": "Moon {{percent}}%"
+    },
     "hero": {
       "breadcrumb": "Breadcrumb",
       "observations": "Observations",
@@ -281,6 +297,7 @@
       "deleteTitle": "Delete observation"
     },
     "page": {
+      "sessionDetails": "Session details",
       "unknownDate": "Unknown date",
       "rawFitsOnly": "Raw FITS frames only",
       "noImagesCaptured": "No images captured",
@@ -439,7 +456,153 @@
       "filterTypesSelected_other": "{{selected}} of {{count}} filter types selected",
       "selectAtLeastOneFilter": "Select at least one filter type",
       "back": "Back",
-      "discardSelection": "Discard your session selection?"
+      "discardSelection": "Discard your session selection?",
+      "keptOnlyOption": "Only sub-frames kept by Frame Analysis",
+      "keptOnlyHint": "Leaves out sub-frames you rejected or that were graded bad. Nights not measured yet go in whole."
+    },
+    "frameAnalysisModal": {
+      "title": "Frame Quality",
+      "measuring": "Measuring {{done}} of {{total}}",
+      "framesMeasured_one": "{{count}} frame measured",
+      "framesMeasured_other": "{{count}} frames measured",
+      "stop": "Stop",
+      "measureAgain": "Measure Again",
+      "measureAgainTitle": "Discard the saved measurements for this night and read every frame again",
+      "close": "Close",
+      "loadFailed": "The frames could not be analyzed",
+      "noFrames": "No raw FITS sub-frames for this night. Sync them from the telescope first.",
+      "noMatch": "No frames match this filter.",
+      "waiting": "Waiting",
+      "notMeasured": "Not measured",
+      "unreadable": "Could not be read: {{reason}}",
+      "typicalFrame": "A typical frame this night: {{stars}} stars, stars {{fwhm}} px wide, {{elongation}} times longer than wide. Each frame is judged against that.",
+      "filterLabel": "Show",
+      "sortLabel": "Sort",
+      "filters": {
+        "all": "All",
+        "good": "Good",
+        "flagged": "Flagged",
+        "bad": "Bad"
+      },
+      "sorts": {
+        "score": "Score",
+        "time": "Time",
+        "stars": "Stars",
+        "sharpness": "Sharpness",
+        "roundness": "Roundness"
+      },
+      "grades": {
+        "good": "Good",
+        "fair": "Fair",
+        "bad": "Bad"
+      },
+      "gradeCount": {
+        "good": "{{count}} Good",
+        "fair": "{{count}} Fair",
+        "bad": "{{count}} Bad"
+      },
+      "flags": {
+        "clouds": "Clouds",
+        "trails": "Star trails",
+        "soft": "Soft stars",
+        "streak": "Streak",
+        "noStars": "No stars",
+        "noisy": "Noisy"
+      },
+      "stats": {
+        "stars": "Stars",
+        "width": "Width",
+        "round": "Round",
+        "noise": "Noise",
+        "signal": "Signal",
+        "pixels": "{{value}} px",
+        "times": "{{value}}×"
+      },
+      "reasons": {
+        "noStars": "Only {{stars}} stars found, against about {{typical}} in a typical frame this night. The sky was covered or the lens was fogged.",
+        "clouds": "{{stars}} stars against about {{typical}} in a typical frame ({{percent}}% fewer).",
+        "cloudsBrighter": "The sky is also brighter, which is what cloud lit from below does.",
+        "trailsPlain": "Stars are {{ratio}} times longer than wide. The telescope moved or was shaken during the exposure.",
+        "trailsPlainAngle": "Stars are {{ratio}} times longer than wide, stretched toward {{angle}}°. The telescope moved or was shaken during the exposure.",
+        "trailsSlight": "Stars are {{ratio}} times longer than wide. A slight smear that will hardly show once the frames are stacked.",
+        "trailsSlightAngle": "Stars are {{ratio}} times longer than wide, stretched toward {{angle}}°. A slight smear that will hardly show once the frames are stacked.",
+        "soft": "Stars are {{fwhm}} px wide against {{typical}} px typical: out of focus, or the air was unsteady.",
+        "streak": "A straight streak crosses the frame at about {{angle}}° (a satellite or aeroplane). Stacking with rejection usually removes it.",
+        "noisy": "Background noise is {{percent}}% above the night's typical frame."
+      },
+      "selectHint": "Click frames to select them.",
+      "selectedCount_one": "{{count}} frame selected",
+      "selectedCount_other": "{{count}} frames selected",
+      "selectBad": "Select All Bad",
+      "selectFlagged": "Select Flagged",
+      "clear": "Clear",
+      "discard": "Discard…",
+      "keepFrames": "Keep frames",
+      "confirmDiscard_one": "Delete {{count}} frame from your library for good?",
+      "confirmDiscard_other": "Delete {{count}} frames from your library for good?",
+      "confirmDiscardLinked_one": "Delete {{count}} frame for good? {{linked}} of them are in a linked folder, so the original is deleted from disk and Nebulis has no other copy.",
+      "confirmDiscardLinked_other": "Delete {{count}} frames for good? {{linked}} of them are in a linked folder, so the originals are deleted from disk and Nebulis has no other copies.",
+      "discardFailures": "Discarded {{removed}}. {{count}} could not be removed:\n{{details}}",
+      "nightLabel": "Night",
+      "nightOption": "{{date}} ({{count}})",
+      "selectFrame": "Select {{name}}",
+      "markKeep": "Mark keep",
+      "markReject": "Mark reject",
+      "followGrade": "Clear mark"
+    },
+    "frameList": {
+      "notMeasuredTitle": "Open the night to measure its frames.",
+      "measuredOfTitle": "Frame analysis is still running or was cut short for this night.",
+      "allClearTitle": "All {{count}} frames measured. No clouds, trails or streaks found.",
+      "flaggedTitle": "Some frames show clouds, star trails, streaks, soft focus or noise. Open the night to review them.",
+      "openFrame": "Open frame",
+      "allClearShort": "Looks clear",
+      "measuredOf": "Measured {{measured}} of {{total}}",
+      "allClear": "No clouds, trails or streaks found",
+      "flagged": "{{flagged}} flagged",
+      "flaggedAndBad": "{{flagged}} flagged · {{bad}} bad",
+      "flaggedOnly": "Flagged only",
+      "previews": "Previews",
+      "notMeasured": "Not measured",
+      "moreFlags": "+{{count}}",
+      "longestGap": "Longest gap {{duration}} at {{time}}",
+      "timelineLabel": "One mark per frame along the night, coloured by grade",
+      "column": {
+        "time": "Time",
+        "score": "Score",
+        "flags": "Flags",
+        "stars": "Stars",
+        "fwhm": "Width px",
+        "round": "Trail",
+        "noise": "Noise",
+        "snr": "Signal",
+        "sky": "Sky",
+        "file": "File"
+      },
+      "sortHint": {
+        "time": "Sort by capture time",
+        "score": "Sort by score (0 to 100), worst first. Compares each frame with the rest of the night.",
+        "flags": "Sort by how much is wrong with the frame: clouds, streaks, trailing",
+        "stars": "Sort by stars found",
+        "fwhm": "Sort by star width (FWHM, full width at half maximum) in pixels, sharpest first. Lower is sharper focus and steadier air.",
+        "round": "Sort by star elongation. 1.00 is perfectly round, higher means stretched stars from tracking or wind.",
+        "noise": "Sort by background noise, quietest first. Lower is cleaner.",
+        "snr": "Sort by signal: how far the brightest stars rise above the noise (×). Higher is better.",
+        "sky": "Sort by sky brightness (raw counts). A jump between frames can mean clouds, haze or the Moon.",
+        "file": "Sort by file name"
+      },
+      "menu": {
+        "open": "Open",
+        "download": "Download",
+        "copyLink": "Copy link",
+        "copied": "Copied"
+      },
+      "exportCsv": "Export CSV",
+      "exportCsvTitle": "Download this night's numbers as a CSV, with an accepted column for PixInsight or Siril scripts",
+      "review": {
+        "keep": "Kept",
+        "reject": "Rejected"
+      }
     },
     "satelliteTrailScanModal": {
       "title": "Satellite Trail Detection",
@@ -536,5 +699,85 @@
     "moreCount_one": "+{{count}} more",
     "moreCount_other": "+{{count}} more",
     "approximate": "approximate"
+  },
+  "planOutcome": {
+    "status": {
+      "upcoming": "Planned",
+      "in_progress": "In progress",
+      "awaiting_import": "Awaiting import",
+      "done": "Done",
+      "partial": "Partly done",
+      "missed": "Missed",
+      "skipped": "Skipped"
+    },
+    "achievedOfPlanned": "{{achieved}}/{{planned}}",
+    "resultTitle_one": "Planner: {{status}} · {{achieved}} of {{planned}} planned ({{count}} block)",
+    "resultTitle_other": "Planner: {{status}} · {{achieved}} of {{planned}} planned ({{count}} blocks)",
+    "plannedLine": "{{status}} · {{planned}} planned",
+    "plannedTitle": "{{name}}: {{status}}, {{planned}} planned. Open in the Planner."
+  },
+  "stackingExport": {
+    "title": "Export for stacking",
+    "close": "Close",
+    "intro": "The lights you keep, with the darks, flats, flat darks and bias from the calibration library that match them, in one ZIP ready for your stacking software.",
+    "nights": "Nights",
+    "layout": "Layout",
+    "wbpp": "PixInsight WBPP",
+    "siril": "Siril",
+    "wbppHint": "One folder tree; WBPP sorts the frames from their headers. Several nights go in NIGHT_<date> folders: add NIGHT as a grouping keyword so each night gets its own flats.",
+    "sirilHint": "One folder per night and filter with lights, darks, flats and biases, as Siril’s preprocessing scripts expect. Darks are repeated in each folder.",
+    "includeNotKept": "Include sub-frames not kept",
+    "planFailed": "Could not match the calibration frames.",
+    "matching": "Matching calibration frames…",
+    "summary": "{{lights}} lights · {{calibration}} calibration frames · {{size}}",
+    "excluded_one": "{{count}} not kept left out",
+    "excluded_other": "{{count}} not kept left out",
+    "ready": "Calibration complete",
+    "problems_one": "{{count}} problem",
+    "problems_other": "{{count}} problems",
+    "fixHint": "Add or attach the missing frames, then reopen this dialog. You can still export: stackers skip what is missing.",
+    "openLibrary": "Open the calibration library",
+    "building": "Building the ZIP",
+    "progress": "{{done}} / {{total}} files",
+    "cancel": "Cancel",
+    "started": "Download started.",
+    "failed": "The export failed.",
+    "download": "Download ZIP",
+    "noFilter": "No filter",
+    "gain": "gain {{value}}",
+    "lights_one": "{{count}} light",
+    "lights_other": "{{count}} lights",
+    "lightsKept": "{{kept}} / {{total}} kept",
+    "frames_one": "{{count}} frame",
+    "frames_other": "{{count}} frames",
+    "attached": "attached",
+    "sameNight": "same night",
+    "biasNotNeeded": "Not needed: flat darks calibrate the flats",
+    "flatDarkNotNeeded": "None: bias calibrates the flats",
+    "row": {
+      "dark": "Darks",
+      "flat": "Flats",
+      "flatDark": "Flat darks",
+      "bias": "Bias"
+    },
+    "issue": {
+      "no_dark": "No darks at {{exposure}}s, gain {{gain}}, bin {{bin}}",
+      "dark_temp_far": "Nearest darks are {{delta}} °C away ({{bundle}})",
+      "dark_expired": "Older than the dark/bias validity set in Settings",
+      "no_flat": "No flats for {{filter}}",
+      "flat_other_night": "Shot {{days}} d from this night: check that nothing moved in the optical train",
+      "no_flat_calibration": "No flat darks or bias to calibrate the flats",
+      "bias_expired": "Bias older than the dark/bias validity set in Settings",
+      "unknown_settings": "Exposure not found in the FITS header or the file name: darks may not match"
+    },
+    "selectAll": "Select all",
+    "selectNone": "Select none",
+    "noNights": "No night of this object has sub-frames.",
+    "notMeasured_one": "Sub-frame quality of {{nights}} is not measured yet, so all its sub-frames go in. Measure it to leave the poor ones out.",
+    "notMeasured_other": "Sub-frame quality of {{count}} nights ({{nights}}) is not measured yet, so all their sub-frames go in. Measure them to leave the poor ones out.",
+    "notMeasuredViewer": "An admin can measure it.",
+    "measure_one": "Measure {{count}} sub-frame",
+    "measure_other": "Measure {{count}} sub-frames",
+    "measuring": "Measuring sub-frame quality {{done}} / {{total}}"
   }
 }

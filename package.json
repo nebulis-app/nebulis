@@ -13,6 +13,7 @@
     "relay:check": "npm --prefix workers/push-relay test && npm --prefix workers/push-relay run typecheck",
     "relay:deploy:dry": "npm run relay:check && npm --prefix workers/push-relay run deploy:dry",
     "relay:deploy": "npm run relay:check && npm --prefix workers/push-relay run deploy && curl -fsS https://push.nebulis.app/health && echo",
+    "docker:beta": "npm run public:sync -- --push --overwrite --beta",
     "start": "NODE_ENV=production tsx server/index.ts",
     "verify": "node scripts/verify.mjs",
     "test": "vitest run",

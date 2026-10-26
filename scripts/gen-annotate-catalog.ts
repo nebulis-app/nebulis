@@ -10,7 +10,8 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { getCatalog, getPlannerCatalog } from '../server/lib/dsoCatalog';
+import { getCatalog } from '../server/lib/dsoCatalog';
+import { getAnnotationCatalog } from '../server/lib/annotate/ringCentres';
 import { annotateFrame } from '../server/lib/annotate/catalogQuery';
 import { approximateWcs, type Wcs } from '../server/lib/annotate/wcs';
 
@@ -19,7 +20,7 @@ if (!outDir) throw new Error('usage: gen-annotate-catalog.ts <NebulisDesktop dir
 
 const DESIGNATION_NAME = /^(NGC|IC|M|C)\s?\d+$/i;
 const base = new Set(getCatalog().map(e => e.id));
-const rows = getPlannerCatalog().map(e => ({
+const rows = getAnnotationCatalog().map(e => ({
   id: e.id,
   n: e.name,
   t: e.type,
@@ -49,7 +50,7 @@ const DWARF: Wcs = {
 const approx = (ra: number, dec: number, w: number, h: number, long: number) =>
   approximateWcs({ raDeg: ra, decDeg: dec, width: w, height: h, longSideDeg: long });
 const at = (id: string): { ra: number; dec: number } => {
-  const e = getPlannerCatalog().find(x => x.id === id);
+  const e = getAnnotationCatalog().find(x => x.id === id);
   if (!e) throw new Error(`no catalog entry ${id}`);
   return { ra: e.ra * 15, dec: e.dec };
 };

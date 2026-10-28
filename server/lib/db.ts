@@ -291,6 +291,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_telescopeOpticalConfigs_profile
     ON telescopeOpticalConfigs(profileId);
 
+  -- What a custom rig ('other'/'asiair') shoots with: the camera's sensor and the
+  -- filters owned, so a suggested integration plan only names filters that exist.
+  -- A smart telescope never has a row: it is a colour camera and its filter names
+  -- are learned from its own frames. Kept out of telescopeProfiles on purpose so
+  -- the profile update path stays untouched.
+  CREATE TABLE IF NOT EXISTS telescopeRigSettings (
+    profileId   TEXT PRIMARY KEY REFERENCES telescopeProfiles(id) ON DELETE CASCADE,
+    sensorType  TEXT CHECK (sensorType IN ('color', 'mono')),
+    filtersJson TEXT NOT NULL DEFAULT '[]',
+    updatedAt   TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS notes (
     id                  TEXT PRIMARY KEY,
     objectId            TEXT NOT NULL,
@@ -309,6 +321,13 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_notes_objectId ON notes(objectId);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_objectId_date ON notes(objectId, date);
+
+  -- One free-text note about the object itself (not a night); separate from the per-night notes above.
+  CREATE TABLE IF NOT EXISTS objectNotes (
+    objectId  TEXT PRIMARY KEY,
+    text      TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
 
   CREATE TABLE IF NOT EXISTS wishlist (
     id               TEXT PRIMARY KEY,
@@ -1325,12 +1344,6 @@ db.exec(`
     db.prepare('ALTER TABLE librarySessions ADD COLUMN focalResolved INTEGER NOT NULL DEFAULT 0').run();
   }
 
-  // Audit 4 (indexes): `getAllFavorites` filters by userId; the table's
-  // primary key is (objectId, userId) which doesn't help. Same shape for
-  // `getAllImageFavorites`. Both queries fire on every /library/objects load.
-  db.prepare('CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(userId)').run();
-  db.prepare('CREATE INDEX IF NOT EXISTS idx_imageFavorites_user ON imageFavorites(userId)').run();
-
   const loCols = db.prepare<[], { name: string }>('PRAGMA table_info(libraryObjects)').all();
   if (!loCols.some(c => c.name === 'primaryTelescopeId')) {
     db.prepare('ALTER TABLE libraryObjects ADD COLUMN primaryTelescopeId TEXT').run();
@@ -1867,6 +1880,14 @@ for (const table of ['alertChannels', 'alertDevices']) {
   }
 }
 
+// Audit 4 (indexes): `getAllFavorites` filters by userId; the table's primary
+// key is (objectId, userId) which doesn't help. Same shape for
+// `getAllImageFavorites`. Both queries fire on every /library/objects load.
+// Created here, after the rebuilds above, because a database that predates the
+// userId column has no such column to index until the rebuild has run.
+db.prepare('CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(userId)').run();
+db.prepare('CREATE INDEX IF NOT EXISTS idx_imageFavorites_user ON imageFavorites(userId)').run();
+
 // ─── Migrate JSON blob → columnar appSettings (runs once) ──────────────────
 {
   // Typed prepared statements — SQL trust boundary enforced by settings/appSettings schema.
@@ -2036,6 +2057,7 @@ const RESET_LIBRARY_TABLES = [
   'libraryObjects',
   'libraryMeta',
   'notes',
+  'objectNotes',
   'wishlist',
   'favorites',
 ] as const;

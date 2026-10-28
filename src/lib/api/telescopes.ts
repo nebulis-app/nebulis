@@ -105,6 +105,18 @@ export interface TelescopeProfile {
   activeOpticalConfigId: string | null;
   /** Changes whenever the owner's picture of this telescope does; null when it has none. */
   photoVersion?: number | null;
+  /** What a custom rig (`other`, `asiair`) shoots with, for the suggested integration goals. A
+   *  smart telescope has none: it is a colour camera. */
+  rig?: TelescopeRig;
+  /** Filter names this telescope has really shot through, most used first, read from its own frames. */
+  usedFilters?: string[];
+}
+
+export interface TelescopeRig {
+  /** Null until the owner says; the suggestion then asks. */
+  sensorType: 'color' | 'mono' | null;
+  /** Filter names as the owner calls them, e.g. "Ha", "L-eXtreme". */
+  filters: string[];
 }
 
 /** One named optical setup on a telescope profile — e.g. "Native" vs. "0.8x
@@ -179,7 +191,7 @@ type TelescopeCreateInput =
     | 'archiveAllFiles'
     | 'syncCalibrationFrames'
     | 'trackDeviceIdentity'
-    | 'opticalConfigs' | 'activeOpticalConfigId'
+    | 'opticalConfigs' | 'activeOpticalConfigId' | 'rig' | 'usedFilters'
   >
   & {
     connectionType?: ConnectionType;
@@ -346,6 +358,12 @@ export const deleteProfileTransport = (profileId: string, transportId: string) =
 // can carry several named optical setups — e.g. "Native" and "0.8x Reducer"
 // on the same OTA. Manage them from AddTelescopeModal in edit mode; pick
 // which is active via updateTelescope's `activeOpticalConfigId`.
+
+export const saveTelescopeRig = (profileId: string, rig: TelescopeRig) =>
+  fetchJSON<TelescopeRig>(`/telescopes/${encodeURIComponent(profileId)}/rig`, {
+    method: 'PUT',
+    body: JSON.stringify(rig),
+  });
 
 export type OpticalConfigInput = Omit<TelescopeOpticalConfig, 'id' | 'profileId' | 'createdAt'>;
 

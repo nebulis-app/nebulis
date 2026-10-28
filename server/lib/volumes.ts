@@ -15,6 +15,7 @@ import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { isRecord } from './typeGuards.js';
+import { trimTrailing } from './trimTrailing.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -224,12 +225,12 @@ export function normalizeUserPath(input: string, platform: NodeJS.Platform = pro
     // Drop a trailing separator ("C:\Astro\" and "\\host\share\"), then restore
     // it for a drive root we just bared ("C:\" -> "C:" -> "C:\"). Forward
     // slashes are left alone: path.win32 accepts "//host/share" and "C:/Astro".
-    s = s.replace(/[\\/]+$/, '');
+    s = trimTrailing(s, '\\/');
     if (/^[A-Za-z]:$/.test(s)) s += '\\';
     return s;
   }
 
-  s = s.replace(/\/+$/, '');
+  s = trimTrailing(s, '/');
   return s || '/';
 }
 

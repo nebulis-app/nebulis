@@ -129,8 +129,9 @@ interface FilterRecommendationPanelProps {
   /** Drop the boxed surface and padding, for sitting directly on a background
    *  the caller already provides (the object hero). */
   bare?: boolean;
-  /** Heading and both rigs on one wrapping row with the short chip labels,
-   *  for a panel where three rows would set its height (the object hero). */
+  /** The heading, then both rigs on one row that never wraps, with the short
+   *  chip labels, for a panel where three rows would set its height (the
+   *  object hero). */
   inline?: boolean;
 }
 
@@ -145,14 +146,18 @@ export function FilterRecommendationPanel({
   if (inline) {
     const rigClass = `text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`;
     return (
-      <div className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 ${className}`}>
-        <span className={`mr-1 text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+      <div className={className}>
+        <p className={`mb-2 text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
           {t('filterRecommendations.heading')}
-        </span>
-        <span className={rigClass}>{t('filterRecommendations.colorRig')}</span>
-        <RecommendationChip filterKey={recommendations.color} isDark={isDark} short />
-        <span className={`ml-1 ${rigClass}`}>{t('filterRecommendations.monoRig')}</span>
-        <RecommendationChip filterKey={recommendations.mono} isDark={isDark} short />
+        </p>
+        {/* One row that never wraps, so a color and a mono pick always read as
+            a pair. The heading sits above it for that reason. */}
+        <div className="flex flex-nowrap items-center gap-x-2">
+          <span className={rigClass}>{t('filterRecommendations.colorRig')}</span>
+          <RecommendationChip filterKey={recommendations.color} isDark={isDark} short />
+          <span className={`ml-2 ${rigClass}`}>{t('filterRecommendations.monoRig')}</span>
+          <RecommendationChip filterKey={recommendations.mono} isDark={isDark} short />
+        </div>
       </div>
     );
   }

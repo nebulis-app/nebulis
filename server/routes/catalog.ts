@@ -4,6 +4,7 @@ import { strictRateLimiter } from '../middleware/rateLimit.js';
 import fs from 'fs';
 import path from 'path';
 import sharp from '../lib/sharp-optional.js';
+import { assertSafeRaster } from '../lib/imageSniff.js';
 import { getCatalogEntry, searchCatalog, getAllCatalogEntries, getAlsoKnownAs } from '../data/catalog.js';
 import { parsePagination, paginate } from '../middleware/pagination.js';
 import { raToDegs, decToDegs } from '../lib/astroCalc.js';
@@ -218,6 +219,7 @@ async function runResize(
     // Used by tvOS full-screen so a 3:2 master fills a 16:9 TV without bars.
     // `withoutEnlargement` is omitted in cover mode — letterboxing a small
     // master into a TV frame defeats the point of asking for a fill.
+    await assertSafeRaster(masterPath);
     await sharp(masterPath)
       .resize(w, h, fit === 'cover'
         ? { fit: 'cover', position: 'centre' }
@@ -427,7 +429,7 @@ router.get('/:id/image', async (req: Request, res: Response) => {
     s.on('error', () => { if (!res.headersSent) res.status(500).end(); });
     s.pipe(res);
   } catch (err) {
-    console.error(`[catalog] resize failed for ${id} ${width}x${height}:`, err);
+    console.error('[catalog] resize failed for', id, `${width}x${height}:`, err);
     if (!res.headersSent) res.apiError(500, 'RESIZE_FAILED', 'Failed to resize image');
   }
 });
@@ -531,6 +533,7 @@ router.get('/:id/sources', async (req: Request, res: Response) => {
       const stat = fs.statSync(c.path);
       if (!stat.isFile() || stat.size === 0) continue;
       // Cheap header read — no full decode.
+      await assertSafeRaster(c.path);
       const meta = await sharp(c.path).metadata();
       sources.push({
         source: c.source,

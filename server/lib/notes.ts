@@ -4,6 +4,8 @@
 import { randomUUID } from 'crypto';
 import SunCalc from 'suncalc';
 import db from './db.js';
+import { activeSiteTimeZone } from './siteTimeZone.js';
+import { zonedDateTimeToUtc } from './timezone.js';
 
 export interface ObservationNote {
   id: string;
@@ -62,7 +64,11 @@ export function createNote(data: Partial<ObservationNote> & { objectId: string; 
   // Auto-calculate moon phase if date is provided
   let moonPhase = data.moonPhase || null;
   let moonIllumination = data.moonIllumination || null;
-  const parsedDate = data.date && data.date !== 'unknown' ? new Date(data.date + 'T22:00:00') : null;
+  // 22:00 at the site, not on the server's clock (UTC in Docker).
+  let parsedDate: Date | null = null;
+  if (data.date && data.date !== 'unknown') {
+    try { parsedDate = zonedDateTimeToUtc(data.date, { hour: 22 }, activeSiteTimeZone()); } catch { parsedDate = null; }
+  }
   if (parsedDate && !isNaN(parsedDate.getTime()) && (!moonPhase || !moonIllumination)) {
     const moonData = SunCalc.getMoonIllumination(parsedDate);
     moonIllumination = moonIllumination ?? Math.round(moonData.fraction * 100);

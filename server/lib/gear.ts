@@ -10,6 +10,8 @@
 import { randomUUID } from 'crypto';
 import db from './db.js';
 import { isRecord } from './typeGuards.js';
+import { activeSiteTimeZone } from './siteTimeZone.js';
+import { addDaysToDateKey, localDateKey } from './timezone.js';
 
 export const GEAR_KINDS = [
   'filter', 'camera', 'lens', 'reducer', 'mount', 'tripod', 'dewHeater', 'power', 'computer', 'accessory', 'other',
@@ -345,7 +347,8 @@ export function setCheck(kitId: string, night: string, itemKey: string, checked:
   if (key === '') throw new GearError('INVALID', 'Which line?');
   if (checked) stmts.check.run(kitId, night, key, now.toISOString());
   else stmts.uncheck.run(kitId, night, key);
-  const cutoff = new Date(now.getTime() - CHECK_RETENTION_DAYS * 86_400_000).toISOString().slice(0, 10);
+  // Night keys are site dates, so the cutoff is one too.
+  const cutoff = addDaysToDateKey(localDateKey(now, activeSiteTimeZone()), -CHECK_RETENTION_DAYS);
   stmts.pruneChecks.run(cutoff);
   return getChecks(kitId, night);
 }

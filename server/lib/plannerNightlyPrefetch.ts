@@ -18,7 +18,7 @@ import { getActiveSite } from './observingSites.js';
 import { findCachedMaster, prewarmThumbnails } from './catalogPrefetch.js';
 import { prefetchSkyImage } from './skyImage.js';
 import { purgeJunkFiles, purgeStaleImportTmp, pruneImportLog } from './library/housekeeping.js';
-import { prewarmSessionThumbnails } from './library/sessionThumbnailPrewarm.js';
+import { runPostImport } from './library/postImport.js';
 import { pruneSystemLog } from './systemLog.js';
 import { refreshForecastCache } from './forecastCache.js';
 import { checkAndUpdatePacks } from './catalogPack/updater.js';
@@ -145,9 +145,9 @@ async function runNightlyTasks(): Promise<void> {
   }
 
   try {
-    await prewarmSessionThumbnails('nightly');
+    await runPostImport({ reason: 'nightly' }).done;
   } catch (err) {
-    console.error('[nightly] Session thumbnail prewarm failed:', err instanceof Error ? err.message : err);
+    console.error('[nightly] Post-import sweep failed:', err instanceof Error ? err.message : err);
   }
 
   try {

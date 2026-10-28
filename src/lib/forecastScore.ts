@@ -96,27 +96,6 @@ export function scoreLabel(score: number, t: TFunc): string {
   return t(bandFor(score).labelKey, { ns: 'common' });
 }
 
-/** Translates the coarse night rating from server/lib/forecastCache.ts's
- *  rateNightConditions (a *different*, deliberately deferred (see the plan's
- *  chunk 9 item) score-band scheme than SCORE_BANDS above — 80/60/40/20
- *  thresholds vs this file's 85/70/55/40/25 — so this only translates the
- *  label text, it does not remap which band a score falls into. Swapping the
- *  server's own rating for this file's scoreLabel would silently change the
- *  displayed word for the same score in some ranges, which is a scoring
- *  decision, not a translation one. */
-const SCORE_RATING_KEYS: Record<string, string> = {
-  Excellent: 'scoreBand.excellent',
-  Good: 'scoreBand.good',
-  Fair: 'scoreBand.fair',
-  Poor: 'scoreBand.poor',
-  Bad: 'scoreBand.bad',
-};
-
-export function translateScoreRating(t: TFunc, rating: string): string {
-  const key = SCORE_RATING_KEYS[rating];
-  return key ? t(key, { ns: 'common' }) : rating;
-}
-
 export function scoreTextColor(score: number, isNight = false): string {
   return bandFor(score, isNight).color;
 }

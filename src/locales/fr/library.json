@@ -422,7 +422,51 @@
       "save": "Enregistrer",
       "invalidHours": "Saisissez un nombre d’heures entre 0 et 1000.",
       "missingFilterName": "Donnez un nom au nouveau filtre.",
-      "saveFailed": "Impossible d’enregistrer les objectifs."
+      "saveFailed": "Impossible d’enregistrer les objectifs.",
+      "suggest": {
+        "button": "Suggérer des objectifs",
+        "rig": "Caméra",
+        "rigs": {
+          "color": "Caméra couleur",
+          "mono": "Caméra mono"
+        },
+        "moon": "Lune",
+        "moons": {
+          "dark": "Nuits sombres",
+          "mixed": "La plupart des nuits",
+          "any": "L’ignorer"
+        },
+        "tier": "Qualité",
+        "tiers": {
+          "standard": "Standard",
+          "deep": "Poussé",
+          "showpiece": "Vitrine"
+        },
+        "total": "{{hours}} h au total",
+        "class": {
+          "bright": "lumineux",
+          "moderate": "modéré",
+          "faint": "faible",
+          "very-faint": "très faible"
+        },
+        "basisSurface": "Brillance de surface moyenne {{sb}} mag/arcsec², classé {{brightness}}.",
+        "basisType": "Ni taille ni magnitude dans le catalogue, classé {{brightness}} d’après le type d’objet.",
+        "skyLine": "Bortle {{bortle}}, filtres {{band}} : ciel et Lune x{{factor}}.",
+        "bands": {
+          "narrowband": "à bande étroite",
+          "broadband": "à bande large"
+        },
+        "bortleAssumed": "Le site actif n’a pas de classe Bortle, Bortle {{bortle}} est donc supposé. Définissez-la dans Réglages, sous Sites d’observation.",
+        "disclaimer": "Une estimation de planification, pas une mesure. Rien n’est enregistré avant d’appuyer sur Enregistrer.",
+        "close": "Fermer",
+        "apply": "Utiliser ces heures",
+        "shootWith": "Photographier avec",
+        "shootAny": "Non précisé",
+        "fellBack": "Votre matériel n’a pas les filtres recommandés ({{missing}}), ce plan utilise donc ce que vous avez.",
+        "missing": "Absent de votre matériel : {{missing}}.",
+        "setRigHint": "Indiquez la caméra et les filtres de ce télescope pour un plan adapté à votre matériel.",
+        "setRigLink": "Ouvrir les réglages des télescopes"
+      }
     },
     "projectArchivesSection": {
       "heading": "Projets de traitement",

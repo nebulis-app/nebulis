@@ -47,15 +47,15 @@ export default defineConfig({
       // regression in lib/'s actual business logic while the blended number
       // still clears the global floor.
       thresholds: {
-        statements: 29,
-        branches: 24,
-        functions: 33,
-        lines: 29,
+        statements: 63,
+        branches: 55,
+        functions: 66,
+        lines: 64,
         'server/lib/**': {
-          statements: 39,
-          branches: 34,
-          functions: 43,
-          lines: 40,
+          statements: 63,
+          branches: 58,
+          functions: 67,
+          lines: 64,
         },
       },
       reporter: ['text', 'json', 'html'],

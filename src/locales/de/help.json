@@ -766,6 +766,8 @@
     "done": "Fertig",
     "screenshotSuffix": "Screenshot",
     "viewFullSize": "In voller Größe ansehen: {{title}}",
+    "previous": "Vorheriger Screenshot",
+    "next": "Nächster Screenshot",
     "explore": {
       "title": "Entdecken",
       "lead": "Finden Sie Ihr nächstes Ziel.",
@@ -789,7 +791,9 @@
     "myMedia": {
       "title": "Kombinierte Objektseite",
       "lead": "Alle Bilder eines Objekts auf einer Seite.",
-      "description": "Bilder, Sub-Frames, Nächte und Projektdateien auf einer Seite, in Tabs, ohne Umweg über die Beobachtungen."
+      "description": "Bilder, Sub-Frames, Nächte und Projektdateien auf einer Seite, in Tabs, ohne Umweg über die Beobachtungen.",
+      "shotObject": "Objektseite",
+      "shotObservation": "Beobachtungsseite"
     },
     "integration": {
       "title": "Integration pro Filter",

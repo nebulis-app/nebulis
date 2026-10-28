@@ -190,15 +190,46 @@ describe('restoreArchivedFiles — refusals', () => {
     expect(result.restored).toBe(0);
   });
 
-  it('refuses an object the local library does not have', async () => {
+  it('refuses a folder whose object id would collide with another object', async () => {
     removeLocally(`${SESSION}/${SUB_FIT_A}`);
-    db.prepare('UPDATE libraryObjects SET deleted = 1 WHERE objectId = ?').run('M31');
+    db.prepare('DELETE FROM libraryFiles WHERE objectId = ?').run('M31');
+    db.prepare('DELETE FROM libraryObjects WHERE objectId = ?').run('M31');
+    seedObject('M31', 'Some other folder');
 
     const result = await restoreArchivedFiles(configFor(dest), [
       { folderName: M31_FOLDER, relPath: `${SESSION}/${SUB_FIT_A}` },
     ]);
     expect(result.restored).toBe(0);
-    expect(result.failures.join(' ')).toMatch(/library/i);
+    expect(result.createdObjects).toBe(0);
+    expect(result.failures.join(' ')).toMatch(/different folder/i);
+  });
+
+  it('refuses a folder whose name a different, trashed object still holds', async () => {
+    db.prepare('DELETE FROM libraryFiles WHERE objectId = ?').run('M31');
+    db.prepare('DELETE FROM libraryObjects WHERE objectId = ?').run('M31');
+    seedObject('SOMETHING', M31_FOLDER);
+    db.prepare('UPDATE libraryObjects SET deleted = 1 WHERE objectId = ?').run('SOMETHING');
+
+    const result = await restoreArchivedFiles(configFor(dest), [
+      { folderName: M31_FOLDER, relPath: `${SESSION}/${SUB_FIT_A}` },
+    ]);
+    expect(result.restored).toBe(0);
+    expect(result.failures.join(' ')).toMatch(/already used by SOMETHING/);
+  });
+
+  it.each(['../evil', 'a/b', 'a\\b', '..', '.', 'x\u0000y'])('refuses an archived object id of %j', async (badId) => {
+    db.prepare('DELETE FROM libraryFiles WHERE objectId = ?').run('M31');
+    db.prepare('DELETE FROM libraryObjects WHERE objectId = ?').run('M31');
+    const manifest = readArchiveManifest(dest);
+    manifest.objects[M31_FOLDER].objectId = badId;
+    writeArchiveManifest(dest, manifest);
+
+    const result = await restoreArchivedFiles(configFor(dest), [
+      { folderName: M31_FOLDER, relPath: `${SESSION}/${SUB_FIT_A}` },
+    ]);
+    expect(result.restored).toBe(0);
+    expect(result.createdObjects).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM libraryObjects WHERE objectId = ?').get(badId)).toEqual({ n: 0 });
   });
 
   it('refuses a manifest path that escapes the object folder', async () => {
@@ -458,5 +489,95 @@ describe('restore: abandoned .part files', () => {
     const result = await restoreArchivedFiles(configFor(dest), [{ folderName: M31_FOLDER, relPath: `${SESSION}/${SUB_FIT_A}` }]);
     expect(result.restored).toBe(1);
     expect(fs.existsSync(stale)).toBe(false);
+  });
+});
+
+describe('restoreArchivedFiles — objects the library no longer has', () => {
+  let dest: string;
+
+  beforeEach(async () => {
+    dest = scratchDir();
+    await archiveOneObject(dest);
+  });
+
+  /** The library lost the object entirely: row, files and folder. */
+  function loseObject(): void {
+    db.prepare('DELETE FROM libraryFiles WHERE objectId = ?').run('M31');
+    db.prepare('DELETE FROM librarySessions WHERE objectId = ?').run('M31');
+    db.prepare('DELETE FROM libraryObjects WHERE objectId = ?').run('M31');
+    fs.rmSync(path.join(getLibraryDir(), M31_FOLDER), { recursive: true, force: true });
+  }
+
+  const all = (): Array<{ folderName: string; relPath: string }> =>
+    [STACKED_JPG, STACKED_FIT, SUB_FIT_A, SUB_FIT_B].map(f => ({ folderName: M31_FOLDER, relPath: `${SESSION}/${f}` }));
+
+  it('creates the object, then restores its files, sessions and layout', async () => {
+    loseObject();
+    seededObjectIds.push('M31');
+
+    const result = await restoreArchivedFiles(configFor(dest), all());
+
+    expect(result.failures).toEqual([]);
+    expect(result).toMatchObject({ restored: 4, createdObjects: 1, revivedObjects: 0, writtenObjects: ['M31'] });
+    const row = db.prepare<[string], { folderName: string; deleted: number; fileCount: number; layout: string }>(
+      'SELECT folderName, deleted, fileCount, layout FROM libraryObjects WHERE objectId = ?',
+    ).get('M31');
+    expect(row).toEqual({ folderName: M31_FOLDER, deleted: 0, fileCount: 4, layout: 'nested' });
+    expect(fs.readFileSync(localPath(`${SESSION}/${STACKED_JPG}`), 'utf8')).toBe(CONTENT.stackedJpg);
+    expect(getLibraryFilesForObject('M31')).toHaveLength(4);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM librarySessions WHERE objectId = ?').get('M31')).toEqual({ n: 1 });
+  });
+
+  it('brings an object back from the trash instead of creating a second one', async () => {
+    db.prepare('UPDATE libraryObjects SET deleted = 1, deletedAt = ? WHERE objectId = ?').run('2026-01-01T00:00:00Z', 'M31');
+    removeLocally(`${SESSION}/${SUB_FIT_A}`);
+
+    const result = await restoreArchivedFiles(configFor(dest), [
+      { folderName: M31_FOLDER, relPath: `${SESSION}/${SUB_FIT_A}` },
+    ]);
+
+    expect(result).toMatchObject({ restored: 1, createdObjects: 0, revivedObjects: 1 });
+    expect(db.prepare('SELECT deleted, deletedAt FROM libraryObjects WHERE objectId = ?').get('M31')).toEqual({ deleted: 0, deletedAt: null });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM libraryObjects WHERE objectId = ?').get('M31')).toEqual({ n: 1 });
+  });
+
+  it('creates a flat object when the archive holds its files at the top level', async () => {
+    loseObject();
+    seededObjectIds.push('M31');
+    const manifest = readArchiveManifest(dest);
+    manifest.objects[M31_FOLDER].files = [{ relPath: STACKED_JPG, isSubframe: false }];
+    writeArchiveManifest(dest, manifest);
+    fs.mkdirSync(path.join(dest, M31_FOLDER), { recursive: true });
+    fs.writeFileSync(path.join(dest, M31_FOLDER, STACKED_JPG), 'flat');
+
+    const result = await restoreArchivedFiles(configFor(dest), [{ folderName: M31_FOLDER, relPath: STACKED_JPG }]);
+
+    expect(result).toMatchObject({ restored: 1, createdObjects: 1 });
+    expect(db.prepare('SELECT layout FROM libraryObjects WHERE objectId = ?').get('M31')).toEqual({ layout: 'flat' });
+  });
+
+  it('counts an object once however many of its files are restored', async () => {
+    loseObject();
+    seededObjectIds.push('M31');
+
+    const first = await restoreArchivedFiles(configFor(dest), all().slice(0, 2));
+    const second = await restoreArchivedFiles(configFor(dest), all().slice(2));
+
+    expect(first.createdObjects).toBe(1);
+    expect(second).toMatchObject({ createdObjects: 0, revivedObjects: 0, restored: 2 });
+  });
+
+  it('flags an object it would create when browsing', async () => {
+    loseObject();
+
+    const { objects } = await listArchivedObjects(configFor(dest));
+
+    expect(objects[0]).toMatchObject({ folderName: M31_FOLDER, objectId: null, willCreate: true });
+  });
+
+  it('does not flag an object that is already in the library', async () => {
+    const { objects } = await listArchivedObjects(configFor(dest));
+
+    expect(objects[0].willCreate).toBe(false);
   });
 });

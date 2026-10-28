@@ -64,10 +64,10 @@ function TonightShell({ hero, title, aside, footer, children }: {
     return <SessionPanel title={title} icon={Telescope} aside={aside}>{children}{footerBlock}</SessionPanel>;
   }
   return (
-    <section className="rounded-2xl bg-slate-950/55 p-4 ring-1 ring-inset ring-white/10 backdrop-blur-md">
+    <section className="rounded-2xl bg-white/[0.03] p-4 ring-1 ring-inset ring-white/[0.07]">
       <div className="mb-3 flex items-center gap-2">
-        <Telescope className="h-4 w-4 shrink-0 text-white/50" />
-        <h2 className="font-display text-[0.875rem] font-semibold tracking-tight text-white">{title}</h2>
+        <Telescope className="h-3.5 w-3.5 shrink-0 text-white/40" />
+        <h2 className="text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-white/50">{title}</h2>
         {aside && <div className="ml-auto min-w-0">{aside}</div>}
       </div>
       {children}
@@ -102,6 +102,7 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite, variant = 
   const lat = site?.latitude ?? null;
   const lon = site?.longitude ?? null;
   const minAlt = site?.minAlt ?? 20;
+  const siteTimezone = site?.timezone || undefined;
   const hasEverything = raHours != null && decDegrees != null && lat != null && lon != null;
 
   /**
@@ -111,7 +112,7 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite, variant = 
    */
   const tonight = useMemo(() => {
     if (!hasEverything) return null;
-    const night = nightWindowFor(plannerToday(), lat, lon);
+    const night = nightWindowFor(plannerToday(new Date(), siteTimezone), lat, lon);
     if (!night) return { night: null, peakAlt: null, peakAt: null, minutesAbove: 0 };
 
     const samples = computeAltitudeCurve(raHours, decDegrees, lat, lon, night.start, night.end, 5);
@@ -123,12 +124,12 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite, variant = 
       if (s.alt >= minAlt) above += 5;
     }
     return { night, peakAlt, peakAt, minutesAbove: above };
-  }, [hasEverything, raHours, decDegrees, lat, lon, minAlt]);
+  }, [hasEverything, raHours, decDegrees, lat, lon, minAlt, siteTimezone]);
 
   const season = useMemo(() => {
     if (!hasEverything) return null;
-    return computeBestImagingWindow(raHours, decDegrees, lat, lon, minAlt);
-  }, [hasEverything, raHours, decDegrees, lat, lon, minAlt]);
+    return computeBestImagingWindow(raHours, decDegrees, lat, lon, minAlt, siteTimezone);
+  }, [hasEverything, raHours, decDegrees, lat, lon, minAlt, siteTimezone]);
 
   if (raHours == null || decDegrees == null) {
     return (
@@ -235,6 +236,7 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite, variant = 
             minAlt={minAlt}
             timeZone={site?.timezone}
             isDark={isDark}
+            bare={hero}
             // The hero column is about 380px wide, so draw at that size
             // instead of shrinking a 560-unit drawing to two thirds.
             viewWidth={hero ? 380 : undefined}

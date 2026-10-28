@@ -234,6 +234,7 @@ export function CatalogBoard() {
           onNext={() => setSelectedId(filteredObjects[Math.min(filteredObjects.length - 1, selectedIndex + 1)].id)}
           observerLat={observerLat}
           observerLon={observerLon}
+          observerTimezone={settings?.timezone || undefined}
           minAlt={minAlt}
           isDark={isDark}
           isNight={isNight}

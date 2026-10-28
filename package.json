@@ -2,7 +2,7 @@
   "name": "nebulis-web",
   "private": true,
   "version": "2.2.0",
-  "buildNumber": 293,
+  "buildNumber": 295,
   "type": "module",
   "packageManager": "pnpm@10.30.3",
   "scripts": {
@@ -10,14 +10,14 @@
     "dev:client": "vite",
     "dev:server": "tsx watch server/index.ts",
     "build": "tsc -b && vite build",
-    "relay:check": "npm --prefix workers/push-relay test && npm --prefix workers/push-relay run typecheck",
-    "relay:deploy:dry": "npm run relay:check && npm --prefix workers/push-relay run deploy:dry",
-    "relay:deploy": "npm run relay:check && npm --prefix workers/push-relay run deploy && curl -fsS https://push.nebulis.app/health && echo",
+    "smoke:win": "node scripts/smoke-packaged.mjs releases/win/nebulis.exe",
+    "docker:beta": "npm run public:sync -- --push --overwrite --beta",
     "start": "NODE_ENV=production tsx server/index.ts",
     "verify": "node scripts/verify.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
+    "test:tz": "node scripts/test-timezones.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "help:shots": "tsx scripts/capture-help-screenshots.ts",
@@ -50,7 +50,7 @@
     "better-sqlite3": "^12.11.1",
     "bonjour-service": "^1.4.2",
     "cors": "^2.8.6",
-    "express": "^5.2.1",
+    "express": "^5.3.0",
     "express-rate-limit": "^8.6.1",
     "helmet": "^8.2.0",
     "i18next": "^26.4.2",
@@ -66,13 +66,13 @@
     "react-i18next": "^17.0.13",
     "react-router-dom": "^7.18.2",
     "satellite.js": "^7.0.1",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "suncalc": "^1.9.0",
     "tar": "^7.5.22",
     "tz-lookup": "^6.1.25",
     "undici": "^7.29.1",
     "wrangler": "^4.151.1",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.1075.0",
@@ -111,8 +111,8 @@
     "tsx": "^4.22.4",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.62.0",
-    "vite": "^8.1.0",
-    "vitest": "^4.1.11"
+    "vite": "^8.3.5",
+    "vitest": "^4.1.12"
   },
   "overrides": {
     "esbuild": "0.28.1"
@@ -128,7 +128,9 @@
       "brace-expansion@<2.0.0": "^1.1.21",
       "brace-expansion@>=2.0.0 <3.0.0": "^2.1.7",
       "brace-expansion@>=4.0.0 <6.0.0": "^5.0.12",
-      "ip-address": "^10.7.1",
+      "ip-address": "^10.7.5",
+      "body-parser": "^2.4.0",
+      "proxy-addr": "^2.0.8",
       "browserslist": "^4.28.7",
       "nanoid": "^3.3.18",
       "undici": "^7.29.1",

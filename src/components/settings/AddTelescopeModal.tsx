@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { X, RotateCw, HelpCircle, Telescope as TelescopeIcon, Check, Wifi, WifiOff, Usb, Network, Settings2, ChevronDown, Frame, Radar, Pin, Pencil, Trash2, Plus, ArrowLeft, ArrowRight } from 'lucide-react';
+import { X, RotateCw, HelpCircle, Telescope as TelescopeIcon, Check, Wifi, WifiOff, Usb, Network, Settings2, ChevronDown, Frame, Radar, Pin, Pencil, Trash2, Plus, ArrowLeft, ArrowRight, Camera } from 'lucide-react';
 import { HelpBlockText } from '../ui/HelpBlockText';
 import {
   createTelescope,
@@ -13,6 +13,7 @@ import {
   addProfileTransport,
   listTelescopes,
   addTelescopeOpticalConfig,
+  saveTelescopeRig,
   updateTelescopeOpticalConfig,
   deleteTelescopeOpticalConfig,
   type TelescopeProfile,
@@ -1070,6 +1071,15 @@ export function AddTelescopeModal({
               the next Edit. */}
           {!wizard && existing && <TelescopePhotoEditor profile={existing} isDark={isDark} />}
           {!wizard && showOptics && existing && (
+            <RigSettingsEditor
+              profile={existing}
+              isDark={isDark}
+              inputClass={inputClass}
+              labelClass={labelClass}
+              helperClass={helperClass}
+            />
+          )}
+          {!wizard && showOptics && existing && (
             <OpticalConfigsEditor
               profile={existing}
               isDark={isDark}
@@ -1269,6 +1279,142 @@ function StepIndicator({ step, isDark }: { step: 1 | 2 | 3; isDark: boolean }) {
         );
       })}
     </ol>
+  );
+}
+
+/** Filter names offered as one-tap additions: the lines and colours the library already knows by name. */
+const QUICK_FILTERS = ['Ha', 'OIII', 'SII', 'L', 'R', 'G', 'B'] as const;
+
+function splitFilterNames(text: string): string[] {
+  return text.split(/[,\n]/).map(name => name.trim()).filter(Boolean);
+}
+
+/**
+ * What a custom rig shoots with: the camera's sensor and the filters owned. It
+ * only feeds the suggested integration goals, so the plan names filters that
+ * exist. SeeStar and Dwarf never get this section, because they are colour
+ * cameras whose filter names are learned from their own frames. Own Save,
+ * like the optical configurations beside it, because both attach to a saved
+ * profile.
+ */
+function RigSettingsEditor({
+  profile, isDark, inputClass, labelClass, helperClass,
+}: {
+  profile: TelescopeProfile;
+  isDark: boolean;
+  inputClass: string;
+  labelClass: string;
+  helperClass: string;
+}) {
+  const { t } = useTranslation('settings');
+  const queryClient = useQueryClient();
+  const { data: telescopes } = useQuery({ queryKey: ['telescopes'], queryFn: listTelescopes });
+  const saved = (telescopes?.find(tel => tel.id === profile.id) ?? profile).rig ?? { sensorType: null, filters: [] };
+  const [sensorType, setSensorType] = useState(saved.sensorType);
+  const [filtersText, setFiltersText] = useState(saved.filters.join(', '));
+  const [error, setError] = useState('');
+
+  const filters = splitFilterNames(filtersText);
+  const dirty = sensorType !== saved.sensorType || filters.join('\u0000') !== saved.filters.join('\u0000');
+
+  const mutation = useMutation({
+    mutationFn: () => saveTelescopeRig(profile.id, { sensorType, filters }),
+    onSuccess: rig => {
+      setError('');
+      setFiltersText(rig.filters.join(', '));
+      void queryClient.invalidateQueries({ queryKey: ['telescopes'] });
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  const addQuick = (name: string) => {
+    if (filters.some(f => f.toLowerCase() === name.toLowerCase())) return;
+    setFiltersText([...filters, name].join(', '));
+  };
+
+  const sensorOptions = [
+    { value: null, label: t('addTelescopeModal.rigSensorUnset') },
+    { value: 'color' as const, label: t('addTelescopeModal.rigSensorColor') },
+    { value: 'mono' as const, label: t('addTelescopeModal.rigSensorMono') },
+  ];
+
+  return (
+    <div className={`rounded-xl border p-4 space-y-3 ${isDark ? 'border-slate-800 bg-slate-950/50' : 'border-slate-200 bg-slate-50'}`}>
+      <div className="flex items-center gap-2">
+        <Camera className="w-4 h-4 text-sky-500" />
+        <span className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+          {t('addTelescopeModal.rigTitle')} <span className="opacity-60 font-normal">{t('addTelescopeModal.optional')}</span>
+        </span>
+      </div>
+      <p className={helperClass}>{t('addTelescopeModal.rigHelp')}</p>
+
+      <div>
+        <span className={labelClass}>{t('addTelescopeModal.rigSensor')}</span>
+        <div className="flex flex-wrap gap-1.5 mt-1" role="group" aria-label={t('addTelescopeModal.rigSensor')}>
+          {sensorOptions.map(o => (
+            <button
+              key={String(o.value)}
+              type="button"
+              aria-pressed={sensorType === o.value}
+              onClick={() => setSensorType(o.value)}
+              className={`text-xs font-medium px-2.5 py-1 rounded-lg border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/30 ${
+                sensorType === o.value
+                  ? 'bg-accent-500/15 border-accent-500/40 text-accent-600'
+                  : isDark ? 'border-slate-700 text-slate-400 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-white'
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className={labelClass} htmlFor={`rig-filters-${profile.id}`}>{t('addTelescopeModal.rigFilters')}</label>
+        <input
+          id={`rig-filters-${profile.id}`}
+          type="text"
+          value={filtersText}
+          onChange={e => setFiltersText(e.target.value)}
+          placeholder={t('addTelescopeModal.rigFiltersPlaceholder')}
+          className={inputClass}
+        />
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {QUICK_FILTERS.filter(name => !filters.some(f => f.toLowerCase() === name.toLowerCase())).map(name => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => addQuick(name)}
+              className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border transition ${
+                isDark ? 'border-slate-700 text-slate-400 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-white'
+              }`}
+              aria-label={t('addTelescopeModal.rigAdd', { name })}
+            >
+              <Plus className="w-3 h-3" />
+              {name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && <p className={`text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>{error}</p>}
+      <div className="flex items-center justify-end gap-2">
+        {!dirty && !mutation.isPending && saved.sensorType !== null && (
+          <span className={`inline-flex items-center gap-1 text-xs ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+            <Check className="w-3.5 h-3.5" />
+            {t('addTelescopeModal.rigSaved')}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => mutation.mutate()}
+          disabled={!dirty || mutation.isPending}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition disabled:opacity-50"
+        >
+          {t('addTelescopeModal.rigSave')}
+        </button>
+      </div>
+    </div>
   );
 }
 

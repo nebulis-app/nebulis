@@ -17,6 +17,8 @@
  * burst of "annotate" clicks across a gallery must not stack them.
  */
 import fs from 'fs';
+import https from 'https';
+import type { IncomingMessage } from 'http';
 import os from 'os';
 import path from 'path';
 import { execFile } from 'child_process';
@@ -132,10 +134,41 @@ async function downloadTo(url: string, dest: string, minBytes: number, onProgres
   }
 }
 
+/** Plain node https rather than `fetch`: when a SourceForge mirror drops the TLS socket mid-body, undici throws an
+ *  AssertionError from a socket handler. That is an uncaught exception, so it took the whole server down instead of
+ *  failing the install. Here every failure arrives as an error event we handle. */
+const MAX_REDIRECTS = 8;
+const IDLE_TIMEOUT_MS = 60_000;
+
+function requestFollowingRedirects(url: string, redirectsLeft = MAX_REDIRECTS): Promise<IncomingMessage> {
+  return new Promise((resolve, reject) => {
+    // The download is an executable and a star database, and SourceForge publishes no checksums, so TLS is the only
+    // integrity we have. Refuse any hop (first URL or redirect) that is not https rather than follow a downgrade.
+    if (!url.startsWith('https:')) return reject(new Error('Download refused: not an https URL'));
+    const req = https.get(url, { headers: { 'User-Agent': 'Nebulis' } }, res => {
+      const status = res.statusCode ?? 0;
+      if (status >= 300 && status < 400 && res.headers.location) {
+        res.resume();
+        if (redirectsLeft <= 0) return reject(new Error('Download failed (too many redirects)'));
+        const next = new URL(res.headers.location, url);
+        if (next.protocol !== 'https:') return reject(new Error('Download refused: redirected to a non-https URL'));
+        resolve(requestFollowingRedirects(next.toString(), redirectsLeft - 1));
+        return;
+      }
+      if (status !== 200) {
+        res.resume();
+        return reject(new Error(`Download failed (HTTP ${status})`));
+      }
+      resolve(res);
+    });
+    req.setTimeout(IDLE_TIMEOUT_MS, () => req.destroy(new Error('Download timed out')));
+    req.on('error', reject);
+  });
+}
+
 async function downloadOnce(url: string, dest: string, minBytes: number, onProgress: (frac: number) => void): Promise<void> {
-  const res = await fetch(url, { redirect: 'follow' });
-  if (!res.ok || !res.body) throw new Error(`Download failed (HTTP ${res.status})`);
-  const total = Number(res.headers.get('content-length')) || 0;
+  const res = await requestFollowingRedirects(url);
+  const total = Number(res.headers['content-length']) || 0;
   let seen = 0;
   const counter = new Transform({
     transform(chunk: Buffer, _enc, cb) {
@@ -144,7 +177,9 @@ async function downloadOnce(url: string, dest: string, minBytes: number, onProgr
       cb(null, chunk);
     },
   });
-  await pipeline(res.body, counter, fs.createWriteStream(dest));
+  res.setTimeout(IDLE_TIMEOUT_MS, () => res.destroy(new Error('Download timed out')));
+  await pipeline(res, counter, fs.createWriteStream(dest));
+  if (res.readableAborted || (total > 0 && seen < total)) throw new Error('Download was cut off');
   const size = fs.statSync(dest).size;
   if (size < minBytes) throw new Error(`Download looks incomplete (${size} bytes)`);
 }

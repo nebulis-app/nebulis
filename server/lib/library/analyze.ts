@@ -86,8 +86,12 @@ async function findStaleRows(): Promise<{ stale: FileRow[]; unreadable: number }
 }
 
 /** Live objects with no linked-folder files whose folder is not on disk.
- *  Only objects that once held files qualify: an object with no records and no file
- *  count never had a folder to lose, so its absence proves nothing. */
+ *  Only objects that once held files or a session qualify: an object with no records,
+ *  no file count and no session never had a folder to lose, so its absence proves
+ *  nothing. A session counts because every way of creating one (import, manual
+ *  observation) creates the folder too, and because the "missing files" repair
+ *  zeroes `fileCount` and deletes the rows, which would otherwise hide the object
+ *  from this check whenever that repair ran first. */
 async function findMissingObjects(): Promise<{ missing: MissingObject[]; unreadable: number }> {
   const root = getLibraryDir();
   const objs = db
@@ -97,7 +101,11 @@ async function findMissingObjects(): Promise<{ missing: MissingObject[]; unreada
        FROM libraryObjects o
        WHERE o.deleted = 0
          AND NOT EXISTS (SELECT 1 FROM libraryFiles f WHERE f.objectId = o.objectId AND f.sourceId IS NOT NULL)
-         AND (o.fileCount > 0 OR EXISTS (SELECT 1 FROM libraryFiles f WHERE f.objectId = o.objectId))`,
+         AND (
+           o.fileCount > 0
+           OR EXISTS (SELECT 1 FROM libraryFiles f WHERE f.objectId = o.objectId)
+           OR EXISTS (SELECT 1 FROM librarySessions s WHERE s.objectId = o.objectId)
+         )`,
     )
     .all();
   const missing: MissingObject[] = [];

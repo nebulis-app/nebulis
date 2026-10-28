@@ -7,7 +7,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { getLibraryDir, TimeoutError, statLibraryFileForServe } from '../libraryPath.js';
+import { getLibraryDir } from '../libraryPath.js';
 import db from '../db.js';
 import { getSettingsData } from '../telescopes.js';
 import type { TransportKind } from '../telescopeTransports.js';
@@ -1974,28 +1974,17 @@ export function getLocalThumbnail(objectId: string): Buffer | null {
   return null;
 }
 
-export async function getLocalFile(relativePath: string): Promise<{ abs: string; name: string } | null> {
-  // Resolution + containment lives in fileResolver.ts now — see its header for
-  // why this used to be five separate inline copies across the library routes.
+/**
+ * Resolve a client-supplied library path for serving, without reading it.
+ * Containment lives in fileResolver.ts; the caller streams the result (see
+ * serveFile.ts) instead of buffering the whole file the way this used to.
+ */
+export function resolveLocalFileForServe(relativePath: string): { abs: string; name: string } | null {
   const resolved = resolveLibraryFile(relativePath);
   if (!resolved) return null;
-  const fullPath = resolved.abs;
-
-  const filename = path.basename(fullPath);
-  if (!isRealFile(filename)) return null;
-
-  // Stat only (timeout-bounded on a network library) and let the route stream
-  // the bytes: reading the whole file into a Buffer cost memory proportional to
-  // file size on a route that needs no credential.
-  try {
-    const st = await statLibraryFileForServe(fullPath);
-    if (!st.isFile()) return null;
-    return { abs: fullPath, name: filename };
-  } catch (err) {
-    // A slow disk is not a missing file: let the route answer 503 (retryable) rather than a 404.
-    if (err instanceof TimeoutError) throw err;
-    return null;
-  }
+  const name = path.basename(resolved.abs);
+  if (!isRealFile(name)) return null;
+  return { abs: resolved.abs, name };
 }
 
 // ─── Tombstone deletes ────────────────────────────────────────────────────────

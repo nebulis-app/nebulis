@@ -766,6 +766,8 @@
     "done": "Klaar",
     "screenshotSuffix": "schermafdruk",
     "viewFullSize": "Volledige grootte weergeven: {{title}}",
+    "previous": "Vorige schermafbeelding",
+    "next": "Volgende schermafbeelding",
     "explore": {
       "title": "Verkennen",
       "lead": "Vind je volgende doel.",
@@ -789,7 +791,9 @@
     "myMedia": {
       "title": "Gecombineerde objectpagina",
       "lead": "Alle foto's van een object op één pagina.",
-      "description": "Afbeeldingen, subframes, nachten en projectbestanden op één pagina, in tabbladen, zonder te zoeken in de waarnemingen."
+      "description": "Afbeeldingen, subframes, nachten en projectbestanden op één pagina, in tabbladen, zonder te zoeken in de waarnemingen.",
+      "shotObject": "Objectpagina",
+      "shotObservation": "Waarnemingspagina"
     },
     "integration": {
       "title": "Integratie per filter",

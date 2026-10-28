@@ -23,6 +23,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient, skipToken } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle, ArrowLeft, Download, Minimize2, Plus, Upload } from 'lucide-react';
+import { localDateKey } from '../lib/nightWindow';
 import { useTheme } from '../hooks/useTheme';
 import { useWishlist } from '../hooks/useWishlist';
 import { getPlannerTargets, type PlannerTarget } from '../lib/api/planner';
@@ -73,7 +74,7 @@ function downloadWishlist(items: WishlistItem[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `nebulis-wishlist-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `nebulis-wishlist-${localDateKey(new Date())}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();

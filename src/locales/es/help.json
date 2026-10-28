@@ -766,6 +766,8 @@
     "done": "Hecho",
     "screenshotSuffix": "captura de pantalla",
     "viewFullSize": "Ver a tamaño completo: {{title}}",
+    "previous": "Captura anterior",
+    "next": "Captura siguiente",
     "explore": {
       "title": "Explorar",
       "lead": "Encuentra tu próximo objetivo.",
@@ -789,7 +791,9 @@
     "myMedia": {
       "title": "Página de objeto combinada",
       "lead": "Todas las imágenes de un objeto, en una página.",
-      "description": "Imágenes, subtomas, noches y archivos de proyecto en una sola página, en pestañas, sin tener que buscar entre las observaciones."
+      "description": "Imágenes, subtomas, noches y archivos de proyecto en una sola página, en pestañas, sin tener que buscar entre las observaciones.",
+      "shotObject": "Página del objeto",
+      "shotObservation": "Página de la observación"
     },
     "integration": {
       "title": "Integración por filtro",

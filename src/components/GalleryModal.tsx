@@ -66,6 +66,11 @@ interface Props {
   };
 }
 
+/** True for a FITS frame, whether a raw session file or a processed restack. */
+function isFitsItem(it: GalleryItem): boolean {
+  return it.kind === 'file' ? it.file.type === 'fits' : isFitsProcessed(it.img.originalName);
+}
+
 /** `<img>` src for an item, or null when the format cannot be rendered.
  *  A processed image can be a FITS restack or a stored-only deliverable
  *  (XISF, PSD, RAW) same as a raw session file can — those get routed to
@@ -135,8 +140,14 @@ export function GalleryModal({
   if (isOpen !== wasOpen) {
     setWasOpen(isOpen);
     if (isOpen) {
-      setLocalItems(items);
-      setIndex(defaultIndex);
+      // The viewer pages through one kind only: opening a rendered image
+      // never steps onto a FITS frame, and opening a FITS frame stays among
+      // the FITS frames.
+      const opened = items[defaultIndex];
+      const group = opened ? isFitsItem(opened) : null;
+      const scoped = group === null ? items : items.filter(it => isFitsItem(it) === group);
+      setLocalItems(scoped);
+      setIndex(opened ? Math.max(0, scoped.indexOf(opened)) : defaultIndex);
       setPendingDelete(null);
       setStatus(null);
       setImmersive(false);

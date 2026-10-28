@@ -101,7 +101,9 @@ const windowCache = new Map<string, ReturnType<typeof computeBestImagingWindow>>
 const WINDOW_CACHE_MAX = 4000;
 
 function bestWindow(entry: DsoEntry, ctx: ExploreSiteContext, now: Date) {
-  const key = `${entry.id}:${ctx.lat}:${ctx.lon}:${ctx.minAlt}:${now.getFullYear()}-${now.getMonth()}`;
+  // Keyed by the hour, not by the server's month: the window's months are the
+  // site's, which turn over at the site's midnight, not the server's.
+  const key = `${entry.id}:${ctx.lat}:${ctx.lon}:${ctx.minAlt}:${Math.floor(now.getTime() / 3_600_000)}`;
   const hit = windowCache.get(key);
   if (hit) return hit;
   const w = computeBestImagingWindow(entry.ra, entry.dec, ctx.lat, ctx.lon, ctx.minAlt, now);

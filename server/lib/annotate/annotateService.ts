@@ -25,7 +25,7 @@ import { resolveLibraryFile } from '../library/fileResolver.js';
 import { parseFitsHeader } from '../fitsParser.js';
 import { headerNumber, parseDecToDegs, parseRaToDegs, readCdMatrix } from '../fitsWcs.js';
 import { KIND_FOV_DEG } from '../companionGeometry.js';
-import { getById as getDsoById } from '../dsoCatalog.js';
+import { getAnnotationEntry as getDsoById } from './ringCentres.js';
 import { getAllProfiles, getProfileById } from '../telescopes.js';
 import { isUnsolvableObject } from './unsolvable.js';
 import { isGeometryEdited } from './geometryEdits.js';

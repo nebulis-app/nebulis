@@ -101,6 +101,8 @@
     "allTelescopes": "Alle Teleskope",
     "filterByTelescope": "Nach Teleskop filtern",
     "share": "Teilen",
+    "showPlanned": "Geplant anzeigen",
+    "showPlannedTitle": "Geplante Planer-Nächte im Kalender ein- oder ausblenden",
     "allTrains": "{{name}} (alle Aufbauten)"
   },
   "newObservationForm": {
@@ -270,7 +272,6 @@
     },
     "nightPanel": {
       "title": "Diese Nacht",
-      "syncHint": "Subframes synchronisieren, um den Aufnahmezeitraum zu sehen",
       "imaged": "Aufgenommen {{range}}",
       "cloud": "{{label}} · {{percent}}% Bewölkung",
       "moon": "Mond {{percent}}%"

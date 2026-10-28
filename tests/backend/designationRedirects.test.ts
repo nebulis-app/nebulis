@@ -16,6 +16,7 @@ import {
   getDesignationRedirect,
   setDesignationRedirect,
   deleteDesignationRedirect,
+  listDesignationRedirects,
 } from '../../server/lib/library/designationRedirects';
 import { reclassifyObject } from '../../server/lib/library/objects';
 import '../../server/lib/library/objects'; // runs the table-creation + migration blocks
@@ -61,6 +62,15 @@ describe('designationRedirects get/set round trip', () => {
     setDesignationRedirect('NGC6992', 'IC5070');
     setDesignationRedirect('NGC6992', 'SH2-102');
     expect(getDesignationRedirect('NGC6992')).toBe('SH2-102');
+  });
+
+  it('lists every redirect in designation order', () => {
+    setDesignationRedirect('NGC6992', 'IC5070');
+    setDesignationRedirect('M31_mosaic', 'M31');
+    expect(listDesignationRedirects().map(r => [r.designation, r.targetObjectId])).toEqual([
+      ['M31_MOSAIC', 'M31'],
+      ['NGC6992', 'IC5070'],
+    ]);
   });
 
   it('delete removes the redirect', () => {

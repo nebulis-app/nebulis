@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import sharp from './sharp-optional.js';
+import { assertSafeRaster } from './imageSniff.js';
 import { computeAutoStretch, applyStretch } from './mtfStretch.js';
 
 // Bumped when the rendering pipeline changes so stale thumbnails regenerate.
@@ -58,6 +59,7 @@ export async function generateTiffThumbnail(
     } else {
       // Not the linear-float shape this module exists for (e.g. an ordinary
       // 8-bit TIFF) — sharp's normal path has no clipping problem for those.
+      await assertSafeRaster(tiffPath);
       await sharp(tiffPath)
         .resize(size, size, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 85 })

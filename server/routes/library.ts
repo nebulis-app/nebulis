@@ -23,7 +23,7 @@ import { THUMBNAILS_DIR } from '../lib/paths.js';
 import { getLibraryDir, isLibraryAvailable, statLibraryFileForServe, TimeoutError } from '../lib/libraryPath.js';
 import { resolveLibraryFile, LinkedFileReadOnlyError } from '../lib/library/fileResolver.js';
 import {
-  getIntegrationBreakdown,
+  getIntegrationBreakdownAsync,
   getIntegrationProgressForGoalObjects,
   setIntegrationGoals,
   getFilterAliases,
@@ -32,6 +32,7 @@ import {
   MAX_FILTER_NAME_LENGTH,
 } from '../lib/library/integration.js';
 import { replaceLibraryFile, ReplaceFileError, originalBackupFile, restoreOriginalBackup } from '../lib/library/replaceFile.js';
+import { sendLibraryFile } from '../lib/library/serveFile.js';
 import { getObjectLayout, sessionFolderFor } from '../lib/library/libraryLayout.js';
 import { runRender } from '../lib/renderQueue.js';
 import { getClusterItems } from '../lib/library/cluster.js';
@@ -40,8 +41,11 @@ import { mintDownloadToken, DOWNLOAD_TOKEN_TTL_MS } from '../lib/downloadToken.j
 import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
 import { acquireLibraryLock, libraryBusyRefusal } from '../lib/libraryBusy.js';
 import { getSite } from '../lib/observingSites.js';
+import { activeSiteTimeZone } from '../lib/siteTimeZone.js';
+import { localParts } from '../lib/timezone.js';
 import { plantSampleObject, purgeSampleObject } from '../lib/library/sampleLibrary.js';
 import sharp from '../lib/sharp-optional.js';
+import { assertSafeRaster } from '../lib/imageSniff.js';
 import { generateFitsThumbnail, fitsThumbnailPath, type FitsThumbnailTier } from '../lib/fitsThumbnail.js';
 import { buildSessionReport, measureLibraryFile, setFrameReview, FrameFileError, type FrameAnalysisRow } from '../lib/frameAnalysis/service.js';
 import { enqueueFrames, queueStateFor } from '../lib/frameAnalysis/queue.js';
@@ -61,7 +65,7 @@ import {
   getLocalObjects,
   getLocalSessions,
   getLocalFiles,
-  getLocalFile,
+  resolveLocalFileForServe,
   getLocalObservations,
   getLocalObservationDetail,
   getObjectLocation,
@@ -167,6 +171,7 @@ import { prefetchSkyImage } from '../lib/skyImage.js';
 import { getById as getDsoById } from '../lib/dsoCatalog.js';
 import { caldwellToNgcId } from '../lib/caldwellCatalog.js';
 import { resolveCanonicalId } from '../lib/catalogAliases.js';
+import { listDesignationRedirects, setDesignationRedirect, deleteDesignationRedirect } from '../lib/library/designationRedirects.js';
 import { cometKey } from '../lib/library/movingObject.js';
 import { getSettingsData, getProfileById } from '../lib/telescopes.js';
 import {
@@ -593,6 +598,31 @@ router.post('/objects/:objectId/sync-subframes', requireAdmin, (req: Request, re
 });
 
 /**
+ * The redirects "Reclassify → remember" has recorded: a designation that future imports file under another object. Listed so
+ * they can be reviewed, pointed somewhere else, or removed.
+ */
+router.get('/redirects', (_req: Request, res: Response) => {
+  res.apiSuccess({ redirects: listDesignationRedirects() });
+});
+
+const RedirectBodySchema = z.object({ targetObjectId: z.string().trim().min(1, 'targetObjectId is required') });
+
+router.put('/redirects/:designation', requireAdmin, (req: Request, res: Response) => {
+  const parsed = RedirectBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(400, 'BAD_REQUEST', parsed.error.issues[0]?.message ?? 'targetObjectId is required');
+    return;
+  }
+  setDesignationRedirect(String(req.params.designation), resolveCanonicalId(parsed.data.targetObjectId), req.userId ?? undefined);
+  res.apiSuccess({ redirects: listDesignationRedirects() });
+});
+
+router.delete('/redirects/:designation', requireAdmin, (req: Request, res: Response) => {
+  deleteDesignationRedirect(String(req.params.designation));
+  res.apiSuccess({ redirects: listDesignationRedirects() });
+});
+
+/**
  * Reclassify an object to a different catalog identity (Object Detail →
  * "..." → Reclassify), for when a target's designation was ambiguous or
  * mis-picked on import. Renames or merges depending on whether the target
@@ -762,7 +792,7 @@ router.post('/import/scan', requireAdmin, (req: Request, res: Response) => {
       `JPG:${scanSettings.importJpg !== false} FITS:${scanSettings.importFits !== false} ` +
       `Thumbs:${scanSettings.importThumbnails !== false} Subs:${scanSettings.importSubFrames === true} ` +
       `Video:${scanSettings.importVideos === true} Archive-all:${scanSettings.archiveAllFiles === true}`);
-    const scanResult = scanImportFolder(rootPath, scanSettings, scanProfile?.kind);
+    const scanResult = scanImportFolder(rootPath, scanSettings, scanProfile?.kind, activeSiteTimeZone());
     debugLog('import:folder-scan',
       `Scan matched ${scanResult.totals.files} importable file(s) across ` +
       `${scanResult.totals.objects} object(s), ${scanResult.totals.sessions} session(s)` +
@@ -1556,7 +1586,7 @@ router.get('/calibrations/download/:id', strictRateLimiter, async (req: Request,
 
     const archive = archiver('zip', { zlib: { level: 1 } });
     archive.on('error', (err: Error) => {
-      if (!res.headersSent) res.status(500).send(err.message);
+      if (!res.headersSent) res.status(500).type('text/plain').send(err.message);
     });
     archive.pipe(res);
 
@@ -1569,7 +1599,7 @@ router.get('/calibrations/download/:id', strictRateLimiter, async (req: Request,
     await archive.finalize();
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Bundle download failed';
-    if (!res.headersSent) res.status(500).send(message);
+    if (!res.headersSent) res.status(500).type('text/plain').send(message);
   }
 });
 
@@ -1680,6 +1710,7 @@ router.get('/objects/:objectId/thumbnail', async (req: Request, res: Response) =
         // Capped so a dashboard/calendar fan-out of cold thumbnails can't
         // saturate the threadpool and time out sibling requests.
         await runRender(async () => {
+          await assertSafeRaster(srcPath);
           let pipeline = sharp(srcPath);
           if (crop) {
             const meta = await sharp(srcPath).metadata();
@@ -2255,13 +2286,7 @@ router.get('/file', async (req: Request, res: Response) => {
   }
   if (!(await requireLibraryReachable(res))) return;
 
-  let result;
-  try {
-    result = await getLocalFile(filePath);
-  } catch (err) {
-    respondFsGuardError(res, err);
-    return;
-  }
+  const result = resolveLocalFileForServe(filePath);
   if (!result) {
     res.status(404).send('Not found');
     return;
@@ -2270,15 +2295,9 @@ router.get('/file', async (req: Request, res: Response) => {
   const mimeType = mimeTypeForExtension(result.name);
   const isInline = mimeType.startsWith('image/');
 
-  res.set('Content-Type', mimeType);
-  res.set('Cache-Control', 'public, max-age=3600');
-  if (!isInline) {
-    res.set('Content-Disposition', contentDispositionHeader('attachment', result.name));
-  }
-  // Streamed from disk rather than read into memory: this route needs no credential.
-  res.sendFile(result.abs, { dotfiles: 'allow' }, (err) => {
-    if (!err || res.headersSent) return;
-    res.status(errnoCode(err) === 'ENOENT' ? 404 : 500).type('text/plain').send('Could not read file');
+  await sendLibraryFile(res, result.abs, {
+    contentType: mimeType,
+    contentDisposition: isInline ? undefined : contentDispositionHeader('attachment', result.name),
   });
 });
 
@@ -2371,6 +2390,7 @@ async function renderThumbnailOnce(
     // a half-written JPEG (sendFile does not coordinate with this write).
     const tmpPath = `${cachePath}.${process.pid}.tmp`;
     try {
+      await assertSafeRaster(absPath);
       await sharp(absPath)
         .resize(w, h, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 80, progressive: true })
@@ -2651,7 +2671,7 @@ router.get('/objects/:objectId/integration/filters', async (req: Request, res: R
   const objectId = String(req.params.objectId);
   try {
     if (!(await requireLibraryReachable(res))) return;
-    res.apiSuccess(getIntegrationBreakdown(objectId));
+    res.apiSuccess(await getIntegrationBreakdownAsync(objectId));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to compute integration per filter';
     res.apiError(500, 'STATS_FAILED', message);
@@ -2846,7 +2866,7 @@ router.get('/download/objects/:objectId', strictRateLimiter, async (req: Request
 
     const archive = archiver('zip', { zlib: { level: 1 } });
     archive.on('error', (err: Error) => {
-      if (!res.headersSent) res.status(500).send(err.message);
+      if (!res.headersSent) res.status(500).type('text/plain').send(err.message);
     });
     archive.pipe(res);
 
@@ -2866,7 +2886,7 @@ router.get('/download/objects/:objectId', strictRateLimiter, async (req: Request
     await archive.finalize();
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Download failed';
-    if (!res.headersSent) res.status(500).send(message);
+    if (!res.headersSent) res.status(500).type('text/plain').send(message);
   }
 });
 
@@ -3122,9 +3142,13 @@ router.post('/download/objects/:objectId/subframes', strictRateLimiter, (req: Re
     return;
   }
 
-  const nowDate = new Date();
-  const datePart = nowDate.toISOString().slice(0, 10).replace(/-/g, '');
-  const timePart = nowDate.toTimeString().slice(0, 8).replace(/:/g, '');
+  // Date and time both in the site's zone: this used to join the UTC date to
+  // the server's local time, so an evening download in the US was stamped
+  // with tomorrow's date and tonight's clock.
+  const now = localParts(new Date(), activeSiteTimeZone());
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const datePart = `${now.year}${pad2(now.month)}${pad2(now.day)}`;
+  const timePart = `${pad2(now.hour)}${pad2(now.minute)}${pad2(now.second)}`;
   const filename = `${objectId}-${datePart}${timePart}.zip`;
   // libPath is folderName-relative (may include a session subfolder for a
   // nested object); by default keep that structure in the zip entry name too,
@@ -3993,9 +4017,9 @@ router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, edi
       // time — the embedded time-of-day is clamped into the rollover-safe zone
       // (see clampToNightSafeTime) so an edit made at, say, 2am doesn't get
       // rolled back a day by sessionNightFor the next time it's read.
-      const now = new Date();
+      const now = localParts(new Date(), activeSiteTimeZone());
       const datePart = date.replace(/-/g, ''); // YYYYMMDD from session date
-      const rawTimePart = now.toTimeString().slice(0, 8).replace(/:/g, ''); // HHMMSS
+      const rawTimePart = [now.hour, now.minute, now.second].map(n => String(n).padStart(2, '0')).join(''); // HHMMSS
       const timePart = clampToNightSafeTime(rawTimePart);
       // The extension also comes from a client-supplied filename, so strip
       // anything that is not a plain alphanumeric extension token.
@@ -4116,9 +4140,7 @@ router.get('/processed-images/:id', async (req: Request, res: Response) => {
     res.status(404).send('Not found');
     return;
   }
-  res.set('Content-Type', file.mimeType || 'image/jpeg');
-  res.set('Cache-Control', 'public, max-age=3600');
-  res.send(file.data);
+  await sendLibraryFile(res, file.abs, { contentType: file.mimeType || 'image/jpeg' });
 });
 
 /** Object-scoped upload, no session date — for a processed image the user

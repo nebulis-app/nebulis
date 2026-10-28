@@ -16,7 +16,8 @@ import { addDaysToDateKey, localDateKey, timeZoneOrLocal, zonedDateTimeToUtc } f
 import { observingNightDateKey } from './telescopeFiles.js';
 import { TEMPERATURE_UNITS, WIND_SPEED_UNITS } from './types/appSettings.js';
 import { isRecord } from './typeGuards.js';
-import { recordNightConditions } from './nightConditions.js';
+import { recordNightConditions, scoreObservingNight } from './nightConditions.js';
+import type { NightScore } from './nightScore.js';
 
 export interface ForecastHour {
   time: string;          // ISO timestamp
@@ -236,55 +237,14 @@ export function interpolateSeeingTransparency(
   }
 }
 
-export interface NightRating {
-  score: number;
-  rating: string;
-  avgCloudCover: number;
-  avgHumidity: number;
-  avgWind: number;
-  precipChance: number;
+export interface NightRating extends NightScore {
+  date: string;
   /**
    * `'low'` for the furthest-out rated night (~72-96 h). Cloud-cover skill
    * drops off that far ahead, so the clients render it as a dimmer card with
    * a "less certain" note rather than letting it read as firm as tonight+1.
    */
   confidence: 'normal' | 'low';
-}
-
-/**
- * Scores how good a night is for imaging from its hourly forecast slice.
- * Requires at least one hour (callers already skip nights with none — an
- * empty array would divide by zero into NaN throughout).
- */
-export function rateNightConditions(nightHours: ForecastHour[]): NightRating {
-  const avgCloud = nightHours.reduce((s, h) => s + h.cloudCover, 0) / nightHours.length;
-  const avgHumidity = nightHours.reduce((s, h) => s + h.humidity, 0) / nightHours.length;
-  const avgWind = nightHours.reduce((s, h) => s + h.wind, 0) / nightHours.length;
-  const avgPrecip = nightHours.reduce((s, h) => s + h.precipProb, 0) / nightHours.length;
-
-  let score = 100;
-  score -= avgCloud * 0.6;
-  score -= avgPrecip * 0.3;
-  score -= Math.max(0, avgHumidity - 60) * 0.3;
-  score -= Math.max(0, avgWind - 15) * 0.5;
-  score = Math.max(0, Math.min(100, Math.round(score)));
-
-  let rating: string;
-  if (score >= 80) rating = 'Excellent';
-  else if (score >= 60) rating = 'Good';
-  else if (score >= 40) rating = 'Fair';
-  else if (score >= 20) rating = 'Poor';
-  else rating = 'Bad';
-
-  return {
-    score,
-    rating,
-    avgCloudCover: Math.round(avgCloud),
-    avgHumidity: Math.round(avgHumidity),
-    avgWind: Math.round(avgWind * 10) / 10,
-    precipChance: Math.round(avgPrecip),
-    confidence: 'normal',
-  };
 }
 
 // ─── Core forecast builder ──────────────────────────────────────
@@ -351,6 +311,7 @@ export async function buildForecast(lat: number, lon: number) {
 
     for (const point of sevenTimer.dataseries) {
       const pointTime = new Date(initDate.getTime() + point.timepoint * 3600 * 1000);
+      // eslint-disable-next-line local/no-utc-date-key -- both sides are UTC instants, matched to the hour
       const pointHour = pointTime.toISOString().slice(0, 13);
 
       const matchIndex = hours.findIndex(h => h.time.slice(0, 13) === pointHour);
@@ -432,23 +393,18 @@ export async function buildForecast(lat: number, lon: number) {
   // "the first night" as tonight leaves the real tonight in its outlook list,
   // duplicated with the hero.
   const ratingsBaseDate = sunset ? localDateKey(sunset, forecastTimezone) : tonightDate;
-  const nightRatings = [];
+  // Every night is scored by the shared night score (nightScore.ts), over the
+  // hours inside that night's dark window: the same hours, moon and formula the
+  // Planner's night strip uses, so the two can never rate a night differently.
+  const nightRatings: NightRating[] = [];
   for (let d = 0; d < 4; d++) {
     const ratingDate = addDaysToDateKey(ratingsBaseDate, d);
-    const nightDate = zonedDateTimeToUtc(ratingDate, { hour: 22 }, forecastTimezone);
-
-    const nightHours = hours.filter(h => {
-      const hDate = new Date(h.time);
-      const diff = (hDate.getTime() - nightDate.getTime()) / 3600000;
-      return diff >= -2 && diff <= 8;
-    });
-
-    if (nightHours.length === 0) continue;
+    const night = scoreObservingNight(hours, ratingDate, lat, lon, forecastTimezone);
+    if (!night) continue;
 
     // d=3 is the ~72-96 h night: real but noticeably less reliable, so the
     // clients dim its card. d=0 is tonight and the clients drop it (hero).
-    const confidence: NightRating['confidence'] = d >= 3 ? 'low' : 'normal';
-    nightRatings.push({ date: ratingDate, ...rateNightConditions(nightHours), confidence });
+    nightRatings.push({ date: ratingDate, ...night, confidence: d >= 3 ? 'low' : 'normal' });
   }
 
   // Display units the clients should format temperature/wind in. Open-Meteo is
@@ -501,7 +457,6 @@ export function snapshotNightConditions(data: unknown, lat: number, lon: number)
     lat, lon,
     timezone: typeof data.timezone === 'string' ? data.timezone : '',
     hourly: data.hourly as ForecastHour[],
-    rate: rateNightConditions,
   });
 }
 

@@ -422,7 +422,51 @@
       "save": "Opslaan",
       "invalidHours": "Voer een aantal uren tussen 0 en 1000 in.",
       "missingFilterName": "Geef het nieuwe filter een naam.",
-      "saveFailed": "De doelen konden niet worden opgeslagen."
+      "saveFailed": "De doelen konden niet worden opgeslagen.",
+      "suggest": {
+        "button": "Doelen voorstellen",
+        "rig": "Camera",
+        "rigs": {
+          "color": "Kleurencamera",
+          "mono": "Monocamera"
+        },
+        "moon": "Maan",
+        "moons": {
+          "dark": "Donkere nachten",
+          "mixed": "Meeste nachten",
+          "any": "Negeren"
+        },
+        "tier": "Kwaliteit",
+        "tiers": {
+          "standard": "Standaard",
+          "deep": "Diep",
+          "showpiece": "Paradepaardje"
+        },
+        "total": "{{hours}} u in totaal",
+        "class": {
+          "bright": "helder",
+          "moderate": "matig",
+          "faint": "zwak",
+          "very-faint": "zeer zwak"
+        },
+        "basisSurface": "Gemiddelde oppervlaktehelderheid {{sb}} mag/boogsec², ingedeeld als {{brightness}}.",
+        "basisType": "Geen grootte of magnitude in de catalogus, daarom op objecttype ingedeeld als {{brightness}}.",
+        "skyLine": "Bortle {{bortle}}, {{band}}filters: hemel en maan x{{factor}}.",
+        "bands": {
+          "narrowband": "smalband",
+          "broadband": "breedband"
+        },
+        "bortleAssumed": "De actieve locatie heeft geen Bortle-klasse, dus Bortle {{bortle}} wordt aangenomen. Stel die in via Instellingen onder Waarneemlocaties.",
+        "disclaimer": "Een planningsschatting, geen meting. Er wordt niets opgeslagen tot je op Opslaan drukt.",
+        "close": "Sluiten",
+        "apply": "Deze uren gebruiken",
+        "shootWith": "Fotograferen met",
+        "shootAny": "Niet opgegeven",
+        "fellBack": "Je uitrusting mist de aanbevolen filters ({{missing}}), dus dit plan gebruikt wat je hebt.",
+        "missing": "Niet in je uitrusting: {{missing}}.",
+        "setRigHint": "Stel de camera en filters van deze telescoop in voor een plan dat bij je uitrusting past.",
+        "setRigLink": "Telescoopinstellingen openen"
+      }
     },
     "projectArchivesSection": {
       "heading": "Bewerkingsprojecten",

@@ -81,8 +81,9 @@ test.describe('Top nav sizing', () => {
 
     const metrics = await navMetrics(page);
     expect(metrics.items).toBe(ALL_NAV_IDS.length);
-    // text-sm, not the compact text-xs.
-    expect(metrics.fontSize).toBe(14);
+    // text-sm (0.875rem), not the compact text-xs. Wide screens grow the root font (index.css), so 14px only holds at 1920px.
+    const rootPx = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
+    expect(metrics.fontSize).toBeCloseTo(rootPx * 0.875, 1);
     expect(metrics.overlapLeft).toBeLessThan(0);
     expect(metrics.overlapRight).toBeLessThan(0);
   });

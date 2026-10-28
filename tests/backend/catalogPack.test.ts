@@ -224,6 +224,26 @@ describe('extractPack — valid extraction', () => {
   });
 });
 
+describe('extractPack — mixed-case object ids', () => {
+  it('extracts a hubble picture whose id has lowercase letters', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'unpack-case-'));
+    const destDir = path.join(tmpDir, 'dest');
+    fs.mkdirSync(destDir);
+
+    const archivePath = await createTestArchive(tmpDir, [
+      { name: 'images/hubble_Amalthea.webp', content: 'moon' },
+      { name: 'images/hubble_evil/../x.webp', content: 'no' },
+    ]);
+
+    const result = await extractPack(archivePath, destDir, 10 * 1024 * 1024);
+
+    expect(result.extractedPaths).toHaveLength(1);
+    expect(fs.readFileSync(path.join(destDir, 'images', 'hubble_Amalthea.webp'), 'utf8')).toBe('moon');
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+});
+
 // ─── manifest.ts schema validation ───────────────────────────────────────────
 
 describe('PackManifest schema', () => {

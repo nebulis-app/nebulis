@@ -56,11 +56,8 @@ export function observerNoonAnchor(date: Date, lon: number, dayOffset: number): 
 }
 
 export function nightWindowFor(date: Date, lat: number, lon: number): { start: Date; end: Date } | null {
-  const eveningAnchor = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
-  const next = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 12, 0, 0);
-
-  const evening = SunCalc.getTimes(eveningAnchor, lat, lon);
-  const morning = SunCalc.getTimes(next, lat, lon);
+  const evening = SunCalc.getTimes(observerNoonAnchor(date, lon, 0), lat, lon);
+  const morning = SunCalc.getTimes(observerNoonAnchor(date, lon, 1), lat, lon);
 
   const start = evening.night;
   const end = morning.nightEnd;
@@ -98,11 +95,8 @@ export function timelineWindowFor(
   lon: number,
   bufferMs = 30 * 60_000,
 ): { start: Date; end: Date } | null {
-  const eveningAnchor = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
-  const next = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 12, 0, 0);
-
-  const evening = SunCalc.getTimes(eveningAnchor, lat, lon);
-  const morning = SunCalc.getTimes(next, lat, lon);
+  const evening = SunCalc.getTimes(observerNoonAnchor(date, lon, 0), lat, lon);
+  const morning = SunCalc.getTimes(observerNoonAnchor(date, lon, 1), lat, lon);
 
   const rawStart = evening.sunset ?? evening.dusk;
   const rawEnd = morning.sunrise ?? morning.dawn;
@@ -183,4 +177,23 @@ export function formatPlannerDate(d: Date): string {
 /** Two Date instances refer to the same local calendar day. */
 export function sameLocalDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/**
+ * Local YYYY-MM-DD for a timestamp string. A zoned ISO instant ("...Z" or
+ * "...+02:00") is converted to the viewer's zone first: slicing its first ten
+ * characters gives the UTC date, a day ahead every evening west of Greenwich.
+ * A naive "YYYY-MM-DD..." string is already a local wall-clock value and keeps
+ * its own date. Null when the string carries no date.
+ */
+export function localDateKeyOfTimestamp(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:?\d{2})$/i.test(value)) {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : localDateKey(d);
+  }
+  const dashed = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dashed) return `${dashed[1]}-${dashed[2]}-${dashed[3]}`;
+  const compact = value.match(/^(\d{4})(\d{2})(\d{2})/);
+  return compact ? `${compact[1]}-${compact[2]}-${compact[3]}` : null;
 }

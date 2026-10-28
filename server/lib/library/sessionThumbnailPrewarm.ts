@@ -14,6 +14,7 @@
 import fs from 'fs';
 import path from 'path';
 import sharp from '../sharp-optional.js';
+import { assertSafeRaster } from '../imageSniff.js';
 import { getLibraryDir } from '../libraryPath.js';
 import { LINKED_SOURCE_DIR_NAME } from './archiveFolders.js';
 import { THUMBNAILS_DIR } from '../paths.js';
@@ -65,6 +66,7 @@ async function renderIfMissing(cachePath: string, srcAbsPath: string): Promise<'
     fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
     const tmpPath = `${cachePath}.${process.pid}.prewarm.tmp`;
     try {
+      await assertSafeRaster(srcAbsPath);
       await sharp(srcAbsPath)
         .resize(SIZE, SIZE, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 80, progressive: true })

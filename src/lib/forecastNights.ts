@@ -21,7 +21,9 @@ export function localDateKey(ms: number, timeZone?: string): string {
       ...(timeZone ? { timeZone } : {}),
     }).format(new Date(ms));
   } catch {
-    return new Date(ms).toISOString().slice(0, 10);
+    // An unusable zone falls back to the viewer's clock, never to UTC.
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 }
 
@@ -41,6 +43,7 @@ export function localHourOfDay(ms: number, timeZone?: string): number {
 export function nextDateKey(dateKey: string): string {
   const d = new Date(dateKey + 'T12:00:00Z');
   d.setUTCDate(d.getUTCDate() + 1);
+  // eslint-disable-next-line local/no-utc-date-key -- d is a noon-UTC carrier for the key, not a real moment
   return d.toISOString().slice(0, 10);
 }
 

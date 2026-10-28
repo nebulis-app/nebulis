@@ -20,6 +20,7 @@ import {
   type DarkWindow,
   type VisibilityResult,
 } from '../../lib/forecastScore';
+import { scoreNight } from '../../lib/plannerNight';
 import { MoonDisk } from '../ui/MoonDisk';
 import { NightRibbon } from './NightRibbon';
 import { ScoreDial } from '../ui/ScoreDial';
@@ -139,28 +140,17 @@ export function TonightHero({
     vis: calculateVisibilityScore(h, tonight.moonIllumination, timeZone, darkWindow, t, isNight),
   }));
 
-  // The headline rating averages only the hours inside the usable window, so a
-  // clouded-over hour either side of dusk cannot drag down an otherwise clear
-  // night. Everything on this page reads from this one engine.
-  const inWindow = darkWindow
-    ? scored.filter(s => {
-        const t = new Date(s.hour.time).getTime();
-        return t >= darkWindow.start && t <= darkWindow.end;
-      })
-    : scored;
-  const rated = inWindow.length > 0 ? inWindow : scored;
-  const nightScore = rated.length
-    ? Math.round(rated.reduce((a, s) => a + s.vis.score, 0) / rated.length)
-    : 0;
+  // The headline rating is the same roll-up the Planner strip and the outlook
+  // cards use (scoreNight), so tonight cannot read differently on another page.
+  const night = scoreNight(hours, tonight.moonIllumination, timeZone, darkWindow, t);
+  const nightScore = night?.score ?? 0;
 
   const best = findBestWindow(scored);
   const hex = scoreHex(nightScore, isNight);
 
   // The recommendation for the middle of the usable window says more about the
   // night than the one for an arbitrary edge hour.
-  const headlineAdvice = rated.length
-    ? rated[Math.floor(rated.length / 2)].vis.recommendation
-    : null;
+  const headlineAdvice = night?.advice ?? null;
 
   const darkLabel = tonight.darkHours > 0
     ? { value: `${tonight.darkHours}h`, sub: t('tonightHero.astronomicalDark') }

@@ -29,6 +29,9 @@ import { Modal } from '../ui/Modal';
  * Mirrors `ArchiveBrowserModal`'s shape, which is the existing read-only browser for
  * the unrelated calibration archive.
  */
+/** Files per restore request. The server accepts 500. */
+const RESTORE_BATCH = 400;
+
 export function ArchiveDiskModal({ isDark, onClose }: { isDark: boolean; onClose: () => void }) {
   const { t } = useTranslation('settings');
 
@@ -37,6 +40,7 @@ export function ArchiveDiskModal({ isDark, onClose }: { isDark: boolean; onClose
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const objects = useQuery({ queryKey: ['archive-contents'], queryFn: getArchivedObjects });
   const files = useQuery({
@@ -104,6 +108,49 @@ export function ArchiveDiskModal({ isDark, onClose }: { isDark: boolean; onClose
       setBusy(false);
     }
   }
+
+  /** Everything the library is missing, object by object. Conflicts are left alone:
+   *  replacing local files is a per-file decision made in the object's own view. */
+  async function restoreEverything(): Promise<void> {
+    const todo = listedObjects.filter(object => object.willCreate || object.missingLocally > 0);
+    if (todo.length === 0 || !window.confirm(t('archiveDisk.restoreAllConfirm', { count: todo.length }))) return;
+    setBusy(true);
+    setNotice('');
+    setError('');
+    let restored = 0;
+    let created = 0;
+    let failed = 0;
+    try {
+      for (const [index, object] of todo.entries()) {
+        setProgress({ done: index, total: todo.length });
+        const { files: listed } = await getArchivedFiles(object.folderName);
+        const items = listed
+          .filter(file => !file.presentLocally)
+          .map(file => ({ folderName: object.folderName, relPath: file.relPath }));
+        for (let start = 0; start < items.length; start += RESTORE_BATCH) {
+          const result = await restoreArchivedFiles(items.slice(start, start + RESTORE_BATCH));
+          restored += result.restored;
+          created += result.createdObjects;
+          failed += result.failures.length;
+        }
+      }
+      await objects.refetch();
+      setNotice(
+        [
+          t('archiveDisk.restoredCount', { count: restored }),
+          t('archiveDisk.createdCount', { count: created }),
+          ...(failed > 0 ? [t('archiveDisk.failedCount', { count: failed })] : []),
+        ].join('. ') + '.',
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('archiveDisk.restoreFailed'));
+    } finally {
+      setProgress(null);
+      setBusy(false);
+    }
+  }
+
+  const restorableObjects = listedObjects.filter(object => object.willCreate || object.missingLocally > 0).length;
 
   return (
     // The panel classes go on `Modal`'s own dialog element, as every other modal in
@@ -214,9 +261,11 @@ export function ArchiveDiskModal({ isDark, onClose }: { isDark: boolean; onClose
                       {formatBytes(object.bytes)}
                     </span>
                     <span className={`mt-0.5 block text-[0.6875rem] ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-                      {object.objectId === null
-                        ? t('archiveDisk.notInLibrary')
-                        : t('archiveDisk.missingLocally', { count: object.missingLocally })}
+                      {object.objectId !== null
+                        ? t('archiveDisk.missingLocally', { count: object.missingLocally })
+                        : object.willCreate
+                          ? t('archiveDisk.willBeAdded')
+                          : t('archiveDisk.notInLibrary')}
                     </span>
                   </span>
                 </button>
@@ -270,6 +319,19 @@ export function ArchiveDiskModal({ isDark, onClose }: { isDark: boolean; onClose
         >
           {t('archiveDisk.done')}
         </button>
+        {folder === null && restorableObjects > 0 && (
+          <button
+            type="button"
+            onClick={restoreEverything}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {progress ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            {progress
+              ? t('archiveDisk.restoreAllProgress', { done: progress.done + 1, total: progress.total })
+              : t('archiveDisk.restoreAll', { count: restorableObjects })}
+          </button>
+        )}
         {folder !== null && (
           <button
             type="button"

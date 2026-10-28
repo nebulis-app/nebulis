@@ -687,10 +687,12 @@ function collectLevel(
 
 
 /** Walk an object's source dirs, gating by import settings and deriving a
- *  session date for every kept file. */
+ *  session date for every kept file. `timeZone` is the site's zone for FITS
+ *  UTC times and mtimes (callers pass activeSiteTimeZone()). */
 export function walkObjectFiles(
   source: ObjectSource,
   settings: Record<string, unknown>,
+  timeZone?: string,
 ): { files: WalkedFile[]; truncated: boolean; skipped: SkipTally } {
   const files: WalkedFile[] = [];
   const skipped: SkipTally = new Map();
@@ -745,7 +747,7 @@ export function walkObjectFiles(
       }
       const relPath = path.relative(baseDir, abs).split(path.sep).join('/');
       const useMtimeFallback = settings.importMtimeFallback !== false;
-      const derived = deriveFileDate(abs, relPath, stat, { useMtimeFallback });
+      const derived = deriveFileDate(abs, relPath, stat, { useMtimeFallback, timeZone });
       files.push({ absPath: abs, relPath, name: ent.name, size: stat.size, derived, fromSubFolder: inSub });
     }
   };
@@ -838,6 +840,7 @@ export function scanImportFolder(
   rootPath: string,
   settings: Record<string, unknown>,
   telescopeKind?: TelescopeKind,
+  timeZone?: string,
 ): ScanResult {
   const { sources, excludedFolders, basePathDetected } = collectObjectSources(rootPath, telescopeKind);
   const objects: ScannedObject[] = [];
@@ -857,7 +860,7 @@ export function scanImportFolder(
   }
 
   for (const source of sources) {
-    const { files, truncated: t, skipped } = walkObjectFiles(source, settings);
+    const { files, truncated: t, skipped } = walkObjectFiles(source, settings, timeZone);
     if (t) truncated = true;
     // Tallied before the empty check: an object that is *entirely* skipped is
     // exactly the case the user most needs explained.

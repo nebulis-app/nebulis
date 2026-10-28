@@ -76,7 +76,7 @@ function buildForecastMock() {
       nauticalDarkHours: 8,
     },
     nightRatings: [
-      { date: dateKey(0), score: 85, rating: 'Great', avgCloudCover: 10, avgHumidity: 40, avgWind: 8, precipChance: 0, confidence: 'normal' },
+      { date: dateKey(0), score: 85, rating: 'Ideal', avgCloudCover: 10, avgHumidity: 40, avgWind: 8, precipChance: 0, confidence: 'normal' },
       { date: dateKey(1), score: 62, rating: 'Good', avgCloudCover: 38, avgHumidity: 55, avgWind: 12, precipChance: 10, confidence: 'normal' },
       { date: dateKey(2), score: 31, rating: 'Poor', avgCloudCover: 78, avgHumidity: 72, avgWind: 20, precipChance: 45, confidence: 'normal' },
       { date: dateKey(3), score: 54, rating: 'Fair', avgCloudCover: 52, avgHumidity: 60, avgWind: 14, precipChance: 20, confidence: 'low' },
@@ -636,6 +636,7 @@ export const MOCK = {
       startedAt: null,
       completedAt: null,
       previousPath: null,
+      adopted: null,
     },
   },
 
@@ -1342,7 +1343,7 @@ export async function mockArchiveRoutes(page: Page, options: ArchiveRouteOptions
 
 
   const objects = options.objects ?? [
-    { folderName: 'M 31', objectId: 'M31', firstArchivedAt: '2026-01-01T00:00:00.000Z', lastArchivedAt: '2026-03-01T00:00:00.000Z', filesTotal: 2, subframes: 1, bytes: 2048, missingLocally: 1 },
+    { folderName: 'M 31', objectId: 'M31', willCreate: false, firstArchivedAt: '2026-01-01T00:00:00.000Z', lastArchivedAt: '2026-03-01T00:00:00.000Z', filesTotal: 2, subframes: 1, bytes: 2048, missingLocally: 1 },
   ];
   const files = options.files ?? [
     { relPath: '2026-01-01_22-00-00/Stacked_10_M31.jpg', isSubframe: false, bytes: 1024, presentLocally: true },

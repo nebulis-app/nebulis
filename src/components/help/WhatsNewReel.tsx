@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Sparkles, Maximize2 } from 'lucide-react';
+import { X, Sparkles, Maximize2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { useTheme } from '../../hooks/useTheme';
 
@@ -22,6 +22,10 @@ export interface ReelFeature {
   /** Filename under the reel's `public/whatsnew/<dir>/` folder. Missing files
    *  fall back to an icon tile, so screenshots can be dropped in after the fact. */
   screenshot: string;
+  /** Extra screens for a feature that spans more than one page. Shown side by
+   *  side on the card and as tabs in the full-size view, in this order. `label`
+   *  is a key under the feature's help.json group. Replaces `screenshot`. */
+  shots?: { file: string; label: string }[];
 }
 
 /** What makes one release's reel different from another's. */
@@ -35,34 +39,45 @@ export interface ReelConfig {
 
 type Translate = (key: string, opts?: Record<string, unknown>) => string;
 
-function FeatureCard({ config, feature, isDark, onExpand, t }: { config: ReelConfig; feature: ReelFeature; isDark: boolean; onExpand: () => void; t: Translate }) {
+/** Every screen a feature shows: its `shots`, or its single `screenshot`. */
+function screensOf(feature: ReelFeature): { file: string; label?: string }[] {
+  return feature.shots?.length ? feature.shots : [{ file: feature.screenshot }];
+}
+
+function FeatureCard({ config, feature, isDark, onExpand, t }: { config: ReelConfig; feature: ReelFeature; isDark: boolean; onExpand: (index: number) => void; t: Translate }) {
   const [imgFailed, setImgFailed] = useState(false);
   const Icon = feature.icon;
   const cardBg = isDark ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200';
   const shotBg = isDark ? 'bg-slate-900' : 'bg-slate-100';
   const title = t(`${config.ns}.${feature.key}.title`);
+  const screens = screensOf(feature);
 
   return (
     <div className={`rounded-xl border overflow-hidden ${cardBg}`}>
       <div className={`relative aspect-video flex items-center justify-center ${shotBg}`}>
         {!imgFailed ? (
-          <button
-            type="button"
-            onClick={onExpand}
-            className="group relative w-full h-full cursor-zoom-in"
-            aria-label={t(`${config.ns}.viewFullSize`, { title })}
-          >
-            <img
-              src={`/whatsnew/${config.dir}/${feature.screenshot}`}
-              alt={title}
-              className="w-full h-full object-cover"
-              loading="lazy"
-              onError={() => setImgFailed(true)}
-            />
-            <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
-              <Maximize2 className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-            </span>
-          </button>
+          <div className="flex w-full h-full gap-px">
+            {screens.map((screen, i) => (
+              <button
+                key={screen.file}
+                type="button"
+                onClick={() => onExpand(i)}
+                className="group relative flex-1 min-w-0 h-full cursor-zoom-in"
+                aria-label={t(`${config.ns}.viewFullSize`, { title: screen.label ? t(`${config.ns}.${feature.key}.${screen.label}`) : title })}
+              >
+                <img
+                  src={`/whatsnew/${config.dir}/${screen.file}`}
+                  alt={screen.label ? t(`${config.ns}.${feature.key}.${screen.label}`) : title}
+                  className={`w-full h-full object-cover ${screens.length > 1 ? 'object-left-top' : ''}`}
+                  loading="lazy"
+                  onError={() => setImgFailed(true)}
+                />
+                <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
+                  <Maximize2 className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                </span>
+              </button>
+            ))}
+          </div>
         ) : (
           <Icon className={`w-8 h-8 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />
         )}
@@ -81,11 +96,32 @@ function FeatureCard({ config, feature, isDark, onExpand, t }: { config: ReelCon
   );
 }
 
-/** Full-screen view of a single feature screenshot. Nests inside the main
- *  modal's Modal (supported: see Modal.tsx's nested-dialog handling), so
- *  Escape/Tab trapping and backdrop click work the same as any other dialog. */
-function Lightbox({ config, feature, onClose, t }: { config: ReelConfig; feature: ReelFeature; onClose: () => void; t: Translate }) {
+/** Full-screen view of a feature's screenshots. A feature with several screens
+ *  gets tabs, arrows and a counter, and clicking the picture moves to the next
+ *  one. Nests inside the main modal's Modal (supported: see Modal.tsx's
+ *  nested-dialog handling), so Escape/Tab trapping and backdrop click work the
+ *  same as any other dialog. */
+function Lightbox({ config, feature, startIndex, onClose, t }: { config: ReelConfig; feature: ReelFeature; startIndex: number; onClose: () => void; t: Translate }) {
   const title = t(`${config.ns}.${feature.key}.title`);
+  const screens = screensOf(feature);
+  const many = screens.length > 1;
+  const [index, setIndex] = useState(startIndex);
+  const step = (by: number) => setIndex(i => (i + by + screens.length) % screens.length);
+  const screen = screens[index];
+  const caption = screen.label ? t(`${config.ns}.${feature.key}.${screen.label}`) : title;
+
+  useEffect(() => {
+    if (!many) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') step(1);
+      else if (e.key === 'ArrowLeft') step(-1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [many, screens.length]);
+
+  const arrow = 'absolute top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors';
   return (
     <Modal
       isOpen
@@ -103,14 +139,35 @@ function Lightbox({ config, feature, onClose, t }: { config: ReelConfig; feature
         <X className="w-5 h-5" />
       </button>
       <img
-        src={`/whatsnew/${config.dir}/${feature.screenshot}`}
-        alt={title}
-        onClick={onClose}
-        className="max-w-full max-h-full object-contain rounded-lg shadow-2xl cursor-zoom-out"
+        src={`/whatsnew/${config.dir}/${screen.file}`}
+        alt={caption}
+        onClick={many ? () => step(1) : onClose}
+        className={`max-w-full max-h-[calc(95vh-9rem)] object-contain rounded-lg shadow-2xl ${many ? 'cursor-pointer' : 'cursor-zoom-out'}`}
       />
-      <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-sm font-medium text-white/90 bg-black/50 px-3 py-1.5 rounded-full whitespace-nowrap">
-        {title}
-      </p>
+      {many && (
+        <>
+          <button onClick={() => step(-1)} className={`${arrow} left-3`} aria-label={t(`${config.ns}.previous`)}>
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button onClick={() => step(1)} className={`${arrow} right-3`} aria-label={t(`${config.ns}.next`)}>
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </>
+      )}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-black/50 p-1 rounded-full">
+        {many ? screens.map((sc, i) => (
+          <button
+            key={sc.file}
+            onClick={() => setIndex(i)}
+            aria-pressed={i === index}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${i === index ? 'bg-accent-500 text-white' : 'text-white/80 hover:bg-white/15'}`}
+          >
+            {sc.label ? t(`${config.ns}.${feature.key}.${sc.label}`) : title}
+          </button>
+        )) : (
+          <p className="text-sm font-medium text-white/90 px-3 py-1.5 whitespace-nowrap">{title}</p>
+        )}
+      </div>
     </Modal>
   );
 }
@@ -125,7 +182,7 @@ function Lightbox({ config, feature, onClose, t }: { config: ReelConfig; feature
 export function WhatsNewReel({ config, isOpen, onClose, onAcknowledge, acknowledging, onViewAll }: WhatsNewReelProps & { config: ReelConfig }) {
   const { t } = useTranslation('help');
   const { isDark } = useTheme();
-  const [lightboxFeature, setLightboxFeature] = useState<ReelFeature | null>(null);
+  const [lightboxFeature, setLightboxFeature] = useState<{ feature: ReelFeature; index: number } | null>(null);
 
   const bg = isDark ? 'bg-slate-900' : 'bg-white';
   const border = isDark ? 'border-slate-800' : 'border-slate-200';
@@ -170,7 +227,7 @@ export function WhatsNewReel({ config, isOpen, onClose, onAcknowledge, acknowled
         <div className="flex-1 overflow-y-auto overscroll-contain px-6 py-5 space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {config.features.map(f => (
-              <FeatureCard key={f.key} config={config} feature={f} isDark={isDark} onExpand={() => setLightboxFeature(f)} t={t} />
+              <FeatureCard key={f.key} config={config} feature={f} isDark={isDark} onExpand={index => setLightboxFeature({ feature: f, index })} t={t} />
             ))}
           </div>
 
@@ -216,7 +273,7 @@ export function WhatsNewReel({ config, isOpen, onClose, onAcknowledge, acknowled
         </div>
       </div>
       {lightboxFeature && (
-        <Lightbox config={config} feature={lightboxFeature} onClose={() => setLightboxFeature(null)} t={t} />
+        <Lightbox config={config} feature={lightboxFeature.feature} startIndex={lightboxFeature.index} onClose={() => setLightboxFeature(null)} t={t} />
       )}
     </Modal>
   );

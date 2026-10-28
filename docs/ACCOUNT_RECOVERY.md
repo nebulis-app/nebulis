@@ -18,6 +18,11 @@ database while you reset it.
   "Stop Service" (or open Services, find "Nebulis", and stop it).
 - **macOS**: click the Nebulis icon in the menu bar and choose "Stop Service".
 
+On Windows, open Command Prompt with **Run as administrator** (right-click it in
+the Start menu). The database in `C:\ProgramData\Nebulis` is owned by the service,
+and a normal Command Prompt can read it but not change it. Without administrator
+rights you will see "attempt to write a readonly database".
+
 You can also reset without stopping it; the tool waits briefly for the database
 to be free. Restart the service the same way when you are done.
 

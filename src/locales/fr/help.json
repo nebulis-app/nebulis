@@ -766,6 +766,8 @@
     "done": "Terminé",
     "screenshotSuffix": "capture d'écran",
     "viewFullSize": "Voir en taille réelle : {{title}}",
+    "previous": "Capture précédente",
+    "next": "Capture suivante",
     "explore": {
       "title": "Explorer",
       "lead": "Trouvez votre prochaine cible.",
@@ -789,7 +791,9 @@
     "myMedia": {
       "title": "Page d'objet combinée",
       "lead": "Toutes les images d'un objet sur une seule page.",
-      "description": "Images, sous-poses, nuits et fichiers de projet sur une seule page, en onglets, sans fouiller dans les observations."
+      "description": "Images, sous-poses, nuits et fichiers de projet sur une seule page, en onglets, sans fouiller dans les observations.",
+      "shotObject": "Page de l'objet",
+      "shotObservation": "Page de l'observation"
     },
     "integration": {
       "title": "Intégration par filtre",

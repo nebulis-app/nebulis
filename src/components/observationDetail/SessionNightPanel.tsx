@@ -3,8 +3,9 @@
  * that night with the stretch you were imaging shaded, and the two things that
  * most often explain how the night went, cloud and Moon.
  *
- * Glass over the hero, which is dark in every theme, like the object hero's
- * Tonight panel. The Details section below keeps the full weather table; this
+ * A faint tint over the hero, which is dark in every theme, the same as the
+ * object hero's Tonight panel: an eyebrow title like the one above the
+ * object's name, and the chart blending into the gradient. The Details section below keeps the full weather table; this
  * is the part worth seeing next to the title.
  */
 import { useTranslation } from 'react-i18next';
@@ -33,13 +34,10 @@ interface Props {
   cloudCover: number | null | undefined;
   moonIllumination: number | null | undefined;
   minAlt?: number;
-  /** Offered when no subframes are synced, so the capture time can only be
-   *  guessed. Opens the Subframes tab. */
-  onSyncSubframes?: (() => void) | null;
 }
 
 export function SessionNightPanel({
-  raHours, decDegrees, lat, lon, start, end, captureSpans, timeRange, cloudCover, moonIllumination, minAlt = 20, onSyncSubframes,
+  raHours, decDegrees, lat, lon, start, end, captureSpans, timeRange, cloudCover, moonIllumination, minAlt = 20,
 }: Props) {
   const { t } = useTranslation('observations');
   const { isNight } = useTheme();
@@ -49,10 +47,10 @@ export function SessionNightPanel({
   const verdict = cloudCover != null ? cloudVerdict(cloudCover, t, isNight) : null;
 
   return (
-    <section className="rounded-2xl bg-slate-950/55 p-4 ring-1 ring-inset ring-white/10 backdrop-blur-md">
+    <section className="rounded-2xl bg-white/[0.03] p-4 ring-1 ring-inset ring-white/[0.07]">
       <div className="mb-3 flex items-center gap-2">
-        <Telescope className="h-4 w-4 shrink-0 text-white/50" />
-        <h2 className="font-display text-[0.875rem] font-semibold tracking-tight text-white">
+        <Telescope className="h-3.5 w-3.5 shrink-0 text-white/40" />
+        <h2 className="text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-white/50">
           {t('observationDetail.nightPanel.title')}
         </h2>
       </div>
@@ -69,38 +67,30 @@ export function SessionNightPanel({
         highlights={captureSpans ?? (end && end > start ? [{ start, end }] : undefined)}
         highlightTone={captureSpans ? 'green' : 'amber'}
         isDark
+        bare
         viewWidth={380}
         viewHeight={96}
       />
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[0.75rem] text-white/65">
+      <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[0.75rem] text-white/70">
         {timeRange && (
-          <span className="inline-flex items-center gap-1.5 tabular-nums">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1 ring-1 ring-inset ring-white/10 tabular-nums">
             <span className={`h-2 w-2 rounded-sm ${captureSpans ? 'bg-emerald-400/70' : 'bg-amber-400/70'}`} aria-hidden="true" />
             {t('observationDetail.nightPanel.imaged', { range: timeRange })}
           </span>
         )}
         {verdict && cloudCover != null && (
-          <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1 ring-1 ring-inset ring-white/10">
             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: verdict.hex }} aria-hidden="true" />
             {t('observationDetail.nightPanel.cloud', { label: verdict.label, percent: Math.round(cloudCover) })}
           </span>
         )}
         {moonIllumination != null && (
-          <span className="tabular-nums">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1 ring-1 ring-inset ring-white/10 tabular-nums">
             {t('observationDetail.nightPanel.moon', { percent: Math.round(moonIllumination) })}
           </span>
         )}
       </div>
-      {!captureSpans && onSyncSubframes && (
-        <button
-          type="button"
-          onClick={onSyncSubframes}
-          className="mt-2 text-[0.75rem] font-medium text-amber-300/90 transition hover:text-amber-200 hover:underline"
-        >
-          {t('observationDetail.nightPanel.syncHint')}
-        </button>
-      )}
     </section>
   );
 }

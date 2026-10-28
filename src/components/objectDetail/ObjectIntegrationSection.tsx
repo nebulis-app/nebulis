@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { usePanelHalfOpen } from './usePanelHalfOpen';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Hourglass, ChevronRight, ChevronDown, Pencil, Plus, X, Loader2, AlertTriangle } from 'lucide-react';
+import { Hourglass, ChevronRight, ChevronDown, Pencil, Plus, X, Loader2, AlertTriangle, Sparkles } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import {
   getIntegrationByFilter,
@@ -12,6 +12,8 @@ import {
 } from '../../lib/api/library';
 import { formatDuration } from '../../lib/captureMetrics';
 import { formatDate } from '../../lib/formatLocale';
+import type { SuggestedFilter } from '../../lib/integrationSuggestion';
+import { IntegrationSuggestionPanel, type SuggestionTarget } from './IntegrationSuggestionPanel';
 
 /**
  * Object-level integration per filter, with an optional goal per filter
@@ -48,10 +50,13 @@ function parseHours(value: string): number | null {
 export function ObjectIntegrationSection({
   objectId,
   isAdmin,
+  suggestionTarget = null,
   bare = false,
 }: {
   objectId: string;
   isAdmin: boolean;
+  /** Catalog facts and site Bortle for the suggested-goals panel; null hides it. */
+  suggestionTarget?: SuggestionTarget | null;
   /** Drop the card's own border and surface, for a section that sits inside
    *  ObjectProjectPanel's shared card. */
   bare?: boolean;
@@ -74,6 +79,7 @@ export function ObjectIntegrationSection({
   const [manualOpen, setOwnOpen] = useState<boolean | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<GoalDraft[] | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [prevObjectId, setPrevObjectId] = useState(objectId);
@@ -82,6 +88,7 @@ export function ObjectIntegrationSection({
     setOwnOpen(null);
     setExpanded(null);
     setDrafts(null);
+    setSuggesting(false);
     setError(null);
   }
   const { isOpen, setOpen: setManualOpen } = usePanelHalfOpen('integration', hasContent, [manualOpen, setOwnOpen]);
@@ -92,6 +99,7 @@ export function ObjectIntegrationSection({
 
   const startEditing = () => {
     setError(null);
+    setSuggesting(false);
     setManualOpen(true);
     setDrafts(filters.map(f => ({
       key: rowKey(f.filter),
@@ -103,6 +111,27 @@ export function ObjectIntegrationSection({
 
   const addDraft = () => {
     setDrafts(d => [...(d ?? []), { key: `new-${Date.now()}`, filter: '', hours: '', isNew: true }]);
+  };
+
+  /** Fill the goal fields from a suggestion. Rows for a filter that already
+   *  exists are updated in place; the rest are added. Nothing is saved. */
+  const applySuggestion = (suggested: SuggestedFilter[]) => {
+    setDrafts(ds => {
+      const next = [...(ds ?? [])];
+      for (const s of suggested) {
+        const hours = String(s.hours);
+        const at = next.findIndex(d => d.filter === s.filter);
+        if (at >= 0) {
+          next[at] = { ...next[at], hours };
+        } else if (s.filter === null) {
+          next.push({ key: rowKey(null), filter: null, hours, isNew: false });
+        } else {
+          next.push({ key: `suggest-${s.filter}`, filter: s.filter, hours, isNew: true });
+        }
+      }
+      return next;
+    });
+    setSuggesting(false);
   };
 
   const save = async () => {
@@ -216,6 +245,20 @@ export function ObjectIntegrationSection({
       {isOpen && editing && (
         <div className="p-4 space-y-3">
           <p className={`text-xs ${muted}`}>{t('objectDetail.integrationSection.editHint')}</p>
+          {suggestionTarget && !suggesting && (
+            <button type="button" onClick={() => setSuggesting(true)} className={buttonCls}>
+              <Sparkles className="w-3.5 h-3.5" />
+              {t('objectDetail.integrationSection.suggest.button')}
+            </button>
+          )}
+          {suggestionTarget && suggesting && (
+            <IntegrationSuggestionPanel
+              target={suggestionTarget}
+              defaultRig={filters.some(f => f.filter !== null) ? 'mono' : 'color'}
+              onApply={applySuggestion}
+              onClose={() => setSuggesting(false)}
+            />
+          )}
           {drafts.length === 0 && (
             <p className={`text-sm ${subtle}`}>{t('objectDetail.integrationSection.noFiltersYet')}</p>
           )}

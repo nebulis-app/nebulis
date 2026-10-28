@@ -170,6 +170,33 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
             </div>
           </div>
         )}
+        {migration?.phase === 'complete' && migration.adopted && !dismissed && (
+          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <Check className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <p className={`text-sm font-medium ${heading}`}>{t('libraryLocation.adopted.title')}</p>
+              <p className={`text-xs leading-relaxed mt-1 ${body}`}>
+                {t('libraryLocation.adopted.summary', {
+                  registered: migration.adopted.registeredObjects,
+                  retired: migration.adopted.retiredObjects,
+                  removed: migration.adopted.staleRecordsRemoved,
+                })}
+              </p>
+              {migration.adopted.skipped && (
+                <p className={`text-xs leading-relaxed mt-1 ${body}`}>
+                  {t('libraryLocation.adopted.skipped', { reason: migration.adopted.skipped })}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={dismissNotice}
+                className={`text-xs font-medium mt-2.5 px-3 py-1.5 rounded-lg ${isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              >
+                {t('libraryLocation.gotIt')}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {modalOpen && (

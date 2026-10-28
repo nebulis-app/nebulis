@@ -60,6 +60,7 @@ const OBJECT_ID_TABLES = [
   'libraryFiles',
   'captureInfo',
   'notes',
+  'objectNotes',
   'wishlist',
   'favorites',
   'sessionProcessedImages',
@@ -117,6 +118,18 @@ export function rekeyLibraryObject(
   const destExists = !!db
     .prepare<[string], { objectId: string }>('SELECT objectId FROM libraryObjects WHERE objectId = ?')
     .get(toId);
+
+  // Both objects have a note: the generic loop below would drop the source's
+  // (UPDATE OR IGNORE hits the primary key), losing user text. Keep the target's
+  // first and append the source's, then let the loop discard the source row.
+  if (destExists) {
+    const src = db.prepare<[string], { text: string }>('SELECT text FROM objectNotes WHERE objectId = ?').get(fromId);
+    const dst = db.prepare<[string], { text: string }>('SELECT text FROM objectNotes WHERE objectId = ?').get(toId);
+    if (src && dst) {
+      db.prepare('UPDATE objectNotes SET text = ?, updatedAt = ? WHERE objectId = ?')
+        .run(`${dst.text}\n\n${src.text}`, new Date().toISOString(), toId);
+    }
+  }
 
   for (const table of OBJECT_ID_TABLES) {
     db.prepare(`UPDATE OR IGNORE ${table} SET objectId = ? WHERE objectId = ?`).run(toId, fromId);

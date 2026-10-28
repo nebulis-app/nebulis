@@ -422,7 +422,51 @@
       "save": "Save",
       "invalidHours": "Enter a number of hours between 0 and 1000.",
       "missingFilterName": "Give the new filter a name.",
-      "saveFailed": "Could not save the goals."
+      "saveFailed": "Could not save the goals.",
+      "suggest": {
+        "button": "Suggest goals",
+        "rig": "Camera",
+        "rigs": {
+          "color": "Color camera",
+          "mono": "Mono camera"
+        },
+        "moon": "Moon",
+        "moons": {
+          "dark": "Dark nights",
+          "mixed": "Most nights",
+          "any": "Ignore it"
+        },
+        "tier": "Quality",
+        "tiers": {
+          "standard": "Standard",
+          "deep": "Deep",
+          "showpiece": "Showpiece"
+        },
+        "total": "{{hours}} h in total",
+        "class": {
+          "bright": "bright",
+          "moderate": "moderate",
+          "faint": "faint",
+          "very-faint": "very faint"
+        },
+        "basisSurface": "Mean surface brightness {{sb}} mag/arcsec², so rated {{brightness}}.",
+        "basisType": "No size or magnitude in the catalog, so rated {{brightness}} from the object type.",
+        "skyLine": "Bortle {{bortle}}, {{band}} filters: sky and Moon x{{factor}}.",
+        "bands": {
+          "narrowband": "narrowband",
+          "broadband": "broadband"
+        },
+        "bortleAssumed": "The active site has no Bortle class, so Bortle {{bortle}} is assumed. Set it in Settings under Observing sites.",
+        "disclaimer": "A planning estimate, not a measurement. Nothing is saved until you press Save.",
+        "close": "Close",
+        "apply": "Use these hours",
+        "shootWith": "Shoot with",
+        "shootAny": "Not specified",
+        "fellBack": "Your kit lacks the recommended filters ({{missing}}), so this plan uses what you have.",
+        "missing": "Not in your kit: {{missing}}.",
+        "setRigHint": "Set this telescope's camera and filters for a plan that fits your kit.",
+        "setRigLink": "Open Telescopes settings"
+      }
     },
     "projectArchivesSection": {
       "heading": "Processing Projects",

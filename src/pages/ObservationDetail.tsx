@@ -746,10 +746,6 @@ if (isLoading) {
   const nightDec = parseDecDegrees(objectInfo?.dec ?? observation?.dec);
   const nightStart = observation?.startTime ? parseCaptureTime(observation.startTime) : null;
   const nightEnd = observation?.endTime ? parseCaptureTime(observation.endTime) : null;
-  const showSubframesTab = () => {
-    setPinnedTab('subframes');
-    tabsSectionRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  };
   const nightPanel = nightCoords && nightRa != null && nightDec != null && nightStart ? (
     <SessionNightPanel
       raHours={nightRa}
@@ -759,7 +755,6 @@ if (isLoading) {
       start={nightStart}
       end={nightEnd}
       captureSpans={captureSpans}
-      onSyncSubframes={isAdmin && subFrames.length === 0 ? showSubframesTab : null}
       timeRange={timeRange}
       cloudCover={observation?.weather?.cloudCover}
       moonIllumination={observation?.note?.moonIllumination}

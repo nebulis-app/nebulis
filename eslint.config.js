@@ -6,6 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 import noUnguardedTimezone from './eslint-rules/no-unguarded-timezone.js'
 import noHardcodedJsxText from './eslint-rules/no-hardcoded-jsx-text.js'
+import noUtcDateKey from './eslint-rules/no-utc-date-key.js'
 
 export default defineConfig([
   // server/assets/pixinsight is PixInsight's own JavaScript dialect (`#engine`, `#feature-id` directives), not parseable as ES.
@@ -23,10 +24,21 @@ export default defineConfig([
       globals: globals.browser,
     },
     plugins: {
-      local: { rules: { 'no-unguarded-timezone': noUnguardedTimezone, 'no-hardcoded-jsx-text': noHardcodedJsxText } },
+      local: { rules: { 'no-unguarded-timezone': noUnguardedTimezone, 'no-hardcoded-jsx-text': noHardcodedJsxText, 'no-utc-date-key': noUtcDateKey } },
     },
     rules: {
       'local/no-unguarded-timezone': 'error',
+      // Dates must follow the viewer's or the site's clock, never UTC: see
+      // eslint-rules/no-utc-date-key.js and "Time zones" in CLAUDE.md.
+      'local/no-utc-date-key': 'error',
+    },
+  },
+  {
+    // The server's own clock is UTC in Docker, so on the server the rule also
+    // bans local-clock getters and the local Date constructor.
+    files: ['server/**/*.ts'],
+    rules: {
+      'local/no-utc-date-key': ['error', { serverClock: true }],
     },
   },
   {
@@ -49,6 +61,9 @@ export default defineConfig([
     files: ['tests/**/*.{ts,tsx}'],
     rules: {
       'local/no-unguarded-timezone': 'off',
+      // Tests build UTC fixtures on purpose; the behaviour they check runs
+      // under several zones (npm run test:tz).
+      'local/no-utc-date-key': 'off',
 
       // `require()` is the correct and only tool inside `vi.hoisted()`: that
       // callback is hoisted above the module's own ESM imports and must run

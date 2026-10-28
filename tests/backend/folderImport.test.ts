@@ -23,6 +23,9 @@ import { commitFolderImport, runImport, claimImportLock, getImportStatus } from 
 import { getLocalSessions } from '../../server/lib/library/observations';
 import { LIBRARY_DIR } from '../../server/lib/paths';
 import { createProfile, updateSettingsData } from '../../server/lib/telescopes';
+import { getActiveSite, updateSite } from '../../server/lib/observingSites';
+import { setObjectLayout } from '../../server/lib/library/libraryLayout';
+import db from '../../server/lib/db';
 import { parseFilename, sessionNightFor } from '../../server/lib/telescopeFiles';
 import { stmts } from '../../server/lib/library/objects';
 import { getLibraryFilesForObject, sessionDateForRow } from '../../server/lib/library/libraryFiles';
@@ -71,6 +74,10 @@ describe('scan + commit', () => {
   beforeAll(() => {
     // Keep enrichment/weather (which run after commit) fully offline + fast.
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline in tests')));
+    // A FITS DATE-OBS is UTC and is read in the site's zone. The fixtures below
+    // were written as wall-clock times, so pin the site to UTC and the results
+    // do not depend on the zone the test machine runs in (npm run test:tz).
+    updateSite(getActiveSite().id, { timezone: 'UTC' });
   });
   afterAll(() => {
     vi.unstubAllGlobals();
@@ -331,7 +338,8 @@ describe('scan + commit', () => {
 
   it('scans into objects and derived sessions without copying anything', () => {
     const root = makeSourceTree();
-    const result = scanImportFolder(root, settings);
+    // The route passes activeSiteTimeZone(); the fixture's DATE-OBS times are UTC wall clock.
+    const result = scanImportFolder(root, settings, undefined, 'UTC');
 
     expect(result.objects.map(o => o.folderName).sort()).toEqual(['M42', 'NGC7000']);
     const m42 = result.objects.find(o => o.folderName === 'M42')!;
@@ -827,6 +835,49 @@ describe('scan + commit', () => {
     // Idempotent: calling again after the stale row is gone doesn't error or
     // change anything further.
     expect(getLocalSessions('M42').map(s => s.date)).toEqual(['2024-01-15']);
+  });
+
+  it('reads a FITS DATE-OBS in the site zone: 01:00 UTC is the evening before in Chicago', async () => {
+    const site = getActiveSite();
+    updateSite(site.id, { timezone: 'America/Chicago' });
+    try {
+      const root = makeSourceTree();
+      await commitFolderImport({
+        rootPath: root,
+        importFits: true,
+        objects: [{ folderName: 'M42', targetObjectId: 'M42CHICAGO', targetFolderName: 'M42CHICAGO', sessionMap: { '2024-01-15': '2024-01-15' } }],
+      });
+      const row = getLibraryFilesForObject('M42CHICAGO').find(r => r.fileName === 'light_001.fits')!;
+      // 2024-01-16T01:00Z is 19:00 CST on the 15th: same calendar day, same night.
+      expect(row.captureDate).toBe('2024-01-15');
+      expect(row.captureTime).toBe('190000');
+      expect(sessionDateForRow(row)).toBe('2024-01-15');
+    } finally {
+      updateSite(site.id, { timezone: 'UTC' });
+    }
+  });
+
+  it('does not copy a file again into a flat object when the site zone changes', async () => {
+    // A flat object's name embeds the FITS capture time in the site's zone, so
+    // the name a re-run builds moves with the zone. The same source file must
+    // still be recognised as already imported.
+    const root = makeSourceTree();
+    const plan = { rootPath: root, importFits: true, objects: [{ folderName: 'M42', targetObjectId: 'M42ZONE', targetFolderName: 'M42ZONE', sessionMap: { '2024-01-15': '2024-01-15' } }] };
+    await commitFolderImport(plan);
+    // Make it an old flat object holding nothing yet.
+    setObjectLayout('M42ZONE', 'flat');
+    fs.rmSync(path.join(LIBRARY_DIR, 'M42ZONE'), { recursive: true, force: true });
+    db.prepare('DELETE FROM libraryFiles WHERE objectId = ?').run('M42ZONE');
+    const site = getActiveSite();
+    try {
+      await commitFolderImport(plan);
+      updateSite(site.id, { timezone: 'America/Chicago' });
+      await commitFolderImport(plan);
+      const fits = objectFileNames(path.join(LIBRARY_DIR, 'M42ZONE')).filter(n => n.startsWith('light_001'));
+      expect(fits).toEqual(['light_001_20240116-010000.fits']);
+    } finally {
+      updateSite(site.id, { timezone: 'UTC' });
+    }
   });
 
   it('splits by calendar date instead of merging when the Settings toggle is off', async () => {

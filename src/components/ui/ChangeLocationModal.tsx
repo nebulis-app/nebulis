@@ -38,6 +38,7 @@ export function ChangeLocationModal({
   const [newFolderName, setNewFolderName] = useState('Nebulis');
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
+  const [useExisting, setUseExisting] = useState(false);
 
   const { data: volumesData, isLoading: volumesLoading, refetch: refetchVolumes } = useQuery({
     queryKey: ['storage-volumes'],
@@ -77,7 +78,7 @@ export function ChangeLocationModal({
     setStarting(true);
     setError('');
     try {
-      await startLibraryMigration(targetPath);
+      await startLibraryMigration(targetPath, useExisting);
       onStarted();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('changeLocationModal.couldNotStartMove'));
@@ -125,6 +126,18 @@ export function ChangeLocationModal({
               </button>
             </div>
           )}
+          <label className={`flex items-start gap-2 mt-3 text-xs cursor-pointer ${body}`}>
+            <input
+              type="checkbox"
+              checked={useExisting}
+              onChange={e => { setUseExisting(e.target.checked); setError(''); }}
+              className="mt-0.5 accent-accent-500"
+            />
+            <span>
+              <span className="font-medium">{t('changeLocationModal.useExisting')}</span>
+              <span className={`block ${sub}`}>{t('changeLocationModal.useExistingHint')}</span>
+            </span>
+          </label>
         </div>
 
         {tab === 'network' && showTabs ? (
@@ -133,6 +146,7 @@ export function ChangeLocationModal({
             location={location}
             starting={starting}
             setStarting={setStarting}
+            useExisting={useExisting}
             error={error}
             setError={setError}
             onClose={onClose}
@@ -278,7 +292,7 @@ export function ChangeLocationModal({
               }`}
             >
               {starting && <Loader2 className="w-4 h-4 animate-spin" />}
-              {t('changeLocationModal.moveLibraryHere')}
+              {t(useExisting ? 'changeLocationModal.useLibraryHere' : 'changeLocationModal.moveLibraryHere')}
             </button>
           </div>
         </div>
@@ -294,12 +308,13 @@ const DEFAULT_NETWORK_CONFIG: NetworkLibraryConfig = {
 };
 
 function NetworkShareForm({
-  isDark, location, starting, setStarting, error, setError, onClose, onStarted,
+  isDark, location, starting, setStarting, useExisting, error, setError, onClose, onStarted,
 }: {
   isDark: boolean;
   location: LibraryLocation | undefined;
   starting: boolean;
   setStarting: (v: boolean) => void;
+  useExisting: boolean;
   error: string;
   setError: (v: string) => void;
   onClose: () => void;
@@ -368,7 +383,7 @@ function NetworkShareForm({
     setStarting(true);
     setError('');
     try {
-      await startNetworkLibraryMigration(cfg);
+      await startNetworkLibraryMigration(cfg, useExisting);
       onStarted();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('changeLocationModal.couldNotStartMove'));
@@ -510,7 +525,7 @@ function NetworkShareForm({
             }`}
           >
             {starting && <Loader2 className="w-4 h-4 animate-spin" />}
-            {t('changeLocationModal.moveLibraryHere')}
+            {t(useExisting ? 'changeLocationModal.useLibraryHere' : 'changeLocationModal.moveLibraryHere')}
           </button>
         </div>
       </div>

@@ -43,6 +43,7 @@ import { isRecord } from '../lib/typeGuards.js';
 import { createManualDatabaseBackup } from '../lib/db.js';
 import { analyzeLibrary, fixStaleRecords, fixMissingObjects, fixLayoutDrift, fixMissingProcessed, fixDuplicateFiles, LibraryUnreadableError } from '../lib/library/analyze.js';
 import { getSubframeUsage, purgeAllSubframes } from '../lib/library/cleanup.js';
+import { runPostImport } from '../lib/library/postImport.js';
 import { getCurrentVersion } from '../lib/appUpdate/platform.js';
 import os from 'os';
 import { isSameMachineAddress } from '../lib/lanAddress.js';
@@ -812,6 +813,8 @@ router.post('/migrate', requireAdmin, (req: Request, res: Response) => {
   }
   // req.body is client-controlled, so narrow it instead of asserting a shape.
   const body = isRecord(req.body) ? req.body : {};
+  // adopt: use the folder as the library as it is, copying nothing.
+  const adopt = body.adopt === true;
 
   if (body.network) {
     if (process.platform !== 'win32' && process.platform !== 'darwin') {
@@ -835,16 +838,16 @@ router.post('/migrate', requireAdmin, (req: Request, res: Response) => {
       return;
     }
     try {
-      const migration = startMigration('', networkConfig);
+      const migration = startMigration('', networkConfig, { adopt });
       logEvent({
         category: 'storage',
         event: 'library_migration_started',
         level: 'warning',
-        message: `Started moving the library to network share "${networkConfig.host}/${networkConfig.share}".`,
+        message: `Started ${adopt ? 'using the existing library on' : 'moving the library to'} network share "${networkConfig.host}/${networkConfig.share}".`,
         userId: req.userId,
         username: req.username,
         ip: req.ip ?? req.socket.remoteAddress,
-        metadata: { target: 'network', host: networkConfig.host, share: networkConfig.share },
+        metadata: { target: 'network', host: networkConfig.host, share: networkConfig.share, adopt },
       });
       res.apiSuccess({ migration });
     } catch (err: unknown) {
@@ -859,16 +862,16 @@ router.post('/migrate', requireAdmin, (req: Request, res: Response) => {
     return;
   }
   try {
-    const migration = startMigration(targetPath);
+    const migration = startMigration(targetPath, undefined, { adopt });
     logEvent({
       category: 'storage',
       event: 'library_migration_started',
       level: 'warning',
-      message: `Started moving the library to "${targetPath}".`,
+      message: `Started ${adopt ? 'using the existing library at' : 'moving the library to'} "${targetPath}".`,
       userId: req.userId,
       username: req.username,
       ip: req.ip ?? req.socket.remoteAddress,
-      metadata: { target: 'local', targetPath },
+      metadata: { target: 'local', targetPath, adopt },
     });
     res.apiSuccess({ migration });
   } catch (err: unknown) {
@@ -1869,14 +1872,21 @@ router.post('/archive/restore', requireAdmin, strictRateLimiter, async (req: Req
     category: 'storage',
     event: 'archive_restore',
     level: result.conflicts.length > 0 || result.failures.length > 0 ? 'warning' : 'info',
-    message: `Archive restore: ${result.restored} restored, ${result.skipped} already present, ${result.conflicts.length} conflicts.`,
+    message: `Archive restore: ${result.restored} restored, ${result.skipped} already present, ${result.conflicts.length} conflicts, ${result.createdObjects} objects created, ${result.revivedObjects} brought back from the trash.`,
     userId: req.userId,
     username: req.username,
     ip: req.ip ?? req.socket.remoteAddress,
-    metadata: { restored: result.restored, conflicts: result.conflicts.length, failures: result.failures.length },
+    metadata: {
+      restored: result.restored, conflicts: result.conflicts.length, failures: result.failures.length,
+      createdObjects: result.createdObjects, revivedObjects: result.revivedObjects,
+    },
   });
 
-  res.apiSuccess({ ...result });
+  // Files arrived in the library, so the pipeline follows (enrichment, thumbnails, weather).
+  const { writtenObjects, ...summary } = result;
+  if (writtenObjects.length > 0) runPostImport({ reason: 'archive-restore', touched: writtenObjects });
+
+  res.apiSuccess({ ...summary });
 });
 
 export { router as storageRouter };

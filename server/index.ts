@@ -22,6 +22,7 @@ import { settingsRouter } from './routes/settings.js';
 import { openapiRouter } from './routes/openapi.js';
 import { storageRouter } from './routes/storage.js';
 import { notesRouter } from './routes/notes.js';
+import { objectNotesRouter } from './routes/objectNotes.js';
 import { telescopesRouter } from './routes/telescopes.js';
 import { sitesRouter } from './routes/sites.js';
 import { alertsRouter } from './routes/alerts.js';
@@ -56,7 +57,7 @@ import { pixinsightRepoRouter } from './routes/pixinsightRepo.js';
 import { startPackUpdateChecker } from './lib/catalogPack/updater.js';
 import { startPlannerNightlyScheduler } from './lib/plannerNightlyPrefetch.js';
 import { startArchiveScheduler } from './lib/archive/archiveScheduler.js';
-import { prewarmSessionThumbnails } from './lib/library/sessionThumbnailPrewarm.js';
+import { runPostImport } from './lib/library/postImport.js';
 import { startForecastRefresh } from './lib/forecastCache.js';
 import { startLinkedSourceScheduler } from './lib/library/linkedSourceScheduler.js';
 import { startAutoSolveScheduler } from './lib/annotate/autoSolve.js';
@@ -75,6 +76,11 @@ import { scheduleAutoImport, purgeJunkFiles, purgeStaleImportTmp, scheduleImport
 import { isTelescopeOnline } from './lib/smbCache.js';
 import { pickDefaultTarget } from './lib/telescopes.js';
 import { runMigration } from './lib/migrate.js';
+import { createShutdown, createRequestTracker, DEFAULT_GRACE_MS } from './lib/shutdown.js';
+import { isLibraryBusy } from './lib/libraryBusy.js';
+import { cancelImport } from './lib/library/import.js';
+import { isArchiveRunning } from './lib/archive/archiveCopy.js';
+import { cancelArchiveRun } from './lib/archive/archivePipeline.js';
 import db, { startupBackupOutcome } from './lib/db.js';
 import { logEvent } from './lib/systemLog.js';
 import fs from 'fs';
@@ -170,6 +176,10 @@ if (startupBackupOutcome.status === 'created') {
 // Correlation ID: must run before timing so the request log line carries
 // requestId and before downstream handlers that may emit their own logs.
 app.use(correlationMiddleware);
+
+// Counts open requests so a shutdown can wait for them (lib/shutdown.ts).
+const requestTracker = createRequestTracker();
+app.use(requestTracker.middleware);
 
 // Request timing logger
 app.use((req, res, next) => {
@@ -385,6 +395,7 @@ v1.use('/settings', settingsRouter);
 // Feature routes
 v1.use('/storage', storageRouter);
 v1.use('/notes', notesRouter);
+v1.use('/object-notes', objectNotesRouter);
 v1.use('/telescopes', telescopesRouter);
 v1.use('/sites', sitesRouter);
 v1.use('/forecast', forecastRouter);
@@ -409,55 +420,14 @@ v1.use('/explore', exploreRouter);
 v1.use('/system-log', systemLogRouter);
 v1.use('/alerts', alertsRouter);
 
-// Mount v1
-app.use('/api/v1', v1);
-
-// --- Legacy /api routes ---
-// These also need the envelope middleware since the new route handlers
-// use res.apiSuccess/res.apiError exclusively
-const legacy = express.Router();
-legacy.use((_req, res, next) => {
-  res.setHeader('Deprecation', 'true');
-  res.setHeader('Sunset', 'Sat, 01 Jan 2028 00:00:00 GMT');
-  res.setHeader('Link', '</api/v1>; rel="successor-version"');
-  next();
-});
-legacy.use(apiEnvelope);
-// Same limiter instance as v1 (not a second one): the legacy prefix reaches
-// the same underlying endpoints, so a client alternating between /api/v1/x
-// and /api/x must not get double the effective rate.
-legacy.use(apiRateLimiter);
-legacy.use(apiAuth);
-legacy.use('/auth', authRouter);
-legacy.use('/telescope', telescopeRouter);
-legacy.use('/catalog', catalogRouter);
-legacy.use('/settings', settingsRouter);
-legacy.use('/notes', notesRouter);
-legacy.use('/storage', storageRouter);
-legacy.use('/telescopes', telescopesRouter);
-legacy.use('/sites', sitesRouter);
-legacy.use('/forecast', forecastRouter);
-legacy.use('/observations', observationsRouter);
-legacy.use('/satellite', satelliteRouter);
-legacy.use('/library', libraryRouter);
-legacy.use('/annotate', annotateRouter);
-legacy.use('/planner', plannerRouter);
-legacy.use('/sky-events', skyEventsRouter);
-legacy.use('/gear', gearRouter);
-legacy.use('/journal', journalRouter);
-legacy.use('/dso', plannerRouter);
-legacy.use('/wishlist', wishlistRouter);
-legacy.use('/planned-sessions', plannedSessionsRouter);
-legacy.use('/reports', reportsRouter);
-legacy.use('/preferences', preferencesRouter);
-legacy.use('/pair', pairRouter);
-legacy.use('/devices', devicesRouter);
-legacy.use('/catalogs', catalogsRouter);
-legacy.use('/explore', exploreRouter);
-legacy.use('/meta', metaRouter);
-legacy.use('/system-log', systemLogRouter);
-legacy.use('/alerts', alertsRouter);
-app.use('/api', legacy);
+// Mount the one route table at both prefixes. The web app calls /api and the
+// Android and Apple clients call /api/v1, so both are first-class and neither
+// is deprecated. A second, hand-copied router used to live here for /api and
+// could silently drift from this one; a single router cannot. Everything the
+// router applies (envelope, rate limiter, auth) is shared, so a client that
+// alternates prefixes still counts against one rate limit.
+// tests/backend/apiPrefixes.test.ts checks both prefixes against a real server.
+app.use(['/api/v1', '/api'], v1);
 
 // --- PixInsight update repository (Settings → Features → PixInsight integration) ---
 // Public, read-only, and 404 unless the admin enabled it. PixInsight builds the manifest URL as
@@ -744,14 +714,10 @@ function onListening(): void {
     startAutoMeasureScheduler();
   }
 
-  // Warm the per-session (Nights calendar) thumbnail cache in the background,
-  // deferred so it never competes with the rest of startup. Idempotent, so a
-  // restart only renders whatever is genuinely missing.
-  setTimeout(() => {
-    void prewarmSessionThumbnails('boot').catch(err =>
-      console.warn('[session-thumb-prewarm] boot run failed:', err instanceof Error ? err.message : err),
-    );
-  }, 120_000).unref();
+  // Library-wide sweep of the post-import pipeline (session thumbnails and
+  // sub-frame headers), deferred so it never competes with the rest of startup.
+  // Idempotent: a restart only does what is genuinely missing.
+  setTimeout(() => { void runPostImport({ reason: 'boot' }).done; }, 120_000).unref();
 
   // Advertise via mDNS. Deferred by one tick (via the async IIFE) so it never
   // blocks the listen callback above.
@@ -848,6 +814,12 @@ function configureServerTimeouts(srv: import('http').Server): void {
   srv.requestTimeout = 0;
 }
 
+/** NEBULIS_SHUTDOWN_GRACE_MS as a non-negative number, or the default for anything else. */
+function parseGraceMs(raw: string | undefined): number {
+  const n = Number(raw);
+  return raw !== undefined && raw.trim() !== '' && Number.isFinite(n) && n >= 0 ? n : DEFAULT_GRACE_MS;
+}
+
 const activeServers: import('http').Server[] = [];
 
 // Clear the tour's demo object before the port opens, then start listening.
@@ -884,31 +856,32 @@ void startListening();
 
 // --- Graceful shutdown ---
 // launchd (macOS) and NSSM (Windows) stop the service with a signal and only
-// wait a few seconds before SIGKILL (launchd's exit timeout is 5s). The mDNS
-// and UDP-discovery blocks above register SIGTERM/SIGINT handlers, and merely
-// having a handler disables Node's default terminate-on-signal — with the HTTP
-// server and scheduler intervals keeping the event loop alive, the process sat
-// out the full 5 seconds and died by SIGKILL on every stop. During those 5
-// seconds launchd still holds the service label, so the menu bar app's
-// post-update `launchctl bootstrap` failed with EIO and the service stayed
-// stopped after a Sparkle update. Exit promptly instead: stop accepting
-// connections, drop keep-alive sockets, and exit within ~300ms.
-let shuttingDown = false;
-function shutdownOnSignal(signal: NodeJS.Signals): void {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  console.log(`Received ${signal}, shutting down`);
-  for (const srv of activeServers) {
-    srv.close();
-    srv.closeAllConnections();
-  }
-  // Brief delay so the log line and close callbacks flush; unref'd so an
-  // already-drained event loop can exit naturally even sooner. process.exit
-  // still runs the 'exit' handlers (dns-sd kill, SMB unmount).
-  setTimeout(() => process.exit(0), 300).unref();
-}
-process.on('SIGTERM', shutdownOnSignal);
-process.on('SIGINT', shutdownOnSignal);
+// wait a few seconds before SIGKILL (launchd's exit timeout is 5s), and having
+// any SIGTERM/SIGINT handler disables Node's default terminate-on-signal, so
+// the process must exit on its own. lib/shutdown.ts stops accepting work, asks
+// a running import or archive run to stop at its next safe point, waits a
+// bounded time (3s by default, kept under launchd's 5s), checkpoints SQLite and
+// exits. With nothing running it still exits in about 300ms.
+// NEBULIS_SHUTDOWN_GRACE_MS overrides the wait; keep it under the supervisor's
+// timeout (Docker waits 10s by default).
+const shutdown = createShutdown({
+  servers: activeServers,
+  isBusy: () => requestTracker.active() > 0 || isLibraryBusy(),
+  requestStop: () => {
+    cancelImport();
+    if (isArchiveRunning()) cancelArchiveRun();
+  },
+  onStart: requestTracker.markClosing,
+  closeDatabase: () => {
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    db.close();
+  },
+  exit: code => process.exit(code),
+  log: message => console.log(message),
+  graceMs: parseGraceMs(process.env.NEBULIS_SHUTDOWN_GRACE_MS),
+});
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 
 // Remove macOS resource forks and other junk files left in the library.
 // Fire-and-forget: purgeJunkFiles() is async (fs.promises, timeout-bounded)

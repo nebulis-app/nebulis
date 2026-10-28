@@ -39,15 +39,35 @@ const SECTION_META_LIGHT: Record<string, { chip: string }> = {
 SECTION_META_LIGHT.New = SECTION_META_LIGHT.Added;
 SECTION_META_LIGHT.Updated = SECTION_META_LIGHT.Changed;
 
-/** Renders **bold** spans from changelog text. A span holding a Settings path
+const LINK_PATTERN = /\[([^\]]+)\]\((https:\/\/[^)\s]+)\)/g;
+
+/** Turns [text](https://...) into links, leaving everything else as written. Only https links, so a changelog line can never
+ *  carry a script or other scheme into an href. */
+function renderLinks(text: string, linkClass: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  for (const match of text.matchAll(LINK_PATTERN)) {
+    const at = match.index ?? 0;
+    if (at > last) out.push(text.slice(last, at));
+    out.push(
+      <a key={at} href={match[2]} target="_blank" rel="noopener noreferrer" className={linkClass}>{match[1]}</a>,
+    );
+    last = at + match[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+/** Renders **bold** spans and [links](https://...) from changelog text. A span holding a Settings path
  *  ("Settings -> Library -> Filter aliases") becomes a chip so it reads as a
  *  place to go; any other bold span is a plain lead-in. */
 function renderInline(text: string, strongClass: string, isDark: boolean): React.ReactNode[] {
   const chipClass = isDark
     ? 'bg-slate-800 text-slate-100 ring-1 ring-slate-700'
     : 'bg-slate-100 text-slate-900 ring-1 ring-slate-200';
+  const linkClass = isDark ? 'text-accent-400 hover:underline' : 'text-accent-600 hover:underline';
   return text.split(/\*\*(.+?)\*\*/g).map((part, i) => {
-    if (i % 2 === 0) return part;
+    if (i % 2 === 0) return <span key={i}>{renderLinks(part, linkClass)}</span>;
     if (part.includes('->')) {
       return (
         <span key={i} className={`mx-0.5 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[0.85em] font-medium ${chipClass}`}>

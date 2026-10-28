@@ -10,11 +10,13 @@ import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { getLibraryDir } from '../libraryPath.js';
-import { THUMBNAILS_DIR } from '../paths.js';
 import { generateFitsThumbnail } from '../fitsThumbnail.js';
-import sharp from '../sharp-optional.js';
 import db from '../db.js';
 import { writeImportHistory } from './importHistory.js';
+import { runPostImport, waitUpTo } from './postImport.js';
+
+// Re-exported for the tests that pin its behaviour.
+export { waitUpTo };
 import {
   getProfileById,
   getManualImportProfiles,
@@ -79,10 +81,9 @@ import {
   loadIndex,
   loadSettings,
   resolveCatalogMeta,
-  enrichObjectData,
   type LibraryIndex,
 } from './objects.js';
-import { resolveObjectImagePath, invalidateAllImagesCache, objectThumbnailDiskCacheKey } from './gallery.js';
+import { invalidateAllImagesCache } from './gallery.js';
 import { writeFileIntoLibrary, copyTransportFile } from './importWrite.js';
 import { recordLibraryFiles, roleForFile, resolverFor, writeObjectManifest, getLibraryFileRow, getLibraryFilesForObject, type RecordFileInput } from './libraryFiles.js';
 import { classifyExistingCopy } from './existingCopy.js';
@@ -103,7 +104,7 @@ import {
   sanitizeSessionFolder,
   type LibraryLayout,
 } from './libraryLayout.js';
-import { enqueueSessionWeatherBackfill, getSessionTelescopeId } from './observations.js';
+import { getSessionTelescopeId } from './observations.js';
 import {
   classifyImportFile,
   isDwarfMasterStack,
@@ -117,6 +118,8 @@ import {
 import { isRecord } from '../typeGuards.js';
 import { isContainerFolder, groupByTarget, stripCaptureModeSuffix } from './objectDiscovery.js';
 import { isCalibrationFolderName, SEESTAR_DARK_LIBRARY_FOLDER } from './calibrationFolders.js';
+import { activeSiteTimeZone } from '../siteTimeZone.js';
+import { localParts } from '../timezone.js';
 import {
   collectObjectSources,
   walkObjectFiles,
@@ -322,73 +325,9 @@ export function createWorkerQueue<T>(concurrency: number, process: (item: T) => 
  * key is always identical to what the route will look up. Runs up to 4
  * objects concurrently to saturate the sharp/libvips thread pool.
  */
-/** How long an import waits for thumbnail pre-warming before it reports done.
- *  A target with no local image falls back to a sky-survey fetch with a long
- *  timeout, so on a slow or offline network the wait used to hold the progress
- *  dialog at 100% for a minute or more. The workers keep running after this and
- *  anything unfinished is generated on first view. */
-const THUMB_PREWARM_MAX_WAIT_MS = 10_000;
-
-/** Resolve when `work` settles or `ms` passes, whichever is first. Never rejects:
- *  the work's own errors are handled inside it, and the caller only wants to stop
- *  waiting. */
-export async function waitUpTo(work: Promise<unknown>, ms: number): Promise<void> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    await Promise.race([
-      work.catch(() => undefined),
-      new Promise<void>(resolve => { timer = setTimeout(resolve, ms); }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-async function pregenerateObjectThumbnails(objectIds: Iterable<string>): Promise<void> {
-  const THUMB_W = 400;
-  const THUMB_H = 400;
-  const ids = Array.from(objectIds);
-  log.info({ count: ids.length }, '[thumb] Pre-generating gallery thumbnails for %d object(s)', ids.length);
-
-  importStatus.warmingThumbnails = { done: 0, total: ids.length };
-
-  const queue = ids.slice();
-  const CONCURRENCY = 4;
-  // Local counter, not a read-modify-write off importStatus.warmingThumbnails:
-  // that field can be reset to null by a subsequent runImport() call (module-
-  // level importStatus, guarded only by the import lock) while these workers
-  // are still mid-await, which would null-deref on the next increment.
-  let done = 0;
-
-  await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
-    while (queue.length > 0) {
-      const objectId = queue.shift();
-      if (!objectId) break;
-      try {
-        const srcPath = await resolveObjectImagePath(objectId);
-        if (srcPath && fs.existsSync(srcPath)) {
-          const mtimeMs = fs.statSync(srcPath).mtimeMs;
-          const cacheKey = objectThumbnailDiskCacheKey(srcPath, THUMB_W, THUMB_H, mtimeMs);
-          const cachePath = path.join(THUMBNAILS_DIR, `${cacheKey}.jpg`);
-          if (!fs.existsSync(cachePath)) {
-            fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
-            await sharp(srcPath)
-              .resize(THUMB_W, THUMB_H, { fit: 'inside', withoutEnlargement: true })
-              .jpeg({ quality: 80, progressive: true })
-              .toFile(cachePath);
-          }
-        }
-      } catch (err) {
-        // Never block import completion — the thumbnail regenerates on
-        // demand elsewhere — but a repeated failure here is worth seeing.
-        log.warn({ err: err instanceof Error ? err.message : String(err), objectId }, '[import] thumbnail pre-warm failed');
-      }
-      done++;
-      importStatus.warmingThumbnails = { done, total: ids.length };
-    }
-  }));
-
-  importStatus.warmingThumbnails = null;
+/** Object ids that received at least one new file in this run. */
+function newFileObjectIds(files: ReadonlyArray<{ name: string }>): Set<string> {
+  return new Set(files.map(f => resolveCanonicalId(normalizeObjectId(f.name.split('/')[0]))));
 }
 
 // If a previous run left importRunning = 1 in the DB, the server crashed mid-import.
@@ -1174,7 +1113,7 @@ export async function runImport(
         } catch (err) {
           const reason = err instanceof Error ? err.message : String(err);
           debugLog('import:error', `Failed to list Dwarf session files for "${objectName}" — ${reason}`);
-          console.error(`[import] Failed to list Dwarf session files for "${objectName}":`, reason);
+          console.error('[import] Failed to list Dwarf session files for', objectName, reason);
           const msg = `Could not read session files for "${objectName}" (${reason}).`;
           importStatus.error = importStatus.error ? `${importStatus.error}; ${msg}` : msg;
           importStatus.objectsDone++;
@@ -1279,7 +1218,7 @@ export async function runImport(
         } catch (err) {
           const reason = err instanceof Error ? err.message : String(err);
           debugLog('import:error', `Failed to list generic session files for "${objectName}" — ${reason}`);
-          console.error(`[import] Failed to list generic session files for "${objectName}":`, reason);
+          console.error('[import] Failed to list generic session files for', objectName, reason);
           const msg = `Could not read session files for "${objectName}" (${reason}).`;
           importStatus.error = importStatus.error ? `${importStatus.error}; ${msg}` : msg;
           importStatus.objectsDone++;
@@ -1350,7 +1289,7 @@ export async function runImport(
         } catch (err) {
           const reason = err instanceof Error ? err.message : String(err);
           debugLog('import:error', `Failed to list ASIAIR files for "${objectName}" — ${reason}`);
-          console.error(`[import] Failed to list ASIAIR files for "${objectName}":`, reason);
+          console.error('[import] Failed to list ASIAIR files for', objectName, reason);
           const msg = `Could not read files for "${objectName}" (${reason}).`;
           importStatus.error = importStatus.error ? `${importStatus.error}; ${msg}` : msg;
           importStatus.objectsDone++;
@@ -1512,7 +1451,7 @@ export async function runImport(
       const priorSessionDates = new Set(index.objects[objIdNormalized]?.sessions ?? []);
       debugLog('import:object', `${objectName}: ${allFiles.length} file(s) to process${hasPriorImport ? ' (prior import exists)' : ' (new object)'}`);
       if (allFiles.length === 0 && !hasPriorImport) {
-        console.log(`[import] Skipping empty folder: ${objectName}`);
+        console.log('[import] Skipping empty folder:', objectName);
         importStatus.objectsDone++;
         continue;
       }
@@ -1527,7 +1466,7 @@ export async function runImport(
       const newObjectFolderName = applyCatalogPreference(objIdNormalized, preferCaldwell);
       const objLocalDir = safeObjectDir(existingSmbFolderName || newObjectFolderName);
       if (!objLocalDir) {
-        console.warn(`[import] Skipping object with unsafe name: ${objectName}`);
+        console.warn('[import] Skipping object with unsafe name:', objectName);
         importStatus.objectsDone++;
         continue;
       }
@@ -1654,7 +1593,7 @@ export async function runImport(
           downloadErrors++;
           if (!firstDownloadError) firstDownloadError = outcome.reason;
           debugLog('import:error', `Download failed: ${objectName}/${file.localName} — ${outcome.reason}`);
-          console.error(`Download failed: ${file.localName}:`, outcome.reason);
+          console.error('Download failed:', file.localName, outcome.reason);
           importStatus.filesDone++;
           importStatus.currentObjectFilesDone++;
           importStatus.bytesDone += file.size || 0;
@@ -1834,7 +1773,7 @@ export async function runImport(
           }
         })();
       } catch (saveErr) {
-        console.error(`[import] Failed to save index for ${objectName}:`, saveErr instanceof Error ? saveErr.message : saveErr);
+        console.error('[import] Failed to save index for', objectName, saveErr instanceof Error ? saveErr.message : saveErr);
       }
 
       // Audit trail: one row per object per import run that actually did
@@ -2110,36 +2049,15 @@ export async function runImport(
     }
     importStatus.lastRun = lastImportTs;
 
-    // Enrich with Wikipedia description + SIMBAD size data. Best-effort network
-    // call; enrichObjectData internally checks whether the object is already
-    // fully enriched and returns immediately if so.
-    for (const objectId of touchedObjectIds) {
-      try {
-        debugLog('import:object', `${objectId}: enriching catalog data`);
-        await enrichObjectData(objectId);
-        debugLog('import:object', `${objectId}: enrichment complete`);
-      } catch {
-        debugLog('import:object', `${objectId}: enrichment failed (non-fatal)`);
-      }
-      // Weather is queued, not awaited — a slow archive API for a 25-night
-      // object used to add minutes to import completion (FC-3).
-      try { enqueueSessionWeatherBackfill(objectId); } catch { /* best-effort */ }
-    }
-
-    // Pre-warm the gallery thumbnail cache for every object that received new
-    // files so the library grid loads instantly on first view.
-    if (importNewFiles.length > 0) {
-      const newObjectIds = new Set(importNewFiles.map(f => resolveCanonicalId(normalizeObjectId(f.name.split('/')[0]))));
-      debugLog('import:thumb', `Pre-warming gallery thumbnails for ${newObjectIds.size} object(s): ${Array.from(newObjectIds).join(', ')}`);
-      await waitUpTo(pregenerateObjectThumbnails(newObjectIds), THUMB_PREWARM_MAX_WAIT_MS);
-      debugLog('import:thumb', 'Gallery thumbnail pre-warm complete');
-
-      // Also warm the per-session (Nights calendar) thumbnails for the new
-      // nights. Fire-and-forget: never hold up import completion for it.
-      void import('./sessionThumbnailPrewarm.js')
-        .then(m => m.prewarmSessionThumbnails('post-import'))
-        .catch(err => debugLog('import:thumb', `session thumbnail prewarm failed: ${err instanceof Error ? err.message : err}`));
-    }
+    // Everything that follows an import (catalog enrichment, weather, gallery and
+    // session thumbnails, sub-frame headers) is one shared pipeline: see
+    // postImport.ts. The import waits for its foreground stages only.
+    await runPostImport({
+      reason: 'telescope-import',
+      touched: touchedObjectIds,
+      withNewFiles: newFileObjectIds(importNewFiles),
+      onThumbnailProgress: p => { importStatus.warmingThumbnails = p; },
+    }).foreground;
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     debugLog('import:error', `Fatal: ${reason}`);
@@ -2762,7 +2680,7 @@ export async function syncSessionSubFrames(
           }
         })();
       } catch (saveErr) {
-        console.error(`[subframe-sync] Failed to save index for ${targetObjectId}:`, saveErr instanceof Error ? saveErr.message : saveErr);
+        console.error('[subframe-sync] Failed to save index for', targetObjectId, saveErr instanceof Error ? saveErr.message : saveErr);
       }
     }
     const lastImportTs = new Date().toISOString();
@@ -2779,6 +2697,11 @@ export async function syncSessionSubFrames(
         objectsTouched: importObjectsTouched,
         sessionsTouched: importSessionsTouched,
         source: 'subframe',
+      });
+      void runPostImport({
+        reason: 'subframe-sync',
+        touched: importObjectsTouched.keys(),
+        withNewFiles: newFileObjectIds(importNewFiles),
       });
     }
   } catch (err) {
@@ -2969,6 +2892,11 @@ export async function syncObjectSubFrames(
     objectsTouched: importObjectsTouched,
     sessionsTouched: importSessionsTouched,
     source: 'subframe',
+  });
+  void runPostImport({
+    reason: 'subframe-sync',
+    touched: importObjectsTouched.keys(),
+    withNewFiles: newFileObjectIds(importNewFiles),
   });
 
   if (reclaimed) releaseImportLock();
@@ -3479,8 +3407,9 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
     // first 50k files and reported plain success with no sign anything was
     // left behind.
     const truncatedFolders: string[] = [];
+    const siteTimeZone = activeSiteTimeZone();
     for (const { source, objPlan } of active) {
-      const { files, skipped: walkSkips, truncated: sourceTruncated } = walkObjectFiles(source, settings);
+      const { files, skipped: walkSkips, truncated: sourceTruncated } = walkObjectFiles(source, settings, siteTimeZone);
       for (const [reason, v] of walkSkips) countSkip(importSkips, reason, v.count, v.bytes, v.samples);
       if (sourceTruncated) truncatedFolders.push(source.folderName);
       walked.push({ source, objPlan, files });
@@ -3661,6 +3590,17 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
         return sessionFolderFor(source, night, null) ?? night;
       };
 
+      // What this object already holds from each source file, by the source
+      // path recorded when it was copied. A flat object's name embeds the
+      // capture time in the site's zone (canonicalImportName), so the name a
+      // re-run would build changes when that zone does (an upgrade that started
+      // reading FITS DATE-OBS as UTC, or a different active site). Matching by
+      // that name alone then copied the same file in a second time.
+      const priorBySource = new Map<string, { relPath: string; bytes: number }>();
+      for (const row of getLibraryFilesForObject(targetObjectId)) {
+        if (row.sourcePath && !row.sourceId && !row.missingSince) priorBySource.set(row.sourcePath, row);
+      }
+
       let cancelledMidObject = false;
       const folderFileRows: RecordFileInput[] = [];
       for (const file of files) {
@@ -3688,6 +3628,20 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
 
         const sessionDir = sessionDirFor(file, target);
         const used = usedIn(sessionDir);
+
+        const prior = priorBySource.get(file.relPath);
+        if (prior && prior.bytes === file.size) {
+          const priorPath = path.join(getLibraryDir(), prior.relPath);
+          let same = false;
+          try { same = fs.existsSync(priorPath) && (await classifyExistingCopy(priorPath, file.absPath)) === 'identical'; }
+          catch { same = false; }
+          if (same) {
+            log.info({ file: prior.relPath, objectId: targetObjectId }, '[folder-import] exists (same source file)');
+            importStatus.skippedFiles++;
+            importStatus.filesDone++;
+            continue;
+          }
+        }
 
         // Idempotency: the deterministic "natural" name (no dedup) tells us
         // whether this file was already imported on a previous run. Nested
@@ -4067,21 +4021,13 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
     stmts.updateMetaLastImport.run(index.lastImport);
     importStatus.lastRun = index.lastImport;
 
-    // Best-effort enrichment + weather for everything we touched. Done after
-    // saveIndex so the rows exist for enrichObjectData to update.
-    for (const objectId of dirByObjectId.keys()) {
-      try { await enrichObjectData(objectId); } catch (err) {
-        log.warn({ err: err instanceof Error ? err.message : String(err), objectId }, '[folder-import] catalog enrichment failed');
-      }
-      // Queued, not awaited — off the import-completion critical path (FC-3).
-      try { enqueueSessionWeatherBackfill(objectId); } catch { /* best-effort */ }
-    }
-
-    // Pre-warm gallery thumbnails for newly-imported objects.
-    if (importNewFiles.length > 0) {
-      const newObjectIds = new Set(importNewFiles.map(f => resolveCanonicalId(normalizeObjectId(f.name.split('/')[0]))));
-      await waitUpTo(pregenerateObjectThumbnails(newObjectIds), THUMB_PREWARM_MAX_WAIT_MS);
-    }
+    // Rows exist now (saveIndex above), so enrichment has something to update.
+    await runPostImport({
+      reason: 'folder-import',
+      touched: dirByObjectId.keys(),
+      withNewFiles: newFileObjectIds(importNewFiles),
+      onThumbnailProgress: p => { importStatus.warmingThumbnails = p; },
+    }).foreground;
   } catch (err) {
     const raw = err instanceof Error ? err.message : 'Folder import failed.';
     const lower = raw.toLowerCase();
@@ -4239,10 +4185,10 @@ export function createManualObservation(
     if (!MANUAL_OBSERVATION_IMAGE_EXTENSIONS.has(ext)) {
       throw new Error(`Unsupported image type "${imageExt}". Use JPG or PNG.`);
     }
-    const now = new Date();
-    const rawHms = `${String(now.getHours()).padStart(2, '0')}${
-      String(now.getMinutes()).padStart(2, '0')}${
-      String(now.getSeconds()).padStart(2, '0')}`;
+    const now = localParts(new Date(), activeSiteTimeZone());
+    const rawHms = `${String(now.hour).padStart(2, '0')}${
+      String(now.minute).padStart(2, '0')}${
+      String(now.second).padStart(2, '0')}`;
     const ts = `${dateMatch[1]}${dateMatch[2]}${dateMatch[3]}-${clampToNightSafeTime(rawHms)}`;
     const filename = `${objectId}_${ts}.${ext}`;
     let writeDir = objDir;
@@ -4288,6 +4234,12 @@ export function createManualObservation(
     if (stampId) stmts.addSessionStamped.run(objectId, d, stampId);
     else stmts.addSession.run(objectId, d);
   }
+
+  void runPostImport({
+    reason: 'manual-observation',
+    touched: [objectId],
+    withNewFiles: imageBuffer && imageExt ? [objectId] : [],
+  });
 
   return { objectId, date };
 }

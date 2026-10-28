@@ -62,6 +62,7 @@ import { classifyFit, fitDisplayStrings, objectExtentArcmin } from '../lib/teles
 import { FitBadge } from '../components/FitBadge';
 import { filterRecommendations } from '../lib/filterRecommendations';
 import { FilterRecommendationPanel } from '../components/ui/FilterRecommendationPanel';
+import { ObjectIntegrationSection } from '../components/objectDetail/ObjectIntegrationSection';
 import {
   dateFromKey,
   formatPlannerDate,
@@ -1870,6 +1871,13 @@ function SessionDetailsModal({
   // and WishlistObjectModal — costs no extra request.
   const filterRec = info?.type?.trim() ? filterRecommendations(info.type) : null;
 
+  // Progress toward a goal that already exists, read-only. Goals are set on
+  // the object page and in the Wishlist, where a target has been chosen; this
+  // modal is reached from a list of tonight's candidates, and its rows and
+  // blocks already show what is left.
+  const goalObjectId = libraryObjectId ?? objectId;
+  const hasGoals = !!useIntegrationProgress()(goalObjectId);
+
   // Worst-case moon proximity across tonight's whole dark window (not just
   // the currently-scrubbed instant the sky tracker's own caption already
   // shows) — answers "will the moon actually be a problem tonight" as one
@@ -2185,6 +2193,8 @@ function SessionDetailsModal({
               )}
             </div>
           </div>
+
+          {hasGoals && <ObjectIntegrationSection key={goalObjectId} objectId={goalObjectId} isAdmin={false} />}
         </div>
 
         {/* Actions — pinned footer. Same three actions as

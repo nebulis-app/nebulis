@@ -422,7 +422,51 @@
       "save": "Guardar",
       "invalidHours": "Introduce un número de horas entre 0 y 1000.",
       "missingFilterName": "Ponle un nombre al nuevo filtro.",
-      "saveFailed": "No se pudieron guardar los objetivos."
+      "saveFailed": "No se pudieron guardar los objetivos.",
+      "suggest": {
+        "button": "Sugerir objetivos",
+        "rig": "Cámara",
+        "rigs": {
+          "color": "Cámara en color",
+          "mono": "Cámara mono"
+        },
+        "moon": "Luna",
+        "moons": {
+          "dark": "Noches oscuras",
+          "mixed": "La mayoría de noches",
+          "any": "Ignorarla"
+        },
+        "tier": "Calidad",
+        "tiers": {
+          "standard": "Estándar",
+          "deep": "Profundo",
+          "showpiece": "Exhibición"
+        },
+        "total": "{{hours}} h en total",
+        "class": {
+          "bright": "brillante",
+          "moderate": "moderado",
+          "faint": "débil",
+          "very-faint": "muy débil"
+        },
+        "basisSurface": "Brillo superficial medio {{sb}} mag/arcsec², clasificado como {{brightness}}.",
+        "basisType": "El catálogo no tiene tamaño ni magnitud, así que se clasifica como {{brightness}} según el tipo de objeto.",
+        "skyLine": "Bortle {{bortle}}, filtros de {{band}}: cielo y Luna x{{factor}}.",
+        "bands": {
+          "narrowband": "banda estrecha",
+          "broadband": "banda ancha"
+        },
+        "bortleAssumed": "El sitio activo no tiene clase Bortle, así que se supone Bortle {{bortle}}. Defínela en Ajustes, en Sitios de observación.",
+        "disclaimer": "Una estimación para planificar, no una medición. No se guarda nada hasta pulsar Guardar.",
+        "close": "Cerrar",
+        "apply": "Usar estas horas",
+        "shootWith": "Fotografiar con",
+        "shootAny": "Sin especificar",
+        "fellBack": "Tu equipo no tiene los filtros recomendados ({{missing}}), así que este plan usa lo que tienes.",
+        "missing": "No está en tu equipo: {{missing}}.",
+        "setRigHint": "Indica la cámara y los filtros de este telescopio para un plan que encaje con tu equipo.",
+        "setRigLink": "Abrir ajustes de telescopios"
+      }
     },
     "projectArchivesSection": {
       "heading": "Proyectos de procesado",

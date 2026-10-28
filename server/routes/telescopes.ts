@@ -60,6 +60,7 @@ import {
   updateOpticalConfig,
   deleteOpticalConfig,
 } from '../lib/telescopeOpticalConfigs.js';
+import { getRig, setRig, getUsedFilterNames, MAX_RIG_FILTERS, MAX_RIG_FILTER_LENGTH } from '../lib/telescopeRig.js';
 
 const router = Router();
 
@@ -250,6 +251,10 @@ router.get('/', (_req: Request, res: Response) => {
       // reimplementing the mount-presence check client-side.
       activeTransportId: selectActiveTransport(p.id, transports)?.id ?? null,
       opticalConfigs: getOpticalConfigsForProfile(p.id),
+      // What a custom rig shoots with, and the filter names any telescope has really used, for the
+      // suggested integration goals.
+      rig: getRig(p.id),
+      usedFilters: getUsedFilterNames(p.id),
       // Changes when the owner's picture of this telescope does; null when it has none. Fetch it from /:id/photo.
       photoVersion: telescopePhotoVersion(p.id),
     };
@@ -517,6 +522,33 @@ router.delete('/:id/photo', requireAdmin, (req: Request, res: Response) => {
 // length. Only meaningful for `other`/`asiair` kinds (no route-level kind
 // check, though: a config on any other kind is simply never read — see
 // resolveFov in src/lib/telescopeFov.ts).
+
+const RigBodySchema = z.object({
+  sensorType: z.enum(['color', 'mono']).nullable(),
+  filters: z.array(z.string().max(MAX_RIG_FILTER_LENGTH)).max(MAX_RIG_FILTERS),
+});
+
+router.put('/:id/rig', requireAdmin, (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  if (!getProfileById(id)) {
+    res.apiError(404, 'NOT_FOUND', 'Telescope profile not found');
+    return;
+  }
+  const parsed = RigBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
+    return;
+  }
+  try {
+    res.apiSuccess(setRig(id, parsed.data));
+  } catch (err) {
+    if (err instanceof RangeError) {
+      res.apiError(422, 'VALIDATION_ERROR', err.message);
+      return;
+    }
+    throw err;
+  }
+});
 
 router.get('/:id/optical-configs', requireAdmin, (req: Request, res: Response) => {
   const id = String(req.params.id);

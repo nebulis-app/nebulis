@@ -5,6 +5,7 @@ import { FitsThumbnail } from '../FitsThumbnail';
 import { useTheme } from '../../hooks/useTheme';
 import { nightSafeColor } from '../../lib/nightSafeColor';
 import { formatDate } from '../../lib/formatLocale';
+import { localDateKeyOfTimestamp } from '../../lib/nightWindow';
 import { formatBytes } from '../../lib/utils';
 import type { MediaItem } from '../../lib/api/library';
 import { opensInViewer, TILE_DATE_FROM, TILE_WIDE_FROM, type TileSize } from './tileSizing';
@@ -42,7 +43,7 @@ export const MediaTile = memo(function MediaTile({
   const kindLabel = t(`objectMedia.kind.${item.kind}`);
   const night = nightLabel(item.date);
   // The small date in the corner: the night, else the day a processed file or project was added. Left off the compact tiles.
-  const cornerDate = size >= TILE_DATE_FROM ? nightLabel(item.date ?? item.capturedAt?.slice(0, 10) ?? null) : null;
+  const cornerDate = size >= TILE_DATE_FROM ? nightLabel(item.date ?? localDateKeyOfTimestamp(item.capturedAt)) : null;
   const label = [kindLabel, night, item.telescope?.name].filter(Boolean).join(', ');
   const showFormat = item.format === 'FITS' || item.format === 'TIFF';
   const canMarkProcessed = !!onMarkProcessed && item.kind === 'telescope' && item.isImage && !item.isFits && !!item.date;
@@ -198,7 +199,7 @@ export function ProjectCard({ item }: { item: MediaItem }) {
           {item.title || item.name}
         </span>
         <span className="block truncate text-xs text-slate-500">
-          {[item.software, formatBytes(item.size), nightLabel(item.capturedAt?.slice(0, 10) ?? null)].filter(Boolean).join(' · ')}
+          {[item.software, formatBytes(item.size), nightLabel(localDateKeyOfTimestamp(item.capturedAt))].filter(Boolean).join(' · ')}
         </span>
       </span>
       <Download

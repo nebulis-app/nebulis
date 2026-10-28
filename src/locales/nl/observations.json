@@ -101,6 +101,8 @@
     "allTelescopes": "Alle telescopen",
     "filterByTelescope": "Filter op telescoop",
     "share": "Delen",
+    "showPlanned": "Gepland tonen",
+    "showPlannedTitle": "Geplande Planner-nachten in de kalender tonen of verbergen",
     "allTrains": "{{name}} (alle opstellingen)"
   },
   "newObservationForm": {
@@ -270,7 +272,6 @@
     },
     "nightPanel": {
       "title": "Die nacht",
-      "syncHint": "Synchroniseer subframes om te zien wanneer je hebt opgenomen",
       "imaged": "Opgenomen {{range}}",
       "cloud": "{{label}} · {{percent}}% bewolking",
       "moon": "Maan {{percent}}%"

@@ -122,21 +122,29 @@ export interface MigrationStatus {
   startedAt: number | null;
   completedAt: number | null;
   previousPath: string | null;
+  /** Set after "use an existing library": what was registered and cleaned up. */
+  adopted: {
+    registeredObjects: number;
+    retiredObjects: number;
+    staleRecordsRemoved: number;
+    skipped: string | null;
+  } | null;
 }
 
 export const getLibraryLocation = () =>
   fetchJSON<{ location: LibraryLocation; migration: MigrationStatus }>('/storage/library-location');
 
-export const startLibraryMigration = (targetPath: string) =>
+/** `adopt` uses the folder as the library as it is, copying nothing. */
+export const startLibraryMigration = (targetPath: string, adopt = false) =>
   fetchJSON<{ migration: MigrationStatus }>('/storage/migrate', {
     method: 'POST',
-    body: JSON.stringify({ targetPath }),
+    body: JSON.stringify({ targetPath, adopt }),
   });
 
-export const startNetworkLibraryMigration = (network: NetworkLibraryConfig) =>
+export const startNetworkLibraryMigration = (network: NetworkLibraryConfig, adopt = false) =>
   fetchJSON<{ migration: MigrationStatus }>('/storage/migrate', {
     method: 'POST',
-    body: JSON.stringify({ network }),
+    body: JSON.stringify({ network, adopt }),
   });
 
 /** Forget a relocated library location without copying any files. Use when the
@@ -449,6 +457,8 @@ export interface ArchivedObjectSummary {
   folderName: string;
   /** Null when the local library no longer has this object. */
   objectId: string | null;
+  /** Not in the library, but a restore would create it or bring it back from the trash. */
+  willCreate: boolean;
   firstArchivedAt: string;
   lastArchivedAt: string;
   filesTotal: number;
@@ -473,6 +483,10 @@ export interface RestoreResult {
   /** Files left alone because they differ locally and overwriting was not confirmed. */
   conflicts: string[];
   failures: string[];
+  /** Objects the library did not have, created from the archive. */
+  createdObjects: number;
+  /** Objects brought back from the trash. */
+  revivedObjects: number;
 }
 
 export const getArchivedObjects = () =>

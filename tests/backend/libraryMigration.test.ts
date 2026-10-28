@@ -139,4 +139,52 @@ describe('library migration', () => {
     expect(getLibraryDir()).toBe(target);
     expect(readMarker(target)?.libraryId).toBe(getLibraryId());
   });
+
+  describe('adopting an existing library', () => {
+    it('points at a populated folder without copying, and rewrites a foreign marker', async () => {
+      const backup = path.join(TEST_DATA_DIR, 'backup-drive', 'Nebulis');
+      fs.mkdirSync(path.join(backup, 'M31'), { recursive: true });
+      fs.writeFileSync(path.join(backup, 'M31', 'stack.jpg'), 'backup-bytes');
+      fs.writeFileSync(path.join(backup, '.nebulis-library.json'), JSON.stringify({ libraryId: 'old-install' }));
+
+      startMigration(backup, undefined, { adopt: true });
+      const result = await waitForMigration();
+
+      expect(result.phase).toBe('complete');
+      expect(result.previousPath).toBeNull();
+      expect(getLibraryDir()).toBe(backup);
+      expect(readMarker(backup)?.libraryId).toBe(getLibraryId());
+      expect(await isLibraryAvailable()).toBe(true);
+      expect(fs.readFileSync(path.join(backup, 'M31', 'stack.jpg'), 'utf8')).toBe('backup-bytes');
+    });
+
+    it('works when the current library folder no longer exists', async () => {
+      const backup = path.join(TEST_DATA_DIR, 'backup-drive-gone-source');
+      fs.mkdirSync(backup, { recursive: true });
+      fs.writeFileSync(path.join(backup, 'a.fits'), 'x');
+      await setLibraryPath(path.join(TEST_DATA_DIR, 'deleted-drive'));
+
+      startMigration(backup, undefined, { adopt: true });
+
+      expect((await waitForMigration()).phase).toBe('complete');
+      expect(getLibraryDir()).toBe(backup);
+    });
+
+    it('refuses an empty folder', async () => {
+      const empty = path.join(TEST_DATA_DIR, 'empty-adopt');
+      fs.mkdirSync(empty, { recursive: true });
+
+      startMigration(empty, undefined, { adopt: true });
+      const result = await waitForMigration();
+
+      expect(result.phase).toBe('error');
+      expect(getLibraryDir()).toBe(getDefaultLibraryDir());
+    });
+
+    it('refuses a folder that does not exist', async () => {
+      startMigration(path.join(TEST_DATA_DIR, 'nope'), undefined, { adopt: true });
+
+      expect((await waitForMigration()).phase).toBe('error');
+    });
+  });
 });

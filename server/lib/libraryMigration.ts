@@ -18,6 +18,7 @@ import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
 import { log } from './logger.js';
+import { reconcileAdoptedLibrary, type AdoptReconcileResult } from './library/adoptReconcile.js';
 import {
   getLibraryDir,
   getDefaultLibraryDir,
@@ -62,6 +63,8 @@ export interface MigrationStatus {
   completedAt: number | null;
   /** After success: the old location the user should verify, then delete. */
   previousPath: string | null;
+  /** After adopting an existing library: what was registered and cleaned up. */
+  adopted: AdoptReconcileResult | null;
 }
 
 const status: MigrationStatus = {
@@ -76,6 +79,7 @@ const status: MigrationStatus = {
   startedAt: null,
   completedAt: null,
   previousPath: null,
+  adopted: null,
 };
 
 export function getMigrationStatus(): MigrationStatus {
@@ -235,7 +239,63 @@ async function validate(source: string, target: string): Promise<void> {
   }
 }
 
-async function run(source: string, target: string, networkConfig?: NetworkLibraryConfig): Promise<void> {
+/**
+ * Adoption points the library at a folder that already holds one (a backup, or
+ * the library left behind after the database was rebuilt) without copying.
+ * Unlike a move it accepts any marker, since a backup of a deleted install
+ * carries that install's old id, and it requires files so an empty or wrong
+ * folder is not mistaken for the library.
+ */
+async function validateAdopt(source: string, target: string): Promise<void> {
+  if (!path.isAbsolute(target)) {
+    throw new MigrationError('Choose an absolute path for the existing library.');
+  }
+  const resolvedTarget = path.resolve(target);
+  if (resolvedTarget === path.resolve(source)) {
+    throw new MigrationError('That folder is already the current library.');
+  }
+  let entries: string[];
+  try {
+    entries = (await fsp.readdir(resolvedTarget)).filter(n => !isIgnoredName(n));
+  } catch {
+    throw new MigrationError(`The folder ${resolvedTarget} is not available. Connect it and try again.`);
+  }
+  if (entries.length === 0) {
+    throw new MigrationError('That folder is empty. Pick the folder that holds your existing library.');
+  }
+}
+
+async function adoptExisting(source: string, target: string, networkConfig?: NetworkLibraryConfig): Promise<void> {
+  status.phase = 'finalizing';
+  writeMarker(target, getLibraryId());
+  if (networkConfig) {
+    setNetworkLibraryConfig(networkConfig);
+  } else {
+    const isDefaultTarget = path.resolve(target) === path.resolve(getDefaultLibraryDir());
+    await setLibraryPath(isDefaultTarget ? '' : target);
+  }
+  // Nothing was copied, so there is no old copy for the user to clean up.
+  status.previousPath = null;
+  // The rows were written for the previous location, so bring them in line.
+  // The location is already switched, so a failure here must not read as a failed move.
+  try {
+    status.adopted = await reconcileAdoptedLibrary();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn({ err: message }, 'adopted library could not be reconciled');
+    status.adopted = { registeredObjects: 0, retiredObjects: 0, staleRecordsRemoved: 0, skipped: message };
+  }
+  status.completedAt = Date.now();
+  status.phase = 'complete';
+  log.info({ from: source, to: target }, 'existing library adopted');
+}
+
+async function run(
+  source: string,
+  target: string,
+  networkConfig?: NetworkLibraryConfig,
+  adopt = false,
+): Promise<void> {
   try {
     status.phase = 'validating';
 
@@ -253,7 +313,7 @@ async function run(source: string, target: string, networkConfig?: NetworkLibrar
     // now: copyTree treats a missing/empty source as empty, which would silently
     // create an empty library at the target and orphan every database row. The
     // default location always exists, so only relocated sources need the guard.
-    if (!isDefaultLocation() && !(await isLibraryAvailable())) {
+    if (!adopt && !isDefaultLocation() && !(await isLibraryAvailable())) {
       throw new MigrationError('The current library location is not connected. Reconnect it before moving the library.');
     }
 
@@ -273,6 +333,11 @@ async function run(source: string, target: string, networkConfig?: NetworkLibrar
       }
       target = resolveNetworkLibraryPath(networkConfig);
       status.toPath = target;
+    }
+    if (adopt) {
+      await validateAdopt(source, target);
+      await adoptExisting(source, target, networkConfig);
+      return;
     }
     await validate(source, target);
 
@@ -328,7 +393,11 @@ async function run(source: string, target: string, networkConfig?: NetworkLibrar
  * getMigrationStatus() for progress. Single-flight: throws if a migration is
  * already running.
  */
-export function startMigration(target: string, networkConfig?: NetworkLibraryConfig): MigrationStatus {
+export function startMigration(
+  target: string,
+  networkConfig?: NetworkLibraryConfig,
+  options: { adopt?: boolean } = {},
+): MigrationStatus {
   if (isActivePhase(status.phase)) {
     throw new MigrationError('A migration is already in progress.');
   }
@@ -352,8 +421,9 @@ export function startMigration(target: string, networkConfig?: NetworkLibraryCon
   status.startedAt = Date.now();
   status.completedAt = null;
   status.previousPath = null;
+  status.adopted = null;
 
   // Fire and forget; progress is observed via getMigrationStatus().
-  void run(source, networkConfig ? '' : path.resolve(target), networkConfig);
+  void run(source, networkConfig ? '' : path.resolve(target), networkConfig, options.adopt === true);
   return getMigrationStatus();
 }

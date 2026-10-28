@@ -422,7 +422,51 @@
       "save": "Speichern",
       "invalidHours": "Gib eine Stundenzahl zwischen 0 und 1000 ein.",
       "missingFilterName": "Gib dem neuen Filter einen Namen.",
-      "saveFailed": "Die Ziele konnten nicht gespeichert werden."
+      "saveFailed": "Die Ziele konnten nicht gespeichert werden.",
+      "suggest": {
+        "button": "Ziele vorschlagen",
+        "rig": "Kamera",
+        "rigs": {
+          "color": "Farbkamera",
+          "mono": "Mono-Kamera"
+        },
+        "moon": "Mond",
+        "moons": {
+          "dark": "Dunkle Nächte",
+          "mixed": "Meiste Nächte",
+          "any": "Ignorieren"
+        },
+        "tier": "Qualität",
+        "tiers": {
+          "standard": "Standard",
+          "deep": "Tief",
+          "showpiece": "Glanzstück"
+        },
+        "total": "{{hours}} h insgesamt",
+        "class": {
+          "bright": "hell",
+          "moderate": "mittel",
+          "faint": "schwach",
+          "very-faint": "sehr schwach"
+        },
+        "basisSurface": "Mittlere Flächenhelligkeit {{sb}} mag/Bogensek.², eingestuft als {{brightness}}.",
+        "basisType": "Keine Größe oder Helligkeit im Katalog, daher nach Objekttyp als {{brightness}} eingestuft.",
+        "skyLine": "Bortle {{bortle}}, {{band}}-Filter: Himmel und Mond x{{factor}}.",
+        "bands": {
+          "narrowband": "Schmalband",
+          "broadband": "Breitband"
+        },
+        "bortleAssumed": "Der aktive Standort hat keine Bortle-Klasse, daher wird Bortle {{bortle}} angenommen. Sie lässt sich in den Einstellungen unter Beobachtungsorte setzen.",
+        "disclaimer": "Eine Planungsschätzung, keine Messung. Gespeichert wird erst mit Speichern.",
+        "close": "Schließen",
+        "apply": "Diese Stunden übernehmen",
+        "shootWith": "Aufnehmen mit",
+        "shootAny": "Nicht angegeben",
+        "fellBack": "In der Ausrüstung fehlen die empfohlenen Filter ({{missing}}), daher nutzt dieser Plan das Vorhandene.",
+        "missing": "Nicht in der Ausrüstung: {{missing}}.",
+        "setRigHint": "Kamera und Filter dieses Teleskops festlegen, damit der Plan zur Ausrüstung passt.",
+        "setRigLink": "Teleskop-Einstellungen öffnen"
+      }
     },
     "projectArchivesSection": {
       "heading": "Bearbeitungsprojekte",

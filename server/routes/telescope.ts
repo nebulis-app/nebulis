@@ -3,8 +3,9 @@ import path from 'path';
 import fs from 'fs';
 import { getCatalogEntry } from '../data/catalog.js';
 import { parsePagination, paginate } from '../middleware/pagination.js';
-import { getLibraryDir } from '../lib/libraryPath.js';
+import { getLibraryDir, statLibraryFileForServe } from '../lib/libraryPath.js';
 import { resolveLibraryFile } from '../lib/library/fileResolver.js';
+import { sendLibraryFile } from '../lib/library/serveFile.js';
 import { requireAdmin } from '../middleware/auth.js';
 import {
   parseFilename,
@@ -351,6 +352,9 @@ router.get('/objects/:objectId/subs', (req: Request, res: Response) => {
 
 // ─── Get a specific file (from local library) ────────────────────────
 
+/** Largest file the `format=base64` variant will inline in a JSON response. */
+const MAX_BASE64_BYTES = 32 * 1024 * 1024;
+
 router.get('/files', async (req: Request, res: Response) => {
   try {
     const filePath = String(req.query.path || '');
@@ -367,37 +371,47 @@ router.get('/files', async (req: Request, res: Response) => {
       return;
     }
 
+    // The client path is "MyWorks/<library-relative path>". Containment is
+    // fileResolver.ts's job (the same check every other unauthenticated file
+    // route uses) rather than a string test here.
     const relative = filePath.slice(BASE_PATH.length + 1); // strip "MyWorks/"
-    // Same containment check as every other library read (fileResolver.ts).
     const resolved = resolveLibraryFile(relative);
-    if (!resolved || !fs.existsSync(resolved.abs)) {
-      res.apiError(404, 'NOT_FOUND', 'File not found in local library. Run an import to sync it from the telescope.');
+    if (!resolved) {
+      res.apiError(403, 'FORBIDDEN', 'Invalid file path');
       return;
     }
-    const localPath = resolved.abs;
-    const ext = path.extname(filePath).toLowerCase();
-    const wantsBase64 = req.query.format === 'base64';
 
-    if (wantsBase64) {
-      // Non-blocking read: the sync variant stalled the event loop for the whole file.
-      const data = await fs.promises.readFile(localPath);
-      res.apiSuccess({
-        base64: data.toString('base64'),
-        mimeType: mimeTypeForExtension(ext),
-        filename: path.basename(filePath),
-        size: data.length,
-      });
-    } else {
-      res.set('Content-Type', mimeTypeForExtension(ext));
-      res.set('Cache-Control', 'public, max-age=3600');
-      res.set('Content-Disposition', contentDispositionHeader('inline', path.basename(filePath)));
-      res.sendFile(localPath, { dotfiles: 'allow' }, (err) => {
-        if (err && !res.headersSent) res.apiError(500, 'FETCH_FAILED', 'Could not read file');
-      });
+    const name = path.basename(filePath);
+    const mimeType = mimeTypeForExtension(path.extname(filePath).toLowerCase());
+
+    if (req.query.format === 'base64') {
+      let stat: fs.Stats;
+      try {
+        stat = await statLibraryFileForServe(resolved.abs);
+      } catch {
+        res.apiError(404, 'NOT_FOUND', 'File not found in local library. Run an import to sync it from the telescope.');
+        return;
+      }
+      if (!stat.isFile()) {
+        res.apiError(404, 'NOT_FOUND', 'File not found in local library. Run an import to sync it from the telescope.');
+        return;
+      }
+      if (stat.size > MAX_BASE64_BYTES) {
+        res.apiError(413, 'FILE_TOO_LARGE', 'This file is too large to return inline. Request it without format=base64.');
+        return;
+      }
+      const data = await fs.promises.readFile(resolved.abs);
+      res.apiSuccess({ base64: data.toString('base64'), mimeType, filename: name, size: data.length });
+      return;
     }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to get file';
-    res.apiError(500, 'FETCH_FAILED', message);
+
+    await sendLibraryFile(res, resolved.abs, {
+      contentType: mimeType,
+      contentDisposition: contentDispositionHeader('inline', name),
+    });
+  } catch {
+    // Unauthenticated route: do not echo the underlying error (it can carry absolute paths).
+    if (!res.headersSent) res.apiError(500, 'FETCH_FAILED', 'Failed to get file');
   }
 });
 

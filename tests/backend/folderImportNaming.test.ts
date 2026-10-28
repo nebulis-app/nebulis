@@ -35,13 +35,13 @@ describe('dateDerivation', () => {
   it('reads DATE-OBS (combined date+time) from a FITS header', () => {
     const file = path.join(tmpDir('fits-'), 'light.fits');
     fs.writeFileSync(file, fitsBuffer({ 'DATE-OBS': '2024-01-15T22:30:45' }));
-    expect(deriveFromFits(file)).toEqual({ date: '2024-01-15', source: 'fits', time: '223045' });
+    expect(deriveFromFits(file, 'UTC')).toEqual({ date: '2024-01-15', source: 'fits', time: '223045' });
   });
 
   it('reads split DATE-OBS + TIME-OBS', () => {
     const file = path.join(tmpDir('fits-'), 'light.fits');
     fs.writeFileSync(file, fitsBuffer({ 'DATE-OBS': '2024-02-20', 'TIME-OBS': '03:04:05' }));
-    expect(deriveFromFits(file)).toEqual({ date: '2024-02-20', source: 'fits', time: '030405' });
+    expect(deriveFromFits(file, 'UTC')).toEqual({ date: '2024-02-20', source: 'fits', time: '030405' });
   });
 
   it('returns null for a FITS file with no date card', () => {
@@ -91,7 +91,7 @@ describe('dateDerivation', () => {
   it('keeps a real leap-day DATE-OBS', () => {
     const good = path.join(tmpDir('fits-good-'), 'light.fits');
     fs.writeFileSync(good, fitsBuffer({ 'DATE-OBS': '2024-02-29T22:30:45' }));
-    expect(deriveFromFits(good)).toEqual({ date: '2024-02-29', source: 'fits', time: '223045' });
+    expect(deriveFromFits(good, 'UTC')).toEqual({ date: '2024-02-29', source: 'fits', time: '223045' });
   });
 
   it('falls through to a real signal when the filename date is impossible', () => {
@@ -99,13 +99,38 @@ describe('dateDerivation', () => {
     // chain has to reach FITS/folder/mtime instead of inventing a session.
     const file = path.join(tmpDir('chain-bad-'), 'Stacked_10_M42_30.0s_IRCUT_20240230-220000.fits');
     fs.writeFileSync(file, fitsBuffer({ 'DATE-OBS': '2024-03-01T02:10:00' }));
-    expect(deriveFileDate(file, path.basename(file), fs.statSync(file)))
+    expect(deriveFileDate(file, path.basename(file), fs.statSync(file), { timeZone: 'UTC' }))
       .toMatchObject({ date: '2024-03-01', source: 'fits' });
   });
 
   it('derives date + time from mtime', () => {
     const d = new Date(2024, 2, 4, 21, 5, 9);
     expect(deriveFromMtime(d)).toEqual({ date: '2024-03-04', source: 'mtime', time: '210509' });
+  });
+
+  // A Docker server's clock is UTC, so instants must be read in the site's zone.
+  it('reads an mtime in the site zone, not the server zone', () => {
+    const d = new Date('2024-03-05T02:05:09Z'); // 20:05 CST on the 4th
+    expect(deriveFromMtime(d, 'America/Chicago')).toEqual({ date: '2024-03-04', source: 'mtime', time: '200509' });
+  });
+
+  it('converts a UTC DATE-OBS to the site local date and time', () => {
+    const file = path.join(tmpDir('fits-'), 'light.fits');
+    // 02:30 CDT on the 27th: the 07:00 rollover then puts it on the night of the 26th.
+    fs.writeFileSync(file, fitsBuffer({ 'DATE-OBS': '2026-10-27T07:30:00' }));
+    expect(deriveFromFits(file, 'America/Chicago')).toEqual({ date: '2026-10-27', source: 'fits', time: '023000' });
+  });
+
+  it('prefers the zone of the site the header records', () => {
+    const file = path.join(tmpDir('fits-'), 'light.fits');
+    fs.writeFileSync(file, fitsBuffer({ 'DATE-OBS': '2026-10-27T03:00:00', SITELAT: '41.98', SITELONG: '-91.67' }));
+    expect(deriveFromFits(file, 'Europe/Berlin')).toEqual({ date: '2026-10-26', source: 'fits', time: '220000' });
+  });
+
+  it('keeps DATE-LOC as written, since it is already local', () => {
+    const file = path.join(tmpDir('fits-'), 'light.fits');
+    fs.writeFileSync(file, fitsBuffer({ 'DATE-LOC': '2026-10-26T21:30:00', 'DATE-OBS': '2026-10-27T02:30:00' }));
+    expect(deriveFromFits(file, 'America/Chicago')).toEqual({ date: '2026-10-26', source: 'fits', time: '213000' });
   });
 
   it('walks the priority chain: filename date beats FITS DATE-OBS', () => {
@@ -122,7 +147,7 @@ describe('dateDerivation', () => {
   it('falls back to FITS DATE-OBS for a FITS file whose name has no date', () => {
     const file = path.join(tmpDir('chain-'), 'light_001.fits');
     fs.writeFileSync(file, fitsBuffer({ 'DATE-OBS': '2024-01-16T00:10:00' }));
-    const derived = deriveFileDate(file, path.basename(file), fs.statSync(file));
+    const derived = deriveFileDate(file, path.basename(file), fs.statSync(file), { timeZone: 'UTC' });
     expect(derived).toMatchObject({ date: '2024-01-16', source: 'fits' });
   });
 

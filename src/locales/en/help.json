@@ -766,6 +766,8 @@
     "done": "Done",
     "screenshotSuffix": "screenshot",
     "viewFullSize": "View full size: {{title}}",
+    "previous": "Previous screenshot",
+    "next": "Next screenshot",
     "explore": {
       "title": "Explore",
       "lead": "Find your next target.",
@@ -789,7 +791,9 @@
     "myMedia": {
       "title": "Combined object page",
       "lead": "Every picture of an object, on one page.",
-      "description": "Pictures, sub-frames, nights and project files on one page, in tabs, with no digging through observations."
+      "description": "Pictures, sub-frames, nights and project files on one page, in tabs, with no digging through observations.",
+      "shotObject": "Object page",
+      "shotObservation": "Observation page"
     },
     "integration": {
       "title": "Integration by filter",

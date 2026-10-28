@@ -14,7 +14,7 @@ const m = vi.hoisted(() => ({
   purgeJunkFiles: vi.fn(),
   purgeStaleImportTmp: vi.fn(),
   pruneImportLog: vi.fn(),
-  prewarmSessionThumbnails: vi.fn(),
+  runPostImport: vi.fn(() => ({ foreground: Promise.resolve(), done: Promise.resolve() })),
   pruneSystemLog: vi.fn(),
   refreshForecastCache: vi.fn(),
   checkAndUpdatePacks: vi.fn(),
@@ -30,7 +30,7 @@ vi.mock('../../server/lib/skyImage.js', () => ({ prefetchSkyImage: m.prefetchSky
 vi.mock('../../server/lib/library/housekeeping.js', () => ({
   purgeJunkFiles: m.purgeJunkFiles, purgeStaleImportTmp: m.purgeStaleImportTmp, pruneImportLog: m.pruneImportLog,
 }));
-vi.mock('../../server/lib/library/sessionThumbnailPrewarm.js', () => ({ prewarmSessionThumbnails: m.prewarmSessionThumbnails }));
+vi.mock('../../server/lib/library/postImport.js', () => ({ runPostImport: m.runPostImport }));
 vi.mock('../../server/lib/systemLog.js', () => ({ pruneSystemLog: m.pruneSystemLog }));
 vi.mock('../../server/lib/forecastCache.js', () => ({ refreshForecastCache: m.refreshForecastCache }));
 vi.mock('../../server/lib/catalogPack/updater.js', () => ({ checkAndUpdatePacks: m.checkAndUpdatePacks }));
@@ -147,7 +147,7 @@ describe('triggerNightlyMaintenance', () => {
 
     release();
     await vi.waitFor(() => expect(isNightlyMaintenanceRunning()).toBe(false));
-    expect(m.prewarmSessionThumbnails).toHaveBeenCalledWith('nightly');
+    expect(m.runPostImport).toHaveBeenCalledWith({ reason: 'nightly' });
     expect(m.pruneSystemLog).toHaveBeenCalledTimes(1);
     expect(m.refreshForecastCache).toHaveBeenCalledTimes(1);
   });

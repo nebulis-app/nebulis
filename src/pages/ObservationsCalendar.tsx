@@ -38,6 +38,7 @@ import { listTelescopes, type TelescopeProfile } from '../lib/api/telescopes';
 import { listPlanNights } from '../lib/api/plannedSessions';
 import { indexPlanByDate } from '../lib/planNights';
 import { useTheme } from '../hooks/useTheme';
+import { useLocalToday } from '../hooks/useLocalToday';
 import { nightSafeColor } from '../lib/nightSafeColor';
 import { cleanCatalogId, formatObjectName } from '../lib/utils';
 import { formatDate, formatTime24, weekStartsOn } from '../lib/formatLocale';
@@ -296,6 +297,15 @@ export function ObservationsCalendar() {
     return indexPlanByDate(planNights, objectIdsByDate);
   }, [planNights, observationsByDate]);
 
+  // Hide/show Planner nights (missed rows, plan dots). Remembered per browser.
+  const [showPlanned, setShowPlanned] = useState(() => {
+    try { return localStorage.getItem('nebulis_calendar_show_planned') !== '0'; } catch { return true; }
+  });
+  const handleShowPlannedChange = (value: boolean) => {
+    setShowPlanned(value);
+    try { localStorage.setItem('nebulis_calendar_show_planned', value ? '1' : '0'); } catch { /* storage blocked */ }
+  };
+
   // Calendar grid generation
   const calendarDays = useMemo(() => {
     const { year, month } = currentMonth;
@@ -352,7 +362,7 @@ export function ObservationsCalendar() {
     });
   };
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = useLocalToday();
 
   // Stats reflect the telescope filter, so the hero's numbers always describe
   // the same set of nights the grid is drawing.
@@ -504,6 +514,9 @@ export function ObservationsCalendar() {
         telescopes={showTelescopeUI ? telescopes : []}
         telescopeFilter={effectiveTelescopeFilter}
         onTelescopeFilterChange={setTelescopeFilter}
+        showPlanned={view === 'calendar' && planNights.length > 0
+          ? { value: showPlanned, onChange: handleShowPlannedChange }
+          : null}
         onShare={canShare ? () => setShareModal(view) : null}
         shareTitle={shareTitle}
         isDark={isDark}
@@ -574,7 +587,7 @@ export function ObservationsCalendar() {
           onVisiblePerDayChange={setVisiblePerDay}
           days={calendarDays}
           observationsByDate={observationsByDate}
-          planByDate={planByDate}
+          planByDate={showPlanned ? planByDate : undefined}
           monthLabel={monthLabel}
           today={today}
           nearestDate={nearestDate}

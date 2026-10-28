@@ -1560,6 +1560,29 @@
     ]
   },
   {
+    "method": "GET",
+    "path": "/library/redirects",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/library/redirects/:designation",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/library/redirects/:designation",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
     "method": "DELETE",
     "path": "/library/sample-object",
     "guards": [
@@ -1716,6 +1739,29 @@
     "method": "GET",
     "path": "/notes/object/:objectId/:date",
     "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/object-notes/:objectId",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/object-notes/:objectId",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/object-notes/:objectId",
+    "guards": [
+      "requireAdmin",
       "<anonymous>"
     ]
   },
@@ -2637,6 +2683,14 @@
   {
     "method": "POST",
     "path": "/telescopes/:id/reassign-all",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/telescopes/:id/rig",
     "guards": [
       "requireAdmin",
       "<anonymous>"

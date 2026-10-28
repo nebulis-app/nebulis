@@ -10,7 +10,8 @@ import fs from 'fs';
 import path from 'path';
 import db from '../db.js';
 import { getCatalogEntry } from '../../data/catalog.js';
-import { resolveCatalogMeta, enrichObjectData, stmts as objectStmts } from './objects.js';
+import { resolveCatalogMeta, stmts as objectStmts } from './objects.js';
+import { runPostImport } from './postImport.js';
 import { recordLinkedLibraryFiles, markLinkedFilesMissing, countLibraryFilesForObject, roleForFile, getLibraryFilesForObject, getLibraryFileRow, deleteLibraryFileRow, sessionDateForRow, type LibraryFileRow, type RecordLinkedFileInput } from './libraryFiles.js';
 import { walkSource } from './sourceWalk.js';
 import { resolveLibraryFile } from './fileResolver.js';
@@ -22,6 +23,7 @@ import { STARTRAILS_FOLDER } from '../walkers/dwarfWalker.js';
 import { deriveFileDate, confidenceForSource, type DateSource } from './dateDerivation.js';
 import { countSkip, summarizeSkips, type ImportSkipSummary, type SkipTally } from './importFilter.js';
 import { observingNightDate } from '../telescopeFiles.js';
+import { activeSiteTimeZone } from '../siteTimeZone.js';
 import { LINKED_SOURCE_DIR_NAME } from './archiveFolders.js';
 import { nicknamesFromFolderNames, mergeNicknames } from './nicknames.js';
 import { getAliasesForCanonical } from '../catalogAliases.js';
@@ -142,7 +144,7 @@ function buildLinkedInput(
 ): RecordLinkedFileInput | null {
   let stat: fs.Stats;
   try { stat = fs.statSync(walkedFile.absPath); } catch { return null; }
-  const derived = deriveFileDate(walkedFile.absPath, relPath, stat, { useMtimeFallback: settings.importMtimeFallback !== false });
+  const derived = deriveFileDate(walkedFile.absPath, relPath, stat, { useMtimeFallback: settings.importMtimeFallback !== false, timeZone: activeSiteTimeZone() });
   const night = derived.date ? observingNightDate(derived.date, derived.time) : null;
   const fileName = relPath.slice(relPath.lastIndexOf('/') + 1);
   return {
@@ -198,9 +200,8 @@ function upsertLinkedObject(objectId: string, displayName?: string): void {
   // Star Trails is not a sky object: it gets its own curated name, type and description, and there is
   // nothing to look up for it.
   if (objectId === getStartrailsObjectId()) { patchStartrailsObjectMeta(objectId); return; }
-  // Fire-and-forget, matching import.ts's own pattern for a freshly created
-  // object: best-effort network enrichment, never blocking the link.
-  enrichObjectData(objectId).catch(() => { /* best-effort */ });
+  // Catalog enrichment (and everything else that follows a link) is the shared
+  // post-import pipeline's job: see postImport.ts. commitSource / rescanSource run it.
 }
 
 /**
@@ -298,7 +299,7 @@ function pruneEmptySessions(pairs: Iterable<{ objectId: string; captureDate: str
 
 /**
  * Soft-delete each object that no longer has a single `libraryFiles` row of
- * any kind and carries no user data (notes, favourites) — what is left after
+ * any kind and carries no user data (notes, object note, favourites) — what is left after
  * a source's files are unlinked, per contract Open Question 1. An object that
  * still has any file, managed or from another source, is untouched.
  */
@@ -308,7 +309,8 @@ function retireEmptyObjects(objectIds: Iterable<string>): string[] {
     if (countLibraryFilesForObject(objectId) > 0) continue;
     const hasNotes = db.prepare<[string], { n: number }>('SELECT COUNT(*) AS n FROM notes WHERE objectId = ?').get(objectId)?.n ?? 0;
     const hasFavs = db.prepare<[string], { n: number }>('SELECT COUNT(*) AS n FROM favorites WHERE objectId = ?').get(objectId)?.n ?? 0;
-    if (hasNotes > 0 || hasFavs > 0) continue;
+    const hasObjectNote = db.prepare<[string], { n: number }>('SELECT COUNT(*) AS n FROM objectNotes WHERE objectId = ?').get(objectId)?.n ?? 0;
+    if (hasNotes > 0 || hasFavs > 0 || hasObjectNote > 0) continue;
     objectStmts.markObjectDeleted.run(new Date().toISOString(), objectId);
     retired.push(objectId);
   }
@@ -587,7 +589,7 @@ export function scanSource(rootPath: string, settings: Record<string, unknown>):
 
     let stat: fs.Stats;
     try { stat = fs.statSync(walkedFile.absPath); } catch { obj.unsorted++; continue; }
-    const derived = deriveFileDate(walkedFile.absPath, file.relPath, stat, { useMtimeFallback: settings.importMtimeFallback !== false });
+    const derived = deriveFileDate(walkedFile.absPath, file.relPath, stat, { useMtimeFallback: settings.importMtimeFallback !== false, timeZone: activeSiteTimeZone() });
     if (!derived.date) { obj.unsorted++; continue; }
     const night = observingNightDate(derived.date, derived.time);
     const existing = obj.sessions.get(night);
@@ -741,6 +743,7 @@ export function commitSource(rootPath: string, settings: Record<string, unknown>
   );
 
   log.info({ sourceId, rootPath, objects: inputsByObject.size, files: filesLinked }, '[library-sources] linked');
+  runPostImport({ reason: 'linked-folder', touched: inputsByObject.keys() });
 
   return { sourceId, objectsLinked: inputsByObject.size, filesLinked, filesAlreadyInLibrary: alreadyInLibrary };
 }
@@ -1080,6 +1083,9 @@ export function rescanSource(id: string, baseSettings: Record<string, unknown>):
   );
 
   log.info({ ...result }, '[library-sources] rescanned');
+  // Only the objects whose files changed: a clean rescan (the common case on
+  // the refresh schedule) runs nothing.
+  if (touchedObjects.size > 0) runPostImport({ reason: 'linked-rescan', touched: touchedObjects });
   return result;
 }
 

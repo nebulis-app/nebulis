@@ -14,7 +14,7 @@
 import { useTranslation } from 'react-i18next';
 import {
   Calendar, ChevronDown, ChevronLeft, ChevronRight,
-  List, Map as MapIcon, Share2, Telescope,
+  CalendarClock, List, Map as MapIcon, Share2, Telescope,
 } from 'lucide-react';
 import type { TelescopeProfile } from '../../lib/api/telescopes';
 import { MonthYearMenu } from './MonthYearMenu';
@@ -32,6 +32,8 @@ interface Props {
   telescopes: TelescopeProfile[];
   telescopeFilter: string;
   onTelescopeFilterChange: (id: string) => void;
+  /** Calendar-view toggle for Planner nights; null hides it (no plans this month). */
+  showPlanned: { value: boolean; onChange: (v: boolean) => void } | null;
   onShare: (() => void) | null;
   shareTitle: string;
   isDark: boolean;
@@ -57,7 +59,7 @@ const VIEWS: { id: ObservationsView; labelKey: string; Icon: typeof Calendar }[]
 export function ObservationsToolbar({
   view, onViewChange,
   telescopes, telescopeFilter, onTelescopeFilterChange,
-  onShare, shareTitle, isDark,
+  showPlanned, onShare, shareTitle, isDark,
   monthLabel, year, month, onPickMonthYear,
   isCurrentMonth, onNavigateMonth, onGoToToday,
 }: Props) {
@@ -205,6 +207,27 @@ export function ObservationsToolbar({
                 }`}
               />
             </div>
+          )}
+
+          {showPlanned && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showPlanned.value}
+              onClick={() => showPlanned.onChange(!showPlanned.value)}
+              title={t('toolbar.showPlannedTitle')}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium ring-1 ring-inset transition-colors
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40 ${
+                showPlanned.value
+                  ? 'bg-accent-500/15 text-accent-400 ring-accent-500/40'
+                  : isDark
+                    ? 'bg-slate-900/70 text-slate-400 ring-slate-700/60 hover:bg-slate-800'
+                    : 'bg-white text-slate-500 ring-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <CalendarClock className="h-3.5 w-3.5" />
+              {t('toolbar.showPlanned')}
+            </button>
           )}
 
           {onShare && (

@@ -314,6 +314,7 @@ function isFits(fileName: string): boolean {
 
 const objectStmts = {
   folder: db.prepare<[string], { folderName: string }>('SELECT folderName FROM libraryObjects WHERE objectId = ?'),
+  allIds: db.prepare<[], { objectId: string }>('SELECT objectId FROM libraryObjects'),
   deletedSessions: db.prepare<[string], { date: string }>('SELECT date FROM libraryDeletedSessions WHERE objectId = ?'),
 };
 
@@ -376,7 +377,77 @@ function compareFilters(a: string | null, b: string | null): number {
   return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
 }
 
+/** Header reads between event-loop yields in the async variant. A cold cache
+ *  on a Docker bind mount costs ~7 ms per file, so 100 is under a second. */
+const BREAKDOWN_YIELD_EVERY = 100;
+
+/** Synchronous form, for callers that already run off the request path. */
 export function getIntegrationBreakdown(objectId: string): IntegrationBreakdown {
+  const steps = breakdownSteps(objectId);
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+  }
+}
+
+/**
+ * Same result, but hands the event loop back every BREAKDOWN_YIELD_EVERY
+ * frames. A big object with a cold header cache (3,000+ subs) used to block
+ * every other request for 20+ seconds, which left the whole page unloadable.
+ */
+export async function getIntegrationBreakdownAsync(objectId: string): Promise<IntegrationBreakdown> {
+  const steps = breakdownSteps(objectId);
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+    await new Promise<void>(resolve => setImmediate(resolve));
+  }
+}
+
+/** Single-flight: the boot sweep and a post-import warm never read the same
+ *  headers twice in parallel. */
+let warmingHeaders = false;
+
+/**
+ * Read and persist the FITS header of every sub-frame of the given objects
+ * (default: all), so the first visit to an object page is a table lookup
+ * rather than thousands of file reads. Idempotent: `getSubFrameHeader` skips
+ * any file whose size and mtime still match its cached row. Yields to the
+ * event loop between objects and every BREAKDOWN_YIELD_EVERY files.
+ */
+export async function warmSubFrameHeaders(objectIds?: Iterable<string>): Promise<{ objects: number; frames: number }> {
+  if (warmingHeaders) return { objects: 0, frames: 0 };
+  warmingHeaders = true;
+  let objects = 0;
+  let frames = 0;
+  try {
+    const ids = objectIds
+      ? [...objectIds]
+      : objectStmts.allIds.all().map(r => r.objectId);
+    for (const objectId of ids) {
+      let sinceYield = 0;
+      try {
+        for (const { relPath } of listSubFrames(objectId)) {
+          getSubFrameHeader(relPath);
+          frames++;
+          if (++sinceYield >= BREAKDOWN_YIELD_EVERY) {
+            sinceYield = 0;
+            await new Promise<void>(resolve => setImmediate(resolve));
+          }
+        }
+        objects++;
+      } catch (err) {
+        console.warn('[integration-warm]', objectId, '-', err instanceof Error ? err.message : err);
+      }
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+  } finally {
+    warmingHeaders = false;
+  }
+  return { objects, frames };
+}
+
+function* breakdownSteps(objectId: string): Generator<void, IntegrationBreakdown, void> {
   const aliases = getFilterAliasMap();
 
   // Night-level fallbacks from capture sidecars (Dwarf/SeeStar shotsInfo etc.)
@@ -400,7 +471,12 @@ export function getIntegrationBreakdown(objectId: string): IntegrationBreakdown 
   let totalExposureSec = 0;
   let unreadableFrames = 0;
 
+  let sinceYield = 0;
   for (const { relPath, night } of listSubFrames(objectId)) {
+    if (++sinceYield >= BREAKDOWN_YIELD_EVERY) {
+      sinceYield = 0;
+      yield;
+    }
     const header = getSubFrameHeader(relPath);
     if (!header) {
       unreadableFrames++;

@@ -101,6 +101,8 @@
     "allTelescopes": "Todos los telescopios",
     "filterByTelescope": "Filtrar por telescopio",
     "share": "Compartir",
+    "showPlanned": "Mostrar planificado",
+    "showPlannedTitle": "Mostrar u ocultar las noches planificadas en el calendario",
     "allTrains": "{{name}} (todos los trenes)"
   },
   "newObservationForm": {
@@ -270,7 +272,6 @@
     },
     "nightPanel": {
       "title": "Esa noche",
-      "syncHint": "Sincroniza las subtomas para ver cuándo capturaste",
       "imaged": "Capturado {{range}}",
       "cloud": "{{label}} · {{percent}}% de nubes",
       "moon": "Luna {{percent}}%"

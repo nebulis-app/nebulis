@@ -17,7 +17,7 @@
  * recorded in overrides.json with its credit, so a pack build needs no URL and no
  * network for it. The picture is checked first: it is refused if it has a mosaic hole,
  * is a thin strip, carries a red label box, or (when tesseract is installed) has words
- * in it. Layout and sources are in the catalog images notes.
+ * in it. Layout and sources: the private catalog images notes.
  */
 import fs from 'node:fs';
 import path from 'node:path';

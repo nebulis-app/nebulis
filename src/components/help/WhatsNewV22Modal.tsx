@@ -19,7 +19,15 @@ const CONFIG: ReelConfig = {
     { icon: ScanSearch, key: 'annotate', screenshot: 'annotate.webp' },
     { icon: Activity, key: 'frameQuality', screenshot: 'frame-quality.webp' },
     { icon: LayoutDashboard, key: 'myCatalog', screenshot: 'my-catalog.webp' },
-    { icon: Images, key: 'myMedia', screenshot: 'my-media.webp' },
+    {
+      icon: Images,
+      key: 'myMedia',
+      screenshot: 'object-page.webp',
+      shots: [
+        { file: 'object-page.webp', label: 'shotObject' },
+        { file: 'observation-page.webp', label: 'shotObservation' },
+      ],
+    },
     { icon: Hourglass, key: 'integration', screenshot: 'integration.webp' },
     { icon: Sparkles, key: 'planMyNight', screenshot: 'plan-my-night.webp' },
     { icon: Grid3x3, key: 'mosaic', screenshot: 'mosaic.webp' },

@@ -40,7 +40,17 @@ if (isRecovery) {
     runRecovery();
     process.exit(0);
   } catch (err) {
-    console.error(`\n  Error: ${err instanceof Error ? err.message : String(err)}\n`);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`\n  Error: ${message}\n`);
+    if (/readonly database|SQLITE_READONLY|SQLITE_CANTOPEN|EACCES|EPERM/i.test(message)) {
+      console.error(
+        process.platform === 'win32'
+          ? '  Nebulis cannot write to its database from this window. Close it, then open\n'
+            + '  Command Prompt with "Run as administrator" and run the command again.\n'
+          : '  Nebulis cannot write to its database as this user. Run the command with sudo,\n'
+            + '  or as the user that runs the Nebulis service.\n',
+      );
+    }
     process.exit(1);
   }
 }
@@ -70,7 +80,12 @@ function runRecovery(): void {
     );
   }
 
-  const db = new Database(dbPath);
+  // A pkg-bundled exe cannot load the native binding from its snapshot, so use
+  // the copy next to the exe, exactly as db.ts does.
+  const nativeBinding = 'pkg' in process
+    ? path.join(path.dirname(process.execPath), 'better_sqlite3.node')
+    : undefined;
+  const db = new Database(dbPath, nativeBinding ? { nativeBinding } : undefined);
   db.pragma('busy_timeout = 5000'); // tolerate a running service briefly holding the DB
   try {
     if (argv.includes('--list-users') || argv.includes('list-users')) {

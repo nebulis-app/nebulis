@@ -43,5 +43,6 @@
   "settings:alerts.urlPlaceholder.slack": "Example URL",
   "settings:alerts.urlPlaceholder.webhook": "Example URL",
   "settings:alerts.phones.title": "Product name, the same in every language",
-  "settings:siteManager.bortle": "Bortle is a proper name; the scale is written the same in every language"
+  "settings:siteManager.bortle": "Bortle is a proper name; the scale is written the same in every language",
+  "settings:addTelescopeModal.rigFiltersPlaceholder": "Example filter names, which are the same in every language"
 }

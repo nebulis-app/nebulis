@@ -25,6 +25,7 @@ import { HourDetail } from '../components/forecast/HourDetail';
 import { ImagingWindow } from '../components/forecast/ImagingWindow';
 import { LightPollutionPill } from '../components/forecast/LightPollutionPill';
 import { NightOutlookCard } from '../components/forecast/NightOutlookCard';
+import { EnsembleOutlook } from '../components/forecast/EnsembleOutlook';
 import { RatingLegend } from '../components/ui/RatingLegend';
 import { hoursForNight } from '../lib/forecastNights';
 
@@ -288,6 +289,11 @@ export function ForecastPage() {
           </p>
         </>
       )}
+
+      {/* Past the detailed nights: the odds over two weeks, from ensembles.
+          A separate request, so it shows even when the detailed forecast
+          could not be had. */}
+      {locationSet && <EnsembleOutlook siteId={effectiveSiteId} isDark={isDark} accent={accent} />}
     </div>
   );
 }

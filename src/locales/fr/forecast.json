@@ -117,5 +117,22 @@
     "moonDownAllWindow": "Elle reste sous l'horizon pendant toute la fenêtre.",
     "moonTimesUnknown": "Les heures de lever et de coucher ne sont pas disponibles pour cette nuit.",
     "brightMoon": "Lune brillante. Privilégiez les planètes et les amas d'étoiles."
+  },
+  "outlook": {
+    "title": "Les deux prochaines semaines",
+    "basis": "{{runs}} scénarios · {{models}}",
+    "explain": "Chance d’une nuit exploitable : la part des scénarios d’ensemble donnant au moins {{hours}} h de nuit noire avec des nuages jusqu’à {{cloud}} %. Au-delà d’une semaine, c’est une tendance.",
+    "unavailable": "La tendance à long terme n’est pas disponible pour le moment.",
+    "noData": "aucun modèle ne couvre encore cette nuit",
+    "runsClear": "{{pct}} des scénarios dégagés ({{clear}}/{{runs}}, ≥ {{hours}} h)",
+    "clouds": "nuages ~{{median}} % ({{low}}–{{high}} %)",
+    "moonUp": "Lune {{pct}} %, levée à minuit",
+    "moonDown": "Lune {{pct}} %, couchée à minuit",
+    "firstWeek": "7 prochaines nuits",
+    "trend": "Tendance",
+    "colNight": "Nuit",
+    "colChance": "Chance d’une nuit exploitable",
+    "colClouds": "Nébulosité médiane",
+    "colMoon": "Lune"
   }
 }

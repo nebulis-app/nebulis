@@ -117,5 +117,22 @@
     "moonDownAllWindow": "Permanece bajo el horizonte durante toda la ventana.",
     "moonTimesUnknown": "No hay horas de salida y puesta disponibles para esta noche.",
     "brightMoon": "Luna brillante. Mejor planetas y cúmulos de estrellas."
+  },
+  "outlook": {
+    "title": "Las próximas dos semanas",
+    "basis": "{{runs}} simulaciones · {{models}}",
+    "explain": "Probabilidad de una noche aprovechable: la proporción de simulaciones de conjunto con al menos {{hours}} h de oscuridad y nubes hasta el {{cloud}} %. Pasada una semana, léalo como tendencia.",
+    "unavailable": "La previsión a largo plazo no está disponible ahora mismo.",
+    "noData": "ningún modelo cubre aún esta noche",
+    "runsClear": "{{pct}} de simulaciones despejadas ({{clear}}/{{runs}}, ≥ {{hours}} h)",
+    "clouds": "nubes ~{{median}} % ({{low}}–{{high}} %)",
+    "moonUp": "Luna {{pct}} %, sobre el horizonte a medianoche",
+    "moonDown": "Luna {{pct}} %, puesta a medianoche",
+    "firstWeek": "Próximas 7 noches",
+    "trend": "Tendencia",
+    "colNight": "Noche",
+    "colChance": "Probabilidad de noche aprovechable",
+    "colClouds": "Nubosidad mediana",
+    "colMoon": "Luna"
   }
 }

@@ -62,6 +62,37 @@ interface ForecastData {
 export const getForecastForSite = (siteId: string, refresh = false) =>
   fetchJSON<ForecastData>(`/forecast?siteId=${encodeURIComponent(siteId)}${refresh ? '&refresh=1' : ''}`);
 
+/** One night of the ensemble outlook (server/lib/ensembleOutlook.ts). */
+export interface OutlookNight {
+  date: string;
+  darkStart: string;
+  darkEnd: string;
+  darkHours: number;
+  members: number;
+  clearMembers: number;
+  /** 0–1: share of model runs giving a usable night; null when none covers it. */
+  clearProbability: number | null;
+  cloudMedian: number | null;
+  cloudP25: number | null;
+  cloudP75: number | null;
+  moonIllumination: number;
+  moonUpAtMidnight: boolean;
+  models: { model: string; label: string; members: number; clearMembers: number; clearProbability: number | null }[];
+}
+
+export interface ForecastOutlook {
+  nights: OutlookNight[];
+  thresholds: { maxCloudCover: number; minClearHours: number };
+  timeZone: string;
+  models: { model: string; label: string; members: number }[];
+  source: string;
+  fetchedAt: string;
+}
+
+/** 15-night outlook from weather-model ensembles for a site. */
+export const getForecastOutlook = (siteId: string) =>
+  fetchJSON<ForecastOutlook>(`/forecast/outlook?siteId=${encodeURIComponent(siteId)}`);
+
 // Planner
 export interface PlannerTarget {
   id: string;

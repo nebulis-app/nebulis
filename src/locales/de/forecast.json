@@ -117,5 +117,22 @@
     "moonDownAllWindow": "Er bleibt über das gesamte Fenster unter dem Horizont.",
     "moonTimesUnknown": "Auf- und Untergangszeiten sind für diese Nacht nicht verfügbar.",
     "brightMoon": "Heller Mond. Setze lieber auf Planeten und Sternhaufen."
+  },
+  "outlook": {
+    "title": "Die nächsten zwei Wochen",
+    "basis": "{{runs}} Modellläufe · {{models}}",
+    "explain": "Chance auf eine nutzbare Nacht: Anteil der Ensemble-Läufe mit mindestens {{hours}} h Dunkelheit bei Bewölkung bis {{cloud}} %. Ab einer Woche als Trend lesen.",
+    "unavailable": "Die Langfristprognose ist gerade nicht verfügbar.",
+    "noData": "noch kein Modell deckt diese Nacht ab",
+    "runsClear": "{{pct}} der Läufe klar ({{clear}}/{{runs}}, ≥ {{hours}} h)",
+    "clouds": "Wolken ~{{median}} % ({{low}}–{{high}} %)",
+    "moonUp": "Mond {{pct}} %, um Mitternacht über dem Horizont",
+    "moonDown": "Mond {{pct}} %, um Mitternacht untergegangen",
+    "firstWeek": "Nächste 7 Nächte",
+    "trend": "Trend",
+    "colNight": "Nacht",
+    "colChance": "Chance auf eine nutzbare Nacht",
+    "colClouds": "Mittlere Bewölkung",
+    "colMoon": "Mond"
   }
 }

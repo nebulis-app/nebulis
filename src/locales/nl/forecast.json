@@ -117,5 +117,22 @@
     "moonDownAllWindow": "De maan blijft de hele periode onder de horizon.",
     "moonTimesUnknown": "De opkomst- en ondergangstijden van de maan zijn niet beschikbaar voor deze nacht.",
     "brightMoon": "Heldere maan. Kies bij voorkeur planeten en sterrenhopen."
+  },
+  "outlook": {
+    "title": "De komende twee weken",
+    "basis": "{{runs}} modelruns · {{models}}",
+    "explain": "Kans op een bruikbare nacht: het aandeel ensembleruns met minstens {{hours}} u donkerte bij bewolking tot {{cloud}}%. Na een week is het een trend.",
+    "unavailable": "De langetermijnverwachting is nu niet beschikbaar.",
+    "noData": "nog geen model dekt deze nacht",
+    "runsClear": "{{pct}} van de runs helder ({{clear}}/{{runs}}, ≥ {{hours}} u)",
+    "clouds": "bewolking ~{{median}}% ({{low}}–{{high}}%)",
+    "moonUp": "Maan {{pct}}%, op om middernacht",
+    "moonDown": "Maan {{pct}}%, onder om middernacht",
+    "firstWeek": "Komende 7 nachten",
+    "trend": "Trend",
+    "colNight": "Nacht",
+    "colChance": "Kans op een bruikbare nacht",
+    "colClouds": "Mediane bewolking",
+    "colMoon": "Maan"
   }
 }

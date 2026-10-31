@@ -13,6 +13,13 @@ import {
 import { getNightConditions } from '../lib/nightConditions.js';
 import { resolveSite } from '../lib/observingSites.js';
 import { burstyRateLimiter } from '../middleware/rateLimit.js';
+import {
+  computeOutlook,
+  getEnsemble,
+  DEFAULT_OUTLOOK_THRESHOLDS,
+  ENSEMBLE_MODELS,
+} from '../lib/ensembleOutlook.js';
+import { timeZoneOrLocal } from '../lib/timezone.js';
 
 const router = Router();
 
@@ -113,6 +120,55 @@ router.get('/', burstyRateLimiter, async (req: Request, res: Response) => {
 // The hourly conditions kept for that night at that forecast grid cell (see lib/nightConditions.ts): the forecast snapshot,
 // which alone has seeing, else an archive row. `conditions` is null when nothing was kept; clients then fall back to their
 // own archive lookup.
+/**
+ * GET /forecast/outlook — 15-night outlook from weather-model ensembles
+ * (see lib/ensembleOutlook.ts): for each night, the share of model runs
+ * giving at least `minClearHours` dark hours at or under `maxCloudCover`.
+ * Site resolution as for GET /forecast (siteId, lat/lon, else active site).
+ */
+router.get('/outlook', burstyRateLimiter, async (req: Request, res: Response) => {
+  const siteId = typeof req.query.siteId === 'string' ? req.query.siteId : undefined;
+  const lat = req.query.lat !== undefined ? Number(req.query.lat) : undefined;
+  const lon = req.query.lon !== undefined ? Number(req.query.lon) : undefined;
+  if ((lat !== undefined || lon !== undefined)
+    && !(Number.isFinite(lat) && Number.isFinite(lon) && lat! >= -90 && lat! <= 90 && lon! >= -180 && lon! <= 180)) {
+    res.apiError(400, 'INVALID_COORDS', 'Valid latitude (-90 to 90) and longitude (-180 to 180) required');
+    return;
+  }
+  const num = (v: unknown, min: number, max: number, fallback: number) => {
+    const n = Number(v);
+    return v !== undefined && Number.isFinite(n) && n >= min && n <= max ? n : fallback;
+  };
+  const thresholds = {
+    maxCloudCover: num(req.query.maxCloudCover, 0, 100, DEFAULT_OUTLOOK_THRESHOLDS.maxCloudCover),
+    minClearHours: num(req.query.minClearHours, 0.5, 12, DEFAULT_OUTLOOK_THRESHOLDS.minClearHours),
+  };
+
+  const site = resolveSite({ siteId, lat, lon });
+  if (site.latitude === null || site.longitude === null) {
+    res.apiError(400, 'INVALID_COORDS', 'Valid latitude (-90 to 90) and longitude (-180 to 180) required');
+    return;
+  }
+  try {
+    const { data, fetchedAt } = await getEnsemble(site.latitude, site.longitude);
+    const timeZone = timeZoneOrLocal(site.timezone);
+    res.apiSuccess({
+      nights: computeOutlook(data, { lat: site.latitude, lon: site.longitude, timeZone }, new Date(), thresholds),
+      thresholds,
+      timeZone,
+      models: ENSEMBLE_MODELS.map(m => ({
+        model: m.id,
+        label: m.label,
+        members: new Set(data.members.filter(x => x.model === m.id).map(x => x.member)).size,
+      })),
+      source: 'open-meteo-ensemble',
+      fetchedAt: new Date(fetchedAt).toISOString(),
+    });
+  } catch (err: unknown) {
+    res.apiError(502, 'OUTLOOK_UNAVAILABLE', err instanceof Error ? err.message : 'Ensemble forecast unavailable');
+  }
+});
+
 router.get('/recorded', (req: Request, res: Response) => {
   const night = String(req.query.night ?? '');
   const lat = Number(req.query.lat), lon = Number(req.query.lon);

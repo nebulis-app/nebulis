@@ -14,6 +14,8 @@ import { getPlannerCatalog, type DsoEntry } from '../dsoCatalog.js';
 import { maxPossibleAltitude, visibilityWindow } from '../astroCalc.js';
 import { computeBestImagingWindow } from '../bestImagingWindow.js';
 import { computeBestTonightScore } from '../bestTonightScore.js';
+import { buildMoonTrack, moonPenaltyFor } from '../tonightMoon.js';
+import SunCalc from 'suncalc';
 
 export interface ExploreSiteContext {
   /** Cache identity: the site id, or the transient coordinate id. */
@@ -54,6 +56,9 @@ export function getTonightIndex(ctx: ExploreSiteContext, start: Date, end: Date)
   if (hit) return hit;
 
   const byId = new Map<string, TonightEntry>();
+  // Same Moon term as GET /planner/tonight, sampled at the night's midpoint like its illumination.
+  const illumination = Math.round(SunCalc.getMoonIllumination(new Date((start.getTime() + end.getTime()) / 2)).fraction * 100);
+  const moonTrack = buildMoonTrack(ctx.lat, ctx.lon, start, end, illumination);
   for (const entry of getPlannerCatalog()) {
     if (maxPossibleAltitude(ctx.lat, entry.dec) < ctx.minAlt) continue;
     const w = visibilityWindow(entry.ra, entry.dec, ctx.lat, ctx.lon, start, end, ctx.minAlt, ctx.horizonProfile);
@@ -65,6 +70,7 @@ export function getTonightIndex(ctx: ExploreSiteContext, start: Date, end: Date)
       magnitude: entry.magnitude,
       maxAltTime: w.maxAltTime?.toISOString() ?? null,
       majorAxisArcmin: entry.majorAxisArcmin,
+      moonPenalty: moonPenaltyFor(moonTrack, entry, w.rises, w.sets),
     }, start, end).total;
     byId.set(entry.id, { maxAlt: Math.round(w.maxAlt * 10) / 10, score });
   }

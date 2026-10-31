@@ -146,7 +146,10 @@ async function listWindows(): Promise<VolumeInfo[]> {
       .filter((d): d is WinDisk => d !== null);
     // DriveType: 0 unknown, 1 no root dir, 2 removable, 3 fixed, 4 network,
     // 5 optical. Optical/unknown/no-root and recovery partitions are noise.
-    const HIDDEN_DRIVE_TYPES = new Set([0, 1, 5]);
+    // A mapped network letter (4) belongs to one user's logon session: the service runs as
+    // LocalSystem, cannot see it, and a path chosen from it stops working once NSSM runs the
+    // server. A network location goes through Settings, Storage, Network Share (a UNC path).
+    const HIDDEN_DRIVE_TYPES = new Set([0, 1, 4, 5]);
     return disks
       .filter(d => typeof d.DeviceID === 'string')
       .filter(d => d.DriveType === undefined || !HIDDEN_DRIVE_TYPES.has(d.DriveType))

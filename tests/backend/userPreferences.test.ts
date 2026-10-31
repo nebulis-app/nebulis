@@ -14,7 +14,8 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 
 import db from '../../server/lib/db';
 import {
-  getWatermarkPresets, setWatermarkPresets, getLastSeenVersion, setLastSeenVersion, type WatermarkPreset,
+  getWatermarkPresets, setWatermarkPresets, getLastSeenVersion, setLastSeenVersion,
+  WatermarkPresetsBodySchema, type WatermarkPreset,
 } from '../../server/lib/userPreferences';
 
 const preset = (id: string, over: Partial<WatermarkPreset> = {}): WatermarkPreset => ({
@@ -60,12 +61,89 @@ describe('watermark presets', () => {
     expect(getWatermarkPresets('u1')).toEqual([]);
   });
 
+  /**
+   * The read path DROPS anything that fails the schema. A required geometry
+   * field would therefore delete every preset saved before the watermarks
+   * feature on the next read. This row is spelled out as the pre-feature JSON
+   * rather than built by the factory so the guard survives a factory change.
+   */
+  it('returns a preset stored before the geometry fields existed', () => {
+    const legacy = {
+      id: 'old', name: 'Bottom right', text: '© 2024 Me', fontSize: 36,
+      fontFamily: 'Arial, sans-serif', color: '#ffffff', bold: false, italic: false,
+      opacity: 70, align: 'right', angle: 0,
+    };
+    db.prepare('INSERT INTO userPreferences (userId, watermarkPresets) VALUES (?, ?)')
+      .run('u1', JSON.stringify([legacy]));
+    expect(getWatermarkPresets('u1')).toEqual([legacy]);
+  });
+
+  it('round-trips the geometry the image editor saves', () => {
+    const saved = preset('geo', { name: 'Corner', sizePct: 0.035, x: 0.97, y: 0.94, opacity: 70 });
+    setWatermarkPresets('u1', [saved]);
+    expect(getWatermarkPresets('u1')).toEqual([saved]);
+  });
+
   it('saving presets leaves lastSeenVersion alone, and the reverse', () => {
     setLastSeenVersion('u1', '2.1.0');
     setWatermarkPresets('u1', [preset('a')]);
     expect(getLastSeenVersion('u1')).toBe('2.1.0');
     setLastSeenVersion('u1', '2.1.2');
     expect(getWatermarkPresets('u1').map(p => p.id)).toEqual(['a']);
+  });
+});
+
+describe('WatermarkPresetsBodySchema', () => {
+  // The editor stores opacity on the 0–100 scale; the read fixture above uses
+  // the old fractional value, which the write schema still accepts as a number.
+  const input = (over: Partial<WatermarkPreset> = {}): WatermarkPreset =>
+    preset('a', { name: 'Mark A', opacity: 70, ...over });
+
+  it('accepts a pre-geometry payload from an older client', () => {
+    expect(WatermarkPresetsBodySchema.safeParse([input()]).success).toBe(true);
+  });
+
+  it('accepts a payload with geometry', () => {
+    const parsed = WatermarkPresetsBodySchema.safeParse([input({ sizePct: 0.05, x: 0.2, y: 0.8 })]);
+    expect(parsed.success).toBe(true);
+  });
+
+  it('refuses geometry the renderer could not draw sensibly', () => {
+    for (const over of [
+      { sizePct: 0 },
+      { sizePct: 1.5 },
+      { x: -0.01 },
+      { y: 1.01 },
+      { angle: 100 },
+      { opacity: -1 },
+      { color: 'white' },
+      { name: 'x'.repeat(41) },
+      { name: '   ' },
+      { text: '' },
+      { text: 'x'.repeat(2001) },
+    ]) {
+      expect(WatermarkPresetsBodySchema.safeParse([input(over as Partial<WatermarkPreset>)]).success, JSON.stringify(over)).toBe(false);
+    }
+  });
+
+  it('refuses duplicate names, case-insensitively, and duplicate ids', () => {
+    expect(WatermarkPresetsBodySchema.safeParse([
+      input({ id: 'a', name: 'Corner' }),
+      input({ id: 'b', name: '  corner ' }),
+    ]).success).toBe(false);
+    expect(WatermarkPresetsBodySchema.safeParse([
+      input({ id: 'a', name: 'Corner  mark' }),
+      input({ id: 'b', name: 'corner mark' }),
+    ]).success).toBe(false);
+    expect(WatermarkPresetsBodySchema.safeParse([
+      input({ id: 'same', name: 'One' }),
+      input({ id: 'same', name: 'Two' }),
+    ]).success).toBe(false);
+  });
+
+  it('refuses more than 50 presets', () => {
+    const many = Array.from({ length: 51 }, (_, i) => input({ id: `p${i}`, name: `Mark ${i}` }));
+    expect(WatermarkPresetsBodySchema.safeParse(many).success).toBe(false);
   });
 });
 

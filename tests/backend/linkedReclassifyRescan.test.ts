@@ -23,13 +23,13 @@ import {
 const SETTINGS = { importJpg: true, importFits: true, importSubFrames: true };
 const roots: string[] = [];
 
-afterAll(() => {
+afterAll(async () => {
   vi.unstubAllGlobals();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
   for (const r of roots) fs.rmSync(r, { recursive: true, force: true });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline in tests')));
   db.prepare('DELETE FROM libraryObjects').run();
   db.prepare('DELETE FROM libraryFiles').run();
@@ -54,26 +54,26 @@ const objectsOf = (id: string) =>
   db.prepare<[string], { objectId: string }>('SELECT DISTINCT objectId FROM libraryFiles WHERE sourceId = ?').all(id).map(r => r.objectId);
 
 describe('reclassify on a linked folder, then rescan', () => {
-  it('a new link of the same folder honours an earlier reclassify', () => {
+  it('a new link of the same folder honours an earlier reclassify', async () => {
     const root = makeRoot();
-    const first = commitSource(root, SETTINGS, { label: 'x' });
+    const first = await commitSource(root, SETTINGS, { label: 'x' });
     reclassifyObject('M31', 'NGC7000', { remember: false });
     db.prepare('DELETE FROM libraryFiles').run();
     db.prepare('DELETE FROM librarySources').run();
-    const again = commitSource(root, SETTINGS, { label: 'y' });
+    const again = await commitSource(root, SETTINGS, { label: 'y' });
     expect(first.sourceId).not.toBe(again.sourceId);
     expect(objectsOf(again.sourceId)).toEqual(['NGC7000']);
   });
 
-  it.each([true, false])('keeps the reclassified object after a rescan (remember=%s)', remember => {
+  it.each([true, false])('keeps the reclassified object after a rescan (remember=%s)', async remember => {
     const root = makeRoot();
-    const { sourceId } = commitSource(root, SETTINGS, { label: 'x' });
+    const { sourceId } = await commitSource(root, SETTINGS, { label: 'x' });
     expect(objectsOf(sourceId)).toEqual(['M31']);
 
     reclassifyObject('M31', 'NGC7000', { remember });
     expect(objectsOf(sourceId)).toEqual(['NGC7000']);
 
-    rescanSource(sourceId, SETTINGS);
+    await rescanSource(sourceId, SETTINGS);
     expect(objectsOf(sourceId)).toEqual(['NGC7000']);
   });
 });

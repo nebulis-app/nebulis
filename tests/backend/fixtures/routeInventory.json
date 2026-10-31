@@ -2740,6 +2740,7 @@
     "method": "GET",
     "path": "/telescopes/drives",
     "guards": [
+      "requireAdmin",
       "<anonymous>"
     ]
   },

@@ -9,6 +9,8 @@ declare global {
       userRole?: UserRole;
       /** True when the request authenticated with a personal API key (neb-…) rather than a sign-in token. */
       viaApiKey?: boolean;
+      /** True when the request authenticated with a paired-device token (a JWT carrying a `jti`). */
+      viaDeviceToken?: boolean;
       /** Upload-route diagnostics, set by the upload-temp handler and read by
        *  the global error handler for truncated-upload logging. Undefined on
        *  every other route — harmless. */

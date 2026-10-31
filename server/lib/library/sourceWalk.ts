@@ -12,6 +12,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { withDeadline } from '../deadline.js';
 import { classifyImportFile, countSkip, summarizeSkips, type ImportSkipSummary, type SkipTally } from './importFilter.js';
 
 // Matches folderScan.ts's existing per-object MAX_DEPTH (8) — a real
@@ -29,6 +30,23 @@ const MAX_DEPTH = 8;
 // scan in its screenshot, and even a few dozen such groups stays an order of
 // magnitude under this cap. See contract Open Question 4.
 const MAX_TOTAL_FILES = 200_000;
+
+// A linked archive is often a network share or a USB disk. Each call gets a deadline so a stalled mount ends the walk
+// of that directory instead of the whole scan, and the walk gives the event loop back every so often so the API keeps
+// answering while a 200,000-file tree is read.
+const IO_DEADLINE_MS = 30_000;
+const YIELD_EVERY = 200;
+const yieldToLoop = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
+
+/**
+ * A `tick()` to call once per item in a long synchronous loop: every `every` calls it hands the event loop a turn.
+ * For the loops that follow the walk (attribution, dates, rows to write), which are plain CPU work over every file.
+ * Never call it inside a database transaction.
+ */
+export function createYielder(every = 500): { tick: () => Promise<void> } {
+  let n = 0;
+  return { tick: async () => { if (++n >= every) { n = 0; await yieldToLoop(); } } };
+}
 
 // Directories that are never real data, regardless of platform: OS/filesystem
 // bookkeeping a "link my whole archive drive" scan would otherwise wade into.
@@ -72,7 +90,7 @@ export interface SourceWalkResult {
 /** Walk `rootPath`, classifying every real file with `classifyImportFile` under
  *  `settings` (the same app import settings folderScan.ts's scan uses, so a
  *  linked source and a copy-import agree on what counts as real data). */
-export function walkSource(rootPath: string, settings: Record<string, unknown>): SourceWalkResult {
+export async function walkSource(rootPath: string, settings: Record<string, unknown>): Promise<SourceWalkResult> {
   const files: WalkedSourceFile[] = [];
   const skipped: SkipTally = new Map();
   const unreadableDirs: string[] = [];
@@ -87,12 +105,14 @@ export function walkSource(rootPath: string, settings: Record<string, unknown>):
   // once rather than recursing forever.
   const visitedDirs = new Set<string>();
 
-  const visit = (absDir: string, relDir: string, depth: number): void => {
+  let sinceYield = 0;
+
+  const visit = async (absDir: string, relDir: string, depth: number): Promise<void> => {
     if (stopped) return;
 
     let real: fs.Stats;
     try {
-      real = fs.statSync(absDir); // follows symlinks
+      real = await withDeadline(fs.promises.stat(absDir), IO_DEADLINE_MS, 'stat'); // follows symlinks
     } catch {
       unreadableDirs.push(relDir);
       return;
@@ -103,7 +123,7 @@ export function walkSource(rootPath: string, settings: Record<string, unknown>):
 
     let entries: fs.Dirent[];
     try {
-      entries = fs.readdirSync(absDir, { withFileTypes: true });
+      entries = await withDeadline(fs.promises.readdir(absDir, { withFileTypes: true }), IO_DEADLINE_MS, 'readdir');
     } catch {
       unreadableDirs.push(relDir);
       return;
@@ -111,6 +131,7 @@ export function walkSource(rootPath: string, settings: Record<string, unknown>):
 
     for (const entry of entries) {
       if (stopped) return;
+      if (++sinceYield >= YIELD_EVERY) { sinceYield = 0; await yieldToLoop(); }
       const absPath = path.join(absDir, entry.name);
       const relPath = relDir === '' ? entry.name : `${relDir}/${entry.name}`;
 
@@ -120,7 +141,7 @@ export function walkSource(rootPath: string, settings: Record<string, unknown>):
         // Resolve once to learn what it actually points at; a dangling link
         // is neither and is simply skipped.
         try {
-          const stat = fs.statSync(absPath);
+          const stat = await withDeadline(fs.promises.stat(absPath), IO_DEADLINE_MS, 'stat');
           isDirectory = stat.isDirectory();
           isFile = stat.isFile();
         } catch {
@@ -136,7 +157,7 @@ export function walkSource(rootPath: string, settings: Record<string, unknown>):
         // be linked once per frame.
         if (/^thumbnails?$/i.test(entry.name) && settings.archiveAllFiles !== true) continue;
         if (depth >= MAX_DEPTH) { truncated = true; depthLimited = true; continue; }
-        visit(absPath, relPath, depth + 1);
+        await visit(absPath, relPath, depth + 1);
         continue;
       }
       if (!isFile) continue;
@@ -144,7 +165,7 @@ export function walkSource(rootPath: string, settings: Record<string, unknown>):
       const decision = classifyImportFile(entry.name, settings);
       if (!decision.import) {
         let size = 0;
-        try { size = fs.statSync(absPath).size; } catch { /* size unknown */ }
+        try { size = (await withDeadline(fs.promises.stat(absPath), IO_DEADLINE_MS, 'stat')).size; } catch { /* size unknown */ }
         countSkip(skipped, decision.reason, 1, size, [relPath]);
         continue;
       }
@@ -152,7 +173,7 @@ export function walkSource(rootPath: string, settings: Record<string, unknown>):
       if (files.length >= MAX_TOTAL_FILES) { truncated = true; stopped = true; return; }
       let stat: fs.Stats;
       try {
-        stat = fs.statSync(absPath);
+        stat = await withDeadline(fs.promises.stat(absPath), IO_DEADLINE_MS, 'stat');
       } catch {
         continue;
       }
@@ -160,7 +181,7 @@ export function walkSource(rootPath: string, settings: Record<string, unknown>):
     }
   };
 
-  visit(rootPath, '', 0);
+  await visit(rootPath, '', 0);
 
   return { files, truncated, depthLimited, skipped: summarizeSkips(skipped), unreadableDirs };
 }

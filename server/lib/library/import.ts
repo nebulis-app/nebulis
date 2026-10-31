@@ -26,7 +26,8 @@ import {
 import { getOpticalConfigsForProfile } from '../telescopeOpticalConfigs.js';
 import { setSessionOpticalConfig } from './sessionOptics.js';
 import { smbListDir, smbGetFile, type SmbEntry } from '../smb.js';
-import { selectActiveTransport, markTransportSeen, type TransportKind } from '../telescopeTransports.js';
+import { markTransportSeen, type TransportKind } from '../telescopeTransports.js';
+import { prepareActiveTransport, judgeStorageIdentity } from '../driveBindings.js';
 import { writeIdentityIfMissing } from '../deviceIdentity.js';
 import {
   getWalkerConfig,
@@ -71,6 +72,7 @@ import {
 } from '../telescopeFiles.js';
 import { resolveCanonicalId, applyCatalogPreference } from '../catalogAliases.js';
 import { getDesignationRedirect } from './designationRedirects.js';
+import { resolveImportObjectId } from './importObjectId.js';
 import { getByName as getCatalogEntryByName } from '../dsoCatalog.js';
 import { findCatalogEntryByExactName } from '../../data/catalog.js';
 import { exifDateFromFile } from '../exifDate.js';
@@ -327,7 +329,7 @@ export function createWorkerQueue<T>(concurrency: number, process: (item: T) => 
  */
 /** Object ids that received at least one new file in this run. */
 function newFileObjectIds(files: ReadonlyArray<{ name: string }>): Set<string> {
-  return new Set(files.map(f => resolveCanonicalId(normalizeObjectId(f.name.split('/')[0]))));
+  return new Set(files.map(f => resolveImportObjectId(f.name.split('/')[0])));
 }
 
 // If a previous run left importRunning = 1 in the DB, the server crashed mid-import.
@@ -730,7 +732,20 @@ export async function runImport(
   // wins when present; otherwise we use the configured SMB transport. The
   // selected transport's connection fields override the profile's legacy
   // mirror columns for the rest of this import.
-  const activeTransport = selectActiveTransport(baseProfile.id);
+  // `prepareActiveTransport` also follows a USB drive to wherever it is mounted now, and refuses a drive that belongs
+  // to a different telescope rather than importing its files under this one.
+  const prepared = await prepareActiveTransport(baseProfile);
+  if (prepared.error) {
+    importStatus.error = prepared.error;
+    importStatus.running = false;
+    importStatus.telescopeId = baseProfile.id;
+    importStatus.telescopeName = baseProfile.name;
+    try { stmts.setImportRunning.run(0, null); } catch (err) {
+      console.warn('[import] setImportRunning failed:', err instanceof Error ? err.message : err);
+    }
+    return;
+  }
+  const activeTransport = prepared.transport;
   const profile: TelescopeProfile = activeTransport
     ? {
         ...baseProfile,
@@ -820,11 +835,21 @@ export async function runImport(
   let runDeviceId: string | null = baseProfile.deviceId ?? null;
   if (activeTransport && baseProfile.trackDeviceIdentity) {
     try {
-      const probe = await writeIdentityIfMissing(activeTransport, { model: profile.model });
+      // Storage with no ID yet gets this telescope's own, so one device reached two ways carries one ID.
+      const probe = await writeIdentityIfMissing(activeTransport, { model: profile.model, deviceId: baseProfile.deviceId ?? undefined });
       markTransportSeen(activeTransport.id);
-      if (!runDeviceId) {
-        runDeviceId = probe.identity.deviceId;
+      // An ID that could not be written to the storage exists nowhere: keep it off the profile and out of the dedup key.
+      const verdict = judgeStorageIdentity(baseProfile, probe.readonly ? null : probe.identity.deviceId);
+      if (verdict.action === 'adopt') {
+        runDeviceId = verdict.deviceId;
         setProfileDeviceId(profile.id, runDeviceId);
+      } else if (verdict.action === 'warn') {
+        log.warn(
+          { telescopeId: profile.id, transportId: activeTransport.id, found: verdict.found, reason: verdict.reason, owner: verdict.ownerName },
+          verdict.reason === 'other-telescope'
+            ? `[import] the storage carries ${verdict.ownerName ?? 'another telescope'}'s device id, not ${profile.name}'s; importing anyway`
+            : `[import] the storage carries a different device id from ${profile.name}'s; importing anyway`,
+        );
       }
     } catch (err) {
       log.warn(
@@ -921,8 +946,8 @@ export async function runImport(
       debugLog('import:discover', `Dwarf: found ${discovered.length} object(s) total`);
       if (discovered.length > 0) debugLog('import:discover', `Objects: ${discovered.map(o => o.folderName).join(', ')}`);
       toImport = discovered
-        .filter(o => !targetObjectId || resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId)
-        .filter(o => !index.objects[resolveCanonicalId(normalizeObjectId(o.folderName))]?.deleted)
+        .filter(o => !targetObjectId || resolveImportObjectId(o.folderName) === targetObjectId)
+        .filter(o => !index.objects[resolveImportObjectId(o.folderName)]?.deleted)
         .map(o => ({
           objectName: o.folderName,
           subFolderName: null,
@@ -936,8 +961,8 @@ export async function runImport(
       debugLog('import:discover', `ASIAIR: found ${discovered.length} object(s) total`);
       if (discovered.length > 0) debugLog('import:discover', `Objects: ${discovered.map(o => o.folderName).join(', ')}`);
       toImport = discovered
-        .filter(o => !targetObjectId || resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId)
-        .filter(o => !index.objects[resolveCanonicalId(normalizeObjectId(o.folderName))]?.deleted)
+        .filter(o => !targetObjectId || resolveImportObjectId(o.folderName) === targetObjectId)
+        .filter(o => !index.objects[resolveImportObjectId(o.folderName)]?.deleted)
         .map(o => ({
           objectName: o.folderName,
           subFolderName: null,
@@ -1023,8 +1048,8 @@ export async function runImport(
 
       toImport = [
         ...genericObjects
-          .filter(o => !targetObjectId || resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId)
-          .filter(o => !index.objects[resolveCanonicalId(normalizeObjectId(o.folderName))]?.deleted)
+          .filter(o => !targetObjectId || resolveImportObjectId(o.folderName) === targetObjectId)
+          .filter(o => !index.objects[resolveImportObjectId(o.folderName)]?.deleted)
           .map(o => ({
             objectName: o.folderName,
             subFolderName: null,
@@ -1032,10 +1057,10 @@ export async function runImport(
             genericSessionFolders: o._genericSessionFolders ?? [],
           })),
         ...(targetObjectId
-          ? normalFolders.filter(e => resolveCanonicalId(normalizeObjectId(stripCaptureModeSuffix(e.name))) === targetObjectId)
+          ? normalFolders.filter(e => resolveImportObjectId(stripCaptureModeSuffix(e.name)) === targetObjectId)
           : normalFolders
         )
-          .filter(e => !index.objects[resolveCanonicalId(normalizeObjectId(stripCaptureModeSuffix(e.name)))]?.deleted)
+          .filter(e => !index.objects[resolveImportObjectId(stripCaptureModeSuffix(e.name))]?.deleted)
           .map(objEntry => {
             // `Lunar_video` and `Lunar` are one object; the suffix is a SeeStar
             // capture mode, not part of the target name. The `_sub` lookup still
@@ -1054,8 +1079,8 @@ export async function runImport(
             };
           }),
         ...expandedEntries
-          .filter(e => !targetObjectId || resolveCanonicalId(normalizeObjectId(e.objectName)) === targetObjectId)
-          .filter(e => !index.objects[resolveCanonicalId(normalizeObjectId(e.objectName))]?.deleted),
+          .filter(e => !targetObjectId || resolveImportObjectId(e.objectName) === targetObjectId)
+          .filter(e => !index.objects[resolveImportObjectId(e.objectName)]?.deleted),
       ];
     }
 
@@ -1079,7 +1104,7 @@ export async function runImport(
       // that already exists keeps whatever shape it has — mixing both inside
       // one folder would put some of a session beside the folder holding the
       // rest, which no read path could explain.
-      const objIdForLayout = resolveCanonicalId(normalizeObjectId(objectName));
+      const objIdForLayout = resolveImportObjectId(objectName);
       const objectLayout = layoutForImport(objIdForLayout, !!index.objects[objIdForLayout]);
 
       // Vendor-specific file enumeration → unified ImportFile[].
@@ -1409,7 +1434,7 @@ export async function runImport(
       // folder name, so an aliased folder ("NGC 7089", "C63", "Lunar") must
       // resolve to the same id used to look up deletedSessions or a deleted
       // session silently re-imports on the next run.
-      const objIdNormalized = resolveCanonicalId(normalizeObjectId(objectName));
+      const objIdNormalized = resolveImportObjectId(objectName);
 
       let filteredType = 0; let filteredTombstone = 0; let filteredDate = 0;
       allFiles = allFiles.filter(f => {
@@ -2146,7 +2171,8 @@ export async function syncSessionSubFrames(
 
   // Mirror runImport: select the active transport (USB wins over SMB when present)
   // so sub-frame sync uses the same connection as a regular import would.
-  const activeTransport = baseProfile ? selectActiveTransport(baseProfile.id) : null;
+  const prepared = baseProfile ? await prepareActiveTransport(baseProfile) : { transport: null, error: null };
+  const activeTransport = prepared.transport;
   const profile: TelescopeProfile | null = baseProfile && activeTransport
     ? {
         ...baseProfile,
@@ -2202,6 +2228,16 @@ export async function syncSessionSubFrames(
     importObjectsTouched = new Map();
     importSessionsTouched = new Map();
     importSkips = new Map();
+  }
+
+  // A USB drive that belongs to a different telescope: say so rather than sync from it.
+  if (prepared.error) {
+    importStatus.error = prepared.error;
+    importStatus.running = false;
+    importStatus.telescopeId = baseProfile?.id ?? null;
+    importStatus.telescopeName = baseProfile?.name ?? null;
+    try { stmts.setImportRunning.run(0, null); } catch { /* best-effort */ }
+    return;
   }
 
   // Local-fs profiles (Dwarf USB) have no hostname; require localPath instead.
@@ -2278,7 +2314,7 @@ export async function syncSessionSubFrames(
     if (isGeneric) {
       debugLog('subframe-sync:discover', `Generic: scanning for sub-frames of "${targetObjectId}" on ${targetDate}`);
       const discovered = await discoverGenericObjects(profile);
-      const obj = discovered.find(o => resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId);
+      const obj = discovered.find(o => resolveImportObjectId(o.folderName) === targetObjectId);
       // Session folders are <YYYY-MM-DD>_<HHMM> by construction, so the date
       // is always the first 10 characters — same rule runImport applies.
       const sessions = (obj?._genericSessionFolders ?? []).filter(s => s.slice(0, 10) === targetDate);
@@ -2298,7 +2334,7 @@ export async function syncSessionSubFrames(
       // Resolve aliases the same way the branches below do: the device's folder
       // name is a raw target string that may differ from the canonical id once
       // catalog aliasing is applied.
-      const obj = discovered.find(o => resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId);
+      const obj = discovered.find(o => resolveImportObjectId(o.folderName) === targetObjectId);
       if (!obj) {
         debugLog('subframe-sync:discover', `ASIAIR: no target folder found for "${targetObjectId}"`);
         importStatus.error = `${profile.name} has no ASIAIR frames for "${targetObjectId}". Capture the object first, then sync.`;
@@ -2339,7 +2375,7 @@ export async function syncSessionSubFrames(
       // for (e.g. "IC342") once catalog aliasing is applied. Without this,
       // sub-frame sync for any object whose canonical id differs from its
       // device folder name silently found no match and synced nothing.
-      const obj = discovered.find(o => resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId);
+      const obj = discovered.find(o => resolveImportObjectId(o.folderName) === targetObjectId);
       if (!obj) {
         debugLog('subframe-sync:discover', `Dwarf: no session folder found for "${targetObjectId}"`);
         importStatus.error = `${profile.name} has no Dwarf session folders for "${targetObjectId}". Capture the object on the telescope first, then sync.`;
@@ -2475,8 +2511,7 @@ export async function syncSessionSubFrames(
       // resolveCanonicalId would never match the object it was reclassified
       // into.
       const subFolder = subFolders.find(s => {
-        const raw = normalizeObjectId(getObjectFromSubFolder(s.name));
-        return (getDesignationRedirect(raw) ?? resolveCanonicalId(raw)) === targetObjectId;
+        return resolveImportObjectId(getObjectFromSubFolder(s.name)) === targetObjectId;
       });
       if (!subFolder) {
         debugLog('subframe-sync:discover', `SeeStar: no sub-frame folder for "${targetObjectId}"`);

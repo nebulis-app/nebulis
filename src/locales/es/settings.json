@@ -640,7 +640,8 @@
       "bodyAfter": "en su lugar. Nada de la ubicación antigua se copia. Haz esto solo si tus imágenes ya están en la carpeta predeterminada, o si planeas volver a importarlas.",
       "resetFailed": "No se pudo restablecer la ubicación",
       "cancel": "Cancelar",
-      "resetLocation": "Restablecer ubicación"
+      "resetLocation": "Restablecer ubicación",
+      "secondLibraryWarning": "Las nuevas importaciones irán a esa carpeta en el disco propio de este equipo. Si la unidad antigua vuelve más tarde, será una biblioteca aparte y las dos no se fusionarán por sí solas. Si la unidad solo está desconectada, vuelve a conectarla en su lugar."
     },
     "resetToDefaultModal": {
       "title": "Mover la biblioteca de vuelta al valor predeterminado",
@@ -661,7 +662,8 @@
       "filesProgress_one": "{{copied}} / {{count}} archivo",
       "filesProgress_other": "{{copied}} / {{count}} archivos",
       "keepDriveConnected": "Mantén esta unidad conectada. Las importaciones están en pausa hasta que termine el traslado."
-    }
+    },
+    "recoveredNotice": "La unidad de tu biblioteca volvió en otra ruta, así que Nebulis se reconectó por su cuenta. Estaba en {{from}} y ahora está en {{to}}."
   },
   "storageDashboard": {
     "title": "Almacenamiento",
@@ -1021,7 +1023,9 @@
     "cancel": "Cancelar",
     "saveLabel": "Guardar",
     "connectedFound_one": "Conectado. Se encontró {{count}} carpeta.",
-    "connectedFound_other": "Conectado. Se encontraron {{count}} carpetas."
+    "connectedFound_other": "Conectado. Se encontraron {{count}} carpetas.",
+    "pairThisDrive": "Emparejar esta unidad en su lugar",
+    "unmarkedNote": "Esa unidad USB es de solo lectura, así que Nebulis no pudo marcarla. Se reconoce solo por su ruta, que puede intercambiarse cuando hay dos telescopios conectados a la vez."
   },
   "settingsUI": {
     "moreInfoAriaLabel": "Más información: {{text}}"

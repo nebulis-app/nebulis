@@ -6,9 +6,9 @@
  * scheduled refresh and a manual one can never disagree about what a rescan does. A one-time source
  * (interval NULL) is never touched here.
  *
- * The rescan itself is synchronous, so sources run one after another with a turn of the event loop
- * between them, and nothing runs while any other library work (a copy import, an archive run, a
- * repair) holds the shared library lock.
+ * Sources run one after another, and the walk of each gives the event loop back as it goes, so the
+ * API keeps answering during a long rescan. Nothing runs while any other library work (a copy import,
+ * an archive run, a repair) holds the shared library lock.
  */
 import { listDueSources, rescanSource } from './librarySources.js';
 import { acquireLibraryLock, currentLibraryWork } from '../libraryBusy.js';
@@ -35,15 +35,15 @@ export async function tickLinkedSourceRefresh(now: number = Date.now()): Promise
   try {
     for (const source of listDueSources(now)) {
       // Taken per source rather than per tick, so an import or archive run that wants the library
-      // between two sources is not kept waiting behind the whole batch. The rescan is synchronous,
-      // so the lock only matters against work that was already running when this source came up.
+      // between two sources is not kept waiting behind the whole batch. The lock is held across the
+      // awaits of the rescan, which is what keeps a delete or an archive run out while it works.
       const release = acquireLibraryLock('linked-scan');
       if (release === null) {
         skippedBecause = currentLibraryWork() === 'import' ? 'import-running' : 'library-busy';
         break;
       }
       try {
-        const result = rescanSource(source.id, getSettingsData());
+        const result = await rescanSource(source.id, getSettingsData());
         ran.push(source.id);
         log.info(
           { sourceId: source.id, offline: result.offline, added: result.added, updated: result.updated, removed: result.removed },

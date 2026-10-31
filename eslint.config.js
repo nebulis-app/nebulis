@@ -29,7 +29,7 @@ export default defineConfig([
     rules: {
       'local/no-unguarded-timezone': 'error',
       // Dates must follow the viewer's or the site's clock, never UTC: see
-      // eslint-rules/no-utc-date-key.js and "Time zones" in CLAUDE.md.
+      // eslint-rules/no-utc-date-key.js and the "Time zones" section of the contributor guidelines.
       'local/no-utc-date-key': 'error',
     },
   },

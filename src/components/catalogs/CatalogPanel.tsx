@@ -209,7 +209,7 @@ export function CatalogPanel({ meta, progress, isLoading, accent }: Props) {
             <Link
               to={`/catalogs/${meta.id}/mine`}
               aria-label={t('catalogPanel.myCatalogAria', { label, count: imaged })}
-              className="pointer-events-auto relative z-20 flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-4 text-sm font-semibold text-white
+              className="pointer-events-auto relative z-20 ml-auto flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-4 text-sm font-semibold text-white
                 ring-1 ring-inset transition-colors duration-300 hover:bg-white/10
                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
               style={{ background: `${accent}1f`, '--tw-ring-color': `${accent}99` } as CSSProperties}

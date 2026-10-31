@@ -43,6 +43,8 @@ import {
   type TransportKind,
 } from '../lib/telescopeTransports.js';
 import { readIdentity, writeIdentityIfMissing } from '../lib/deviceIdentity.js';
+import { bindProfileToDrive, checkDriveForNewProfile, refreshDriveBindings, type BindResult } from '../lib/driveBindings.js';
+import { driveBlocksForProfile } from '../lib/driveBindingState.js';
 import {
   TELESCOPE_PHOTO_LIMITS,
   TelescopePhotoError,
@@ -212,6 +214,8 @@ const ProbeIdentityBodySchema = z.object({
   /** Used to seed `.nebulis.dat` if we end up creating it. The UI passes the
    *  user-selected model so the file is useful for forensics later. */
   model: z.string().optional(),
+  /** When false the probe only reads: a telescope with identity tracking off must not get a file written to its storage. */
+  trackDeviceIdentity: z.boolean().optional(),
 });
 
 /** Mask passwords in transport responses; keep the encrypted-on-disk shape
@@ -219,6 +223,23 @@ const ProbeIdentityBodySchema = z.object({
  *  same '••••••••' sentinel used for profiles. */
 function presentTransport(t: TelescopeTransport): Omit<TelescopeTransport, 'password'> & { password: string } {
   return { ...t, password: t.password ? MASKED_PASSWORD : '' };
+}
+
+/** `DRIVE_BELONGS_TO_OTHER` has no way forward but a different drive; `DRIVE_SWAP_NEEDED` is the person's call to make. */
+function conflictCode(r: Extract<BindResult, { status: 'conflict' }>): 'DRIVE_BELONGS_TO_OTHER' | 'DRIVE_SWAP_NEEDED' {
+  return r.reason === 'other-telescope' ? 'DRIVE_BELONGS_TO_OTHER' : 'DRIVE_SWAP_NEEDED';
+}
+
+/** The sentence for a drive that cannot be paired with the telescope the person picked it for. */
+function conflictMessage(profileName: string, r: Extract<BindResult, { status: 'conflict' }>): string {
+  switch (r.reason) {
+    case 'other-telescope':
+      return `That drive belongs to ${r.ownerName ?? 'another telescope'}. Pick ${profileName}'s own drive, or unplug the other one first.`;
+    case 'telescope-paired-elsewhere':
+      return `${profileName} is already paired with the drive at ${r.otherPath ?? 'another path'}. If you have swapped that drive for this one, confirm the swap to pair this one instead.`;
+    default:
+      return `${profileName} is paired with a different drive. If you have swapped it for this one, confirm the swap to pair this one instead.`;
+  }
 }
 
 // Enumerate Dwarf USB volumes currently mounted on the server host.
@@ -266,7 +287,7 @@ router.get('/', (_req: Request, res: Response) => {
 // AddTelescope scan flow; each entry tells the caller whether the volume
 // looks like a Seestar or Dwarf and whether it's already paired to an
 // existing profile (so we can show an "Already added as <name>" pill).
-router.get('/drives', async (_req: Request, res: Response) => {
+router.get('/drives', requireAdmin, async (_req: Request, res: Response) => {
   const drives = await detectDrives();
   res.apiSuccess({ drives });
 });
@@ -311,6 +332,10 @@ router.post('/probe-identity', requireAdmin, async (req: Request, res: Response)
       });
       return;
     }
+    if (parsed.data.trackDeviceIdentity === false) {
+      res.apiSuccess({ deviceId: '', alreadyKnownProfileId: null, alreadyKnownProfileName: null, wrote: false, readonly: false });
+      return;
+    }
     const result = await writeIdentityIfMissing(probe, { model: parsed.data.model ?? 'unknown' });
     res.apiSuccess({
       deviceId: result.identity.deviceId,
@@ -349,7 +374,7 @@ router.get('/:id/transports', requireAdmin, (req: Request, res: Response) => {
 });
 
 // Add a transport to a profile.
-router.post('/:id/transports', requireAdmin, (req: Request, res: Response) => {
+router.post('/:id/transports', requireAdmin, async (req: Request, res: Response) => {
   const id = String(req.params.id);
   const profile = getProfileById(id);
   if (!profile) {
@@ -375,13 +400,22 @@ router.post('/:id/transports', requireAdmin, (req: Request, res: Response) => {
   // future prefilled-form path can't store the bullet string as a password.
   const addData = { ...parsed.data };
   if (addData.password === MASKED_PASSWORD) delete addData.password;
+  // A USB connection is paired with the drive it points at before it is saved, so a conflict never leaves a
+  // connection behind that would import from another telescope's drive.
+  const pairing = addData.kind === 'local' && addData.localPath
+    ? await bindProfileToDrive(profile, addData.localPath, { replace: req.body?.replaceDrive === true })
+    : null;
+  if (pairing?.status === 'conflict') {
+    res.apiError(409, conflictCode(pairing), conflictMessage(profile.name, pairing));
+    return;
+  }
   const transport = addTransport(id, addData);
   invalidateTransportCaches(transport);
-  res.apiSuccess(presentTransport(transport));
+  res.apiSuccess({ ...presentTransport(transport), pairing });
 });
 
 // Update a transport in place.
-router.put('/:id/transports/:tid', requireAdmin, (req: Request, res: Response) => {
+router.put('/:id/transports/:tid', requireAdmin, async (req: Request, res: Response) => {
   const id = String(req.params.id);
   const tid = String(req.params.tid);
   const profile = getProfileById(id);
@@ -410,6 +444,17 @@ router.put('/:id/transports/:tid', requireAdmin, (req: Request, res: Response) =
   // '••••••••' for unchanged passwords. Drop those so we don't encrypt the
   // sentinel string into the row.
   if (updates.password === MASKED_PASSWORD) delete updates.password;
+  // Pair the telescope with the drive when the USB path is new or changed (see the matching comment on POST).
+  const finalKind = updates.kind ?? existing.kind;
+  const finalPath = updates.localPath ?? existing.localPath;
+  const pathChanged = finalKind === 'local' && finalPath !== '' && (existing.kind !== 'local' || finalPath !== existing.localPath);
+  const pairing = profile && pathChanged
+    ? await bindProfileToDrive(profile, finalPath, { replace: req.body?.replaceDrive === true })
+    : null;
+  if (profile && pairing?.status === 'conflict') {
+    res.apiError(409, conflictCode(pairing), conflictMessage(profile.name, pairing));
+    return;
+  }
   const updated = updateTransport(tid, updates);
   if (!updated) {
     res.apiError(404, 'NOT_FOUND', 'Transport not found');
@@ -419,7 +464,7 @@ router.put('/:id/transports/:tid', requireAdmin, (req: Request, res: Response) =
   // and the new one, so neither keeps serving stale cached entries.
   invalidateTransportCaches(existing);
   invalidateTransportCaches(updated);
-  res.apiSuccess(presentTransport(updated));
+  res.apiSuccess({ ...presentTransport(updated), pairing });
 });
 
 // Remove a transport from a profile. Refuses to delete the last remaining
@@ -613,13 +658,33 @@ router.delete('/:id/optical-configs/:cid', requireAdmin, (req: Request, res: Res
 });
 
 // Create new telescope profile
-router.post('/', requireAdmin, (req: Request, res: Response) => {
+router.post('/', requireAdmin, async (req: Request, res: Response) => {
   const parsed = TelescopeProfileBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
     return;
   }
+  // A drive that already belongs to another telescope is refused before anything is created, so no profile is left
+  // pointing at it. A telescope with identity tracking off never pairs, so it is not checked.
+  const wantedUsbPath = parsed.data.connectionType === 'local' ? (parsed.data.localPath ?? '').trim() : '';
+  if (wantedUsbPath && parsed.data.trackDeviceIdentity !== false) {
+    const taken = await checkDriveForNewProfile(wantedUsbPath);
+    if (taken) {
+      res.apiError(409, conflictCode(taken), conflictMessage(parsed.data.name ?? 'this telescope', taken));
+      return;
+    }
+  }
   const profile = createProfile(parsed.data);
+  // A telescope created on a USB drive is paired with it straight away, not at its first import, so two telescopes
+  // set up while both are plugged in cannot swap before either has been imported from.
+  const usbPath = profile.connectionType === 'local' ? profile.localPath : '';
+  const pairing = usbPath ? await bindProfileToDrive(profile, usbPath) : null;
+  if (pairing?.status === 'conflict') {
+    // Lost a race with another pairing between the check above and now. Take the new profile back out.
+    deleteProfile(profile.id);
+    res.apiError(409, conflictCode(pairing), conflictMessage(profile.name, pairing));
+    return;
+  }
   logEvent({
     category: 'telescope',
     event: 'added',
@@ -629,11 +694,11 @@ router.post('/', requireAdmin, (req: Request, res: Response) => {
     ip: req.ip ?? req.socket.remoteAddress,
     metadata: { telescopeId: profile.id, name: profile.name, kind: profile.kind },
   });
-  res.apiSuccess({ ...profile, password: profile.password ? MASKED_PASSWORD : '' });
+  res.apiSuccess({ ...getProfileById(profile.id) ?? profile, password: profile.password ? MASKED_PASSWORD : '', pairing });
 });
 
 // Update a telescope profile
-router.put('/:id', requireAdmin, (req: Request, res: Response) => {
+router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
   const parsed = TelescopeProfileBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
@@ -656,9 +721,19 @@ router.put('/:id', requireAdmin, (req: Request, res: Response) => {
       return;
     }
   }
+  // A changed USB path is paired with the drive it now points at, as when a USB connection is saved on its own.
+  const before = getProfileById(id);
+  const nextUsbPath = before && (updates.connectionType ?? before.connectionType) === 'local' ? (updates.localPath ?? before.localPath) : '';
+  const pairing = before && nextUsbPath && nextUsbPath !== before.localPath
+    ? await bindProfileToDrive(before, nextUsbPath, { replace: req.body?.replaceDrive === true })
+    : null;
+  if (before && pairing?.status === 'conflict') {
+    res.apiError(409, conflictCode(pairing), conflictMessage(before.name, pairing));
+    return;
+  }
   const updated = updateProfile(id, updates);
   if (updated) {
-    res.apiSuccess({ ...updated, password: updated.password ? MASKED_PASSWORD : '' });
+    res.apiSuccess({ ...updated, password: updated.password ? MASKED_PASSWORD : '', pairing });
   } else {
     res.apiError(404, 'NOT_FOUND', 'Telescope profile not found');
   }
@@ -930,6 +1005,8 @@ interface TelescopeStatusEntry {
 // counts scopes the user actually expects to see online. To list archived ones
 // the settings page hits GET /telescopes which doesn't filter.
 router.get('/status/all', async (_req: Request, res: Response) => {
+  // Throttled, and a no-op when no telescope uses USB: keeps "which drive is whose" current for the pills below.
+  await refreshDriveBindings();
   const profiles = getAllProfiles().filter(p => p.archivedAt === null);
   const probes = await Promise.all(profiles.map(async (p): Promise<TelescopeStatusEntry> => {
     // Under multi-transport, probe whichever transport the import pipeline
@@ -942,6 +1019,13 @@ router.get('/status/all', async (_req: Request, res: Response) => {
     const hostname = active?.hostname?.trim() ?? p.hostname?.trim() ?? '';
     const localPath = active?.localPath?.trim() ?? p.localPath?.trim() ?? '';
     const configured = transportKind === 'local' ? !!localPath : !!hostname;
+    // Nothing usable, and the only drive in sight is another telescope's: an import would refuse it, so this one is not online.
+    if (!active && configured && driveBlocksForProfile(p.id).length > 0) {
+      return {
+        id: p.id, name: p.name, color: p.color, kind: p.kind, hostname: hostname || localPath,
+        configured: true, online: false, latencyMs: null, checkedAt: new Date().toISOString(), transportKind,
+      };
+    }
     if (!configured) {
       return {
         id: p.id,

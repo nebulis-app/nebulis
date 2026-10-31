@@ -640,7 +640,8 @@
       "bodyAfter": "à la place. Rien de l'ancien emplacement n'est copié. Ne faites cela que si vos images sont déjà dans le dossier par défaut, ou si vous prévoyez de les réimporter.",
       "resetFailed": "Impossible de réinitialiser l'emplacement",
       "cancel": "Annuler",
-      "resetLocation": "Réinitialiser l'emplacement"
+      "resetLocation": "Réinitialiser l'emplacement",
+      "secondLibraryWarning": "Les nouveaux imports iront dans ce dossier sur le disque propre de cet ordinateur. Si l'ancien lecteur revient plus tard, ce sera une bibliothèque distincte et les deux ne fusionneront pas toutes seules. Si le lecteur est seulement débranché, rebranchez-le plutôt."
     },
     "resetToDefaultModal": {
       "title": "Ramener la bibliothèque à l'emplacement par défaut",
@@ -661,7 +662,8 @@
       "filesProgress_one": "{{copied}} / {{count}} fichier",
       "filesProgress_other": "{{copied}} / {{count}} fichiers",
       "keepDriveConnected": "Gardez ce lecteur connecté. Les importations sont en pause jusqu'à la fin du déplacement."
-    }
+    },
+    "recoveredNotice": "Le lecteur de votre bibliothèque est revenu sous un autre chemin, donc Nebulis s'y est reconnecté tout seul. Il était à {{from}} et se trouve maintenant à {{to}}."
   },
   "storageDashboard": {
     "title": "Stockage",
@@ -1021,7 +1023,9 @@
     "cancel": "Annuler",
     "saveLabel": "Enregistrer",
     "connectedFound_one": "Connecté. {{count}} dossier trouvé.",
-    "connectedFound_other": "Connecté. {{count}} dossiers trouvés."
+    "connectedFound_other": "Connecté. {{count}} dossiers trouvés.",
+    "pairThisDrive": "Associer plutôt ce lecteur",
+    "unmarkedNote": "Ce lecteur USB est en lecture seule, donc Nebulis n'a pas pu le marquer. Il est reconnu uniquement par son chemin, qui peut s'inverser quand deux télescopes sont branchés en même temps."
   },
   "settingsUI": {
     "moreInfoAriaLabel": "Plus d'informations : {{text}}"

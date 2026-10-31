@@ -1,5 +1,5 @@
 /**
- * Keeps the night score a single formula. See internal-doc/night-score.md.
+ * Keeps the night score a single formula. The weights and where each copy lives are documented in the private night-score notes.
  *
  * nightScoreParity.test.ts proves the two implementations agree today. These
  * checks stop a third one appearing: a new place that averages hourly scores or

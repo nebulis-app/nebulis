@@ -9,8 +9,10 @@ import { useTranslation } from 'react-i18next';
 import { useClickOutside } from '../../hooks/useClickOutside';
 
 export type TargetOrder = 'best' | 'conditions';
+const DEFAULT_ORDER: TargetOrder = 'best';
 /** Which targets to list, apart from their type. */
 export type TargetScope = 'all' | 'wishlist' | 'notImaged';
+const DEFAULT_SCOPE: TargetScope = 'all';
 
 interface LibraryViewMenuProps {
   order: TargetOrder;
@@ -32,7 +34,13 @@ export function LibraryViewMenu({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   useClickOutside(wrapRef, () => setOpen(false), { enabled: open, closeOnEscape: true });
 
-  const customised = order !== 'best' || hideBlocked || varied || scope !== 'all';
+  const customised = order !== DEFAULT_ORDER || hideBlocked || varied || scope !== DEFAULT_SCOPE;
+  const reset = () => {
+    onOrderChange(DEFAULT_ORDER);
+    onScopeChange(DEFAULT_SCOPE);
+    onHideBlockedChange(false);
+    onVariedChange(false);
+  };
   const muted = isDark ? 'text-slate-400' : 'text-slate-500';
   const rowClass = `flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition ${
     isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100'
@@ -43,7 +51,7 @@ export function LibraryViewMenu({
       type="button"
       role="menuitemradio"
       aria-checked={order === value}
-      onClick={() => onOrderChange(value)}
+      onClick={() => onOrderChange(order === value ? DEFAULT_ORDER : value)}
       className={rowClass}
     >
       <span className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
@@ -61,7 +69,7 @@ export function LibraryViewMenu({
       type="button"
       role="menuitemradio"
       aria-checked={scope === value}
-      onClick={() => onScopeChange(value)}
+      onClick={() => onScopeChange(scope === value ? DEFAULT_SCOPE : value)}
       className={rowClass}
     >
       <span className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
@@ -125,7 +133,21 @@ export function LibraryViewMenu({
             isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'
           }`}
         >
-          {heading(t('libraryPanel.viewShow'))}
+          <div className="flex items-center justify-between">
+            {heading(t('libraryPanel.viewShow'))}
+            {customised && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={reset}
+                className={`mr-1 mt-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium transition ${
+                  isDark ? 'text-accent-400 hover:bg-slate-800' : 'text-accent-600 hover:bg-slate-100'
+                }`}
+              >
+                {t('libraryPanel.viewReset')}
+              </button>
+            )}
+          </div>
           {scopeRow('all', t('libraryPanel.scopeAll'), t('libraryPanel.scopeAllHint'))}
           {scopeRow('wishlist', t('libraryPanel.filterWishlist'), t('libraryPanel.scopeWishlistHint'))}
           {scopeRow('notImaged', t('libraryPanel.scopeNotImaged'), t('libraryPanel.scopeNotImagedHint'))}

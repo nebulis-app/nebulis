@@ -738,7 +738,9 @@
     "sync": "Sincronizar",
     "notSetUp": "Sin configurar",
     "online": "En línea",
-    "offline": "Sin conexión"
+    "offline": "Sin conexión",
+    "edit": "Editar telescopio",
+    "editName": "Editar {{name}}"
   },
   "deletedSessionsModal": {
     "title": "Sesiones eliminadas",
@@ -942,15 +944,29 @@
       "impact": "Impact"
     },
     "presets": {
-      "savedPresets": "Preajustes guardados",
-      "saveAsPresetTitle": "Guardar como preajuste",
-      "namePlaceholder": "Nombre del preajuste…",
-      "loadFailed": "No se pudieron cargar los preajustes guardados. Prueba a reabrir el editor.",
-      "empty": "No hay preajustes guardados. Haz clic en + para guardar la configuración actual.",
-      "applyTitle": "Aplicar",
+      "watermarks": "Marcas de agua",
+      "saveCurrent": "Guardar como marca de agua",
+      "saveSubmit": "Guardar marca de agua",
+      "selectTextHint": "Añade un bloque de texto abajo para crear una marca de agua reutilizable.",
+      "namePlaceholder": "Nombre de la marca de agua…",
+      "loadFailed": "No se pudieron cargar las marcas de agua. Vuelve a abrir el editor.",
+      "empty": "Aún no hay marcas de agua.",
+      "applyTitle": "Aplicar esta marca de agua",
+      "renameTitle": "Cambiar nombre",
+      "renameSave": "Guardar nombre",
+      "updateNamed": "Actualizar «{{name}}»",
+      "updateFailed": "No se pudo actualizar la marca de agua. Inténtalo de nuevo.",
       "deleteTitle": "Eliminar",
-      "saveFailed": "No se pudo guardar el preajuste de marca de agua. Inténtalo de nuevo.",
-      "deleteFailed": "No se pudo eliminar el preajuste de marca de agua. Inténtalo de nuevo."
+      "deleteConfirm": "¿Eliminar «{{name}}»? El texto que ya está en la imagen se queda.",
+      "deleteConfirmLabel": "Eliminar",
+      "deleteFailed": "No se pudo eliminar la marca de agua. Inténtalo de nuevo.",
+      "cancel": "Cancelar",
+      "nameTaken": "Ese nombre ya está en uso.",
+      "replaceLabel": "Reemplazar",
+      "replaceWarning": "«{{name}}» ya existe.",
+      "maxReached": "Puedes guardar hasta {{count}} marcas de agua.",
+      "saveFailed": "No se pudo guardar la marca de agua. Inténtalo de nuevo.",
+      "renameFailed": "No se pudo cambiar el nombre de la marca de agua. Inténtalo de nuevo."
     },
     "cropPanel": {
       "hint": "Arrastra para dibujar un área de recorte. Arrastra los bordes o las esquinas para redimensionarla. Arrastra dentro para moverla. Pulsa Intro o haz clic en Aplicar para confirmar.",
@@ -1155,7 +1171,7 @@
     "driveIsGoneReset": "Esa unidad ha desaparecido definitivamente. Restablecer a la carpeta predeterminada.",
     "shareWord": "recurso compartido",
     "driveWord": "unidad",
-    "resetExplanation": "Esto devuelve Nebulis a su carpeta de biblioteca integrada (<1>{{path}}</1>). Los archivos de la ubicación anterior <2>no</2> se copian. Usa esto solo si esa {{shareOrDrive}} ha desaparecido definitivamente y tus imágenes ya están en la carpeta predeterminada, o vas a volver a importarlas.",
+    "resetExplanation": "Esto devuelve Nebulis a su carpeta de biblioteca integrada (<1>{{path}}</1>). Los archivos de la ubicación anterior <2>no</2> se copian. Usa esto solo si esa {{shareOrDrive}} ha desaparecido definitivamente y tus imágenes ya están en la carpeta predeterminada, o vas a volver a importarlas. Las nuevas importaciones irán al disco interno, y si {{shareOrDrive}} vuelve más tarde será una biblioteca aparte que no se fusiona por sí sola.",
     "resetFailed": "No se pudo restablecer la ubicación",
     "resetToDefaultFolder": "Restablecer a la carpeta predeterminada"
   },

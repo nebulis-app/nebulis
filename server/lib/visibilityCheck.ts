@@ -165,3 +165,25 @@ export function objectEverVisible(
   }
   return false;
 }
+
+/**
+ * Is the object inside the visible sky at the start, the middle and the end of [start, end]? Used per plan slot: a
+ * target that only clears the user's trees at 04:30 must not be scheduled at 02:00. Three samples suffice because a
+ * slot is minutes long, and a target that crosses a blocked cell and leaves it again inside one slot is rare.
+ */
+export function objectVisibleThroughout(
+  ra: number,
+  dec: number,
+  lat: number,
+  lon: number,
+  start: Date,
+  end: Date,
+  map: VisibleSkyMap | null | undefined,
+): boolean {
+  if (isEmptyMap(map)) return true;
+  const mid = new Date((start.getTime() + end.getTime()) / 2);
+  return [start, mid, end].every(when => {
+    const { alt, az } = altAz(ra, dec, lat, lon, when);
+    return isPointVisible(map, az, alt);
+  });
+}

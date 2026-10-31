@@ -142,6 +142,7 @@
     "viewLabel": "Vista",
     "viewButton": "Vista",
     "viewShow": "Mostrar",
+    "viewReset": "Restablecer",
     "scopeAll": "Todos los objetivos",
     "scopeAllHint": "Todo lo visible esta noche",
     "scopeWishlistHint": "Solo objetivos marcados con estrella",
@@ -221,7 +222,10 @@
     "shareTitle": "Compartir el plan de esta noche como texto o imagen",
     "nothingToShare": "Aún no hay nada programado para compartir",
     "wishlist": "Lista de deseos",
-    "wishlistTitle": "Ver y gestionar todo lo de tu lista de deseos"
+    "wishlistTitle": "Ver y gestionar todo lo de tu lista de deseos",
+    "run": "Ejecutar",
+    "runTitle": "Ejecutar el plan de esta noche en un telescopio",
+    "nothingToRun": "Aún no hay nada programado para ejecutar"
   },
   "wishlistPanel": {
     "title": "Lista de deseos",
@@ -471,5 +475,82 @@
     "use": "Usar {{filter}}",
     "inUse": "En uso",
     "ruledOut": "Luna demasiado cerca para banda ancha: {{filters}}"
+  },
+  "planRun": {
+    "title": "Ejecutar este plan en un telescopio",
+    "close": "Cerrar",
+    "loading": "Cargando telescopios...",
+    "noSeestar": "Añade un Seestar en Ajustes para ejecutar un plan en él.",
+    "telescope": "Telescopio",
+    "blocks": "Bloques",
+    "noBlocks": "No hay nada programado para esta noche.",
+    "options": "Opciones",
+    "centre": "Centrar en cada objetivo",
+    "centreHelp": "Hace una exposición corta tras cada apuntado, la resuelve y corrige la puntería. Necesita el resolutor de placas y la rueda de filtros en IR o LP.",
+    "park": "Aparcar al terminar el plan",
+    "parkHelp": "Mueve el telescopio a su posición de aparcado tras el último bloque.",
+    "checks": "Comprobaciones",
+    "checking": "Comprobando el telescopio y el plan...",
+    "checkFailed": "No se pudo hacer la comprobación: {{message}}",
+    "allClear": "Todo en orden.",
+    "limit": "Esto apunta el telescopio al objetivo de cada bloque a su hora de inicio y lo mantiene siguiendo hasta que termina el bloque. No inicia la captura propia del telescopio: inícialo en la app Seestar.",
+    "adminOnly": "Solo un administrador puede iniciar una ejecución.",
+    "startFailed": "No se pudo iniciar: {{message}}",
+    "cancel": "Cancelar",
+    "start": "Iniciar plan",
+    "starting": "Iniciando...",
+    "check": {
+      "unreachable": "No se puede llegar al telescopio. Comprueba que está encendido y en la red.",
+      "notConnected": "El telescopio no está conectado. Abre su página de control y pulsa Conectar.",
+      "nothingToRun": "Todos los bloques de este plan ya han terminado.",
+      "parked": "La montura está aparcada. La ejecución la desaparcará.",
+      "noCamera": "La cámara no está conectada, así que no se puede centrar. La ejecución solo irá a cada objetivo.",
+      "noSolver": "El resolutor de placas no está instalado, así que no se puede centrar. La ejecución solo irá a cada objetivo.",
+      "darkFilter": "La rueda de filtros está en Dark, así que no se puede centrar. Elige IR o LP.",
+      "scopeImaging": "El telescopio está captando con su propia app. Ejecutar el plan lo alejará de ese objetivo.",
+      "blockPast": "{{object}} ya ha terminado y se omitirá.",
+      "blockLow": "{{object}} baja a {{lowestAlt}}° durante su bloque, por debajo de tu mínimo de {{minAlt}}°.",
+      "blockMoon": "La Luna ({{illumination}}% iluminada) se acerca a {{separation}}° de {{object}}.",
+      "overlap": "{{object}} se solapa con el siguiente bloque. El siguiente objetivo toma el relevo a su hora de inicio.",
+      "clouds": "El pronóstico muestra un {{cloud}}% de nubes en este plan.",
+      "noSite": "El sitio no tiene posición, así que se omitieron las comprobaciones de altura y de Luna."
+    },
+    "bar": {
+      "label": "Plan en ejecución en {{telescope}}",
+      "state": {
+        "running": "En marcha",
+        "paused": "En pausa",
+        "completed": "Terminado",
+        "stopped": "Detenido",
+        "failed": "Detenido por un problema"
+      },
+      "position": "{{index}} de {{total}}",
+      "phase": {
+        "waiting": "Esperando para iniciar {{object}}",
+        "slewing": "Apuntando a {{object}}",
+        "centring": "Centrando {{object}}",
+        "holding": "En {{object}}"
+      },
+      "startsIn": "empieza en {{time}}",
+      "timeLeft": "quedan {{time}}",
+      "finished": "El plan ha terminado.",
+      "failure": {
+        "telescope": "Dos bloques seguidos no pudieron mover el telescopio.",
+        "park": "El plan terminó, pero no se pudo aparcar el telescopio."
+      },
+      "blocks": "Bloques",
+      "note": {
+        "past": "Ya terminado",
+        "skipped": "Omitido",
+        "missed": "Perdido",
+        "centringFailed": "Apuntado, no centrado",
+        "error": "No se pudo mover el telescopio"
+      },
+      "pause": "Pausar",
+      "resume": "Reanudar",
+      "skip": "Omitir",
+      "stop": "Detener"
+    },
+    "timeRange": "{{start}} a {{end}}"
   }
 }

@@ -29,9 +29,17 @@ beforeAll(() => {
   fs.mkdirSync(libDir);
   stub('id', 'echo "${STUB_ID:-0}"');
   stub('stat', 'case "$2" in %u) echo "${STUB_DATA_UID:-0}";; %g) echo "${STUB_DATA_GID:-0}";; esac');
-  // The writability probe is `setpriv ... sh -c ...`; the real exec is `setpriv ... <command>`.
-  // Three uses: the top-level writability probe (`sh -c`), the deeper `find` probe, and the real exec.
-  stub('setpriv', 'for a in "$@"; do [ "$a" = "-c" ] && exit "${STUB_LIB_EXIT:-0}"; [ "$a" = "find" ] && { echo "${STUB_FIND_OUT:-}"; exit 0; }; done\necho "SETPRIV $* HOME=$HOME"');
+  // setpriv is used three ways: the writability probe (`sh -c 'test -w "$1"' sh PATH`), the deeper
+  // `find PATH ...` probe, and the real exec. The entrypoint probes DATA_DIR first and then
+  // LIBRARY_DIR; STUB_LIB_EXIT and STUB_FIND_OUT describe the library only, so DATA_DIR always passes.
+  stub('setpriv', `prev=; last=
+for a in "$@"; do
+  [ "$prev" = find ] && { [ "$a" = "$DATA_DIR" ] || echo "\${STUB_FIND_OUT:-}"; exit 0; }
+  [ "$a" = "-c" ] && probe=1
+  prev=$a; last=$a
+done
+[ -n "\${probe:-}" ] && { [ "$last" = "$DATA_DIR" ] && exit 0; exit "\${STUB_LIB_EXIT:-0}"; }
+echo "SETPRIV $* HOME=$HOME"`);
   stub('chown', `touch "${chownMarker}"`);
 });
 

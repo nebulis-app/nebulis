@@ -141,6 +141,29 @@ export function resolveNetworkLibraryPath(cfg: NetworkLibraryConfig): string {
 
 // ─── Windows: net use ───────────────────────────────────────────────────────
 
+// The session `net use` opens outlives the call, so one success covers the
+// requests that follow. Remembered per credentials (a changed password must
+// reconnect) and for a bounded time, so a dropped session is retried soon.
+const WINDOWS_CONNECT_TTL_MS = 2 * 60_000;
+let windowsConnected: { key: string; at: number } | null = null;
+
+function windowsConnectKey(cfg: NetworkLibraryConfig): string {
+  return `${keyOf(cfg)}|${cfg.password}`;
+}
+
+/** Forget the remembered Windows session, so the next connect runs `net use` again. */
+export function forgetWindowsNetworkLibrarySession(): void {
+  windowsConnected = null;
+}
+
+async function connectWindowsCached(cfg: NetworkLibraryConfig): Promise<void> {
+  const key = windowsConnectKey(cfg);
+  if (windowsConnected && windowsConnected.key === key && Date.now() - windowsConnected.at < WINDOWS_CONNECT_TTL_MS) return;
+  windowsConnected = null;
+  await connectWindowsRaw(cfg);
+  windowsConnected = { key, at: Date.now() };
+}
+
 async function connectWindowsRaw(cfg: NetworkLibraryConfig): Promise<void> {
   // Guest/no-auth shares work via UNC through fs with no session at all — only
   // password-protected shares need net use, mirroring smb.win.ts's mountIfNeeded.
@@ -300,7 +323,7 @@ export async function ensureNetworkLibraryConnected(cfg: NetworkLibraryConfig): 
 
   try {
     if (process.platform === 'win32') {
-      await connectWindowsRaw(cfg);
+      await connectWindowsCached(cfg);
     } else {
       await connectMacRaw(cfg);
     }

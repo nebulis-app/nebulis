@@ -105,6 +105,8 @@ export interface LibraryLocation {
   /** true when the LIBRARY_DIR env var pins the location — hide "Change" / "Move"
    *  and show the path as fixed by the deployment. */
   pinned: boolean;
+  /** Set when the library's drive came back at a different path and the server reconnected to it on its own. */
+  recovered: { from: string; to: string; at: string } | null;
 }
 
 type MigrationPhase =

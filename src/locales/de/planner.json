@@ -142,6 +142,7 @@
     "viewLabel": "Ansicht",
     "viewButton": "Ansicht",
     "viewShow": "Anzeigen",
+    "viewReset": "Zurücksetzen",
     "scopeAll": "Alle Ziele",
     "scopeAllHint": "Alles, was in dieser Nacht sichtbar ist",
     "scopeWishlistHint": "Nur Ziele mit Stern",
@@ -221,7 +222,10 @@
     "shareTitle": "Den Plan dieser Nacht als Text oder Bild teilen",
     "nothingToShare": "Noch nichts geplant zum Teilen",
     "wishlist": "Wunschliste",
-    "wishlistTitle": "Alles auf Ihrer Wunschliste anzeigen und verwalten"
+    "wishlistTitle": "Alles auf Ihrer Wunschliste anzeigen und verwalten",
+    "run": "Ausführen",
+    "runTitle": "Den Plan dieser Nacht auf einem Teleskop ausführen",
+    "nothingToRun": "Noch nichts zum Ausführen geplant"
   },
   "wishlistPanel": {
     "title": "Wunschliste",
@@ -471,5 +475,82 @@
     "use": "{{filter}} verwenden",
     "inUse": "Verwendet",
     "ruledOut": "Mond zu nah für Breitband: {{filters}}"
+  },
+  "planRun": {
+    "title": "Diesen Plan auf einem Teleskop ausführen",
+    "close": "Schließen",
+    "loading": "Teleskope werden geladen...",
+    "noSeestar": "Füge in den Einstellungen einen Seestar hinzu, um einen Plan darauf auszuführen.",
+    "telescope": "Teleskop",
+    "blocks": "Blöcke",
+    "noBlocks": "Für diese Nacht ist nichts geplant.",
+    "options": "Optionen",
+    "centre": "Auf jedes Ziel zentrieren",
+    "centreHelp": "Macht nach jedem Anfahren eine kurze Aufnahme, löst sie und korrigiert die Ausrichtung. Braucht den Plate-Solver und das Filterrad auf IR oder LP.",
+    "park": "Nach dem Plan parken",
+    "parkHelp": "Fährt das Teleskop nach dem letzten Block in seine Parkposition.",
+    "checks": "Prüfungen",
+    "checking": "Teleskop und Plan werden geprüft...",
+    "checkFailed": "Die Prüfung konnte nicht laufen: {{message}}",
+    "allClear": "Alles in Ordnung.",
+    "limit": "Das richtet das Teleskop zur Startzeit jedes Blocks auf sein Ziel und hält die Nachführung bis zum Ende des Blocks. Die eigene Aufnahme des Teleskops wird nicht gestartet: Starte sie in der Seestar-App.",
+    "adminOnly": "Nur ein Administrator kann einen Lauf starten.",
+    "startFailed": "Start nicht möglich: {{message}}",
+    "cancel": "Abbrechen",
+    "start": "Plan starten",
+    "starting": "Startet...",
+    "check": {
+      "unreachable": "Das Teleskop ist nicht erreichbar. Prüfe, ob es eingeschaltet und im Netzwerk ist.",
+      "notConnected": "Das Teleskop ist nicht verbunden. Öffne seine Steuerseite und drücke Verbinden.",
+      "nothingToRun": "Alle Blöcke dieses Plans sind bereits beendet.",
+      "parked": "Die Montierung ist geparkt. Der Lauf hebt das Parken auf.",
+      "noCamera": "Die Kamera ist nicht verbunden, daher kann nicht zentriert werden. Der Lauf fährt nur jedes Ziel an.",
+      "noSolver": "Der Plate-Solver ist nicht installiert, daher kann nicht zentriert werden. Der Lauf fährt nur jedes Ziel an.",
+      "darkFilter": "Das Filterrad steht auf Dark, daher kann nicht zentriert werden. Wähle IR oder LP.",
+      "scopeImaging": "Das Teleskop nimmt mit seiner eigenen App auf. Der Plan bewegt es von diesem Ziel weg.",
+      "blockPast": "{{object}} ist bereits beendet und wird übersprungen.",
+      "blockLow": "{{object}} sinkt während seines Blocks auf {{lowestAlt}}° und damit unter dein Minimum von {{minAlt}}°.",
+      "blockMoon": "Der Mond ({{illumination}}% beleuchtet) kommt bis auf {{separation}}° an {{object}} heran.",
+      "overlap": "{{object}} läuft in den nächsten Block hinein. Das nächste Ziel übernimmt zu seiner Startzeit.",
+      "clouds": "Die Vorhersage zeigt etwa {{cloud}}% Bewölkung über diesen Plan.",
+      "noSite": "Der Standort hat keine Position, daher wurden die Höhen- und Mondprüfungen übersprungen."
+    },
+    "bar": {
+      "label": "Plan läuft auf {{telescope}}",
+      "state": {
+        "running": "Läuft",
+        "paused": "Pausiert",
+        "completed": "Beendet",
+        "stopped": "Gestoppt",
+        "failed": "Wegen eines Problems gestoppt"
+      },
+      "position": "{{index}} von {{total}}",
+      "phase": {
+        "waiting": "Wartet auf den Start von {{object}}",
+        "slewing": "Fährt zu {{object}}",
+        "centring": "Zentriert {{object}}",
+        "holding": "Auf {{object}}"
+      },
+      "startsIn": "startet in {{time}}",
+      "timeLeft": "noch {{time}}",
+      "finished": "Der Plan ist abgeschlossen.",
+      "failure": {
+        "telescope": "Zwei Blöcke hintereinander konnten das Teleskop nicht bewegen.",
+        "park": "Der Plan ist fertig, aber das Teleskop konnte nicht geparkt werden."
+      },
+      "blocks": "Blöcke",
+      "note": {
+        "past": "Schon vorbei",
+        "skipped": "Übersprungen",
+        "missed": "Verpasst",
+        "centringFailed": "Ausgerichtet, nicht zentriert",
+        "error": "Teleskop konnte nicht bewegt werden"
+      },
+      "pause": "Pausieren",
+      "resume": "Fortsetzen",
+      "skip": "Überspringen",
+      "stop": "Stopp"
+    },
+    "timeRange": "{{start}} bis {{end}}"
   }
 }

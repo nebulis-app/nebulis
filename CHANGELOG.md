@@ -1,5 +1,5 @@
 # Changelog
-## 2.2.0 (295) - October 26th, 2026
+## 2.2.0 (296) - October 26th, 2026
 ### New
 - **Restore from the archive brings objects back:** restoring from an archive disk no longer stops at objects your library has lost. Objects that are gone are added back, objects in the trash are revived, and their files, nights and layout are restored. Catalog details, thumbnails and weather follow, as after an import.
   - **Settings -> Archive -> Browse:** objects the library does not have say so, and *Restore N objects* brings back everything that is missing in one go.
@@ -91,7 +91,7 @@
 - **Planner:** the night strip has a legend for its bars, dots and Moon disks.
 
 ### Fixed
-- **Forecast and Planner scores now agree:** the same night could read "Bad 16" in the Planner and "Fair 42" on the Sky Forecast page. The three upcoming-night cards on the Forecast page now use the Planner's score, so the Moon and the seeing count in both, and both use the same words (Bad, Poor, Fair, Good, Great, Ideal). Scores on the cards drop on moonlit nights. How the score is worked out is written up in `internal-doc/night-score.md`.
+- **Forecast and Planner scores now agree:** the same night could read "Bad 16" in the Planner and "Fair 42" on the Sky Forecast page. The three upcoming-night cards on the Forecast page now use the Planner's score, so the Moon and the seeing count in both, and both use the same words (Bad, Poor, Fair, Good, Great, Ideal). Scores on the cards drop on moonlit nights.
 - **Caldwell 102 and 103** pointed at the wrong objects. C102 is now the Southern Pleiades (IC 2602) and C103 the Tarantula Nebula.
 - **Library objects:**
   - A target named with a description, such as "NGC 2244 Satellite Cluster" or "10P Tempel", now joins NGC 2244 or 10P instead of showing up as a second object, and its mosaics group under it. Existing objects are merged on the next server start.

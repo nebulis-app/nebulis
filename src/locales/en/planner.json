@@ -142,6 +142,7 @@
     "viewLabel": "View options",
     "viewButton": "View",
     "viewShow": "Show",
+    "viewReset": "Reset",
     "scopeAll": "All targets",
     "scopeAllHint": "Everything up on this night",
     "scopeWishlistHint": "Only targets you starred",
@@ -221,7 +222,10 @@
     "shareTitle": "Share this night's plan as text or an image",
     "nothingToShare": "Nothing scheduled to share yet",
     "wishlist": "Wishlist",
-    "wishlistTitle": "See and manage everything on your wishlist"
+    "wishlistTitle": "See and manage everything on your wishlist",
+    "run": "Run",
+    "runTitle": "Run this night's plan on a telescope",
+    "nothingToRun": "Nothing scheduled to run yet"
   },
   "wishlistPanel": {
     "title": "Wishlist",
@@ -471,5 +475,82 @@
     "use": "Use {{filter}}",
     "inUse": "In use",
     "ruledOut": "Too close to the Moon for broadband: {{filters}}"
+  },
+  "planRun": {
+    "title": "Run this plan on a telescope",
+    "close": "Close",
+    "loading": "Loading telescopes...",
+    "noSeestar": "Add a Seestar in Settings to run a plan on it.",
+    "telescope": "Telescope",
+    "blocks": "Blocks",
+    "noBlocks": "Nothing is scheduled for this night.",
+    "options": "Options",
+    "centre": "Centre on each target",
+    "centreHelp": "Takes a short exposure after each go-to, plate solves it and corrects the aim. Needs the plate solver and the filter wheel on IR or LP.",
+    "park": "Park when the plan is done",
+    "parkHelp": "Moves the telescope to its park position after the last block.",
+    "checks": "Checks",
+    "checking": "Checking the telescope and the plan...",
+    "checkFailed": "The check could not run: {{message}}",
+    "allClear": "Everything checks out.",
+    "limit": "This points the telescope at each block's target at its start time and keeps it tracking until the block ends. It does not start the telescope's own capture: start that in the Seestar app.",
+    "adminOnly": "Only an admin can start a run.",
+    "startFailed": "Could not start: {{message}}",
+    "cancel": "Cancel",
+    "start": "Start plan",
+    "starting": "Starting...",
+    "check": {
+      "unreachable": "The telescope cannot be reached. Check that it is on and on the network.",
+      "notConnected": "The telescope is not connected. Open its control page and press Connect.",
+      "nothingToRun": "Every block in this plan has already ended.",
+      "parked": "The mount is parked. The run will unpark it.",
+      "noCamera": "The camera is not connected, so centring cannot run. The run will only go to each target.",
+      "noSolver": "The plate solver is not installed, so centring cannot run. The run will only go to each target.",
+      "darkFilter": "The filter wheel is on Dark, so centring cannot run. Choose IR or LP.",
+      "scopeImaging": "The telescope is imaging with its own app. Running the plan will move it away from that target.",
+      "blockPast": "{{object}} has already ended and will be skipped.",
+      "blockLow": "{{object}} drops to {{lowestAlt}}° during its block, below your {{minAlt}}° minimum.",
+      "blockMoon": "The Moon ({{illumination}}% lit) comes within {{separation}}° of {{object}}.",
+      "overlap": "{{object}} runs into the next block. The next target takes over at its start time.",
+      "clouds": "The forecast shows about {{cloud}}% cloud across this plan.",
+      "noSite": "The site has no position, so the altitude and Moon checks were skipped."
+    },
+    "bar": {
+      "label": "Plan running on {{telescope}}",
+      "state": {
+        "running": "Running",
+        "paused": "Paused",
+        "completed": "Finished",
+        "stopped": "Stopped",
+        "failed": "Stopped on a problem"
+      },
+      "position": "{{index}} of {{total}}",
+      "phase": {
+        "waiting": "Waiting to start {{object}}",
+        "slewing": "Slewing to {{object}}",
+        "centring": "Centring {{object}}",
+        "holding": "On {{object}}"
+      },
+      "startsIn": "starts in {{time}}",
+      "timeLeft": "{{time}} left",
+      "finished": "The plan is done.",
+      "failure": {
+        "telescope": "Two blocks in a row could not move the telescope.",
+        "park": "The plan finished, but the telescope could not be parked."
+      },
+      "blocks": "Blocks",
+      "note": {
+        "past": "Already over",
+        "skipped": "Skipped",
+        "missed": "Missed",
+        "centringFailed": "Pointed, not centred",
+        "error": "Could not move the telescope"
+      },
+      "pause": "Pause",
+      "resume": "Resume",
+      "skip": "Skip",
+      "stop": "Stop"
+    },
+    "timeRange": "{{start}} to {{end}}"
   }
 }

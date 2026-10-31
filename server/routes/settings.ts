@@ -24,7 +24,7 @@ import {
 import { resetLibraryData, getLibraryDbStats, createManualDatabaseBackup } from '../lib/db.js';
 import { DATA_DIR } from '../lib/paths.js';
 import { isRecord } from '../lib/typeGuards.js';
-import { getLibraryDir, isDefaultLocation, getLibraryId, writeMarker, isLibraryAvailable, isNetworkLocation } from '../lib/libraryPath.js';
+import { getLibraryDir, isDefaultLocation, getLibraryId, writeMarker, isLibraryAvailable, isNetworkLocation, canRemoveLibraryTree } from '../lib/libraryPath.js';
 import { startPrefetch, cancelPrefetch } from '../lib/catalogPrefetch.js';
 import { clearPackState } from '../lib/catalogPack/state.js';
 import { runUpdateCheck, stopAppUpdateChecker } from '../lib/appUpdate/updater.js';
@@ -484,6 +484,11 @@ function requireSignedInSession(req: Request, res: Response): string | null {
     res.apiError(403, 'API_KEY_NOT_ALLOWED', 'API keys cannot manage API keys. Sign in to the web app instead.');
     return null;
   }
+  // A paired device (a borrowed TV or phone) must not be able to plant a key that outlives "Disconnect device".
+  if (req.viaDeviceToken) {
+    res.apiError(403, 'DEVICE_TOKEN_NOT_ALLOWED', 'A paired device cannot manage API keys. Sign in to the web app instead.');
+    return null;
+  }
   return req.userId;
 }
 
@@ -625,10 +630,17 @@ router.delete('/reset-database', requireAdmin, strictRateLimiter, async (req: Re
     // directory belongs to this install. If the path is stale (e.g. a
     // relocated external drive that is no longer mounted), skip deletion to
     // avoid recursively removing an unrelated path.
+    let libraryRemoved = false;
     if (await isLibraryAvailable()) {
-      try {
-        fs.rmSync(libraryDir, { recursive: true });
-      } catch { /* directory may not exist */ }
+      const removable = canRemoveLibraryTree(libraryDir);
+      if (removable.ok) {
+        try {
+          fs.rmSync(libraryDir, { recursive: true });
+          libraryRemoved = true;
+        } catch { /* directory may not exist */ }
+      } else {
+        console.warn(`[reset-database] left ${libraryDir} in place: ${removable.reason}`);
+      }
     }
     // The dirs below are always under DATA_DIR which the server controls.
     const serverDirsToRemove = [
@@ -667,7 +679,7 @@ router.delete('/reset-database', requireAdmin, strictRateLimiter, async (req: Re
     //    directory and marker so the app knows the drive is still connected.
     //    Without this, isLibraryAvailable() returns false and the "reconnect
     //    your drive" banner appears even though the drive was never disconnected.
-    if (!isDefaultLocation()) {
+    if (!isDefaultLocation() && libraryRemoved) {
       try {
         fs.mkdirSync(libraryDir, { recursive: true });
         writeMarker(libraryDir, getLibraryId());

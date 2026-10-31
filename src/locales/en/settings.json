@@ -640,7 +640,8 @@
       "bodyAfter": "instead. Nothing at the old location is copied. Do this only if your images are already in the default folder, or you plan to re-import them.",
       "resetFailed": "Could not reset the location",
       "cancel": "Cancel",
-      "resetLocation": "Reset location"
+      "resetLocation": "Reset location",
+      "secondLibraryWarning": "New imports will go to that folder on this computer's own disk. If the old drive comes back later, it will be a separate library, and the two will not merge on their own. If the drive is only unplugged, plug it back in instead."
     },
     "resetToDefaultModal": {
       "title": "Move library back to default",
@@ -661,7 +662,8 @@
       "filesProgress_one": "{{copied}} / {{count}} file",
       "filesProgress_other": "{{copied}} / {{count}} files",
       "keepDriveConnected": "Keep this drive connected. Imports are paused until the move finishes."
-    }
+    },
+    "recoveredNotice": "Your library drive came back at a different path, so Nebulis reconnected to it on its own. It was at {{from}} and is now at {{to}}."
   },
   "storageDashboard": {
     "title": "Storage",
@@ -1021,7 +1023,9 @@
     "cancel": "Cancel",
     "saveLabel": "Save",
     "connectedFound_one": "Connected. Found {{count}} folder.",
-    "connectedFound_other": "Connected. Found {{count}} folders."
+    "connectedFound_other": "Connected. Found {{count}} folders.",
+    "pairThisDrive": "Pair this drive instead",
+    "unmarkedNote": "That USB drive is read-only, so Nebulis could not mark it. It is recognised by its path alone, which can swap when two telescopes are plugged in at once."
   },
   "settingsUI": {
     "moreInfoAriaLabel": "More info: {{text}}"

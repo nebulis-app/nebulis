@@ -6,12 +6,10 @@ import {
   setWatermarkPresets,
   getLastSeenVersion,
   setLastSeenVersion,
-  WatermarkPresetSchema,
+  WatermarkPresetsBodySchema,
 } from '../lib/userPreferences.js';
 
 export const preferencesRouter = Router();
-
-const WatermarkPresetsBodySchema = z.array(WatermarkPresetSchema);
 
 const LastSeenVersionBodySchema = z.object({
   version: z.string().min(1).max(64),

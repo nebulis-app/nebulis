@@ -640,7 +640,8 @@
       "bodyAfter": "Nichts am alten Speicherort wird kopiert. Mach dies nur, wenn deine Bilder bereits im Standardordner sind oder du sie erneut importieren möchtest.",
       "resetFailed": "Der Speicherort konnte nicht zurückgesetzt werden",
       "cancel": "Abbrechen",
-      "resetLocation": "Speicherort zurücksetzen"
+      "resetLocation": "Speicherort zurücksetzen",
+      "secondLibraryWarning": "Neue Importe landen in diesem Ordner auf dem eigenen Laufwerk dieses Computers. Wenn das alte Laufwerk später zurückkommt, ist es eine eigene Bibliothek, und beide führen sich nicht von selbst zusammen. Ist das Laufwerk nur abgesteckt, schließen Sie es stattdessen wieder an."
     },
     "resetToDefaultModal": {
       "title": "Bibliothek zurück zum Standard verschieben",
@@ -661,7 +662,8 @@
       "filesProgress_one": "{{copied}} / {{count}} Datei",
       "filesProgress_other": "{{copied}} / {{count}} Dateien",
       "keepDriveConnected": "Lass dieses Laufwerk verbunden. Importe sind pausiert, bis das Verschieben abgeschlossen ist."
-    }
+    },
+    "recoveredNotice": "Ihr Bibliotheks-Laufwerk ist unter einem anderen Pfad zurückgekommen, daher hat sich Nebulis selbst wieder damit verbunden. Es war unter {{from}} und ist jetzt unter {{to}}."
   },
   "storageDashboard": {
     "title": "Speicher",
@@ -1021,7 +1023,9 @@
     "cancel": "Abbrechen",
     "saveLabel": "Speichern",
     "connectedFound_one": "Verbunden. {{count}} Ordner gefunden.",
-    "connectedFound_other": "Verbunden. {{count}} Ordner gefunden."
+    "connectedFound_other": "Verbunden. {{count}} Ordner gefunden.",
+    "pairThisDrive": "Stattdessen dieses Laufwerk koppeln",
+    "unmarkedNote": "Dieses USB-Laufwerk ist schreibgeschützt, daher konnte Nebulis es nicht markieren. Es wird nur über seinen Pfad erkannt, der sich vertauschen kann, wenn zwei Teleskope gleichzeitig angeschlossen sind."
   },
   "settingsUI": {
     "moreInfoAriaLabel": "Weitere Informationen: {{text}}"

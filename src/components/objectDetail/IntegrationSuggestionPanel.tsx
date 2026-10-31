@@ -40,7 +40,7 @@ export interface SuggestionTarget {
 
 /**
  * Suggested goal hours for one object (`src/lib/integrationSuggestion.ts`,
- * explained in `internal-doc/integration-goals.md`). Rendering and the three
+ * explained in the private integration-goals notes). Rendering and the three
  * choices the model cannot know (rig, Moon plan, quality tier) only. It never
  * saves: Apply hands the hours to the goal editor, and Save stays the user's.
  */

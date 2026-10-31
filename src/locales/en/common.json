@@ -141,7 +141,14 @@
     "customPathPlaceholder": "Or paste a custom path...",
     "detected_one": "Detected {{count}} {{noun}} volume. Pick one or paste a custom path.",
     "detected_other": "Detected {{count}} {{noun}} volumes. Pick one or paste a custom path.",
-    "plugIn": "Plug the {{noun}} into this computer via USB and tap refresh."
+    "plugIn": "Plug the {{noun}} into this computer via USB and tap refresh.",
+    "driveSize": "{{size}}, {{free}} free",
+    "driveObjects_one": "{{count}} object folder",
+    "driveObjects_other": "{{count}} object folders",
+    "driveLatest": "latest {{date}}",
+    "notPaired": "Not paired yet",
+    "readOnly": "Read-only",
+    "readOnlyHint": "Nebulis cannot write to this drive, so it cannot mark it. It will be recognised by its path alone, which can swap when two telescopes are plugged in."
   },
   "dwarfLocalPathPicker": {
     "usbStoragePath": "Dwarf USB storage path",
@@ -332,6 +339,12 @@
     "title": "Something went wrong",
     "description": "An unexpected error occurred. Refresh the page to continue.",
     "reloadPage": "Reload page"
+  },
+  "routeError": {
+    "title": "This page hit a problem",
+    "description": "Something on this page failed to load. The rest of Nebulis still works.",
+    "tryAgain": "Try again",
+    "backToLibrary": "Back to Library"
   },
   "heroToggle": {
     "collapse": "Collapse banner",

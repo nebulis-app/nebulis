@@ -1251,9 +1251,13 @@ db.exec(`
   // deliberately disables it afterward isn't overridden on the next restart.
   const asColsForFits = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
   if (!asColsForFits.some(c => c.name === 'stackedFitsDefaultForced')) {
-    db.prepare('ALTER TABLE appSettings ADD COLUMN stackedFitsDefaultForced INTEGER NOT NULL DEFAULT 0').run();
-    db.prepare('UPDATE telescopeProfiles SET importFits = 1').run();
-    db.prepare('UPDATE appSettings SET stackedFitsDefaultForced = 1 WHERE id = 1').run();
+    // One transaction: the marker column existing is what stops this block running again, so a crash between adding it
+    // and applying the fix must not be able to leave the fix undone for good.
+    db.transaction(() => {
+      db.prepare('ALTER TABLE appSettings ADD COLUMN stackedFitsDefaultForced INTEGER NOT NULL DEFAULT 0').run();
+      db.prepare('UPDATE telescopeProfiles SET importFits = 1').run();
+      db.prepare('UPDATE appSettings SET stackedFitsDefaultForced = 1 WHERE id = 1').run();
+    })();
   }
 
   // Per-user release-notes dismissal. NULL means "never acknowledged" —
@@ -1711,47 +1715,50 @@ for (const table of ['alertChannels', 'alertDevices']) {
   // (see dominantTelescopeByDate).
   const lmCols = db.prepare<[], { name: string }>('PRAGMA table_info(libraryMeta)').all();
   if (!lmCols.some(c => c.name === 'sessionTelescopeBackfilled')) {
-    db.prepare('ALTER TABLE libraryMeta ADD COLUMN sessionTelescopeBackfilled INTEGER NOT NULL DEFAULT 0').run();
-    const activeRow = db
-      .prepare<[], { id: string }>('SELECT id FROM telescopeProfiles WHERE isActive = 1 LIMIT 1')
-      .get();
-    const stampId = activeRow?.id ?? null;
-    if (stampId) {
-      const stamped = db
-        .prepare('UPDATE librarySessions SET telescopeId = ? WHERE telescopeId IS NULL')
-        .run(stampId);
-      if (stamped.changes > 0) {
-        console.log(`[telescopes] Backfilled telescopeId on ${stamped.changes} session(s) → ${stampId}`);
-      }
+    // One transaction, so the marker column never exists without the backfill having been applied.
+    db.transaction(() => {
+      db.prepare('ALTER TABLE libraryMeta ADD COLUMN sessionTelescopeBackfilled INTEGER NOT NULL DEFAULT 0').run();
+      const activeRow = db
+        .prepare<[], { id: string }>('SELECT id FROM telescopeProfiles WHERE isActive = 1 LIMIT 1')
+        .get();
+      const stampId = activeRow?.id ?? null;
+      if (stampId) {
+        const stamped = db
+          .prepare('UPDATE librarySessions SET telescopeId = ? WHERE telescopeId IS NULL')
+          .run(stampId);
+        if (stamped.changes > 0) {
+          console.log(`[telescopes] Backfilled telescopeId on ${stamped.changes} session(s) → ${stampId}`);
+        }
 
-      // Compute primaryTelescopeId per object as the telescope with the most
-      // sessions for that object. Only writes rows that are still NULL.
-      const objectsNeedingPrimary = db
-        .prepare<[], { objectId: string }>(
-          'SELECT objectId FROM libraryObjects WHERE primaryTelescopeId IS NULL',
-        )
-        .all();
-      if (objectsNeedingPrimary.length > 0) {
-        const pickPrimary = db.prepare<[string], { telescopeId: string | null; n: number }>(
-          `SELECT telescopeId, COUNT(*) as n FROM librarySessions
-             WHERE objectId = ? AND telescopeId IS NOT NULL
-             GROUP BY telescopeId ORDER BY n DESC LIMIT 1`,
-        );
-        const setPrimary = db.prepare(
-          'UPDATE libraryObjects SET primaryTelescopeId = ? WHERE objectId = ?',
-        );
-        const tx = db.transaction(() => {
-          for (const { objectId } of objectsNeedingPrimary) {
-            const top = pickPrimary.get(objectId);
-            if (top?.telescopeId) setPrimary.run(top.telescopeId, objectId);
-            else setPrimary.run(stampId, objectId); // no sessions yet → fall back to active
-          }
-        });
-        tx();
-        console.log(`[telescopes] Computed primaryTelescopeId for ${objectsNeedingPrimary.length} object(s)`);
+        // Compute primaryTelescopeId per object as the telescope with the most
+        // sessions for that object. Only writes rows that are still NULL.
+        const objectsNeedingPrimary = db
+          .prepare<[], { objectId: string }>(
+            'SELECT objectId FROM libraryObjects WHERE primaryTelescopeId IS NULL',
+          )
+          .all();
+        if (objectsNeedingPrimary.length > 0) {
+          const pickPrimary = db.prepare<[string], { telescopeId: string | null; n: number }>(
+            `SELECT telescopeId, COUNT(*) as n FROM librarySessions
+               WHERE objectId = ? AND telescopeId IS NOT NULL
+               GROUP BY telescopeId ORDER BY n DESC LIMIT 1`,
+          );
+          const setPrimary = db.prepare(
+            'UPDATE libraryObjects SET primaryTelescopeId = ? WHERE objectId = ?',
+          );
+          const tx = db.transaction(() => {
+            for (const { objectId } of objectsNeedingPrimary) {
+              const top = pickPrimary.get(objectId);
+              if (top?.telescopeId) setPrimary.run(top.telescopeId, objectId);
+              else setPrimary.run(stampId, objectId); // no sessions yet → fall back to active
+            }
+          });
+          tx();
+          console.log(`[telescopes] Computed primaryTelescopeId for ${objectsNeedingPrimary.length} object(s)`);
+        }
       }
-    }
-    db.prepare('UPDATE libraryMeta SET sessionTelescopeBackfilled = 1 WHERE id = 1').run();
+      db.prepare('UPDATE libraryMeta SET sessionTelescopeBackfilled = 1 WHERE id = 1').run();
+    })();
   }
 }
 
@@ -1819,18 +1826,23 @@ for (const table of ['alertChannels', 'alertDevices']) {
 {
   const lmCols = db.prepare<[], { name: string }>('PRAGMA table_info(libraryMeta)').all();
   if (!lmCols.some(c => c.name === 'importLogTrimmed')) {
-    db.prepare('ALTER TABLE libraryMeta ADD COLUMN importLogTrimmed INTEGER NOT NULL DEFAULT 0').run();
+    // One transaction, so the marker column never exists without the trim having been applied. VACUUM cannot run
+    // inside one, so it follows below.
+    let removed = 0;
+    db.transaction(() => {
+      db.prepare('ALTER TABLE libraryMeta ADD COLUMN importLogTrimmed INTEGER NOT NULL DEFAULT 0').run();
 
-    // Both indexes lead with remotePath and served a dedup query that no longer
-    // exists (dedup runs off libraryFiles + manifests) — pure write amplification.
-    db.exec('DROP INDEX IF EXISTS idx_sessionImportLog_telescope_path');
-    db.exec('DROP INDEX IF EXISTS idx_sessionImportLog_device_path');
+      // Both indexes lead with remotePath and served a dedup query that no longer
+      // exists (dedup runs off libraryFiles + manifests) — pure write amplification.
+      db.exec('DROP INDEX IF EXISTS idx_sessionImportLog_telescope_path');
+      db.exec('DROP INDEX IF EXISTS idx_sessionImportLog_device_path');
 
-    const removed = db
-      .prepare(`DELETE FROM sessionImportLog WHERE outcome = 'skipped'`)
-      .run().changes;
+      removed = db
+        .prepare(`DELETE FROM sessionImportLog WHERE outcome = 'skipped'`)
+        .run().changes;
 
-    db.prepare('UPDATE libraryMeta SET importLogTrimmed = 1 WHERE id = 1').run();
+      db.prepare('UPDATE libraryMeta SET importLogTrimmed = 1 WHERE id = 1').run();
+    })();
 
     // Only compact the file when the delete actually freed a meaningful amount
     // (the bloated installs this exists for shed 100k+ rows). A handful of rows
@@ -2051,15 +2063,42 @@ if (seedDefaultObservingSite()) {
   console.log('Seeded default observing site from appSettings');
 }
 
-const RESET_LIBRARY_TABLES = [
+/**
+ * Everything the library owns, children before parents. A reset deletes the library folder, so any row that still
+ * describes a file or an object in it would show as a ghost card, and a re-import would duplicate everything.
+ * Kept on purpose: settings, users, telescope profiles, observing sites, gear, linked-folder sources (configuration,
+ * not library data), the journal's own text, and the user's catalog corrections and "Remember" redirects.
+ * Tables created later by other modules are skipped when absent; tests/backend/dbResetCoverage.test.ts fails when a
+ * table with an `objectId` column is in neither this list nor the kept set.
+ */
+export const RESET_LIBRARY_TABLES = [
+  'processingRunSessions',
+  'processingRuns',
+  'projectArchives',
+  'sessionProcessedImages',
+  'calibrationAttachments',
+  'subFrameHeaderCache',
+  'frameReview',
+  'frameMetrics',
+  'fileSolveFailures',
+  'fileGeometryEdits',
+  'fileWcs',
+  'libraryFiles',
+  'captureInfo',
+  'sessionImportLog',
+  'importHistory',
+  'plannedSessions',
+  'objectIntegrationGoals',
+  'imageFavorites',
   'libraryDeletedSessions',
   'librarySessions',
-  'libraryObjects',
-  'libraryMeta',
   'notes',
   'objectNotes',
   'wishlist',
   'favorites',
+  'catalogCache',
+  'libraryObjects',
+  'libraryMeta',
 ] as const;
 
 /** Purges every library-data table (keeps settings, users, telescope
@@ -2068,10 +2107,15 @@ const RESET_LIBRARY_TABLES = [
  *  tables cleared and others not — the route only ever deletes the
  *  filesystem library and cache directories once this has fully committed. */
 export function resetLibraryData(): void {
+  const present = new Set(
+    db.prepare<[], { name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'").all().map(r => r.name),
+  );
   const reset = db.transaction(() => {
     for (const table of RESET_LIBRARY_TABLES) {
-      db.exec(`DELETE FROM ${table}`);
+      if (present.has(table)) db.exec(`DELETE FROM ${table}`);
     }
+    // The logbook keeps what the user wrote, but its links to deleted objects and files would dangle.
+    if (present.has('journalEntries')) db.exec('UPDATE journalEntries SET objectId = NULL, filePath = NULL');
     // Re-insert the singleton libraryMeta row.
     db.exec(`INSERT OR IGNORE INTO libraryMeta (id, version) VALUES (1, 1)`);
   });

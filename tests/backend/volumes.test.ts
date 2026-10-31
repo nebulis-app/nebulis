@@ -106,8 +106,16 @@ describe('listVolumes on Windows', () => {
   });
 
   it('drops entries that are not objects or lack a DeviceID', async () => {
-    H.psStdout.value = JSON.stringify([null, 'C:', { VolumeName: 'No id', DriveType: 3 }, { DeviceID: 'H:', DriveType: 4 }]);
+    H.psStdout.value = JSON.stringify([null, 'C:', { VolumeName: 'No id', DriveType: 3 }, { DeviceID: 'H:', DriveType: 3 }]);
     expect((await listVolumes()).map(v => v.path)).toEqual(['H:\\']);
+  });
+
+  it('hides mapped network drives, which the service cannot see', async () => {
+    H.psStdout.value = JSON.stringify([
+      { DeviceID: 'C:', VolumeName: 'OS', DriveType: 3 },
+      { DeviceID: 'Z:', VolumeName: 'NAS', DriveType: 4 },
+    ]);
+    expect((await listVolumes()).map(v => v.path)).toEqual(['C:\\']);
   });
 
   it('returns [] when PowerShell fails or prints invalid JSON', async () => {

@@ -8,7 +8,7 @@
  * `src/components/objectDetail/IntegrationSuggestionPanel.tsx`.
  *
  * The model, its constants and the reasoning behind each are written up in
- * `internal-doc/integration-goals.md`. Keep the two in step: a constant
+ * the private integration-goals notes. Keep the two in step: a constant
  * changed here without its rationale changed there is a bug.
  *
  *   totalHours = base(brightness) × type × skyMoon(bortle, moon, band) × tier

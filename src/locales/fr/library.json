@@ -738,7 +738,9 @@
     "sync": "Synchroniser",
     "notSetUp": "Non configuré",
     "online": "En ligne",
-    "offline": "Hors ligne"
+    "offline": "Hors ligne",
+    "edit": "Modifier le télescope",
+    "editName": "Modifier {{name}}"
   },
   "deletedSessionsModal": {
     "title": "Sessions supprimées",
@@ -942,15 +944,29 @@
       "impact": "Impact"
     },
     "presets": {
-      "savedPresets": "Préréglages enregistrés",
-      "saveAsPresetTitle": "Enregistrer comme préréglage",
-      "namePlaceholder": "Nom du préréglage…",
-      "loadFailed": "Impossible de charger les préréglages enregistrés. Essayez de rouvrir l'éditeur.",
-      "empty": "Aucun préréglage enregistré. Cliquez sur + pour enregistrer les réglages actuels.",
-      "applyTitle": "Appliquer",
+      "watermarks": "Filigranes",
+      "saveCurrent": "Enregistrer comme filigrane",
+      "saveSubmit": "Enregistrer le filigrane",
+      "selectTextHint": "Ajoutez un bloc de texte ci-dessous pour créer un filigrane réutilisable.",
+      "namePlaceholder": "Nom du filigrane…",
+      "loadFailed": "Impossible de charger les filigranes. Rouvrez l'éditeur.",
+      "empty": "Aucun filigrane enregistré.",
+      "applyTitle": "Appliquer ce filigrane",
+      "renameTitle": "Renommer",
+      "renameSave": "Enregistrer le nom",
+      "updateNamed": "Mettre à jour « {{name}} »",
+      "updateFailed": "Impossible de mettre à jour le filigrane. Réessayez.",
       "deleteTitle": "Supprimer",
-      "saveFailed": "Échec de l'enregistrement du préréglage de filigrane. Réessayez.",
-      "deleteFailed": "Échec de la suppression du préréglage de filigrane. Réessayez."
+      "deleteConfirm": "Supprimer « {{name}} » ? Le texte déjà présent sur l'image reste.",
+      "deleteConfirmLabel": "Supprimer",
+      "deleteFailed": "Impossible de supprimer le filigrane. Réessayez.",
+      "cancel": "Annuler",
+      "nameTaken": "Ce nom est déjà utilisé.",
+      "replaceLabel": "Remplacer",
+      "replaceWarning": "« {{name}} » existe déjà.",
+      "maxReached": "Vous pouvez enregistrer jusqu'à {{count}} filigranes.",
+      "saveFailed": "Impossible d'enregistrer le filigrane. Réessayez.",
+      "renameFailed": "Impossible de renommer le filigrane. Réessayez."
     },
     "cropPanel": {
       "hint": "Faites glisser pour dessiner une zone de recadrage. Faites glisser les bords ou les coins pour la redimensionner. Faites glisser à l'intérieur pour la déplacer. Appuyez sur Entrée ou cliquez sur Appliquer pour confirmer.",
@@ -1155,7 +1171,7 @@
     "driveIsGoneReset": "Ce disque a disparu définitivement. Réinitialiser vers le dossier par défaut.",
     "shareWord": "partage",
     "driveWord": "disque",
-    "resetExplanation": "Cela remet Nebulis sur son dossier de bibliothèque intégré (<1>{{path}}</1>). Les fichiers de l'ancien emplacement <2>ne sont pas</2> copiés. N'utilisez ceci que si ce {{shareOrDrive}} a disparu définitivement et que vos images sont déjà dans le dossier par défaut, ou que vous allez les réimporter.",
+    "resetExplanation": "Cela remet Nebulis sur son dossier de bibliothèque intégré (<1>{{path}}</1>). Les fichiers de l'ancien emplacement <2>ne sont pas</2> copiés. N'utilisez ceci que si ce {{shareOrDrive}} a disparu définitivement et que vos images sont déjà dans le dossier par défaut, ou que vous allez les réimporter. Les nouveaux imports iront sur le disque interne, et si {{shareOrDrive}} revient plus tard, ce sera une bibliothèque distincte qui ne fusionne pas toute seule.",
     "resetFailed": "Impossible de réinitialiser l'emplacement",
     "resetToDefaultFolder": "Réinitialiser vers le dossier par défaut"
   },

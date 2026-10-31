@@ -163,6 +163,14 @@ export interface DetectedDrive {
   alreadyKnownDeviceId: string | null;
   alreadyKnownProfileId: string | null;
   alreadyKnownProfileName: string | null;
+  /** Volume size in bytes; both 0 when the server could not read it. */
+  totalBytes: number;
+  freeBytes: number;
+  /** False when Nebulis cannot write to the drive, so it cannot be marked with a device ID. */
+  writable: boolean;
+  /** Seestar volumes: how many object folders `MyWorks/` holds and when the newest changed (ISO). */
+  objectFolders?: number;
+  newestActivity?: string | null;
 }
 
 interface DwarfMount {
@@ -296,6 +304,8 @@ interface ProbeIdentityInput {
     localPath?: string;
   };
   model?: string;
+  /** When false the server only reads `.nebulis.dat`; it never writes one. */
+  trackDeviceIdentity?: boolean;
 }
 
 interface ProbeIdentityResult {
@@ -326,22 +336,27 @@ export interface FoundDevice {
 export const scanForDevices = () =>
   fetchJSON<{ devices: FoundDevice[]; subnets: string[] }>('/telescopes/scan', { method: 'POST' });
 
-export const addProfileTransport = (
-  profileId: string,
-  data: Partial<Omit<TelescopeTransport, 'id' | 'profileId' | 'lastSeenAt' | 'createdAt'>>,
-) =>
-  fetchJSON<TelescopeTransport>(
+/** What happened when a USB drive was paired with a telescope on save. `unmarked` means the drive could not be given a
+ *  device ID, so it is recognised by its path alone, as before. */
+export type DrivePairing =
+  | { status: 'paired'; deviceId: string; wrote: boolean }
+  | { status: 'unmarked'; reason: 'read-only' | 'tracking-off' | 'missing' }
+  | { status: 'conflict'; reason: 'other-telescope' | 'different-drive' | 'telescope-paired-elsewhere' };
+
+export type SavedTransport = TelescopeTransport & { pairing: DrivePairing | null };
+
+/** `replaceDrive` is the person confirming they swapped the telescope's drive for this one. */
+type TransportInput = Partial<Omit<TelescopeTransport, 'id' | 'profileId' | 'lastSeenAt' | 'createdAt'>> & { replaceDrive?: boolean };
+
+export const addProfileTransport = (profileId: string, data: TransportInput) =>
+  fetchJSON<SavedTransport>(
     `/telescopes/${encodeURIComponent(profileId)}/transports`,
     { method: 'POST', body: JSON.stringify(data) },
   );
 
 /** Edit an existing transport row. Pass the masked password back unchanged to keep it. */
-export const updateProfileTransport = (
-  profileId: string,
-  transportId: string,
-  data: Partial<Omit<TelescopeTransport, 'id' | 'profileId' | 'lastSeenAt' | 'createdAt'>>,
-) =>
-  fetchJSON<TelescopeTransport>(
+export const updateProfileTransport = (profileId: string, transportId: string, data: TransportInput) =>
+  fetchJSON<SavedTransport>(
     `/telescopes/${encodeURIComponent(profileId)}/transports/${encodeURIComponent(transportId)}`,
     { method: 'PUT', body: JSON.stringify(data) },
   );

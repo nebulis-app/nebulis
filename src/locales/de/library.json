@@ -738,7 +738,9 @@
     "sync": "Synchronisieren",
     "notSetUp": "Nicht eingerichtet",
     "online": "Online",
-    "offline": "Offline"
+    "offline": "Offline",
+    "edit": "Teleskop bearbeiten",
+    "editName": "{{name}} bearbeiten"
   },
   "deletedSessionsModal": {
     "title": "Gelöschte Sitzungen",
@@ -942,15 +944,29 @@
       "impact": "Impact"
     },
     "presets": {
-      "savedPresets": "Gespeicherte Vorlagen",
-      "saveAsPresetTitle": "Als Vorlage speichern",
-      "namePlaceholder": "Name der Vorlage…",
-      "loadFailed": "Gespeicherte Vorlagen konnten nicht geladen werden. Versuchen Sie, den Editor neu zu öffnen.",
-      "empty": "Keine gespeicherten Vorlagen. Klicken Sie auf +, um die aktuellen Einstellungen zu speichern.",
-      "applyTitle": "Anwenden",
+      "watermarks": "Wasserzeichen",
+      "saveCurrent": "Als Wasserzeichen speichern",
+      "saveSubmit": "Wasserzeichen speichern",
+      "selectTextHint": "Fügen Sie unten einen Textblock hinzu, um ein wiederverwendbares Wasserzeichen zu erstellen.",
+      "namePlaceholder": "Name des Wasserzeichens…",
+      "loadFailed": "Wasserzeichen konnten nicht geladen werden. Öffnen Sie den Editor erneut.",
+      "empty": "Noch keine Wasserzeichen.",
+      "applyTitle": "Dieses Wasserzeichen anwenden",
+      "renameTitle": "Umbenennen",
+      "renameSave": "Namen speichern",
+      "updateNamed": "„{{name}}“ aktualisieren",
+      "updateFailed": "Das Wasserzeichen konnte nicht aktualisiert werden. Bitte erneut versuchen.",
       "deleteTitle": "Löschen",
-      "saveFailed": "Wasserzeichen-Vorlage konnte nicht gespeichert werden. Bitte erneut versuchen.",
-      "deleteFailed": "Wasserzeichen-Vorlage konnte nicht gelöscht werden. Bitte erneut versuchen."
+      "deleteConfirm": "„{{name}}“ löschen? Text, der bereits auf dem Bild ist, bleibt.",
+      "deleteConfirmLabel": "Löschen",
+      "deleteFailed": "Das Wasserzeichen konnte nicht gelöscht werden. Bitte erneut versuchen.",
+      "cancel": "Abbrechen",
+      "nameTaken": "Dieser Name wird bereits verwendet.",
+      "replaceLabel": "Ersetzen",
+      "replaceWarning": "„{{name}}“ existiert bereits.",
+      "maxReached": "Sie können bis zu {{count}} Wasserzeichen speichern.",
+      "saveFailed": "Das Wasserzeichen konnte nicht gespeichert werden. Bitte erneut versuchen.",
+      "renameFailed": "Das Wasserzeichen konnte nicht umbenannt werden. Bitte erneut versuchen."
     },
     "cropPanel": {
       "hint": "Ziehen Sie, um einen Zuschneidebereich zu zeichnen. Ziehen Sie an Kanten oder Ecken, um ihn zu verändern. Zum Verschieben innen ziehen. Enter drücken oder auf Anwenden klicken, um zu bestätigen.",
@@ -1155,7 +1171,7 @@
     "driveIsGoneReset": "Dieses Laufwerk ist dauerhaft weg. Auf den Standardordner zurücksetzen.",
     "shareWord": "Freigabe",
     "driveWord": "Laufwerk",
-    "resetExplanation": "Dadurch wird Nebulis wieder auf seinen integrierten Bibliotheksordner zurückgesetzt (<1>{{path}}</1>). Dateien am alten Speicherort werden <2>nicht</2> kopiert. Verwende dies nur, wenn diese {{shareOrDrive}} endgültig verschwunden ist und deine Bilder bereits im Standardordner liegen, oder du sie erneut importierst.",
+    "resetExplanation": "Dadurch wird Nebulis wieder auf seinen integrierten Bibliotheksordner zurückgesetzt (<1>{{path}}</1>). Dateien am alten Speicherort werden <2>nicht</2> kopiert. Verwende dies nur, wenn diese {{shareOrDrive}} endgültig verschwunden ist und deine Bilder bereits im Standardordner liegen, oder du sie erneut importierst. Neue Importe landen auf dem internen Laufwerk, und wenn {{shareOrDrive}} später zurückkommt, ist es eine eigene, getrennte Bibliothek, die sich nicht von selbst zusammenführt.",
     "resetFailed": "Der Speicherort konnte nicht zurückgesetzt werden",
     "resetToDefaultFolder": "Auf Standardordner zurücksetzen"
   },

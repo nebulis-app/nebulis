@@ -23,6 +23,9 @@ export interface ZoomControls {
 /** Multiplicative step, so a click feels the same at 20% and at 800%. */
 const STEP = 1.25;
 
+/** Where the FITS stretch slider starts, and where it goes back to for each frame. */
+export const FITS_DEFAULT_STRETCH = 0.5;
+
 export function zoomControlsFromPan(zp: ZoomPan): ZoomControls {
   return {
     zoomPercent: zp.zoomPercent,
@@ -47,11 +50,11 @@ export function zoomControlsFromPan(zp: ZoomPan): ZoomControls {
 export function useFitsZoomControls() {
   const [zoom, setZoom] = useState<number | null>(null);
   const [fitZoom, setFitZoom] = useState(1);
-  const [stretch, setStretch] = useState(0.5);
+  const [stretch, setStretch] = useState(FITS_DEFAULT_STRETCH);
 
   const effective = zoom ?? fitZoom;
 
-  const reset = useCallback(() => { setZoom(null); setStretch(0.5); }, []);
+  const reset = useCallback(() => { setZoom(null); setStretch(FITS_DEFAULT_STRETCH); }, []);
 
   const controls = useMemo<ZoomControls>(() => ({
     zoomPercent: Math.round(effective * 100),

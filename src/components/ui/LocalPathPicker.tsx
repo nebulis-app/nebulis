@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Usb, FolderOpen, RotateCw, Check, Tag } from 'lucide-react';
+import { Usb, FolderOpen, RotateCw, Check, Tag, Lock } from 'lucide-react';
 import { listDetectedDrives, type DetectedDrive } from '../../lib/api/telescopes';
+import { formatBytesCompact } from '../../lib/utils';
+import { formatDate } from '../../lib/formatLocale';
 
 /**
  * Drive picker for a USB-attached telescope. Calls /telescopes/drives, then
@@ -14,7 +16,21 @@ import { listDetectedDrives, type DetectedDrive } from '../../lib/api/telescopes
  * already paired so users notice before they accidentally create a duplicate
  * profile. The merge-prompt flow in AddTelescopeModal handles the actual
  * link-to-existing behaviour.
+ *
+ * Each row also says what is on the drive (size, free space, how many object
+ * folders, when the newest changed) because two telescopes of one model look
+ * the same from outside: with both plugged in, that is how the right one gets
+ * picked the first time, before it carries a device ID.
  */
+
+/** The facts about a drive that help tell it from another, as one line. */
+function driveFacts(d: DetectedDrive, t: (key: string, opts?: Record<string, unknown>) => string): string {
+  const parts: string[] = [];
+  if (d.totalBytes > 0) parts.push(t('localPathPicker.driveSize', { size: formatBytesCompact(d.totalBytes), free: formatBytesCompact(d.freeBytes) }));
+  if (d.objectFolders !== undefined) parts.push(t('localPathPicker.driveObjects', { count: d.objectFolders }));
+  if (d.newestActivity) parts.push(t('localPathPicker.driveLatest', { date: formatDate(new Date(d.newestActivity), { dateStyle: 'medium' }) }));
+  return parts.join(' · ');
+}
 export function LocalPathPicker({
   kind,
   localPath,
@@ -25,6 +41,7 @@ export function LocalPathPicker({
   helperClass,
   isDark,
   autoFocus = false,
+  autoSelect = true,
 }: {
   kind: 'seestar' | 'dwarf' | 'asiair';
   localPath: string;
@@ -38,6 +55,8 @@ export function LocalPathPicker({
   helperClass: string;
   isDark: boolean;
   autoFocus?: boolean;
+  /** Pick the drive when exactly one unowned drive is detected and none is chosen yet. Off where a wrong guess would pair the wrong telescope. */
+  autoSelect?: boolean;
 }) {
   const { t } = useTranslation('common');
   const { data, isFetching, refetch } = useQuery({
@@ -58,11 +77,13 @@ export function LocalPathPicker({
   onDriveSelectedRef.current = onDriveSelected;
 
   useEffect(() => {
-    if (!localPath && drives.length > 0) {
+    // Only when there is nothing to choose between. With two drives plugged in, or one that already belongs to a
+    // telescope, a guess is how a telescope ends up on the wrong drive.
+    if (autoSelect && !localPath && drives.length === 1 && !drives[0].alreadyKnownProfileId) {
       setLocalPath(drives[0].mountPath);
       onDriveSelectedRef.current?.(drives[0]);
     }
-  }, [drives, localPath, setLocalPath]);
+  }, [autoSelect, drives, localPath, setLocalPath]);
 
   const noun = kind === 'seestar' ? 'Seestar' : kind === 'asiair' ? 'ASIAIR' : 'Dwarf';
   const placeholderHint = kind === 'seestar'
@@ -97,7 +118,26 @@ export function LocalPathPicker({
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{d.volumeName}</div>
                   <div className="text-xs opacity-60 truncate">{d.mountPath}</div>
+                  {driveFacts(d, t) && <div className="text-xs opacity-60 truncate">{driveFacts(d, t)}</div>}
                 </div>
+                {!d.writable && (
+                  <span
+                    title={t('localPathPicker.readOnlyHint')}
+                    className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0 ${
+                      isDark ? 'bg-slate-800 text-slate-300 border border-slate-700' : 'bg-slate-100 text-slate-600 border border-slate-200'
+                    }`}
+                  >
+                    <Lock className="w-3 h-3" />
+                    {t('localPathPicker.readOnly')}
+                  </span>
+                )}
+                {!d.alreadyKnownProfileName && !d.alreadyKnownDeviceId && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${
+                    isDark ? 'bg-slate-800 text-slate-400 border border-slate-700' : 'bg-slate-100 text-slate-500 border border-slate-200'
+                  }`}>
+                    {t('localPathPicker.notPaired')}
+                  </span>
+                )}
                 {d.alreadyKnownProfileName && (
                   <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0 ${
                     isDark ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30' : 'bg-amber-50 text-amber-700 border border-amber-200'

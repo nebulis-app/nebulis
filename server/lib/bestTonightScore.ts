@@ -5,7 +5,14 @@
  * no web equivalent — this becomes the canonical implementation for both.
  * Weights: altitude 30%, visible duration 30%, magnitude 20%, transit
  * timing 10%, angular size fit 10%.
+ *
+ * Then scaled down by `moonPenalty` (0-1, see tonightMoon.ts): the share of
+ * the time the object is up that the Moon sits too close for the filter it
+ * is shot through. Callers that pass none score exactly as before.
  */
+
+/** Most the Moon can take off a score (at penalty 1 the score keeps 40%). */
+export const MAX_MOON_SCORE_CUT = 0.6;
 
 export interface BestTonightScoreInput {
   maxAlt: number;
@@ -15,10 +22,14 @@ export interface BestTonightScoreInput {
   magnitude: number | null;
   maxAltTime: string | null;
   majorAxisArcmin: number | null;
+  /** 0-1, from tonightMoon.moonPenaltyFor; absent or 0 = Moon not a factor. */
+  moonPenalty?: number;
 }
 
 export interface BestTonightScore {
   total: number;
+  /** The Moon's share of the cut, 0-1 (echo of the input). */
+  moonPenalty: number;
   altScore: number;
   durationHours: number;
   durationScore: number;
@@ -84,8 +95,10 @@ export function computeBestTonightScore(
     }
   }
 
-  const total =
+  const moonPenalty = Math.max(0, Math.min(1, target.moonPenalty ?? 0));
+  const conditions =
     altScore * 0.3 + durationScore * 0.3 + magScore * 0.2 + transitScore * 0.1 + sizeScore * 0.1;
+  const total = conditions * (1 - MAX_MOON_SCORE_CUT * moonPenalty);
 
-  return { total, altScore, durationHours, durationScore, magScore, transitScore, sizeScore };
+  return { total, moonPenalty, altScore, durationHours, durationScore, magScore, transitScore, sizeScore };
 }

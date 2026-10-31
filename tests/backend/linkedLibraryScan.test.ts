@@ -24,12 +24,12 @@ import { getLocalSessions, getLocalFiles } from '../../server/lib/library/observ
 
 const SETTINGS = { importJpg: true, importFits: true, importSubFrames: true };
 
-afterAll(() => {
+afterAll(async () => {
   vi.unstubAllGlobals();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline in tests')));
   db.prepare('DELETE FROM libraryObjects').run();
   db.prepare('DELETE FROM libraryFiles').run();
@@ -54,7 +54,7 @@ function buildReporterFixture(root: string): void {
 }
 
 describe('scanSource — read-only dry run', () => {
-  it('finds the real objects in the reporters exact layout, with catalog matches, and touches nothing on disk', () => {
+  it('finds the real objects in the reporters exact layout, with catalog matches, and touches nothing on disk', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nebulis-linkedscan-source-'));
     buildReporterFixture(root);
 
@@ -62,7 +62,7 @@ describe('scanSource — read-only dry run', () => {
     const beforeBytes = before.size;
     const beforeMtime = before.mtimeMs;
 
-    const result = scanSource(root, SETTINGS);
+    const result = await scanSource(root, SETTINGS);
 
     expect(result.objects.map(o => o.objectId).sort()).toEqual(['NGC188', 'NGC6910']);
     const c1 = result.objects.find(o => o.objectId === 'NGC188')!;
@@ -85,14 +85,14 @@ describe('scanSource — read-only dry run', () => {
 });
 
 describe('commitSource — writes rows, copies zero bytes', () => {
-  it('links the source and the objects become fully visible through the normal read path', () => {
+  it('links the source and the objects become fully visible through the normal read path', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nebulis-linkedcommit-source-'));
     buildReporterFixture(root);
 
     ensureLibraryDir();
     const libraryDirBefore = fs.readdirSync(getLibraryDir());
 
-    const result = commitSource(root, SETTINGS, { label: 'MyWorks' });
+    const result = await commitSource(root, SETTINGS, { label: 'MyWorks' });
 
     expect(result.objectsLinked).toBe(2);
     expect(result.filesLinked).toBe(3);

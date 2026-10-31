@@ -60,6 +60,26 @@ export function errorMessage(v: unknown, fallback: string): string {
   return fallback;
 }
 
+/** A request the server answered with an error. Carries the server's stable `code` so a caller can offer a way
+ *  forward for a particular failure (a drive swap to confirm) instead of only showing the message. */
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  constructor(message: string, status: number, code: string | null) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
+function errorCodeOf(v: unknown): string | null {
+  if (typeof v !== 'object' || v === null || !('error' in v)) return null;
+  const { error } = v;
+  if (typeof error !== 'object' || error === null || !('code' in error)) return null;
+  return typeof error.code === 'string' ? error.code : null;
+}
+
 export async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   return (await fetchJSONWithMeta<T>(url, options)).data;
 }
@@ -87,7 +107,7 @@ export async function fetchJSONWithMeta<T>(url: string, options?: RequestInit): 
       window.dispatchEvent(new CustomEvent('nebulis:forbidden'));
     }
     const body: unknown = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(errorMessage(body, res.statusText));
+    throw new ApiRequestError(errorMessage(body, res.statusText), res.status, errorCodeOf(body));
   }
   const body: unknown = await res.json();
   // Unwrap API envelope if present: { ok, data, meta }.

@@ -153,7 +153,10 @@ export function Modal({
   // screen. Rendering at <body> sidesteps any such ancestor entirely.
   return createPortal(
     <div
-      className={`fixed inset-0 z-[90] flex items-center justify-center ${edgeToEdge ? '' : 'p-4'}`}
+      // Edge to edge spans the full 100vw: `inset-0` stops short of the scrollbar gutter that
+      // `html { scrollbar-gutter: stable }` keeps reserved (about 10px with classic scrollbars,
+      // as on Windows and Linux), which left a strip of the page beside a "fullscreen" picture.
+      className={`fixed inset-y-0 z-[90] flex items-center justify-center ${edgeToEdge ? 'left-0 w-screen' : 'inset-x-0 p-4'}`}
       onKeyDown={handleKeyDown}
     >
       <div

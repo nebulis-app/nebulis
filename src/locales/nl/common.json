@@ -141,7 +141,14 @@
     "customPathPlaceholder": "Of plak een ander pad...",
     "detected_one": "{{count}} volume van {{noun}} gevonden. Kies het volume of plak een ander pad.",
     "detected_other": "{{count}} volumes van {{noun}} gevonden. Kies een volume of plak een ander pad.",
-    "plugIn": "Sluit de {{noun}} via USB aan op deze computer en tik op vernieuwen."
+    "plugIn": "Sluit de {{noun}} via USB aan op deze computer en tik op vernieuwen.",
+    "driveSize": "{{size}}, {{free}} vrij",
+    "driveObjects_one": "{{count}} objectmap",
+    "driveObjects_other": "{{count}} objectmappen",
+    "driveLatest": "laatst {{date}}",
+    "notPaired": "Nog niet gekoppeld",
+    "readOnly": "Alleen-lezen",
+    "readOnlyHint": "Nebulis kan niet naar deze schijf schrijven en kan hem dus niet markeren. Hij wordt alleen herkend aan zijn pad, dat kan wisselen als twee telescopen zijn aangesloten."
   },
   "dwarfLocalPathPicker": {
     "usbStoragePath": "Pad naar de USB-opslag van Dwarf",
@@ -332,6 +339,12 @@
     "title": "Er ging iets mis",
     "description": "Er is een onverwachte fout opgetreden. Vernieuw de pagina om verder te gaan.",
     "reloadPage": "Pagina opnieuw laden"
+  },
+  "routeError": {
+    "title": "Er ging iets mis op deze pagina",
+    "description": "Iets op deze pagina kon niet worden geladen. De rest van Nebulis werkt nog.",
+    "tryAgain": "Opnieuw proberen",
+    "backToLibrary": "Terug naar de bibliotheek"
   },
   "heroToggle": {
     "collapse": "Banner inklappen",

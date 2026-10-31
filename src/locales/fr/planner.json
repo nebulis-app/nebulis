@@ -142,6 +142,7 @@
     "viewLabel": "Affichage",
     "viewButton": "Affichage",
     "viewShow": "Afficher",
+    "viewReset": "Réinitialiser",
     "scopeAll": "Toutes les cibles",
     "scopeAllHint": "Tout ce qui est visible cette nuit",
     "scopeWishlistHint": "Seulement les cibles favorites",
@@ -221,7 +222,10 @@
     "shareTitle": "Partager le plan de ce soir sous forme de texte ou d'image",
     "nothingToShare": "Rien n'est encore programmé à partager",
     "wishlist": "Liste de souhaits",
-    "wishlistTitle": "Voir et gérer tout ce qui figure sur votre liste de souhaits"
+    "wishlistTitle": "Voir et gérer tout ce qui figure sur votre liste de souhaits",
+    "run": "Lancer",
+    "runTitle": "Lancer le plan de cette nuit sur un télescope",
+    "nothingToRun": "Rien de planifié à lancer pour l'instant"
   },
   "wishlistPanel": {
     "title": "Liste de souhaits",
@@ -471,5 +475,82 @@
     "use": "Utiliser {{filter}}",
     "inUse": "Utilisé",
     "ruledOut": "Lune trop proche pour la large bande : {{filters}}"
+  },
+  "planRun": {
+    "title": "Lancer ce plan sur un télescope",
+    "close": "Fermer",
+    "loading": "Chargement des télescopes...",
+    "noSeestar": "Ajoutez un Seestar dans les Réglages pour y lancer un plan.",
+    "telescope": "Télescope",
+    "blocks": "Blocs",
+    "noBlocks": "Rien n'est planifié pour cette nuit.",
+    "options": "Options",
+    "centre": "Centrer sur chaque cible",
+    "centreHelp": "Fait une courte pose après chaque pointage, la résout et corrige le pointage. Nécessite le résolveur astrométrique et la roue à filtres sur IR ou LP.",
+    "park": "Parquer à la fin du plan",
+    "parkHelp": "Place le télescope en position de parcage après le dernier bloc.",
+    "checks": "Vérifications",
+    "checking": "Vérification du télescope et du plan...",
+    "checkFailed": "La vérification n'a pas pu s'exécuter : {{message}}",
+    "allClear": "Tout est en ordre.",
+    "limit": "Cela pointe le télescope sur la cible de chaque bloc à son heure de début et maintient le suivi jusqu'à la fin du bloc. Cela ne démarre pas la capture propre du télescope : lancez-la dans l'appli Seestar.",
+    "adminOnly": "Seul un administrateur peut lancer une exécution.",
+    "startFailed": "Impossible de démarrer : {{message}}",
+    "cancel": "Annuler",
+    "start": "Lancer le plan",
+    "starting": "Démarrage...",
+    "check": {
+      "unreachable": "Le télescope est injoignable. Vérifiez qu'il est allumé et sur le réseau.",
+      "notConnected": "Le télescope n'est pas connecté. Ouvrez sa page de contrôle et appuyez sur Connecter.",
+      "nothingToRun": "Tous les blocs de ce plan sont déjà terminés.",
+      "parked": "La monture est parquée. L'exécution la déparquera.",
+      "noCamera": "La caméra n'est pas connectée, le centrage est donc impossible. L'exécution ira seulement à chaque cible.",
+      "noSolver": "Le résolveur astrométrique n'est pas installé, le centrage est donc impossible. L'exécution ira seulement à chaque cible.",
+      "darkFilter": "La roue à filtres est sur Dark, le centrage est donc impossible. Choisissez IR ou LP.",
+      "scopeImaging": "Le télescope fait de l'imagerie avec sa propre appli. Lancer le plan l'éloignera de cette cible.",
+      "blockPast": "{{object}} est déjà terminé et sera ignoré.",
+      "blockLow": "{{object}} descend à {{lowestAlt}}° pendant son bloc, sous votre minimum de {{minAlt}}°.",
+      "blockMoon": "La Lune ({{illumination}}% éclairée) passe à {{separation}}° de {{object}}.",
+      "overlap": "{{object}} empiète sur le bloc suivant. La cible suivante prend le relais à son heure de début.",
+      "clouds": "Les prévisions montrent environ {{cloud}}% de nuages sur ce plan.",
+      "noSite": "Le site n'a pas de position, les vérifications d'altitude et de Lune ont donc été ignorées."
+    },
+    "bar": {
+      "label": "Plan en cours sur {{telescope}}",
+      "state": {
+        "running": "En cours",
+        "paused": "En pause",
+        "completed": "Terminé",
+        "stopped": "Arrêté",
+        "failed": "Arrêté sur un problème"
+      },
+      "position": "{{index}} sur {{total}}",
+      "phase": {
+        "waiting": "En attente du début de {{object}}",
+        "slewing": "Pointage vers {{object}}",
+        "centring": "Centrage de {{object}}",
+        "holding": "Sur {{object}}"
+      },
+      "startsIn": "début dans {{time}}",
+      "timeLeft": "{{time}} restantes",
+      "finished": "Le plan est terminé.",
+      "failure": {
+        "telescope": "Deux blocs de suite n'ont pas pu déplacer le télescope.",
+        "park": "Le plan est terminé, mais le télescope n'a pas pu être parqué."
+      },
+      "blocks": "Blocs",
+      "note": {
+        "past": "Déjà passé",
+        "skipped": "Ignoré",
+        "missed": "Manqué",
+        "centringFailed": "Pointé, non centré",
+        "error": "Le télescope n'a pas pu être déplacé"
+      },
+      "pause": "Pause",
+      "resume": "Reprendre",
+      "skip": "Passer",
+      "stop": "Arrêter"
+    },
+    "timeRange": "{{start}} à {{end}}"
   }
 }

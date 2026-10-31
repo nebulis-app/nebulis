@@ -73,6 +73,7 @@ import { sessionLocation, type SessionLocation } from './sessionLocation.js';
 // ─── Session weather ────────────────────────────────────────────────────────
 
 import type { SessionWeather } from '../types/session.js';
+import { isLibraryBusy } from '../libraryBusy.js';
 export type { SessionWeather };
 
 /**
@@ -360,6 +361,8 @@ export async function backfillSingleSessionWeather(objectId: string, date: strin
  * scan.
  */
 function reconcileStaleSessionDates(objectId: string, files: string[]): void {
+  // A read must not rewrite rows while an import, archive, restore or scan is working on them; the next read heals.
+  if (isLibraryBusy()) return;
   const sessionRows = stmts.getSessions.all(objectId);
   if (sessionRows.length === 0) return;
 
@@ -450,6 +453,8 @@ function reconcileStaleSessionDates(objectId: string, files: string[]): void {
 const reconciledFileCounts = new Map<string, number>();
 
 function reconcileSessionTelescopesFromFiles(objectId: string): void {
+  // Same reason as reconcileStaleSessionDates. Returning before the cache is set means it runs again once the library is free.
+  if (isLibraryBusy()) return;
   const fileCount = countLibraryFilesForObject(objectId);
   if (reconciledFileCounts.get(objectId) === fileCount) return;
 
@@ -1017,7 +1022,10 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
         previewable: true,
         // `&v=<mtime>` busts the browser's hour-long cache of /library/file
         // after the image editor overwrites a stacked JPEG in place. The route
-        // ignores the param.
+        // ignores the param. The thumbnail and preview tiers below carry the
+        // same stamp for the same reason: they are cached for a day at a URL
+        // that otherwise never changes, so an overwrite used to show the new
+        // pixels in the editor and the old ones on the page behind it.
         downloadUrl: `${LIBRARY_API_BASE}/file?path=${encodeURIComponent(libPath)}&v=${Math.round(stat.mtimeMs)}`,
         // Videos get an inline, range-capable stream URL for a `<video>` tag.
         // `/library/file` above stays the download path. MP4/MOV play in a
@@ -1045,14 +1053,14 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
             // stacking cannot be shown by a browser <img> at all); JPEG does
             // not, but still benefits from the bounded, cached resize.
             : hasRenderedTier
-              ? `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(libPath)}`
+              ? `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(libPath)}&v=${Math.round(stat.mtimeMs)}`
               : undefined,
         previewUrl: knownType === 'fits'
           ? `${LIBRARY_API_BASE}/fits-thumbnail?v=${FITS_THUMBNAIL_PIPELINE_VERSION}&size=preview&path=${encodeURIComponent(libPath)}`
           : isTiff
             ? `${LIBRARY_API_BASE}/tiff-thumbnail?size=preview&path=${encodeURIComponent(libPath)}`
             : hasRenderedTier
-              ? `${LIBRARY_API_BASE}/file/thumbnail?w=2048&h=2048&path=${encodeURIComponent(libPath)}`
+              ? `${LIBRARY_API_BASE}/file/thumbnail?w=2048&h=2048&path=${encodeURIComponent(libPath)}&v=${Math.round(stat.mtimeMs)}`
               : undefined,
         subIndex: parsed.subIndex || null,
       };
@@ -1117,14 +1125,14 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
           : isTiff
             ? `${LIBRARY_API_BASE}/tiff-thumbnail?path=${encodeURIComponent(libPath)}`
             : hasRenderedTier
-              ? `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(libPath)}`
+              ? `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(libPath)}&v=${Math.round(stat.mtimeMs)}`
               : undefined,
         previewUrl: knownType === 'fits'
           ? `${LIBRARY_API_BASE}/fits-thumbnail?v=${FITS_THUMBNAIL_PIPELINE_VERSION}&size=preview&path=${encodeURIComponent(libPath)}`
           : isTiff
             ? `${LIBRARY_API_BASE}/tiff-thumbnail?size=preview&path=${encodeURIComponent(libPath)}`
             : hasRenderedTier
-              ? `${LIBRARY_API_BASE}/file/thumbnail?w=2048&h=2048&path=${encodeURIComponent(libPath)}`
+              ? `${LIBRARY_API_BASE}/file/thumbnail?w=2048&h=2048&path=${encodeURIComponent(libPath)}&v=${Math.round(stat.mtimeMs)}`
               : undefined,
         subIndex: parsed.subIndex || null,
       };

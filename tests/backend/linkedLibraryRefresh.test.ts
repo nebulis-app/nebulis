@@ -25,13 +25,13 @@ const SETTINGS = { importJpg: true, importFits: true, importSubFrames: true };
 const HOUR = 60 * 60_000;
 const roots: string[] = [];
 
-afterAll(() => {
+afterAll(async () => {
   vi.unstubAllGlobals();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
   for (const r of roots) fs.rmSync(r, { recursive: true, force: true });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline in tests')));
   db.prepare('DELETE FROM libraryObjects').run();
   db.prepare('DELETE FROM libraryFiles').run();
@@ -52,36 +52,36 @@ const stampScan = (id: string, at: number) =>
   db.prepare('UPDATE librarySources SET lastScanAt = ? WHERE id = ?').run(new Date(at).toISOString(), id);
 
 describe('linked folder refresh schedule', () => {
-  it('a source linked without a schedule is one-time and never due', () => {
-    const { sourceId } = commitSource(makeRoot(), SETTINGS, { label: 'x' });
+  it('a source linked without a schedule is one-time and never due', async () => {
+    const { sourceId } = await commitSource(makeRoot(), SETTINGS, { label: 'x' });
     expect(getLibrarySource(sourceId)?.refreshIntervalMin).toBeNull();
     stampScan(sourceId, Date.now() - 365 * 24 * HOUR);
     expect(listDueSources()).toEqual([]);
   });
 
-  it('stores the interval chosen at link time and reports it in the summary', () => {
-    const { sourceId } = commitSource(makeRoot(), SETTINGS, { label: 'x', refreshIntervalMin: 1440 });
+  it('stores the interval chosen at link time and reports it in the summary', async () => {
+    const { sourceId } = await commitSource(makeRoot(), SETTINGS, { label: 'x', refreshIntervalMin: 1440 });
     expect(getLibrarySource(sourceId)?.refreshIntervalMin).toBe(1440);
     expect(summarizeSources()[0]).toMatchObject({ id: sourceId, refreshIntervalMin: 1440 });
   });
 
-  it('is due only once its interval has elapsed since the last scan', () => {
-    const { sourceId } = commitSource(makeRoot(), SETTINGS, { label: 'x', refreshIntervalMin: 60 });
+  it('is due only once its interval has elapsed since the last scan', async () => {
+    const { sourceId } = await commitSource(makeRoot(), SETTINGS, { label: 'x', refreshIntervalMin: 60 });
     const t0 = Date.now();
     stampScan(sourceId, t0);
     expect(listDueSources(t0 + 59 * 60_000)).toEqual([]);
     expect(listDueSources(t0 + HOUR).map(s => s.id)).toEqual([sourceId]);
   });
 
-  it('a disabled source is never due', () => {
-    const { sourceId } = commitSource(makeRoot(), SETTINGS, { label: 'x', refreshIntervalMin: 60 });
+  it('a disabled source is never due', async () => {
+    const { sourceId } = await commitSource(makeRoot(), SETTINGS, { label: 'x', refreshIntervalMin: 60 });
     stampScan(sourceId, Date.now() - 48 * HOUR);
     db.prepare('UPDATE librarySources SET enabled = 0 WHERE id = ?').run(sourceId);
     expect(listDueSources()).toEqual([]);
   });
 
-  it('setRefreshInterval switches a source between one-time and ongoing, and rejects other values', () => {
-    const { sourceId } = commitSource(makeRoot(), SETTINGS, { label: 'x' });
+  it('setRefreshInterval switches a source between one-time and ongoing, and rejects other values', async () => {
+    const { sourceId } = await commitSource(makeRoot(), SETTINGS, { label: 'x' });
     expect(setRefreshInterval(sourceId, 360).refreshIntervalMin).toBe(360);
     expect(setRefreshInterval(sourceId, null).refreshIntervalMin).toBeNull();
     expect(() => setRefreshInterval(sourceId, 7)).toThrow(LinkSourceError);
@@ -93,8 +93,8 @@ describe('tickLinkedSourceRefresh', () => {
   it('rescans a due source, picks up a file added since the link, and leaves one-time sources alone', async () => {
     const ongoingRoot = makeRoot();
     const onceRoot = makeRoot();
-    const ongoing = commitSource(ongoingRoot, SETTINGS, { label: 'ongoing', refreshIntervalMin: 60 }).sourceId;
-    const once = commitSource(onceRoot, SETTINGS, { label: 'once' }).sourceId;
+    const ongoing = (await commitSource(ongoingRoot, SETTINGS, { label: 'ongoing', refreshIntervalMin: 60 })).sourceId;
+    const once = (await commitSource(onceRoot, SETTINGS, { label: 'once' })).sourceId;
     for (const root of [ongoingRoot, onceRoot]) {
       fs.writeFileSync(
         path.join(root, 'Galaxies', 'M 31 - Andromeda', 'Stacked_60_M 31_10.0s_IRCUT_20260102-200000.jpg'),
@@ -118,7 +118,7 @@ describe('tickLinkedSourceRefresh', () => {
 
   it('marks an unreachable folder offline without touching its files, and does not retry until the next interval', async () => {
     const root = makeRoot();
-    const { sourceId } = commitSource(root, SETTINGS, { label: 'x', refreshIntervalMin: 60 });
+    const { sourceId } = await commitSource(root, SETTINGS, { label: 'x', refreshIntervalMin: 60 });
     stampScan(sourceId, Date.now() - 2 * HOUR);
     fs.rmSync(root, { recursive: true, force: true });
 

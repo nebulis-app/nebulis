@@ -20,6 +20,8 @@ interface TokenIdentity {
   userId: string;
   username: string;
   role: UserRole;
+  /** The token belongs to a paired device (it carries a `jti`). */
+  viaDevice?: boolean;
 }
 interface TokenRejection {
   status: number;
@@ -60,7 +62,7 @@ function resolveTokenAuth(payload: ReturnType<typeof verifyToken>): TokenIdentit
       return { status: 401, code: 'USER_NOT_FOUND', message: 'Account no longer exists. Please log in again.' };
     }
     touchDevice(payload.jti);
-    return { userId: owner.id, username: owner.username, role: owner.role };
+    return { userId: owner.id, username: owner.username, role: owner.role, viaDevice: true };
   }
 
   // Login token: one lookup by primary key serves both checks. tokenVersion
@@ -233,6 +235,7 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
       req.userId = identity.userId;
       req.username = identity.username;
       req.userRole = identity.role;
+      if (identity.viaDevice) req.viaDeviceToken = true;
       return next();
     } catch {
       // Not a valid JWT — try as API key below
@@ -284,6 +287,7 @@ export function apiAuth(req: Request, res: Response, next: NextFunction) {
       req.userId = identity.userId;
       req.username = identity.username;
       req.userRole = identity.role;
+      if (identity.viaDevice) req.viaDeviceToken = true;
       return next();
     } catch { /* not a JWT */ }
   }

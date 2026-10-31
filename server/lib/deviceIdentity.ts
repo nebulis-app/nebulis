@@ -61,6 +61,25 @@ function getAppVersion(): string {
   return cachedAppVersion;
 }
 
+const ASIAIR_USB_FOLDER = 'asiair';
+
+/**
+ * Where a USB telescope's identity file lives. An ASIAIR stick keeps its pictures under `ASIAir/`, and a telescope's path may point
+ * at that folder or at the volume around it (the web drive picker and the Mac use different ones). The file always belongs at the
+ * volume root, so both ways of pointing at the stick read and write the same one.
+ */
+export function identityRootOf(localPath: string): string {
+  const trimmed = localPath.replace(/[\\/]+$/, '');
+  return path.basename(trimmed).toLowerCase() === ASIAIR_USB_FOLDER ? path.dirname(trimmed) : localPath;
+}
+
+/** The same transport, pointed at the folder its identity file belongs in. Only a USB path inside `ASIAir/` moves. */
+function atIdentityRoot(t: TelescopeTransport): TelescopeTransport {
+  if (t.kind !== 'local' || !t.localPath) return t;
+  const root = identityRootOf(t.localPath);
+  return root === t.localPath ? t : { ...t, localPath: root };
+}
+
 /** Adapt a TelescopeTransport to the partial-profile shape that smb.ts accepts. */
 function transportToProfile(t: TelescopeTransport): {
   connectionType: TransportKind;
@@ -80,22 +99,32 @@ function transportToProfile(t: TelescopeTransport): {
   };
 }
 
+const MAX_DEVICE_ID_LENGTH = 128;
+
 function parseIdentity(buf: Buffer): DeviceIdentity | null {
   // The file comes off the telescope's own storage, so it is untrusted input:
   // parseJsonRecord covers both bad JSON and valid-JSON-that-isn't-an-object.
   const r = parseJsonRecord(buf.toString('utf8'));
   if (!r) return null;
-  if (typeof r.deviceId !== 'string' || r.deviceId.length === 0) return null;
-  if (typeof r.createdAt !== 'string') return null;
+  // Same rules as the Mac app's reader: an ID is required and bounded, `createdAt` is not.
+  if (typeof r.deviceId !== 'string' || r.deviceId.length === 0 || r.deviceId.length > MAX_DEVICE_ID_LENGTH) return null;
   return {
     deviceId: r.deviceId,
-    createdAt: r.createdAt,
+    createdAt: typeof r.createdAt === 'string' ? r.createdAt : '',
     model: typeof r.model === 'string' ? r.model : 'unknown',
     appVersion: typeof r.appVersion === 'string' ? r.appVersion : '0.0.0',
   };
 }
 
 export async function readIdentity(transport: TelescopeTransport): Promise<DeviceIdentity | null> {
+  const home = atIdentityRoot(transport);
+  const found = await readIdentityAt(home);
+  if (found || home === transport) return found;
+  // A stick marked while the file was still written inside `ASIAir/` keeps that file.
+  return readIdentityAt(transport);
+}
+
+async function readIdentityAt(transport: TelescopeTransport): Promise<DeviceIdentity | null> {
   const profile = transportToProfile(transport);
   try {
     const buf = await smbGetFile(IDENTITY_FILE, MAX_IDENTITY_BYTES, profile);
@@ -121,20 +150,22 @@ export async function readIdentity(transport: TelescopeTransport): Promise<Devic
  */
 export async function writeIdentityIfMissing(
   transport: TelescopeTransport,
-  fallback: { model: string },
+  fallback: { model: string; deviceId?: string },
 ): Promise<{ identity: DeviceIdentity; wrote: boolean; readonly: boolean }> {
   const existing = await readIdentity(transport);
   if (existing) {
     return { identity: existing, wrote: false, readonly: false };
   }
   const identity: DeviceIdentity = {
-    deviceId: randomUUID(),
+    // A telescope that already has an ID (stamped over Wi-Fi) hands the same one to its USB drive, which is the same
+    // storage, so the two connections name one device.
+    deviceId: fallback.deviceId ?? randomUUID(),
     createdAt: new Date().toISOString(),
     model: fallback.model,
     appVersion: getAppVersion(),
   };
   const buf = Buffer.from(JSON.stringify(identity, null, 2), 'utf8');
-  const profile = transportToProfile(transport);
+  const profile = transportToProfile(atIdentityRoot(transport));
   try {
     await smbPutFile(IDENTITY_FILE, buf, profile);
     return { identity, wrote: true, readonly: false };

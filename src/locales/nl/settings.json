@@ -640,7 +640,8 @@
       "bodyAfter": "in plaats daarvan. Bestanden op de oude locatie worden niet gekopieerd. Doe dit alleen als je afbeeldingen al in de standaardmap staan of als je ze opnieuw gaat importeren.",
       "resetFailed": "De locatie kon niet worden teruggezet",
       "cancel": "Annuleren",
-      "resetLocation": "Locatie opnieuw instellen"
+      "resetLocation": "Locatie opnieuw instellen",
+      "secondLibraryWarning": "Nieuwe imports gaan naar die map op de eigen schijf van deze computer. Komt de oude schijf later terug, dan is dat een aparte bibliotheek en voegen de twee zich niet vanzelf samen. Is de schijf alleen losgekoppeld, sluit hem dan liever weer aan."
     },
     "resetToDefaultModal": {
       "title": "Bibliotheek terugverplaatsen naar de standaardlocatie",
@@ -661,7 +662,8 @@
       "filesProgress_one": "{{copied}} / {{count}} bestand",
       "filesProgress_other": "{{copied}} / {{count}} bestanden",
       "keepDriveConnected": "Houd deze schijf aangesloten. Het importeren wordt gepauzeerd totdat de verplaatsing is voltooid."
-    }
+    },
+    "recoveredNotice": "De schijf met je bibliotheek kwam terug op een ander pad, dus Nebulis heeft zelf opnieuw verbinding gemaakt. Hij stond op {{from}} en staat nu op {{to}}."
   },
   "storageDashboard": {
     "title": "Opslag",
@@ -1021,7 +1023,9 @@
     "cancel": "Annuleren",
     "saveLabel": "Opslaan",
     "connectedFound_one": "Verbonden. {{count}} map gevonden.",
-    "connectedFound_other": "Verbonden. {{count}} mappen gevonden."
+    "connectedFound_other": "Verbonden. {{count}} mappen gevonden.",
+    "pairThisDrive": "Koppel in plaats daarvan deze schijf",
+    "unmarkedNote": "Die USB-schijf is alleen-lezen, dus Nebulis kon hem niet markeren. Hij wordt alleen herkend aan zijn pad, dat kan wisselen als twee telescopen tegelijk zijn aangesloten."
   },
   "settingsUI": {
     "moreInfoAriaLabel": "Meer info: {{text}}"

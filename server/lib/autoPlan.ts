@@ -32,7 +32,7 @@
 import { altAz } from './astroCalc.js';
 import { checkMoonProximity, type FilterBand, type MoonProximityResult } from './moonProximity.js';
 import { bandForFilterName, bandForObjectType } from './filterBands.js';
-import { objectEverVisible, type VisibleSkyMap } from './visibilityCheck.js';
+import { objectEverVisible, objectVisibleThroughout, type VisibleSkyMap } from './visibilityCheck.js';
 import { typeInClass } from './objectCategories.js';
 import { seeingAdjustment, type SlotSkyQuality } from './skyQuality.js';
 
@@ -87,6 +87,9 @@ export interface AutoPlanParams {
   /** 0 = deterministic, >0 adds randomness so "Shuffle" surfaces
    *  different-but-still-good plans. Degrees of altitude-equivalent. */
   jitter?: number;
+  /** Objects a previous plan already showed. "Shuffle" passes them so a new take picks something else; they
+   *  still win a slot when nothing else is up, so a slot is never left empty because of it. */
+  avoidIds?: string[];
   /** Sky quality for a slot, from the forecast (see skyQuality.ts). Slots it
    *  marks unusable (too cloudy) are left empty and reported in
    *  `skippedSlots`; seeing nudges small targets toward steady hours. Omit,
@@ -197,6 +200,9 @@ export function goalBonus(goals: GoalProgress[]): number {
  */
 export const MAX_GOAL_ALT_DEFICIT = 20;
 
+/** Score cut for an object a previous take showed: more than any jitter or the named-object bonus can make up. */
+export const AVOID_PENALTY = 200;
+
 export function generateNightPlan(p: AutoPlanParams): PlanBlock[] {
   return generateNightPlanDetailed(p).blocks;
 }
@@ -205,6 +211,7 @@ export function generateNightPlan(p: AutoPlanParams): PlanBlock[] {
 export function generateNightPlanDetailed(p: AutoPlanParams): NightPlanResult {
   const slotMs = Math.max(5, p.slotMinutes) * 60_000;
   const jitter = p.jitter ?? 0;
+  const avoid = new Set(p.avoidIds ?? []);
 
   // Candidate pool: matching focus and reaching the visible sky at some point
   // in the window. When unimagedOnly is off, already-imaged objects stay in
@@ -256,12 +263,15 @@ export function generateNightPlanDetailed(p: AutoPlanParams): NightPlanResult {
       boosted: boolean;
     };
     const eligible: Candidate[] = [];
-    let bestRelaxed: Candidate | null = null;
 
     for (const t of pool) {
       if (used.has(t.id)) continue;
       const meanAlt = meanAltitude(t.ra, t.dec, p.observerLat, p.observerLon, start, end);
-      if (meanAlt < 10) continue; // effectively below the horizon for this slot
+      // The user's own floor, never lower than the horizon. (A hidden 10 degree floor used to sit here, so a request
+      // for 5 degrees could never be met, while a request for 30 was quietly relaxed below.)
+      if (meanAlt < Math.max(p.minAlt, 0)) continue;
+      // Inside the visible sky for this slot, not merely at some point in the night (that is the pool filter above).
+      if (!objectVisibleThroughout(t.ra, t.dec, p.observerLat, p.observerLon, start, end, p.visibleSkyMap)) continue;
 
       const check = (band: FilterBand) =>
         checkMoonProximity(t.ra, t.dec, p.observerLat, p.observerLon, start, end, p.moonIllumination, 5, undefined, band);
@@ -304,18 +314,18 @@ export function generateNightPlanDetailed(p: AutoPlanParams): NightPlanResult {
       //     toward recognizable targets over obscure catalog entries
       //   + seeing fit: small targets gain in steady air (forecast only)
       //   + goal bonus: time left toward integration goals (favorGoals only)
-      //   + jitter for "Shuffle"
+      //   + jitter for "Shuffle", minus AVOID_PENALTY for what the last take already showed
       // Already-imaged status has no score effect here: unimagedOnly (above)
       // is the sole switch for whether imaged objects are eligible at all.
       const moonPenalty = moon.verdict === 'caution' ? 10 : 0;
       const popularBonus = t.commonNames.length > 0 ? 30 : 0;
       const bonus = goalBonus(goals);
       const score = meanAlt - moonPenalty + popularBonus + seeingAdjustment(sky, t) + bonus
-        + (jitter > 0 ? (Math.random() * 2 - 1) * jitter : 0);
+        + (jitter > 0 ? (Math.random() * 2 - 1) * jitter : 0)
+        - (avoid.has(t.id) ? AVOID_PENALTY : 0);
       const candidate = { target: t, meanAlt, moon, band, goal, score, boosted: bonus > 0 };
 
-      if (!bestRelaxed || candidate.score > bestRelaxed.score) bestRelaxed = candidate;
-      if (meanAlt >= p.minAlt) eligible.push(candidate);
+      eligible.push(candidate);
     }
 
     // Best above the floor, where a goal-boosted target is out of the running
@@ -329,9 +339,9 @@ export function generateNightPlanDetailed(p: AutoPlanParams): NightPlanResult {
       if (!best || c.score > best.score) best = c;
     }
 
-    // Prefer an object above the elevation floor; if the slot has none, fall
-    // back to the best available rather than leaving a hole in the night.
-    const chosen = best ?? bestRelaxed;
+    // Nothing cleared the floor and the visible sky for this slot: leave it empty. Scheduling the best of a bad lot
+    // gave a 13 degree target to someone who asked for 30.
+    const chosen = best;
     if (!chosen) continue;
 
     used.add(chosen.target.id);

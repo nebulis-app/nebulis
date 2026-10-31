@@ -50,6 +50,7 @@ import { checkBlockVisibility, type VisibleSkyMap } from '../lib/visibilityCheck
 import { computeBestTonightScore } from '../lib/bestTonightScore.js';
 import { showpieceScore } from '../lib/explore/showpiece.js';
 import { tonightRank } from '../lib/explore/rank.js';
+import { buildMoonTrack, moonPenaltyFor } from '../lib/tonightMoon.js';
 import SunCalc from 'suncalc';
 
 const router = Router();
@@ -324,10 +325,16 @@ router.get('/tonight', async (req: Request, res: Response) => {
   // sunset-sunrise timeline on nights with no true dark window.
   const scoreWindowStart = darkWindow?.nightStart ?? timelineWindow.start;
   const scoreWindowEnd = darkWindow?.nightEnd ?? timelineWindow.end;
-  const targetsWithScore = targets.map(t => ({
-    ...t,
-    bestTonightScore: computeBestTonightScore(t, scoreWindowStart, scoreWindowEnd).total,
-  })).map(t => ({
+  // The Moon counts against an object by how close it sits while the object is up, judged for the filter the
+  // object is shot through (same thresholds as the per-block check), so a bright Moon no longer ranks the
+  // Pleiades beside it above a nebula across the sky.
+  const moonTrack = buildMoonTrack(lat, lon, scoreWindowStart, scoreWindowEnd, moonIllumination);
+  const targetsWithScore = targets.map(t => {
+    const moonPenalty = moonPenaltyFor(
+      moonTrack, t, t.risesAt ? new Date(t.risesAt) : null, t.setsAt ? new Date(t.setsAt) : null,
+    );
+    return { ...t, moonPenalty, bestTonightScore: computeBestTonightScore({ ...t, moonPenalty }, scoreWindowStart, scoreWindowEnd).total };
+  }).map(t => ({
     ...t,
     // The shared "Best tonight" order (lib/explore/rank.ts). `bestTonightScore` stays the pure conditions score
     // ("Best conditions").
@@ -458,6 +465,8 @@ const AutoPlanBodySchema = z.object({
   focus: z.enum(AUTO_PLAN_FOCUSES).optional(),
   unimagedOnly: z.boolean().optional(),
   jitter: z.number().optional(),
+  /** Ids a previous take showed; Shuffle passes them so the next take picks different objects. */
+  avoidIds: z.array(z.string()).max(2000).optional(),
   /** Use the hourly forecast for the observer's location: skip cloudy slots,
    *  steer small targets to steady seeing. Off when omitted, so existing
    *  clients get exactly the plan they always did. */
@@ -546,6 +555,7 @@ router.post('/plan', async (req: Request, res: Response) => {
     focus: body.focus,
     unimagedOnly: body.unimagedOnly,
     jitter: body.jitter,
+    avoidIds: body.avoidIds,
     favorGoals: body.favorGoals,
     narrowbandCapable,
   });

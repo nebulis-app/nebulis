@@ -5,11 +5,15 @@ import {
   X, Type, Crop, SlidersHorizontal,
   AlignLeft, AlignCenter, AlignRight,
   Check, RotateCcw, RotateCw, Save, Trash2, Loader2, Pencil,
-  FlipHorizontal2, FlipVertical2, BookmarkCheck, Plus, Wand2, Eye,
+  FlipHorizontal2, FlipVertical2, Plus, Wand2, Eye,
 } from 'lucide-react';
 import { computeAutoAdjust } from '../lib/autoAdjust';
 import { uploadProcessedImage, uploadObjectProcessedImage, uploadLibraryFile, overwriteProcessedImage } from '../lib/api/library';
 import { getWatermarkPresets, saveWatermarkPresets, type WatermarkPreset } from '../lib/api/auth';
+import {
+  layerToPreset, presetToTextBlock, findPresetByName, normalizePresetName, presetNameKey,
+  MAX_WATERMARK_PRESETS, MAX_WATERMARK_NAME,
+} from '../lib/watermarkPresets';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,6 +30,8 @@ interface TextLayer {
   opacity: number;
   align: 'left' | 'center' | 'right';
   angle: number;    // degrees (–90…+90)
+  /** Set when the block came from a saved watermark, so it can be updated or replaced instead of duplicated. */
+  sourcePresetId?: string;
 }
 
 interface CropRect {
@@ -183,6 +189,53 @@ function eventToCanvasPx(
   return { x: (e.clientX - r.left) * scaleX, y: (e.clientY - r.top) * scaleY };
 }
 
+/**
+ * A -100…+100 slider that only tells the editor about its value once the user lets go. Redrawing the preview applies
+ * the adjustment to every pixel, which is far too slow to do on each tick of a drag, so while dragging the number
+ * follows the thumb and the picture stays put. A click on the track, a key press and a change that arrives without any
+ * pointer or key (assistive tech) commit straight away.
+ */
+function AdjustSlider({ label, value, onCommit, isDark }: {
+  label: string;
+  value: number;
+  onCommit: (value: number) => void;
+  isDark: boolean;
+}) {
+  const [draft, setDraft] = useState<number | null>(null);
+  const holding = useRef(false);
+  const shown = draft ?? value;
+
+  const commit = (v: number) => {
+    holding.current = false;
+    setDraft(null);
+    if (v !== value) onCommit(v);
+  };
+
+  return (
+    <div>
+      <label className={`flex justify-between text-xs font-medium mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+        <span>{label}</span>
+        <span className={`tabular-nums ${shown !== 0 ? (isDark ? 'text-slate-200' : 'text-slate-700') : (isDark ? 'text-slate-600' : 'text-slate-400')}`}>
+          {shown > 0 ? `+${shown}` : shown}
+        </span>
+      </label>
+      <input type="range" min={-100} max={100} value={shown}
+        onPointerDown={() => { holding.current = true; }}
+        onKeyDown={() => { holding.current = true; }}
+        onChange={e => {
+          const v = +e.target.value;
+          if (holding.current) setDraft(v); else commit(v);
+        }}
+        onPointerUp={e => commit(+e.currentTarget.value)}
+        onPointerCancel={e => commit(+e.currentTarget.value)}
+        onKeyUp={e => commit(+e.currentTarget.value)}
+        onBlur={e => { if (draft !== null) commit(+e.currentTarget.value); }}
+        className="w-full accent-accent-500"
+      />
+    </div>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, sourceKind, overwriteTarget, onClose, onSaved }: Props) {
@@ -273,6 +326,20 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
   const presets = presetsOverride ?? serverPresets;
   const [savePresetName, setSavePresetName] = useState('');
   const [showSavePreset, setShowSavePreset] = useState(false);
+  const [presetError, setPresetError] = useState('');
+  const [presetBusy, setPresetBusy] = useState(false);
+  /** Synchronous re-entry guard: two clicks in one tick both see `presetBusy === false`. */
+  const presetBusyRef = useRef(false);
+  /** Saving over an existing name asks before replacing; this is the preset that would be overwritten. */
+  const [replaceTarget, setReplaceTarget] = useState<WatermarkPreset | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const selectedLayer = textLayers.find(l => l.id === selectedId) ?? null;
+  const selectedSourcePreset = selectedLayer?.sourcePresetId
+    ? presets.find(p => p.id === selectedLayer.sourcePresetId) ?? null
+    : null;
 
   // ── Init ─────────────────────────────────────────────────────────────────
 
@@ -557,7 +624,7 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
 
   // ── Load a layer's settings into the sidebar ──────────────────────────────
 
-  const loadLayerIntoSidebar = (l: TextLayer) => {
+  const loadLayerIntoSidebar = (l: Omit<TextLayer, 'id' | 'x' | 'y' | 'sourcePresetId'>) => {
     setTText(l.text); setTSize(l.fontSize); setTFont(l.fontFamily);
     setTColor(l.color); setTBold(l.bold); setTItalic(l.italic);
     setTOpacity(l.opacity); setTAlign(l.align); setTAngle(l.angle);
@@ -785,66 +852,135 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
     setActiveTool('text');
   };
 
+  /**
+   * Apply a saved watermark to the picture.
+   *
+   * Re-applying the same watermark replaces the block it added last time
+   * instead of stacking a second copy. Every other watermark adds its own
+   * block, so a user can combine a title and a copyright line if they keep two.
+   */
   const applyPreset = (p: WatermarkPreset) => {
-    // Place the preset text on the canvas at a default position so the user
-    // can immediately drag it where they want.
-    const layer: TextLayer = {
-      id: crypto.randomUUID(),
-      text: p.text,
-      x: 0.5, y: 0.9,        // start centered near bottom
-      fontSize: p.fontSize,
-      fontFamily: p.fontFamily,
-      color: p.color,
-      bold: p.bold,
-      italic: p.italic,
-      opacity: p.opacity,
-      align: p.align,
-      angle: p.angle,
-    };
-    setTextLayers(prev => [...prev, layer]);
-    setSelectedId(layer.id);
-    loadLayerIntoSidebar(layer);
+    const canvas = canvasRef.current;
+    if (!canvas || !imgLoaded) return;
+    const fields = presetToTextBlock(p, canvas.height);
+    // One block per saved watermark, keyed by the preset. A second click (or
+    // one that lands before the previous state committed) updates that block
+    // instead of stacking a copy.
+    const id = `preset:${p.id}`;
+    const target: TextLayer = { id, ...fields, sourcePresetId: p.id };
+    setTextLayers(prev => (prev.some(l => l.id === id)
+      ? prev.map(l => (l.id === id ? target : l))
+      : [...prev, target]));
+    setSelectedId(id);
+    loadLayerIntoSidebar(fields);
     setActiveTool('text');
   };
 
-  const saveAsPreset = async () => {
-    const name = savePresetName.trim();
-    if (!name) return;
-    const preset: WatermarkPreset = {
-      id: crypto.randomUUID(),
-      name, text: tText, fontSize: tSize, fontFamily: tFont,
-      color: tColor, bold: tBold, italic: tItalic, opacity: tOpacity, align: tAlign, angle: tAngle,
-    };
-    const updated = [...presets, preset];
+  /**
+   * Persist a whole-array replacement optimistically, then reconcile with the
+   * server. The override is what keeps the list from falling back to the stale
+   * server value for the length of the refetch; it is dropped only after the
+   * refetch lands or the write fails.
+   */
+  const persistPresets = async (updated: WatermarkPreset[], failureMessage: string): Promise<boolean> => {
+    if (presetBusyRef.current) return false;
+    presetBusyRef.current = true;
+    setPresetBusy(true);
+    setPresetError('');
     setPresetsOverride(updated);
-    setSavePresetName('');
-    setShowSavePreset(false);
     try {
       await saveWatermarkPresets(updated);
-      // Await the refetch before dropping the override, otherwise `presets`
-      // falls back to the stale server list for the duration of the refetch
-      // and the just-saved preset visibly disappears then reappears.
       await queryClient.invalidateQueries({ queryKey: ['watermark-presets'] });
       setPresetsOverride(null);
+      return true;
     } catch {
-      // Roll back the optimistic update — otherwise the sidebar shows a
-      // preset that was never actually persisted, and it silently vanishes
-      // next time the list reloads from the server.
+      // Roll back so the sidebar never shows a preset that silently vanishes
+      // on the next list load.
       setPresetsOverride(null);
-      setSaveError(t('imageEditorModal.presets.saveFailed'));
+      setPresetError(failureMessage);
+      return false;
+    } finally {
+      presetBusyRef.current = false;
+      setPresetBusy(false);
     }
+  };
+
+  const saveAsPreset = async () => {
+    const name = normalizePresetName(savePresetName);
+    const layer = selectedLayer;
+    const canvas = canvasRef.current;
+    if (!name || !layer || !canvas || !imgLoaded) return;
+    // Never write the whole array from an unknown list: a failed or still
+    // loading GET would otherwise replace the saved watermarks with just this one.
+    if (presetsLoading || presetsQueryError) return;
+
+    const existing = findPresetByName(presets, name);
+    if (!existing && presets.length >= MAX_WATERMARK_PRESETS) {
+      setPresetError(t('imageEditorModal.presets.maxReached', { count: MAX_WATERMARK_PRESETS }));
+      return;
+    }
+    // A name already in the list is not silently overwritten: the first click
+    // turns the form into a Replace confirmation, the second one writes.
+    if (existing && replaceTarget?.id !== existing.id) {
+      setReplaceTarget(existing);
+      return;
+    }
+
+    const saved = layerToPreset({
+      id: existing?.id ?? crypto.randomUUID(),
+      name,
+      layer,
+      canvasHeight: canvas.height,
+    });
+    const updated = existing ? presets.map(p => (p.id === existing.id ? saved : p)) : [...presets, saved];
+    if (await persistPresets(updated, t('imageEditorModal.presets.saveFailed'))) {
+      setSavePresetName('');
+      setShowSavePreset(false);
+      setReplaceTarget(null);
+    }
+  };
+
+  const startRename = (preset: WatermarkPreset) => {
+    setRenamingId(preset.id);
+    setRenameDraft(preset.name);
+    setConfirmDeleteId(null);
+    setPresetError('');
+  };
+
+  const cancelRename = () => {
+    setRenamingId(null);
+    setRenameDraft('');
+  };
+
+  const commitRename = async () => {
+    const preset = presets.find(p => p.id === renamingId);
+    if (!preset) return;
+    const name = normalizePresetName(renameDraft);
+    if (!name) return;
+    if (presets.some(p => p.id !== preset.id && presetNameKey(p.name) === presetNameKey(name))) {
+      setPresetError(t('imageEditorModal.presets.nameTaken'));
+      return;
+    }
+    const updated = presets.map(p => (p.id === preset.id ? { ...p, name } : p));
+    if (await persistPresets(updated, t('imageEditorModal.presets.renameFailed'))) cancelRename();
+  };
+
+  /** Overwrite a saved watermark with the block currently selected on the picture. */
+  const updatePresetFromSelection = async () => {
+    const preset = selectedSourcePreset;
+    const layer = selectedLayer;
+    const canvas = canvasRef.current;
+    if (!preset || !layer || !canvas || !imgLoaded) return;
+    const updated = presets.map(p => (p.id === preset.id
+      ? layerToPreset({ id: p.id, name: p.name, layer, canvasHeight: canvas.height })
+      : p));
+    await persistPresets(updated, t('imageEditorModal.presets.updateFailed'));
   };
 
   const deletePreset = async (id: string) => {
     const updated = presets.filter(p => p.id !== id);
-    setPresetsOverride(updated);
-    try {
-      await saveWatermarkPresets(updated);
-      await queryClient.invalidateQueries({ queryKey: ['watermark-presets'] });
-      setPresetsOverride(null);
-    } catch {
-      setPresetsOverride(null);
-      setSaveError(t('imageEditorModal.presets.deleteFailed'));
+    if (await persistPresets(updated, t('imageEditorModal.presets.deleteFailed'))) {
+      setConfirmDeleteId(null);
     }
   };
 
@@ -1033,18 +1169,13 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
   };
 
   const adjRow = (key: keyof Adjustments, display: string) => (
-    <div key={key}>
-      <label className={`flex justify-between text-xs font-medium mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-        <span>{display}</span>
-        <span className={`tabular-nums ${adj[key] !== 0 ? (isDark ? 'text-slate-200' : 'text-slate-700') : (isDark ? 'text-slate-600' : 'text-slate-400')}`}>
-          {adj[key] > 0 ? `+${adj[key]}` : adj[key]}
-        </span>
-      </label>
-      <input type="range" min={-100} max={100} value={adj[key]}
-        onChange={e => setAdj(p => ({ ...p, [key]: +e.target.value }))}
-        className="w-full accent-accent-500"
-      />
-    </div>
+    <AdjustSlider
+      key={key}
+      label={display}
+      value={adj[key]}
+      isDark={isDark}
+      onCommit={v => setAdj(p => ({ ...p, [key]: v }))}
+    />
   );
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1116,6 +1247,128 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
               {/* ── TEXT ── */}
               {activeTool === 'text' && (
                 <>
+                  {/* Saved watermarks. Selecting one puts it back on the picture at its saved spot and size. */}
+                  <div className={`border-b pb-3 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                    <div className="mb-2">
+                      <span className={`text-[0.625rem] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                        {t('imageEditorModal.presets.watermarks')}
+                      </span>
+                    </div>
+
+                    {!selectedLayer && (
+                      <p className={`text-[0.625rem] mb-1 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                        {t('imageEditorModal.presets.selectTextHint')}
+                      </p>
+                    )}
+                    {presets.length >= MAX_WATERMARK_PRESETS && (
+                      <p className={`text-[0.625rem] mb-1 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                        {t('imageEditorModal.presets.maxReached', { count: MAX_WATERMARK_PRESETS })}
+                      </p>
+                    )}
+
+                    {presetError && !showSavePreset && (
+                      <p className="text-[0.625rem] text-red-400 mb-1" role="alert">{presetError}</p>
+                    )}
+
+                    {presetsLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-500 mx-auto" />
+                    ) : presetsQueryError ? (
+                      <p className="text-[0.625rem] text-red-400">{t('imageEditorModal.presets.loadFailed')}</p>
+                    ) : presets.length === 0 ? (
+                      <p className={`text-[0.625rem] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                        {t('imageEditorModal.presets.empty')}
+                      </p>
+                    ) : (
+                      <div className="space-y-1">
+                        {presets.map(p => (
+                          <div
+                            key={p.id}
+                            data-watermark-preset={p.id}
+                            className={`rounded-lg ${
+                              selectedLayer?.sourcePresetId === p.id
+                                ? isDark ? 'bg-accent-500/15' : 'bg-accent-300/60'
+                                : isDark ? 'bg-slate-800/60' : 'bg-slate-50'
+                            }`}
+                          >
+                            {renamingId === p.id ? (
+                              <div className="flex items-center gap-1 px-2 py-1">
+                                <input
+                                  value={renameDraft}
+                                  onChange={e => setRenameDraft(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') commitRename();
+                                    if (e.key === 'Escape') cancelRename();
+                                  }}
+                                  aria-label={t('imageEditorModal.presets.renameTitle')}
+                                  maxLength={MAX_WATERMARK_NAME}
+                                  className={`flex-1 min-w-0 px-2 py-1 rounded-lg text-xs border ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-slate-300 text-slate-700'}`}
+                                  autoFocus
+                                />
+                                <button onClick={commitRename} disabled={presetBusy} title={t('imageEditorModal.presets.renameSave')} aria-label={t('imageEditorModal.presets.renameSave')}
+                                  className={`p-1 rounded transition ${isDark ? 'hover:bg-slate-700 text-accent-400' : 'hover:bg-accent-50 text-accent-600'}`}>
+                                  <Check className="w-3 h-3" />
+                                </button>
+                                <button onClick={cancelRename} title={t('imageEditorModal.presets.cancel')} aria-label={t('imageEditorModal.presets.cancel')}
+                                  className={`p-1 rounded transition ${isDark ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ) : confirmDeleteId === p.id ? (
+                              <div className="px-2 py-1 space-y-1">
+                                <p className={`text-[0.625rem] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                  {t('imageEditorModal.presets.deleteConfirm', { name: p.name })}
+                                </p>
+                                <div className="flex gap-1">
+                                  <button onClick={() => deletePreset(p.id)} disabled={presetBusy} data-watermark-delete-confirm=""
+                                    className="flex-1 px-2 py-1 rounded-lg text-[0.625rem] font-medium bg-red-500 text-white hover:bg-red-600 disabled:opacity-40 transition">
+                                    {t('imageEditorModal.presets.deleteConfirmLabel')}
+                                  </button>
+                                  <button onClick={() => setConfirmDeleteId(null)}
+                                    className={`flex-1 px-2 py-1 rounded-lg text-[0.625rem] font-medium transition ${isDark ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                                    {t('imageEditorModal.presets.cancel')}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1 px-2 py-1.5">
+                                <button
+                                  onClick={() => applyPreset(p)}
+                                  disabled={!imgLoaded || presetBusy}
+                                  aria-label={p.name}
+                                  title={t('imageEditorModal.presets.applyTitle')}
+                                  className={`flex-1 min-w-0 text-left disabled:opacity-40 transition ${isDark ? 'text-slate-300' : 'text-slate-600'}`}
+                                >
+                                  <span className="block truncate text-xs">{p.name}</span>
+                                  <span className={`block truncate text-[0.625rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                                    {p.text.split('\n')[0]}
+                                  </span>
+                                </button>
+                                <button onClick={() => startRename(p)} title={t('imageEditorModal.presets.renameTitle')}
+                                  aria-label={`${t('imageEditorModal.presets.renameTitle')}: ${p.name}`}
+                                  className={`p-1 rounded transition ${isDark ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button onClick={() => { setConfirmDeleteId(p.id); setPresetError(''); }} title={t('imageEditorModal.presets.deleteTitle')}
+                                  aria-label={`${t('imageEditorModal.presets.deleteTitle')}: ${p.name}`}
+                                  className={`p-1 rounded transition text-red-400 ${isDark ? 'hover:bg-slate-700' : 'hover:bg-red-50'}`}>
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {selectedSourcePreset && (
+                      <button onClick={updatePresetFromSelection} disabled={presetBusy}
+                        className={`mt-2 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[0.625rem] font-medium transition disabled:opacity-40 ${isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                        <Save className="w-3 h-3" />
+                        {t('imageEditorModal.presets.updateNamed', { name: selectedSourcePreset.name })}
+                      </button>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-2 gap-1.5">
                     <button onClick={addText} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
                       <Plus className="w-3.5 h-3.5 opacity-60" />{t('imageEditorModal.textPanel.addText')}
@@ -1128,7 +1381,7 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
                     <div className="space-y-1">
                       <p className={`text-[0.625rem] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>{t('imageEditorModal.selectPanel.textLayers')}</p>
                       {textLayers.map(l => (
-                        <button key={l.id} onClick={() => { setSelectedId(l.id); loadLayerIntoSidebar(l); }}
+                        <button key={l.id} data-text-layer={l.id} onClick={() => { setSelectedId(l.id); loadLayerIntoSidebar(l); }}
                           className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition ${
                             l.id === selectedId
                               ? isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-300 text-accent-700'
@@ -1228,60 +1481,6 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
                       {t('imageEditorModal.textPanel.noSelection')}
                     </p>
                   )}
-
-                  {/* Watermark presets */}
-                  <div className={`border-t pt-3 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={`text-[0.625rem] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{t('imageEditorModal.presets.savedPresets')}</span>
-                      <button onClick={() => setShowSavePreset(s => !s)} title={t('imageEditorModal.presets.saveAsPresetTitle')}
-                        className={`p-1 rounded transition ${isDark ? 'hover:bg-slate-800 text-slate-500' : 'hover:bg-slate-100 text-slate-400'}`}>
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    {showSavePreset && (
-                      <div className="flex gap-1 mb-2">
-                        <input value={savePresetName} onChange={e => setSavePresetName(e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') saveAsPreset(); if (e.key === 'Escape') setShowSavePreset(false); }}
-                          placeholder={t('imageEditorModal.presets.namePlaceholder')}
-                          className={`flex-1 px-2 py-1 rounded-lg text-xs border ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200 placeholder-slate-600' : 'bg-white border-slate-300 text-slate-700 placeholder-slate-400'}`}
-                          autoFocus
-                        />
-                        <button onClick={saveAsPreset} disabled={!savePresetName.trim()}
-                          className="px-2 py-1 rounded-lg text-xs font-medium bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-40 transition">
-                          <Check className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-
-                    {presetsLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin text-slate-500 mx-auto" />
-                    ) : presetsQueryError ? (
-                      <p className="text-[0.625rem] text-red-400">
-                        {t('imageEditorModal.presets.loadFailed')}
-                      </p>
-                    ) : presets.length === 0 ? (
-                      <p className={`text-[0.625rem] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                        {t('imageEditorModal.presets.empty')}
-                      </p>
-                    ) : (
-                      <div className="space-y-1">
-                        {presets.map(p => (
-                          <div key={p.id} className={`flex items-center gap-1 px-2 py-1.5 rounded-lg ${isDark ? 'bg-slate-800/60' : 'bg-slate-50'}`}>
-                            <span className={`flex-1 text-xs truncate ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{p.name}</span>
-                            <button onClick={() => applyPreset(p)} title={t('imageEditorModal.presets.applyTitle')}
-                              className={`p-1 rounded transition ${isDark ? 'hover:bg-slate-700 text-accent-400' : 'hover:bg-accent-50 text-accent-600'}`}>
-                              <BookmarkCheck className="w-3 h-3" />
-                            </button>
-                            <button onClick={() => deletePreset(p.id)} title={t('imageEditorModal.presets.deleteTitle')}
-                              className={`p-1 rounded transition text-red-400 ${isDark ? 'hover:bg-slate-700' : 'hover:bg-red-50'}`}>
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
                 </>
               )}
 
@@ -1415,6 +1614,77 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
                   )}
                 </div>
               )}
+              {/* Saving the watermark lives beside the picture Save, always visible while the
+                  text controls scroll. The icon-only version at the top of the Text panel was
+                  easy to miss, and the big Save button below is the picture. */}
+              {textLayers.length > 0 && (
+                <div className={`rounded-lg border p-2 space-y-1.5 ${isDark ? 'border-slate-800 bg-slate-950/50' : 'border-slate-200 bg-slate-50'}`}>
+                  {showSavePreset ? (
+                    <>
+                      <input
+                        value={savePresetName}
+                        onChange={e => {
+                          setSavePresetName(e.target.value);
+                          setReplaceTarget(null);
+                          setPresetError('');
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') saveAsPreset();
+                          if (e.key === 'Escape') {
+                            setShowSavePreset(false);
+                            setSavePresetName('');
+                            setReplaceTarget(null);
+                          }
+                        }}
+                        placeholder={t('imageEditorModal.presets.namePlaceholder')}
+                        aria-label={t('imageEditorModal.presets.namePlaceholder')}
+                        maxLength={MAX_WATERMARK_NAME}
+                        className={`w-full px-2 py-1.5 rounded-lg text-xs border ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200 placeholder-slate-600' : 'bg-white border-slate-300 text-slate-700 placeholder-slate-400'}`}
+                        autoFocus
+                      />
+                      <div className="flex gap-1">
+                        <button onClick={saveAsPreset} data-watermark-save-submit=""
+                          disabled={!normalizePresetName(savePresetName) || !selectedLayer || presetBusy || presetsLoading || presetsQueryError}
+                          className="flex-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-40 disabled:cursor-not-allowed transition">
+                          {replaceTarget ? t('imageEditorModal.presets.replaceLabel') : t('imageEditorModal.presets.saveSubmit')}
+                        </button>
+                        <button
+                          onClick={() => { setShowSavePreset(false); setSavePresetName(''); setReplaceTarget(null); }}
+                          title={t('imageEditorModal.presets.cancel')}
+                          aria-label={t('imageEditorModal.presets.cancel')}
+                          className={`px-2 py-1.5 rounded-lg transition ${isDark ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {replaceTarget && (
+                        <p className="text-[0.625rem] text-amber-400">
+                          {t('imageEditorModal.presets.replaceWarning', { name: replaceTarget.name })}
+                        </p>
+                      )}
+                      {presetError && <p className="text-[0.625rem] text-red-400" role="alert">{presetError}</p>}
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setShowSavePreset(true);
+                        setSavePresetName('');
+                        setReplaceTarget(null);
+                        setPresetError('');
+                      }}
+                      data-watermark-save-toggle=""
+                      disabled={!selectedLayer || presetBusy || presetsLoading || presetsQueryError}
+                      title={t('imageEditorModal.presets.saveCurrent')}
+                      className={`w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed ${isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                      <Plus className="w-3.5 h-3.5" />
+                      {t('imageEditorModal.presets.saveCurrent')}
+                    </button>
+                  )}
+                  {presetError && !showSavePreset && (
+                    <p className="text-[0.625rem] text-red-400" role="alert">{presetError}</p>
+                  )}
+                </div>
+              )}
+
               {saveError && <p className="text-xs text-red-400">{saveError}</p>}
 
               {overwriteTarget && (

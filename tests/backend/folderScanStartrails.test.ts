@@ -17,6 +17,10 @@ const TEST_DATA_DIR = vi.hoisted(() => {
   return dir;
 });
 
+// DATE-OBS is UTC and becomes a night date in the site's zone, so pin the zone: left to the machine's
+// own, 22:15 UTC is the next morning in Auckland and the dates below shift a day.
+vi.mock('../../server/lib/siteTimeZone', () => ({ activeSiteTimeZone: () => 'America/Chicago' }));
+
 import { scanImportFolder } from '../../server/lib/library/folderScan';
 import { commitFolderImport } from '../../server/lib/library/import';
 import { getLocalSessions } from '../../server/lib/library/observations';
@@ -77,7 +81,7 @@ describe('STARTRAILS folding into a synthetic object', () => {
 
   it('scan folds STARTRAILS capture folders into one object and stops reporting it as excluded', () => {
     const root = makeStartrailsTree();
-    const result = scanImportFolder(root, {});
+    const result = scanImportFolder(root, {}, undefined, 'America/Chicago');
 
     expect(result.objects.map(o => o.folderName)).toEqual([STARTRAILS_TARGET_NAME]);
     expect(result.excludedFolders).not.toContain('STARTRAILS');
@@ -134,7 +138,7 @@ describe('STARTRAILS folding into a synthetic object', () => {
   it('an empty STARTRAILS folder (no capture subfolders) stays excluded, unfolded', () => {
     const root = tmpDir('src-startrails-empty-');
     fs.mkdirSync(path.join(root, 'STARTRAILS'));
-    const result = scanImportFolder(root, {});
+    const result = scanImportFolder(root, {}, undefined, 'America/Chicago');
 
     expect(result.objects.map(o => o.folderName)).not.toContain(STARTRAILS_TARGET_NAME);
     expect(result.excludedFolders).toContain('STARTRAILS');

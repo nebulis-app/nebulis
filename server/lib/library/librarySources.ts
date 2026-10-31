@@ -13,7 +13,8 @@ import { getCatalogEntry } from '../../data/catalog.js';
 import { resolveCatalogMeta, stmts as objectStmts } from './objects.js';
 import { runPostImport } from './postImport.js';
 import { recordLinkedLibraryFiles, markLinkedFilesMissing, countLibraryFilesForObject, roleForFile, getLibraryFilesForObject, getLibraryFileRow, deleteLibraryFileRow, sessionDateForRow, type LibraryFileRow, type RecordLinkedFileInput } from './libraryFiles.js';
-import { walkSource } from './sourceWalk.js';
+import { walkSource, createYielder } from './sourceWalk.js';
+import { withDeadline } from '../deadline.js';
 import { resolveLibraryFile } from './fileResolver.js';
 import { attributeFiles, type AttributionOverride } from './treeAttribution.js';
 import { getDesignationRedirect } from './designationRedirects.js';
@@ -142,9 +143,8 @@ function buildLinkedInput(
   walkedFile: { absPath: string; size: number; mtimeMs: number },
   settings: Record<string, unknown>,
 ): RecordLinkedFileInput | null {
-  let stat: fs.Stats;
-  try { stat = fs.statSync(walkedFile.absPath); } catch { return null; }
-  const derived = deriveFileDate(walkedFile.absPath, relPath, stat, { useMtimeFallback: settings.importMtimeFallback !== false, timeZone: activeSiteTimeZone() });
+  // The walk already read the mtime; statting every file again here was a synchronous call per file on the event loop.
+  const derived = deriveFileDate(walkedFile.absPath, relPath, { mtime: new Date(walkedFile.mtimeMs) }, { useMtimeFallback: settings.importMtimeFallback !== false, timeZone: activeSiteTimeZone() });
   const night = derived.date ? observingNightDate(derived.date, derived.time) : null;
   const fileName = relPath.slice(relPath.lastIndexOf('/') + 1);
   return {
@@ -536,8 +536,8 @@ function dirAndAncestors(dir: string): string[] {
  * settings `folderScan.ts`'s copy-import scan uses, so the two agree on what
  * "real data" means.
  */
-export function scanSource(rootPath: string, settings: Record<string, unknown>): ScanSourceResult {
-  const walked = walkSource(rootPath, settings);
+export async function scanSource(rootPath: string, settings: Record<string, unknown>): Promise<ScanSourceResult> {
+  const walked = await walkSource(rootPath, settings);
   const attribution = attributeFiles(walked.files.map(f => f.relPath));
   const byRelPath = new Map(walked.files.map(f => [f.relPath, f]));
 
@@ -561,7 +561,9 @@ export function scanSource(rootPath: string, settings: Record<string, unknown>):
   const unresolvedByDir = new Map<string, { fileCount: number; bytes: number }>();
   const disagreements: ScanSourceResult['disagreements'] = [];
 
+  const yielder = createYielder();
   for (const file of attribution.files) {
+    await yielder.tick();
     const walkedFile = byRelPath.get(file.relPath);
     if (!walkedFile || file.excluded) continue;
 
@@ -587,9 +589,7 @@ export function scanSource(rootPath: string, settings: Record<string, unknown>):
     obj.files++; obj.bytes += walkedFile.size;
     obj.dirs.add(fileDir);
 
-    let stat: fs.Stats;
-    try { stat = fs.statSync(walkedFile.absPath); } catch { obj.unsorted++; continue; }
-    const derived = deriveFileDate(walkedFile.absPath, file.relPath, stat, { useMtimeFallback: settings.importMtimeFallback !== false, timeZone: activeSiteTimeZone() });
+    const derived = deriveFileDate(walkedFile.absPath, file.relPath, { mtime: new Date(walkedFile.mtimeMs) }, { useMtimeFallback: settings.importMtimeFallback !== false, timeZone: activeSiteTimeZone() });
     if (!derived.date) { obj.unsorted++; continue; }
     const night = observingNightDate(derived.date, derived.time);
     const existing = obj.sessions.get(night);
@@ -687,17 +687,19 @@ export interface CommitSourceResult {
  * than trusting a client-supplied file list, the same reasoning
  * `commitFolderImport` documents for the copy wizard.
  */
-export function commitSource(rootPath: string, settings: Record<string, unknown>, options: CommitSourceOptions): CommitSourceResult {
+export async function commitSource(rootPath: string, settings: Record<string, unknown>, options: CommitSourceOptions): Promise<CommitSourceResult> {
   assertLinkableRoot(rootPath);
   const sourceId = `src_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
-  const walked = walkSource(rootPath, settings);
+  const walked = await walkSource(rootPath, settings);
   const attribution = attributeFiles(walked.files.map(f => f.relPath), { overrides: options.overrides });
   applyDesignationRedirects(attribution);
   const byRelPath = new Map(walked.files.map(f => [f.relPath, f]));
 
   const inputsByObject = new Map<string, RecordLinkedFileInput[]>();
   let alreadyInLibrary = 0;
+  const yielder = createYielder();
   for (const file of attribution.files) {
+    await yielder.tick();
     if (file.excluded || !file.objectId) continue;
     const walkedFile = byRelPath.get(file.relPath);
     if (!walkedFile) continue;
@@ -954,7 +956,7 @@ interface StoredLinkedRow {
  * itself is unreadable the source is reported offline and no row is touched.
  * Nothing on the user's disk is ever written.
  */
-export function rescanSource(id: string, baseSettings: Record<string, unknown>): RescanSourceResult {
+export async function rescanSource(id: string, baseSettings: Record<string, unknown>): Promise<RescanSourceResult> {
   const source = getLibrarySource(id);
   if (!source) throw new LinkSourceError('SOURCE_NOT_FOUND', 'That linked folder no longer exists.');
   // Read the tree with the options the link used, not whatever the app-wide
@@ -976,10 +978,10 @@ export function rescanSource(id: string, baseSettings: Record<string, unknown>):
   };
 
   let rootIsDir = false;
-  try { rootIsDir = fs.statSync(source.rootPath).isDirectory(); } catch { /* offline */ }
+  try { rootIsDir = (await withDeadline(fs.promises.stat(source.rootPath), 15_000, 'stat')).isDirectory(); } catch { /* offline, or a mount that stopped answering */ }
   if (!rootIsDir) return goOffline();
 
-  const walked = walkSource(source.rootPath, settings);
+  const walked = await walkSource(source.rootPath, settings);
   result.truncated = walked.truncated;
   result.depthLimited = walked.depthLimited;
 
@@ -1006,7 +1008,9 @@ export function rescanSource(id: string, baseSettings: Record<string, unknown>):
   const touchedObjects = new Set<string>();
   const reassigned: Array<{ objectId: string; captureDate: string | null }> = [];
 
+  const yielder = createYielder();
   for (const file of attribution.files) {
+    await yielder.tick();
     if (file.excluded || !file.objectId) continue;
     const walkedFile = byRelPath.get(file.relPath);
     if (!walkedFile) continue;

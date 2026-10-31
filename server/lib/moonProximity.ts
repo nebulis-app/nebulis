@@ -64,7 +64,7 @@ export function moonVerdictFor(minSeparation: number, threshold: number): MoonVe
   return minSeparation >= threshold - 15 ? 'caution' : 'warning';
 }
 
-function separationFromAltAz(alt1: number, az1: number, alt2: number, az2: number): number {
+export function separationFromAltAz(alt1: number, az1: number, alt2: number, az2: number): number {
   const DEG = Math.PI / 180;
   const sinA = Math.sin(alt1 * DEG) * Math.sin(alt2 * DEG);
   const cosA = Math.cos(alt1 * DEG) * Math.cos(alt2 * DEG) * Math.cos((az1 - az2) * DEG);
@@ -79,7 +79,7 @@ function separationFromAltAz(alt1: number, az1: number, alt2: number, az2: numbe
  * includes atmospheric refraction (see suncalc's astroRefraction), so this
  * matches near-horizon behavior exactly for every client.
  */
-function moonAltAz(when: Date, lat: number, lon: number): { alt: number; az: number } {
+export function moonAltAz(when: Date, lat: number, lon: number): { alt: number; az: number } {
   const m = SunCalc.getMoonPosition(when, lat, lon);
   const altDeg = (m.altitude * 180) / Math.PI;
   const azDeg = (((m.azimuth * 180) / Math.PI) + 180 + 360) % 360;

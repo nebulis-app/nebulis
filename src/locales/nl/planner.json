@@ -142,6 +142,7 @@
     "viewLabel": "Weergave",
     "viewButton": "Weergave",
     "viewShow": "Tonen",
+    "viewReset": "Herstellen",
     "scopeAll": "Alle doelen",
     "scopeAllHint": "Alles wat deze nacht zichtbaar is",
     "scopeWishlistHint": "Alleen doelen met een ster",
@@ -221,7 +222,10 @@
     "shareTitle": "Deel de planning voor deze nacht als tekst of afbeelding",
     "nothingToShare": "Er is nog niets gepland om te delen",
     "wishlist": "Verlanglijst",
-    "wishlistTitle": "Bekijk en beheer alles op je verlanglijst"
+    "wishlistTitle": "Bekijk en beheer alles op je verlanglijst",
+    "run": "Uitvoeren",
+    "runTitle": "Het plan van deze nacht op een telescoop uitvoeren",
+    "nothingToRun": "Nog niets gepland om uit te voeren"
   },
   "wishlistPanel": {
     "title": "Verlanglijst",
@@ -471,5 +475,82 @@
     "use": "{{filter}} gebruiken",
     "inUse": "In gebruik",
     "ruledOut": "Maan te dichtbij voor breedband: {{filters}}"
+  },
+  "planRun": {
+    "title": "Dit plan op een telescoop uitvoeren",
+    "close": "Sluiten",
+    "loading": "Telescopen laden...",
+    "noSeestar": "Voeg in Instellingen een Seestar toe om er een plan op uit te voeren.",
+    "telescope": "Telescoop",
+    "blocks": "Blokken",
+    "noBlocks": "Er is niets gepland voor deze nacht.",
+    "options": "Opties",
+    "centre": "Op elk doel centreren",
+    "centreHelp": "Maakt na elke go-to een korte opname, lost die op en corrigeert de richting. Vereist de plate solver en het filterwiel op IR of LP.",
+    "park": "Parkeren als het plan klaar is",
+    "parkHelp": "Zet de telescoop na het laatste blok in zijn parkeerpositie.",
+    "checks": "Controles",
+    "checking": "Telescoop en plan worden gecontroleerd...",
+    "checkFailed": "De controle kon niet draaien: {{message}}",
+    "allClear": "Alles in orde.",
+    "limit": "Dit richt de telescoop op het doel van elk blok op de starttijd en houdt hem volgend tot het blok eindigt. Het start niet de eigen opname van de telescoop: start die in de Seestar-app.",
+    "adminOnly": "Alleen een beheerder kan een run starten.",
+    "startFailed": "Starten lukt niet: {{message}}",
+    "cancel": "Annuleren",
+    "start": "Plan starten",
+    "starting": "Starten...",
+    "check": {
+      "unreachable": "De telescoop is niet bereikbaar. Controleer of hij aan staat en op het netwerk zit.",
+      "notConnected": "De telescoop is niet verbonden. Open zijn besturingspagina en druk op Verbinden.",
+      "nothingToRun": "Alle blokken in dit plan zijn al afgelopen.",
+      "parked": "De montering is geparkeerd. De run haalt hem van de parkeerstand.",
+      "noCamera": "De camera is niet verbonden, dus centreren kan niet. De run gaat alleen naar elk doel.",
+      "noSolver": "De plate solver is niet geïnstalleerd, dus centreren kan niet. De run gaat alleen naar elk doel.",
+      "darkFilter": "Het filterwiel staat op Dark, dus centreren kan niet. Kies IR of LP.",
+      "scopeImaging": "De telescoop neemt op met zijn eigen app. Het plan uitvoeren beweegt hem weg van dat doel.",
+      "blockPast": "{{object}} is al afgelopen en wordt overgeslagen.",
+      "blockLow": "{{object}} zakt tijdens zijn blok naar {{lowestAlt}}°, onder je minimum van {{minAlt}}°.",
+      "blockMoon": "De Maan ({{illumination}}% verlicht) komt tot {{separation}}° van {{object}}.",
+      "overlap": "{{object}} loopt door in het volgende blok. Het volgende doel neemt over op zijn starttijd.",
+      "clouds": "De voorspelling toont ongeveer {{cloud}}% bewolking over dit plan.",
+      "noSite": "De locatie heeft geen positie, dus de hoogte- en maancontroles zijn overgeslagen."
+    },
+    "bar": {
+      "label": "Plan loopt op {{telescope}}",
+      "state": {
+        "running": "Bezig",
+        "paused": "Gepauzeerd",
+        "completed": "Klaar",
+        "stopped": "Gestopt",
+        "failed": "Gestopt door een probleem"
+      },
+      "position": "{{index}} van {{total}}",
+      "phase": {
+        "waiting": "Wacht op de start van {{object}}",
+        "slewing": "Draait naar {{object}}",
+        "centring": "Centreert {{object}}",
+        "holding": "Op {{object}}"
+      },
+      "startsIn": "start over {{time}}",
+      "timeLeft": "nog {{time}}",
+      "finished": "Het plan is klaar.",
+      "failure": {
+        "telescope": "Twee blokken achter elkaar konden de telescoop niet bewegen.",
+        "park": "Het plan is klaar, maar de telescoop kon niet worden geparkeerd."
+      },
+      "blocks": "Blokken",
+      "note": {
+        "past": "Al voorbij",
+        "skipped": "Overgeslagen",
+        "missed": "Gemist",
+        "centringFailed": "Gericht, niet gecentreerd",
+        "error": "Telescoop kon niet worden bewogen"
+      },
+      "pause": "Pauzeren",
+      "resume": "Hervatten",
+      "skip": "Overslaan",
+      "stop": "Stoppen"
+    },
+    "timeRange": "{{start}} tot {{end}}"
   }
 }

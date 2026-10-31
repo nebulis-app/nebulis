@@ -410,6 +410,16 @@ export function getGalleryImage(objectId: string): string | null {
 }
 
 /** Set (or clear) the custom gallery image for an object (auto-assigned, not user-chosen). */
+/** Fill an empty, auto-chosen cover. Used by reads; never replaces a cover that is already set or one the user chose. */
+export function setAutoGalleryImage(objectId: string, imagePath: string): void {
+  stmts.setAutoGalleryImage.run(imagePath, objectId);
+}
+
+/** Clear an auto-chosen cover. Used by reads; never clears a cover the user chose. */
+export function clearAutoGalleryImage(objectId: string): void {
+  stmts.clearAutoGalleryImage.run(objectId);
+}
+
 export function setGalleryImage(objectId: string, imagePath: string | null): void {
   stmts.setGalleryImage.run(imagePath, objectId);
 }
@@ -602,7 +612,7 @@ export async function resolveObjectImagePath(
     // (a cached list, a fresh import) finds the row empty. Pick one here too rather than answering 404.
     const fallback = findFallbackObservationImage(objectId);
     if (fallback) {
-      stmts.setGalleryImage.run(fallback, objectId);
+      stmts.setAutoGalleryImage.run(fallback, objectId);
       const abs = safeGalleryImagePath(fallback);
       if (abs && fs.existsSync(abs)) return abs;
     }

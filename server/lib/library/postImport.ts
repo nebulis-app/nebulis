@@ -4,7 +4,7 @@
  * link and rescan) ends by calling `runPostImport`, so a file gets the same
  * follow-up work no matter how it arrived:
  *
- *   foreground (the import waits for these)
+ *   foreground (the import waits for these, each with a cap)
  *     1. catalog enrichment      Wikipedia / SIMBAD, per touched object
  *     2. session weather         queued, never awaited (FC-3)
  *     3. gallery thumbnails      capped at THUMB_PREWARM_MAX_WAIT_MS
@@ -52,7 +52,7 @@ export interface PostImportOptions {
 }
 
 export interface PostImportHandle {
-  /** Resolves once enrichment, weather and (capped) gallery thumbnails are done. Never rejects. */
+  /** Resolves once enrichment (capped at ENRICH_MAX_WAIT_MS), weather and (capped) gallery thumbnails are done. Never rejects. */
   foreground: Promise<void>;
   /** Resolves once the background stages are done too. Never rejects. */
   done: Promise<void>;
@@ -64,6 +64,12 @@ export interface PostImportHandle {
  *  dialog at 100% for a minute or more. The workers keep running after this and
  *  anything unfinished is generated on first view. */
 export const THUMB_PREWARM_MAX_WAIT_MS = 10_000;
+
+/** How long an import waits for catalog enrichment before it reports done and releases the library lock. Enrichment
+ *  calls Wikipedia and SIMBAD per object, and an offline or slow service used to keep every other library operation
+ *  (archive, linked scan, repair, a second telescope) answering 409 until the last timeout expired. The rest carries on
+ *  in the background, so the thumbnails still follow it and nothing is skipped. */
+export const ENRICH_MAX_WAIT_MS = 30_000;
 
 /** Resolve when `work` settles or `ms` passes, whichever is first. Never rejects:
  *  the work's own errors are handled inside it, and the caller only wants to stop
@@ -100,7 +106,7 @@ export function runPostImport(opts: PostImportOptions): PostImportHandle {
   const touched = [...(opts.touched ?? [])];
   const withNewFiles = sweep ? undefined : [...(opts.withNewFiles ?? touched)];
 
-  const foreground = (async () => {
+  const enrichment = (async () => {
     if (sweep) return;
     for (const objectId of touched) {
       await stage(reason, `enrich ${objectId}`, () => enrichObjectData(objectId));
@@ -108,18 +114,23 @@ export function runPostImport(opts: PostImportOptions): PostImportHandle {
       // add minutes to import completion (FC-3).
       await stage(reason, `weather ${objectId}`, async () => enqueueSessionWeatherBackfill(objectId));
     }
-    if (withNewFiles && withNewFiles.length > 0) {
-      await waitUpTo(
-        stage(reason, 'gallery-thumbnails', () => warmObjectThumbnails(withNewFiles, opts.onThumbnailProgress)),
-        THUMB_PREWARM_MAX_WAIT_MS,
-      );
-    }
+  })();
+
+  // Thumbnails follow enrichment because a target with no local image needs the coordinates it fetches.
+  const thumbnails = enrichment.then(async () => {
+    if (sweep || !withNewFiles || withNewFiles.length === 0) return;
+    await stage(reason, 'gallery-thumbnails', () => warmObjectThumbnails(withNewFiles, opts.onThumbnailProgress));
+  });
+
+  const foreground = (async () => {
+    await waitUpTo(enrichment, ENRICH_MAX_WAIT_MS);
+    if (withNewFiles && withNewFiles.length > 0) await waitUpTo(thumbnails, THUMB_PREWARM_MAX_WAIT_MS);
   })();
 
   // A targeted run with nothing new has no background work; a sweep always does.
   const hasBackgroundWork = sweep || (withNewFiles?.length ?? 0) > 0;
   const done = hasBackgroundWork
-    ? foreground.then(() => {
+    ? Promise.all([foreground, thumbnails]).then(() => {
       const run = backgroundTail.then(async () => {
         await stage(reason, 'session-thumbnails', () => prewarmSessionThumbnails(reason));
         await stage(reason, 'sub-frame-headers', async () => {

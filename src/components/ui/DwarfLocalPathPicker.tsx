@@ -33,7 +33,8 @@ export function DwarfLocalPathPicker({
   const mounts = useMemo(() => data?.mounts ?? [], [data?.mounts]);
 
   useEffect(() => {
-    if (!localPath && mounts.length > 0) {
+    // One mount is no guess; with several, the person picks.
+    if (!localPath && mounts.length === 1) {
       setLocalPath(mounts[0].path);
     }
   }, [mounts, localPath, setLocalPath]);

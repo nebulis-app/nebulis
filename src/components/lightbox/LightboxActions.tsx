@@ -12,7 +12,8 @@ interface Props {
   onFitsHeader?: () => void;
   onEdit?: () => void;
   favorite?: { isFavorite: boolean; onToggle: () => void };
-  share?: { busy: boolean; onShare: () => void };
+  /** `onWarm` runs when the pointer or focus reaches the button, so the share can have its picture ready at the click. */
+  share?: { busy: boolean; onShare: () => void; onWarm?: () => void };
   download: { href: string; fileName: string; onClick: (e: React.MouseEvent) => void };
   setAsGallery?: { busy: boolean; onClick: () => void };
   remove?: { busy: boolean; onClick: () => void };
@@ -80,7 +81,7 @@ export function LightboxActions({
       )}
 
       {share && (
-        <button type="button" onClick={share.onShare} disabled={share.busy} title={t('imageViewer.share')} aria-label={t('imageViewer.share')} className={LB_ICON_BTN}>
+        <button type="button" onClick={share.onShare} onPointerEnter={share.onWarm} onFocus={share.onWarm} onTouchStart={share.onWarm} disabled={share.busy} title={t('imageViewer.share')} aria-label={t('imageViewer.share')} className={LB_ICON_BTN}>
           {share.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
         </button>
       )}

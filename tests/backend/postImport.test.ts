@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const calls: string[] = [];
+let enrichGate: Promise<void> | null = null;
 const fail = new Set<string>();
 
 vi.mock('../../server/lib/library/objects.js', () => ({
   enrichObjectData: vi.fn(async (id: string) => {
     calls.push(`enrich:${id}`);
+    if (enrichGate) await enrichGate;
     if (fail.has('enrich')) throw new Error('boom');
   }),
 }));
@@ -29,9 +31,9 @@ vi.mock('../../server/lib/library/integration.js', () => ({
   }),
 }));
 
-import { runPostImport, waitUpTo } from '../../server/lib/library/postImport';
+import { runPostImport, waitUpTo, ENRICH_MAX_WAIT_MS } from '../../server/lib/library/postImport';
 
-beforeEach(() => { calls.length = 0; fail.clear(); });
+beforeEach(() => { calls.length = 0; fail.clear(); enrichGate = null; });
 
 describe('runPostImport', () => {
   it('runs every stage in order for a targeted run', async () => {
@@ -81,6 +83,33 @@ describe('runPostImport', () => {
     const progress: unknown[] = [];
     await runPostImport({ reason: 'telescope-import', touched: ['M31'], onThumbnailProgress: p => progress.push(p) }).foreground;
     expect(progress).toEqual([{ done: 1, total: 1 }]);
+  });
+
+  it('a hung enrichment stops holding the foreground after the cap, and the rest still runs afterwards', async () => {
+    vi.useFakeTimers();
+    try {
+      let release!: () => void;
+      enrichGate = new Promise<void>(resolve => { release = resolve; });
+      const h = runPostImport({ reason: 'telescope-import', touched: ['M31'], withNewFiles: ['M31'] });
+      let foregroundDone = false;
+      void h.foreground.then(() => { foregroundDone = true; });
+
+      await vi.advanceTimersByTimeAsync(ENRICH_MAX_WAIT_MS - 1);
+      expect(foregroundDone).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      // Thumbnails are waiting on enrichment, so the import still reports done within their own cap.
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(foregroundDone).toBe(true);
+      expect(calls).not.toContain('gallery:M31');
+
+      release();
+      await vi.advanceTimersByTimeAsync(0);
+      await h.done;
+      expect(calls).toContain('gallery:M31');
+      expect(calls).toContain('session:telescope-import');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('serializes the background stages of overlapping runs', async () => {

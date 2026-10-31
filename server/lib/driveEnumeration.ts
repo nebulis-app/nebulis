@@ -14,11 +14,13 @@
  * unlike `Get-PSDrive`. See the dwarfMounts header for the NSSM rationale.
  */
 import fs from 'fs/promises';
+import { constants as fsConstants } from 'fs';
 import path from 'path';
 import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { debugLog } from './debugLogger.js';
+import { identityRootOf } from './deviceIdentity.js';
 import db from './db.js';
 
 const execFileAsync = promisify(execFile);
@@ -47,6 +49,15 @@ export interface DetectedDrive {
   alreadyKnownProfileId: string | null;
   /** Profile name (when known), for the "Already added as <name>" pill. */
   alreadyKnownProfileName: string | null;
+  /** Size of the volume, in bytes. Both 0 when it cannot be read. */
+  totalBytes: number;
+  freeBytes: number;
+  /** Whether Nebulis can write here. A drive it cannot write to cannot be marked with a device ID. */
+  writable: boolean;
+  /** A Seestar volume only: how many object folders `MyWorks/` holds, and when the newest one changed (ISO). Lets
+   *  someone with two telescopes plugged in tell the drives apart before the first one is marked. */
+  objectFolders?: number;
+  newestActivity?: string | null;
 }
 
 const SEESTAR_HALLMARK_DIR = 'MyWorks';
@@ -65,7 +76,13 @@ const profileByDeviceIdStmt = db.prepare<[string], { id: string; name: string }>
   'SELECT id, name FROM telescopeProfiles WHERE deviceId = ?',
 );
 
-async function readDeviceIdAtRoot(root: string): Promise<string | null> {
+/** The id on the drive a telescope's path points at, wherever in it the file sits (see `identityRootOf`). */
+export async function readDeviceIdNear(localPath: string): Promise<string | null> {
+  const home = identityRootOf(localPath);
+  return (await readDeviceIdAtRoot(home)) ?? (home !== localPath ? await readDeviceIdAtRoot(localPath) : null);
+}
+
+export async function readDeviceIdAtRoot(root: string): Promise<string | null> {
   // Best-effort. No writes. Caps the read at 8 KB to avoid pulling in
   // anything large that happens to be named .nebulis.dat.
   try {
@@ -85,6 +102,37 @@ async function readDeviceIdAtRoot(root: string): Promise<string | null> {
     }
   } catch {
     return null;
+  }
+}
+
+async function spaceOf(root: string): Promise<{ totalBytes: number; freeBytes: number }> {
+  try {
+    const st = await fs.statfs(root);
+    return { totalBytes: Number(st.bsize) * Number(st.blocks), freeBytes: Number(st.bsize) * Number(st.bavail) };
+  } catch {
+    return { totalBytes: 0, freeBytes: 0 };
+  }
+}
+
+/** Cap on the object folders looked at, so a drive full of targets is still a quick scan. */
+const PEEK_LIMIT = 300;
+
+async function peekSeestar(root: string): Promise<{ objectFolders: number; newestActivity: string | null }> {
+  try {
+    const entries = await fs.readdir(path.join(root, SEESTAR_HALLMARK_DIR), { withFileTypes: true });
+    const folders = entries.filter(e => e.isDirectory() && !e.name.startsWith('.'));
+    let newest = 0;
+    for (const f of folders.slice(0, PEEK_LIMIT)) {
+      try {
+        const st = await fs.stat(path.join(root, SEESTAR_HALLMARK_DIR, f.name));
+        if (st.mtimeMs > newest) newest = st.mtimeMs;
+      } catch {
+        // A folder that vanished mid-scan does not change the picture.
+      }
+    }
+    return { objectFolders: folders.length, newestActivity: newest > 0 ? new Date(newest).toISOString() : null };
+  } catch {
+    return { objectFolders: 0, newestActivity: null };
   }
 }
 
@@ -145,7 +193,9 @@ async function inspectRoot(root: string): Promise<DetectedDrive | undefined> {
     }
   }
 
-  const alreadyKnownDeviceId = await readDeviceIdAtRoot(root);
+  // The ID sits where the transport's path points: the volume root, or the `ASIAir/` folder inside it.
+  const alreadyKnownDeviceId = (await readDeviceIdAtRoot(root))
+    ?? (asiairSubPath ? await readDeviceIdAtRoot(path.join(root, asiairSubPath)) : null);
   let alreadyKnownProfileId: string | null = null;
   let alreadyKnownProfileName: string | null = null;
   if (alreadyKnownDeviceId) {
@@ -155,6 +205,10 @@ async function inspectRoot(root: string): Promise<DetectedDrive | undefined> {
       alreadyKnownProfileName = row.name;
     }
   }
+
+  const space = await spaceOf(root);
+  const writable = await fs.access(root, fsConstants.W_OK).then(() => true, () => false);
+  const peek = looksLikeSeestar ? await peekSeestar(root) : undefined;
 
   return {
     mountPath: root,
@@ -167,12 +221,28 @@ async function inspectRoot(root: string): Promise<DetectedDrive | undefined> {
     alreadyKnownDeviceId,
     alreadyKnownProfileId,
     alreadyKnownProfileName,
+    ...space,
+    writable,
+    ...(peek ?? {}),
   };
+}
+
+/** How long one volume gets to answer. A dead network mount can block a directory read for good, and must not take the whole list with it. */
+const INSPECT_TIMEOUT_MS = 8_000;
+
+async function inspectWithin(root: string): Promise<DetectedDrive | undefined> {
+  let timer: NodeJS.Timeout | undefined;
+  const slow = new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), INSPECT_TIMEOUT_MS); timer.unref(); });
+  try {
+    return await Promise.race([inspectRoot(root), slow]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function detectMacOS(): Promise<DetectedDrive[]> {
   const volumes = await fs.readdir('/Volumes').catch(() => []);
-  const results = await Promise.all(volumes.map(v => inspectRoot(path.join('/Volumes', v))));
+  const results = await Promise.all(volumes.map(v => inspectWithin(path.join('/Volumes', v))));
   return results.filter((d): d is DetectedDrive => d !== undefined);
 }
 
@@ -183,7 +253,16 @@ async function detectLinux(): Promise<DetectedDrive[]> {
     const entries = await fs.readdir(root).catch(() => []);
     candidates.push(...entries.map(e => path.join(root, e)));
   }
-  const results = await Promise.all(candidates.map(inspectRoot));
+  // `/media` and `/run/media` can be one directory behind a link; one drive must not be listed twice.
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const c of candidates) {
+    const real = await fs.realpath(c).catch(() => c);
+    if (seen.has(real)) continue;
+    seen.add(real);
+    unique.push(c);
+  }
+  const results = await Promise.all(unique.map(inspectWithin));
   return results.filter((d): d is DetectedDrive => d !== undefined);
 }
 
@@ -206,7 +285,7 @@ async function detectWindows(): Promise<DetectedDrive[]> {
   if (drives.length === 0) {
     drives = 'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => `${letter}:\\`);
   }
-  const results = await Promise.all(drives.map(inspectRoot));
+  const results = await Promise.all(drives.map(inspectWithin));
   return results.filter((d): d is DetectedDrive => d !== undefined);
 }
 

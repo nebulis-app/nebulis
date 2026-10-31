@@ -738,7 +738,9 @@
     "sync": "Sync",
     "notSetUp": "Not set up",
     "online": "Online",
-    "offline": "Offline"
+    "offline": "Offline",
+    "edit": "Edit telescope",
+    "editName": "Edit {{name}}"
   },
   "deletedSessionsModal": {
     "title": "Deleted sessions",
@@ -942,15 +944,29 @@
       "impact": "Impact"
     },
     "presets": {
-      "savedPresets": "Saved Presets",
-      "saveAsPresetTitle": "Save as preset",
-      "namePlaceholder": "Preset name…",
-      "loadFailed": "Couldn't load saved presets. Try reopening the editor.",
-      "empty": "No saved presets. Click + to save current settings.",
-      "applyTitle": "Apply",
+      "watermarks": "Watermarks",
+      "saveCurrent": "Save as watermark",
+      "saveSubmit": "Save watermark",
+      "selectTextHint": "Add a text block below to create a reusable watermark.",
+      "namePlaceholder": "Watermark name…",
+      "loadFailed": "Couldn't load your watermarks. Try reopening the editor.",
+      "empty": "No saved watermarks yet.",
+      "applyTitle": "Apply this watermark",
+      "renameTitle": "Rename",
+      "renameSave": "Save name",
+      "updateNamed": "Update \"{{name}}\"",
+      "updateFailed": "Failed to update the watermark. Try again.",
       "deleteTitle": "Delete",
-      "saveFailed": "Failed to save watermark preset. Try again.",
-      "deleteFailed": "Failed to delete watermark preset. Try again."
+      "deleteConfirm": "Delete \"{{name}}\"? Text already on the picture stays.",
+      "deleteConfirmLabel": "Delete",
+      "deleteFailed": "Failed to delete the watermark. Try again.",
+      "cancel": "Cancel",
+      "nameTaken": "That name is already used.",
+      "replaceLabel": "Replace",
+      "replaceWarning": "\"{{name}}\" already exists.",
+      "maxReached": "You can save up to {{count}} watermarks.",
+      "saveFailed": "Failed to save the watermark. Try again.",
+      "renameFailed": "Failed to rename the watermark. Try again."
     },
     "cropPanel": {
       "hint": "Drag to draw a crop box. Drag edges or corners to resize. Drag inside to move. Press Enter or click Apply to confirm.",
@@ -1155,7 +1171,7 @@
     "driveIsGoneReset": "That drive is gone. Reset to the default folder.",
     "shareWord": "share",
     "driveWord": "drive",
-    "resetExplanation": "This points Nebulis back at its built-in library folder (<1>{{path}}</1>). Files at the old location are <2>not</2> copied. Use this only if that {{shareOrDrive}} is gone for good and your images are already in the default folder, or you will re-import them.",
+    "resetExplanation": "This points Nebulis back at its built-in library folder (<1>{{path}}</1>). Files at the old location are <2>not</2> copied. Use this only if that {{shareOrDrive}} is gone for good and your images are already in the default folder, or you will re-import them. New imports will go to the internal disk, and if the old {{shareOrDrive}} comes back later it will be a separate library that does not merge on its own.",
     "resetFailed": "Could not reset the location",
     "resetToDefaultFolder": "Reset to default folder"
   },

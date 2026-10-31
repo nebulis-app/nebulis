@@ -738,7 +738,9 @@
     "sync": "Synchroniseren",
     "notSetUp": "Niet ingesteld",
     "online": "Online",
-    "offline": "Offline"
+    "offline": "Offline",
+    "edit": "Telescoop bewerken",
+    "editName": "{{name}} bewerken"
   },
   "deletedSessionsModal": {
     "title": "Verwijderde sessies",
@@ -942,15 +944,29 @@
       "impact": "Impact"
     },
     "presets": {
-      "savedPresets": "Opgeslagen voorinstellingen",
-      "saveAsPresetTitle": "Opslaan als voorinstelling",
-      "namePlaceholder": "Naam van de voorinstelling…",
-      "loadFailed": "Opgeslagen voorinstellingen konden niet worden geladen. Open de editor opnieuw.",
-      "empty": "Geen opgeslagen voorinstellingen. Klik op + om de huidige instellingen op te slaan.",
-      "applyTitle": "Toepassen",
+      "watermarks": "Watermerken",
+      "saveCurrent": "Opslaan als watermerk",
+      "saveSubmit": "Watermerk opslaan",
+      "selectTextHint": "Voeg hieronder een tekstblok toe om een herbruikbaar watermerk te maken.",
+      "namePlaceholder": "Naam van het watermerk…",
+      "loadFailed": "Watermerken konden niet worden geladen. Open de editor opnieuw.",
+      "empty": "Nog geen watermerken.",
+      "applyTitle": "Dit watermerk toepassen",
+      "renameTitle": "Naam wijzigen",
+      "renameSave": "Naam opslaan",
+      "updateNamed": "„{{name}}” bijwerken",
+      "updateFailed": "Het watermerk kon niet worden bijgewerkt. Probeer het opnieuw.",
       "deleteTitle": "Verwijderen",
-      "saveFailed": "De watermerkvoorinstelling kon niet worden opgeslagen. Probeer het opnieuw.",
-      "deleteFailed": "De watermerkvoorinstelling kon niet worden verwijderd. Probeer het opnieuw."
+      "deleteConfirm": "„{{name}}” verwijderen? Tekst die al op de afbeelding staat blijft.",
+      "deleteConfirmLabel": "Verwijderen",
+      "deleteFailed": "Het watermerk kon niet worden verwijderd. Probeer het opnieuw.",
+      "cancel": "Annuleren",
+      "nameTaken": "Die naam is al in gebruik.",
+      "replaceLabel": "Vervangen",
+      "replaceWarning": "„{{name}}” bestaat al.",
+      "maxReached": "Je kunt maximaal {{count}} watermerken opslaan.",
+      "saveFailed": "Het watermerk kon niet worden opgeslagen. Probeer het opnieuw.",
+      "renameFailed": "De naam van het watermerk kon niet worden gewijzigd. Probeer het opnieuw."
     },
     "cropPanel": {
       "hint": "Sleep om een uitsnede te tekenen. Versleep de randen of hoeken om de afmetingen te wijzigen. Sleep binnen de uitsnede om deze te verplaatsen. Druk op Enter of klik op Bijsnijden toepassen om te bevestigen.",
@@ -1155,7 +1171,7 @@
     "driveIsGoneReset": "De schijf is verdwenen. Terugzetten naar de standaardmap.",
     "shareWord": "netwerkshare",
     "driveWord": "schijf",
-    "resetExplanation": "Hiermee gebruikt Nebulis weer de standaardbibliotheekmap (<1>{{path}}</1>). Bestanden op de oude locatie worden <2>niet</2> gekopieerd. Gebruik dit alleen als die {{shareOrDrive}} definitief niet meer beschikbaar is. Je afbeeldingen moeten al in de standaardmap staan, tenzij je ze opnieuw gaat importeren.",
+    "resetExplanation": "Hiermee gebruikt Nebulis weer de standaardbibliotheekmap (<1>{{path}}</1>). Bestanden op de oude locatie worden <2>niet</2> gekopieerd. Gebruik dit alleen als die {{shareOrDrive}} definitief niet meer beschikbaar is. Je afbeeldingen moeten al in de standaardmap staan, tenzij je ze opnieuw gaat importeren. Nieuwe imports gaan naar de interne schijf, en komt {{shareOrDrive}} later terug, dan is dat een aparte bibliotheek die zich niet vanzelf samenvoegt.",
     "resetFailed": "De locatie kon niet worden teruggezet",
     "resetToDefaultFolder": "Terugzetten naar standaardmap"
   },

@@ -9,7 +9,7 @@
  *
  * Every number a user sees for a night comes from here or from its twin: the
  * Planner strip, the Sky Forecast hero, and the outlook cards. See
- * internal-doc/night-score.md for the weights, the bands and a worked example.
+ * the private night-score notes for the weights, the bands and a worked example.
  *
  * Pure on purpose: no database, no network, no clock. Callers pass the moon
  * and the dark window in.

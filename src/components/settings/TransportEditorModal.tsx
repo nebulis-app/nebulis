@@ -12,12 +12,15 @@ import {
   type TelescopeProfile,
   type TelescopeTransport,
   type ConnectionType,
+  type SavedTransport,
 } from '../../lib/api/telescopes';
-import { isAsiairKind, isDwarfKind } from '../../lib/telescopePresets';
+import { isAsiairKind, isDwarfKind, isSeestarKind } from '../../lib/telescopePresets';
 import { shareNameError } from '../../lib/shareName';
 import { hostAddressError } from '../../lib/hostAddress';
 import { getInputClass, getLabelClass, getHelperClass } from './SettingsUI';
 import { Modal } from '../ui/Modal';
+import { LocalPathPicker } from '../ui/LocalPathPicker';
+import { ApiRequestError } from '../../lib/api/client';
 
 // Medium first, protocol as the parenthetical, matching AddTelescopeModal.
 // This is a config screen, so the protocol stays visible here even though the
@@ -69,6 +72,8 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
   const helperClass = getHelperClass(isDark);
   const isDwarf = isDwarfKind(profile.kind);
   const isAsiair = isAsiairKind(profile.kind);
+  // Which kind of drive the USB picker looks for. A telescope that is neither has no picker, only a path field.
+  const pickerKind: 'seestar' | 'dwarf' | 'asiair' | null = isDwarf ? 'dwarf' : isAsiair ? 'asiair' : isSeestarKind(profile.kind) ? 'seestar' : null;
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -76,6 +81,11 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState('');
   const [formError, setFormError] = useState('');
+  // Set when the telescope is paired with a different drive than the one picked: the person decides whether the
+  // drive was swapped. Holds the server's sentence, which names the drives involved.
+  const [swapPrompt, setSwapPrompt] = useState<string | null>(null);
+  // Set after saving a USB drive Nebulis could not mark, since that drive is recognised by its path alone.
+  const [unmarkedNote, setUnmarkedNote] = useState(false);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['telescopes'] });
 
@@ -84,16 +94,31 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
     onSuccess: invalidate,
   });
 
+  const afterSave = (saved: SavedTransport) => {
+    invalidate();
+    setSwapPrompt(null);
+    setUnmarkedNote(saved.pairing?.status === 'unmarked' && saved.pairing.reason === 'read-only');
+  };
+  const onSaveError = (err: Error) => {
+    if (err instanceof ApiRequestError && err.code === 'DRIVE_SWAP_NEEDED') {
+      setSwapPrompt(err.message);
+      setFormError('');
+    } else {
+      setSwapPrompt(null);
+      setFormError(err.message);
+    }
+  };
+
   const addMutation = useMutation({
-    mutationFn: (data: FormState) => addProfileTransport(profile.id, data),
-    onSuccess: () => { invalidate(); setAdding(false); },
-    onError: (err: Error) => setFormError(err.message),
+    mutationFn: (data: FormState & { replaceDrive?: boolean }) => addProfileTransport(profile.id, data),
+    onSuccess: (saved) => { afterSave(saved); setAdding(false); },
+    onError: onSaveError,
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: FormState }) => updateProfileTransport(profile.id, id, data),
-    onSuccess: () => { invalidate(); setEditingId(null); },
-    onError: (err: Error) => setFormError(err.message),
+    mutationFn: ({ id, data }: { id: string; data: FormState & { replaceDrive?: boolean } }) => updateProfileTransport(profile.id, id, data),
+    onSuccess: (saved) => { afterSave(saved); setEditingId(null); },
+    onError: onSaveError,
   });
 
   const deleteMutation = useMutation({
@@ -132,6 +157,7 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
     setAdding(false);
     setEditingId(null);
     setFormError('');
+    setSwapPrompt(null);
   }
 
   async function handleTest() {
@@ -165,12 +191,13 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
     }
   }
 
-  function submitForm() {
+  function submitForm(replaceDrive = false) {
     setFormError('');
+    const data = replaceDrive ? { ...form, replaceDrive: true } : form;
     if (editingId) {
-      updateMutation.mutate({ id: editingId, data: form });
+      updateMutation.mutate({ id: editingId, data });
     } else {
-      addMutation.mutate(form);
+      addMutation.mutate(data);
     }
   }
 
@@ -294,6 +321,8 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
                     testStatus={testStatus}
                     testMessage={testMessage}
                     error={formError}
+                    swapPrompt={swapPrompt}
+                    deviceKind={pickerKind}
                     onCancel={cancelForm}
                     onSubmit={submitForm}
                     canSubmit={canSubmit}
@@ -305,6 +334,10 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
             );
           })}
         </div>
+
+        {unmarkedNote && (
+          <p className={`text-xs ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>{t('transportEditor.unmarkedNote')}</p>
+        )}
 
         {adding ? (
           <div className={`rounded-xl border overflow-hidden ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
@@ -321,6 +354,8 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
               testStatus={testStatus}
               testMessage={testMessage}
               error={formError}
+              swapPrompt={swapPrompt}
+              deviceKind={pickerKind}
               onCancel={cancelForm}
               onSubmit={submitForm}
               canSubmit={canSubmit}
@@ -357,7 +392,7 @@ export function TransportEditorModal({ profile, isDark, onClose }: {
 
 function TransportForm({
   form, setForm, isDark, inputClass, labelClass, availableKinds, kindLocked, isEditing,
-  onTest, testStatus, testMessage, error, onCancel, onSubmit, canSubmit, submitting, submitLabel,
+  onTest, testStatus, testMessage, error, swapPrompt, deviceKind, onCancel, onSubmit, canSubmit, submitting, submitLabel,
 }: {
   form: FormState;
   setForm: (f: FormState) => void;
@@ -371,8 +406,10 @@ function TransportForm({
   testStatus: 'idle' | 'testing' | 'success' | 'error';
   testMessage: string;
   error: string;
+  swapPrompt: string | null;
+  deviceKind: 'seestar' | 'dwarf' | 'asiair' | null;
   onCancel: () => void;
-  onSubmit: () => void;
+  onSubmit: (replaceDrive?: boolean) => void;
   canSubmit: boolean;
   submitting: boolean;
   submitLabel: string;
@@ -405,16 +442,31 @@ function TransportForm({
       )}
 
       {form.kind === 'local' ? (
-        <div>
-          <label className={labelClass}>{t('transportEditor.localPathLabel')}</label>
-          <input
-            type="text"
-            value={form.localPath}
-            onChange={e => setForm({ ...form, localPath: e.target.value })}
-            placeholder={t('transportEditor.localPathPlaceholder')}
-            className={`${inputClass} font-mono`}
+        deviceKind ? (
+          <LocalPathPicker
+            kind={deviceKind}
+            localPath={form.localPath}
+            setLocalPath={localPath => setForm({ ...form, localPath })}
+            inputClass={`${inputClass} font-mono`}
+            labelClass={labelClass}
+            helperClass={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}
+            isDark={isDark}
+            // The drive is picked on purpose here: with two telescopes plugged in, guessing the first one is how
+            // a telescope ends up on the wrong drive.
+            autoSelect={false}
           />
-        </div>
+        ) : (
+          <div>
+            <label className={labelClass}>{t('transportEditor.localPathLabel')}</label>
+            <input
+              type="text"
+              value={form.localPath}
+              onChange={e => setForm({ ...form, localPath: e.target.value })}
+              placeholder={t('transportEditor.localPathPlaceholder')}
+              className={`${inputClass} font-mono`}
+            />
+          </div>
+        )
       ) : (
         <>
           <div>
@@ -497,6 +549,21 @@ function TransportForm({
 
       {error && <p className="text-xs text-red-500">{error}</p>}
 
+      {swapPrompt && (
+        <div className={`rounded-lg border px-3 py-2 text-xs space-y-2 ${
+          isDark ? 'border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border-amber-300 bg-amber-50 text-amber-900'
+        }`}>
+          <p>{swapPrompt}</p>
+          <button
+            onClick={() => onSubmit(true)}
+            disabled={submitting}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-accent-500 text-white hover:bg-accent-600 transition disabled:opacity-40"
+          >
+            {t('transportEditor.pairThisDrive')}
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center justify-end gap-2 pt-1">
         <button
           onClick={onCancel}
@@ -507,7 +574,7 @@ function TransportForm({
           {t('transportEditor.cancel')}
         </button>
         <button
-          onClick={onSubmit}
+          onClick={() => onSubmit()}
           disabled={!canSubmit || submitting}
           className="px-3 py-1.5 rounded-lg text-xs font-medium bg-accent-500 text-white hover:bg-accent-600 transition disabled:opacity-40 disabled:cursor-not-allowed"
         >

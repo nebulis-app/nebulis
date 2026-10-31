@@ -1181,8 +1181,9 @@ if (isLoading) {
           sourceKind={editorSrc.sourceKind}
           overwriteTarget={editorSrc.overwriteTarget}
           onClose={() => { setEditorOpen(false); setEditorSrc(null); }}
+          // Stay in the viewer after a save: the refetch below brings back the same item with newly stamped URLs, and
+          // GalleryModal swaps its snapshot entry for that copy (see its shownItems merge).
           onSaved={() => {
-            setGalleryOpen(false);
             if (editorSrc.sourceKind === 'telescope') {
               queryClient.invalidateQueries({ queryKey: ['observation', objectId, date] });
               queryClient.invalidateQueries({ queryKey: ['observation-files', objectId, date] });

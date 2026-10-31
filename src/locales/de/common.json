@@ -141,7 +141,14 @@
     "customPathPlaceholder": "Oder einen eigenen Pfad einfügen...",
     "detected_one": "{{count}} {{noun}}-Laufwerk erkannt. Wähle eines aus oder füge einen eigenen Pfad ein.",
     "detected_other": "{{count}} {{noun}}-Laufwerke erkannt. Wähle eines aus oder füge einen eigenen Pfad ein.",
-    "plugIn": "Schließe das {{noun}} per USB an diesen Computer an und tippe auf Aktualisieren."
+    "plugIn": "Schließe das {{noun}} per USB an diesen Computer an und tippe auf Aktualisieren.",
+    "driveSize": "{{size}}, {{free}} frei",
+    "driveObjects_one": "{{count}} Objektordner",
+    "driveObjects_other": "{{count}} Objektordner",
+    "driveLatest": "zuletzt {{date}}",
+    "notPaired": "Noch nicht gekoppelt",
+    "readOnly": "Schreibgeschützt",
+    "readOnlyHint": "Nebulis kann auf dieses Laufwerk nicht schreiben und es daher nicht markieren. Es wird nur über seinen Pfad erkannt, der sich vertauschen kann, wenn zwei Teleskope angeschlossen sind."
   },
   "dwarfLocalPathPicker": {
     "usbStoragePath": "Dwarf-USB-Speicherpfad",
@@ -332,6 +339,12 @@
     "title": "Etwas ist schiefgelaufen",
     "description": "Ein unerwarteter Fehler ist aufgetreten. Lade die Seite neu, um fortzufahren.",
     "reloadPage": "Seite neu laden"
+  },
+  "routeError": {
+    "title": "Auf dieser Seite ist ein Fehler aufgetreten",
+    "description": "Etwas auf dieser Seite konnte nicht geladen werden. Der Rest von Nebulis funktioniert weiterhin.",
+    "tryAgain": "Erneut versuchen",
+    "backToLibrary": "Zurück zur Bibliothek"
   },
   "heroToggle": {
     "collapse": "Banner einklappen",

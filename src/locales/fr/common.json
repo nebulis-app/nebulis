@@ -141,7 +141,14 @@
     "customPathPlaceholder": "Ou collez un chemin personnalisé...",
     "detected_one": "{{count}} volume {{noun}} détecté. Choisissez-en un ou collez un chemin personnalisé.",
     "detected_other": "{{count}} volumes {{noun}} détectés. Choisissez-en un ou collez un chemin personnalisé.",
-    "plugIn": "Branchez le {{noun}} sur cet ordinateur via USB et appuyez sur actualiser."
+    "plugIn": "Branchez le {{noun}} sur cet ordinateur via USB et appuyez sur actualiser.",
+    "driveSize": "{{size}}, {{free}} libres",
+    "driveObjects_one": "{{count}} dossier d'objet",
+    "driveObjects_other": "{{count}} dossiers d'objets",
+    "driveLatest": "dernier {{date}}",
+    "notPaired": "Pas encore associé",
+    "readOnly": "Lecture seule",
+    "readOnlyHint": "Nebulis ne peut pas écrire sur ce lecteur, donc il ne peut pas le marquer. Il sera reconnu uniquement par son chemin, qui peut s'inverser quand deux télescopes sont branchés."
   },
   "dwarfLocalPathPicker": {
     "usbStoragePath": "Chemin de stockage USB Dwarf",
@@ -332,6 +339,12 @@
     "title": "Un problème est survenu",
     "description": "Une erreur inattendue s'est produite. Actualisez la page pour continuer.",
     "reloadPage": "Actualiser la page"
+  },
+  "routeError": {
+    "title": "Cette page a rencontré un problème",
+    "description": "Un élément de cette page n'a pas pu se charger. Le reste de Nebulis fonctionne toujours.",
+    "tryAgain": "Réessayer",
+    "backToLibrary": "Retour à la bibliothèque"
   },
   "heroToggle": {
     "collapse": "Réduire la bannière",

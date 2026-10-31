@@ -12,6 +12,7 @@ import { getCurrentUser } from '../lib/api/auth';
 import { getUpdateStatus } from '../lib/api/update';
 import { clearAuthToken, getAuthToken } from '../lib/api/client';
 import { useClickOutside } from '../hooks/useClickOutside';
+import { useRefreshLibraryOnImport } from '../hooks/useRefreshLibraryOnImport';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useAuth } from '../contexts/AuthContext';
 import { WhatsNewAutoPopup } from './help/WhatsNewAutoPopup';
@@ -175,6 +176,7 @@ export function Layout({ children }: LayoutProps) {
   });
 
   const isSyncing = importStatusData?.running ?? false;
+  useRefreshLibraryOnImport(importStatusData);
 
   // Sync is triggered from this dropdown now rather than a "From Telescope"
   // button on the Library page, so there's exactly one place a user reaches

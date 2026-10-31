@@ -60,7 +60,7 @@ jobs:
     # The main job runs in UTC, where a UTC date and a local date are the same
     # thing, so a "the app says it's tomorrow" bug passes there. This reruns the
     # time-sensitive suites with the process in other zones. See "Time zones"
-    # in CLAUDE.md and scripts/test-timezones.mjs.
+    # in the contributor guidelines and scripts/test-timezones.mjs.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:

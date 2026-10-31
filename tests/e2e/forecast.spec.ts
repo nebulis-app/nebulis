@@ -131,4 +131,26 @@ test.describe('Forecast Page', () => {
         .or(page.locator('a[href="/planner"]'))
     ).toBeVisible();
   });
+
+  test('shows the two-week outlook from ensembles', async ({ page }) => {
+    const outlook = page.getByRole('region', { name: /two weeks ahead/i });
+    await expect(outlook).toBeVisible();
+    await expect(outlook.getByText(/103 model runs/)).toBeVisible();
+    // One bar per night, each named with its date and odds for screen readers.
+    await expect(outlook.getByRole('button')).toHaveCount(MOCK.outlook.nights.length);
+    // The detail line follows the bar under the pointer.
+    await outlook.getByRole('button').nth(2).hover();
+    await expect(outlook.getByText(/92% of runs clear \(95\/103/)).toBeVisible();
+  });
 });
+
+test.describe('Forecast Page — outlook unavailable', () => {
+  test('a broken outlook leaves the rest of the page standing', async ({ page }) => {
+    await mockAllRoutes(page);
+    await page.route('**/api/forecast/outlook**', r => r.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ ok: false, error: { code: 'OUTLOOK_UNAVAILABLE', message: 'down' } }) }));
+    await page.goto('/forecast');
+    await expect(page.getByRole('heading', { name: /sky forecast/i })).toBeVisible();
+    await expect(page.getByText(/long-range outlook is not available/i)).toBeVisible();
+  });
+});
+

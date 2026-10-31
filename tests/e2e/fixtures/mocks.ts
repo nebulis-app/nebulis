@@ -24,6 +24,47 @@ export function ok<T>(data: T) {
  * deliberate shape (a clear middle of the night between two cloudy ends) so the
  * night ribbon has something to render rather than a flat line.
  */
+/**
+ * Fifteen nights of the ensemble outlook (GET /forecast/outlook), from
+ * tonight, with a clear spell on nights 2 to 4 and a cloudy one on night 6.
+ */
+function buildOutlookMock() {
+  const day = new Date();
+  day.setHours(12, 0, 0, 0);
+  const key = (offset: number) => {
+    const d = new Date(day.getTime() + offset * 86_400_000);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const odds = [0.1, 0.35, 0.92, 0.97, 0.88, 0.4, 0.05, 0.2, 0.55, 0.6, 0.45, 0.5, 0.3, 0.35, 0.4];
+  const models = [
+    { model: 'ecmwf_ifs025_ensemble', label: 'ECMWF', members: 51 },
+    { model: 'gem_global_ensemble', label: 'GEM', members: 21 },
+    { model: 'ncep_gefs_seamless', label: 'GFS', members: 31 },
+  ];
+  return {
+    nights: odds.map((p, i) => ({
+      date: key(i),
+      darkStart: new Date(day.getTime() + i * 86_400_000 + 7 * 3_600_000).toISOString(),
+      darkEnd: new Date(day.getTime() + i * 86_400_000 + 18 * 3_600_000).toISOString(),
+      darkHours: 11,
+      members: 103,
+      clearMembers: Math.round(p * 103),
+      clearProbability: p,
+      cloudMedian: Math.round((1 - p) * 80),
+      cloudP25: Math.round((1 - p) * 60),
+      cloudP75: Math.round((1 - p) * 95),
+      moonIllumination: 40,
+      moonUpAtMidnight: i % 2 === 0,
+      models: models.map(m => ({ model: m.model, label: m.label, members: m.members, clearMembers: Math.round(p * m.members), clearProbability: p })),
+    })),
+    thresholds: { maxCloudCover: 30, minClearHours: 3 },
+    timeZone: 'Europe/Paris',
+    models,
+    source: 'open-meteo-ensemble',
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
 function buildForecastMock() {
   const midnightLocal = new Date();
   midnightLocal.setHours(0, 0, 0, 0);
@@ -645,6 +686,7 @@ export const MOCK = {
   // that had crashed on `forecast.nightRatings.map`. Times are built relative
   // to now so tonight's window always contains hourly data.
   forecast: buildForecastMock(),
+  outlook: buildOutlookMock(),
 
   // Observing sites. `latitude`/`longitude` must be non-null or every
   // location-gated page falls back to its "Location not set" empty state.
@@ -1069,6 +1111,9 @@ export async function mockAllRoutes(page: Page) {
 
   // Forecast
   await page.route('**/api/forecast**', r => r.fulfill(json(ok(MOCK.forecast))));
+  // After the catch-all above, so it wins (the last matching handler runs):
+  // the two-week outlook is its own endpoint with its own shape.
+  await page.route('**/api/forecast/outlook**', r => r.fulfill(json(ok(MOCK.outlook))));
 
   // Observing sites. Without these the Forecast and Planner pages resolve no
   // coordinates and render the "Location not set" prompt instead of any

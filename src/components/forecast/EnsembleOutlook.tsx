@@ -56,8 +56,12 @@ export function EnsembleOutlook({ siteId, isDark, accent }: Props) {
 
   if (!siteId) return null;
 
-  const nights = data?.nights ?? [];
-  const totalRuns = data?.models.reduce((a, m) => a + m.members, 0) ?? 0;
+  // A response of another shape (an older server, a proxy page, a test mock
+  // of the detailed forecast) counts as "unavailable", never as a crash: the
+  // outlook sits on the forecast page and must not take it down.
+  const usable = !!data && Array.isArray(data.nights) && Array.isArray(data.models);
+  const nights = usable ? data.nights : [];
+  const totalRuns = usable ? data.models.reduce((a, m) => a + m.members, 0) : 0;
   // The detail line follows hover/focus, and otherwise shows the best night.
   const best = nights.reduce<OutlookNight | null>(
     (b, n) => (n.clearProbability !== null && (!b || n.clearProbability > (b.clearProbability ?? -1)) ? n : b), null);
@@ -66,7 +70,7 @@ export function EnsembleOutlook({ siteId, isDark, accent }: Props) {
   const describe = (n: OutlookNight): string => {
     if (n.clearProbability === null) return t('outlook.noData');
     const parts = [
-      t('outlook.runsClear', { pct: pct(n.clearProbability), clear: n.clearMembers, runs: n.members, hours: data?.thresholds.minClearHours ?? 3 }),
+      t('outlook.runsClear', { pct: pct(n.clearProbability), clear: n.clearMembers, runs: n.members, hours: data?.thresholds?.minClearHours ?? 3 }),
     ];
     if (n.cloudMedian !== null) {
       parts.push(t('outlook.clouds', { median: n.cloudMedian, low: n.cloudP25 ?? n.cloudMedian, high: n.cloudP75 ?? n.cloudMedian }));
@@ -83,7 +87,7 @@ export function EnsembleOutlook({ siteId, isDark, accent }: Props) {
         <h2 id="ensemble-outlook-title" className={`font-display text-lg font-semibold ${primary}`}>
           {t('outlook.title')}
         </h2>
-        {data && (
+        {usable && (
           <span className={`text-xs ${muted}`}>
             {t('outlook.basis', { runs: totalRuns, models: data.models.filter(m => m.members > 0).map(m => m.label).join(', ') })}
           </span>
@@ -91,8 +95,8 @@ export function EnsembleOutlook({ siteId, isDark, accent }: Props) {
       </div>
       <p className={`mt-1 text-sm ${secondary}`}>
         {t('outlook.explain', {
-          hours: data?.thresholds.minClearHours ?? 3,
-          cloud: data?.thresholds.maxCloudCover ?? 30,
+          hours: data?.thresholds?.minClearHours ?? 3,
+          cloud: data?.thresholds?.maxCloudCover ?? 30,
         })}
       </p>
 

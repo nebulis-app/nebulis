@@ -11,9 +11,10 @@
  *
  * Source: Open-Meteo's ensemble API (free, no key), three global ensembles
  * that reach 15+ days:
- *   - ECMWF IFS 0.25°  51 members, 15 days
- *   - GEM global       21 members, 16 days
- *   - GFS 0.5°         31 members, 35 days
+ *   - ECMWF IFS 0.25° (ecmwf_ifs025_ensemble)  51 members, 15 days
+ *   - GEM global (gem_global_ensemble)         21 members, 16 days
+ *   - NCEP GEFS (ncep_gefs_seamless)           31 members, 0.25° to 10 days
+ *                                              then 0.5° to 35 days
  *
  * For each observing night of the site, every member is scored on the dark
  * window (astronomical twilight, nautical where it never gets that dark):
@@ -32,10 +33,12 @@ import { forecastSiteKey } from './forecastCache.js';
 import { addDaysToDateKey, zonedDateTimeToUtc } from './timezone.js';
 import { observingNightDateKey } from './telescopeFiles.js';
 
+/** Open-Meteo's ensemble model ids (the API rejects the deterministic
+ *  model names: `ecmwf_ifs025` alone is a 400). */
 export const ENSEMBLE_MODELS = [
-  { id: 'ecmwf_ifs025', label: 'ECMWF' },
-  { id: 'gem_global', label: 'GEM' },
-  { id: 'gfs05', label: 'GFS' },
+  { id: 'ecmwf_ifs025_ensemble', label: 'ECMWF' },
+  { id: 'gem_global_ensemble', label: 'GEM' },
+  { id: 'ncep_gefs_seamless', label: 'GFS' },
 ] as const;
 export type EnsembleModelId = (typeof ENSEMBLE_MODELS)[number]['id'];
 
@@ -248,7 +251,12 @@ export function _clearEnsembleCache(): void {
 
 async function fetchEnsemble(lat: number, lon: number): Promise<EnsembleData> {
   const res = await fetch(ensembleUrl(lat, lon), { signal: AbortSignal.timeout(20_000) });
-  if (!res.ok) throw new Error(`Open-Meteo ensemble API error: ${res.status}`);
+  if (!res.ok) {
+    // Open-Meteo explains a refusal in `{ error: true, reason }`: pass it on,
+    // so a renamed model or variable says what it is instead of a bare 400.
+    const reason = await res.json().then((b: { reason?: unknown }) => (typeof b?.reason === 'string' ? b.reason : null)).catch(() => null);
+    throw new Error(`Open-Meteo ensemble API error: ${res.status}${reason ? ` (${reason})` : ''}`);
+  }
   const data = parseEnsemble(await res.json());
   if (data.members.length === 0) throw new Error('Open-Meteo ensemble API returned no members');
   return data;

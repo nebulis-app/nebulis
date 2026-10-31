@@ -104,7 +104,7 @@ export function EnsembleOutlook({ siteId, isDark, accent }: Props) {
         <>
           <div className="mt-4 overflow-x-auto">
             <div
-              className="grid min-w-[36rem] gap-[2px]"
+              className="grid min-w-[42rem] gap-[2px]"
               style={{ gridTemplateColumns: `repeat(${nights.length}, minmax(0, 1fr))` }}
               onMouseLeave={() => setFocus(null)}
             >
@@ -143,7 +143,8 @@ export function EnsembleOutlook({ siteId, isDark, accent }: Props) {
                     <span className={`mt-1.5 text-[10px] uppercase tracking-wide ${muted}`}>
                       {dayLabel(n.date, { weekday: 'narrow' })}
                     </span>
-                    <span className={`text-xs tabular-nums ${secondary}`}>{dayLabel(n.date, { day: 'numeric' })}</span>
+                    {/* Day and month, in the reader's order (31/10 in French, 10/31 in US English). */}
+                    <span className={`text-[11px] tabular-nums ${secondary}`}>{dayLabel(n.date, { day: '2-digit', month: '2-digit' })}</span>
                     <Moon
                       aria-hidden="true"
                       className={`mx-auto mt-1 h-3 w-3 ${n.moonIllumination >= 50 && n.moonUpAtMidnight ? (isDark ? 'text-slate-300' : 'text-slate-500') : muted}`}
@@ -154,7 +155,7 @@ export function EnsembleOutlook({ siteId, isDark, accent }: Props) {
               })}
             </div>
             <div
-              className={`mt-1 grid min-w-[36rem] text-[10px] ${muted}`}
+              className={`mt-1 grid min-w-[42rem] text-[10px] ${muted}`}
               style={{ gridTemplateColumns: `repeat(${nights.length}, minmax(0, 1fr))` }}
               aria-hidden="true"
             >

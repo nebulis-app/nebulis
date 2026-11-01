@@ -600,9 +600,16 @@
         "round": "Sort by star elongation. 1.00 is perfectly round, higher means stretched stars from tracking or wind.",
         "noise": "Sort by background noise, quietest first. Lower is cleaner.",
         "snr": "Sort by signal: how far the brightest stars rise above the noise (×). Higher is better.",
-        "target": "Sort by how plainly the photographed object shows: its brighter part over the sky around it, in units of the sky's noise. Needs a plate-solved frame, or one pointed at the object.",
+        "target": "How plainly the photographed object shows in this one frame: its brighter part against the sky around it, divided by the sky's noise. Under 1 it cannot be seen in a single frame, 1–3 barely, 3–10 clearly, over 10 plainly. Stacking N frames multiplies it by about √N. Compare it between frames and nights of the same object only. Empty when the object could not be placed (no plate solution and not centred, or not in the catalogue).",
         "sky": "Sort by sky brightness (raw counts). A jump between frames can mean clouds, haze or the Moon.",
         "file": "Sort by file name"
+      },
+      "targetLevel": {
+        "none": "{{value}}: the object does not stand out of the sky in this frame.",
+        "faint": "{{value}}: cannot be seen in a single frame; about {{frames}} such frames stacked reach 3.",
+        "barely": "{{value}}: barely seen in a single frame.",
+        "clear": "{{value}}: clearly seen in a single frame.",
+        "plain": "{{value}}: plainly seen in a single frame."
       },
       "menu": {
         "open": "Open",

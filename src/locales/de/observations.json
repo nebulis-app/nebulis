@@ -600,9 +600,16 @@
         "round": "Nach Sternstreckung sortieren: 1,00 ist rund, höher ist gezogen",
         "noise": "Nach Hintergrundrauschen sortieren, leisestes zuerst. Niedriger ist sauberer.",
         "snr": "Nach Signal sortieren: wie weit die hellsten Sterne über dem Rauschen liegen (×). Höher ist besser.",
-        "target": "Nach der Sichtbarkeit des fotografierten Objekts sortieren: sein hellerer Teil gegenüber dem umgebenden Himmel, in Einheiten des Himmelsrauschens. Braucht eine astrometrisch gelöste oder auf das Objekt ausgerichtete Aufnahme.",
+        "target": "Wie deutlich sich das fotografierte Objekt in dieser einzelnen Aufnahme zeigt: sein hellerer Teil gegenüber dem Himmel ringsum, geteilt durch das Himmelsrauschen. Unter 1 ist es in einer Aufnahme nicht zu sehen, 1–3 kaum, 3–10 deutlich, über 10 sehr deutlich. Das Stapeln von N Aufnahmen multipliziert den Wert mit etwa √N. Nur zwischen Aufnahmen und Nächten desselben Objekts vergleichen. Leer, wenn das Objekt nicht platziert werden konnte (keine Astrometrie und nicht zentriert, oder nicht im Katalog).",
         "sky": "Nach Himmelshelligkeit sortieren (Rohwerte). Ein Sprung zwischen Bildern kann Wolken, Dunst oder den Mond bedeuten.",
         "file": "Nach Dateiname sortieren"
+      },
+      "targetLevel": {
+        "none": "{{value}}: Das Objekt hebt sich in dieser Aufnahme nicht vom Himmel ab.",
+        "faint": "{{value}}: In einer einzelnen Aufnahme nicht zu sehen; etwa {{frames}} solche Aufnahmen gestapelt erreichen 3.",
+        "barely": "{{value}}: In einer einzelnen Aufnahme kaum zu sehen.",
+        "clear": "{{value}}: In einer einzelnen Aufnahme deutlich zu sehen.",
+        "plain": "{{value}}: In einer einzelnen Aufnahme sehr deutlich zu sehen."
       },
       "menu": {
         "open": "Öffnen",

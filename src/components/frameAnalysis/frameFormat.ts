@@ -57,6 +57,21 @@ export function reasonText(t: TFunc, r: FrameReason): string {
   }
 }
 
+/**
+ * What the Object value means for one frame. The value is the object's brighter part over the sky around it in
+ * units of the sky's noise: under 1 it is lost in a single frame, and stacking N frames raises it by about √N, so
+ * a faint frame also says how many like it would reach 3.
+ */
+export function targetLevelText(t: TFunc, snr: number): string {
+  const base = 'observationDetail.frameList.targetLevel';
+  const value = formatNumber(snr, { maximumFractionDigits: snr < 10 ? 1 : 0 });
+  if (snr <= 0.05) return t(`${base}.none`, { value });
+  if (snr < 1) return t(`${base}.faint`, { value, frames: n0(Math.ceil((3 / snr) ** 2)) });
+  if (snr < 3) return t(`${base}.barely`, { value });
+  if (snr <= 10) return t(`${base}.clear`, { value });
+  return t(`${base}.plain`, { value });
+}
+
 export interface FrameRowData {
   path: string;
   name: string;

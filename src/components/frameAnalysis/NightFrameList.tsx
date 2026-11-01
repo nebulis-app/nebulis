@@ -21,7 +21,7 @@ import {
 import { GalleryModal, type GalleryItem } from '../GalleryModal';
 import { SubframeSelectionBar } from '../objectMedia/SubframeSelectionBar';
 import { formatNumber } from '../../lib/formatLocale';
-import { FLAG_ICONS, n0, n1, reasonText } from './frameFormat';
+import { FLAG_ICONS, n0, n1, reasonText, targetLevelText } from './frameFormat';
 import {
   captureTime, longestGap, orderRows, sharedPrefixLength, summaryOf, timelineTicks, type SortKey,
 } from './frameListLogic';
@@ -466,7 +466,9 @@ function FrameLine({ row, failure, trim, previews, selected, gridClass, pendingM
         </span>
         <span className={`text-right tabular-nums ${body}`}>{m ? n1(m.noise) : '–'}</span>
         <span className={`text-right tabular-nums ${body}`}>{m?.peakSNR != null ? `${n0(m.peakSNR)}×` : '–'}</span>
-        <span className={`text-right tabular-nums ${body}`}>{m?.target ? formatNumber(m.target.snr, { maximumFractionDigits: m.target.snr < 10 ? 1 : 0 }) : '–'}</span>
+        <span className={`text-right tabular-nums ${body}`} title={m?.target ? targetLevelText(t, m.target.snr) : undefined}>
+          {m?.target ? formatNumber(m.target.snr, { maximumFractionDigits: m.target.snr < 10 ? 1 : 0 }) : '–'}
+        </span>
         <span className={`text-right tabular-nums ${body}`}>{m ? n0(m.background) : '–'}</span>
         <span className="flex min-w-0 items-center gap-1.5" title={v?.reasons.length ? flags.map(f => t(`${MODAL}.flags.${f}`)).join(', ') : undefined}>
           {flags.slice(0, 2).map(f => <FlagChip key={f} flag={f} tint={tint} bg={tintBg} label={t(`${MODAL}.flags.${f}`)} />)}

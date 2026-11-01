@@ -600,9 +600,16 @@
         "round": "Ordenar por elongación de las estrellas: 1,00 es redonda, más es alargada",
         "noise": "Ordenar por ruido de fondo, el más bajo primero. Más bajo es más limpio.",
         "snr": "Ordenar por señal: cuánto sobresalen las estrellas más brillantes del ruido (×). Más alto es mejor.",
-        "target": "Ordenar por lo claramente que se ve el objeto fotografiado: su parte más brillante frente al cielo que lo rodea, en unidades del ruido del cielo. Requiere un fotograma con astrometría, o apuntado al objeto.",
+        "target": "Lo claramente que se ve el objeto fotografiado en este único fotograma: su parte más brillante frente al cielo que lo rodea, dividida por el ruido del cielo. Por debajo de 1 no se ve en un fotograma, de 1 a 3 apenas, de 3 a 10 con claridad, por encima de 10 muy nítido. Apilar N fotogramas lo multiplica por aproximadamente √N. Compárelo solo entre fotogramas y noches del mismo objeto. Vacío cuando no se pudo situar el objeto (sin astrometría y no centrado, o no está en el catálogo).",
         "sky": "Ordenar por brillo del cielo (valores brutos). Un salto entre fotogramas puede indicar nubes, bruma o la Luna.",
         "file": "Ordenar por nombre de archivo"
+      },
+      "targetLevel": {
+        "none": "{{value}}: el objeto no destaca del cielo en este fotograma.",
+        "faint": "{{value}}: no se ve en un solo fotograma; hacen falta unos {{frames}} como este apilados para llegar a 3.",
+        "barely": "{{value}}: apenas se ve en un solo fotograma.",
+        "clear": "{{value}}: se ve con claridad en un solo fotograma.",
+        "plain": "{{value}}: se ve muy nítido en un solo fotograma."
       },
       "menu": {
         "open": "Abrir",

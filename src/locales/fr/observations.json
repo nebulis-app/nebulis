@@ -600,9 +600,16 @@
         "round": "Trier par allongement des étoiles : 1,00 est rond, plus est étiré",
         "noise": "Trier par bruit de fond, le plus faible d’abord. Plus bas, c’est plus propre.",
         "snr": "Trier par signal : de combien les étoiles les plus brillantes dépassent le bruit (×). Plus haut, c’est mieux.",
-        "target": "Trier selon la visibilité de l'objet photographié : sa partie la plus brillante par rapport au ciel autour, en unités de bruit du ciel. Il faut une image astrométrée, ou pointée sur l'objet.",
+        "target": "La netteté avec laquelle l'objet photographié ressort sur cette pose seule : sa partie la plus claire par rapport au ciel autour, divisée par le bruit du ciel. Sous 1 il est invisible sur une pose, de 1 à 3 à peine visible, de 3 à 10 bien visible, au-delà de 10 très net. Empiler N poses le multiplie par environ √N. À comparer seulement entre poses et nuits du même objet. Vide quand l'objet n'a pas pu être placé (pas d'astrométrie et image non centrée, ou objet absent du catalogue).",
         "sky": "Trier par luminosité du ciel (valeurs brutes). Un saut entre deux images peut venir de nuages, de brume ou de la Lune.",
         "file": "Trier par nom de fichier"
+      },
+      "targetLevel": {
+        "none": "{{value}} : l'objet ne ressort pas du ciel sur cette pose.",
+        "faint": "{{value}} : invisible sur une pose seule ; il en faut environ {{frames}} comme celle-ci empilées pour atteindre 3.",
+        "barely": "{{value}} : à peine visible sur une pose seule.",
+        "clear": "{{value}} : bien visible sur une pose seule.",
+        "plain": "{{value}} : très net sur une pose seule."
       },
       "menu": {
         "open": "Ouvrir",

@@ -600,9 +600,16 @@
         "round": "Sorteren op rekking van de sterren: 1,00 is rond, hoger is uitgerekt",
         "noise": "Sorteer op achtergrondruis, laagste eerst. Lager is schoner.",
         "snr": "Sorteer op signaal: hoeveel de helderste sterren boven de ruis uitsteken (×). Hoger is beter.",
-        "target": "Sorteren op hoe duidelijk het gefotografeerde object zichtbaar is: zijn helderste deel tegenover de hemel eromheen, in eenheden van de hemelruis. Vereist een astrometrisch opgeloste opname, of een die op het object is gericht.",
+        "target": "Hoe duidelijk het gefotografeerde object zich in deze ene opname toont: zijn helderste deel tegenover de hemel eromheen, gedeeld door de hemelruis. Onder 1 is het in één opname niet te zien, 1–3 nauwelijks, 3–10 duidelijk, boven 10 heel duidelijk. N opnamen stapelen vermenigvuldigt het met ongeveer √N. Vergelijk het alleen tussen opnamen en nachten van hetzelfde object. Leeg als het object niet geplaatst kon worden (geen astrometrie en niet gecentreerd, of niet in de catalogus).",
         "sky": "Sorteer op helderheid van de hemel (ruwe waarden). Een sprong tussen frames kan wolken, nevel of de maan betekenen.",
         "file": "Sorteren op bestandsnaam"
+      },
+      "targetLevel": {
+        "none": "{{value}}: het object steekt in deze opname niet boven de hemel uit.",
+        "faint": "{{value}}: niet te zien in één opname; ongeveer {{frames}} van zulke opnamen gestapeld halen 3.",
+        "barely": "{{value}}: nauwelijks te zien in één opname.",
+        "clear": "{{value}}: duidelijk te zien in één opname.",
+        "plain": "{{value}}: heel duidelijk te zien in één opname."
       },
       "menu": {
         "open": "Openen",

@@ -503,9 +503,9 @@
       },
       "flags": {
         "clouds": "Wolken",
-        "trails": "Sterstrepen",
+        "trails": "Uitgerekte sterren",
         "soft": "Zachte sterren",
-        "streak": "Streep",
+        "streak": "Satelliet / vliegtuig",
         "noStars": "Geen sterren",
         "noisy": "Ruisig"
       },
@@ -574,7 +574,7 @@
         "flags": "Markeringen",
         "stars": "Sterren",
         "fwhm": "Breedte px",
-        "round": "Spoor",
+        "round": "Rek",
         "noise": "Ruis",
         "snr": "Signaal",
         "sky": "Hemel",

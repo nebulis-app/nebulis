@@ -503,9 +503,9 @@
       },
       "flags": {
         "clouds": "Wolken",
-        "trails": "Sternspuren",
+        "trails": "Gestreckte Sterne",
         "soft": "Weiche Sterne",
-        "streak": "Streifen",
+        "streak": "Satellit / Flugzeug",
         "noStars": "Keine Sterne",
         "noisy": "Rauschig"
       },
@@ -574,7 +574,7 @@
         "flags": "Markierungen",
         "stars": "Sterne",
         "fwhm": "Breite px",
-        "round": "Spur",
+        "round": "Dehnung",
         "noise": "Rauschen",
         "snr": "Signal",
         "sky": "Himmel",

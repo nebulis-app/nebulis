@@ -503,9 +503,9 @@
       },
       "flags": {
         "clouds": "Nubes",
-        "trails": "Estelas",
+        "trails": "Estrellas alargadas",
         "soft": "Estrellas blandas",
-        "streak": "Trazo",
+        "streak": "Satélite / avión",
         "noStars": "Sin estrellas",
         "noisy": "Ruidoso"
       },
@@ -574,7 +574,7 @@
         "flags": "Marcas",
         "stars": "Estrellas",
         "fwhm": "Ancho px",
-        "round": "Estela",
+        "round": "Alarg.",
         "noise": "Ruido",
         "snr": "Señal",
         "sky": "Cielo",

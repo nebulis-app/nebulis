@@ -503,9 +503,9 @@
       },
       "flags": {
         "clouds": "Nuages",
-        "trails": "Traînées d'étoiles",
+        "trails": "Étoiles allongées",
         "soft": "Étoiles floues",
-        "streak": "Traînée",
+        "streak": "Satellite / avion",
         "noStars": "Sans étoiles",
         "noisy": "Bruitée"
       },
@@ -574,7 +574,7 @@
         "flags": "Signes",
         "stars": "Étoiles",
         "fwhm": "Largeur px",
-        "round": "Traînée",
+        "round": "Allong.",
         "noise": "Bruit",
         "snr": "Signal",
         "sky": "Ciel",

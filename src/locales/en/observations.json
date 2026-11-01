@@ -503,9 +503,9 @@
       },
       "flags": {
         "clouds": "Clouds",
-        "trails": "Star trails",
+        "trails": "Stretched stars",
         "soft": "Soft stars",
-        "streak": "Streak",
+        "streak": "Satellite / plane",
         "noStars": "No stars",
         "noisy": "Noisy"
       },
@@ -574,7 +574,7 @@
         "flags": "Flags",
         "stars": "Stars",
         "fwhm": "Width px",
-        "round": "Trail",
+        "round": "Elong.",
         "noise": "Noise",
         "snr": "Signal",
         "sky": "Sky",

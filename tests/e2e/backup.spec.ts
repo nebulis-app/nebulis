@@ -42,8 +42,9 @@ test.describe('Backup Status', () => {
   });
 
   test('shows when the telescope last synced', async ({ page }) => {
-    // The mock telescope has no lastSyncAt, so the only correct outcome is the never-synced state.
-    await expect(page.getByText(/never synced/i).first()).toBeVisible();
+    // The mock history holds a successful sync, so the card shows when it happened, not "Never synced".
+    await expect(page.getByText(/^synced\s/i).first()).toBeVisible();
+    await expect(page.getByText(/never synced/i)).toHaveCount(0);
   });
 
   test('each telescope card has an edit button that opens the same editor as Settings', async ({ page }) => {

@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChangelogModal } from '../ChangelogModal';
 import { ENHANCED_WHATS_NEW, versionSeries } from './whatsNewRegistry';
 import { MobileAppsPromoModal } from './MobileAppsPromoModal';
+import { SupportNebulisModal } from './SupportNebulisModal';
+import { shouldShowSupportAsk } from '../../lib/support';
 import { shouldShowMobilePromo } from '../../lib/mobilePromo';
 import { getLastSeenVersion, setLastSeenVersion } from '../../lib/api/auth';
 import { fetchJSON } from '../../lib/api/client';
@@ -36,6 +38,11 @@ interface VersionInfo {
  * returns false while MOBILE_PROMO_ENABLED is off, so the chain below stays
  * wired but never opens anything. See lib/mobilePromo.ts.
  *
+ * The "Enjoying Nebulis?" support ask comes after that, once per browser, and only for someone who
+ * has used Nebulis before (a first-ever launch has had no chance to find it useful yet). It holds
+ * the tour gate until it is closed, so the tour never opens on top of it. If there is no What's New
+ * to show (the version was already acknowledged), it appears shortly after load instead.
+ *
  * Designed to be mounted once at the app shell level (Layout). Renders
  * nothing visually until the comparison succeeds — fail-silent on either
  * fetch is fine, the popup is a soft notification.
@@ -50,6 +57,11 @@ export function WhatsNewAutoPopup() {
   const [open, setOpen] = useState(false);
   const [viewAll, setViewAll] = useState(false);
   const [showPromo, setShowPromo] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
+  // Whether this browser has never acknowledged any version, decided once with the first answer.
+  // A brand-new user is not asked for a coffee on day one; they are asked on a later load.
+  const firstEverRef = useRef(false);
+  const chainFinishedRef = useRef(false);
   // Snapshot the version we're trying to acknowledge so a mid-popup version
   // bump (unlikely, but possible during long-lived sessions) doesn't write
   // a stale value into lastSeenVersion.
@@ -102,8 +114,26 @@ export function WhatsNewAutoPopup() {
     if (!current || lastSeenQuery.isLoading) return;
     decidedNeedRef.current = true;
     const seen = lastSeenQuery.data?.lastSeenVersion ?? null;
-    if (seen === current) markSettled();
+    firstEverRef.current = seen === null;
+    if (seen === current) {
+      // Nothing to show. The support ask, if it is due, takes over the gate so the tour waits for it.
+      if (shouldShowSupportAsk()) {
+        chainFinishedRef.current = true;
+        setTimeout(() => setShowSupport(true), 1200);
+      } else {
+        markSettled();
+      }
+    }
   }, [versionQuery.data?.version, lastSeenQuery.data?.lastSeenVersion, lastSeenQuery.isLoading, markSettled]);
+
+  // The What's New chain is over: ask for the coffee if it is due, otherwise release the tour gate.
+  // Idempotent, because "Got it" and the close handlers can both fire for one dismissal.
+  const finishChain = () => {
+    if (chainFinishedRef.current) return;
+    chainFinishedRef.current = true;
+    if (!firstEverRef.current && shouldShowSupportAsk()) setShowSupport(true);
+    else markSettled();
+  };
 
   // Watch for the changelog closing so we can chain the promo.
   const prevOpenRef = useRef(false);
@@ -151,22 +181,21 @@ export function WhatsNewAutoPopup() {
         useEnhancedModal && EnhancedModal ? (
           <EnhancedModal
             isOpen={open}
-            onClose={() => { setOpen(false); setViewAll(false); markSettled(); }}
-            // "Got it" persists the dismissal, then chains straight into the
-            // full changelog rather than closing — the highlight reel is a
-            // teaser, not the whole story.
-            onAcknowledge={() => { acknowledge.mutate(ackTarget); setViewAll(true); }}
+            onClose={() => { setOpen(false); setViewAll(false); finishChain(); }}
+            // "Got it" persists the dismissal and ends the chain. The full release
+            // notes are not forced on anyone after the reel; "View full release
+            // notes" below opens them for whoever wants them.
+            onAcknowledge={() => { acknowledge.mutate(ackTarget); setOpen(false); setViewAll(false); finishChain(); }}
             acknowledging={acknowledge.isPending}
             onViewAll={() => setViewAll(true)}
           />
         ) : (
           <ChangelogModal
             isOpen={open}
-            onClose={() => { setOpen(false); setViewAll(false); markSettled(); }}
-            // Terminal step of the chain (reached either directly, for
-            // pre-1.5 versions, or after the enhanced popup above) — "Got it"
-            // here actually closes things out.
-            onAcknowledge={() => { acknowledge.mutate(ackTarget); setOpen(false); setViewAll(false); markSettled(); }}
+            onClose={() => { setOpen(false); setViewAll(false); finishChain(); }}
+            // The plain changelog: shown directly for versions with no reel, or
+            // when the reel's "View full release notes" was chosen.
+            onAcknowledge={() => { acknowledge.mutate(ackTarget); setOpen(false); setViewAll(false); finishChain(); }}
             acknowledging={acknowledge.isPending}
             onlyVersion={viewAll ? undefined : ackTarget}
             onViewAll={viewAll ? undefined : () => setViewAll(true)}
@@ -176,6 +205,10 @@ export function WhatsNewAutoPopup() {
       <MobileAppsPromoModal
         isOpen={showPromo}
         onClose={() => setShowPromo(false)}
+      />
+      <SupportNebulisModal
+        isOpen={showSupport}
+        onClose={() => { setShowSupport(false); markSettled(); }}
       />
     </>
   );

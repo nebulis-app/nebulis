@@ -334,6 +334,19 @@
     "saving": "Opslaan...",
     "gotIt": "Begrepen"
   },
+  "supportAsk": {
+    "title": "Vind je Nebulis fijn?",
+    "body1": "Nebulis is gratis en ik ben van plan dat zo te houden. Ik bouw het in mijn vrije tijd voor mensen die mijn liefde voor de nachtelijke hemel delen.",
+    "body2": "Mijn doel is om van Nebulis de beste astronomische bibliotheek en het beste beheerplatform te maken: een plek waar astrofotografen en astronomieliefhebbers hun waarnemingen kunnen ordenen, verkennen en er het meeste uit kunnen halen.",
+    "body3": "Heb je iets aan Nebulis gehad, dan kun je de verdere ontwikkeling steunen door een kopje koffie voor me te kopen. Zo kan ik meer tijd steken in het verbeteren van Nebulis, en het wordt altijd gewaardeerd.",
+    "scan": "Scan de code met je telefoon of gebruik de knop hieronder.",
+    "qrAlt": "QR-code naar de Buy Me a Coffee-pagina",
+    "button": "Trakteer me op een koffie",
+    "close": "Sluiten",
+    "freeNote": "Nebulis blijft altijd gratis te gebruiken. De enige uitzonderingen zijn mobiele apps die via appwinkels worden verspreid.",
+    "salutation": "Heldere luchten!",
+    "onlyOnce": "Je ziet dit bericht maar één keer. Je vindt het altijd terug onder Instellingen → Over."
+  },
   "errorBoundary": {
     "title": "Nebulis is op een onverwachte fout gestuit",
     "description": "Laad de pagina opnieuw om verder te gaan waar je was gebleven. Je bibliotheek en instellingen zijn ongewijzigd.",

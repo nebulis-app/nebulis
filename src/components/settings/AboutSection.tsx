@@ -2,9 +2,9 @@ import { useTranslation } from 'react-i18next';
 import { Coffee, ExternalLink, Mail } from 'lucide-react';
 import { Sec } from './SettingsUI';
 import { DataSourcesSection } from './DataSourcesSection';
+import { COFFEE_URL } from '../../lib/support';
 import qrCode from '../../assets/about/buy-me-a-coffee-qr.svg';
 
-const COFFEE_URL = 'https://buymeacoffee.com/brent873';
 const SUPPORT_EMAIL = 'support@nebulis.app';
 
 export function AboutSection({ isDark }: { isDark: boolean }) {

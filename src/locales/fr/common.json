@@ -334,6 +334,19 @@
     "saving": "Enregistrement…",
     "gotIt": "Compris"
   },
+  "supportAsk": {
+    "title": "Vous appréciez Nebulis ?",
+    "body1": "Nebulis est gratuit, et j'ai l'intention que cela continue. Je le développe sur mon temps libre pour celles et ceux qui partagent mon amour du ciel nocturne.",
+    "body2": "Mon objectif est de faire de Nebulis la meilleure bibliothèque et plateforme de gestion astronomique, un endroit où astrophotographes et passionnés d'astronomie peuvent organiser et explorer leurs observations, et en tirer le meilleur.",
+    "body3": "Si Nebulis vous a été utile, vous pouvez soutenir son développement en m'offrant un café. Cela m'aide à consacrer plus de temps à l'améliorer, et c'est toujours apprécié.",
+    "scan": "Scannez le code avec votre téléphone, ou utilisez le bouton ci-dessous.",
+    "qrAlt": "Code QR vers la page Buy Me a Coffee",
+    "button": "M'offrir un café",
+    "close": "Fermer",
+    "freeNote": "Nebulis sera toujours gratuit. Les seules exceptions sont les applications mobiles distribuées via les boutiques d'applications.",
+    "salutation": "Ciel dégagé !",
+    "onlyOnce": "Vous ne verrez ce message qu'une seule fois. Vous le retrouverez à tout moment dans Réglages → À propos."
+  },
   "errorBoundary": {
     "title": "Nebulis a rencontré une erreur inattendue",
     "description": "Rechargez pour reprendre là où vous en étiez. Votre bibliothèque et vos paramètres sont inchangés.",

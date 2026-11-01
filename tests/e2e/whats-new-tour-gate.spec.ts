@@ -73,15 +73,24 @@ test.describe('Guided tour vs What\'s New gating', () => {
     // The guided tour must NOT be present underneath it.
     await expect(page.locator('.nbl-tour')).toHaveCount(0);
 
-    // "Got it" persists the ack (PUT above) and chains straight into the full
-    // changelog instead of closing. This is the exact moment bug #2 fired:
-    // the lastSeenVersion query catching up to `current` mid-chain.
+    // "Got it" persists the ack (PUT above) and ends the chain: the full release notes are
+    // not forced open after the reel. The lastSeenVersion query catching up to `current`
+    // while this happens is the moment bug #2 fired, so the tour must still wait for the
+    // close and then start.
     await page.getByRole('button', { name: 'Got it' }).click();
+    await expect(page.locator('p:not(.sr-only)', { hasText: 'Release history' })).toHaveCount(0);
+    await expect(page.getByText('Meet Nebulis')).toBeVisible();
+  });
+
+  test('"View full release notes" still opens them, and closing them ends the chain', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Set up later' }).click();
+    await expect(page.locator('h2:not(.sr-only)', { hasText: 'What\'s new in Nebulis 2.0' })).toBeVisible();
+
+    await page.getByRole('button', { name: /view full release notes/i }).click();
     await expect(page.locator('p:not(.sr-only)', { hasText: 'Release history' })).toBeVisible();
     await expect(page.locator('.nbl-tour')).toHaveCount(0);
 
-    // Only dismissing the full changelog actually ends the chain — the tour
-    // may auto-start now, and should.
     await page.getByRole('button', { name: 'Got it' }).click();
     await expect(page.getByText('Meet Nebulis')).toBeVisible();
   });

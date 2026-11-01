@@ -1,5 +1,5 @@
 # Changelog
-## 2.2.0 (297) - November 1st, 2026
+## 2.2.0 (298) - November 1st, 2026
 ### New
 - **PixInsight connector:** a script that connects PixInsight to your Nebulis library. ([@jjmartres](https://github.com/jjmartres))
   - Browse your objects and nights from inside PixInsight and download a night's sub-frames.

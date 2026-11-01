@@ -14,8 +14,11 @@ export interface Blocks {
   values: Float32Array;
   nx: number;
   ny: number;
-  /** Smooth sky under the blocks, wider than any spot (a running median over 15 by 15 blocks). */
+  /** Smooth sky under the blocks, wider than any spot (a running median over 31 by 31 blocks). */
   large: Float32Array;
+  /** The darker side of the same window (its 20th percentile). Over plain sky it sits just under `large`; where the
+   *  window holds nebulosity, filaments with dark gaps between them, it sits far under it. */
+  low: Float32Array;
   /** Spread of the blocks around that smooth sky, from the median absolute deviation. */
   noise: number;
 }
@@ -90,11 +93,12 @@ export function blockMedians(g: Grid): Blocks {
     }
   }
 
-  // Running median over 15 by 15 blocks, taken every third block and filled in between: a spot is a few blocks
-  // across, so it sways a median this wide very little.
-  const half = 7, step = 3;
+  // Running median and 20th percentile over 31 by 31 blocks, taken every fourth block and filled in between: even a
+  // large shadow (a dew ring 15 blocks across) covers too little of a window this wide to sway it.
+  const half = 15, step = 4;
   const gx = Math.ceil(nx / step) + 1, gy = Math.ceil(ny / step) + 1;
   const coarse = new Float32Array(gx * gy);
+  const coarseLow = new Float32Array(gx * gy);
   const win: number[] = [];
   for (let cy = 0; cy < gy; cy++) {
     for (let cx = 0; cx < gx; cx++) {
@@ -103,10 +107,13 @@ export function blockMedians(g: Grid): Blocks {
       for (let y = Math.max(0, y0 - half); y <= Math.min(ny - 1, y0 + half); y++) {
         for (let x = Math.max(0, x0 - half); x <= Math.min(nx - 1, x0 + half); x++) win.push(values[y * nx + x]);
       }
-      coarse[cy * gx + cx] = sortedMedian(win);
+      const sorted = Float32Array.from(win).sort();
+      coarse[cy * gx + cx] = sortedMedian(sorted);
+      coarseLow[cy * gx + cx] = sorted[Math.floor((sorted.length - 1) * 0.2)];
     }
   }
   const large = new Float32Array(nx * ny);
+  const low = new Float32Array(nx * ny);
   for (let y = 0; y < ny; y++) {
     const fy = y / step, y0 = Math.min(Math.floor(fy), gy - 1), y1 = Math.min(y0 + 1, gy - 1), ty = fy - y0;
     for (let x = 0; x < nx; x++) {
@@ -114,6 +121,9 @@ export function blockMedians(g: Grid): Blocks {
       const top = coarse[y0 * gx + x0] * (1 - tx) + coarse[y0 * gx + x1] * tx;
       const bottom = coarse[y1 * gx + x0] * (1 - tx) + coarse[y1 * gx + x1] * tx;
       large[y * nx + x] = top * (1 - ty) + bottom * ty;
+      const lowTop = coarseLow[y0 * gx + x0] * (1 - tx) + coarseLow[y0 * gx + x1] * tx;
+      const lowBottom = coarseLow[y1 * gx + x0] * (1 - tx) + coarseLow[y1 * gx + x1] * tx;
+      low[y * nx + x] = lowTop * (1 - ty) + lowBottom * ty;
     }
   }
 
@@ -122,21 +132,26 @@ export function blockMedians(g: Grid): Blocks {
   const mid = sortedMedian(resid);
   const dev = resid.map(r => Math.abs(r - mid));
   const noise = Math.max(sortedMedian(dev) * 1.4826, 1e-3);
-  return { values, nx, ny, large, noise };
+  return { values, nx, ny, large, low, noise };
 }
 
 /**
- * Round shadows darker than the smooth sky by three times the blocks' spread: dust on a filter or window (the flats
- * take those out) or dew or frost near the sensor (they do not, as it comes and goes). Long dark shapes, shapes on
- * the frame's edge (vignetting) and shapes too big or too small for a shadow of something near the sensor are left
- * out; a shadow can be oval (a droplet seen at an angle, a tilted window), so up to 3 to 1 is kept. Dark nebulae can
- * still read as spots; they are in every night of a target, which is how ranking tells them
- * from what came that night only.
+ * Round shadows over plain sky: dust on a filter or window (the flats take those out) or dew or frost near the
+ * sensor (they do not, as it comes and goes). A shadow dims the sky itself, so a block counts only when it is darker
+ * than the smooth sky by three times the blocks' spread and also darker than the darker side of its surroundings.
+ * Where the surroundings are structured (nebulosity, whose dark gaps between filaments are no shadow) nothing is
+ * looked for: the window's median stands well above its 20th percentile there, while over plain sky the two are a
+ * spread apart. Long dark shapes, shapes on the frame's edge (vignetting) and shapes too big or too small for a
+ * shadow of something near the sensor are left out; a shadow can be oval (a droplet seen at an angle, a tilted
+ * window), so up to 3 to 1 is kept.
  */
 export function findSpots(b: Blocks): FrameSpot[] {
-  const { nx, ny, values, large, noise } = b;
+  const { nx, ny, values, large, low, noise } = b;
   const dark = new Uint8Array(nx * ny);
-  for (let i = 0; i < dark.length; i++) if (values[i] - large[i] < -3 * noise) dark[i] = 1;
+  for (let i = 0; i < dark.length; i++) {
+    const structured = large[i] - low[i] > 2.5 * noise;
+    if (!structured && values[i] - large[i] < -3 * noise && values[i] < low[i] - 2 * noise) dark[i] = 1;
+  }
   const seen = new Uint8Array(nx * ny);
   const spots: FrameSpot[] = [];
   const stack: number[] = [];
@@ -154,7 +169,9 @@ export function findSpots(b: Blocks): FrameSpot[] {
       for (const j of next) if (j >= 0 && dark[j] && !seen[j]) { seen[j] = 1; stack.push(j); }
     }
     const w = maxX - minX + 1, h = maxY - minY + 1;
-    if (area < 4 || w < 2 || h < 2 || w > 24 || h > 24) continue;
+    // A shadow of something near the sensor is at least 4 blocks (32 grid pixels) across: even dew a millimetre from
+    // the sensor throws a ring that wide at f/7. Smaller dark patches are the field's own structure.
+    if (area < 6 || w < 2 || h < 2 || Math.max(w, h) < 4 || w > 24 || h > 24) continue;
     if (Math.max(w, h) / Math.min(w, h) > 3 || area / (w * h) < 0.3) continue;
     if (minX <= 0 || minY <= 0 || maxX >= nx - 1 || maxY >= ny - 1) continue;
     spots.push({

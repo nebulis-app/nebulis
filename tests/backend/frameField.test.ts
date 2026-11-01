@@ -18,6 +18,8 @@ interface Spec {
   noise?: number;
   /** Peak of the object above the sky, 0 for none. Centred, an ellipse 160 by 50 pixels at 30°. */
   object?: number;
+  /** Nebulosity: bright filaments with dark gaps between them over the frame's centre, peak above the sky. */
+  filaments?: number;
   /** Shadows: centre and radius in file pixels, depth as a fraction of the sky. */
   spots?: { x: number; y: number; r: number; depth: number }[];
   /** Write a plate solution (pointing at RA 30°, Dec 40°, 1.5"/px) or only pointing, focal length and pixel size. */
@@ -47,6 +49,16 @@ function frame(o: Spec = {}): Buffer {
       for (let x = 0; x < W; x++) {
         const dx = x - W / 2, dy = y - H / 2, u = dx * c + dy * s, v = -dx * s + dy * c;
         img[y * W + x] += o.object * Math.exp(-(u * u) / (2 * 80 * 80) - (v * v) / (2 * 25 * 25));
+      }
+    }
+  }
+  if (o.filaments) {
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const r = Math.hypot(x - W / 2, y - H / 2);
+        if (r > 260) continue;
+        // Concentric shells 40 px apart with dark gaps between them, like a wind-blown shell nebula.
+        img[y * W + x] += o.filaments * Math.max(0, Math.sin(r / 40 * Math.PI)) ** 2 * (1 - r / 300);
       }
     }
   }
@@ -122,6 +134,13 @@ describe('round shadows near the sensor', () => {
     expect(Math.abs(spots[0].y - 200)).toBeLessThan(12);
     expect(spots[0].diameter).toBeGreaterThanOrEqual(40);
     expect(measureFrame(frame()).spots).toEqual([]);
+  });
+
+  it('does not take the dark gaps between a nebula\'s filaments for shadows, but still finds one beside it', () => {
+    expect(measureFrame(frame({ filaments: 120 })).spots).toEqual([]);
+    const spots = measureFrame(frame({ filaments: 120, spots: [{ x: 120, y: 520, r: 30, depth: 0.04 }] })).spots;
+    expect(spots.length).toBe(1);
+    expect(Math.abs(spots[0].x - 120)).toBeLessThan(12);
   });
 });
 

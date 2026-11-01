@@ -67,7 +67,7 @@ export interface FrameMetrics {
 }
 
 /** Bump when a change here makes the same file measure differently, so stored results are dropped on upgrade. */
-export const FRAME_METRICS_VERSION = 6;
+export const FRAME_METRICS_VERSION = 7;
 
 const BAYER_PATTERNS = new Set(['RGGB', 'BGGR', 'GRBG', 'GBRG']);
 const SUPPORTED_BITPIX = new Set([8, 16, 32, -32, -64]);

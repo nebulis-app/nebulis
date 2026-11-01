@@ -507,7 +507,9 @@
         "soft": "Étoiles floues",
         "streak": "Satellite / avion",
         "noStars": "Sans étoiles",
-        "noisy": "Bruitée"
+        "noisy": "Bruitée",
+        "faint": "Peu visible",
+        "spots": "Taches capteur"
       },
       "stats": {
         "stars": "Étoiles",
@@ -529,7 +531,14 @@
         "trailsSlightAngle": "Les étoiles sont {{ratio}} fois plus longues que larges, étirées vers {{angle}}°. Un léger bougé qui se verra à peine une fois les images empilées.",
         "soft": "Les étoiles font {{fwhm}} px de large contre {{typical}} px typiques : mise au point imparfaite ou air instable.",
         "streak": "Une traînée droite traverse l'image à environ {{angle}}° (un satellite ou un avion). L'empilement avec rejet l'élimine en général.",
-        "noisy": "Le bruit de fond dépasse de {{percent}} % celui de l'image typique de la nuit."
+        "noisy": "Le bruit de fond dépasse de {{percent}} % celui de l'image typique de la nuit.",
+        "faint": "Apporte {{percent}} % du rapport signal sur bruit des meilleures images de cet objet les autres nuits (même filtre, même pose, même télescope).",
+        "faintTarget": "Apporte {{percent}} % du rapport signal sur bruit des meilleures images de cet objet les autres nuits, et l'objet lui-même ne ressort qu'à {{target}} % de son contraste habituel.",
+        "faintBrighter": "Le ciel est plus lumineux que ces nuits-là : Lune, crépuscule ou brume.",
+        "spotsOtherNights_one": "Une ombre ronde absente des autres nuits : buée ou givre près du capteur. Des flats pris à un autre moment ne la corrigeront pas.",
+        "spotsOtherNights_other": "{{count}} ombres rondes absentes des autres nuits : buée ou givre près du capteur. Des flats pris à un autre moment ne les corrigeront pas.",
+        "spotsThisNight_one": "Une ombre ronde absente de la plupart des images de la nuit : buée ou givre près du capteur, apparus puis disparus.",
+        "spotsThisNight_other": "{{count}} ombres rondes absentes de la plupart des images de la nuit : buée ou givre près du capteur, apparus puis disparus."
       },
       "selectHint": "Cliquez sur les images pour les sélectionner.",
       "selectedCount_one": "{{count}} image sélectionnée",
@@ -549,7 +558,8 @@
       "selectFrame": "Sélectionner {{name}}",
       "markKeep": "Garder",
       "markReject": "Rejeter",
-      "followGrade": "Retirer la marque"
+      "followGrade": "Retirer la marque",
+      "otherNights": "Comparée aussi à {{count}} images de cet objet prises d'autres nuits, avec le même filtre, la même pose et le même télescope."
     },
     "frameList": {
       "notMeasuredTitle": "Ouvrez la nuit pour mesurer ses images.",
@@ -577,6 +587,7 @@
         "round": "Allong.",
         "noise": "Bruit",
         "snr": "Signal",
+        "target": "Objet",
         "sky": "Ciel",
         "file": "Fichier"
       },
@@ -589,6 +600,7 @@
         "round": "Trier par allongement des étoiles : 1,00 est rond, plus est étiré",
         "noise": "Trier par bruit de fond, le plus faible d’abord. Plus bas, c’est plus propre.",
         "snr": "Trier par signal : de combien les étoiles les plus brillantes dépassent le bruit (×). Plus haut, c’est mieux.",
+        "target": "Trier selon la visibilité de l'objet photographié : sa partie la plus brillante par rapport au ciel autour, en unités de bruit du ciel. Il faut une image astrométrée, ou pointée sur l'objet.",
         "sky": "Trier par luminosité du ciel (valeurs brutes). Un saut entre deux images peut venir de nuages, de brume ou de la Lune.",
         "file": "Trier par nom de fichier"
       },

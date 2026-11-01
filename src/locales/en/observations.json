@@ -507,7 +507,9 @@
         "soft": "Soft stars",
         "streak": "Satellite / plane",
         "noStars": "No stars",
-        "noisy": "Noisy"
+        "noisy": "Noisy",
+        "faint": "Faint",
+        "spots": "Sensor spots"
       },
       "stats": {
         "stars": "Stars",
@@ -529,7 +531,14 @@
         "trailsSlightAngle": "Stars are {{ratio}} times longer than wide, stretched toward {{angle}}°. A slight smear that will hardly show once the frames are stacked.",
         "soft": "Stars are {{fwhm}} px wide against {{typical}} px typical: out of focus, or the air was unsteady.",
         "streak": "A straight streak crosses the frame at about {{angle}}° (a satellite or aeroplane). Stacking with rejection usually removes it.",
-        "noisy": "Background noise is {{percent}}% above the night's typical frame."
+        "noisy": "Background noise is {{percent}}% above the night's typical frame.",
+        "faint": "Brings {{percent}}% of the signal to noise of this object's better frames on other nights (same filter, exposure and telescope).",
+        "faintTarget": "Brings {{percent}}% of the signal to noise of this object's better frames on other nights, and the object itself shows at {{target}}% of its usual contrast.",
+        "faintBrighter": "The sky is brighter than on those nights: Moon, twilight or haze.",
+        "spotsOtherNights_one": "A round shadow that other nights do not have: dew or frost near the sensor. Flats taken another time will not correct it.",
+        "spotsOtherNights_other": "{{count}} round shadows that other nights do not have: dew or frost near the sensor. Flats taken another time will not correct them.",
+        "spotsThisNight_one": "A round shadow that most of this night's frames do not have: dew or frost near the sensor, which came and went.",
+        "spotsThisNight_other": "{{count}} round shadows that most of this night's frames do not have: dew or frost near the sensor, which came and went."
       },
       "selectHint": "Click frames to select them.",
       "selectedCount_one": "{{count}} frame selected",
@@ -549,7 +558,8 @@
       "selectFrame": "Select {{name}}",
       "markKeep": "Mark keep",
       "markReject": "Mark reject",
-      "followGrade": "Clear mark"
+      "followGrade": "Clear mark",
+      "otherNights": "Also compared with {{count}} frames of this object from other nights, same filter, exposure and telescope."
     },
     "frameList": {
       "notMeasuredTitle": "Open the night to measure its frames.",
@@ -577,6 +587,7 @@
         "round": "Elong.",
         "noise": "Noise",
         "snr": "Signal",
+        "target": "Object",
         "sky": "Sky",
         "file": "File"
       },
@@ -589,6 +600,7 @@
         "round": "Sort by star elongation. 1.00 is perfectly round, higher means stretched stars from tracking or wind.",
         "noise": "Sort by background noise, quietest first. Lower is cleaner.",
         "snr": "Sort by signal: how far the brightest stars rise above the noise (×). Higher is better.",
+        "target": "Sort by how plainly the photographed object shows: its brighter part over the sky around it, in units of the sky's noise. Needs a plate-solved frame, or one pointed at the object.",
         "sky": "Sort by sky brightness (raw counts). A jump between frames can mean clouds, haze or the Moon.",
         "file": "Sort by file name"
       },

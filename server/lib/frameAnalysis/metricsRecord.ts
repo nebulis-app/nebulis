@@ -21,6 +21,27 @@ export function coerceMetrics(value: unknown): FrameMetrics | null {
     const angle = numberOrNull(value.streak.angle), strength = numberOrNull(value.streak.strength);
     if (angle !== null && strength !== null) streak = { angle, strength };
   }
+  let target: FrameMetrics['target'] = null;
+  if (isRecord(value.target)) {
+    const t = value.target;
+    const x = numberOrNull(t.x), y = numberOrNull(t.y), radius = numberOrNull(t.radius);
+    const signal = numberOrNull(t.signal), snr = numberOrNull(t.snr);
+    if (x !== null && y !== null && radius !== null && signal !== null && snr !== null) target = { x, y, radius, signal, snr };
+  }
+  const spots: FrameMetrics['spots'] = [];
+  if (Array.isArray(value.spots)) {
+    for (const s of value.spots) {
+      if (!isRecord(s)) continue;
+      const x = numberOrNull(s.x), y = numberOrNull(s.y), diameter = numberOrNull(s.diameter), depth = numberOrNull(s.depth);
+      if (x !== null && y !== null && diameter !== null && depth !== null) spots.push({ x, y, diameter, depth });
+    }
+  }
+  const rigRaw = isRecord(value.rig) ? value.rig : {};
+  const rig: FrameMetrics['rig'] = {
+    camera: typeof rigRaw.camera === 'string' ? rigRaw.camera : null,
+    focal: numberOrNull(rigRaw.focal),
+    scale: numberOrNull(rigRaw.scale),
+  };
   return {
     width, height, starCount,
     fwhm: numberOrNull(value.fwhm),
@@ -29,7 +50,7 @@ export function coerceMetrics(value: unknown): FrameMetrics | null {
     background, noise, gradient,
     peakSNR: numberOrNull(value.peakSNR),
     signal: numberOrNull(value.signal),
-    streak, saturatedFraction,
+    streak, saturatedFraction, target, spots, rig,
     ra: numberOrNull(value.ra),
     dec: numberOrNull(value.dec),
   };

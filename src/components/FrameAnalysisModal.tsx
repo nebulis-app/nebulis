@@ -141,7 +141,7 @@ export function FrameAnalysisModal({ isOpen, onClose, objectId, nights, initialD
 
   const summary = useMemo(() => {
     const s: Record<FrameGrade, number> = { good: 0, fair: 0, bad: 0 };
-    const flagCounts: Record<FrameFlag, number> = { clouds: 0, trails: 0, soft: 0, streak: 0, noStars: 0, noisy: 0 };
+    const flagCounts: Record<FrameFlag, number> = { clouds: 0, faint: 0, trails: 0, soft: 0, streak: 0, spots: 0, noStars: 0, noisy: 0 };
     for (const r of rows) {
       if (r.verdict) {
         s[r.verdict.grade]++;
@@ -342,6 +342,7 @@ export function FrameAnalysisModal({ isOpen, onClose, objectId, nights, initialD
                 {t(`${base}.typicalFrame`, {
                   stars: n0(reference.stars), fwhm: n1(reference.fwhm), elongation: formatNumber(reference.elongation, { maximumFractionDigits: 2 }),
                 })}
+                {(reference.otherFrames ?? 0) > 0 && ` ${t(`${base}.otherNights`, { count: reference.otherFrames })}`}
               </p>
             )}
           </>

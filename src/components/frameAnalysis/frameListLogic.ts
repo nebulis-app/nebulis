@@ -1,7 +1,7 @@
 /** Pure helpers for the night frame list: ordering, the summary, the timeline's gap, and trimming shared name prefixes. */
 import type { FrameAnalysisRow } from '../../lib/api/frameAnalysis';
 
-export type SortKey = 'time' | 'score' | 'flags' | 'stars' | 'fwhm' | 'round' | 'noise' | 'snr' | 'sky' | 'file';
+export type SortKey = 'time' | 'score' | 'flags' | 'stars' | 'fwhm' | 'round' | 'noise' | 'snr' | 'target' | 'sky' | 'file';
 
 /** The telescope's `yyyymmdd-hhmmss` stamp as a wall-clock time, or null when the name carries none. */
 export function captureTime(stamp: string | null): Date | null {
@@ -37,6 +37,7 @@ export function orderRows(
       case 'round': return r.metrics?.elongation ?? null;
       case 'noise': return r.metrics?.noise ?? null;
       case 'snr': return r.metrics?.peakSNR ?? null;
+      case 'target': return r.metrics?.target?.snr ?? null;
       case 'sky': return r.metrics?.background ?? null;
       case 'file': return null;
     }

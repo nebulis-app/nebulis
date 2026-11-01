@@ -7,12 +7,21 @@
  * the two are meant to agree on the numbers, so change them together.
  */
 import { fitsDataOffset, parseFitsHeader } from '../fitsParser.js';
+import { blockMedians, findSpots, measureTarget, type FrameSpot, type FrameTarget, type GridWcs, type TargetSpec } from './field.js';
+
+export type { FrameSpot, FrameTarget, TargetSpec } from './field.js';
 
 export interface FrameStreak {
   /** Direction the streak runs in, degrees, 0 to 180, in the analysed picture. */
   angle: number;
   /** How much of the picture's diagonal it covers, 0...1. */
   strength: number;
+}
+
+export interface FrameRig {
+  camera: string | null;
+  focal: number | null;
+  scale: number | null;
 }
 
 export interface FrameMetrics {
@@ -40,13 +49,25 @@ export interface FrameMetrics {
   signal: number | null;
   streak: FrameStreak | null;
   saturatedFraction: number;
+  /**
+   * The photographed object, when the header carries a plate solution and the object's place is known: how far it
+   * stands out of the sky around it. Null otherwise.
+   */
+  target: FrameTarget | null;
+  /** Round shadows darker than the sky around them (dust, or dew or frost near the sensor), in grid pixels. */
+  spots: FrameSpot[];
+  /**
+   * What took the frame, from the header: frames are only comparable with frames of the same camera and focal
+   * length. `scale` is arcseconds per grid pixel, from the plate solution or else from focal length and pixel size.
+   */
+  rig: FrameRig;
   /** Where the telescope pointed, degrees, from the header. A mosaic points somewhere new every frame. */
   ra: number | null;
   dec: number | null;
 }
 
 /** Bump when a change here makes the same file measure differently, so stored results are dropped on upgrade. */
-export const FRAME_METRICS_VERSION = 5;
+export const FRAME_METRICS_VERSION = 6;
 
 const BAYER_PATTERNS = new Set(['RGGB', 'BGGR', 'GRBG', 'GBRG']);
 const SUPPORTED_BITPIX = new Set([8, 16, 32, -32, -64]);
@@ -69,7 +90,7 @@ const MAX_STREAK_WIDTH = 10;
 
 export class FrameDecodeError extends Error {}
 
-interface Grid {
+export interface Grid {
   data: Float32Array;
   width: number;
   height: number;
@@ -77,6 +98,9 @@ interface Grid {
   ceiling: number | null;
   ra: number | null;
   dec: number | null;
+  /** The header's plate solution, mapped onto this grid. */
+  wcs: GridWcs | null;
+  rig: FrameRig;
 }
 
 // ─── Decode ───────────────────────────────────────────────────────────────
@@ -188,7 +212,55 @@ export function decodeGrid(buf: Buffer): Grid {
     data: out, width: ow, height: oh,
     ceiling: bitpix === 8 ? 255 : bitpix === 16 ? 65535 : null,
     ra: located ? ra : null, dec: located ? dec : null,
+    wcs: readWcs(v, bin ? 2 : 1),
+    rig: readRig(v, bin ? 2 : 1),
   };
+}
+
+function headerText(values: Record<string, string | number | boolean>, ...keys: string[]): string | null {
+  for (const k of keys) {
+    const s = values[k];
+    if (typeof s === 'string' && s.trim()) return s.trim();
+  }
+  return null;
+}
+
+/** Camera, focal length and scale. Smart telescopes write their name in INSTRUME or TELESCOP. */
+function readRig(v: Record<string, string | number | boolean>, bin: number): FrameRig {
+  const camera = headerText(v, 'INSTRUME', 'TELESCOP');
+  const focalRaw = headerNumber(v, 'FOCALLEN') ?? headerNumber(v, 'FOCAL');
+  const focal = focalRaw !== null && focalRaw > 0 ? focalRaw : null;
+  const wcs = readWcs(v, bin);
+  let scale: number | null = null;
+  if (wcs) {
+    const [a, b, c, d] = wcs.cd;
+    scale = Math.sqrt(Math.abs(a * d - b * c)) * 3600 * bin;
+  } else {
+    const pixel = headerNumber(v, 'XPIXSZ') ?? headerNumber(v, 'PIXSIZE1');
+    if (focal !== null && pixel !== null && pixel > 0) scale = (206.265 * pixel / focal) * bin;
+  }
+  return { camera, focal, scale: scale !== null && Number.isFinite(scale) ? Math.round(scale * 1000) / 1000 : null };
+}
+
+/**
+ * A TAN plate solution (CRVAL, CRPIX and a CD matrix, or CDELT with CROTA2) mapped onto the analysed grid. Higher
+ * order distortion terms are left out: across a target's few hundred pixels they move it by a pixel or two.
+ */
+function readWcs(v: Record<string, string | number | boolean>, bin: number): GridWcs | null {
+  const crval1 = headerNumber(v, 'CRVAL1'), crval2 = headerNumber(v, 'CRVAL2');
+  const crpix1 = headerNumber(v, 'CRPIX1'), crpix2 = headerNumber(v, 'CRPIX2');
+  if (crval1 === null || crval2 === null || crpix1 === null || crpix2 === null) return null;
+  let cd11 = headerNumber(v, 'CD1_1'), cd12 = headerNumber(v, 'CD1_2');
+  let cd21 = headerNumber(v, 'CD2_1'), cd22 = headerNumber(v, 'CD2_2');
+  if (cd11 === null || cd22 === null) {
+    const d1 = headerNumber(v, 'CDELT1'), d2 = headerNumber(v, 'CDELT2');
+    if (d1 === null || d2 === null) return null;
+    const rot = (headerNumber(v, 'CROTA2') ?? 0) * Math.PI / 180;
+    cd11 = d1 * Math.cos(rot); cd12 = -d2 * Math.sin(rot); cd21 = d1 * Math.sin(rot); cd22 = d2 * Math.cos(rot);
+  }
+  cd12 ??= 0; cd21 ??= 0;
+  if (!(Math.abs(cd11 * cd22 - cd12 * cd21) > 0)) return null;
+  return { crval1, crval2, crpix1, crpix2, cd: [cd11, cd12, cd21, cd22], bin };
 }
 
 // ─── Statistics ───────────────────────────────────────────────────────────
@@ -396,7 +468,8 @@ function adaptiveMoments(g: Grid, bg: number, x0: number, y0: number, start: num
     mx += ex; my += ey;
     if (Math.abs(mx - x0) > 3 || Math.abs(my - y0) > 3) return null;
     // Next window: twice the moments, held to the floor, kept a proper ellipse.
-    let nxx = Math.max(2 * mxx, floor), nyy = Math.max(2 * myy, floor), nxy = 2 * mxy;
+    const nxx = Math.max(2 * mxx, floor), nyy = Math.max(2 * myy, floor);
+    let nxy = 2 * mxy;
     const room = Math.sqrt(nxx * nyy) * 0.95;
     if (Math.abs(nxy) > room) nxy = Math.sign(nxy) * room;
     // Wider than a window this size can hold: a blend or extended object.
@@ -667,13 +740,13 @@ function findStreak(g: Grid, map: BackgroundMap, noise: number, stars: Star[]): 
 
 // ─── Entry point ──────────────────────────────────────────────────────────
 
-function measureGrid(g: Grid): FrameMetrics {
+function measureGrid(g: Grid, target?: TargetSpec | null): FrameMetrics {
   const w = g.width, h = g.height;
   const pointing = { ra: g.ra, dec: g.dec };
   if (w < 8 || h < 8 || g.data.length === 0) {
     return {
       width: w, height: h, starCount: 0, fwhm: null, elongation: null, orientation: null, background: 0, noise: 0,
-      gradient: 0, peakSNR: null, signal: null, streak: null, saturatedFraction: 0, ...pointing,
+      gradient: 0, peakSNR: null, signal: null, streak: null, saturatedFraction: 0, target: null, spots: [], rig: g.rig, ...pointing,
     };
   }
   const map = new BackgroundMap(g, CELL);
@@ -707,6 +780,7 @@ function measureGrid(g: Grid): FrameMetrics {
 
   // Ranked by flux with the clipped stars kept in the ranking (they are the brightest), so the window holds the
   // same stars of the field from one frame to the next; only its unclipped members are read.
+  const blocks = blockMedians(g);
   const byFlux = [...stars].sort((a, b) => b.flux - a.flux);
   const window = byFlux.slice(SIGNAL_RANKS[0], SIGNAL_RANKS[1]).filter(s => !s.saturated);
   const signal = window.length >= 10 ? median(window.map(s => s.flux))
@@ -722,16 +796,19 @@ function measureGrid(g: Grid): FrameMetrics {
     signal,
     streak: findStreak(g, map, noise, stars),
     saturatedFraction: saturated / (w * h),
+    target: target ? measureTarget(g, blocks, target) : null,
+    spots: findSpots(blocks),
+    rig: g.rig,
     ...pointing,
   };
 }
 
 /** Measure one raw sub-frame from the bytes of its FITS file. Throws FrameDecodeError for a file that is not a readable image. */
-export function measureFrame(buf: Buffer): FrameMetrics {
-  return measureGrid(decodeGrid(buf));
+export function measureFrame(buf: Buffer, target?: TargetSpec | null): FrameMetrics {
+  return measureGrid(decodeGrid(buf), target);
 }
 
 /** Exposed for tests: measure a grid built in memory. */
 export function measureSyntheticGrid(data: Float32Array, width: number, height: number): FrameMetrics {
-  return measureGrid({ data, width, height, ceiling: null, ra: null, dec: null });
+  return measureGrid({ data, width, height, ceiling: null, ra: null, dec: null, wcs: null, rig: { camera: null, focal: null, scale: null } });
 }

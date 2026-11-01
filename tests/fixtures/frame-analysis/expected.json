@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "files": {
     "clean.fits": {
       "sha256": "07b93c699e6aa996405af20272b2484c3f63111daad2e7c5c12dc0ecf8c27a42",
@@ -17,6 +17,13 @@
         "signal": 23629.14344458353,
         "streak": null,
         "saturatedFraction": 0,
+        "target": null,
+        "spots": [],
+        "rig": {
+          "camera": null,
+          "focal": null,
+          "scale": null
+        },
         "ra": null,
         "dec": null
       }
@@ -37,6 +44,13 @@
         "signal": 35740.08349798009,
         "streak": null,
         "saturatedFraction": 0,
+        "target": null,
+        "spots": [],
+        "rig": {
+          "camera": null,
+          "focal": null,
+          "scale": null
+        },
         "ra": null,
         "dec": null
       }
@@ -60,6 +74,13 @@
           "strength": 1
         },
         "saturatedFraction": 0,
+        "target": null,
+        "spots": [],
+        "rig": {
+          "camera": null,
+          "focal": null,
+          "scale": null
+        },
         "ra": null,
         "dec": null
       }
@@ -80,6 +101,13 @@
         "signal": null,
         "streak": null,
         "saturatedFraction": 0,
+        "target": null,
+        "spots": [],
+        "rig": {
+          "camera": null,
+          "focal": null,
+          "scale": null
+        },
         "ra": null,
         "dec": null
       }
@@ -100,6 +128,13 @@
         "signal": 8366.45641269982,
         "streak": null,
         "saturatedFraction": 0,
+        "target": null,
+        "spots": [],
+        "rig": {
+          "camera": null,
+          "focal": null,
+          "scale": null
+        },
         "ra": 83.82,
         "dec": -5.39
       }

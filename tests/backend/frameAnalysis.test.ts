@@ -177,7 +177,8 @@ describe('FITS decode', () => {
 describe('frame ranking', () => {
   const night = (counts: number[]) => counts.map((starCount, i) => ({
     width: 960, height: 540, starCount, fwhm: 3, elongation: 1.1, orientation: null, background: 1000, noise: 10,
-    gradient: 0.02, peakSNR: 40, signal: 5000, streak: null, saturatedFraction: 0, ra: null, dec: null, id: i,
+    gradient: 0.02, peakSNR: 40, signal: 5000, streak: null, saturatedFraction: 0, target: null, spots: [],
+    rig: { camera: null, focal: null, scale: null }, ra: null, dec: null, id: i,
   }));
 
   it('marks a frame with far fewer stars than the night as clouds', () => {

@@ -507,7 +507,9 @@
         "soft": "Estrellas blandas",
         "streak": "Satélite / avión",
         "noStars": "Sin estrellas",
-        "noisy": "Ruidoso"
+        "noisy": "Ruidoso",
+        "faint": "Débil",
+        "spots": "Manchas en sensor"
       },
       "stats": {
         "stars": "Estrellas",
@@ -529,7 +531,14 @@
         "trailsSlightAngle": "Las estrellas son {{ratio}} veces más largas que anchas, alargadas hacia {{angle}}°. Un ligero arrastre que apenas se notará al apilar los fotogramas.",
         "soft": "Las estrellas miden {{fwhm}} px de ancho frente a {{typical}} px típicos: desenfoque o aire inestable.",
         "streak": "Un trazo recto cruza el fotograma a unos {{angle}}° (un satélite o un avión). Apilar con rechazo suele eliminarlo.",
-        "noisy": "El ruido de fondo es un {{percent}}% mayor que el del fotograma típico de la noche."
+        "noisy": "El ruido de fondo es un {{percent}}% mayor que el del fotograma típico de la noche.",
+        "faint": "Aporta el {{percent}} % de la relación señal-ruido de los mejores fotogramas de este objeto en otras noches (mismo filtro, exposición y telescopio).",
+        "faintTarget": "Aporta el {{percent}} % de la relación señal-ruido de los mejores fotogramas de este objeto en otras noches, y el objeto solo muestra el {{target}} % de su contraste habitual.",
+        "faintBrighter": "El cielo está más brillante que esas noches: Luna, crepúsculo o bruma.",
+        "spotsOtherNights_one": "Una sombra redonda que otras noches no tienen: rocío o escarcha cerca del sensor. Los flats tomados en otro momento no la corregirán.",
+        "spotsOtherNights_other": "{{count}} sombras redondas que otras noches no tienen: rocío o escarcha cerca del sensor. Los flats tomados en otro momento no las corregirán.",
+        "spotsThisNight_one": "Una sombra redonda que la mayoría de los fotogramas de esta noche no tienen: rocío o escarcha cerca del sensor, que apareció y se fue.",
+        "spotsThisNight_other": "{{count}} sombras redondas que la mayoría de los fotogramas de esta noche no tienen: rocío o escarcha cerca del sensor, que apareció y se fue."
       },
       "selectHint": "Haz clic en los fotogramas para seleccionarlos.",
       "selectedCount_one": "{{count}} fotograma seleccionado",
@@ -549,7 +558,8 @@
       "selectFrame": "Seleccionar {{name}}",
       "markKeep": "Conservar",
       "markReject": "Rechazar",
-      "followGrade": "Quitar marca"
+      "followGrade": "Quitar marca",
+      "otherNights": "Comparado también con {{count}} fotogramas de este objeto de otras noches, con el mismo filtro, exposición y telescopio."
     },
     "frameList": {
       "notMeasuredTitle": "Abre la noche para medir sus fotogramas.",
@@ -577,6 +587,7 @@
         "round": "Alarg.",
         "noise": "Ruido",
         "snr": "Señal",
+        "target": "Objeto",
         "sky": "Cielo",
         "file": "Archivo"
       },
@@ -589,6 +600,7 @@
         "round": "Ordenar por elongación de las estrellas: 1,00 es redonda, más es alargada",
         "noise": "Ordenar por ruido de fondo, el más bajo primero. Más bajo es más limpio.",
         "snr": "Ordenar por señal: cuánto sobresalen las estrellas más brillantes del ruido (×). Más alto es mejor.",
+        "target": "Ordenar por lo claramente que se ve el objeto fotografiado: su parte más brillante frente al cielo que lo rodea, en unidades del ruido del cielo. Requiere un fotograma con astrometría, o apuntado al objeto.",
         "sky": "Ordenar por brillo del cielo (valores brutos). Un salto entre fotogramas puede indicar nubes, bruma o la Luna.",
         "file": "Ordenar por nombre de archivo"
       },

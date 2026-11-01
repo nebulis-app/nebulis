@@ -1,7 +1,7 @@
 import { fetchJSON, authHeaders, BASE } from './client';
 import type { SessionFile } from '../../types';
 
-export type FrameFlag = 'clouds' | 'trails' | 'soft' | 'streak' | 'noStars' | 'noisy';
+export type FrameFlag = 'clouds' | 'faint' | 'trails' | 'soft' | 'streak' | 'spots' | 'noStars' | 'noisy';
 export type FrameGrade = 'good' | 'fair' | 'bad';
 
 export interface FrameMetrics {
@@ -19,6 +19,10 @@ export interface FrameMetrics {
   signal?: number | null;
   streak: { angle: number; strength: number } | null;
   saturatedFraction: number;
+  /** How plainly the photographed object shows: its brighter part over the sky around it, in units of the sky's spread. Absent on old results. */
+  target?: { x: number; y: number; radius: number; signal: number; snr: number } | null;
+  /** Round shadows on the picture, in grid pixels. Absent on old results. */
+  spots?: { x: number; y: number; diameter: number; depth: number }[];
   ra: number | null;
   dec: number | null;
 }
@@ -30,7 +34,9 @@ export type FrameReason =
   | { flag: 'trails'; ratio: number; angle: number | null; plain: boolean }
   | { flag: 'soft'; fwhm: number; typical: number }
   | { flag: 'streak'; angle: number }
-  | { flag: 'noisy'; percentAbove: number };
+  | { flag: 'noisy'; percentAbove: number }
+  | { flag: 'faint'; percent: number; targetPercent: number | null; brighterSky: boolean }
+  | { flag: 'spots'; count: number; otherNights: boolean };
 
 export interface FrameVerdict {
   score: number;
@@ -47,6 +53,10 @@ export interface FrameReference {
   background: number;
   signal?: number | null;
   snr?: number | null;
+  bestSnr?: number | null;
+  bestTarget?: number | null;
+  otherFrames?: number;
+  otherNoise?: number | null;
   weak: boolean;
 }
 

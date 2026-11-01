@@ -29,7 +29,7 @@ import {
 const PREVIEWS_KEY = 'nebulis_frame_list_previews';
 const BASE = 'observationDetail.frameList';
 const MODAL = 'observationDetail.frameAnalysisModal';
-const SORT_KEYS: SortKey[] = ['time', 'score', 'stars', 'fwhm', 'round', 'noise', 'snr', 'sky', 'flags', 'file'];
+const SORT_KEYS: SortKey[] = ['time', 'score', 'stars', 'fwhm', 'round', 'noise', 'snr', 'target', 'sky', 'flags', 'file'];
 
 function readPreviews(): boolean {
   try { return localStorage.getItem(PREVIEWS_KEY) === '1'; } catch { return false; }
@@ -138,7 +138,7 @@ export function NightFrameList({ objectId, objectName, date, includeVariants = f
   const text = isDark ? 'text-slate-200' : 'text-slate-700';
   const muted = isDark ? 'text-slate-500' : 'text-slate-400';
   const border = isDark ? 'border-slate-800' : 'border-slate-200';
-  const grid = `grid items-center gap-3 px-3 ${previews ? 'grid-cols-[1.25rem_2.75rem_6rem_minmax(8rem,1.4fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(6rem,2fr)_10rem]' : 'grid-cols-[1.25rem_6rem_minmax(8rem,1.4fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(6rem,2fr)_10rem]'}`;
+  const grid = `grid items-center gap-3 px-3 ${previews ? 'grid-cols-[1.25rem_2.75rem_6rem_minmax(8rem,1.4fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(6rem,2fr)_10rem]' : 'grid-cols-[1.25rem_6rem_minmax(8rem,1.4fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_minmax(6rem,2fr)_10rem]'}`;
 
   if (report.isLoading) {
     return <div className="flex justify-center py-8"><Loader2 className={`h-5 w-5 animate-spin ${muted}`} /></div>;
@@ -245,7 +245,7 @@ export function NightFrameList({ objectId, objectName, date, includeVariants = f
             {previews && <span />}
             {SORT_KEYS.map(key => {
               const active = sortKey === key;
-              const right = key === 'stars' || key === 'fwhm' || key === 'round' || key === 'noise' || key === 'snr' || key === 'sky' || key === 'file';
+              const right = key === 'stars' || key === 'fwhm' || key === 'round' || key === 'noise' || key === 'snr' || key === 'target' || key === 'sky' || key === 'file';
               return (
                 <button
                   key={key}
@@ -466,6 +466,7 @@ function FrameLine({ row, failure, trim, previews, selected, gridClass, pendingM
         </span>
         <span className={`text-right tabular-nums ${body}`}>{m ? n1(m.noise) : '–'}</span>
         <span className={`text-right tabular-nums ${body}`}>{m?.peakSNR != null ? `${n0(m.peakSNR)}×` : '–'}</span>
+        <span className={`text-right tabular-nums ${body}`}>{m?.target ? formatNumber(m.target.snr, { maximumFractionDigits: m.target.snr < 10 ? 1 : 0 }) : '–'}</span>
         <span className={`text-right tabular-nums ${body}`}>{m ? n0(m.background) : '–'}</span>
         <span className="flex min-w-0 items-center gap-1.5" title={v?.reasons.length ? flags.map(f => t(`${MODAL}.flags.${f}`)).join(', ') : undefined}>
           {flags.slice(0, 2).map(f => <FlagChip key={f} flag={f} tint={tint} bg={tintBg} label={t(`${MODAL}.flags.${f}`)} />)}

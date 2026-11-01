@@ -1,13 +1,15 @@
-import { Cloud, Spline, Aperture, Plane, MoonStar, AudioWaveform } from 'lucide-react';
+import { Cloud, Spline, Aperture, Plane, MoonStar, AudioWaveform, EyeOff, Droplets } from 'lucide-react';
 import { formatNumber } from '../../lib/formatLocale';
 import type { FrameFlag, FrameGrade, FrameMetrics, FrameReason, FrameVerdict } from '../../lib/api/frameAnalysis';
 
 export type TFunc = (key: string, opts?: Record<string, unknown>) => string;
 
-export const FLAG_ORDER: FrameFlag[] = ['clouds', 'trails', 'soft', 'streak', 'noStars', 'noisy'];
+export const FLAG_ORDER: FrameFlag[] = ['clouds', 'faint', 'trails', 'soft', 'streak', 'spots', 'noStars', 'noisy'];
 
 export const FLAG_ICONS: Record<FrameFlag, typeof Cloud> = {
   clouds: Cloud,
+  faint: EyeOff,
+  spots: Droplets,
   trails: Spline,
   soft: Aperture,
   streak: Plane,
@@ -44,6 +46,14 @@ export function reasonText(t: TFunc, r: FrameReason): string {
       return t(`${base}.streak`, { angle: n0(r.angle) });
     case 'noisy':
       return t(`${base}.noisy`, { percent: n0(r.percentAbove) });
+    case 'faint': {
+      const sentence = r.targetPercent !== null
+        ? t(`${base}.faintTarget`, { percent: n0(r.percent), target: n0(r.targetPercent) })
+        : t(`${base}.faint`, { percent: n0(r.percent) });
+      return r.brighterSky ? `${sentence} ${t(`${base}.faintBrighter`)}` : sentence;
+    }
+    case 'spots':
+      return t(r.otherNights ? `${base}.spotsOtherNights` : `${base}.spotsThisNight`, { count: r.count });
   }
 }
 

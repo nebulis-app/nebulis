@@ -507,7 +507,9 @@
         "soft": "Zachte sterren",
         "streak": "Satelliet / vliegtuig",
         "noStars": "Geen sterren",
-        "noisy": "Ruisig"
+        "noisy": "Ruisig",
+        "faint": "Zwak",
+        "spots": "Sensorvlekken"
       },
       "stats": {
         "stars": "Sterren",
@@ -529,7 +531,14 @@
         "trailsSlightAngle": "Sterren zijn {{ratio}} keer langer dan breed, uitgerekt richting {{angle}}°. Een lichte uitsmering die na het stacken nauwelijks zichtbaar is.",
         "soft": "Sterren zijn {{fwhm}} px breed tegenover {{typical}} px normaal: onscherp of onrustige lucht.",
         "streak": "Een rechte streep kruist de opname onder ongeveer {{angle}}° (een satelliet of vliegtuig). Stacken met afwijzing haalt hem meestal weg.",
-        "noisy": "De achtergrondruis ligt {{percent}}% boven die van de typische opname van de nacht."
+        "noisy": "De achtergrondruis ligt {{percent}}% boven die van de typische opname van de nacht.",
+        "faint": "Levert {{percent}}% van de signaal-ruisverhouding van de betere opnamen van dit object in andere nachten (zelfde filter, belichting en telescoop).",
+        "faintTarget": "Levert {{percent}}% van de signaal-ruisverhouding van de betere opnamen van dit object in andere nachten, en het object zelf toont maar {{target}}% van zijn gebruikelijke contrast.",
+        "faintBrighter": "De hemel is helderder dan in die nachten: maan, schemering of nevel.",
+        "spotsOtherNights_one": "Een ronde schaduw die andere nachten niet hebben: dauw of rijp bij de sensor. Flats die op een ander moment zijn gemaakt corrigeren hem niet.",
+        "spotsOtherNights_other": "{{count}} ronde schaduwen die andere nachten niet hebben: dauw of rijp bij de sensor. Flats die op een ander moment zijn gemaakt corrigeren ze niet.",
+        "spotsThisNight_one": "Een ronde schaduw die de meeste opnamen van deze nacht niet hebben: dauw of rijp bij de sensor, die kwam en ging.",
+        "spotsThisNight_other": "{{count}} ronde schaduwen die de meeste opnamen van deze nacht niet hebben: dauw of rijp bij de sensor, die kwam en ging."
       },
       "selectHint": "Klik op opnames om ze te selecteren.",
       "selectedCount_one": "{{count}} opname geselecteerd",
@@ -549,7 +558,8 @@
       "selectFrame": "{{name}} selecteren",
       "markKeep": "Behouden",
       "markReject": "Afkeuren",
-      "followGrade": "Markering wissen"
+      "followGrade": "Markering wissen",
+      "otherNights": "Ook vergeleken met {{count}} opnamen van dit object uit andere nachten, met hetzelfde filter, dezelfde belichting en dezelfde telescoop."
     },
     "frameList": {
       "notMeasuredTitle": "Open de nacht om de frames te meten.",
@@ -577,6 +587,7 @@
         "round": "Rek",
         "noise": "Ruis",
         "snr": "Signaal",
+        "target": "Object",
         "sky": "Hemel",
         "file": "Bestand"
       },
@@ -589,6 +600,7 @@
         "round": "Sorteren op rekking van de sterren: 1,00 is rond, hoger is uitgerekt",
         "noise": "Sorteer op achtergrondruis, laagste eerst. Lager is schoner.",
         "snr": "Sorteer op signaal: hoeveel de helderste sterren boven de ruis uitsteken (×). Hoger is beter.",
+        "target": "Sorteren op hoe duidelijk het gefotografeerde object zichtbaar is: zijn helderste deel tegenover de hemel eromheen, in eenheden van de hemelruis. Vereist een astrometrisch opgeloste opname, of een die op het object is gericht.",
         "sky": "Sorteer op helderheid van de hemel (ruwe waarden). Een sprong tussen frames kan wolken, nevel of de maan betekenen.",
         "file": "Sorteren op bestandsnaam"
       },

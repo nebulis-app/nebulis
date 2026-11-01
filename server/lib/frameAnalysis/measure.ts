@@ -32,6 +32,12 @@ export interface FrameMetrics {
   gradient: number;
   /** Brightest-star signal over noise, median. */
   peakSNR: number | null;
+  /**
+   * Light the stars bring in, in the grid's units: the median total flux of the stars ranked 20th to 120th by flux.
+   * The same field keeps the same stars at those ranks whatever the sky does, so between frames of one target it
+   * follows transparency directly (thin cloud, haze, dew on the optics), which the star count barely does.
+   */
+  signal: number | null;
   streak: FrameStreak | null;
   saturatedFraction: number;
   /** Where the telescope pointed, degrees, from the header. A mosaic points somewhere new every frame. */
@@ -40,7 +46,7 @@ export interface FrameMetrics {
 }
 
 /** Bump when a change here makes the same file measure differently, so stored results are dropped on upgrade. */
-export const FRAME_METRICS_VERSION = 4;
+export const FRAME_METRICS_VERSION = 5;
 
 const BAYER_PATTERNS = new Set(['RGGB', 'BGGR', 'GRBG', 'GBRG']);
 const SUPPORTED_BITPIX = new Set([8, 16, 32, -32, -64]);
@@ -56,6 +62,8 @@ const MIN_SIDE = 64;
 const CELL = 32;
 const DETECTION_SIGMA = 5;
 const MAX_MEASURED = 600;
+/** Ranks, by flux, of the stars whose median flux is the frame's signal. */
+const SIGNAL_RANKS = [20, 120] as const;
 /** A satellite or aeroplane trail is a few pixels wide; a band wider than this at half height is sky structure. */
 const MAX_STREAK_WIDTH = 10;
 
@@ -273,14 +281,33 @@ interface Star {
   x: number;
   y: number;
   peak: number;
+  /** Total flux above the background, from the Gaussian-weighted moments. */
+  flux: number;
+  /** Peak over the noise. */
+  snr: number;
+  /** The core reaches the level where the picture clips: its shape and flux are not to be trusted. */
+  saturated: boolean;
   fwhm: number;
   elongation: number;
   /** Degrees, 0 to 180. */
   angle: number;
 }
 
-/** Size and shape of one star from the pixels connected to its peak that are above a quarter of its height. */
-function profile(g: Grid, map: BackgroundMap, x: number, y: number, peak: number): Star | null {
+/**
+ * Size, shape and flux of one star.
+ *
+ * The pixels connected to the peak above a quarter of its height only decide whether this is a star at all: a hot
+ * pixel has no width, a streak, a bright edge or a nebula runs out of the window. They are not used for the size:
+ * stars here are often only one or two pixels across, and a count of whole pixels moves in steps (two seeings a
+ * quarter apart read the same) and makes round stars look oval.
+ *
+ * The size comes from adaptive Gaussian-weighted second moments instead (as in weak-lensing and survey photometry):
+ * the moments are taken under a Gaussian window that is matched, iteration by iteration, to the star itself. For a
+ * Gaussian star under a matched window the measured moments are half the star's own, whatever its size compared
+ * with the pixels; the pixels' own width (1/12 px²) is then taken off. This reads sub-pixel changes of size and
+ * true elongation down to about a pixel and a half across.
+ */
+function profile(g: Grid, map: BackgroundMap, x: number, y: number, peak: number, noise: number, clip: number): Star | null {
   const r = 9, side = 2 * r + 1;
   const bg = map.value(x, y);
   const top = peak - bg;
@@ -289,15 +316,12 @@ function profile(g: Grid, map: BackgroundMap, x: number, y: number, peak: number
   const inside = new Uint8Array(side * side);
   const stack: number[] = [r * side + r];
   inside[r * side + r] = 1;
-  const memberX: number[] = [], memberY: number[] = [], memberW: number[] = [];
-  let sumW = 0, sumX = 0, sumY = 0;
+  let count = 0;
   let touchesEdge = false;
   while (stack.length > 0) {
     const cur = stack.pop() as number;
     const cx = cur % side, cy = (cur - cx) / side;
-    const weight = g.data[(y + cy - r) * g.width + (x + cx - r)] - bg;
-    memberX.push(cx); memberY.push(cy); memberW.push(weight);
-    sumW += weight; sumX += weight * cx; sumY += weight * cy;
+    count++;
     if (cx === 0 || cy === 0 || cx === side - 1 || cy === side - 1) touchesEdge = true;
     for (let k = 0; k < 4; k++) {
       const nx = cx + (k === 0 ? 1 : k === 1 ? -1 : 0);
@@ -309,33 +333,110 @@ function profile(g: Grid, map: BackgroundMap, x: number, y: number, peak: number
       stack.push(ny * side + nx);
     }
   }
-  const count = memberX.length;
   // A single hot pixel or a cosmic ray has no width. Anything that runs out of the window (a streak, a bright
   // edge, a nebula) is not a star, and must not be counted as one or hidden from the streak search.
-  if (count < 4 || !(sumW > 0) || touchesEdge) return null;
-  const mx = sumX / sumW, my = sumY / sumW;
-  let m20 = 0, m02 = 0, m11 = 0;
-  for (let i = 0; i < count; i++) {
-    const dx = memberX[i] - mx, dy = memberY[i] - my;
-    m20 += memberW[i] * dx * dx; m02 += memberW[i] * dy * dy; m11 += memberW[i] * dx * dy;
-  }
-  m20 /= sumW; m02 /= sumW; m11 /= sumW;
-  const mean = (m20 + m02) / 2;
-  const spread = Math.sqrt(((m20 - m02) / 2) ** 2 + m11 ** 2);
+  if (count < 3 || touchesEdge) return null;
+
+  const m = adaptiveMoments(g, bg, x, y, Math.max(0.5, count / (2 * Math.PI * Math.log(4))));
+  if (!m) return null;
+  // What is left once the pixel's own width is taken off.
+  const cxx = m.cxx - 1 / 12, cyy = m.cyy - 1 / 12, cxy = m.cxy;
+  const mean = (cxx + cyy) / 2;
+  const spread = Math.sqrt(((cxx - cyy) / 2) ** 2 + cxy ** 2);
   const l1 = mean + spread, l2 = mean - spread;
-  if (!(l2 > 0.05)) return null;
-  // A Gaussian's area above a quarter of its height is 2π σ² ln 4.
-  const sigma = Math.sqrt(count / (2 * Math.PI * Math.log(4)));
-  let angle = 0.5 * Math.atan2(2 * m11, m20 - m02) * 180 / Math.PI;
+  // Narrower than a third of a pixel: a hot pixel spread by the colour interpolation, not a star.
+  if (!(l2 > 0.1)) return null;
+  let angle = 0.5 * Math.atan2(2 * cxy, cxx - cyy) * 180 / Math.PI;
   if (angle < 0) angle += 180;
-  return { x, y, peak, fwhm: 2.3548 * sigma, elongation: Math.sqrt(l1 / l2), angle };
+  return {
+    x, y, peak,
+    fwhm: 2.3548 * Math.sqrt(Math.sqrt(l1 * l2)),
+    elongation: Math.sqrt(l1 / l2),
+    angle,
+    flux: m.flux,
+    snr: top / noise,
+    saturated: peak >= clip,
+  };
+}
+
+/**
+ * Gaussian-weighted moments with a window matched to the star. For a Gaussian star of covariance C under a Gaussian
+ * window W, the weighted moments are M = (C⁻¹ + W⁻¹)⁻¹, so C = (M⁻¹ − W⁻¹)⁻¹ whatever the window; the window is
+ * moved towards 2M (where it equals the star) but never below a pixel or so across, because a narrower window over
+ * a star one or two pixels wide reads mostly its central pixel and stops seeing its width. Returns the star's
+ * covariance, pixel width included, and its flux. Null when it does not settle: a blend, a galaxy, noise.
+ */
+function adaptiveMoments(g: Grid, bg: number, x0: number, y0: number, start: number):
+  { cxx: number; cyy: number; cxy: number; flux: number } | null {
+  const floor = 0.8;
+  let wxx = Math.max(start, floor), wyy = wxx, wxy = 0;
+  let mx = x0, my = y0;
+  for (let it = 0; it < 40; it++) {
+    const det = wxx * wyy - wxy * wxy;
+    const ia = wyy / det, ib = -wxy / det, ic = wxx / det;
+    const reach = Math.min(9, Math.ceil(3.5 * Math.sqrt(Math.max(wxx, wyy))) + 1);
+    const ix = Math.round(mx), iy = Math.round(my);
+    let s0 = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+    for (let yy = Math.max(0, iy - reach); yy <= Math.min(g.height - 1, iy + reach); yy++) {
+      const dy = yy - my;
+      for (let xx = Math.max(0, ix - reach); xx <= Math.min(g.width - 1, ix + reach); xx++) {
+        const dx = xx - mx;
+        const q = ia * dx * dx + 2 * ib * dx * dy + ic * dy * dy;
+        if (q > 16) continue;
+        const wt = Math.exp(-0.5 * q);
+        const v = (g.data[yy * g.width + xx] - bg) * wt;
+        s0 += v; sx += v * dx; sy += v * dy; sxx += v * dx * dx; syy += v * dy * dy; sxy += v * dx * dy;
+      }
+    }
+    if (!(s0 > 0)) return null;
+    const ex = sx / s0, ey = sy / s0;
+    const mxx = sxx / s0 - ex * ex, myy = syy / s0 - ey * ey, mxy = sxy / s0 - ex * ey;
+    const mdet = mxx * myy - mxy * mxy;
+    if (!(mxx > 0 && myy > 0 && mdet > 0)) return null;
+    mx += ex; my += ey;
+    if (Math.abs(mx - x0) > 3 || Math.abs(my - y0) > 3) return null;
+    // Next window: twice the moments, held to the floor, kept a proper ellipse.
+    let nxx = Math.max(2 * mxx, floor), nyy = Math.max(2 * myy, floor), nxy = 2 * mxy;
+    const room = Math.sqrt(nxx * nyy) * 0.95;
+    if (Math.abs(nxy) > room) nxy = Math.sign(nxy) * room;
+    // Wider than a window this size can hold: a blend or extended object.
+    if (nxx > 16 || nyy > 16) return null;
+    const settled = Math.abs(nxx - wxx) < 1e-3 * wxx && Math.abs(nyy - wyy) < 1e-3 * wyy
+      && Math.abs(nxy - wxy) < 1e-3 * Math.sqrt(wxx * wyy) && Math.abs(ex) < 1e-3 && Math.abs(ey) < 1e-3;
+    if (settled || it === 39) {
+      if (!settled) return null;
+      // C = (M⁻¹ − W⁻¹)⁻¹, with the window the moments were taken under.
+      const pa = myy / mdet - ia, pb = -mxy / mdet - ib, pc = mxx / mdet - ic;
+      const pdet = pa * pc - pb * pb;
+      if (!(pa > 0 && pc > 0 && pdet > 0)) return null;
+      // Flux: the weighted sum over the integral of star × window, ∫G_C·w = √(det W / det(C + W)).
+      const cxx = pc / pdet, cyy = pa / pdet, cxy = -pb / pdet;
+      const sumDet = (cxx + wxx) * (cyy + wyy) - (cxy + wxy) ** 2;
+      return { cxx, cyy, cxy, flux: s0 * Math.sqrt(sumDet / det) };
+    }
+    wxx = nxx; wyy = nyy; wxy = nxy;
+  }
+  return null;
+}
+
+/**
+ * The level at which the picture clips. A colour frame is debayered and binned before it is measured, so a burnt
+ * core does not reach the file's ceiling here; it shows instead as many pixels sharing the picture's top value.
+ */
+function clipLevel(g: Grid): number {
+  let max = -Infinity;
+  for (let i = 0; i < g.data.length; i++) if (g.data[i] > max) max = g.data[i];
+  let near = 0;
+  for (let i = 0; i < g.data.length; i++) if (g.data[i] >= max * 0.995) near++;
+  const fromFile = g.ceiling !== null ? g.ceiling * 0.95 : Infinity;
+  return near >= 8 ? Math.min(max * 0.97, fromFile) : fromFile;
 }
 
 /**
  * The brightest stars, fully measured, and the number of stars in all. Measuring is the costly part, so the faint
  * tail is counted from the rate at which the measured ones turned out to be real stars rather than hot pixels.
  */
-function detect(g: Grid, map: BackgroundMap, noise: number): { stars: Star[]; total: number } {
+function detect(g: Grid, map: BackgroundMap, noise: number, clip: number): { stars: Star[]; total: number } {
   const w = g.width, h = g.height;
   const margin = 8;
   if (w <= margin * 2 + 2 || h <= margin * 2 + 2) return { stars: [], total: 0 };
@@ -379,7 +480,7 @@ function detect(g: Grid, map: BackgroundMap, noise: number): { stars: Star[]; to
   const stars: Star[] = [];
   const limit = Math.min(cand.length, 1200);
   for (let i = 0; i < limit; i++) {
-    const s = profile(g, map, cand[i].x, cand[i].y, cand[i].peak);
+    const s = profile(g, map, cand[i].x, cand[i].y, cand[i].peak, noise, clip);
     if (s) stars.push(s);
   }
   if (limit === 0) return { stars, total: 0 };
@@ -572,7 +673,7 @@ function measureGrid(g: Grid): FrameMetrics {
   if (w < 8 || h < 8 || g.data.length === 0) {
     return {
       width: w, height: h, starCount: 0, fwhm: null, elongation: null, orientation: null, background: 0, noise: 0,
-      gradient: 0, peakSNR: null, streak: null, saturatedFraction: 0, ...pointing,
+      gradient: 0, peakSNR: null, signal: null, streak: null, saturatedFraction: 0, ...pointing,
     };
   }
   const map = new BackgroundMap(g, CELL);
@@ -584,13 +685,15 @@ function measureGrid(g: Grid): FrameMetrics {
     for (let i = 0; i < g.data.length; i++) if (g.data[i] >= limit) saturated++;
   }
 
-  const { stars, total } = detect(g, map, noise);
-  const measured = stars.slice(0, MAX_MEASURED);
+  const clip = clipLevel(g);
+  const { stars, total } = detect(g, map, noise, clip);
+  // Shapes from stars that are clear of the noise and not clipped; the brightest of those first.
+  const measured = stars.filter(s => !s.saturated && s.snr >= 10).slice(0, MAX_MEASURED);
   const elongations = measured.map(s => s.elongation);
-  const snrs = measured.map(s => (s.peak - map.value(s.x, s.y)) / noise);
+  const snrs = stars.slice(0, MAX_MEASURED).map(s => s.snr);
 
   let orientation: number | null = null;
-  if (elongations.length >= 5 && (median(elongations) ?? 1) > 1.2) {
+  if (elongations.length >= 5 && (median(elongations) ?? 1) > 1.15) {
     // Circular mean of the doubled angle, so 179° and 1° agree.
     let sx = 0, sy = 0;
     for (const s of measured) {
@@ -602,6 +705,13 @@ function measureGrid(g: Grid): FrameMetrics {
     orientation = a;
   }
 
+  // Ranked by flux with the clipped stars kept in the ranking (they are the brightest), so the window holds the
+  // same stars of the field from one frame to the next; only its unclipped members are read.
+  const byFlux = [...stars].sort((a, b) => b.flux - a.flux);
+  const window = byFlux.slice(SIGNAL_RANKS[0], SIGNAL_RANKS[1]).filter(s => !s.saturated);
+  const signal = window.length >= 10 ? median(window.map(s => s.flux))
+    : byFlux.length >= 10 ? median(byFlux.filter(s => !s.saturated).map(s => s.flux)) : null;
+
   return {
     width: w, height: h, starCount: total,
     fwhm: median(measured.map(s => s.fwhm)),
@@ -609,6 +719,7 @@ function measureGrid(g: Grid): FrameMetrics {
     orientation,
     background: map.level, noise, gradient: map.gradient,
     peakSNR: median(snrs),
+    signal,
     streak: findStreak(g, map, noise, stars),
     saturatedFraction: saturated / (w * h),
     ...pointing,

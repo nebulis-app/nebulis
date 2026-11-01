@@ -521,6 +521,7 @@
       "reasons": {
         "noStars": "Nur {{stars}} Sterne gefunden, gegenüber etwa {{typical}} in einem typischen Bild dieser Nacht. Der Himmel war bedeckt oder die Optik beschlagen.",
         "clouds": "{{stars}} Sterne gegenüber etwa {{typical}} in einem typischen Bild ({{percent}}% weniger).",
+        "cloudsDimmer": "Die Sterne liefern {{percent}} % weniger Licht als in den besten Aufnahmen der Nacht: dünne Wolken, Dunst oder Tau.",
         "cloudsBrighter": "Der Himmel ist auch heller, wie es bei von unten beleuchteten Wolken der Fall ist.",
         "trailsPlain": "Sterne sind {{ratio}}-mal länger als breit. Das Teleskop hat sich während der Belichtung bewegt oder wurde erschüttert.",
         "trailsPlainAngle": "Sterne sind {{ratio}}-mal länger als breit und in Richtung {{angle}}° gezogen. Das Teleskop hat sich während der Belichtung bewegt oder wurde erschüttert.",

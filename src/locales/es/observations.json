@@ -521,6 +521,7 @@
       "reasons": {
         "noStars": "Solo se encontraron {{stars}} estrellas, frente a unas {{typical}} en un fotograma típico de esta noche. El cielo estaba cubierto o la óptica empañada.",
         "clouds": "{{stars}} estrellas frente a unas {{typical}} en un fotograma típico ({{percent}}% menos).",
+        "cloudsDimmer": "Las estrellas aportan un {{percent}} % menos de luz que en los mejores fotogramas de la noche: nubes finas, bruma o rocío.",
         "cloudsBrighter": "El cielo también es más brillante, como ocurre con las nubes iluminadas desde abajo.",
         "trailsPlain": "Las estrellas son {{ratio}} veces más largas que anchas. El telescopio se movió o recibió un golpe durante la exposición.",
         "trailsPlainAngle": "Las estrellas son {{ratio}} veces más largas que anchas, alargadas hacia {{angle}}°. El telescopio se movió o recibió un golpe durante la exposición.",

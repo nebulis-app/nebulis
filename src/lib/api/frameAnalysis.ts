@@ -15,6 +15,8 @@ export interface FrameMetrics {
   noise: number;
   gradient: number;
   peakSNR: number | null;
+  /** Star flux (median of the stars ranked 20th–120th by flux): follows transparency. Absent on old results. */
+  signal?: number | null;
   streak: { angle: number; strength: number } | null;
   saturatedFraction: number;
   ra: number | null;
@@ -24,7 +26,7 @@ export interface FrameMetrics {
 /** One finding with the numbers behind it. The sentence is built in the UI so it follows the display language. */
 export type FrameReason =
   | { flag: 'noStars'; stars: number; typical: number }
-  | { flag: 'clouds'; stars: number; typical: number; percentFewer: number; brighterSky: boolean }
+  | { flag: 'clouds'; stars: number; typical: number; percentFewer: number; percentDimmer?: number | null; brighterSky: boolean }
   | { flag: 'trails'; ratio: number; angle: number | null; plain: boolean }
   | { flag: 'soft'; fwhm: number; typical: number }
   | { flag: 'streak'; angle: number }
@@ -43,6 +45,8 @@ export interface FrameReference {
   elongation: number;
   noise: number;
   background: number;
+  signal?: number | null;
+  snr?: number | null;
   weak: boolean;
 }
 

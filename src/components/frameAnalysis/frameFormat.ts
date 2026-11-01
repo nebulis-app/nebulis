@@ -27,7 +27,9 @@ export function reasonText(t: TFunc, r: FrameReason): string {
     case 'noStars':
       return t(`${base}.noStars`, { stars: n0(r.stars), typical: n0(r.typical) });
     case 'clouds': {
-      const sentence = t(`${base}.clouds`, { stars: n0(r.stars), typical: n0(r.typical), percent: n0(r.percentFewer) });
+      const sentence = r.percentDimmer != null
+        ? t(`${base}.cloudsDimmer`, { percent: n0(r.percentDimmer) })
+        : t(`${base}.clouds`, { stars: n0(r.stars), typical: n0(r.typical), percent: n0(r.percentFewer) });
       return r.brighterSky ? `${sentence} ${t(`${base}.cloudsBrighter`)}` : sentence;
     }
     case 'trails': {

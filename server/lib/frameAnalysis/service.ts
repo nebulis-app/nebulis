@@ -155,8 +155,22 @@ export function buildSessionReport(objectIds: string[], date: string): FrameAnal
   });
 
   const measuredRows = frames.filter(r => r.metrics !== null);
-  const { verdicts, reference } = rankFrames(measuredRows.flatMap(r => (r.metrics ? [r.metrics] : [])));
-  measuredRows.forEach((row, i) => { row.verdict = verdicts[i]; });
+  // Frames are only comparable through the same filter for the same time: a D2 frame brings far less light than
+  // a D1 one, a 60 s frame less than a 180 s one, and judged together the weaker set would read as clouded.
+  const groups = new Map<string, FrameAnalysisRow[]>();
+  for (const row of measuredRows) {
+    const key = `${(row.file.filter ?? '').trim().toLowerCase()}|${(row.file.exposure ?? '').trim()}`;
+    const list = groups.get(key);
+    if (list) list.push(row); else groups.set(key, [row]);
+  }
+  let reference: FrameReference | null = null;
+  let largest = 0;
+  for (const rows of groups.values()) {
+    const ranked = rankFrames(rows.flatMap(r => (r.metrics ? [r.metrics] : [])));
+    rows.forEach((row, i) => { row.verdict = ranked.verdicts[i]; });
+    // The summary line describes the night's main set.
+    if (rows.length > largest) { largest = rows.length; reference = ranked.reference; }
+  }
   const reviews = readReviews(frames.map(r => r.path));
   for (const row of frames) {
     row.review = reviews.get(row.path) ?? null;

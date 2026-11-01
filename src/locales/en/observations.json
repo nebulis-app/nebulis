@@ -521,6 +521,7 @@
       "reasons": {
         "noStars": "Only {{stars}} stars found, against about {{typical}} in a typical frame this night. The sky was covered or the lens was fogged.",
         "clouds": "{{stars}} stars against about {{typical}} in a typical frame ({{percent}}% fewer).",
+        "cloudsDimmer": "The stars bring {{percent}}% less light than in the night's best frames: thin cloud, haze or dew.",
         "cloudsBrighter": "The sky is also brighter, which is what cloud lit from below does.",
         "trailsPlain": "Stars are {{ratio}} times longer than wide. The telescope moved or was shaken during the exposure.",
         "trailsPlainAngle": "Stars are {{ratio}} times longer than wide, stretched toward {{angle}}°. The telescope moved or was shaken during the exposure.",

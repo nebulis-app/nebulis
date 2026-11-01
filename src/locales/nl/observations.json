@@ -521,6 +521,7 @@
       "reasons": {
         "noStars": "Slechts {{stars}} sterren gevonden, tegenover ongeveer {{typical}} in een typische opname van deze nacht. De lucht was bewolkt of de optiek was beslagen.",
         "clouds": "{{stars}} sterren tegenover ongeveer {{typical}} in een typische opname ({{percent}}% minder).",
+        "cloudsDimmer": "De sterren leveren {{percent}}% minder licht dan in de beste opnamen van de nacht: dunne bewolking, nevel of dauw.",
         "cloudsBrighter": "De lucht is ook helderder, wat gebeurt bij wolken die van onderaf worden verlicht.",
         "trailsPlain": "Sterren zijn {{ratio}} keer langer dan breed. De telescoop bewoog of werd geschud tijdens de belichting.",
         "trailsPlainAngle": "Sterren zijn {{ratio}} keer langer dan breed, uitgerekt richting {{angle}}°. De telescoop bewoog of werd geschud tijdens de belichting.",

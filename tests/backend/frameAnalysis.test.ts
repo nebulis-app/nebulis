@@ -177,7 +177,7 @@ describe('FITS decode', () => {
 describe('frame ranking', () => {
   const night = (counts: number[]) => counts.map((starCount, i) => ({
     width: 960, height: 540, starCount, fwhm: 3, elongation: 1.1, orientation: null, background: 1000, noise: 10,
-    gradient: 0.02, peakSNR: 40, streak: null, saturatedFraction: 0, ra: null, dec: null, id: i,
+    gradient: 0.02, peakSNR: 40, signal: 5000, streak: null, saturatedFraction: 0, ra: null, dec: null, id: i,
   }));
 
   it('marks a frame with far fewer stars than the night as clouds', () => {
@@ -188,6 +188,23 @@ describe('frame ranking', () => {
     expect(last.grade).toBe('bad');
     expect(verdicts[0].flags).toEqual([]);
     expect(verdicts[0].grade).toBe('good');
+  });
+
+  it('scores each frame by its point-source signal over noise against the night\'s better frames', () => {
+    const frames = night([100, 100, 100, 100, 100, 100, 100, 100]);
+    frames[5] = { ...frames[5], signal: 3000 }; // 40 % less light: thin cloud, the star count barely moves
+    frames[6] = { ...frames[6], noise: 20 }; // twice the noise: Moon or dawn
+    frames[7] = { ...frames[7], fwhm: 4.5 }; // poorer seeing
+    const { verdicts } = rankFrames(frames);
+    expect(verdicts[0].score).toBe(100);
+    expect(verdicts[0].grade).toBe('good');
+    expect(verdicts[5].score).toBe(60);
+    expect(verdicts[5].flags).toContain('clouds');
+    expect(verdicts[5].reasons.find(r => r.flag === 'clouds')).toMatchObject({ percentDimmer: 40 });
+    expect(verdicts[6].score).toBe(50);
+    expect(verdicts[6].flags).toContain('noisy');
+    expect(verdicts[7].score).toBe(67);
+    expect(verdicts[7].flags).toContain('soft');
   });
 
   it('does not call a thin set cloudy: too few frames to compare', () => {

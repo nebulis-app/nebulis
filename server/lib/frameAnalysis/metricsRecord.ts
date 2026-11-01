@@ -28,6 +28,7 @@ export function coerceMetrics(value: unknown): FrameMetrics | null {
     orientation: numberOrNull(value.orientation),
     background, noise, gradient,
     peakSNR: numberOrNull(value.peakSNR),
+    signal: numberOrNull(value.signal),
     streak, saturatedFraction,
     ra: numberOrNull(value.ra),
     dec: numberOrNull(value.dec),

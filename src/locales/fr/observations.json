@@ -521,6 +521,7 @@
       "reasons": {
         "noStars": "Seulement {{stars}} étoiles trouvées, contre environ {{typical}} dans une image typique de cette nuit. Le ciel était couvert ou l'optique embuée.",
         "clouds": "{{stars}} étoiles contre environ {{typical}} dans une image typique ({{percent}} % de moins).",
+        "cloudsDimmer": "Les étoiles apportent {{percent}} % de lumière en moins que dans les meilleures images de la nuit : voile nuageux, brume ou buée.",
         "cloudsBrighter": "Le ciel est aussi plus lumineux, comme avec des nuages éclairés par en dessous.",
         "trailsPlain": "Les étoiles sont {{ratio}} fois plus longues que larges. Le télescope a bougé ou a été secoué pendant la pose.",
         "trailsPlainAngle": "Les étoiles sont {{ratio}} fois plus longues que larges, étirées vers {{angle}}°. Le télescope a bougé ou a été secoué pendant la pose.",

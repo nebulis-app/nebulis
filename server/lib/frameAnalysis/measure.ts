@@ -9,7 +9,7 @@
 import { fitsDataOffset, parseFitsHeader } from '../fitsParser.js';
 
 export interface FrameStreak {
-  /** Degrees, 0 to 180, in the analysed picture. */
+  /** Direction the streak runs in, degrees, 0 to 180, in the analysed picture. */
   angle: number;
   /** How much of the picture's diagonal it covers, 0...1. */
   strength: number;
@@ -40,7 +40,7 @@ export interface FrameMetrics {
 }
 
 /** Bump when a change here makes the same file measure differently, so stored results are dropped on upgrade. */
-export const FRAME_METRICS_VERSION = 3;
+export const FRAME_METRICS_VERSION = 4;
 
 const BAYER_PATTERNS = new Set(['RGGB', 'BGGR', 'GRBG', 'GBRG']);
 const SUPPORTED_BITPIX = new Set([8, 16, 32, -32, -64]);
@@ -56,6 +56,8 @@ const MIN_SIDE = 64;
 const CELL = 32;
 const DETECTION_SIGMA = 5;
 const MAX_MEASURED = 600;
+/** A satellite or aeroplane trail is a few pixels wide; a band wider than this at half height is sky structure. */
+const MAX_STREAK_WIDTH = 10;
 
 export class FrameDecodeError extends Error {}
 
@@ -445,17 +447,121 @@ function findStreak(g: Grid, map: BackgroundMap, noise: number, stars: Star[]): 
       acc[t * rhoBins + Math.round(px[i] * cosT[t] + py[i] * sinT[t]) + rhoMax] += 1;
     }
   }
-  let bestCount = 0, bestT = 0;
+  // Strongest lines first, each a few degrees and bins from the ones before it.
+  const need = Math.max(24, Math.floor(diagonal * 0.18));
+  const minVotes = Math.max(need, Math.ceil(px.length * 0.25));
+  const peaks: { t: number; r: number; c: number }[] = [];
   for (let t = 0; t < angles; t++) {
     for (let r = 1; r < rhoBins - 1; r++) {
       // A line a pixel or two wide: the bin and its neighbours.
       const c = acc[t * rhoBins + r - 1] + acc[t * rhoBins + r] + acc[t * rhoBins + r + 1];
-      if (c > bestCount) { bestCount = c; bestT = t; }
+      if (c >= minVotes) peaks.push({ t, r: r - rhoMax, c });
     }
   }
-  const need = Math.max(24, Math.floor(diagonal * 0.18));
-  if (bestCount < need || bestCount < px.length * 0.25) return null;
-  return { angle: bestT, strength: Math.min(1, bestCount / diagonal) };
+  peaks.sort((a, b) => b.c - a.c);
+  const tried: { t: number; r: number }[] = [];
+  for (const p of peaks) {
+    if (tried.length >= 12) break;
+    if (tried.some(q => Math.min(Math.abs(q.t - p.t), angles - Math.abs(q.t - p.t)) <= 3 && Math.abs(q.r - p.r) <= 3)) continue;
+    tried.push(p);
+    if (isTrail(p.t, p.r)) {
+      // `t` is the direction of the line's normal; the streak runs at right angles to it.
+      return { angle: (p.t + 90) % 180, strength: Math.min(1, p.c / diagonal) };
+    }
+  }
+  return null;
+
+  /**
+   * Whether the line at (t, r) is a trail rather than something else the vote lines up: a satellite leaves one
+   * thin, unbroken line. A nebula filament, a galaxy or a cloud edge is a broad band that also lights the bins
+   * beside it; a row of stretched stars or of stars that escaped the mask is many short pieces with gaps between;
+   * amp glow or a stacking edge hugs a side of the frame.
+   */
+  function isTrail(t: number, r: number): boolean {
+    const c = cosT[t], s = sinT[t];
+    const along: number[] = [];
+    let core = 0, flank = 0, nearSide = 0;
+    for (let i = 0; i < px.length; i++) {
+      const d = Math.abs(px[i] * c + py[i] * s - r);
+      if (d <= 1.5) {
+        core++;
+        along.push(-px[i] * s + py[i] * c);
+        if (Math.min(px[i], py[i], bw - 1 - px[i], bh - 1 - py[i]) <= 4) nearSide++;
+      } else if (d > 1.5 && d <= 4.5) flank++;
+    }
+    if (core < need) return false;
+    // Pixels per bin of width: the core is 3 bins wide, the flanks 3 on each side. A trail is a bin or two wide
+    // in this copy, so its flanks hold little more than noise.
+    if (flank / 6 > (core / 3) * 0.3) return false;
+    // Mostly along a side of the frame.
+    if (nearSide > core * 0.6) return false;
+    // Longest stretch along the line, bridging the holes masked stars leave.
+    along.sort((a, b) => a - b);
+    const gap = Math.max(4, diagonal * 0.04);
+    let run = 0, start = along[0];
+    for (let i = 1; i <= along.length; i++) {
+      if (i === along.length || along[i] - along[i - 1] > gap) {
+        run = Math.max(run, along[i - 1] - start);
+        if (i < along.length) start = along[i];
+      }
+    }
+    if (run < need * 0.8) return false;
+    // In the shrunken copy a filament can look thin once the background map has taken its wings: measure the
+    // width at full size, across the run.
+    let first = along[0], last = along[0], runStart = along[0];
+    for (let i = 1; i <= along.length; i++) {
+      if (i === along.length || along[i] - along[i - 1] > gap) {
+        if (along[i - 1] - runStart > last - first) { first = runStart; last = along[i - 1]; }
+        if (i < along.length) runStart = along[i];
+      }
+    }
+    const width = fullWidth(c, s, r, first, last);
+    return width === null || width <= MAX_STREAK_WIDTH;
+  }
+
+  /**
+   * Full width at half maximum, in pixels of the grid, of the line between `from` and `to` (positions along it in
+   * the shrunken copy). Short pieces of the line are averaged across their length, each piece is centred on its own
+   * peak (the vote is only good to a bin or so), and the median of the pieces is measured. Null when the line is
+   * too faint for its width to be read.
+   */
+  function fullWidth(c: number, s: number, r: number, from: number, to: number): number | null {
+    const half = bin / 2;
+    const rho = r * bin + half * (c + s);
+    const slack = 2 * bin + 2, reach = slack + 30;
+    const piece = 4 * bin;
+    const profiles: number[][] = [];
+    for (let u = from * bin; u + piece <= to * bin + bin; u += piece) {
+      const sum = new Float64Array(2 * reach + 1), n = new Int32Array(2 * reach + 1);
+      for (let k = 0; k < piece; k++) {
+        const along2 = u + k + half;
+        const fx = rho * c - along2 * s, fy = rho * s + along2 * c;
+        for (let o = -reach; o <= reach; o++) {
+          const x = Math.round(fx + o * c), y = Math.round(fy + o * s);
+          if (x < 0 || y < 0 || x >= w || y >= h) continue;
+          sum[o + reach] += g.data[y * w + x]; n[o + reach]++;
+        }
+      }
+      if (n[reach] < piece / 2) continue;
+      const prof = Array.from(sum, (v, i) => (n[i] > 0 ? v / n[i] : NaN));
+      let peakAt = reach;
+      for (let i = reach - slack; i <= reach + slack; i++) {
+        const v = (prof[i - 1] + prof[i] + prof[i + 1]) / 3;
+        if (v > (prof[peakAt - 1] + prof[peakAt] + prof[peakAt + 1]) / 3) peakAt = i;
+      }
+      profiles.push(Array.from({ length: 2 * 30 + 1 }, (_, j) => prof[peakAt - 30 + j]));
+    }
+    if (profiles.length < 3) return null;
+    const profile = Array.from({ length: 61 }, (_, j) => median(profiles.map(p => p[j]).filter(v => Number.isFinite(v))) ?? NaN);
+    const base = median(profile.filter((v, j) => Math.abs(j - 30) >= 24 && Number.isFinite(v)));
+    if (base === null) return null;
+    const top = profile[30] - base;
+    if (!(top > (noise / Math.sqrt(piece)) * 4)) return null;
+    let lo = 30, hi = 30;
+    while (lo > 0 && profile[lo - 1] - base > top / 2) lo--;
+    while (hi < 60 && profile[hi + 1] - base > top / 2) hi++;
+    return hi - lo + 1;
+  }
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────

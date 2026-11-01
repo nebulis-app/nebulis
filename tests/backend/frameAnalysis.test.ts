@@ -63,9 +63,52 @@ describe('frame measurement', () => {
     expect(m.elongation).toBeGreaterThan(1.8);
   });
 
-  it('finds a straight streak', () => {
+  it('finds a straight streak, and gives the direction it runs in', () => {
     const m = measureSyntheticGrid(field(W, H, { streak: true, seed: 5 }), W, H);
     expect(m.streak).not.toBeNull();
+    // The line climbs half a pixel per pixel: atan(0.5) ≈ 27°.
+    expect(Math.abs(m.streak!.angle - 26.6)).toBeLessThanOrEqual(2);
+  });
+
+  it('does not take a nebula filament for a streak', () => {
+    for (const sigma of [8, 15, 30]) {
+      const data = field(W, H, { seed: 7 });
+      for (let y = 0; y < H; y++) {
+        for (let x = 60; x < W - 60; x++) {
+          const d = (y - 80 - 0.4 * x) / Math.hypot(1, 0.4);
+          data[y * W + x] += 40 * Math.exp(-(d * d) / (2 * sigma * sigma));
+        }
+      }
+      expect(measureSyntheticGrid(data, W, H).streak).toBeNull();
+    }
+  });
+
+  it('does not take a glow along a side of the frame for a streak', () => {
+    const data = field(W, H, { seed: 8 });
+    for (let y = 0; y < H; y++) for (let x = 0; x < 30; x++) data[y * W + x] += 40 * Math.exp(-x / 8);
+    expect(measureSyntheticGrid(data, W, H).streak).toBeNull();
+  });
+
+  it('does not take stretched stars for a streak', () => {
+    expect(measureSyntheticGrid(field(W, H, { sigmaX: 3.4, sigmaY: 1.4, seed: 3 }), W, H).streak).toBeNull();
+  });
+
+  it('still finds a streak crossing a nebula, at the streak\'s angle', () => {
+    const data = field(W, H, { seed: 9 });
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const d = (y - 80 - 0.4 * x) / Math.hypot(1, 0.4);
+        data[y * W + x] += 40 * Math.exp(-(d * d) / (2 * 15 * 15));
+      }
+    }
+    for (let x = 0; x < W; x++) {
+      const y = Math.round(250 - x * 0.3);
+      for (let d = -1; d <= 1; d++) data[(y + d) * W + x] += 90;
+    }
+    const m = measureSyntheticGrid(data, W, H);
+    expect(m.streak).not.toBeNull();
+    // Falling 0.3 px per pixel: 180° − atan(0.3) ≈ 163°.
+    expect(Math.abs(m.streak!.angle - 163.3)).toBeLessThanOrEqual(2);
   });
 
   it('counts far fewer stars through cloud', () => {

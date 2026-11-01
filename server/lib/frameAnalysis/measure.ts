@@ -7,12 +7,21 @@
  * the two are meant to agree on the numbers, so change them together.
  */
 import { fitsDataOffset, parseFitsHeader } from '../fitsParser.js';
+import { blockMedians, findSpots, measureTarget, type FrameSpot, type FrameTarget, type GridWcs, type TargetSpec } from './field.js';
+
+export type { FrameSpot, FrameTarget, TargetSpec } from './field.js';
 
 export interface FrameStreak {
-  /** Degrees, 0 to 180, in the analysed picture. */
+  /** Direction the streak runs in, degrees, 0 to 180, in the analysed picture. */
   angle: number;
   /** How much of the picture's diagonal it covers, 0...1. */
   strength: number;
+}
+
+export interface FrameRig {
+  camera: string | null;
+  focal: number | null;
+  scale: number | null;
 }
 
 export interface FrameMetrics {
@@ -32,15 +41,33 @@ export interface FrameMetrics {
   gradient: number;
   /** Brightest-star signal over noise, median. */
   peakSNR: number | null;
+  /**
+   * Light the stars bring in, in the grid's units: the median total flux of the stars ranked 20th to 120th by flux.
+   * The same field keeps the same stars at those ranks whatever the sky does, so between frames of one target it
+   * follows transparency directly (thin cloud, haze, dew on the optics), which the star count barely does.
+   */
+  signal: number | null;
   streak: FrameStreak | null;
   saturatedFraction: number;
+  /**
+   * The photographed object, when the header carries a plate solution and the object's place is known: how far it
+   * stands out of the sky around it. Null otherwise.
+   */
+  target: FrameTarget | null;
+  /** Round shadows darker than the sky around them (dust, or dew or frost near the sensor), in grid pixels. */
+  spots: FrameSpot[];
+  /**
+   * What took the frame, from the header: frames are only comparable with frames of the same camera and focal
+   * length. `scale` is arcseconds per grid pixel, from the plate solution or else from focal length and pixel size.
+   */
+  rig: FrameRig;
   /** Where the telescope pointed, degrees, from the header. A mosaic points somewhere new every frame. */
   ra: number | null;
   dec: number | null;
 }
 
 /** Bump when a change here makes the same file measure differently, so stored results are dropped on upgrade. */
-export const FRAME_METRICS_VERSION = 3;
+export const FRAME_METRICS_VERSION = 7;
 
 const BAYER_PATTERNS = new Set(['RGGB', 'BGGR', 'GRBG', 'GBRG']);
 const SUPPORTED_BITPIX = new Set([8, 16, 32, -32, -64]);
@@ -56,10 +83,14 @@ const MIN_SIDE = 64;
 const CELL = 32;
 const DETECTION_SIGMA = 5;
 const MAX_MEASURED = 600;
+/** Ranks, by flux, of the stars whose median flux is the frame's signal. */
+const SIGNAL_RANKS = [20, 120] as const;
+/** A satellite or aeroplane trail is a few pixels wide; a band wider than this at half height is sky structure. */
+const MAX_STREAK_WIDTH = 10;
 
 export class FrameDecodeError extends Error {}
 
-interface Grid {
+export interface Grid {
   data: Float32Array;
   width: number;
   height: number;
@@ -67,6 +98,9 @@ interface Grid {
   ceiling: number | null;
   ra: number | null;
   dec: number | null;
+  /** The header's plate solution, mapped onto this grid. */
+  wcs: GridWcs | null;
+  rig: FrameRig;
 }
 
 // ─── Decode ───────────────────────────────────────────────────────────────
@@ -178,7 +212,55 @@ export function decodeGrid(buf: Buffer): Grid {
     data: out, width: ow, height: oh,
     ceiling: bitpix === 8 ? 255 : bitpix === 16 ? 65535 : null,
     ra: located ? ra : null, dec: located ? dec : null,
+    wcs: readWcs(v, bin ? 2 : 1),
+    rig: readRig(v, bin ? 2 : 1),
   };
+}
+
+function headerText(values: Record<string, string | number | boolean>, ...keys: string[]): string | null {
+  for (const k of keys) {
+    const s = values[k];
+    if (typeof s === 'string' && s.trim()) return s.trim();
+  }
+  return null;
+}
+
+/** Camera, focal length and scale. Smart telescopes write their name in INSTRUME or TELESCOP. */
+function readRig(v: Record<string, string | number | boolean>, bin: number): FrameRig {
+  const camera = headerText(v, 'INSTRUME', 'TELESCOP');
+  const focalRaw = headerNumber(v, 'FOCALLEN') ?? headerNumber(v, 'FOCAL');
+  const focal = focalRaw !== null && focalRaw > 0 ? focalRaw : null;
+  const wcs = readWcs(v, bin);
+  let scale: number | null = null;
+  if (wcs) {
+    const [a, b, c, d] = wcs.cd;
+    scale = Math.sqrt(Math.abs(a * d - b * c)) * 3600 * bin;
+  } else {
+    const pixel = headerNumber(v, 'XPIXSZ') ?? headerNumber(v, 'PIXSIZE1');
+    if (focal !== null && pixel !== null && pixel > 0) scale = (206.265 * pixel / focal) * bin;
+  }
+  return { camera, focal, scale: scale !== null && Number.isFinite(scale) ? Math.round(scale * 1000) / 1000 : null };
+}
+
+/**
+ * A TAN plate solution (CRVAL, CRPIX and a CD matrix, or CDELT with CROTA2) mapped onto the analysed grid. Higher
+ * order distortion terms are left out: across a target's few hundred pixels they move it by a pixel or two.
+ */
+function readWcs(v: Record<string, string | number | boolean>, bin: number): GridWcs | null {
+  const crval1 = headerNumber(v, 'CRVAL1'), crval2 = headerNumber(v, 'CRVAL2');
+  const crpix1 = headerNumber(v, 'CRPIX1'), crpix2 = headerNumber(v, 'CRPIX2');
+  if (crval1 === null || crval2 === null || crpix1 === null || crpix2 === null) return null;
+  let cd11 = headerNumber(v, 'CD1_1'), cd12 = headerNumber(v, 'CD1_2');
+  let cd21 = headerNumber(v, 'CD2_1'), cd22 = headerNumber(v, 'CD2_2');
+  if (cd11 === null || cd22 === null) {
+    const d1 = headerNumber(v, 'CDELT1'), d2 = headerNumber(v, 'CDELT2');
+    if (d1 === null || d2 === null) return null;
+    const rot = (headerNumber(v, 'CROTA2') ?? 0) * Math.PI / 180;
+    cd11 = d1 * Math.cos(rot); cd12 = -d2 * Math.sin(rot); cd21 = d1 * Math.sin(rot); cd22 = d2 * Math.cos(rot);
+  }
+  cd12 ??= 0; cd21 ??= 0;
+  if (!(Math.abs(cd11 * cd22 - cd12 * cd21) > 0)) return null;
+  return { crval1, crval2, crpix1, crpix2, cd: [cd11, cd12, cd21, cd22], bin };
 }
 
 // ─── Statistics ───────────────────────────────────────────────────────────
@@ -271,14 +353,33 @@ interface Star {
   x: number;
   y: number;
   peak: number;
+  /** Total flux above the background, from the Gaussian-weighted moments. */
+  flux: number;
+  /** Peak over the noise. */
+  snr: number;
+  /** The core reaches the level where the picture clips: its shape and flux are not to be trusted. */
+  saturated: boolean;
   fwhm: number;
   elongation: number;
   /** Degrees, 0 to 180. */
   angle: number;
 }
 
-/** Size and shape of one star from the pixels connected to its peak that are above a quarter of its height. */
-function profile(g: Grid, map: BackgroundMap, x: number, y: number, peak: number): Star | null {
+/**
+ * Size, shape and flux of one star.
+ *
+ * The pixels connected to the peak above a quarter of its height only decide whether this is a star at all: a hot
+ * pixel has no width, a streak, a bright edge or a nebula runs out of the window. They are not used for the size:
+ * stars here are often only one or two pixels across, and a count of whole pixels moves in steps (two seeings a
+ * quarter apart read the same) and makes round stars look oval.
+ *
+ * The size comes from adaptive Gaussian-weighted second moments instead (as in weak-lensing and survey photometry):
+ * the moments are taken under a Gaussian window that is matched, iteration by iteration, to the star itself. For a
+ * Gaussian star under a matched window the measured moments are half the star's own, whatever its size compared
+ * with the pixels; the pixels' own width (1/12 px²) is then taken off. This reads sub-pixel changes of size and
+ * true elongation down to about a pixel and a half across.
+ */
+function profile(g: Grid, map: BackgroundMap, x: number, y: number, peak: number, noise: number, clip: number): Star | null {
   const r = 9, side = 2 * r + 1;
   const bg = map.value(x, y);
   const top = peak - bg;
@@ -287,15 +388,12 @@ function profile(g: Grid, map: BackgroundMap, x: number, y: number, peak: number
   const inside = new Uint8Array(side * side);
   const stack: number[] = [r * side + r];
   inside[r * side + r] = 1;
-  const memberX: number[] = [], memberY: number[] = [], memberW: number[] = [];
-  let sumW = 0, sumX = 0, sumY = 0;
+  let count = 0;
   let touchesEdge = false;
   while (stack.length > 0) {
     const cur = stack.pop() as number;
     const cx = cur % side, cy = (cur - cx) / side;
-    const weight = g.data[(y + cy - r) * g.width + (x + cx - r)] - bg;
-    memberX.push(cx); memberY.push(cy); memberW.push(weight);
-    sumW += weight; sumX += weight * cx; sumY += weight * cy;
+    count++;
     if (cx === 0 || cy === 0 || cx === side - 1 || cy === side - 1) touchesEdge = true;
     for (let k = 0; k < 4; k++) {
       const nx = cx + (k === 0 ? 1 : k === 1 ? -1 : 0);
@@ -307,33 +405,111 @@ function profile(g: Grid, map: BackgroundMap, x: number, y: number, peak: number
       stack.push(ny * side + nx);
     }
   }
-  const count = memberX.length;
   // A single hot pixel or a cosmic ray has no width. Anything that runs out of the window (a streak, a bright
   // edge, a nebula) is not a star, and must not be counted as one or hidden from the streak search.
-  if (count < 4 || !(sumW > 0) || touchesEdge) return null;
-  const mx = sumX / sumW, my = sumY / sumW;
-  let m20 = 0, m02 = 0, m11 = 0;
-  for (let i = 0; i < count; i++) {
-    const dx = memberX[i] - mx, dy = memberY[i] - my;
-    m20 += memberW[i] * dx * dx; m02 += memberW[i] * dy * dy; m11 += memberW[i] * dx * dy;
-  }
-  m20 /= sumW; m02 /= sumW; m11 /= sumW;
-  const mean = (m20 + m02) / 2;
-  const spread = Math.sqrt(((m20 - m02) / 2) ** 2 + m11 ** 2);
+  if (count < 3 || touchesEdge) return null;
+
+  const m = adaptiveMoments(g, bg, x, y, Math.max(0.5, count / (2 * Math.PI * Math.log(4))));
+  if (!m) return null;
+  // What is left once the pixel's own width is taken off.
+  const cxx = m.cxx - 1 / 12, cyy = m.cyy - 1 / 12, cxy = m.cxy;
+  const mean = (cxx + cyy) / 2;
+  const spread = Math.sqrt(((cxx - cyy) / 2) ** 2 + cxy ** 2);
   const l1 = mean + spread, l2 = mean - spread;
-  if (!(l2 > 0.05)) return null;
-  // A Gaussian's area above a quarter of its height is 2π σ² ln 4.
-  const sigma = Math.sqrt(count / (2 * Math.PI * Math.log(4)));
-  let angle = 0.5 * Math.atan2(2 * m11, m20 - m02) * 180 / Math.PI;
+  // Narrower than a third of a pixel: a hot pixel spread by the colour interpolation, not a star.
+  if (!(l2 > 0.1)) return null;
+  let angle = 0.5 * Math.atan2(2 * cxy, cxx - cyy) * 180 / Math.PI;
   if (angle < 0) angle += 180;
-  return { x, y, peak, fwhm: 2.3548 * sigma, elongation: Math.sqrt(l1 / l2), angle };
+  return {
+    x, y, peak,
+    fwhm: 2.3548 * Math.sqrt(Math.sqrt(l1 * l2)),
+    elongation: Math.sqrt(l1 / l2),
+    angle,
+    flux: m.flux,
+    snr: top / noise,
+    saturated: peak >= clip,
+  };
+}
+
+/**
+ * Gaussian-weighted moments with a window matched to the star. For a Gaussian star of covariance C under a Gaussian
+ * window W, the weighted moments are M = (C⁻¹ + W⁻¹)⁻¹, so C = (M⁻¹ − W⁻¹)⁻¹ whatever the window; the window is
+ * moved towards 2M (where it equals the star) but never below a pixel or so across, because a narrower window over
+ * a star one or two pixels wide reads mostly its central pixel and stops seeing its width. Returns the star's
+ * covariance, pixel width included, and its flux. Null when it does not settle: a blend, a galaxy, noise.
+ */
+function adaptiveMoments(g: Grid, bg: number, x0: number, y0: number, start: number):
+  { cxx: number; cyy: number; cxy: number; flux: number } | null {
+  const floor = 0.8;
+  let wxx = Math.max(start, floor), wyy = wxx, wxy = 0;
+  let mx = x0, my = y0;
+  for (let it = 0; it < 40; it++) {
+    const det = wxx * wyy - wxy * wxy;
+    const ia = wyy / det, ib = -wxy / det, ic = wxx / det;
+    const reach = Math.min(9, Math.ceil(3.5 * Math.sqrt(Math.max(wxx, wyy))) + 1);
+    const ix = Math.round(mx), iy = Math.round(my);
+    let s0 = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+    for (let yy = Math.max(0, iy - reach); yy <= Math.min(g.height - 1, iy + reach); yy++) {
+      const dy = yy - my;
+      for (let xx = Math.max(0, ix - reach); xx <= Math.min(g.width - 1, ix + reach); xx++) {
+        const dx = xx - mx;
+        const q = ia * dx * dx + 2 * ib * dx * dy + ic * dy * dy;
+        if (q > 16) continue;
+        const wt = Math.exp(-0.5 * q);
+        const v = (g.data[yy * g.width + xx] - bg) * wt;
+        s0 += v; sx += v * dx; sy += v * dy; sxx += v * dx * dx; syy += v * dy * dy; sxy += v * dx * dy;
+      }
+    }
+    if (!(s0 > 0)) return null;
+    const ex = sx / s0, ey = sy / s0;
+    const mxx = sxx / s0 - ex * ex, myy = syy / s0 - ey * ey, mxy = sxy / s0 - ex * ey;
+    const mdet = mxx * myy - mxy * mxy;
+    if (!(mxx > 0 && myy > 0 && mdet > 0)) return null;
+    mx += ex; my += ey;
+    if (Math.abs(mx - x0) > 3 || Math.abs(my - y0) > 3) return null;
+    // Next window: twice the moments, held to the floor, kept a proper ellipse.
+    const nxx = Math.max(2 * mxx, floor), nyy = Math.max(2 * myy, floor);
+    let nxy = 2 * mxy;
+    const room = Math.sqrt(nxx * nyy) * 0.95;
+    if (Math.abs(nxy) > room) nxy = Math.sign(nxy) * room;
+    // Wider than a window this size can hold: a blend or extended object.
+    if (nxx > 16 || nyy > 16) return null;
+    const settled = Math.abs(nxx - wxx) < 1e-3 * wxx && Math.abs(nyy - wyy) < 1e-3 * wyy
+      && Math.abs(nxy - wxy) < 1e-3 * Math.sqrt(wxx * wyy) && Math.abs(ex) < 1e-3 && Math.abs(ey) < 1e-3;
+    if (settled || it === 39) {
+      if (!settled) return null;
+      // C = (M⁻¹ − W⁻¹)⁻¹, with the window the moments were taken under.
+      const pa = myy / mdet - ia, pb = -mxy / mdet - ib, pc = mxx / mdet - ic;
+      const pdet = pa * pc - pb * pb;
+      if (!(pa > 0 && pc > 0 && pdet > 0)) return null;
+      // Flux: the weighted sum over the integral of star × window, ∫G_C·w = √(det W / det(C + W)).
+      const cxx = pc / pdet, cyy = pa / pdet, cxy = -pb / pdet;
+      const sumDet = (cxx + wxx) * (cyy + wyy) - (cxy + wxy) ** 2;
+      return { cxx, cyy, cxy, flux: s0 * Math.sqrt(sumDet / det) };
+    }
+    wxx = nxx; wyy = nyy; wxy = nxy;
+  }
+  return null;
+}
+
+/**
+ * The level at which the picture clips. A colour frame is debayered and binned before it is measured, so a burnt
+ * core does not reach the file's ceiling here; it shows instead as many pixels sharing the picture's top value.
+ */
+function clipLevel(g: Grid): number {
+  let max = -Infinity;
+  for (let i = 0; i < g.data.length; i++) if (g.data[i] > max) max = g.data[i];
+  let near = 0;
+  for (let i = 0; i < g.data.length; i++) if (g.data[i] >= max * 0.995) near++;
+  const fromFile = g.ceiling !== null ? g.ceiling * 0.95 : Infinity;
+  return near >= 8 ? Math.min(max * 0.97, fromFile) : fromFile;
 }
 
 /**
  * The brightest stars, fully measured, and the number of stars in all. Measuring is the costly part, so the faint
  * tail is counted from the rate at which the measured ones turned out to be real stars rather than hot pixels.
  */
-function detect(g: Grid, map: BackgroundMap, noise: number): { stars: Star[]; total: number } {
+function detect(g: Grid, map: BackgroundMap, noise: number, clip: number): { stars: Star[]; total: number } {
   const w = g.width, h = g.height;
   const margin = 8;
   if (w <= margin * 2 + 2 || h <= margin * 2 + 2) return { stars: [], total: 0 };
@@ -377,7 +553,7 @@ function detect(g: Grid, map: BackgroundMap, noise: number): { stars: Star[]; to
   const stars: Star[] = [];
   const limit = Math.min(cand.length, 1200);
   for (let i = 0; i < limit; i++) {
-    const s = profile(g, map, cand[i].x, cand[i].y, cand[i].peak);
+    const s = profile(g, map, cand[i].x, cand[i].y, cand[i].peak, noise, clip);
     if (s) stars.push(s);
   }
   if (limit === 0) return { stars, total: 0 };
@@ -445,28 +621,132 @@ function findStreak(g: Grid, map: BackgroundMap, noise: number, stars: Star[]): 
       acc[t * rhoBins + Math.round(px[i] * cosT[t] + py[i] * sinT[t]) + rhoMax] += 1;
     }
   }
-  let bestCount = 0, bestT = 0;
+  // Strongest lines first, each a few degrees and bins from the ones before it.
+  const need = Math.max(24, Math.floor(diagonal * 0.18));
+  const minVotes = Math.max(need, Math.ceil(px.length * 0.25));
+  const peaks: { t: number; r: number; c: number }[] = [];
   for (let t = 0; t < angles; t++) {
     for (let r = 1; r < rhoBins - 1; r++) {
       // A line a pixel or two wide: the bin and its neighbours.
       const c = acc[t * rhoBins + r - 1] + acc[t * rhoBins + r] + acc[t * rhoBins + r + 1];
-      if (c > bestCount) { bestCount = c; bestT = t; }
+      if (c >= minVotes) peaks.push({ t, r: r - rhoMax, c });
     }
   }
-  const need = Math.max(24, Math.floor(diagonal * 0.18));
-  if (bestCount < need || bestCount < px.length * 0.25) return null;
-  return { angle: bestT, strength: Math.min(1, bestCount / diagonal) };
+  peaks.sort((a, b) => b.c - a.c);
+  const tried: { t: number; r: number }[] = [];
+  for (const p of peaks) {
+    if (tried.length >= 12) break;
+    if (tried.some(q => Math.min(Math.abs(q.t - p.t), angles - Math.abs(q.t - p.t)) <= 3 && Math.abs(q.r - p.r) <= 3)) continue;
+    tried.push(p);
+    if (isTrail(p.t, p.r)) {
+      // `t` is the direction of the line's normal; the streak runs at right angles to it.
+      return { angle: (p.t + 90) % 180, strength: Math.min(1, p.c / diagonal) };
+    }
+  }
+  return null;
+
+  /**
+   * Whether the line at (t, r) is a trail rather than something else the vote lines up: a satellite leaves one
+   * thin, unbroken line. A nebula filament, a galaxy or a cloud edge is a broad band that also lights the bins
+   * beside it; a row of stretched stars or of stars that escaped the mask is many short pieces with gaps between;
+   * amp glow or a stacking edge hugs a side of the frame.
+   */
+  function isTrail(t: number, r: number): boolean {
+    const c = cosT[t], s = sinT[t];
+    const along: number[] = [];
+    let core = 0, flank = 0, nearSide = 0;
+    for (let i = 0; i < px.length; i++) {
+      const d = Math.abs(px[i] * c + py[i] * s - r);
+      if (d <= 1.5) {
+        core++;
+        along.push(-px[i] * s + py[i] * c);
+        if (Math.min(px[i], py[i], bw - 1 - px[i], bh - 1 - py[i]) <= 4) nearSide++;
+      } else if (d > 1.5 && d <= 4.5) flank++;
+    }
+    if (core < need) return false;
+    // Pixels per bin of width: the core is 3 bins wide, the flanks 3 on each side. A trail is a bin or two wide
+    // in this copy, so its flanks hold little more than noise.
+    if (flank / 6 > (core / 3) * 0.3) return false;
+    // Mostly along a side of the frame.
+    if (nearSide > core * 0.6) return false;
+    // Longest stretch along the line, bridging the holes masked stars leave.
+    along.sort((a, b) => a - b);
+    const gap = Math.max(4, diagonal * 0.04);
+    let run = 0, start = along[0];
+    for (let i = 1; i <= along.length; i++) {
+      if (i === along.length || along[i] - along[i - 1] > gap) {
+        run = Math.max(run, along[i - 1] - start);
+        if (i < along.length) start = along[i];
+      }
+    }
+    if (run < need * 0.8) return false;
+    // In the shrunken copy a filament can look thin once the background map has taken its wings: measure the
+    // width at full size, across the run.
+    let first = along[0], last = along[0], runStart = along[0];
+    for (let i = 1; i <= along.length; i++) {
+      if (i === along.length || along[i] - along[i - 1] > gap) {
+        if (along[i - 1] - runStart > last - first) { first = runStart; last = along[i - 1]; }
+        if (i < along.length) runStart = along[i];
+      }
+    }
+    const width = fullWidth(c, s, r, first, last);
+    return width === null || width <= MAX_STREAK_WIDTH;
+  }
+
+  /**
+   * Full width at half maximum, in pixels of the grid, of the line between `from` and `to` (positions along it in
+   * the shrunken copy). Short pieces of the line are averaged across their length, each piece is centred on its own
+   * peak (the vote is only good to a bin or so), and the median of the pieces is measured. Null when the line is
+   * too faint for its width to be read.
+   */
+  function fullWidth(c: number, s: number, r: number, from: number, to: number): number | null {
+    const half = bin / 2;
+    const rho = r * bin + half * (c + s);
+    const slack = 2 * bin + 2, reach = slack + 30;
+    const piece = 4 * bin;
+    const profiles: number[][] = [];
+    for (let u = from * bin; u + piece <= to * bin + bin; u += piece) {
+      const sum = new Float64Array(2 * reach + 1), n = new Int32Array(2 * reach + 1);
+      for (let k = 0; k < piece; k++) {
+        const along2 = u + k + half;
+        const fx = rho * c - along2 * s, fy = rho * s + along2 * c;
+        for (let o = -reach; o <= reach; o++) {
+          const x = Math.round(fx + o * c), y = Math.round(fy + o * s);
+          if (x < 0 || y < 0 || x >= w || y >= h) continue;
+          sum[o + reach] += g.data[y * w + x]; n[o + reach]++;
+        }
+      }
+      if (n[reach] < piece / 2) continue;
+      const prof = Array.from(sum, (v, i) => (n[i] > 0 ? v / n[i] : NaN));
+      let peakAt = reach;
+      for (let i = reach - slack; i <= reach + slack; i++) {
+        const v = (prof[i - 1] + prof[i] + prof[i + 1]) / 3;
+        if (v > (prof[peakAt - 1] + prof[peakAt] + prof[peakAt + 1]) / 3) peakAt = i;
+      }
+      profiles.push(Array.from({ length: 2 * 30 + 1 }, (_, j) => prof[peakAt - 30 + j]));
+    }
+    if (profiles.length < 3) return null;
+    const profile = Array.from({ length: 61 }, (_, j) => median(profiles.map(p => p[j]).filter(v => Number.isFinite(v))) ?? NaN);
+    const base = median(profile.filter((v, j) => Math.abs(j - 30) >= 24 && Number.isFinite(v)));
+    if (base === null) return null;
+    const top = profile[30] - base;
+    if (!(top > (noise / Math.sqrt(piece)) * 4)) return null;
+    let lo = 30, hi = 30;
+    while (lo > 0 && profile[lo - 1] - base > top / 2) lo--;
+    while (hi < 60 && profile[hi + 1] - base > top / 2) hi++;
+    return hi - lo + 1;
+  }
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────
 
-function measureGrid(g: Grid): FrameMetrics {
+function measureGrid(g: Grid, target?: TargetSpec | null): FrameMetrics {
   const w = g.width, h = g.height;
   const pointing = { ra: g.ra, dec: g.dec };
   if (w < 8 || h < 8 || g.data.length === 0) {
     return {
       width: w, height: h, starCount: 0, fwhm: null, elongation: null, orientation: null, background: 0, noise: 0,
-      gradient: 0, peakSNR: null, streak: null, saturatedFraction: 0, ...pointing,
+      gradient: 0, peakSNR: null, signal: null, streak: null, saturatedFraction: 0, target: null, spots: [], rig: g.rig, ...pointing,
     };
   }
   const map = new BackgroundMap(g, CELL);
@@ -478,13 +758,15 @@ function measureGrid(g: Grid): FrameMetrics {
     for (let i = 0; i < g.data.length; i++) if (g.data[i] >= limit) saturated++;
   }
 
-  const { stars, total } = detect(g, map, noise);
-  const measured = stars.slice(0, MAX_MEASURED);
+  const clip = clipLevel(g);
+  const { stars, total } = detect(g, map, noise, clip);
+  // Shapes from stars that are clear of the noise and not clipped; the brightest of those first.
+  const measured = stars.filter(s => !s.saturated && s.snr >= 10).slice(0, MAX_MEASURED);
   const elongations = measured.map(s => s.elongation);
-  const snrs = measured.map(s => (s.peak - map.value(s.x, s.y)) / noise);
+  const snrs = stars.slice(0, MAX_MEASURED).map(s => s.snr);
 
   let orientation: number | null = null;
-  if (elongations.length >= 5 && (median(elongations) ?? 1) > 1.2) {
+  if (elongations.length >= 5 && (median(elongations) ?? 1) > 1.15) {
     // Circular mean of the doubled angle, so 179° and 1° agree.
     let sx = 0, sy = 0;
     for (const s of measured) {
@@ -496,6 +778,14 @@ function measureGrid(g: Grid): FrameMetrics {
     orientation = a;
   }
 
+  // Ranked by flux with the clipped stars kept in the ranking (they are the brightest), so the window holds the
+  // same stars of the field from one frame to the next; only its unclipped members are read.
+  const blocks = blockMedians(g);
+  const byFlux = [...stars].sort((a, b) => b.flux - a.flux);
+  const window = byFlux.slice(SIGNAL_RANKS[0], SIGNAL_RANKS[1]).filter(s => !s.saturated);
+  const signal = window.length >= 10 ? median(window.map(s => s.flux))
+    : byFlux.length >= 10 ? median(byFlux.filter(s => !s.saturated).map(s => s.flux)) : null;
+
   return {
     width: w, height: h, starCount: total,
     fwhm: median(measured.map(s => s.fwhm)),
@@ -503,18 +793,22 @@ function measureGrid(g: Grid): FrameMetrics {
     orientation,
     background: map.level, noise, gradient: map.gradient,
     peakSNR: median(snrs),
+    signal,
     streak: findStreak(g, map, noise, stars),
     saturatedFraction: saturated / (w * h),
+    target: target ? measureTarget(g, blocks, target) : null,
+    spots: findSpots(blocks),
+    rig: g.rig,
     ...pointing,
   };
 }
 
 /** Measure one raw sub-frame from the bytes of its FITS file. Throws FrameDecodeError for a file that is not a readable image. */
-export function measureFrame(buf: Buffer): FrameMetrics {
-  return measureGrid(decodeGrid(buf));
+export function measureFrame(buf: Buffer, target?: TargetSpec | null): FrameMetrics {
+  return measureGrid(decodeGrid(buf), target);
 }
 
 /** Exposed for tests: measure a grid built in memory. */
 export function measureSyntheticGrid(data: Float32Array, width: number, height: number): FrameMetrics {
-  return measureGrid({ data, width, height, ceiling: null, ra: null, dec: null });
+  return measureGrid({ data, width, height, ceiling: null, ra: null, dec: null, wcs: null, rig: { camera: null, focal: null, scale: null } });
 }

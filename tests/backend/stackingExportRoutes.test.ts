@@ -15,6 +15,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 });
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { apiEnvelope } from '../../server/middleware/apiEnvelope';
 import { libraryRouter } from '../../server/routes/library';
@@ -208,6 +209,26 @@ describe('stacking export ZIP', () => {
 });
 
 describe('sub-frame download (shares the ZIP job)', () => {
+  it('fails only the job, not the server, when the temp folder cannot be written', async () => {
+    // A Writable with no 'error' listener used to turn this into an uncaught exception that ends the process.
+    // Vitest reports an uncaught exception as a failure, so surviving to the assertions is part of the check.
+    const tmp = vi.spyOn(os, 'tmpdir').mockReturnValue(path.join(TEST_DATA_DIR, 'missing-tmp-dir'));
+    try {
+      const start = await post('/download/objects/NGC6888/subframes', { dates: [N2] });
+      expect(start.status).toBe(200);
+      const { jobId } = (await start.json()).data;
+      let status: { status: string; error?: string } = { status: 'running' };
+      for (let i = 0; i < 100 && status.status === 'running'; i++) {
+        await new Promise(r => setTimeout(r, 30));
+        status = (await (await fetch(`${baseUrl}/download/status/${jobId}`)).json()).data;
+      }
+      expect(status.status).toBe('error');
+      expect(status.error).toBeTruthy();
+    } finally {
+      tmp.mockRestore();
+    }
+  });
+
   it('leaves out a rejected frame when keptOnly is set', async () => {
     const run = async (body: Record<string, unknown>) => {
       const start = await post('/download/objects/NGC6888/subframes', { dates: [N1], filters: ['H'], ...body });

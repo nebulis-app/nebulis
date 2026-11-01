@@ -134,7 +134,7 @@ export function OnboardingModal({ onComplete }: { onComplete: () => void }) {
     if (!username.trim()) return setUserError(t('onboarding.usernameRequired'));
     if (username.trim().length < 3) return setUserError(t('onboarding.usernameTooShort'));
     if (!password) return setUserError(t('onboarding.passwordRequired'));
-    if (password.length < 4) return setUserError(t('onboarding.passwordTooShort'));
+    if (password.length < 6) return setUserError(t('onboarding.passwordTooShort'));
     if (password !== confirmPassword) return setUserError(t('onboarding.passwordMismatch'));
     createUserMutation.mutate();
   }

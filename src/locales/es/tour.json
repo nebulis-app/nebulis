@@ -1,0 +1,60 @@
+{
+  "steps": {
+    "welcome": {
+      "title": "Conoce Nebulis",
+      "body": "Un recorrido rápido por tu observatorio: la biblioteca, tu telescopio, la planificación de una noche y tus imágenes terminadas. Unos minutos.",
+      "hint": "Inicia el recorrido cuando estés listo. Puedes salir y reiniciarlo cuando quieras desde Ayuda."
+    },
+    "library": {
+      "title": "Tu biblioteca, en primer plano",
+      "body": "Este es tu punto de partida. Cada objeto que has fotografiado vive aquí como una tarjeta con su mejor imagen, el número de noches que lo capturaste y el telescopio del que viene.",
+      "hint": "La búsqueda, los botones Filtros y Vista y el control de diseño (cuadrícula o mosaico) te ayudan a encontrar cualquier cosa en segundos."
+    },
+    "telescopes": {
+      "title": "Apunta a tu telescopio",
+      "body": "Esta es la pestaña Telescopios. Haz clic en «Añadir telescopio inteligente», elige tu modelo e introduce su dirección. El nombre del recurso compartido y los valores predeterminados se rellenan solos.",
+      "hint": "No necesitas importar de inmediato, pero este paso activa las importaciones nocturnas automáticas."
+    },
+    "sync": {
+      "title": "Sincroniza tu telescopio",
+      "body": "Cuando el telescopio esté configurado, abre esta píldora de la barra superior y pulsa Sincronizar. Copia las sesiones nuevas por Wi-Fi (o USB) y las archiva en tu biblioteca automáticamente.",
+      "hint": "La importación automática está activada por defecto para cada telescopio que añades, así que las sesiones nuevas suelen aparecer solas."
+    },
+    "planner": {
+      "title": "Planifica la noche antes de que empiece",
+      "body": "El Planificador responde a «¿merece la pena salir esta noche?» y luego te deja programar qué fotografiar y cuándo. Elige una noche, arrastra objetivos a la línea de tiempo o deja que Planificar mi noche la rellene con el pronóstico por horas.",
+      "hint": "Verde significa totalmente visible, ámbar parcialmente visible y rojo bloqueado por tu propio cielo o por la Luna."
+    },
+    "processed": {
+      "title": "Tus imágenes terminadas",
+      "body": "Aquí llega tu trabajo terminado. Abre cualquier objeto y su página reúne todas sus imágenes, con tus imágenes procesadas en grande arriba y después pestañas para subexposiciones, noches y proyectos.",
+      "hint": "Abre una noche para subir una imagen procesada y marca cualquiera con una estrella para que sea la imagen de portada del objeto en la biblioteca."
+    },
+    "explore": {
+      "title": "Descubre qué fotografiar a continuación",
+      "body": "Explorar encuentra tu próximo objetivo. Busca cualquier nombre o número de catálogo, o navega por tipo. Cada objeto indica si puedes verlo desde tu sitio esta noche y si cabe en el encuadre de tu telescopio.",
+      "hint": "Añade lo que te guste a tu lista de deseos o planéalo para esta noche con un toque."
+    },
+    "catalogs": {
+      "title": "Sigue tu progreso",
+      "body": "Catálogos es el atlas de observación: Messier, NGC, IC, Sharpless y Caldwell, cada uno con un tablero de progreso de lo que has fotografiado y lo que falta. Abre un tablero, toca un objeto para ver sus detalles o abre Mi catálogo para ver un mural con tus propias imágenes."
+    },
+    "gallery": {
+      "title": "Presume de ello",
+      "body": "La Galería convierte tus imágenes procesadas en una presentación a pantalla completa que puedes poner en un televisor. Ábrela y pulsa reproducir para ver una muestra limpia y automática de tu mejor trabajo."
+    },
+    "observations": {
+      "title": "Cada noche, en un calendario",
+      "body": "Observaciones es tu registro. Muestra cada sesión por fecha con el objeto, el telescopio y si tiene una imagen terminada, además de un mapa del mundo con los lugares donde te has instalado."
+    },
+    "settings": {
+      "title": "Hazlo tuyo",
+      "body": "Configuración llega más lejos que la página del telescopio: sitios de observación, ubicación del almacenamiento, opciones de la biblioteca, alertas, teléfonos y televisores conectados y un registro completo del sistema. El cuadro de búsqueda de arriba encuentra cualquier ajuste por su nombre."
+    },
+    "done": {
+      "title": "Estás listo",
+      "body": "Ese es todo el ciclo: conecta un telescopio, deja que corran las importaciones, encuentra un objetivo en Explorar, planifica las noches despejadas en el Planificador y disfruta de las imágenes terminadas en la Galería.",
+      "hint": "¿Te pierdes más adelante? La página de Ayuda tiene guías escritas con capturas de pantalla, y este recorrido siempre está a un clic."
+    }
+  }
+}

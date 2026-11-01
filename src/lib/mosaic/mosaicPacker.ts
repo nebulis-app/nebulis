@@ -105,7 +105,7 @@ const COMFORTABLE_ASPECT = 1.7;
  *
  * `aspect` is the width / height of the box the wall will be shown in.
  */
-export function packMosaic(input: PackItem[], aspect = 1.5): PackLayout {
+function packMosaic(input: PackItem[], aspect = 1.5): PackLayout {
   if (input.length === 0) return { placements: [], width: 0, height: 0 };
 
   const ids = input.map(i => i.id);

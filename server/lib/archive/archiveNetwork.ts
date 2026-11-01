@@ -223,7 +223,7 @@ function assertSafeCredentials(network: ArchiveNetworkCredentials): void {
  * `\\192.168.1.12\Nebulis2` into the server field, where the address is fine and the
  * field is wrong. The caller needs to hear which one.
  */
-export function unsafeField(network: ArchiveNetworkCredentials): string | null {
+function unsafeField(network: ArchiveNetworkCredentials): string | null {
   try {
     assertSafeCredentials(network);
     return null;

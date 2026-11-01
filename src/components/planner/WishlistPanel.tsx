@@ -4,9 +4,9 @@
  * so "Schedule" and "Add all visible tonight" here are exactly the same
  * placement logic the timeline's own quick-add uses.
  *
- * The "Open full Wishlist" button hands off to `/wishlist` — a real routed
- * page with the app's normal top nav, for when the list itself is the task
- * (sorting, bulk cleanup) rather than a quick check mid-session. That page
+ * The "Open full Wishlist" button hands off to the Wishlist tab on Explore
+ * (`/explore?tab=wishlist`), for when the list itself is the task (sorting,
+ * bulk cleanup, finding more) rather than a quick check mid-session. That tab
  * is self-contained (fetches its own night/session data) rather than reusing
  * these props, since navigating there unmounts this component. It's a
  * labeled button rather than a bare icon, and uses ExternalLink rather than

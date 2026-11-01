@@ -22,6 +22,7 @@
     "apiKeys": "API-Schlüssel",
     "alerts": "Benachrichtigungen",
     "display": "Anzeige",
+    "slideshow": "Diashow",
     "organization": "Organisation",
     "processing": "Verarbeitung",
     "maintenance": "Wartung",
@@ -258,7 +259,7 @@
       "success": "Daten gelöscht",
       "successDescription": "Deine Einstellungen und Konten wurden beibehalten.",
       "close": "Schließen",
-      "genericError": "Das Zurücksetzen wurde nicht abgeschlossen. Deine Daten wurden nicht verändert. Versuche es erneut oder prüfe das Systemprotokoll."
+      "genericError": "Das Zurücksetzen wurde nicht abgeschlossen. Einige Daten sind möglicherweise schon gelöscht. Prüfe das Systemprotokoll, bevor du es erneut versuchst."
     }
   },
   "librarySection": {
@@ -282,19 +283,23 @@
         "media": "Kombiniert"
       },
       "slideshowShowInfo": {
-        "label": "Diashow: Objektinformationen anzeigen",
+        "label": "Objektinformationen anzeigen",
         "description": "Zeigt Name, Typ und Entfernung während der Wiedergabe."
       },
       "slideshowProcessedOnly": {
-        "label": "Diashow: Mit nur bearbeiteten Bildern starten",
+        "label": "Mit nur bearbeiteten Bildern starten",
         "description": "Die Diashow öffnet nur mit bearbeiteten Bildern; jederzeit umschaltbar."
       }
+    },
+    "slideshow": {
+      "title": "Diashow",
+      "description": "Wie die Diashow Bilder und Informationen zeigt."
     },
     "imageBehavior": {
       "title": "Bildverhalten",
       "rotate": {
         "label": "Bilder um 90° gegen den Uhrzeigersinn drehen",
-        "description": "Korrigiert Teleskope, die gedreht aufnehmen, auch in der Diashow."
+        "description": "Dreht jedes Diashow-Bild um eine Vierteldrehung. Nützlich, wenn Ihr Teleskop Bilder seitlich speichert."
       }
     },
     "organization": {
@@ -369,7 +374,7 @@
     "upToDate_beta": "Du hast die aktuellste Beta-Version",
     "lastCheckFailed": "Die letzte Prüfung konnte nicht abgeschlossen werden: {{error}}",
     "checkFailed": "Es konnte nicht nach Updates gesucht werden.",
-    "updateStartFailed": "Das Update konnte nicht gestartet werden.",
+    "updateStartFailed": "Das Update konnte nicht gestartet werden. Prüfe das Serverprotokoll und versuche es erneut.",
     "autoUpdate": {
       "label": "Automatisch nach Updates suchen",
       "description": "Updates werden im Hintergrund heruntergeladen, damit sie schneller installiert werden."
@@ -640,7 +645,8 @@
       "bodyAfter": "Nichts am alten Speicherort wird kopiert. Mach dies nur, wenn deine Bilder bereits im Standardordner sind oder du sie erneut importieren möchtest.",
       "resetFailed": "Der Speicherort konnte nicht zurückgesetzt werden",
       "cancel": "Abbrechen",
-      "resetLocation": "Speicherort zurücksetzen"
+      "resetLocation": "Speicherort zurücksetzen",
+      "secondLibraryWarning": "Neue Importe landen in diesem Ordner auf dem eigenen Laufwerk dieses Computers. Wenn das alte Laufwerk später zurückkommt, ist es eine eigene Bibliothek, und beide führen sich nicht von selbst zusammen. Ist das Laufwerk nur abgesteckt, schließen Sie es stattdessen wieder an."
     },
     "resetToDefaultModal": {
       "title": "Bibliothek zurück zum Standard verschieben",
@@ -661,7 +667,8 @@
       "filesProgress_one": "{{copied}} / {{count}} Datei",
       "filesProgress_other": "{{copied}} / {{count}} Dateien",
       "keepDriveConnected": "Lass dieses Laufwerk verbunden. Importe sind pausiert, bis das Verschieben abgeschlossen ist."
-    }
+    },
+    "recoveredNotice": "Ihr Bibliotheks-Laufwerk ist unter einem anderen Pfad zurückgekommen, daher hat sich Nebulis selbst wieder damit verbunden. Es war unter {{from}} und ist jetzt unter {{to}}."
   },
   "storageDashboard": {
     "title": "Speicher",
@@ -986,6 +993,7 @@
     "alerts": "Erfahren Sie, wenn eine klare Nacht kommt oder ein Import fertig ist.",
     "libraryOrganization": "Wie Objekte benannt, gruppiert und gezählt werden.",
     "libraryProcessing": "Was Nebulis mit Aufnahmen tut, nachdem sie eingetroffen sind.",
+    "librarySlideshow": "Wie die Diashow abläuft und was sie zeigt.",
     "maintenance": "Aufgaben, die der Server jede Nacht selbstständig ausführt.",
     "catalogs": "Offline-Bilder und Satellitendaten, die auf diesem Server liegen."
   },
@@ -1021,7 +1029,9 @@
     "cancel": "Abbrechen",
     "saveLabel": "Speichern",
     "connectedFound_one": "Verbunden. {{count}} Ordner gefunden.",
-    "connectedFound_other": "Verbunden. {{count}} Ordner gefunden."
+    "connectedFound_other": "Verbunden. {{count}} Ordner gefunden.",
+    "pairThisDrive": "Stattdessen dieses Laufwerk koppeln",
+    "unmarkedNote": "Dieses USB-Laufwerk ist schreibgeschützt, daher konnte Nebulis es nicht markieren. Es wird nur über seinen Pfad erkannt, der sich vertauschen kann, wenn zwei Teleskope gleichzeitig angeschlossen sind."
   },
   "settingsUI": {
     "moreInfoAriaLabel": "Weitere Informationen: {{text}}"
@@ -1031,7 +1041,7 @@
     "dialogTitleAdd": "Beobachtungsort hinzufügen",
     "editTitle": "Beobachtungsort bearbeiten",
     "addTitle": "Beobachtungsort hinzufügen",
-    "saveFailed": "Dieser Standort konnte nicht gespeichert werden.",
+    "saveFailed": "Der Standort konnte nicht gespeichert werden. Prüfe die Verbindung zum Server und versuche es erneut.",
     "nameLabel": "Name",
     "namePlaceholder": "z. B. Garten, Dark-Sky-Standort",
     "geolocationUnsupported": "Standortbestimmung wird von diesem Browser nicht unterstützt.",
@@ -1078,17 +1088,6 @@
     "pairingCodeAriaLabel": "Kopplungscode",
     "link": "Verknüpfen"
   },
-  "archiveBrowserModal": {
-    "ariaLabel": "Archivierte Kalibrierungsdaten",
-    "title": "Archiviert von {{name}}",
-    "subtitle": "Kalibrierungsaufnahmen ohne anderen Platz: aufbewahrt, nie als Objekte modelliert.",
-    "close": "Schließen",
-    "loading": "Wird geladen…",
-    "nothingArchived": "Noch nichts archiviert.",
-    "fileCount_one": "{{count}} Datei",
-    "fileCount_other": "{{count}} Dateien",
-    "done": "Fertig"
-  },
   "reassignTelescopeModal": {
     "ariaLabel": "Teleskopsitzungen neu zuordnen",
     "title": "Sitzungen verschieben",
@@ -1114,7 +1113,7 @@
     "connected": "{{name}} verbunden",
     "connectedHelp": "Dein Telefon ist angemeldet und einsatzbereit.",
     "scanInstructions": "Öffne Nebulis auf deinem Telefon, tippe auf <1>QR scannen</1> und richte es auf diesen Code. Es verbindet und meldet sich an, keine IP-Adresse nötig.",
-    "generateFailed": "Es konnte kein Code erzeugt werden.",
+    "generateFailed": "Der Kopplungscode konnte nicht erstellt werden. Prüfe, ob der Server erreichbar ist, und versuche es erneut.",
     "qrAlt": "Kopplungs-QR-Code",
     "refreshing": "Wird aktualisiert…",
     "codeExpiredTapToRefresh": "Code abgelaufen. Zum Aktualisieren tippen.",
@@ -1133,7 +1132,7 @@
     "passwordTooShort": "Mind. 6 Zeichen.",
     "passwordSavedNote": "Wird gespeichert, wenn du dieses Formular speicherst.",
     "resetPasswordButton": "Passwort zurücksetzen",
-    "saveFailed": "Änderungen konnten nicht gespeichert werden.",
+    "saveFailed": "Deine Änderungen konnten nicht gespeichert werden. Sie stehen noch im Formular. Versuche es erneut.",
     "resetPasswordConfirmTitle": "Passwort zurücksetzen?",
     "resetPasswordConfirmMessage": "Die verknüpften Geräte von {{name}}, einschließlich gekoppelter Apple TVs oder Telefone, werden abgemeldet und müssen neu gekoppelt werden."
   },

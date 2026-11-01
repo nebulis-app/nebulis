@@ -18,11 +18,12 @@ import {
   getImportStatus, triggerImport, cancelImport, getImportHistory,
   type ImportHistoryEntry, type ImportSkip,
 } from '../lib/api/library';
-import { getAllTelescopeStatus, listTelescopes } from '../lib/api/telescopes';
+import { getAllTelescopeStatus, listTelescopes, type TelescopeProfile } from '../lib/api/telescopes';
 import { useTheme } from '../hooks/useTheme';
 import { SkippedNotice } from '../components/SkippedNotice';
 import { BackupHero, type BackupRollup } from '../components/backup/BackupHero';
 import { TelescopeCard, type TelescopeCardModel } from '../components/backup/TelescopeCard';
+import { AddTelescopeModal } from '../components/settings/AddTelescopeModal';
 import { SyncHistoryPanel } from '../components/backup/SyncHistoryPanel';
 import { SkippedFilesModal } from '../components/backup/SkippedFilesModal';
 import { DeletedSessionsModal } from '../components/backup/DeletedSessionsModal';
@@ -44,6 +45,7 @@ export function BackupStatus() {
 
   const [inspectSkip, setInspectSkip] = useState<ImportSkip | null>(null);
   const [showDeletedSessions, setShowDeletedSessions] = useState(false);
+  const [editing, setEditing] = useState<TelescopeProfile | null>(null);
 
   const { data: status } = useQuery({
     queryKey: ['import-status'],
@@ -241,6 +243,7 @@ export function BackupStatus() {
                 runningTelescopeId={status?.telescopeId ?? null}
                 pending={singleImportMutation.isPending && singleImportMutation.variables === scope.id}
                 onSync={() => singleImportMutation.mutate(scope.id)}
+                onEdit={profiles?.some(p => p.id === scope.id) ? () => setEditing(profiles.find(p => p.id === scope.id) ?? null) : undefined}
               />
             ))}
           </div>
@@ -270,6 +273,7 @@ export function BackupStatus() {
         isDark={isDark}
         onClose={() => setShowDeletedSessions(false)}
       />
+      {editing && <AddTelescopeModal isDark={isDark} existing={editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Sun, Moon, Settings, Library, Sparkles, EyeOff, CloudMoon, Calendar, Crosshair, RefreshCw, HelpCircle, LogOut, ShieldCheck, Eye, Images, BookOpen, Aperture, Telescope, ChevronDown, Star, Compass, Menu, X } from 'lucide-react';
+import { Sun, Moon, Settings, Library, Sparkles, EyeOff, CloudMoon, Calendar, Crosshair, RefreshCw, HelpCircle, LogOut, ShieldCheck, Eye, Images, BookOpen, Aperture, Telescope, ChevronDown, Compass, Menu, X } from 'lucide-react';
 import { useState, useRef, useLayoutEffect, cloneElement, type ReactElement } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -12,6 +12,7 @@ import { getCurrentUser } from '../lib/api/auth';
 import { getUpdateStatus } from '../lib/api/update';
 import { clearAuthToken, getAuthToken } from '../lib/api/client';
 import { useClickOutside } from '../hooks/useClickOutside';
+import { useRefreshLibraryOnImport } from '../hooks/useRefreshLibraryOnImport';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useAuth } from '../contexts/AuthContext';
 import { WhatsNewAutoPopup } from './help/WhatsNewAutoPopup';
@@ -72,9 +73,6 @@ export const NAV_LINK_CONFIG: Record<NavItemId, {
   },
   planner: {
     to: '/planner', icon: <Crosshair className="w-4 h-4" />, isActive: (p) => p === '/planner',
-  },
-  wishlist: {
-    to: '/wishlist', icon: <Star className="w-4 h-4" />, isActive: (p) => p.startsWith('/wishlist'),
   },
   explore: {
     to: '/explore', icon: <Compass className="w-4 h-4" />, isActive: (p) => p.startsWith('/explore'),
@@ -175,6 +173,7 @@ export function Layout({ children }: LayoutProps) {
   });
 
   const isSyncing = importStatusData?.running ?? false;
+  useRefreshLibraryOnImport(importStatusData);
 
   // Sync is triggered from this dropdown now rather than a "From Telescope"
   // button on the Library page, so there's exactly one place a user reaches

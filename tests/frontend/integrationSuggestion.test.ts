@@ -90,6 +90,61 @@ describe('suggestIntegration: object', () => {
   });
 });
 
+describe('suggestIntegration: narrowband brightness', () => {
+  // Catalog values from server/data/dso-catalog.json, colour rig at Bortle 8 with most nights.
+  const city = (objectType: string, magnitude: number | null, majorAxisArcmin: number | null, tier: SuggestionInput['tier'] = 'standard') =>
+    suggestIntegration({ objectType, magnitude, majorAxisArcmin, bortle: 8, rig: 'color', moon: 'mixed', tier });
+
+  it('does not let visual magnitude make an emission nebula look harder than its type', () => {
+    const bubble = city('Emission Nebula', 11, 15); // NGC7635, mean SB 25.5
+    expect(bubble.basis.brightness).toBe('moderate');
+    expect(bubble.basis.brightnessSource).toBe('type-narrowband');
+    expect(bubble.basis.surfaceBrightness).toBeCloseTo(25.5, 1);
+    const rosette = city('Emission Nebula', null, 80); // NGC2237, no magnitude
+    expect(bubble.totalHours).toBe(rosette.totalHours);
+  });
+
+  it('gives the Bubble from Bortle 8 tiers that stay apart under the cap', () => {
+    expect([city('Emission Nebula', 11, 15).totalHours,
+      city('Emission Nebula', 11, 15, 'deep').totalHours,
+      city('Emission Nebula', 11, 15, 'showpiece').totalHours]).toEqual([8, 15.5, 31]);
+  });
+
+  it('keeps a brighter surface brightness, so compact planetaries stay quick', () => {
+    const m57 = city('Planetary Nebula', 8.8, 1.27);
+    expect(m57.basis.brightness).toBe('bright');
+    expect(m57.basis.brightnessSource).toBe('surface-brightness');
+  });
+
+  it('puts a supernova remnant on its type class, not the visual one', () => {
+    const veil = city('Supernova Remnant', 7, 60); // NGC6992, mean SB 24.5
+    expect(veil.basis.brightness).toBe('faint');
+  });
+
+  it('leaves broadband plans on the surface brightness', () => {
+    const m31 = city('Spiral Galaxy', 3.44, 177.83);
+    expect(m31.basis.band).toBe('broadband');
+    expect(m31.basis.brightnessSource).toBe('surface-brightness');
+  });
+});
+
+describe('suggestIntegration: caps', () => {
+  it('says when the total was held at the ceiling', () => {
+    const m31 = suggestIntegration({
+      objectType: 'Spiral Galaxy', magnitude: 3.44, majorAxisArcmin: 177.83, bortle: 8, rig: 'color', moon: 'mixed', tier: 'showpiece',
+    });
+    expect(m31.totalHours).toBe(40);
+    expect(m31.basis.capped).toBe(true);
+    expect(m31.basis.skyCapped).toBe(true);
+  });
+
+  it('is not capped when the model lands under both ceilings', () => {
+    const s = suggestIntegration({ ...base, bortle: 4 });
+    expect(s.basis.capped).toBe(false);
+    expect(s.basis.skyCapped).toBe(false);
+  });
+});
+
 describe('suggestIntegration: sky', () => {
   it('grows monotonically with the Bortle class', () => {
     let prev = 0;
@@ -209,6 +264,40 @@ describe('suggestIntegration: filter split', () => {
   });
 });
 
+describe('suggestIntegration: naming the dual-band bucket', () => {
+  const nebula: SuggestionInput = {
+    ...base, objectType: 'Emission Nebula', magnitude: 12, majorAxisArcmin: 11, bortle: 8, rig: 'color', moon: 'mixed',
+  };
+
+  it('flags a narrowband bucket it cannot name, so the panel never calls it "No filter"', () => {
+    const s = suggestIntegration(nebula);
+    expect(s.basis.band).toBe('narrowband');
+    expect(s.basis.dualBandUnnamed).toBe(true);
+    expect(s.filters).toHaveLength(1);
+    expect(s.filters[0].filter).toBeNull();
+  });
+
+  it('is false once the telescope names the filter', () => {
+    const s = suggestIntegration({ ...nebula, kit: { filters: ['IRCUT', 'LP'], inventory: false } });
+    expect(s.basis.dualBandUnnamed).toBe(false);
+    expect(s.filters.map(f => f.filter)).toEqual(['LP']);
+  });
+
+  it('is false for broadband plans, where "No filter" is the truth', () => {
+    for (const rig of ['color', 'mono'] as const) {
+      const s = suggestIntegration({ ...base, objectType: 'Galaxy', rig });
+      expect(s.basis.band).toBe('broadband');
+      expect(s.basis.dualBandUnnamed).toBe(false);
+    }
+  });
+
+  it('is false when the plan names its own buckets', () => {
+    const s = suggestIntegration({ ...nebula, rig: 'mono' });
+    expect(s.basis.band).toBe('narrowband');
+    expect(s.basis.dualBandUnnamed).toBe(false);
+  });
+});
+
 describe('filterLine', () => {
   it('reads a line or colour through bandwidth, case and spelling', () => {
     expect(filterLine('Ha')).toBe('Ha');
@@ -271,10 +360,17 @@ describe('suggestIntegration with a kit', () => {
 
     it('only names the bucket from what a smart telescope has used, and never falls back', () => {
       expect(suggestIntegration({ ...emission, rig: 'color', kit: used('Duo-Band') }).filters[0].filter).toBe('Duo-Band');
-      const unnamed = suggestIntegration({ ...emission, rig: 'color', kit: used('LP') });
+      // The SeeStar S50's LP filter is its dual-band one, and "LP" is the token
+      // its headers carry, so the bucket takes that name and the goal lands on
+      // the row the frames actually fill.
+      const seeStar = suggestIntegration({ ...emission, rig: 'color', kit: used('IRCUT', 'LP') });
+      expect(seeStar.filters[0].filter).toBe('LP');
+      expect(seeStar.basis.dualBandUnnamed).toBe(false);
+      const unnamed = suggestIntegration({ ...emission, rig: 'color', kit: used('IRCUT') });
       expect(unnamed.filters[0].filter).toBeNull();
       expect(unnamed.basis.fellBack).toBe(false);
       expect(unnamed.basis.recommendation).toBe('ha-dual');
+      expect(unnamed.basis.dualBandUnnamed).toBe(true);
     });
 
     it('leaves a broadband object alone', () => {

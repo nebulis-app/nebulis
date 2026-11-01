@@ -107,6 +107,7 @@ import linkedKeepUpdatedShot from '../assets/help/linked-folders/keep-updated.we
 import linkedSettingsShot from '../assets/help/linked-folders/settings.webp';
 import archiveChooseDiskShot from '../assets/help/archive/choose-disk.webp';
 import archiveWhatToCopyShot from '../assets/help/archive/what-to-copy.webp';
+import { ProseText } from '../components/ui/HelpBlockText';
 import archiveScheduleShot from '../assets/help/archive/schedule.webp';
 import archiveCleanupShot from '../assets/help/archive/cleanup.webp';
 import archiveOverviewShot from '../assets/help/archive/overview.webp';
@@ -1488,7 +1489,11 @@ function Steps({ steps, isDark }: { steps: { title: string; body?: ReactNode }[]
           </div>
           <div className="pb-7 pt-0.5 flex-1 min-w-0">
             <p className={`text-sm font-semibold ${heading}`}>{step.title}</p>
-            {step.body && <div className={`text-sm mt-1 leading-relaxed ${body}`}>{step.body}</div>}
+            {step.body && (
+              <div className={`text-sm mt-1 leading-relaxed ${body}`}>
+                {typeof step.body === 'string' ? <ProseText text={step.body} leadClassName={heading} /> : step.body}
+              </div>
+            )}
           </div>
         </li>
       ))}
@@ -1531,7 +1536,9 @@ function TourSteps({
           </div>
           <div className="pb-8 pt-0.5 flex-1 min-w-0">
             <p className={`text-sm font-semibold ${heading}`}>{step.title}</p>
-            <div className={`text-sm mt-1.5 leading-relaxed ${body}`}>{step.body}</div>
+            <div className={`text-sm mt-1.5 leading-relaxed ${body}`}>
+              <ProseText text={step.body} leadClassName={heading} />
+            </div>
             {step.img && <Screenshot src={step.img} alt={step.alt} caption={step.caption} isDark={isDark} />}
           </div>
         </li>
@@ -1867,10 +1874,10 @@ function WhatIsNebulis({ isDark, t }: { isDark: boolean; t: TFunc }) {
     >
       <div className={`flex flex-col gap-4 text-sm leading-relaxed ${body}`}>
         <p>
-          {t('whatIsNebulis.p1')}
+          <ProseText text={t('whatIsNebulis.p1')} leadClassName={isDark ? 'text-slate-100' : 'text-slate-800'} />
         </p>
         <p>
-          {t('whatIsNebulis.p2')}
+          <ProseText text={t('whatIsNebulis.p2')} leadClassName={isDark ? 'text-slate-100' : 'text-slate-800'} />
         </p>
       </div>
       <Note isDark={isDark}>
@@ -1900,7 +1907,7 @@ function WhatIsNebulis({ isDark, t }: { isDark: boolean; t: TFunc }) {
 function QuickAnswers({ isDark, t }: { isDark: boolean; t: TFunc }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
-  const qas: { key: string; q: string; a: string }[] = [
+  const qas: { key: string; q: string; a: ReactNode }[] = [
     { key: 'sendImages', q: t('quickAnswers.sendImages.q'), a: t('quickAnswers.sendImages.a') },
     { key: 'locationSharing', q: t('quickAnswers.locationSharing.q'), a: t('quickAnswers.locationSharing.a') },
     { key: 'whichTelescopes', q: t('quickAnswers.whichTelescopes.q'), a: t('quickAnswers.whichTelescopes.a') },
@@ -1914,7 +1921,27 @@ function QuickAnswers({ isDark, t }: { isDark: boolean; t: TFunc }) {
     // Reference rather than "how do I start", so it sits last: the answer is a
     // mapping table in prose, and you only want it once a filter has surprised
     // you by leaving something out.
-    { key: 'objectFilters', q: t('quickAnswers.objectFilters.q'), a: t('quickAnswers.objectFilters.a') },
+    {
+      key: 'objectFilters',
+      q: t('quickAnswers.objectFilters.q'),
+      a: (
+        <div className="flex flex-col gap-3">
+          <p>{t('quickAnswers.objectFilters.intro')}</p>
+          <div className="[&>div]:mb-0">
+            <Terms
+              isDark={isDark}
+              items={[
+                { t: t('quickAnswers.objectFilters.galaxyTerm'), d: t('quickAnswers.objectFilters.galaxyDef') },
+                { t: t('quickAnswers.objectFilters.nebulaTerm'), d: t('quickAnswers.objectFilters.nebulaDef') },
+                { t: t('quickAnswers.objectFilters.clusterTerm'), d: t('quickAnswers.objectFilters.clusterDef') },
+                { t: t('quickAnswers.objectFilters.overlapTerm'), d: t('quickAnswers.objectFilters.overlapDef') },
+                { t: t('quickAnswers.objectFilters.libraryTerm'), d: t('quickAnswers.objectFilters.libraryDef') },
+              ]}
+            />
+          </div>
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -1943,7 +1970,7 @@ function QuickAnswers({ isDark, t }: { isDark: boolean; t: TFunc }) {
               </button>
               {isOpen && (
                 <div className={`px-3 pb-3 -mt-1 text-sm leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                  {qa.a}
+                  {typeof qa.a === 'string' ? <ProseText text={qa.a} leadClassName={isDark ? 'text-slate-200' : 'text-slate-700'} /> : qa.a}
                 </div>
               )}
             </div>

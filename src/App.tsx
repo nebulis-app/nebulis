@@ -1,10 +1,11 @@
 import { Suspense, useEffect, useState } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { lazyRoute } from './lib/chunkReload';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ThemeProvider } from './hooks/useTheme';
 import { NavVisibilityProvider } from './hooks/useNavVisibility';
 import { Layout } from './components/Layout';
+import { RouteErrorBoundary } from './components/RouteErrorBoundary';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OnboardingModal } from './components/OnboardingModal';
 import { TourProvider } from './components/tour/TourProvider';
@@ -35,7 +36,6 @@ const CatalogsHub = lazyRoute(() => import('./pages/CatalogsHub').then(m => ({ d
 const CatalogBoard = lazyRoute(() => import('./pages/CatalogBoard').then(m => ({ default: m.CatalogBoard })));
 const MyCatalogWall = lazyRoute(() => import('./pages/MyCatalogWall').then(m => ({ default: m.MyCatalogWall })));
 const CalibrationLibrary = lazyRoute(() => import('./pages/CalibrationLibrary').then(m => ({ default: m.CalibrationLibrary })));
-const WishlistPage = lazyRoute(() => import('./pages/WishlistPage').then(m => ({ default: m.WishlistPage })));
 const ExplorePage = lazyRoute(() => import('./pages/ExplorePage').then(m => ({ default: m.ExplorePage })));
 const ExploreCategoryPage = lazyRoute(() => import('./pages/ExploreCategoryPage').then(m => ({ default: m.ExploreCategoryPage })));
 import { LoginModal } from './components/LoginModal';
@@ -144,31 +144,34 @@ function AppShell({ onboardingDismissed }: { onboardingDismissed: boolean }) {
       <Layout>
         <ScrollToTop />
         <SyncSubframesProvider>
-          <Suspense fallback={<RouteFallback />}>
-            <Routes>
-              <Route path="/" element={<Gallery />} />
-              <Route path="/observations" element={<ObservationsCalendar />} />
-              <Route path="/observations/new" element={<NewObservationPage />} />
-              <Route path="/observations/:objectId/:date" element={<ObservationDetail />} />
-              <Route path="/object/:objectId" element={<ObjectDetail />} />
-              <Route path="/object/:objectId/compare" element={<CompareView />} />
-              <Route path="/storage" element={<StorageDashboard />} />
-              <Route path="/forecast" element={<ForecastPage />} />
-              <Route path="/planner" element={<PlannerPage />} />
-              <Route path="/wishlist" element={<WishlistPage />} />
-              <Route path="/explore" element={<ExplorePage />} />
-              <Route path="/explore/:category" element={<ExploreCategoryPage />} />
-              <Route path="/catalogs" element={<CatalogsHub />} />
-              <Route path="/catalogs/:catalog" element={<CatalogBoard />} />
-              <Route path="/catalogs/:catalog/mine" element={<MyCatalogWall />} />
-              <Route path="/calibrations" element={<CalibrationLibrary />} />
-              <Route path="/backup" element={<BackupStatus />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/image-gallery" element={<ImageGalleryPage />} />
-              <Route path="/help" element={<HelpPage />} />
-              <Route path="/link" element={<LinkDevicePage />} />
-            </Routes>
-          </Suspense>
+          <RouteErrorBoundary>
+            <Suspense fallback={<RouteFallback />}>
+              <Routes>
+                <Route path="/" element={<Gallery />} />
+                <Route path="/observations" element={<ObservationsCalendar />} />
+                <Route path="/observations/new" element={<NewObservationPage />} />
+                <Route path="/observations/:objectId/:date" element={<ObservationDetail />} />
+                <Route path="/object/:objectId" element={<ObjectDetail />} />
+                <Route path="/object/:objectId/compare" element={<CompareView />} />
+                <Route path="/storage" element={<StorageDashboard />} />
+                <Route path="/forecast" element={<ForecastPage />} />
+                <Route path="/planner" element={<PlannerPage />} />
+                {/* The wishlist is a tab on Explore now; old links and bookmarks still land on it. */}
+                <Route path="/wishlist" element={<Navigate to="/explore?tab=wishlist" replace />} />
+                <Route path="/explore" element={<ExplorePage />} />
+                <Route path="/explore/:category" element={<ExploreCategoryPage />} />
+                <Route path="/catalogs" element={<CatalogsHub />} />
+                <Route path="/catalogs/:catalog" element={<CatalogBoard />} />
+                <Route path="/catalogs/:catalog/mine" element={<MyCatalogWall />} />
+                <Route path="/calibrations" element={<CalibrationLibrary />} />
+                <Route path="/backup" element={<BackupStatus />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/image-gallery" element={<ImageGalleryPage />} />
+                <Route path="/help" element={<HelpPage />} />
+                <Route path="/link" element={<LinkDevicePage />} />
+              </Routes>
+            </Suspense>
+          </RouteErrorBoundary>
         </SyncSubframesProvider>
       </Layout>
       <TourOverlay />

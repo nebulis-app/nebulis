@@ -104,12 +104,12 @@ afterAll(async () => {
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline in tests')));
   db.prepare('DELETE FROM librarySources').run();
 });
 
-afterEach(() => {
+afterEach(async () => {
   for (const release of held.splice(0)) release();
   releaseImportLock();
   setArchiveConfig(DEFAULT_ARCHIVE_CONFIG);
@@ -118,7 +118,7 @@ afterEach(() => {
 });
 
 describe('the lock itself', () => {
-  it('is exclusive and reports who holds it', () => {
+  it('is exclusive and reports who holds it', async () => {
     expect(isLibraryBusy()).toBe(false);
     const release = acquireLibraryLock('archive');
     expect(release).not.toBeNull();
@@ -128,7 +128,7 @@ describe('the lock itself', () => {
     expect(isLibraryBusy()).toBe(false);
   });
 
-  it('lets a stale release do nothing to a newer holder', () => {
+  it('lets a stale release do nothing to a newer holder', async () => {
     const first = acquireLibraryLock('purge');
     first?.();
     const second = acquireLibraryLock('repair');
@@ -137,7 +137,7 @@ describe('the lock itself', () => {
     second?.();
   });
 
-  it('is taken by an import claim and freed by its release', () => {
+  it('is taken by an import claim and freed by its release', async () => {
     expect(claimImportLock()).toBe(true);
     expect(currentLibraryWork()).toBe('import');
     expect(acquireLibraryLock('archive')).toBeNull();
@@ -145,7 +145,7 @@ describe('the lock itself', () => {
     expect(isLibraryBusy()).toBe(false);
   });
 
-  it('refuses an import claim while another job holds it', () => {
+  it('refuses an import claim while another job holds it', async () => {
     hold('archive');
     expect(claimImportLock()).toBe(false);
   });
@@ -252,7 +252,7 @@ describe('the schedulers', () => {
     const folder = path.join(root, 'M 31 - Andromeda');
     fs.mkdirSync(folder, { recursive: true });
     fs.writeFileSync(path.join(folder, 'Stacked_60_M 31_10.0s_IRCUT_20260101-200000.jpg'), 'a'.repeat(100));
-    const { sourceId } = commitSource(root, { importJpg: true, importFits: true, importSubFrames: true }, { label: 'x' });
+    const { sourceId } = await commitSource(root, { importJpg: true, importFits: true, importSubFrames: true }, { label: 'x' });
     setRefreshInterval(sourceId, 60);
     db.prepare('UPDATE librarySources SET lastScanAt = ? WHERE id = ?').run(new Date(0).toISOString(), sourceId);
 

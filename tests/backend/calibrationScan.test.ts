@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
@@ -19,6 +19,12 @@ import { LIBRARY_DIR } from '../../server/lib/paths';
 import { getArchiveDir } from '../../server/lib/library/archiveFolders';
 import { listCalibrationLibrary, findCalibrationBundle, calibrationBundleName, deleteCalibrationBundle } from '../../server/lib/library/calibrationScan';
 import { createProfile } from '../../server/lib/telescopes';
+
+// Each test writes its own frames; a leftover folder from another test would be scanned as part of this one.
+beforeEach(() => {
+  fs.rmSync(LIBRARY_DIR, { recursive: true, force: true });
+  fs.rmSync(getArchiveDir(null), { recursive: true, force: true });
+});
 
 afterAll(() => {
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });

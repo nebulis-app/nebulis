@@ -24,6 +24,7 @@ import enCatalogs from './locales/en/catalogs.json';
 import enErrors from './locales/en/errors.json';
 import enHelp from './locales/en/help.json';
 import enOnboarding from './locales/en/onboarding.json';
+import enTour from './locales/en/tour.json';
 import deCommon from './locales/de/common.json';
 import deSettings from './locales/de/settings.json';
 import deLibrary from './locales/de/library.json';
@@ -34,6 +35,7 @@ import deCatalogs from './locales/de/catalogs.json';
 import deErrors from './locales/de/errors.json';
 import deHelp from './locales/de/help.json';
 import deOnboarding from './locales/de/onboarding.json';
+import deTour from './locales/de/tour.json';
 import esCommon from './locales/es/common.json';
 import esSettings from './locales/es/settings.json';
 import esLibrary from './locales/es/library.json';
@@ -44,6 +46,7 @@ import esCatalogs from './locales/es/catalogs.json';
 import esErrors from './locales/es/errors.json';
 import esHelp from './locales/es/help.json';
 import esOnboarding from './locales/es/onboarding.json';
+import esTour from './locales/es/tour.json';
 import frCommon from './locales/fr/common.json';
 import frSettings from './locales/fr/settings.json';
 import frLibrary from './locales/fr/library.json';
@@ -54,6 +57,7 @@ import frCatalogs from './locales/fr/catalogs.json';
 import frErrors from './locales/fr/errors.json';
 import frHelp from './locales/fr/help.json';
 import frOnboarding from './locales/fr/onboarding.json';
+import frTour from './locales/fr/tour.json';
 import nlCommon from './locales/nl/common.json';
 import nlSettings from './locales/nl/settings.json';
 import nlLibrary from './locales/nl/library.json';
@@ -64,6 +68,7 @@ import nlCatalogs from './locales/nl/catalogs.json';
 import nlErrors from './locales/nl/errors.json';
 import nlHelp from './locales/nl/help.json';
 import nlOnboarding from './locales/nl/onboarding.json';
+import nlTour from './locales/nl/tour.json';
 
 export const SUPPORTED_LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -93,6 +98,7 @@ void i18n
         errors: enErrors,
         help: enHelp,
         onboarding: enOnboarding,
+        tour: enTour,
       },
       de: {
         common: deCommon,
@@ -105,6 +111,7 @@ void i18n
         errors: deErrors,
         help: deHelp,
         onboarding: deOnboarding,
+        tour: deTour,
       },
       es: {
         common: esCommon,
@@ -117,6 +124,7 @@ void i18n
         errors: esErrors,
         help: esHelp,
         onboarding: esOnboarding,
+        tour: esTour,
       },
       fr: {
         common: frCommon,
@@ -129,6 +137,7 @@ void i18n
         errors: frErrors,
         help: frHelp,
         onboarding: frOnboarding,
+        tour: frTour,
       },
       nl: {
         common: nlCommon,
@@ -141,11 +150,12 @@ void i18n
         errors: nlErrors,
         help: nlHelp,
         onboarding: nlOnboarding,
+        tour: nlTour,
       },
     },
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'settings', 'library', 'planner', 'forecast', 'observations', 'catalogs', 'errors', 'help', 'onboarding'],
+    ns: ['common', 'settings', 'library', 'planner', 'forecast', 'observations', 'catalogs', 'errors', 'help', 'onboarding', 'tour'],
     interpolation: {
       escapeValue: false, // React already escapes interpolated values.
     },

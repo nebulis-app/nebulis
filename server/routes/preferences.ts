@@ -1,21 +1,15 @@
 import { Router } from 'express';
-import { z } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
 import {
   getWatermarkPresets,
   setWatermarkPresets,
   getLastSeenVersion,
   setLastSeenVersion,
-  WatermarkPresetSchema,
+  LastSeenVersionBodySchema,
+  WatermarkPresetsBodySchema,
 } from '../lib/userPreferences.js';
 
 export const preferencesRouter = Router();
-
-const WatermarkPresetsBodySchema = z.array(WatermarkPresetSchema);
-
-const LastSeenVersionBodySchema = z.object({
-  version: z.string().min(1).max(64),
-});
 
 // Fall back to 'default' when auth is disabled (no-user / API-key mode)
 function resolveUserId(req: { userId?: string }): string {

@@ -47,7 +47,7 @@ router.delete('/admin/:id', (req: Request, res: Response) => {
   const id = typeof req.params.id === 'string' ? req.params.id : '';
   const ok = adminRevokeDevice(id, { userId: req.userId, username: req.username, ip: req.ip ?? req.socket.remoteAddress });
   if (!ok) {
-    res.apiError(404, 'DEVICE_NOT_FOUND', 'No matching device to revoke.');
+    res.apiError(404, 'DEVICE_NOT_FOUND', 'That device is no longer paired. Reload the list and try again.');
     return;
   }
   res.apiSuccess({ revoked: true });
@@ -61,7 +61,7 @@ router.delete('/:id', (req: Request, res: Response) => {
   const id = typeof req.params.id === 'string' ? req.params.id : '';
   const ok = revokeDeviceForUser(req.userId, id);
   if (!ok) {
-    res.apiError(404, 'DEVICE_NOT_FOUND', 'No matching device to revoke.');
+    res.apiError(404, 'DEVICE_NOT_FOUND', 'That device is no longer paired. Reload the list and try again.');
     return;
   }
   res.apiSuccess({ revoked: true });
@@ -74,9 +74,13 @@ router.patch('/:id', (req: Request, res: Response) => {
   }
   const id = typeof req.params.id === 'string' ? req.params.id : '';
   const name = typeof req.body?.name === 'string' ? req.body.name : '';
+  if (!name.trim()) {
+    res.apiError(400, 'DEVICE_NAME_REQUIRED', 'Give the device a name first.');
+    return;
+  }
   const ok = renameDeviceForUser(req.userId, id, name);
   if (!ok) {
-    res.apiError(400, 'INVALID', 'Could not rename device.');
+    res.apiError(404, 'DEVICE_NOT_FOUND', 'That device is no longer paired. Reload the list and try again.');
     return;
   }
   res.apiSuccess({ renamed: true });

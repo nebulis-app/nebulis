@@ -100,7 +100,7 @@
     "sortObjects": "Objekte sortieren"
   },
   "catalogObjectModal": {
-    "maxAltitudeHeading": "Maximale Höhe während der Dunkelheit — nächste 12 Monate",
+    "maxAltitudeHeading": "Maximale Höhe während der Dunkelheit, nächste 12 Monate",
     "bestSingle": "Am besten: {{date}}",
     "bestRange": "Am besten: {{start}} – {{end}}",
     "monthAltitude": "{{label}}: {{deg}}°",
@@ -436,11 +436,9 @@
       "titleOn": "Die Besten am {{date}}"
     },
     "browse": {
-      "title": "Nach Art durchsuchen",
-      "myWishlist": "Meine Wunschliste ({{count}})"
+      "title": "Nach Art durchsuchen"
     },
     "results": {
-      "back": "Zurück zu Entdecken",
       "forQuery": "Ergebnisse für „{{query}}“",
       "inConstellation": "Die Besten in {{name}}",
       "all": "Alles",
@@ -450,7 +448,9 @@
       "showEverything": "Alles anzeigen, auch was hier nie aufgeht",
       "loadMore": "Mehr laden",
       "bestTonight": "Beste heute Nacht",
-      "bestOn": "Die Besten am {{date}}"
+      "bestOn": "Die Besten am {{date}}",
+      "breadcrumb": "Wo du bist",
+      "categories": "Kategorien"
     },
     "filters": {
       "visibility": "Anzeigen",
@@ -497,6 +497,17 @@
     "night": {
       "showing": "Zeigt {{date}}, die im Planer gewählte Nacht.",
       "backToTonight": "Zurück zu heute Nacht"
+    },
+    "tabs": {
+      "label": "Explore-Bereiche",
+      "discover": "Entdecken",
+      "wishlist": "Wunschliste"
+    },
+    "wishlist": {
+      "summary_one": "{{total}} Ziel, {{visible}} heute Nacht sichtbar",
+      "summary_other": "{{total}} Ziele, {{visible}} heute Nacht sichtbar",
+      "highPriority_one": "{{formatted}} mit hoher Priorität",
+      "highPriority_other": "{{formatted}} mit hoher Priorität"
     }
   }
 }

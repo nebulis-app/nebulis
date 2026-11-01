@@ -141,9 +141,6 @@ export function PlannerPage() {
   // When arriving from "Plan Tonight" on a catalog, open on the night the plan
   // was scheduled into rather than the planner's own default "today".
   const initialFocusDate = typeof navRecord?.focusDate === 'string' ? navRecord.focusDate : undefined;
-  // Set when the Wishlist page's "Minimize" button sent us back here — reopen
-  // the popup instead of landing on a bare Planner.
-  const initialOpenWishlist = navRecord?.openWishlist === true;
 
   // ── Observing site ───────────────────────────────────────────────────────
   // Every location/sky value below (coordinates, minAlt, horizon, visible-sky
@@ -527,7 +524,7 @@ export function PlannerPage() {
   const [autoPlanOpen, setAutoPlanOpen] = useState(false);
   const [autoPlanRange, setAutoPlanRange] = useState<{ start: Date; end: Date; clearFirst: boolean } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
-  const [wishlistOpen, setWishlistOpen] = useState(initialOpenWishlist);
+  const [wishlistOpen, setWishlistOpen] = useState(false);
   const [addingAllWishlist, setAddingAllWishlist] = useState(false);
   const [weatherOpen, setWeatherOpen] = useState(false);
   const [weatherHourTime, setWeatherHourTime] = useState<string | null>(null);
@@ -1570,7 +1567,7 @@ export function PlannerPage() {
           onQuickAdd={hasWindow ? handleQuickAdd : undefined}
           onAddAllVisibleToPlan={handleAddAllWishlistToPlan}
           addingAll={addingAllWishlist}
-          onExpand={() => navigate('/wishlist', { state: { fromPlanner: true } })}
+          onExpand={() => navigate('/explore?tab=wishlist')}
           onClose={() => setWishlistOpen(false)}
         />
       )}

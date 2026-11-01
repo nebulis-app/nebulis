@@ -22,6 +22,7 @@ import {
   ensureNetworkLibraryConnected,
   testNetworkLibraryConnection,
   invalidateNetworkLibraryReachability,
+  forgetWindowsNetworkLibrarySession,
   NETWORK_MOUNT_DIR,
   type NetworkLibraryConfig,
 } from '../../server/lib/libraryNetwork';
@@ -43,6 +44,7 @@ afterEach(() => {
   // The reachability probe caches per-host for 5s; clear it so a result from
   // one test (e.g. "unreachable") can't bleed into the next for the same host.
   invalidateNetworkLibraryReachability();
+  forgetWindowsNetworkLibrarySession();
 });
 
 describe('resolveNetworkLibraryPath', () => {
@@ -103,6 +105,32 @@ describe('ensureNetworkLibraryConnected', () => {
     tcpProbeMock.mockResolvedValue(12); // reachable
     execFileMock.mockRejectedValue(new Error('net use failed'));
     await expect(ensureNetworkLibraryConnected(cfg())).resolves.toBe(true);
+  });
+
+  it('runs net use once for repeated connects with the same credentials on Windows', async () => {
+    setPlatform('win32');
+    tcpProbeMock.mockResolvedValue(12);
+    await ensureNetworkLibraryConnected(cfg());
+    await ensureNetworkLibraryConnected(cfg());
+    await ensureNetworkLibraryConnected(cfg());
+    expect(execFileMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconnects on Windows when the password changes', async () => {
+    setPlatform('win32');
+    tcpProbeMock.mockResolvedValue(12);
+    await ensureNetworkLibraryConnected(cfg());
+    await ensureNetworkLibraryConnected(cfg({ password: 'new-secret' }));
+    expect(execFileMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries net use on Windows after a failed attempt', async () => {
+    setPlatform('win32');
+    tcpProbeMock.mockResolvedValue(12);
+    execFileMock.mockRejectedValueOnce(new Error('net use failed'));
+    await ensureNetworkLibraryConnected(cfg());
+    await ensureNetworkLibraryConnected(cfg());
+    expect(execFileMock).toHaveBeenCalledTimes(2);
   });
 });
 

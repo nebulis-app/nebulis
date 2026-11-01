@@ -1,7 +1,7 @@
 {
   "step1": {
     "heading": "Crear cuenta de administrador",
-    "subheading": "Configura tus credenciales de acceso",
+    "subheading": "Elige el usuario y la contraseña con los que iniciarás sesión.",
     "usernameLabel": "Nombre de usuario",
     "usernamePlaceholder": "admin",
     "passwordLabel": "Contraseña",
@@ -40,7 +40,7 @@
   },
   "step3": {
     "heading": "Importación automática",
-    "subheading": "Configura con qué frecuencia el sistema importa desde tu telescopio",
+    "subheading": "Elige con qué frecuencia Nebulis busca archivos nuevos en tu telescopio.",
     "importFrequencyLabel": "Frecuencia de importación",
     "interval": {
       "manual": "Solo manual: sin importación automática",
@@ -91,6 +91,7 @@
     "back": "Atrás",
     "creating": "Creando...",
     "continue": "Continuar",
+    "createAccount": "Crear cuenta",
     "saving": "Guardando...",
     "finishSetup": "Finalizar configuración"
   }

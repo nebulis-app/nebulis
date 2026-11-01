@@ -22,6 +22,7 @@
     "features": "Integraties",
     "alerts": "Meldingen",
     "display": "Weergave",
+    "slideshow": "Diavoorstelling",
     "organization": "Indeling",
     "processing": "Verwerking",
     "maintenance": "Onderhoud",
@@ -258,7 +259,7 @@
       "success": "Gegevens verwijderd",
       "successDescription": "Je instellingen en accounts zijn behouden.",
       "close": "Sluiten",
-      "genericError": "Het opnieuw instellen is niet voltooid. Je gegevens zijn niet gewijzigd. Probeer het opnieuw of controleer het systeemlogboek."
+      "genericError": "Het opnieuw instellen is niet voltooid. Mogelijk zijn sommige gegevens al verwijderd. Controleer het systeemlogboek voordat je het opnieuw probeert."
     }
   },
   "librarySection": {
@@ -282,19 +283,23 @@
         "media": "Gecombineerd"
       },
       "slideshowShowInfo": {
-        "label": "Diavoorstelling: objectinformatie weergeven",
+        "label": "Objectinformatie weergeven",
         "description": "Toont de naam, het type en de afstand terwijl de afbeeldingen worden afgespeeld."
       },
       "slideshowProcessedOnly": {
-        "label": "Diavoorstelling: starten met alleen bewerkte afbeeldingen",
+        "label": "Starten met alleen bewerkte afbeeldingen",
         "description": "De diavoorstelling opent met alleen bewerkte afbeeldingen. Je kunt dit op elk moment wijzigen."
       }
+    },
+    "slideshow": {
+      "title": "Diavoorstelling",
+      "description": "Hoe de diavoorstelling afbeeldingen en informatie toont."
     },
     "imageBehavior": {
       "title": "Afbeeldingsweergave",
       "rotate": {
         "label": "Roteer afbeeldingen 90° tegen de klok in",
-        "description": "Corrigeert de oriëntatie van gedraaid opgeslagen telescoopbeelden, ook in de diavoorstelling."
+        "description": "Draait elke afbeelding in de diavoorstelling een kwartslag. Handig als uw telescoop beelden zijdelings opslaat."
       }
     },
     "organization": {
@@ -369,7 +374,7 @@
     "upToDate_beta": "Je gebruikt de nieuwste bètaversie",
     "lastCheckFailed": "Laatste controle kon niet worden voltooid: {{error}}",
     "checkFailed": "Controleren op updates is mislukt.",
-    "updateStartFailed": "De update kon niet worden gestart.",
+    "updateStartFailed": "De update kon niet worden gestart. Bekijk het serverlogboek en probeer het opnieuw.",
     "autoUpdate": {
       "label": "Automatisch controleren op updates",
       "description": "Updates worden op de achtergrond gedownload, zodat ze sneller worden geïnstalleerd."
@@ -640,7 +645,8 @@
       "bodyAfter": "in plaats daarvan. Bestanden op de oude locatie worden niet gekopieerd. Doe dit alleen als je afbeeldingen al in de standaardmap staan of als je ze opnieuw gaat importeren.",
       "resetFailed": "De locatie kon niet worden teruggezet",
       "cancel": "Annuleren",
-      "resetLocation": "Locatie opnieuw instellen"
+      "resetLocation": "Locatie opnieuw instellen",
+      "secondLibraryWarning": "Nieuwe imports gaan naar die map op de eigen schijf van deze computer. Komt de oude schijf later terug, dan is dat een aparte bibliotheek en voegen de twee zich niet vanzelf samen. Is de schijf alleen losgekoppeld, sluit hem dan liever weer aan."
     },
     "resetToDefaultModal": {
       "title": "Bibliotheek terugverplaatsen naar de standaardlocatie",
@@ -661,7 +667,8 @@
       "filesProgress_one": "{{copied}} / {{count}} bestand",
       "filesProgress_other": "{{copied}} / {{count}} bestanden",
       "keepDriveConnected": "Houd deze schijf aangesloten. Het importeren wordt gepauzeerd totdat de verplaatsing is voltooid."
-    }
+    },
+    "recoveredNotice": "De schijf met je bibliotheek kwam terug op een ander pad, dus Nebulis heeft zelf opnieuw verbinding gemaakt. Hij stond op {{from}} en staat nu op {{to}}."
   },
   "storageDashboard": {
     "title": "Opslag",
@@ -986,6 +993,7 @@
     "alerts": "Krijg bericht als er een heldere nacht aankomt of een import klaar is.",
     "libraryOrganization": "Hoe objecten worden benoemd, gegroepeerd en geteld.",
     "libraryProcessing": "Wat Nebulis met beelden doet nadat ze zijn binnengekomen.",
+    "librarySlideshow": "Hoe de diavoorstelling wordt afgespeeld en wat hij toont.",
     "maintenance": "Taken die de server elke nacht zelf uitvoert.",
     "catalogs": "Offline beelden en satellietgegevens die op deze server staan."
   },
@@ -1021,7 +1029,9 @@
     "cancel": "Annuleren",
     "saveLabel": "Opslaan",
     "connectedFound_one": "Verbonden. {{count}} map gevonden.",
-    "connectedFound_other": "Verbonden. {{count}} mappen gevonden."
+    "connectedFound_other": "Verbonden. {{count}} mappen gevonden.",
+    "pairThisDrive": "Koppel in plaats daarvan deze schijf",
+    "unmarkedNote": "Die USB-schijf is alleen-lezen, dus Nebulis kon hem niet markeren. Hij wordt alleen herkend aan zijn pad, dat kan wisselen als twee telescopen tegelijk zijn aangesloten."
   },
   "settingsUI": {
     "moreInfoAriaLabel": "Meer info: {{text}}"
@@ -1031,7 +1041,7 @@
     "dialogTitleAdd": "Waarneemlocatie toevoegen",
     "editTitle": "Waarneemlocatie bewerken",
     "addTitle": "Waarneemlocatie toevoegen",
-    "saveFailed": "De waarneemlocatie kon niet worden opgeslagen.",
+    "saveFailed": "De locatie kon niet worden opgeslagen. Controleer de verbinding met de server en probeer het opnieuw.",
     "nameLabel": "Naam",
     "namePlaceholder": "bijv. Achtertuin, donkere waarneemlocatie",
     "geolocationUnsupported": "Geolocatie wordt niet ondersteund door deze browser.",
@@ -1078,17 +1088,6 @@
     "pairingCodeAriaLabel": "Koppelingscode",
     "link": "Koppelen"
   },
-  "archiveBrowserModal": {
-    "ariaLabel": "Gearchiveerde kalibratiegegevens",
-    "title": "Gearchiveerd van {{name}}",
-    "subtitle": "Kalibratieframes zonder andere bestemming: wel bewaard, maar niet als objecten in de bibliotheek opgenomen.",
-    "close": "Sluiten",
-    "loading": "Laden...",
-    "nothingArchived": "Nog niets gearchiveerd.",
-    "fileCount_one": "{{count}} bestand",
-    "fileCount_other": "{{count}} bestanden",
-    "done": "Klaar"
-  },
   "reassignTelescopeModal": {
     "ariaLabel": "Telescoopsessies opnieuw toewijzen",
     "title": "Sessies verplaatsen",
@@ -1114,7 +1113,7 @@
     "connected": "{{name}} verbonden",
     "connectedHelp": "Je telefoon is aangemeld en klaar voor gebruik.",
     "scanInstructions": "Open Nebulis op je telefoon, tik op <1>QR-code scannen</1> en scan deze code. Je telefoon maakt verbinding en meldt zich aan zonder dat je een IP-adres hoeft in te voeren.",
-    "generateFailed": "Er kon geen code worden gegenereerd.",
+    "generateFailed": "Er kon geen koppelcode worden gemaakt. Controleer of de server bereikbaar is en probeer het opnieuw.",
     "qrAlt": "QR-code voor het koppelen",
     "refreshing": "Vernieuwen…",
     "codeExpiredTapToRefresh": "Code verlopen. Tik om te vernieuwen.",
@@ -1133,7 +1132,7 @@
     "passwordTooShort": "Minimaal 6 tekens.",
     "passwordSavedNote": "Wordt opgeslagen wanneer je dit formulier opslaat.",
     "resetPasswordButton": "Wachtwoord opnieuw instellen",
-    "saveFailed": "De wijzigingen konden niet worden opgeslagen.",
+    "saveFailed": "Je wijzigingen konden niet worden opgeslagen. Ze staan nog in dit formulier. Probeer het opnieuw.",
     "resetPasswordConfirmTitle": "Wachtwoord opnieuw instellen?",
     "resetPasswordConfirmMessage": "De aangesloten apparaten van {{name}}, inclusief een gekoppelde Apple TV of telefoon, worden uitgelogd en moeten opnieuw worden gekoppeld."
   },

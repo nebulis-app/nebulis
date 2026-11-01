@@ -8,7 +8,7 @@
  * `src/components/objectDetail/IntegrationSuggestionPanel.tsx`.
  *
  * The model, its constants and the reasoning behind each are written up in
- * `internal-doc/integration-goals.md`. Keep the two in step: a constant
+ * the private integration-goals notes. Keep the two in step: a constant
  * changed here without its rationale changed there is a bug.
  *
  *   totalHours = base(brightness) × type × skyMoon(bortle, moon, band) × tier
@@ -73,8 +73,10 @@ export interface SuggestionInput {
 }
 
 export interface SuggestedFilter {
-  /** Canonical filter name as the library stores it, or null for "no filter" /
-   *  a single catch-all bucket (colour rigs). */
+  /** Canonical filter name as the library stores it. Null when the plan has no
+   *  name for its one bucket: a colour rig's dual-band filter that nothing has
+   *  named yet (`basis.dualBandUnnamed`), or a genuine no-filter broadband
+   *  bucket. The panel tells those two apart by the band. */
   filter: string | null;
   hours: number;
 }
@@ -82,11 +84,20 @@ export interface SuggestedFilter {
 export interface SuggestionBasis {
   brightness: BrightnessClass;
   /** `'surface-brightness'` when computed from magnitude and size,
-   *  `'type-default'` when the catalog lacked one of them. */
-  brightnessSource: 'surface-brightness' | 'type-default';
+   *  `'type-default'` when the catalog lacked one of them,
+   *  `'type-narrowband'` when a narrowband plan set the surface brightness
+   *  aside because the type's own class was brighter (see `suggestIntegration`). */
+  brightnessSource: 'surface-brightness' | 'type-default' | 'type-narrowband';
   /** Mean surface brightness in mag/arcsec², when computed. */
   surfaceBrightness: number | null;
   band: 'narrowband' | 'broadband';
+  /**
+   * True when the plan is narrowband but its one bucket has no name the app can
+   * know: a colour rig's dual-band plan before the telescope's own frames name
+   * a filter. The panel shows that bucket as "Dual-band" rather than "No
+   * filter", and Apply prefills the goal row with the same name.
+   */
+  dualBandUnnamed: boolean;
   /** What the plan actually uses, which differs from `requested` when the kit lacked the filters. */
   recommendation: FilterRecommendationKey;
   /** What the object type calls for with no regard to the kit. */
@@ -99,6 +110,11 @@ export interface SuggestionBasis {
   bortle: number;
   /** True when the input had none and the reference class was substituted. */
   bortleAssumed: boolean;
+  /** True when the sky and Moon together hit the ceiling: past it a darker
+   *  site or a narrowband filter helps more than more hours. */
+  skyCapped: boolean;
+  /** True when the model asked for more than `MAX_TOTAL_HOURS` and was held there. */
+  capped: boolean;
   factors: {
     base: number;
     type: number;
@@ -135,6 +151,9 @@ export const BASE_HOURS: Readonly<Record<BrightnessClass, number>> = {
 
 /** Upper edges (mag/arcsec², exclusive) of the brightness classes. Larger
  *  numbers are fainter. Anything past the last edge is 'very-faint'. */
+/** Brightest first, so a lower index is the easier object. */
+const BRIGHTNESS_ORDER: readonly BrightnessClass[] = ['bright', 'moderate', 'faint', 'very-faint'];
+
 const BRIGHTNESS_EDGES: ReadonlyArray<readonly [number, BrightnessClass]> = [
   [21.0, 'bright'],
   [22.5, 'moderate'],
@@ -171,7 +190,7 @@ const TIER_FACTOR: Readonly<Record<GoalTier, number>> = { standard: 1, deep: 2, 
 
 /** Bounds on the suggested total, in hours. */
 const MIN_TOTAL_HOURS = 1;
-const MAX_TOTAL_HOURS = 40;
+export const MAX_TOTAL_HOURS = 40;
 const HOUR_STEP = 0.5;
 
 /** Smallest size treated as real; catalog sizes below this are noise. */
@@ -224,6 +243,9 @@ function typeProfile(objectType: string | null | undefined): TypeProfile {
 const SPLITS: Readonly<Record<FilterRecommendationKey, ReadonlyArray<readonly [string | null, number]>>> = {
   'no-filter': [[null, 1]],
   'no-filter-lrgb': [[null, 1]],
+  // One bucket: the dual-band filter, or an Ha one, that a colour rig shoots
+  // through. It stays unnamed until the kit says what it is called
+  // (`dualBandUnnamed` in the basis), which is why it is not "No filter".
   'ha-dual': [[null, 1]],
   'lrgb': [['L', 0.5], ['R', 1 / 6], ['G', 1 / 6], ['B', 1 / 6]],
   'luminance': [['L', 0.5], ['R', 1 / 6], ['G', 1 / 6], ['B', 1 / 6]],
@@ -391,22 +413,37 @@ export function suggestIntegration(input: SuggestionInput): IntegrationSuggestio
   const plan = resolvePlan(requested, input.rig, input.kit);
   const recommendation = plan.key;
   const band = NARROWBAND_KEYS.has(recommendation) ? 'narrowband' : 'broadband';
+  // A narrowband plan whose only bucket has no name: the dual-band filter is
+  // assumed but nothing (no kit, no frame) has said what it is called.
+  const dualBandUnnamed = band === 'narrowband' && plan.split.length === 1 && plan.split[0][0] === null;
 
   const sb = meanSurfaceBrightness(input.magnitude, input.majorAxisArcmin);
-  const brightness = sb === null ? profile.defaultBrightness : brightnessClassFor(sb);
+  const sbClass = sb === null ? null : brightnessClassFor(sb);
+  // The catalog magnitude is visual light over the whole catalog size, which
+  // says little about an object that shines in Ha and OIII seen through a
+  // narrowband filter: with it, the Bubble came out "very faint" while the
+  // Rosette, which has no magnitude, was "moderate". So on a narrowband plan
+  // the type's class is a floor, and a brighter surface brightness (a compact
+  // planetary) still wins.
+  const typeWins = band === 'narrowband' && sbClass !== null
+    && BRIGHTNESS_ORDER.indexOf(profile.defaultBrightness) < BRIGHTNESS_ORDER.indexOf(sbClass);
+  const brightness = sbClass === null || typeWins ? profile.defaultBrightness : sbClass;
+  const brightnessSource = sbClass === null ? 'type-default' : typeWins ? 'type-narrowband' : 'surface-brightness';
 
   const { value: bortle, assumed: bortleAssumed } = normaliseBortle(input.bortle);
   const skyFlux = relativeSkyFlux(bortle);
   const exponent = SKY_EXPONENT[band];
   const skyFactor = clamp(skyFlux ** exponent, SKY_FACTOR_MIN, SKY_FACTOR_MAX);
-  const combinedFactor = clamp((skyFlux + MOON_EXTRA_FLUX[input.moon]) ** exponent, SKY_FACTOR_MIN, SKY_FACTOR_MAX);
+  const combinedRaw = (skyFlux + MOON_EXTRA_FLUX[input.moon]) ** exponent;
+  const combinedFactor = clamp(combinedRaw, SKY_FACTOR_MIN, SKY_FACTOR_MAX);
   // Reported separately so the panel can show each, but the product is the
   // clamped combined factor, so the moon share never double-counts the cap.
   const moonFactor = combinedFactor / skyFactor;
 
   const base = BASE_HOURS[brightness];
   const tier = TIER_FACTOR[input.tier];
-  const rawTotal = clamp(base * profile.factor * combinedFactor * tier, MIN_TOTAL_HOURS, MAX_TOTAL_HOURS);
+  const unclamped = base * profile.factor * combinedFactor * tier;
+  const rawTotal = clamp(unclamped, MIN_TOTAL_HOURS, MAX_TOTAL_HOURS);
 
   const filters = splitHours(roundToStep(rawTotal), plan.split);
 
@@ -415,15 +452,18 @@ export function suggestIntegration(input: SuggestionInput): IntegrationSuggestio
     filters,
     basis: {
       brightness,
-      brightnessSource: sb === null ? 'type-default' : 'surface-brightness',
+      brightnessSource,
       surfaceBrightness: sb,
       band,
       recommendation,
       requested,
       fellBack: plan.fellBack,
       missing: plan.missing,
+      dualBandUnnamed,
       bortle,
       bortleAssumed,
+      skyCapped: combinedRaw > SKY_FACTOR_MAX,
+      capped: unclamped > MAX_TOTAL_HOURS,
       factors: { base, type: profile.factor, sky: skyFactor, moon: moonFactor, tier },
     },
   };

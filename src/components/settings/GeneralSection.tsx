@@ -7,7 +7,7 @@ import { useCompactBanners } from '../../hooks/useCollapsedHero';
 import { useNavVisibility, type NavItemId } from '../../hooks/useNavVisibility';
 import type { Settings as SettingsType } from '../../types';
 import { Sec, Row, Seg, RadioCard, Toggle, getInputClass } from './SettingsUI';
-import { Library, Images, Calendar, CloudMoon, Crosshair, Star, Compass, BookOpen, Aperture, Settings as SettingsIcon, HelpCircle, GripVertical, Lock } from 'lucide-react';
+import { Library, Images, Calendar, CloudMoon, Crosshair, Compass, BookOpen, Aperture, Settings as SettingsIcon, HelpCircle, GripVertical, Lock } from 'lucide-react';
 
 const NAV_ITEM_ICONS: Record<NavItemId, React.ReactNode> = {
   library:       <Library className="w-4 h-4" />,
@@ -15,7 +15,6 @@ const NAV_ITEM_ICONS: Record<NavItemId, React.ReactNode> = {
   observations:  <Calendar className="w-4 h-4" />,
   forecast:      <CloudMoon className="w-4 h-4" />,
   planner:       <Crosshair className="w-4 h-4" />,
-  wishlist:      <Star className="w-4 h-4" />,
   explore:       <Compass className="w-4 h-4" />,
   catalogs:      <BookOpen className="w-4 h-4" />,
   calibrations:  <Aperture className="w-4 h-4" />,

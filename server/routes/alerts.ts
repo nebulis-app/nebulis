@@ -9,7 +9,7 @@
  * See server/lib/alerts for the events and how they are sent.
  */
 import { Router, Request, Response } from 'express';
-import { z } from 'zod';
+import type { ZodError } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
 import {
   createAlertChannel,
@@ -20,73 +20,33 @@ import {
   getAlertDevice,
   listAlertChannels,
   listAlertDevices,
+  phoneAlertsEnabled,
   registerAlertDevice,
   setAlertConfig,
   updateAlertChannel,
   updateAlertDevice,
-  EVENING_HHMM,
 } from '../lib/alerts/store.js';
 import { pushRelayUrl, sendToChannel, sendToDevice } from '../lib/alerts/delivery.js';
 import { lastClearNightCheck, nextClearNightCheck, runClearNightCheck } from '../lib/alerts/clearNight.js';
 import { getActiveSite } from '../lib/observingSites.js';
+import { ALERT_EVENTS, DEFAULT_DEVICE_EVENTS, type AlertChannel, type AlertDevice, type AlertEvent } from '../lib/alerts/types.js';
 import {
-  ALERT_CHANNEL_KINDS, ALERT_EVENTS, ALERT_LANGUAGES, DEFAULT_DEVICE_EVENTS, DEW_LEAD_MAX_MINUTES, DEW_LEAD_MIN_MINUTES,
-  type AlertChannel, type AlertDevice, type AlertEvent,
-} from '../lib/alerts/types.js';
+  AlertChannelBodySchema,
+  AlertChannelPatchSchema,
+  AlertConfigBodySchema,
+  AlertDevicePatchSchema,
+  AlertDeviceRegistrationSchema,
+  type AlertChannelView,
+  type AlertDeviceView,
+} from '../lib/alerts/schemas.js';
 
 const router = Router();
 router.use(requireAdmin);
 
-const HttpUrl = z.string().trim().max(2000).refine(v => {
-  try {
-    const u = new URL(v);
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}, 'Enter an http:// or https:// URL');
-
-/** The optional lines of the clear-night alert; a switch left out keeps its stored value. */
-const Details = z.object({
-  dew: z.boolean().optional(),
-  plan: z.boolean().optional(),
-  dewLeadMinutes: z.number().int().min(DEW_LEAD_MIN_MINUTES).max(DEW_LEAD_MAX_MINUTES).optional(),
-});
-
-const ChannelBody = z.object({
-  name: z.string().trim().min(1).max(100),
-  kind: z.enum(ALERT_CHANNEL_KINDS),
-  url: HttpUrl,
-  secret: z.string().max(200).nullable().optional(),
-  events: z.array(z.enum(ALERT_EVENTS)).max(ALERT_EVENTS.length),
-  details: Details.optional(),
-  enabled: z.boolean().optional(),
-});
-
-const ChannelPatch = ChannelBody.partial();
-
-const DeviceRegistration = z.object({
-  token: z.string().regex(/^[0-9a-fA-F]{64,200}$/, 'Not an Apple device token'),
-  env: z.enum(['production', 'sandbox']),
-  credential: z.string().min(1).max(200),
-  name: z.string().trim().min(1).max(100),
-  language: z.enum(ALERT_LANGUAGES).nullable().optional(),
-});
-
-const DevicePatch = z.object({
-  name: z.string().trim().min(1).max(100).optional(),
-  events: z.array(z.enum(ALERT_EVENTS)).max(ALERT_EVENTS.length).optional(),
-  details: Details.optional(),
-  enabled: z.boolean().optional(),
-});
-
-const ConfigBody = z.object({
-  language: z.enum(ALERT_LANGUAGES).optional(),
-  clearNight: z.object({
-    checkTime: z.string().regex(EVENING_HHMM).optional(),
-    minClearHours: z.number().min(0.5).max(14).optional(),
-    maxCloudCover: z.number().int().min(0).max(100).optional(),
-  }).optional(),
+// Phone alerts are not released yet (see phoneAlertsEnabled): their routes answer as if they did not exist.
+router.use(['/push-info', '/devices', '/clear-night/send-to-phones', '/dew/send-to-phones'], (_req, res, next) => {
+  if (phoneAlertsEnabled()) return next();
+  res.apiError(404, 'NOT_FOUND', 'Not found');
 });
 
 /** "https://discord.com/…a1b2": enough to recognise a channel, not to use it. */
@@ -101,13 +61,13 @@ export function maskUrl(raw: string): string {
   }
 }
 
-function present(c: AlertChannel) {
+function present(c: AlertChannel): AlertChannelView {
   const { url, secret, ...rest } = c;
   return { ...rest, urlPreview: maskUrl(url), hasSecret: secret !== null };
 }
 
 /** A phone as the settings page sees it: never its Apple token or relay credential. */
-function presentDevice(d: AlertDevice) {
+function presentDevice(d: AlertDevice): AlertDeviceView {
   // Listed field by field, so a field added to a device later is not sent to a browser by accident.
   return {
     id: d.id, name: d.name, apnsEnv: d.apnsEnv, language: d.language, events: d.events, details: d.details, enabled: d.enabled,
@@ -115,7 +75,7 @@ function presentDevice(d: AlertDevice) {
   };
 }
 
-function invalid(res: Response, error: z.ZodError): void {
+function invalid(res: Response, error: ZodError): void {
   res.apiError(422, 'VALIDATION_ERROR', error.issues[0]?.message ?? 'Invalid request body');
 }
 
@@ -137,14 +97,14 @@ router.get('/', (_req: Request, res: Response) => {
 });
 
 router.post('/channels', (req: Request, res: Response) => {
-  const parsed = ChannelBody.safeParse(req.body);
+  const parsed = AlertChannelBodySchema.safeParse(req.body);
   if (!parsed.success) return invalid(res, parsed.error);
   res.status(201);
   res.apiSuccess(present(createAlertChannel(parsed.data)));
 });
 
 router.put('/channels/:id', (req: Request, res: Response) => {
-  const parsed = ChannelPatch.safeParse(req.body);
+  const parsed = AlertChannelPatchSchema.safeParse(req.body);
   if (!parsed.success) return invalid(res, parsed.error);
   const updated = updateAlertChannel(String(req.params.id), parsed.data);
   if (!updated) {
@@ -183,7 +143,7 @@ router.get('/push-info', (_req: Request, res: Response) => {
 // A phone registering, or registering again with a fresh Apple token or relay credential. Admin only, like the rest:
 // alerts say what the server is doing, so the phone that gets them belongs to someone who may see that.
 router.post('/devices', (req: Request, res: Response) => {
-  const parsed = DeviceRegistration.safeParse(req.body);
+  const parsed = AlertDeviceRegistrationSchema.safeParse(req.body);
   if (!parsed.success) return invalid(res, parsed.error);
   const { token, env, credential, name, language } = parsed.data;
   const { device, created } = registerAlertDevice({ token, apnsEnv: env, credential, name, language });
@@ -202,7 +162,7 @@ router.get('/devices/:id', (req: Request, res: Response) => {
 });
 
 router.put('/devices/:id', (req: Request, res: Response) => {
-  const parsed = DevicePatch.safeParse(req.body);
+  const parsed = AlertDevicePatchSchema.safeParse(req.body);
   if (!parsed.success) return invalid(res, parsed.error);
   const updated = updateAlertDevice(String(req.params.id), parsed.data);
   if (!updated) {
@@ -232,7 +192,7 @@ router.post('/devices/:id/test', async (req: Request, res: Response) => {
 });
 
 router.put('/config', (req: Request, res: Response) => {
-  const parsed = ConfigBody.safeParse(req.body);
+  const parsed = AlertConfigBodySchema.safeParse(req.body);
   if (!parsed.success) return invalid(res, parsed.error);
   res.apiSuccess(setAlertConfig(parsed.data));
 });

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { blockFromText } from '../../lib/helpLead';
 
 interface HelpBlock {
   headline: string;
@@ -21,5 +22,20 @@ export function HelpBlockText({ block, className }: { block: HelpBlock; classNam
         </ul>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Renders `text` with its first sentence in bold when `blockFromText` finds one, else as-is. Returns inline
+ * content, so the caller keeps its own `<p>`/`<div>` and body color. `leadClassName` lifts the lead one step
+ * above that body color in both themes.
+ */
+export function ProseText({ text, leadClassName }: { text: string; leadClassName?: string }): ReactNode {
+  const block = blockFromText(text);
+  if (!block) return text;
+  return (
+    <>
+      <strong className={`font-semibold ${leadClassName ?? ''}`}>{block.lead}</strong> {block.rest}
+    </>
   );
 }

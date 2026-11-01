@@ -6,7 +6,7 @@ import { promisify } from 'util';
 import { log } from '../lib/logger.js';
 import { cachedSmbListDir as smbListDir, BASE_PATH, isTelescopeOnline } from '../lib/smbCache.js';
 import { isObjectFolder, isSubFolder, getObjectFromSubFolder, normalizeCatalogId, getFileCategory } from '../lib/telescopeFiles.js';
-import { getCatalogEntry } from '../data/catalog.js';
+import { getCatalogEntry } from '../lib/catalogLookup.js';
 import { DATA_DIR } from '../lib/paths.js';
 import { getLibraryDir, isOnSameDeviceAsLibrary, describeLibraryLocation, getLibraryLocationInfo, isLibraryAvailable, isDefaultLocation, isNetworkLocation, isLibraryPinned, setLibraryPath, withTimeout, LIBRARY_IO_TIMEOUT_MS, LIBRARY_STATS_IO_TIMEOUT_MS } from '../lib/libraryPath.js';
 import { isLibraryMigrating } from '../lib/libraryMaintenance.js';

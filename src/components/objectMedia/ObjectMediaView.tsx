@@ -577,7 +577,9 @@ export function ObjectMediaView({ objectId, objectName, isAdmin, onAddObservatio
         deletingProcessedId={deletingId}
       />
 
-      <ObjectImageEditor request={editRequest} onClose={() => setEditRequest(null)} onSaved={closeViewer} />
+      {/* A save replaces the picture in place, so the viewer stays open and refetches rather than dropping the user
+          back to the grid to find it again. */}
+      <ObjectImageEditor request={editRequest} onClose={() => setEditRequest(null)} onSaved={refresh} />
     </section>
   );
 }

@@ -19,8 +19,8 @@ import { useZoomPan } from './lightbox/useZoomPan';
 import { zoomControlsFromPan, useFitsZoomControls } from './lightbox/zoomControls';
 import { useLightboxKeys } from './lightbox/useLightboxKeys';
 import { useAdjacentPreload } from './lightbox/useAdjacentPreload';
-import { prefetchFits } from './lightbox/prefetchFits';
-import { shareImage, shareOutcomeMessage } from './lightbox/shareImage';
+import { prefetchFits, fitsFrameSizeQuery } from './lightbox/prefetchFits';
+import { shareImage, shareOutcomeMessage, warmShareImage } from './lightbox/shareImage';
 import { useAnnotatedExport } from './lightbox/useAnnotatedExport';
 import { sessionFileMeta, processedImageMeta } from './lightbox/itemMeta';
 import { AnnotationOverlay } from './lightbox/AnnotationOverlay';
@@ -71,6 +71,11 @@ function isFitsItem(it: GalleryItem): boolean {
   return it.kind === 'file' ? it.file.type === 'fits' : isFitsProcessed(it.img.originalName);
 }
 
+/** Identity of an item across a refetch: a file keeps its library path, a processed image its row id. */
+function itemKey(it: GalleryItem): string {
+  return it.kind === 'file' ? `file:${it.file.path}` : `processed:${it.img.id}`;
+}
+
 /** `<img>` src for an item, or null when the format cannot be rendered.
  *  A processed image can be a FITS restack or a stored-only deliverable
  *  (XISF, PSD, RAW) same as a raw session file can — those get routed to
@@ -85,6 +90,12 @@ function displaySrc(item: GalleryItem): string | null {
   if (item.file.type === 'fits') return null;
   if (!canPreviewImage(item.file)) return null;
   return previewSrcFor(item.file);
+}
+
+/** The server-rendered picture of a FITS frame, which the viewer shows before (and often instead of) the real frame. */
+function fitsPreviewSrc(item: GalleryItem): string | null {
+  if (!isFitsItem(item)) return null;
+  return (item.kind === 'file' ? item.file.previewUrl : item.img.previewUrl) ?? null;
 }
 
 export function GalleryModal({
@@ -154,7 +165,23 @@ export function GalleryModal({
     }
   }
 
-  const item = localItems[index];
+  /**
+   * Take the refreshed copy of any item still in the snapshot.
+   *
+   * Saving an edit in place keeps the picture's path but changes the server's
+   * URL stamps (the `?v=<mtime>` on its download, thumbnail and preview
+   * addresses). The parent refetches after a save, and this is what lets the
+   * viewer stay open on the picture it was showing and swap in the new pixels.
+   * Items deleted during this session are never re-added, because only entries
+   * already in the snapshot can be replaced.
+   */
+  const latestByKey = useMemo(() => new Map(items.map(i => [itemKey(i), i])), [items]);
+  const shownItems = useMemo(
+    () => localItems.map(li => latestByKey.get(itemKey(li)) ?? li),
+    [localItems, latestByKey],
+  );
+
+  const item = shownItems[index];
   const isFits = item
     ? item.kind === 'file' ? item.file.type === 'fits' : isFitsProcessed(item.img.originalName)
     : false;
@@ -207,31 +234,44 @@ export function GalleryModal({
     fits.reset();
   }
 
-  const srcs = useMemo(() => localItems.map(displaySrc), [localItems]);
+  // A FITS frame's neighbours are warmed through their previews, which is all the viewer shows until zoom or stretch asks for more.
+  const srcs = useMemo(() => shownItems.map(it => displaySrc(it) ?? fitsPreviewSrc(it)), [shownItems]);
   useAdjacentPreload(srcs, index);
 
-  // FITS frames are not images the browser can warm, so the neighbours are downloaded, parsed and prepared here.
-  // Held back a moment so the frame being shown gets the first go at the CPU.
+  // The viewer lays a preview out from its frame's size, which comes from the header, so the neighbours' are fetched now.
+  useEffect(() => {
+    if (!isOpen) return;
+    for (const i of [index + 1, index - 1]) {
+      const it = shownItems[i];
+      if (!it || !fitsPreviewSrc(it)) continue;
+      const path = it.kind === 'file' ? it.file.path : it.img.path;
+      if (path) void queryClient.prefetchQuery(fitsFrameSizeQuery(path));
+    }
+  }, [isOpen, index, shownItems, queryClient]);
+
+  // A FITS frame with no preview is not an image the browser can warm, so its neighbours are downloaded, parsed and
+  // prepared here. Held back a moment so the frame being shown gets the first go at the CPU.
   const stretchNow = fits.stretch;
   useEffect(() => {
     if (!isOpen) return;
     const urls = [index + 1, index - 1].flatMap(i => {
-      const it = localItems[i];
+      const it = shownItems[i];
       if (!it) return [];
+      if (fitsPreviewSrc(it)) return [];
       if (it.kind === 'file') return it.file.type === 'fits' ? [it.file.downloadUrl] : [];
       return isFitsProcessed(it.img.originalName) ? [it.img.url] : [];
     });
     if (urls.length === 0) return;
     const timer = window.setTimeout(() => prefetchFits(queryClient, urls, stretchNow), 300);
     return () => window.clearTimeout(timer);
-  }, [isOpen, index, localItems, queryClient, stretchNow]);
+  }, [isOpen, index, shownItems, queryClient, stretchNow]);
 
   const navigate = useCallback((dir: -1 | 1) => {
     setIndex(prev => {
       const next = prev + dir;
-      return next < 0 || next >= localItems.length ? prev : next;
+      return next < 0 || next >= shownItems.length ? prev : next;
     });
-  }, [localItems.length]);
+  }, [shownItems.length]);
 
   const src = item ? displaySrc(item) : null;
   // Fullscreen + the hover magnifier only make sense for the plain-image
@@ -294,8 +334,8 @@ export function GalleryModal({
       if (next.length === 0) onClose();
       return next;
     });
-    setIndex(prev => Math.max(0, Math.min(prev, localItems.length - 2)));
-  }, [index, localItems.length, onClose]);
+    setIndex(prev => Math.max(0, Math.min(prev, shownItems.length - 2)));
+  }, [index, shownItems.length, onClose]);
 
   const confirmDelete = useCallback(async () => {
     // Re-entry guard: the confirm dialog stays mounted through the request, so a
@@ -339,7 +379,7 @@ export function GalleryModal({
     onPrev: () => navigate(-1),
     onNext: () => navigate(1),
     onFirst: () => setIndex(0),
-    onLast: () => setIndex(localItems.length - 1),
+    onLast: () => setIndex(shownItems.length - 1),
     // Escape backs out one level at a time: out of fullscreen first, then
     // out of the viewer, matching what Modal's own Escape/backdrop handling
     // does for the dialog itself (see LightboxFrame's effectiveOnClose).
@@ -363,7 +403,7 @@ export function GalleryModal({
     suspended: !!pendingDelete || exporter.asking,
   }, isOpen);
 
-  const thumbs = useMemo<ThumbEntry[]>(() => localItems.map(entry => {
+  const thumbs = useMemo<ThumbEntry[]>(() => shownItems.map(entry => {
     if (entry.kind === 'processed') {
       const img = entry.img;
       const renderable = isRenderableProcessed(img.originalName);
@@ -402,7 +442,7 @@ export function GalleryModal({
         <img src={thumbSrcFor(f)} alt="" className="w-full h-full object-cover" loading="lazy" />
       ),
     };
-  }), [localItems]);
+  }), [shownItems]);
 
   if (!isOpen || !item) return null;
 
@@ -427,7 +467,7 @@ export function GalleryModal({
             : { kind: 'processed', id: item.img.id },
         )
         : undefined}
-      share={shareable ? { busy: sharing, onShare: exporter.share } : undefined}
+      share={shareable ? { busy: sharing, onShare: exporter.share, onWarm: () => { if (src) warmShareImage(src); } } : undefined}
       download={{
         href: downloadUrl,
         fileName,
@@ -469,7 +509,7 @@ export function GalleryModal({
         title={meta.title}
         subtitle={meta.detail}
         index={index}
-        count={localItems.length}
+        count={shownItems.length}
         onPrev={() => navigate(-1)}
         onNext={() => navigate(1)}
         onSelectIndex={setIndex}
@@ -526,6 +566,7 @@ export function GalleryModal({
               // page's theme and flashing a light panel inside a black frame.
               isDark
               filePath={item.kind === 'file' ? item.file.path : item.img.path}
+              previewUrl={fitsPreviewSrc(item)}
               fileType={item.kind === 'file' ? item.file.fileType : undefined}
               hideControls
               externalZoom={fits.zoom}

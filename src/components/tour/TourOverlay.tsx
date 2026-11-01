@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { useTour } from './TourProvider';
+import { useTourStepText } from './useTourStepText';
 import type { TourIconName, TourPlacement, TourStep } from './steps';
 
 /**
@@ -68,6 +69,7 @@ const ICONS: Record<TourIconName, LucideIcon> = {
 
 export function TourOverlay() {
   const { t } = useTranslation('common');
+  const stepText = useTourStepText();
   const { active, step, stepIndex, stepCount, transitioning, next, back, stop } =
     useTour();  const { isDark, isNight, isSpace } = useTheme();
   const [spot, setSpot] = useState<SpotlightRect | null>(null);
@@ -371,7 +373,7 @@ export function TourOverlay() {
         <div
           ref={cardRef}
           role="dialog"
-          aria-label={step.title}
+          aria-label={stepText(step).title}
           className={`nbl-tour-card absolute z-10 w-[min(380px,calc(100vw-24px))] rounded-2xl border shadow-2xl transition-all duration-200 ${
             isDark
               ? 'bg-slate-900/95 border-slate-700 backdrop-blur-xl'
@@ -411,16 +413,16 @@ export function TourOverlay() {
                   {t('tour.stepIndicator', { current: stepIndex + 1, total: stepCount })}
                 </p>
                 <h3 className={`mt-1 font-display text-lg font-bold tracking-tight ${bodyBubble}`}>
-                  {step.title}
+                  {stepText(step).title}
                 </h3>
               </div>
             </div>
 
             <p className={`mt-4 text-[0.8438rem] leading-relaxed ${bodyBubble}`}>
-              {step.body}
+              {stepText(step).body}
             </p>
-            {step.hint && (
-              <p className={`mt-3 text-xs leading-relaxed ${hint}`}>{step.hint}</p>
+            {stepText(step).hint && (
+              <p className={`mt-3 text-xs leading-relaxed ${hint}`}>{stepText(step).hint}</p>
             )}
 
             <div className="mt-6 flex items-center justify-between">
@@ -496,11 +498,12 @@ function WelcomeCard({
   step: TourStep;
 }) {
   const { t } = useTranslation('common');
+  const text = useTourStepText()(step);
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
       <div
         role="dialog"
-        aria-label={step.title}
+        aria-label={text.title}
         className={`nbl-tour-card w-[min(440px,100vw)] overflow-hidden rounded-3xl border shadow-2xl ${
           isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'
         }`}
@@ -524,14 +527,14 @@ function WelcomeCard({
             {t('tour.welcome')}
           </p>
           <h2 className={`mt-1.5 font-display text-2xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            {step.title}
+            {text.title}
           </h2>
           <p className={`mt-3 text-sm leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-            {step.body}
+            {text.body}
           </p>
-          {step.hint && (
+          {text.hint && (
             <p className={`mt-2.5 text-xs leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              {step.hint}
+              {text.hint}
             </p>
           )}
           <div className="mt-7 flex items-center justify-between">

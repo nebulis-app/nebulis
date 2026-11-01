@@ -74,14 +74,14 @@ function parseTiff(buf: Buffer, tiffStart: number): string | null {
   if (r16(tiffStart + 2) !== 0x002A) return null;
 
   const ifd0Off = r32(tiffStart + 4);
-  const exifIfdOff = ifdLongValue(buf, tiffStart, tiffStart + ifd0Off, r16, r32, 0x8769);
+  const exifIfdOff = ifdLongValue(buf, tiffStart + ifd0Off, r16, r32, 0x8769);
   if (exifIfdOff === null) return null;
 
   return ifdAsciiValue(buf, tiffStart, tiffStart + exifIfdOff, r16, r32, 0x9003);
 }
 
 function ifdLongValue(
-  buf: Buffer, tiffStart: number, ifdStart: number,
+  buf: Buffer, ifdStart: number,
   r16: (o: number) => number, r32: (o: number) => number,
   tag: number,
 ): number | null {

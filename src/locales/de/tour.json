@@ -1,0 +1,60 @@
+{
+  "steps": {
+    "welcome": {
+      "title": "Das ist Nebulis",
+      "body": "Eine kurze Tour durch Ihre Sternwarte: die Bibliothek, Ihr Teleskop, die Planung einer Nacht und Ihre fertigen Bilder. Ein paar Minuten.",
+      "hint": "Starten Sie die Tour, wenn Sie bereit sind. Sie können sie jederzeit verlassen und über die Hilfe neu starten."
+    },
+    "library": {
+      "title": "Ihre Bibliothek im Mittelpunkt",
+      "body": "Das ist Ihre Zentrale. Jedes Objekt, das Sie fotografiert haben, liegt hier als Karte mit seinem besten Bild, der Zahl der Nächte und dem Teleskop, mit dem es entstand.",
+      "hint": "Mit der Suche, den Schaltflächen Filter und Ansicht und der Layout-Steuerung (Raster oder Mosaik) finden Sie alles in Sekunden."
+    },
+    "telescopes": {
+      "title": "Verbinden Sie Ihr Teleskop",
+      "body": "Das ist der Reiter Teleskope. Klicken Sie auf „Smart-Teleskop hinzufügen“, wählen Sie Ihr Modell und geben Sie die Adresse ein. Freigabename und Standardwerte werden automatisch ausgefüllt.",
+      "hint": "Sie müssen nicht sofort importieren, aber dieser Schritt schaltet die automatischen nächtlichen Importe frei."
+    },
+    "sync": {
+      "title": "Synchronisieren Sie Ihr Teleskop",
+      "body": "Sobald ein Teleskop eingerichtet ist, öffnen Sie diese Schaltfläche in der oberen Leiste und klicken auf Sync. Neue Sitzungen werden per WLAN (oder USB) kopiert und automatisch in Ihre Bibliothek einsortiert.",
+      "hint": "Der automatische Import ist für jedes hinzugefügte Teleskop standardmäßig aktiv, neue Sitzungen erscheinen meist von selbst."
+    },
+    "planner": {
+      "title": "Planen Sie die Nacht, bevor sie beginnt",
+      "body": "Der Planer beantwortet „Lohnt sich heute Nacht der Aufbau?“ und lässt Sie dann planen, was wann aufgenommen wird. Wählen Sie eine Nacht, ziehen Sie Ziele in die Zeitleiste oder lassen Sie „Meine Nacht planen“ sie anhand der stündlichen Vorhersage füllen.",
+      "hint": "Grün bedeutet voll sichtbar, Bernstein teilweise sichtbar und Rot durch Ihren eigenen Himmel oder den Mond blockiert."
+    },
+    "processed": {
+      "title": "Ihre fertigen Bilder",
+      "body": "Hier landet Ihre fertige Arbeit. Öffnen Sie ein Objekt, und seine Seite sammelt alle Bilder dazu, mit Ihren bearbeiteten Bildern groß oben, darunter Reiter für Einzelbilder, Nächte und Projekte.",
+      "hint": "Öffnen Sie eine Nacht, um ein bearbeitetes Bild hochzuladen, und markieren Sie eines mit einem Stern, damit es das Titelbild des Objekts in der Bibliothek wird."
+    },
+    "explore": {
+      "title": "Entdecken Sie Ihr nächstes Ziel",
+      "body": "Entdecken findet Ihr nächstes Ziel. Suchen Sie nach einem Namen oder einer Katalognummer oder stöbern Sie nach Art. Jedes Objekt zeigt, ob Sie es heute Nacht von Ihrem Standort sehen können und ob es in das Bildfeld Ihres Teleskops passt.",
+      "hint": "Setzen Sie alles, was Ihnen gefällt, auf Ihre Wunschliste oder planen Sie es mit einem Klick für heute Nacht."
+    },
+    "catalogs": {
+      "title": "Verfolgen Sie Ihren Fortschritt",
+      "body": "Kataloge ist der Beobachtungsatlas: Messier, NGC, IC, Sharpless und Caldwell, jeweils mit einer Fortschrittstafel, was Sie schon fotografiert haben und was noch fehlt. Öffnen Sie eine Tafel, tippen Sie auf ein Objekt für Details oder öffnen Sie „Mein Katalog“ für eine Wand aus Ihren eigenen Bildern."
+    },
+    "gallery": {
+      "title": "Präsentieren Sie Ihre Arbeit",
+      "body": "Die Galerie macht aus Ihren bearbeiteten Bildern eine Vollbild-Diashow, die Sie auf einem Fernseher laufen lassen können. Öffnen Sie sie und drücken Sie auf Wiedergabe für eine saubere, automatische Show Ihrer besten Arbeiten."
+    },
+    "observations": {
+      "title": "Jede Nacht in einem Kalender",
+      "body": "Beobachtungen ist Ihr Logbuch. Es zeigt jede Sitzung nach Datum mit Objekt, Teleskop und ob ein fertiges Bild existiert, dazu eine Weltkarte Ihrer Standorte."
+    },
+    "settings": {
+      "title": "Passen Sie es an",
+      "body": "Die Einstellungen reichen weiter als die Teleskopseite: Beobachtungsorte, Speicherort, Bibliotheksoptionen, Benachrichtigungen, verbundene Handys und Fernseher und ein vollständiges Systemprotokoll. Das Suchfeld oben findet jede Einstellung anhand ihres Namens."
+    },
+    "done": {
+      "title": "Sie sind bereit",
+      "body": "Das ist der ganze Ablauf: ein Teleskop verbinden, die Importe laufen lassen, in Entdecken ein Ziel finden, klare Nächte im Planer planen und die fertigen Bilder in der Galerie genießen.",
+      "hint": "Später verloren? Die Hilfeseite hat schriftliche Anleitungen mit Screenshots, und diese Tour ist immer nur einen Klick entfernt."
+    }
+  }
+}

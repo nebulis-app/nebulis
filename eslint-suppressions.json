@@ -4,16 +4,6 @@
       "count": 1
     }
   },
-  "server/lib/catalogPack/unpack.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "server/lib/db.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
   "server/lib/library/import.ts": {
     "no-control-regex": {
       "count": 4
@@ -49,21 +39,6 @@
   },
   "server/routes/catalog.ts": {
     "no-empty": {
-      "count": 1
-    }
-  },
-  "server/routes/notes.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "server/routes/settings.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "server/routes/sites.ts": {
-    "@typescript-eslint/no-unused-vars": {
       "count": 1
     }
   },

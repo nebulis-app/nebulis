@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
-import { getCatalogEntry } from '../data/catalog.js';
+import { getCatalogEntry } from '../lib/catalogLookup.js';
 import { parsePagination, paginate } from '../middleware/pagination.js';
 import { getLibraryDir, statLibraryFileForServe } from '../lib/libraryPath.js';
 import { resolveLibraryFile } from '../lib/library/fileResolver.js';
@@ -154,7 +154,7 @@ router.get('/objects/:objectId', (req: Request, res: Response) => {
       type: catalogEntry?.type || 'Unknown',
       constellation: catalogEntry?.constellation || 'Unknown',
       description: catalogEntry?.description || '',
-      magnitude: catalogEntry?.magnitude || null,
+      magnitude: catalogEntry?.magnitude ?? null,
       ra: catalogEntry?.ra || null,
       dec: catalogEntry?.dec || null,
       sessionCount: sessions.size,

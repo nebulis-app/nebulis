@@ -169,15 +169,16 @@ describe('dsoCatalog', () => {
     });
 
     it('sorts by magnitude, nulls last', () => {
-      const { entries } = filterCatalog({ limit: 500, sort: 'magnitude' });
+      // The whole catalog: null magnitudes only start after ~3,700 measured entries, so a 500-row page never reaches them.
+      const { entries } = filterCatalog({ limit: 100_000, sort: 'magnitude' });
       const mags = entries.map(e => e.magnitude);
       const withMag = mags.filter((m): m is number => m != null);
       expect(withMag).toEqual([...withMag].sort((a, b) => a - b));
       // Every null-magnitude entry sorts after every real measurement.
       const firstNullIndex = mags.indexOf(null);
-      if (firstNullIndex !== -1) {
-        expect(mags.slice(firstNullIndex).every(m => m == null)).toBe(true);
-      }
+      // The test is only meaningful if the page really contains a null magnitude.
+      expect(firstNullIndex).toBeGreaterThan(-1);
+      expect(mags.slice(firstNullIndex).every(m => m == null)).toBe(true);
     });
 
     it('with lat/minAlt, keeps only entries that can clear that altitude from that latitude', () => {

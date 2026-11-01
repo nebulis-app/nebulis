@@ -12,7 +12,6 @@
     "observations": "Beobachtungen",
     "forecast": "Vorhersage",
     "planner": "Planer",
-    "wishlist": "Wunschliste",
     "explore": "Entdecken",
     "catalogs": "Kataloge",
     "calibrations": "Kalibrierung",
@@ -30,25 +29,25 @@
   },
   "auth": {
     "title": "Bei Nebulis anmelden",
-    "subtitle": "Melde dich an, um fortzufahren",
+    "subtitle": "Melde dich mit deinem Konto für diesen Server an. Deine Bibliothek bleibt auf diesem Rechner.",
     "username": "Benutzername",
-    "usernamePlaceholder": "z. B. astro_fan",
+    "usernamePlaceholder": "Dein Benutzername",
     "password": "Passwort",
     "signIn": "Anmelden",
     "signingIn": "Anmeldung läuft…",
-    "loginFailed": "Anmeldung fehlgeschlagen"
+    "loginFailed": "Benutzername und Passwort passen nicht zusammen. Versuche es erneut."
   },
   "onboarding": {
     "usernameRequired": "Benutzername ist erforderlich",
     "usernameTooShort": "Der Benutzername muss mindestens 3 Zeichen lang sein",
     "passwordRequired": "Passwort ist erforderlich",
-    "passwordTooShort": "Das Passwort muss mindestens 4 Zeichen lang sein",
+    "passwordTooShort": "Das Passwort muss mindestens 6 Zeichen lang sein",
     "passwordMismatch": "Die Passwörter stimmen nicht überein",
-    "createUserFailed": "Benutzer konnte nicht erstellt werden",
+    "createUserFailed": "Das Konto konnte nicht erstellt werden. Prüfe, ob der Benutzername noch frei ist, und versuche es erneut.",
     "connectionTested_one": "Verbunden! {{count}} Beobachtung auf dem Gerät gefunden.",
     "connectionTested_other": "Verbunden! {{count}} Beobachtungen auf dem Gerät gefunden.",
-    "connectionFailed": "Verbindung fehlgeschlagen",
-    "saveSettingsFailed": "Einstellungen konnten nicht gespeichert werden"
+    "connectionFailed": "Das Gerät ist nicht erreichbar. Prüfe, ob es eingeschaltet und im selben Netzwerk ist.",
+    "saveSettingsFailed": "Deine Einstellungen konnten nicht gespeichert werden. Prüfe die Verbindung zum Server und versuche es erneut."
   },
   "layout": {
     "skipToMainContent": "Zum Hauptinhalt springen",
@@ -141,7 +140,14 @@
     "customPathPlaceholder": "Oder einen eigenen Pfad einfügen...",
     "detected_one": "{{count}} {{noun}}-Laufwerk erkannt. Wähle eines aus oder füge einen eigenen Pfad ein.",
     "detected_other": "{{count}} {{noun}}-Laufwerke erkannt. Wähle eines aus oder füge einen eigenen Pfad ein.",
-    "plugIn": "Schließe das {{noun}} per USB an diesen Computer an und tippe auf Aktualisieren."
+    "plugIn": "Schließe das {{noun}} per USB an diesen Computer an und tippe auf Aktualisieren.",
+    "driveSize": "{{size}}, {{free}} frei",
+    "driveObjects_one": "{{count}} Objektordner",
+    "driveObjects_other": "{{count}} Objektordner",
+    "driveLatest": "zuletzt {{date}}",
+    "notPaired": "Noch nicht gekoppelt",
+    "readOnly": "Schreibgeschützt",
+    "readOnlyHint": "Nebulis kann auf dieses Laufwerk nicht schreiben und es daher nicht markieren. Es wird nur über seinen Pfad erkannt, der sich vertauschen kann, wenn zwei Teleskope angeschlossen sind."
   },
   "dwarfLocalPathPicker": {
     "usbStoragePath": "Dwarf-USB-Speicherpfad",
@@ -329,9 +335,15 @@
     "gotIt": "Verstanden"
   },
   "errorBoundary": {
-    "title": "Etwas ist schiefgelaufen",
-    "description": "Ein unerwarteter Fehler ist aufgetreten. Lade die Seite neu, um fortzufahren.",
+    "title": "Nebulis ist auf einen unerwarteten Fehler gestoßen",
+    "description": "Lade die Seite neu, um dort weiterzumachen, wo du aufgehört hast. Deine Bibliothek und Einstellungen sind unverändert.",
     "reloadPage": "Seite neu laden"
+  },
+  "routeError": {
+    "title": "Auf dieser Seite ist ein Fehler aufgetreten",
+    "description": "Etwas auf dieser Seite konnte nicht geladen werden. Der Rest von Nebulis funktioniert weiterhin.",
+    "tryAgain": "Erneut versuchen",
+    "backToLibrary": "Zurück zur Bibliothek"
   },
   "heroToggle": {
     "collapse": "Banner einklappen",

@@ -59,8 +59,24 @@ async function open(page: Page, w: number, h: number, quality: 'approximate' | '
 
 type Box = { x: number; y: number; width: number; height: number };
 
+/**
+ * Wait until the viewer is at rest: the picture has loaded (its aspect ratio sets the panel width, which then
+ * transitions) and no CSS transition or animation is still running. Polling the box alone is not enough: on a slow
+ * runner two reads 60ms apart can match while the panel has not started its resize yet.
+ */
+async function atRest(page: Page): Promise<void> {
+  await expect.poll(() => page.evaluate(() => {
+    const img = document.querySelector<HTMLImageElement>('[role="dialog"] img[alt]:not([aria-hidden="true"])');
+    return !!img && img.complete && img.naturalWidth > 0;
+  })).toBe(true);
+  // Two frames, so a transition that the load just triggered has been registered before we ask about it.
+  await page.evaluate(() => new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+  await page.evaluate(() => Promise.allSettled(document.getAnimations().map(a => a.finished)));
+}
+
 /** The viewer animates open; measure only once its pane has stopped moving. */
 async function settled(locator: Locator): Promise<Box> {
+  await atRest(locator.page());
   let last = JSON.stringify(await locator.boundingBox());
   for (let i = 0; i < 40; i++) {
     await locator.page().waitForTimeout(60);

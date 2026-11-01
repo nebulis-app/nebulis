@@ -1,7 +1,7 @@
 {
   "step1": {
     "heading": "Administratorkonto erstellen",
-    "subheading": "Richten Sie Ihre Anmeldedaten ein",
+    "subheading": "Wählen Sie den Benutzernamen und das Passwort für Ihre Anmeldung.",
     "usernameLabel": "Benutzername",
     "usernamePlaceholder": "admin",
     "passwordLabel": "Passwort",
@@ -40,7 +40,7 @@
   },
   "step3": {
     "heading": "Automatischer Import",
-    "subheading": "Legen Sie fest, wie oft das System von Ihrem Teleskop importiert",
+    "subheading": "Legen Sie fest, wie oft Nebulis Ihr Teleskop auf neue Dateien prüft.",
     "importFrequencyLabel": "Importhäufigkeit",
     "interval": {
       "manual": "Nur manuell: kein automatischer Import",
@@ -91,6 +91,7 @@
     "back": "Zurück",
     "creating": "Wird erstellt...",
     "continue": "Weiter",
+    "createAccount": "Konto erstellen",
     "saving": "Wird gespeichert...",
     "finishSetup": "Einrichtung abschließen"
   }

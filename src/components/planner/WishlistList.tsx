@@ -57,6 +57,9 @@ export interface WishlistListProps {
    *  scheduled, in one pass. */
   onAddAllVisibleToPlan: (items: WishlistItem[]) => void;
   addingAll: boolean;
+  /** Extra controls at the right end of the toolbar, after "Add to plan"
+   *  (the Explore tab puts its Import / Export menu here). */
+  toolbarEnd?: React.ReactNode;
 }
 
 type SortKey = 'priority' | 'name' | 'magnitude' | 'added';
@@ -109,6 +112,7 @@ export function WishlistList({
   onQuickAdd,
   onAddAllVisibleToPlan,
   addingAll,
+  toolbarEnd,
 }: WishlistListProps) {
   const { t } = useTranslation('planner');
   const [search, setSearch] = useState('');
@@ -255,6 +259,7 @@ export function WishlistList({
               ? t('wishlistPanel.addingAll')
               : t('wishlistPanel.addAllVisibleTonight', { count: schedulableTonight.length })}
           </button>
+          {toolbarEnd}
         </div>
       </div>
 

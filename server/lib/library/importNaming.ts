@@ -61,9 +61,14 @@ interface NamePieces {
 
 function splitName(originalName: string): NamePieces {
   const isThumbnail = originalName.includes('_thn.');
+  // The extension is the last dot of the final path segment only: a dotted
+  // folder ("v1.2/light") must not donate its tail as an extension, or the
+  // separator survives sanitizing and lands in the destination filename.
+  const lastSep = Math.max(originalName.lastIndexOf('/'), originalName.lastIndexOf('\\'));
   const dot = originalName.lastIndexOf('.');
-  const rawStem = dot > 0 ? originalName.slice(0, dot) : originalName;
-  const ext = dot > 0 ? originalName.slice(dot).toLowerCase() : '';
+  const hasExt = dot > lastSep + 1;
+  const rawStem = hasExt ? originalName.slice(0, dot) : originalName;
+  const ext = hasExt ? originalName.slice(dot).toLowerCase().replace(ILLEGAL_FS_CHARS, '_') : '';
   // Sanitize, drop an existing `_thn` marker (re-added below if needed), and
   // strip any trailing date stamp so a re-stamp can't double up.
   let stem = rawStem

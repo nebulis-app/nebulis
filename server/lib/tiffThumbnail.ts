@@ -41,8 +41,10 @@ export function tiffThumbnailPath(tiffPath: string, tier: TiffThumbnailTier = 't
 export async function generateTiffThumbnail(
   tiffPath: string,
   tier: TiffThumbnailTier = 'thumb',
+  /** Write here instead of beside the source. Set for a linked file, which Nebulis must never write next to. */
+  thumbPathOverride?: string,
 ): Promise<void> {
-  const thumbPath = tiffThumbnailPath(tiffPath, tier);
+  const thumbPath = thumbPathOverride ?? tiffThumbnailPath(tiffPath, tier);
   if (fs.existsSync(thumbPath)) return;
 
   fs.mkdirSync(path.dirname(thumbPath), { recursive: true });

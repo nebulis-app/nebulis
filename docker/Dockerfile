@@ -1,11 +1,21 @@
 # ── Stage 1: Build frontend ──────────────────────────────────────────
-FROM node:24-alpine AS build
+# Always runs on the machine doing the build, never emulated. The output is plain
+# HTML/JS/CSS, the same for every architecture, and the arm64 build under QEMU got
+# stuck for six hours in vite's "rendering chunks" step (v2.2.0-beta run 41141817614).
+# The native modules the server needs are installed per-arch in stage 2.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS build
 
 WORKDIR /app
 
+# One store location for every pnpm command (install and rebuild), which is also the cache mount below.
+ENV npm_config_store_dir=/pnpm/store
+
 # Install dependencies first (cache layer)
 COPY package.json pnpm-lock.yaml ./
-RUN npm install -g pnpm@10.30.3 \
+# The cache mount keeps pnpm's download store between builds, so a changed lockfile
+# only fetches the packages that changed.
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+  npm install -g pnpm@10.30.3 \
   && pnpm install --frozen-lockfile --config.strict-dep-builds=false
 
 # Copy source and build
@@ -28,9 +38,13 @@ RUN apt-get update \
 
 WORKDIR /app
 
+# Same store variable as stage 1: pnpm refuses to mix store locations within one install.
+ENV npm_config_store_dir=/pnpm/store
+
 # Copy package files and install production deps + tsx
 COPY package.json pnpm-lock.yaml .npmrc ./
-RUN npm install -g pnpm@10.30.3 \
+RUN --mount=type=cache,id=pnpm-store-prod,target=/pnpm/store \
+  npm install -g pnpm@10.30.3 \
   && pnpm install --frozen-lockfile --prod --config.strict-dep-builds=false \
   && pnpm rebuild better-sqlite3 sharp \
   && pnpm add tsx@4.22.4

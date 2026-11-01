@@ -390,6 +390,7 @@ export function AddTelescopeModal({
       const result = await probeTransportIdentity({
         transport: transportPayload(),
         model: preset.model,
+        trackDeviceIdentity,
       });
       if (result.alreadyKnownProfileId && result.alreadyKnownProfileName) {
         setMergeCandidate({
@@ -1170,12 +1171,15 @@ export function AddTelescopeModal({
                 >
                   {t('addTelescopeModal.mergeCancel')}
                 </button>
+                {/* A USB drive that belongs to another telescope cannot be given to a new one while identity tracking is on. */}
+                {!(transportMode === 'local' && trackDeviceIdentity) && (
                 <button
                   onClick={() => { setMergeCandidate(null); createMutation.mutate(); }}
                   className={`px-3 py-2 rounded-lg text-sm ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
                 >
                   {t('addTelescopeModal.mergeCreateNew')}
                 </button>
+                )}
                 <button
                   onClick={() => attachToExistingMutation.mutate(mergeCandidate.profileId)}
                   className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-accent-500 text-white hover:bg-accent-600"

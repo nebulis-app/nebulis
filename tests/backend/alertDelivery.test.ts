@@ -86,15 +86,19 @@ describe('alert messages', () => {
   });
 
   it('describes an import', () => {
-    expect(formatAlert(importEvent, 'en')).toMatchObject({ title: 'Import finished', body: '42 new files from Elendil: NGC6888, M27' });
-    expect(formatAlert(importEvent, 'fr').body).toBe('42 nouveaux fichiers depuis Elendil : NGC6888, M27');
+    expect(formatAlert(importEvent, 'en')).toMatchObject({ title: '42 new files from Elendil', body: 'NGC6888, M27' });
+    expect(formatAlert(importEvent, 'fr')).toMatchObject({ title: '42 nouveaux fichiers depuis Elendil', body: 'NGC6888, M27' });
     const failed = formatAlert({ ...importEvent, type: 'import.failed', data: { ...importData, source: 'folder', error: 'disk full' } }, 'en');
-    expect(failed).toMatchObject({ title: 'Import failed', body: 'a local folder: disk full' });
+    expect(failed).toMatchObject({ title: 'Import failed: a local folder', body: 'disk full' });
+    const repeated = formatAlert({ ...importEvent, type: 'import.failed', data: { ...importData, error: 'Elendil: Elendil refused the connection.' } }, 'en');
+    expect(repeated).toMatchObject({ title: 'Import failed: Elendil', body: 'Elendil refused the connection.' });
+    const bare = formatAlert({ ...importEvent, data: { ...importData, objects: [] } }, 'en');
+    expect(bare.body).toBe('Open the library to see them.');
   });
 
   it('lists five objects and counts the rest', () => {
     const objects = Array.from({ length: 7 }, (_, i) => ({ objectId: `M${i}`, name: `M${i}`, isNew: false }));
-    expect(formatAlert({ ...importEvent, data: { ...importData, objects } }, 'en').body).toBe('42 new files from Elendil: M0, M1, M2, M3, M4 +2 more');
+    expect(formatAlert({ ...importEvent, data: { ...importData, objects } }, 'en').body).toBe('M0, M1, M2, M3, M4 +2 more');
   });
 
   it('describes a clear night in local time, in three short lines with the answer first', () => {
@@ -141,9 +145,9 @@ describe('the dew warning', () => {
   it("leads with when the dew starts, then the night's low in the reader's unit", () => {
     const m = formatAlert(dew(), 'en', { temperatureUnit: 'fahrenheit' });
     expect(m.title).toBe('Dew warning: Franklin, TN');
-    expect(m.body).toBe('Dew likely from 02:00\nLow 41°F tonight');
+    expect(m.body).toBe('Dew likely from 02:00\nLow 41°F. Start your dew heater.');
     expect(m.lead).toBe('Dew likely from 02:00');
-    expect(formatAlert(dew(), 'en', { temperatureUnit: 'celsius' }).body).toContain('Low 5°C tonight');
+    expect(formatAlert(dew(), 'en', { temperatureUnit: 'celsius' }).body).toContain('Low 5°C. Start your dew heater.');
     expect(m.tags).toEqual(['droplet']);
   });
 
@@ -165,7 +169,7 @@ describe('the dew warning', () => {
     const device = { id: 'd1', token: 'a'.repeat(64), apnsEnv: 'production', credential: 'c'.repeat(40), name: 'iPhone' } as never;
     const body = JSON.parse(buildDeviceRequest(device, dew(), formatAlert(dew(), 'en')).body);
     expect(body).toMatchObject({ title: 'Dew warning: Franklin, TN', subtitle: 'Dew likely from 02:00', link: 'nebulis://sky', threadId: 'night.dew', ttlSeconds: 3 * 3600 });
-    expect(body.body).toBe('Low 5°C tonight');
+    expect(body.body).toBe('Low 5°C. Start your dew heater.');
   });
 });
 
@@ -260,7 +264,7 @@ describe('phone requests', () => {
   it('sends no subtitle when there is no lead, so the relay and the phone see what they always did', () => {
     const body = JSON.parse(buildDeviceRequest(device, importEvent, formatAlert(importEvent, 'en')).body);
     expect(body.subtitle).toBeUndefined();
-    expect(body.body).toBe('42 new files from Elendil: NGC6888, M27');
+    expect(body.body).toBe('NGC6888, M27');
   });
 });
 
@@ -270,7 +274,7 @@ describe('request shapes', () => {
   it('posts signed JSON to a generic webhook', () => {
     const req = buildAlertRequest(channel({ secret: 'k' }), importEvent, message);
     const body = JSON.parse(req.body);
-    expect(body).toMatchObject({ source: 'nebulis', event: 'import.finished', title: 'Import finished', occurredAt: importEvent.occurredAt, data: importData });
+    expect(body).toMatchObject({ source: 'nebulis', event: 'import.finished', title: '42 new files from Elendil', occurredAt: importEvent.occurredAt, data: importData });
     expect(req.headers['X-Nebulis-Event']).toBe('import.finished');
     expect(req.headers['X-Nebulis-Signature']).toBe(`sha256=${createHmac('sha256', 'k').update(req.body).digest('hex')}`);
     expect(buildAlertRequest(channel({}), importEvent, message).headers['X-Nebulis-Signature']).toBeUndefined();
@@ -280,16 +284,16 @@ describe('request shapes', () => {
     const req = buildAlertRequest(channel({ kind: 'ntfy', url: 'https://ntfy.sh/astro?auth=tok' }), importEvent, formatAlert(importEvent, 'fr'));
     const url = new URL(req.url);
     expect(url.searchParams.get('auth')).toBe('tok');
-    expect(url.searchParams.get('title')).toBe('Import terminé');
+    expect(url.searchParams.get('title')).toBe('42 nouveaux fichiers depuis Elendil');
     expect(url.searchParams.get('tags')).toBe('inbox_tray');
-    expect(req.body).toBe('42 nouveaux fichiers depuis Elendil : NGC6888, M27');
+    expect(req.body).toBe('NGC6888, M27');
   });
 
   it('uses the Discord and Slack message fields', () => {
     expect(JSON.parse(buildAlertRequest(channel({ kind: 'discord' }), importEvent, message).body))
-      .toEqual({ content: '**Import finished**\n42 new files from Elendil: NGC6888, M27', username: 'Nebulis' });
+      .toEqual({ content: '**42 new files from Elendil**\nNGC6888, M27', username: 'Nebulis' });
     expect(JSON.parse(buildAlertRequest(channel({ kind: 'slack' }), importEvent, message).body))
-      .toEqual({ text: '*Import finished*\n42 new files from Elendil: NGC6888, M27' });
+      .toEqual({ text: '*42 new files from Elendil*\nNGC6888, M27' });
   });
 });
 
@@ -341,7 +345,7 @@ describe('sending', () => {
     const events = received.map(r => JSON.parse(r.body)).sort((a, b) => a.event.localeCompare(b.event));
     expect(events.map(e => e.event)).toEqual(['import.failed', 'import.finished']);
     expect(events[1].data).toMatchObject({ newFiles: 3, telescopeName: 'Elendil', objects: [{ objectId: 'M27' }] });
-    expect(events[0].message).toBe('Elendil: Wi-Fi lost');
+    expect(events[0].message).toBe('Wi-Fi lost');
   });
 
   it('announces each new version once', async () => {

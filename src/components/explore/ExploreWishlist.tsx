@@ -1,40 +1,33 @@
 /**
- * The wishlist as a full page — the "expand" destination from the Planner's
- * popup, and a landing zone in its own right for finding new things to
- * image (search-to-add) alongside managing what's already on the list.
- * Route: /wishlist. Also reachable directly from the top nav, where it is on
- * by default (turn it off in Settings -> General -> Navigation bar).
+ * The Wishlist tab on Explore (/explore?tab=wishlist): managing what you have
+ * already saved, beside the Discover tab where you find it. It used to be its
+ * own page at /wishlist, which now redirects here. Finding more targets needs
+ * no button: the catalog search sits in the banner above both tabs.
  *
- * The "Back to Planner" / "Minimize" row only makes sense when there's an
- * actual Planner popup underneath to return to, so it's gated on a
- * `location.state.fromPlanner` flag set by PlannerActions' onExpand — a
- * direct nav-bar visit, a shared link, or a refresh all render without it.
- *
- * Self-contained rather than fed by PlannerPage's props: navigating here
- * unmounts PlannerPage entirely, so scheduling needs its own read of
- * tonight's targets, dark window and busy sessions. `getPlannerTargets()`
- * already returns the resolved site's nightStart/nightEnd/observerLat/Lon in
- * one response, which is all `bestSlotFor` needs — this page has no
- * timeline UI to justify PlannerPage's extra twilight-buffer padding, so it
- * schedules straight into the dark window.
+ * Self-contained rather than fed by ExplorePage: scheduling needs tonight's
+ * targets, dark window and busy sessions, and `getPlannerTargets()` already
+ * returns the resolved site's nightStart/nightEnd/observerLat/Lon in one
+ * response, which is all `bestSlotFor` needs. There is no timeline here to
+ * justify PlannerPage's extra twilight-buffer padding, so it schedules
+ * straight into the dark window.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient, skipToken } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, ArrowLeft, Download, Minimize2, Plus, Upload } from 'lucide-react';
-import { localDateKey } from '../lib/nightWindow';
-import { useTheme } from '../hooks/useTheme';
-import { useWishlist } from '../hooks/useWishlist';
-import { getPlannerTargets, type PlannerTarget } from '../lib/api/planner';
-import { listPlannedSessions, createPlannedSession } from '../lib/api/plannedSessions';
-import { getSettings } from '../lib/api/settings';
-import { bestSlotFor } from '../lib/plannerNight';
-import { DEFAULT_BLOCK_MINUTES, MIN_BLOCK_MINUTES, clampTime, minutesBetween, snapToGrid } from '../components/planner/scheduleGeometry';
-import { WishlistHero } from '../components/planner/WishlistHero';
-import { WishlistList } from '../components/planner/WishlistList';
-import { WISHLIST_PRIORITIES, type WishlistItem, type WishlistPriority } from '../lib/api/wishlist';
-import { isOneOf, isRecord } from '../lib/typeGuards';
+import { AlertCircle, Download, Ellipsis, Upload } from 'lucide-react';
+import { localDateKey } from '../../lib/nightWindow';
+import { formatNumber } from '../../lib/formatLocale';
+import { useClickOutside } from '../../hooks/useClickOutside';
+import { useTheme } from '../../hooks/useTheme';
+import { useWishlist } from '../../hooks/useWishlist';
+import { getPlannerTargets, type PlannerTarget } from '../../lib/api/planner';
+import { listPlannedSessions, createPlannedSession } from '../../lib/api/plannedSessions';
+import { getSettings } from '../../lib/api/settings';
+import { bestSlotFor } from '../../lib/plannerNight';
+import { DEFAULT_BLOCK_MINUTES, MIN_BLOCK_MINUTES, clampTime, minutesBetween, snapToGrid } from '../planner/scheduleGeometry';
+import { WishlistList } from '../planner/WishlistList';
+import { WISHLIST_PRIORITIES, type WishlistItem, type WishlistPriority } from '../../lib/api/wishlist';
+import { isOneOf, isRecord } from '../../lib/typeGuards';
 
 /** Portable shape for export/import: the server-assigned id and addedAt are
  *  left out on export (a re-import mints its own) and ignored on import if
@@ -81,24 +74,18 @@ function downloadWishlist(items: WishlistItem[]) {
   URL.revokeObjectURL(url);
 }
 
-export function WishlistPage() {
-  const { t } = useTranslation('planner');
+export function ExploreWishlist() {
+  const { t } = useTranslation(['planner', 'catalogs']);
   const { isDark, isNight, isSpace } = useTheme();
-  const navigate = useNavigate();
-  const location = useLocation();
-  // Only set when this page was reached via the Planner popup's "Open full
-  // Wishlist" button (see PlannerActions/PlannerPage's onExpand). Arriving
-  // any other way (top nav, a direct link, a refresh) means there's no
-  // Planner popup underneath to return to or minimize back into, so that
-  // row doesn't make sense.
-  const navState: unknown = location.state;
-  const fromPlanner = isRecord(navState) && Boolean(navState.fromPlanner);
   const queryClient = useQueryClient();
   const wishlist = useWishlist();
   const [addingAll, setAddingAll] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [scheduleWarning, setScheduleWarning] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useClickOutside(menuRef, () => setMenuOpen(false), { enabled: menuOpen, closeOnEscape: true });
 
   const plannerQuery = useQuery({
     queryKey: ['planner-targets', 'wishlist-page'],
@@ -130,7 +117,7 @@ export function WishlistPage() {
     return map;
   }, [planner]);
 
-  const heroStats = useMemo(() => ({
+  const stats = useMemo(() => ({
     total: wishlist.items.length,
     visibleTonight: wishlist.items.filter(i => targetsById.has(i.objectId)).length,
     highPriority: wishlist.items.filter(i => i.priority === 'high').length,
@@ -139,15 +126,13 @@ export function WishlistPage() {
   /** Places one or more targets at their highest free point in tonight's dark
    *  window, sequentially, so a bulk call sees the slots it just placed
    *  rather than racing a stale busy list — same shape as PlannerPage's
-   *  handleAddAllWishlistToPlan, just reading its window from this page's
+   *  handleAddAllWishlistToPlan, just reading its window from this tab's
    *  own query instead of PlannerPage's buffered timeline state.
    *
    *  A target with nowhere left to fit (most commonly: it's late enough that
    *  less than a 90-minute default block remains before the window closes)
-   *  used to fail by simply not being scheduled, with no feedback at all —
-   *  the button looked live and did nothing. `scheduleWarning` now reports
-   *  exactly what got skipped and why, cleared automatically after a few
-   *  seconds like the import-status line above it. */
+   *  is reported in `scheduleWarning` with what got skipped and why, cleared
+   *  automatically after a few seconds like the import-status line. */
   const scheduleTargets = useCallback(async (targets: PlannerTarget[]) => {
     setScheduleWarning(null);
     if (targets.length === 0) return;
@@ -240,121 +225,112 @@ export function WishlistPage() {
     }
   }
 
-  return (
-    <div className="space-y-5">
-      {fromPlanner && (
-        <div className="flex items-center justify-between gap-3">
-          <Link
-            to="/planner"
-            className={`inline-flex items-center gap-2 text-sm font-medium transition ${
-              isDark ? 'text-slate-400 hover:text-accent-400' : 'text-slate-500 hover:text-accent-600'
-            }`}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {t('wishlistPanel.backToPlanner')}
-          </Link>
+  const subtle = isDark ? 'text-slate-400' : 'text-slate-500';
+
+  const summary = [
+    t('catalogs:explore.wishlist.summary', { count: stats.total, total: formatNumber(stats.total), visible: formatNumber(stats.visibleTonight) }),
+    stats.highPriority > 0 ? t('catalogs:explore.wishlist.highPriority', { count: stats.highPriority, formatted: formatNumber(stats.highPriority) }) : null,
+  ].filter(Boolean).join(' \u00b7 ');
+
+  const menuItem = `flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition disabled:cursor-not-allowed disabled:opacity-40 ${
+    isDark ? 'text-slate-100 hover:bg-slate-800' : 'text-slate-900 hover:bg-slate-100'
+  }`;
+
+  /** Import and Export are occasional, so they live behind one button at the
+   *  end of the list's own toolbar instead of taking a row of their own. */
+  const moreMenu = (
+    <div ref={menuRef} className="relative shrink-0">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handleImportFile(file);
+          e.target.value = '';
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => setMenuOpen(o => !o)}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        aria-label={t('wishlistPage.moreActions')}
+        title={t('wishlistPage.moreActions')}
+        className={`inline-flex items-center rounded-lg px-2 py-1.5 transition ${
+          menuOpen
+            ? 'bg-accent-500/15 text-accent-500'
+            : isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+        }`}
+      >
+        <Ellipsis className="h-4 w-4" />
+      </button>
+      {menuOpen && (
+        <div
+          role="menu"
+          aria-label={t('wishlistPage.moreActions')}
+          className={`absolute right-0 top-full z-30 mt-1.5 w-40 rounded-xl border p-1.5 shadow-xl ${
+            isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'
+          }`}
+        >
+          <button type="button" role="menuitem" className={menuItem} onClick={() => { setMenuOpen(false); fileInputRef.current?.click(); }}>
+            <Upload className="h-3.5 w-3.5" />
+            {t('wishlistPage.import')}
+          </button>
           <button
-            onClick={() => navigate('/planner', { state: { openWishlist: true } })}
-            className={`inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-              isDark ? 'text-slate-400 hover:bg-white/10 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-            }`}
-            title={t('wishlistPage.minimize')}
+            type="button"
+            role="menuitem"
+            className={menuItem}
+            disabled={wishlist.items.length === 0}
+            onClick={() => { setMenuOpen(false); downloadWishlist(wishlist.items); }}
           >
-            <Minimize2 className="h-3.5 w-3.5" />
-            {t('wishlistPage.minimize')}
+            <Download className="h-3.5 w-3.5" />
+            {t('wishlistPage.export')}
           </button>
         </div>
       )}
+    </div>
+  );
 
-      <WishlistHero
-        total={heroStats.total}
-        visibleTonight={heroStats.visibleTonight}
-        highPriority={heroStats.highPriority}
-        accent={isNight ? '#f87171' : isSpace ? '#a78bfa' : '#fbbf24'}
-      />
+  return (
+    <div>
+      {(stats.total > 0 || importStatus) && (
+        <p className={`mb-2 text-xs ${subtle}`} aria-live="polite">
+          {importStatus ?? summary}
+        </p>
+      )}
 
-      <div>
-        {/* Page-level actions in one row: list title, and import/export/add.
-            "Add target" opens Explore, the catalog-wide search and browse,
-            rather than a search field here that would sit right on top of
-            WishlistList's own "search your wishlist" filter. */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <h2 className={`text-base font-semibold shrink-0 ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
-            {t('wishlistPage.yourWishlist')}
-          </h2>
-          <div className="flex items-center gap-2">
-            {importStatus && <span className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{importStatus}</span>}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void handleImportFile(file);
-                e.target.value = '';
-              }}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              <Upload className="w-4 h-4" />
-              {t('wishlistPage.import')}
-            </button>
-            <button
-              onClick={() => downloadWishlist(wishlist.items)}
-              disabled={wishlist.items.length === 0}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition disabled:opacity-40 disabled:cursor-not-allowed ${
-                isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              <Download className="w-4 h-4" />
-              {t('wishlistPage.export')}
-            </button>
-            <button
-              onClick={() => navigate('/explore')}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold bg-amber-500 hover:bg-amber-600 text-white transition"
-            >
-              <Plus className="w-4 h-4" />
-              {t('wishlistPage.addTarget')}
-            </button>
-          </div>
+      {scheduleWarning && (
+        <div className={`mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
+          isDark ? 'bg-amber-950/30 text-amber-400 border border-amber-800/40' : 'bg-amber-50 text-amber-700 border border-amber-200'
+        }`}>
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {scheduleWarning}
         </div>
+      )}
 
-        {scheduleWarning && (
-          <div className={`mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
-            isDark ? 'bg-amber-950/30 text-amber-400 border border-amber-800/40' : 'bg-amber-50 text-amber-700 border border-amber-200'
-          }`}>
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            {scheduleWarning}
-          </div>
-        )}
-
-        <WishlistList
-          items={wishlist.items}
-          layout="grid"
-          targets={planner?.targets ?? []}
-          scheduledIds={scheduledIds}
-          observerLat={observerLat}
-          observerLon={observerLon}
-          minAlt={minAlt}
-          moonIllumination={planner?.moonIllumination}
-          observerTimezone={observerTimezone}
-          isDark={isDark}
-          isNight={isNight}
-          isSpace={isSpace}
-          onSetPriority={wishlist.setPriority}
-          onSetNotes={wishlist.setNotes}
-          onRemove={wishlist.remove}
-          onQuickAdd={nightStart && nightEnd ? handleQuickAdd : undefined}
-          onAddAllVisibleToPlan={handleAddAllVisibleToPlan}
-          addingAll={addingAll}
-        />
-      </div>
-
+      <WishlistList
+        items={wishlist.items}
+        layout="grid"
+        targets={planner?.targets ?? []}
+        scheduledIds={scheduledIds}
+        observerLat={observerLat}
+        observerLon={observerLon}
+        minAlt={minAlt}
+        moonIllumination={planner?.moonIllumination}
+        observerTimezone={observerTimezone}
+        isDark={isDark}
+        isNight={isNight}
+        isSpace={isSpace}
+        onSetPriority={wishlist.setPriority}
+        onSetNotes={wishlist.setNotes}
+        onRemove={wishlist.remove}
+        onQuickAdd={nightStart && nightEnd ? handleQuickAdd : undefined}
+        onAddAllVisibleToPlan={handleAddAllVisibleToPlan}
+        addingAll={addingAll}
+        toolbarEnd={moreMenu}
+      />
     </div>
   );
 }

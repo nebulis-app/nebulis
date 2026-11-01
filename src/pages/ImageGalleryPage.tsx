@@ -590,9 +590,10 @@ export function ImageGalleryPage() {
       <ObjectImageEditor
         request={editRequest}
         onClose={() => setEditRequest(null)}
+        // Stay in the viewer: the invalidated image list comes back with the
+        // edited file's newly stamped URLs, and ImageViewer reads it live.
         onSaved={() => {
           void queryClient.invalidateQueries({ queryKey: ['all-library-images'] });
-          setViewerIndex(null);
         }}
       />
     </div>

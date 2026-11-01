@@ -201,6 +201,9 @@ describe('generateNightPlanDetailed — forecast', () => {
     const nebula = candidate({ id: 'nebula', ra: 12, dec: HIGH_DEC, type: 'Emission Nebula', majorAxisArcmin: 120 });
     const { blocks } = generateNightPlanDetailed({
       ...base,
+      // The target sits near 25 degrees in the first hour and 30 in the second; both must clear the floor for this
+      // test to be about seeing and not about altitude.
+      minAlt: 20,
       targets: [nebula, galaxy],
       // first hour: poor seeing, second hour: excellent
       skyQuality: (start) => (start.getTime() === WINDOW_START.getTime() ? quality(10, 5) : quality(10, 1)),
@@ -359,5 +362,58 @@ describe('goalBonus', () => {
     expect(goalBonus([{ filter: 'L', goalSec: 100, remainingSec: 0 }])).toBe(0);
     expect(goalBonus([{ filter: 'L', goalSec: 100, remainingSec: 100 }])).toBe(45);
     expect(goalBonus([{ filter: 'L', goalSec: 100, remainingSec: 50 }, { filter: 'R', goalSec: 100, remainingSec: 0 }])).toBe(35.25);
+  });
+});
+
+describe('generateNightPlan — the minimum altitude and the visible sky are per-slot floors', () => {
+  const base = {
+    observerLat: OBSERVER_LAT,
+    observerLon: OBSERVER_LON,
+    windowStart: WINDOW_START,
+    windowEnd: WINDOW_END,
+    slotMinutes: 60,
+    maxObjects: 2,
+    moonIllumination: 0,
+    visibleSkyMap: null,
+  };
+
+  it('leaves a slot empty when nothing reaches minAlt, instead of scheduling a lower target', () => {
+    // Near 24 to 29 degrees for the whole window (see the forecast tests above).
+    const targets = [candidate({ id: 'low', ra: 12, dec: HIGH_DEC })];
+    expect(generateNightPlan({ ...base, targets, minAlt: 45 })).toEqual([]);
+  });
+
+  it('honours a floor below the old hidden 10 degrees', () => {
+    // A target that stays under 10 degrees all window would never be planned before, whatever minAlt said.
+    const targets = [candidate({ id: 'grazing', ra: 12, dec: -35 })];
+    const blocks = generateNightPlan({ ...base, targets, minAlt: 0 });
+    for (const b of blocks) expect(b.meanAlt).toBeGreaterThanOrEqual(0);
+  });
+
+  it('never plans a block below the floor the user asked for', () => {
+    const targets = [
+      candidate({ id: 'a', ra: 12, dec: HIGH_DEC }),
+      candidate({ id: 'b', ra: 14, dec: 50 }),
+      candidate({ id: 'c', ra: 6, dec: 20 }),
+    ];
+    for (const b of generateNightPlan({ ...base, targets, minAlt: 25 })) {
+      expect(b.meanAlt).toBeGreaterThanOrEqual(25);
+    }
+  });
+
+  it('does not schedule a slot the user\'s visible-sky map blocks, even if the target clears it later in the night', async () => {
+    const { altAz } = await import('../../server/lib/astroCalc');
+    const { SKY_MAP_BANDS, SKY_MAP_CELLS, cellIndex } = await import('../../server/lib/visibilityCheck');
+    const target = candidate({ id: 'tree', ra: 12, dec: HIGH_DEC });
+    const first = WINDOW_START.getTime();
+    const map: boolean[] = new Array(SKY_MAP_CELLS).fill(true);
+    for (const t of [first, first + 30 * 60_000, first + 60 * 60_000]) {
+      const { alt, az } = altAz(target.ra, target.dec, OBSERVER_LAT, OBSERVER_LON, new Date(t));
+      map[cellIndex(Math.floor((((az % 360) + 360) % 360) / 10), Math.min(SKY_MAP_BANDS - 1, Math.floor(alt / 10)))] = false;
+    }
+    // Control: with no map the same target does take the first slot.
+    expect(generateNightPlan({ ...base, targets: [target], minAlt: 10 }).map(b => b.start.getTime())).toContain(first);
+    const blocks = generateNightPlan({ ...base, targets: [target], minAlt: 10, visibleSkyMap: map });
+    expect(blocks.map(b => b.start.getTime())).not.toContain(first);
   });
 });

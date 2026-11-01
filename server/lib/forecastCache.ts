@@ -10,6 +10,7 @@
  */
 
 import SunCalc from 'suncalc';
+import { moonTimesForNight } from './moonTimes.js';
 import { getActiveSite } from './observingSites.js';
 import { getSettingsData } from './telescopes.js';
 import { addDaysToDateKey, localDateKey, timeZoneOrLocal, zonedDateTimeToUtc } from './timezone.js';
@@ -349,11 +350,11 @@ export async function buildForecast(lat: number, lon: number) {
 
   const sunTimes = SunCalc.getTimes(tonight, lat, lon);
   const tomorrowSunTimes = SunCalc.getTimes(new Date(tonight.getTime() + 86400000), lat, lon);
-  const moonTimes = SunCalc.getMoonTimes(tonight, lat, lon);
   const moonIllum = SunCalc.getMoonIllumination(tonight);
 
   const sunset = validDate(sunTimes.sunset) ?? validDate(sunTimes.dusk);
   const sunrise = validDate(tomorrowSunTimes.sunrise) ?? validDate(tomorrowSunTimes.dawn);
+  const moonTimes = moonTimesForNight(sunset ?? tonight, lat, lon);
   const astroEnd = validDate(sunTimes.night);
   const astroStart = validDate(tomorrowSunTimes.nightEnd);
   const nauticalEnd = validDate(sunTimes.nauticalDusk);

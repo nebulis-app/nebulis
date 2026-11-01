@@ -26,6 +26,7 @@ import {
   setLibraryPath,
   setNetworkLibraryConfig,
   writeMarker,
+  retireLibraryCopy,
   readMarker,
   isDefaultLocation,
   isNetworkLocation,
@@ -34,6 +35,7 @@ import {
   MARKER_FILENAME,
 } from './libraryPath.js';
 import { setLibraryMigrating } from './libraryMaintenance.js';
+import { RETIRED_MARKER_FILENAME } from './libraryLocator.js';
 import {
   type NetworkLibraryConfig,
   resolveNetworkLibraryPath,
@@ -121,7 +123,7 @@ interface TreeStats {
  * reconcilable regardless of the destination filesystem.
  */
 function isIgnoredName(name: string): boolean {
-  return name === MARKER_FILENAME || name === '.DS_Store' || name.startsWith('._');
+  return name === MARKER_FILENAME || name === RETIRED_MARKER_FILENAME || name === '.DS_Store' || name.startsWith('._');
 }
 
 /** Recursively total the bytes and file count under a directory, skipping
@@ -202,8 +204,21 @@ async function validate(source: string, target: string): Promise<void> {
   if (resolvedTarget === resolvedSource) {
     throw new MigrationError('The new location is the same as the current one.');
   }
-  if (isSameOrInside(resolvedTarget, resolvedSource) || isSameOrInside(resolvedSource, resolvedTarget)) {
+  if (isSameOrInside(resolvedSource, resolvedTarget)) {
+    // The current library sits inside the chosen folder. When that folder is itself a library (the usual cause is an
+    // empty library created inside the real one), moving can never work, but using it as it is can.
+    const holdsLibrary = fs.existsSync(resolvedTarget) && readMarker(resolvedTarget) !== null;
+    throw new MigrationError(holdsLibrary
+      ? 'That folder is already a Nebulis library and the current library is inside it. Tick "Use an existing library" to use it as it is.'
+      : 'The new location cannot be inside the current library, or contain it.');
+  }
+  if (isSameOrInside(resolvedTarget, resolvedSource)) {
     throw new MigrationError('The new location cannot be inside the current library, or contain it.');
+  }
+  // A library inside another library is how a second, empty one gets made by accident.
+  const enclosing = path.dirname(resolvedTarget);
+  if (fs.existsSync(enclosing) && readMarker(enclosing) !== null) {
+    throw new MigrationError(`${enclosing} is already a Nebulis library. Choose a folder outside it, or tick "Use an existing library" to use that one.`);
   }
 
   // The parent must already exist. We never create a mount point: on macOS,
@@ -267,7 +282,10 @@ async function validateAdopt(source: string, target: string): Promise<void> {
 
 async function adoptExisting(source: string, target: string, networkConfig?: NetworkLibraryConfig): Promise<void> {
   status.phase = 'finalizing';
-  writeMarker(target, getLibraryId());
+  // A folder with no marker of ours was never created by Nebulis. Remember that in the marker, so a database reset
+  // leaves it alone instead of deleting whatever the user pointed us at.
+  const existing = readMarker(target);
+  writeMarker(target, getLibraryId(), { adoptedUnverified: existing ? existing.adoptedUnverified === true : true });
   if (networkConfig) {
     setNetworkLibraryConfig(networkConfig);
   } else {
@@ -371,6 +389,8 @@ async function run(
       await setLibraryPath(isDefaultTarget ? '' : target);
     }
 
+    // The old copy stays, with its marker. Say it was moved, so nothing searching by library ID mistakes it for ours.
+    retireLibraryCopy(source, target);
     status.previousPath = source;
     status.completedAt = Date.now();
     status.phase = 'complete';

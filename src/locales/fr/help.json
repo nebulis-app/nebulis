@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Aide",
-    "subtitle": "Tout ce dont vous avez besoin pour utiliser Nebulis, de l'installation initiale à l'usage quotidien.",
+    "subtitle": "Guides d'installation, visite de chaque page et réponses aux problèmes courants.",
     "startTour": "Démarrer la visite guidée",
     "guidesHeading": "Guides"
   },
@@ -70,7 +70,17 @@
     },
     "objectFilters": {
       "q": "Que contient chaque filtre d'objets ?",
-      "a": "Les filtres regroupent les objets par type de catalogue, en comparant le texte du type lui-même. Ces types viennent du catalogue et restent en anglais quelle que soit votre langue : les mots à connaître sont \"galaxy\", \"nebula\" et \"cluster\". Tout type contenant \"galaxy\" se range dans le filtre des galaxies : galaxies spirales, barrées, irrégulières, lenticulaires et à sursaut de formation, ainsi que groupes, paires et triplets de galaxies. \"nebula\" couvre les nébuleuses en émission, par réflexion, sombres et planétaires, et les rémanents de supernova comptent aussi comme des nébuleuses. \"cluster\" couvre les amas ouverts et globulaires. Un objet peut apparaître sous plusieurs filtres : une nébuleuse planétaire est à la fois nébuleuse et nébuleuse planétaire, un rémanent de supernova est à la fois nébuleuse et rémanent de supernova, et Cluster + Nebula est à la fois amas et nébuleuse. Quand un comptage doit choisir une seule famille, Cluster + Nebula compte comme une nébuleuse, car c'est la nébulosité qui fait l'intérêt de l'objet. La bibliothèque ajoute des filtres plus fins : objets du système solaire, comètes, étoiles, nébuleuses planétaires, rémanents de supernova et Inconnu, qui rassemble les objets dont le type n'a pas pu être déterminé."
+      "intro": "Les filtres regroupent les objets par type de catalogue. Ces types viennent du catalogue et restent en anglais quelle que soit votre langue : les mots à connaître sont \"galaxy\", \"nebula\" et \"cluster\".",
+      "galaxyTerm": "galaxy",
+      "galaxyDef": "Tout type contenant \"galaxy\" : galaxies spirales, barrées, irrégulières, lenticulaires et à sursaut de formation, ainsi que groupes, paires et triplets de galaxies.",
+      "nebulaTerm": "nebula",
+      "nebulaDef": "Nébuleuses en émission, par réflexion, sombres et planétaires. Les rémanents de supernova comptent aussi comme des nébuleuses.",
+      "clusterTerm": "cluster",
+      "clusterDef": "Amas ouverts et globulaires.",
+      "overlapTerm": "Plusieurs filtres",
+      "overlapDef": "Une nébuleuse planétaire est à la fois nébuleuse et nébuleuse planétaire, un rémanent de supernova est à la fois nébuleuse et rémanent de supernova, et Cluster + Nebula est à la fois amas et nébuleuse. Quand un comptage doit choisir une seule famille, Cluster + Nebula compte comme une nébuleuse, car c'est la nébulosité qui fait l'intérêt de l'objet.",
+      "libraryTerm": "Filtres de la bibliothèque",
+      "libraryDef": "Objets du système solaire, comètes, étoiles, nébuleuses planétaires, rémanents de supernova et Inconnu, qui rassemble les objets dont le type n'a pas pu être déterminé."
     },
     "findTarget": {
       "q": "Comment trouver quelque chose à photographier ?",
@@ -279,7 +289,7 @@
     "step2Alt": "Une page de catégorie avec des cartes d'objets, chacune indiquant si l'objet est visible cette nuit, avec une note sur son adéquation au champ",
     "step2Caption": "Explorer → Catégorie",
     "step3Title": "L'ajouter à la liste de souhaits ou le planifier",
-    "step3Body": "Ajoutez un objet à votre liste de souhaits, planifiez-le pour ce soir, ou ouvrez Planifier une nuit pour choisir parmi les 30 prochaines nuits. Le bouton Ajouter une cible de la Liste de souhaits ouvre Explorer, et les cartes d'Explorer et de la Liste de souhaits renvoient vers le Planificateur. Si vous n'utilisez pas Explorer, masquez son onglet dans Paramètres → Général → Barre de navigation.",
+    "step3Body": "Ajoutez un objet à votre liste de souhaits, planifiez-le pour ce soir, ou ouvrez Planifier une nuit pour choisir parmi les 30 prochaines nuits. Votre liste de souhaits est le deuxième onglet d'Explorer, et les cartes d'Explorer renvoient vers le Planificateur. Si vous n'utilisez pas Explorer, masquez-le dans Paramètres → Général → Barre de navigation.",
     "step3Alt": "Une carte d'Explorer avec les boutons de liste de souhaits, Planifier ce soir et Planifier une nuit",
     "step3Caption": "Explorer → Ajouter ou planifier",
     "note": "Explorer juge la visibilité d'après le site d'observation affiché dans sa bannière, et le cadrage d'après le champ de votre télescope. Configurez les deux d'abord dans Paramètres → Ciel et Paramètres → Télescopes. Si vous avez plusieurs sites, passez de l'un à l'autre dans la bannière."
@@ -317,7 +327,7 @@
     "title": "Paramètres",
     "lead": "Configurez votre application, gérez le stockage, connectez des appareils et contrôlez votre expérience Nebulis.",
     "step1Title": "S'y retrouver",
-    "step1Body": "La zone de recherche en haut trouve n'importe quel réglage par son nom et s'y rend. Appuyez sur / pour y placer le curseur. La barre latérale est organisée en Équipement, Système et Avancé, et seule la page où vous êtes reste ouverte. Paramètres → Général couvre l'apparence de l'application : thème Clair, Sombre, Espace ou Nuit, éléments du menu du haut (Explorer, Liste de souhaits, Calibrations et d'autres peuvent être masqués), unités de mesure et Bannières de page compactes, qui fait démarrer chaque page avec sa bannière repliée.",
+    "step1Body": "La zone de recherche en haut trouve n'importe quel réglage par son nom et s'y rend. Appuyez sur / pour y placer le curseur. La barre latérale est organisée en Équipement, Système et Avancé, et seule la page où vous êtes reste ouverte. Paramètres → Général couvre l'apparence de l'application : thème Clair, Sombre, Espace ou Nuit, éléments du menu du haut (Explorer, Calibrations et d'autres peuvent être masqués), unités de mesure et Bannières de page compactes, qui fait démarrer chaque page avec sa bannière repliée.",
     "step1Alt": "Paramètres avec la zone de recherche en haut, la barre latérale organisée et le volet Général montrant les thèmes et les interrupteurs de la barre de navigation",
     "step1Caption": "Paramètres → Général",
     "step2Title": "Gérer votre compte et les appareils connectés",
@@ -414,7 +424,7 @@
     "step3Body": "Lorsque les cercles sont affichés, Télécharger et Partager demandent s'il faut garder l'original ou enregistrer un JPEG avec les cercles dessinés.",
     "step3Alt": "La fenêtre de téléchargement demandant s'il faut garder l'original ou enregistrer un JPEG avec les cercles",
     "step3Caption": "Visionneuse → Télécharger",
-    "note": "Annoter est disponible dans l'application web. Cette fonction arrive dans les applications iPhone, iPad et Android avec leur version 2.1.0."
+    "note": "Annoter est disponible dans l'application web. Mettez à jour les applications iPhone, iPad et Android pour l'avoir aussi."
   },
   "alerts": {
     "title": "Alertes",
@@ -428,7 +438,7 @@
     "step2Alt": "Les interrupteurs d'événements d'un canal et l'heure de la vérification des nuits dégagées",
     "step2Caption": "Alertes → Événements",
     "step3Title": "Notifications push sur iPhone",
-    "step3Body": "Les notifications push sur iPhone nécessitent la version 2.1.0 de l'application iPhone, qui arrive bientôt. Elles passent par un petit relais Nebulis qui ne stocke rien. Activez les alertes depuis ce serveur, puis choisissez ce que reçoit chaque téléphone dans Paramètres → Alertes → iPhone. Chaque iPhone peut ajouter à son alerte une ligne Plan de ce soir ou un avertissement de risque de rosée.",
+    "step3Body": "Les notifications push sur iPhone nécessitent la dernière version de l'application iPhone. Elles passent par un petit relais Nebulis qui ne stocke rien. Activez les alertes depuis ce serveur, puis choisissez ce que reçoit chaque téléphone dans Paramètres → Alertes → iPhone. Chaque iPhone peut ajouter à son alerte une ligne Plan de ce soir ou un avertissement de risque de rosée.",
     "step3Alt": "La liste des iPhone dans Paramètres → Alertes, avec les lignes supplémentaires que chaque téléphone peut ajouter",
     "step3Caption": "Alertes → iPhone"
   },
@@ -656,7 +666,7 @@
     "step4Body": "Chaque téléphone, tablette et TV que vous avez associé apparaît dans Paramètres → Compte → Appareils. Chacun porte son propre jeton de connexion, donc révoquer un appareil ici coupe son accès immédiatement sans toucher à celui des autres.",
     "step4Alt": "Paramètres → Compte → Appareils, avec un bouton Connecter un appareil et une liste d'appareils vide",
     "step4Caption": "Paramètres → Compte → Appareils",
-    "note": "Annoter, les notifications push sur iPhone et les photos de vos sites d'observation arrivent avec la version 2.1.0 de l'application iPhone et iPad, et Annoter aussi dans l'application Android."
+    "note": "Annoter, les notifications push sur iPhone et les photos de vos sites d'observation sont dans la dernière version de l'application iPhone et iPad, et Annoter aussi dans celle d'Android."
   },
   "pixinsight": {
     "title": "Intégration PixInsight",

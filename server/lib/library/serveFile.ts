@@ -15,6 +15,7 @@
 import path from 'path';
 import type { Response } from 'express';
 import { statLibraryFileForServe, TimeoutError } from '../libraryPath.js';
+import { errnoCode } from '../errors.js';
 
 export interface ServeOptions {
   contentType: string;
@@ -56,7 +57,7 @@ export async function sendLibraryFile(res: Response, abs: string, opts: ServeOpt
     res.sendFile(path.resolve(abs), { acceptRanges: true, dotfiles: 'allow' }, err => {
       // A dropped connection mid-stream is not worth a response or a log line.
       if (err && !res.headersSent) {
-        const status = (err as NodeJS.ErrnoException).code === 'ENOENT' ? 404 : 500;
+        const status = errnoCode(err) === 'ENOENT' ? 404 : 500;
         res.status(status).type('text/plain').send(status === 404 ? 'Not found' : 'Could not read file');
       }
       resolve();

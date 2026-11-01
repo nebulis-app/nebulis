@@ -31,7 +31,9 @@ function buildForecastMock() {
   const HOUR = 3600_000;
   const at = (h: number) => new Date(base + h * HOUR).toISOString();
   const dateKey = (dayOffset: number) => {
-    const d = new Date(base + dayOffset * 24 * HOUR);
+    // Calendar arithmetic, not +24h: on a DST-change day a 24h step lands at 23:00 the previous day and duplicates a key.
+    const d = new Date(midnightLocal);
+    d.setDate(d.getDate() + dayOffset);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 

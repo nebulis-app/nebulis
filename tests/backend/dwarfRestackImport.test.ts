@@ -53,7 +53,7 @@ describe('RESTACKED — live sync', () => {
 
     expect(claimImportLock()).toBe(true);
     await runImport(undefined, undefined, { telescopeId: profile.id });
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
 
     const processed = getAllProcessedImagesForObject('M42');
     expect(processed).toHaveLength(1);
@@ -87,7 +87,7 @@ describe('RESTACKED — live sync', () => {
 
     expect(claimImportLock()).toBe(true);
     await runImport(undefined, undefined, { telescopeId: profile.id });
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
 
     // The real image is still matched normally; only the redundant preview is skipped.
     const processed = getAllProcessedImagesForObject('M42');
@@ -135,7 +135,7 @@ describe('RESTACKED — live sync', () => {
 
     expect(claimImportLock()).toBe(true);
     await runImport(undefined, undefined, { telescopeId: profile.id });
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
 
     const processed = getAllProcessedImagesForObject('NGC6888');
     expect(processed).toHaveLength(2);
@@ -182,7 +182,7 @@ describe('RESTACKED — live sync', () => {
 
     expect(claimImportLock()).toBe(true);
     await runImport(undefined, undefined, { telescopeId: profile.id });
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
 
     const { stmts } = await import('../../server/lib/library/objects');
     expect(stmts.getObject.get('TotallyNewTarget9000')).toBeDefined();
@@ -227,7 +227,7 @@ describe('RESTACKED — live sync', () => {
 
     expect(claimImportLock()).toBe(true);
     await runImport(undefined, undefined, { telescopeId: profile.id });
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
 
     const { stmts } = await import('../../server/lib/library/objects');
     expect(stmts.getObject.get('RESTACKED_DWARF_RAW_TELE_C20_Duo-Band_20250618-004302511')).toBeUndefined();
@@ -255,7 +255,7 @@ describe('RESTACKED — live sync', () => {
 
     expect(claimImportLock()).toBe(true);
     await runImport(undefined, undefined, { telescopeId: profile.id });
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
 
     const { stmts } = await import('../../server/lib/library/objects');
     expect(stmts.getObject.get('OnlyPreviewTarget')).toBeUndefined();
@@ -277,7 +277,7 @@ describe('RESTACKED — live sync', () => {
 
     expect(claimImportLock()).toBe(true);
     await runImport(undefined, undefined, { telescopeId: profile.id });
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
 
     expect(fs.existsSync(path.join(getRestackArchiveDir(), 'loose.jpg'))).toBe(true);
 

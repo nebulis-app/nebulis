@@ -17,7 +17,8 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 
 import { startMigration, getMigrationStatus } from '../../server/lib/libraryMigration';
 import {
-  getLibraryDir, getDefaultLibraryDir, setLibraryPath, isLibraryAvailable, readMarker, getLibraryId,
+  getLibraryDir, getDefaultLibraryDir, setLibraryPath, isLibraryAvailable, readMarker, getLibraryId, writeMarker,
+  canRemoveLibraryTree,
 } from '../../server/lib/libraryPath';
 import { isLibraryMigrating } from '../../server/lib/libraryMaintenance';
 
@@ -115,6 +116,36 @@ describe('library migration', () => {
     expect(result.phase).toBe('error');
   });
 
+  it('refuses to create a library inside another library, which is how an empty second one gets made', async () => {
+    seedLibrary();
+    const other = path.join(TEST_DATA_DIR, 'drive', 'Nebulis');
+    fs.mkdirSync(other, { recursive: true });
+    writeMarker(other, 'some-other-id');
+
+    startMigration(path.join(other, 'Nebulis'));
+    const result = await waitForMigration();
+
+    expect(result.phase).toBe('error');
+    expect(result.error).toMatch(/already a Nebulis library/);
+    expect(fs.existsSync(path.join(other, 'Nebulis'))).toBe(false);
+  });
+
+  it('points at "use an existing library" when the chosen folder is a library holding the current one', async () => {
+    const outer = path.join(TEST_DATA_DIR, 'drive2', 'Nebulis');
+    const inner = path.join(outer, 'Nebulis');
+    fs.mkdirSync(inner, { recursive: true });
+    fs.writeFileSync(path.join(inner, 'a.txt'), 'x');
+    writeMarker(outer, 'real-library-id');
+    await setLibraryPath(inner);
+    writeMarker(inner, getLibraryId());
+
+    startMigration(outer);
+    const result = await waitForMigration();
+
+    expect(result.phase).toBe('error');
+    expect(result.error).toMatch(/Use an existing library/);
+  });
+
   it('rejects a second migration while one is active (single-flight)', async () => {
     seedLibrary();
     const target = path.join(TEST_DATA_DIR, 'ext-drive4', 'Nebulis');
@@ -170,6 +201,32 @@ describe('library migration', () => {
       expect(getLibraryDir()).toBe(backup);
     });
 
+    it('marks a folder that had no marker as adopted, so a reset will not delete it', async () => {
+      const pictures = path.join(TEST_DATA_DIR, 'Pictures');
+      fs.mkdirSync(pictures, { recursive: true });
+      fs.writeFileSync(path.join(pictures, 'holiday.jpg'), 'not-astro');
+
+      startMigration(pictures, undefined, { adopt: true });
+      expect((await waitForMigration()).phase).toBe('complete');
+
+      expect(readMarker(pictures)?.adoptedUnverified).toBe(true);
+      const verdict = canRemoveLibraryTree(pictures, []);
+      expect(verdict.ok).toBe(false);
+    });
+
+    it('does not mark a folder that already carried a Nebulis marker', async () => {
+      const backup = path.join(TEST_DATA_DIR, 'real-backup');
+      fs.mkdirSync(path.join(backup, 'M31'), { recursive: true });
+      fs.writeFileSync(path.join(backup, 'M31', 'a.fits'), 'x');
+      fs.writeFileSync(path.join(backup, '.nebulis-library.json'), JSON.stringify({ libraryId: 'old-install' }));
+
+      startMigration(backup, undefined, { adopt: true });
+      expect((await waitForMigration()).phase).toBe('complete');
+
+      expect(readMarker(backup)?.adoptedUnverified).toBeUndefined();
+      expect(canRemoveLibraryTree(backup, [])).toEqual({ ok: true });
+    });
+
     it('refuses an empty folder', async () => {
       const empty = path.join(TEST_DATA_DIR, 'empty-adopt');
       fs.mkdirSync(empty, { recursive: true });
@@ -186,5 +243,19 @@ describe('library migration', () => {
 
       expect((await waitForMigration()).phase).toBe('error');
     });
+  });
+});
+
+describe('canRemoveLibraryTree', () => {
+  it('refuses a filesystem root, a drive root, and any folder holding the home or data folder', () => {
+    expect(canRemoveLibraryTree(path.parse(process.cwd()).root, []).ok).toBe(false);
+    expect(canRemoveLibraryTree('/Volumes/Backup', []).ok).toBe(false);
+    expect(canRemoveLibraryTree('/media/pi/Backup', []).ok).toBe(false);
+    expect(canRemoveLibraryTree('/Users/someone', ['/Users/someone']).ok).toBe(false);
+    expect(canRemoveLibraryTree('/Users', ['/Users/someone']).ok).toBe(false);
+  });
+
+  it('allows an ordinary library folder', () => {
+    expect(canRemoveLibraryTree('/Volumes/Backup/Nebulis', ['/Users/someone', '/var/nebulis']).ok).toBe(true);
   });
 });

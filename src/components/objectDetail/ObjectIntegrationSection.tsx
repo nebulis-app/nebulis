@@ -99,7 +99,8 @@ export function ObjectIntegrationSection({
 
   const startEditing = () => {
     setError(null);
-    setSuggesting(false);
+    // With nothing to edit yet, the suggestion is the starting point rather than an extra button.
+    setSuggesting(!!suggestionTarget && filters.length === 0);
     setManualOpen(true);
     setDrafts(filters.map(f => ({
       key: rowKey(f.filter),
@@ -259,7 +260,7 @@ export function ObjectIntegrationSection({
               onClose={() => setSuggesting(false)}
             />
           )}
-          {drafts.length === 0 && (
+          {drafts.length === 0 && !suggesting && (
             <p className={`text-sm ${subtle}`}>{t('objectDetail.integrationSection.noFiltersYet')}</p>
           )}
           {drafts.map((d, i) => (

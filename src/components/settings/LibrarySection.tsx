@@ -3,7 +3,7 @@ import type { Settings as SettingsType } from '../../types';
 import { Sec, Row, Toggle, Seg } from './SettingsUI';
 import { FilterAliasesSection } from './FilterAliasesSection';
 
-export type LibraryPane = 'display' | 'organization' | 'processing';
+export type LibraryPane = 'display' | 'slideshow' | 'organization' | 'processing';
 
 export function LibrarySection({
   isDark,
@@ -100,6 +100,47 @@ export function LibrarySection({
     );
   }
 
+  if (pane === 'slideshow') {
+    return (
+      <Sec
+        title={t('librarySection.slideshow.title')}
+        description={t('librarySection.slideshow.description')}
+        isDark={isDark}
+      >
+        <Row
+          label={t('librarySection.display.slideshowShowInfo.label')}
+          description={t('librarySection.display.slideshowShowInfo.description')}
+          isDark={isDark}
+        >
+          <Toggle
+            checked={form.planetariumShowInfo ?? true}
+            onChange={v => setForm(f => ({ ...f, planetariumShowInfo: v }))}
+          />
+        </Row>
+        <Row
+          label={t('librarySection.display.slideshowProcessedOnly.label')}
+          description={t('librarySection.display.slideshowProcessedOnly.description')}
+          isDark={isDark}
+        >
+          <Toggle
+            checked={form.planetariumProcessedOnlyDefault ?? false}
+            onChange={v => setForm(f => ({ ...f, planetariumProcessedOnlyDefault: v }))}
+          />
+        </Row>
+        <Row
+          label={t('librarySection.imageBehavior.rotate.label')}
+          description={t('librarySection.imageBehavior.rotate.description')}
+          isDark={isDark}
+        >
+          <Toggle
+            checked={form.slideshowRotateCCW ?? false}
+            onChange={v => setForm(f => ({ ...f, slideshowRotateCCW: v }))}
+          />
+        </Row>
+      </Sec>
+    );
+  }
+
   return (
     <>
       <Sec
@@ -145,36 +186,6 @@ export function LibrarySection({
               { id: 'media', label: t('librarySection.display.objectPages.media') },
             ]}
             onChange={v => setForm(f => ({ ...f, objectPageLayout: v }))}
-          />
-        </Row>
-        <Row
-          label={t('librarySection.display.slideshowShowInfo.label')}
-          description={t('librarySection.display.slideshowShowInfo.description')}
-          isDark={isDark}
-        >
-          <Toggle
-            checked={form.planetariumShowInfo ?? true}
-            onChange={v => setForm(f => ({ ...f, planetariumShowInfo: v }))}
-          />
-        </Row>
-        <Row
-          label={t('librarySection.display.slideshowProcessedOnly.label')}
-          description={t('librarySection.display.slideshowProcessedOnly.description')}
-          isDark={isDark}
-        >
-          <Toggle
-            checked={form.planetariumProcessedOnlyDefault ?? false}
-            onChange={v => setForm(f => ({ ...f, planetariumProcessedOnlyDefault: v }))}
-          />
-        </Row>
-        <Row
-          label={t('librarySection.imageBehavior.rotate.label')}
-          description={t('librarySection.imageBehavior.rotate.description')}
-          isDark={isDark}
-        >
-          <Toggle
-            checked={form.slideshowRotateCCW ?? false}
-            onChange={v => setForm(f => ({ ...f, slideshowRotateCCW: v }))}
           />
         </Row>
       </Sec>

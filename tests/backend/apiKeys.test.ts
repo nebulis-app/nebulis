@@ -11,6 +11,7 @@ import {
 } from '../../server/lib/auth';
 import db from '../../server/lib/db';
 import { setApiKey } from '../../server/lib/telescopes';
+import { startApprovedPairing, pollPairing } from '../../server/lib/devicePairing';
 
 // Personal API keys: they act as their owner with the owner's current role, and
 // must never be a way to escalate (the PR this feature came from let any viewer
@@ -144,6 +145,18 @@ describe('personal API keys: no escalation', () => {
     expect(create.status).toBe(403);
     expect(create.body.error?.code).toBe('API_KEY_NOT_ALLOWED');
     expect((await call('DELETE', `/settings/api-keys/${id}`, { xApiKey: apiKey })).status).toBe(403);
+  });
+
+  it('a paired device cannot plant a key that outlives "Disconnect device"', async () => {
+    const { deviceCode } = startApprovedPairing(admin.id, 'Living room TV');
+    const polled = pollPairing(deviceCode);
+    if (polled.status !== 'approved') throw new Error('pairing did not approve');
+    const create = await call('POST', '/settings/api-keys', { bearer: polled.token }, { name: 'planted' });
+    expect(create.status).toBe(403);
+    expect(create.body.error?.code).toBe('DEVICE_TOKEN_NOT_ALLOWED');
+    expect(db.prepare('SELECT COUNT(*) AS n FROM userApiKeys').get()).toEqual({ n: 0 });
+    // The same account signed in on the web still can.
+    expect((await call('POST', '/settings/api-keys', { bearer: admin.token }, { name: 'ok' })).status).toBeLessThan(300);
   });
 
   it('the legacy global key still works exactly as before (admin, no user)', async () => {

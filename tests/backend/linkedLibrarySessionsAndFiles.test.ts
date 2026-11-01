@@ -154,4 +154,47 @@ describe('an object with both managed and linked files merges both into one sess
     expect(files.find(f => f.name === 'Stacked_managed.jpg')!.path).toBe(`${objectId}/Stacked_managed.jpg`);
     expect(files.find(f => f.name === 'Stacked_linked.jpg')!.path).toBe('@src/src_mix/Stacked_linked.jpg');
   });
+
+  /**
+   * The editor's "Save" overwrites the picture in place, so its path never
+   * changes. The browser caches the thumbnail and preview tiers for a day, and
+   * before this stamp the object page kept showing the un-edited picture even
+   * after a reload while the editor (which loads the raw file) showed the
+   * watermark. The stamp is the source mtime, the same one the route keys its
+   * on-disk cache by.
+   */
+  it('getLocalFiles stamps thumbnail and preview URLs with the file mtime, so an in-place edit is fetched fresh', () => {
+    const managedAbs = path.join(getLibraryDir(), objectId, 'Stacked_managed.jpg');
+    const linkedAbs = path.join(sourceRoot, 'Stacked_linked.jpg');
+    const older = new Date('2026-08-01T12:00:00Z');
+    fs.utimesSync(managedAbs, older, older);
+    fs.utimesSync(linkedAbs, older, older);
+    const stamp = (abs: string) => `&v=${Math.round(fs.statSync(abs).mtimeMs)}`;
+
+    const before = getLocalFiles(objectId);
+    const managedBefore = before.find(f => f.name === 'Stacked_managed.jpg')!;
+    const linkedBefore = before.find(f => f.name === 'Stacked_linked.jpg')!;
+    for (const [file, abs] of [[managedBefore, managedAbs], [linkedBefore, linkedAbs]] as const) {
+      expect(file.thumbUrl).toContain(stamp(abs));
+      expect(file.previewUrl).toContain(stamp(abs));
+    }
+
+    const newer = new Date('2026-08-02T12:00:00Z');
+    fs.writeFileSync(managedAbs, 'y'.repeat(30));
+    fs.utimesSync(managedAbs, newer, newer);
+    fs.writeFileSync(linkedAbs, 'y'.repeat(50));
+    fs.utimesSync(linkedAbs, newer, newer);
+
+    const after = getLocalFiles(objectId);
+    const managedAfter = after.find(f => f.name === 'Stacked_managed.jpg')!;
+    const linkedAfter = after.find(f => f.name === 'Stacked_linked.jpg')!;
+    for (const [file, abs] of [[managedAfter, managedAbs], [linkedAfter, linkedAbs]] as const) {
+      expect(file.thumbUrl).toContain(stamp(abs));
+      expect(file.previewUrl).toContain(stamp(abs));
+    }
+    expect(managedAfter.thumbUrl).not.toBe(managedBefore.thumbUrl);
+    expect(managedAfter.previewUrl).not.toBe(managedBefore.previewUrl);
+    expect(linkedAfter.thumbUrl).not.toBe(linkedBefore.thumbUrl);
+    expect(linkedAfter.previewUrl).not.toBe(linkedBefore.previewUrl);
+  });
 });

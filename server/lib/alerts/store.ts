@@ -24,6 +24,7 @@ import {
   DEW_LEAD_DEFAULT_MINUTES,
   DEW_LEAD_MAX_MINUTES,
   DEW_LEAD_MIN_MINUTES,
+  EVENING_HHMM,
   NO_ALERT_DETAILS,
 } from './types.js';
 
@@ -256,11 +257,23 @@ function deviceFromRow(row: DeviceRow): AlertDevice | null {
   };
 }
 
+/**
+ * Native iPhone alerts are built but not released: the app that registers a phone ships later. Until
+ * `NEBULIS_PHONE_ALERTS=1`, no phone is listed, registered or sent to, and the settings page shows no trace of them.
+ * Stored phones are never deleted, only hidden. The release that ships them changes this to on by default.
+ */
+export function phoneAlertsEnabled(): boolean {
+  const v = (process.env.NEBULIS_PHONE_ALERTS ?? '').trim().toLowerCase();
+  return v === '1' || v === 'true';
+}
+
 export function listAlertDevices(): AlertDevice[] {
+  if (!phoneAlertsEnabled()) return [];
   return deviceStmts.all.all().flatMap(row => deviceFromRow(row) ?? []);
 }
 
 export function getAlertDevice(id: string): AlertDevice | null {
+  if (!phoneAlertsEnabled()) return null;
   const row = deviceStmts.get.get(id);
   return row ? deviceFromRow(row) : null;
 }
@@ -339,10 +352,6 @@ export function getAlertState<T>(key: string): T | null {
 export function setAlertState(key: string, value: unknown): void {
   stmts.setState.run(key, JSON.stringify(value));
 }
-
-/** Evening only (12:00-23:59): the check evaluates the local calendar date as the night, so a time after
- *  midnight would look at the wrong night. */
-export const EVENING_HHMM = /^(1[2-9]|2[0-3]):[0-5]\d$/;
 
 /** Stored options merged over the defaults, each field checked. */
 export function getAlertConfig(): AlertConfig {

@@ -26,9 +26,15 @@ export function getUpdatePlatform(): UpdatePlatform | null {
   return null;
 }
 
-/** True only for the packaged desktop builds we ship updates for. */
+/**
+ * True only for the packaged desktop builds we ship updates for. On Windows that means the pkg
+ * bundle the installer lays down: `npm start` from a source checkout also sets NODE_ENV=production,
+ * but no tray is there to apply a staged installer.
+ */
 export function isDesktopBuild(): boolean {
-  return getUpdatePlatform() !== null && process.env.NODE_ENV === 'production';
+  if (getUpdatePlatform() === null || process.env.NODE_ENV !== 'production') return false;
+  if (process.platform === 'win32' && !('pkg' in process)) return false;
+  return true;
 }
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

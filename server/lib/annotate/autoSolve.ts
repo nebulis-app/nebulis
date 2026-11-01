@@ -70,7 +70,7 @@ let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
 let lastInstallAttempt = 0;
 
-export function isAutoSolveEnabled(): boolean {
+function isAutoSolveEnabled(): boolean {
   return getSettingsData().annotateAutoSolve !== false;
 }
 

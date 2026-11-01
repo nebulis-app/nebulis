@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto';
 import { statSync } from 'fs';
 import db from './db.js';
 import { encrypt, decrypt } from './crypto/secretBox.js';
+import { driveBlockFor, remappedPathFor } from './driveBindingState.js';
 
 // Single source of truth for the transport union — every consumer (routes'
 // z.enum validation, the OpenAPI schema, deviceIdentity, telescopes.ts's
@@ -241,6 +242,17 @@ export function invalidateActiveTransportCache(profileId?: string): void {
   }
 }
 
+/** A local transport pointed at wherever its own drive is mounted now (see driveBindingState.ts). */
+function withCurrentMount(t: TelescopeTransport): TelescopeTransport {
+  const now = t.kind === 'local' ? remappedPathFor(t.id) : null;
+  return now && now !== t.localPath ? { ...t, localPath: now } : t;
+}
+
+/** A cached USB choice is only as good as its drive: one unplugged since must not keep being chosen for the rest of the 30 seconds. */
+function cachedChoiceStillHolds(t: TelescopeTransport | null): boolean {
+  return t?.kind !== 'local' || localMountPresent(t.localPath);
+}
+
 function localMountPresent(localPath: string): boolean {
   if (!localPath) return false;
   try {
@@ -257,7 +269,9 @@ function localMountPresent(localPath: string): boolean {
  * Algorithm:
  *  1. Among `local` transports whose `localPath` currently resolves to a
  *     directory, return the one with lowest priority (tiebreak by most
- *     recent lastSeenAt).
+ *     recent lastSeenAt). A transport's path is followed to wherever its own
+ *     drive is mounted now, and skipped while the drive at that path belongs
+ *     to a different telescope (both recorded by driveBindings.ts).
  *  2. Otherwise, among FTP transports that have a hostname configured, return
  *     the one with lowest priority (same tiebreak).
  *  3. Otherwise, among SMB transports that have a hostname configured,
@@ -279,7 +293,7 @@ export function selectActiveTransport(
   preloadedTransports?: TelescopeTransport[],
 ): TelescopeTransport | null {
   const cached = activeCache.get(profileId);
-  if (cached && cached.expiresAt > Date.now()) return cached.transport;
+  if (cached && cached.expiresAt > Date.now() && cachedChoiceStillHolds(cached.transport)) return cached.transport;
 
   const transports = preloadedTransports ?? getTransportsForProfile(profileId);
   const orderForSelection = [...transports].sort((a, b) => {
@@ -309,14 +323,17 @@ export function selectActiveTransport(
   const pinnedRow = pinnedTransportStmt.get(profileId);
   if (pinnedRow?.pinnedTransportId) {
     const pinned = usable.find(t => t.id === pinnedRow.pinnedTransportId);
-    if (pinned) chosen = pinned;
+    if (pinned) chosen = withCurrentMount(pinned);
   }
 
-  // First pass: any local transport whose mount is present.
+  // First pass: any local transport whose mount is present. A drive that belongs to a different telescope is not
+  // this one's mount, whatever path it sits at, and a drive that moved is followed to where it is now.
   if (!chosen) {
     for (const t of usable) {
-      if (t.kind === 'local' && localMountPresent(t.localPath)) {
-        chosen = t;
+      if (t.kind !== 'local' || driveBlockFor(t.id)) continue;
+      const current = withCurrentMount(t);
+      if (localMountPresent(current.localPath)) {
+        chosen = current;
         break;
       }
     }

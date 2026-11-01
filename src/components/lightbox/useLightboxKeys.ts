@@ -92,15 +92,3 @@ export function useLightboxKeys(actions: LightboxKeyActions, enabled = true) {
     return () => window.removeEventListener('keydown', handle);
   }, [enabled]);
 }
-
-/** Shortcut list for the viewer's help affordance. */
-export const LIGHTBOX_SHORTCUTS: { keys: string; label: string }[] = [
-  { keys: '← →', label: 'Previous / next' },
-  { keys: 'Home End', label: 'First / last' },
-  { keys: 'F', label: 'Fit to window' },
-  { keys: '1', label: 'Actual size' },
-  { keys: '+ −', label: 'Zoom in / out' },
-  { keys: 'R', label: 'Rotate' },
-  { keys: 'D', label: 'Download' },
-  { keys: 'Esc', label: 'Close' },
-];

@@ -17,7 +17,7 @@ import { mockAllRoutes } from './fixtures/mocks';
 
 const ALL_NAV_IDS = [
   'library', 'gallery', 'observations', 'forecast', 'planner',
-  'wishlist', 'explore', 'catalogs', 'calibrations', 'settings', 'help',
+  'explore', 'catalogs', 'calibrations', 'settings', 'help',
 ];
 
 /** Nine items, every one except Calibrations and Explore. This is not the shipped default
@@ -29,7 +29,7 @@ const DEFAULT_NAV_IDS = ALL_NAV_IDS.filter(id => id !== 'calibrations' && id !==
 
 /** Turn every nav item in `ids` on. `settings` is always visible regardless;
  *  the seeded keys mark each hidden-by-default item's one-time default as
- *  already applied (and Wishlist's flipped default as already seen), so the
+ *  already applied (and the Wishlist-into-Explore merge as already done), so the
  *  explicit `nebulis-nav-hidden` list below is what decides. Without them
  *  `applyDefaultSeeds` would force its own defaults over this list. Items
  *  missing from `nebulis-nav-order` are appended by useNavVisibility, so the
@@ -40,7 +40,7 @@ async function seedNavItems(page: Page, ids: string[] = ALL_NAV_IDS) {
     localStorage.setItem('nebulis-nav-hidden', JSON.stringify(allIds.filter(id => !ids.includes(id))));
     localStorage.setItem('nebulis-nav-forecast-default-seeded-v1', '1');
     localStorage.setItem('nebulis-nav-calibrations-default-seeded-v1', '1');
-    localStorage.setItem('nebulis-nav-wishlist-default-visible-v1', '1');
+    localStorage.setItem('nebulis-nav-wishlist-merged-into-explore-v1', '1');
     localStorage.setItem('nebulis-tour-seen-v1', '1');
   }, { ids, allIds: ALL_NAV_IDS });
 }

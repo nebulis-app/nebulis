@@ -17,6 +17,7 @@ import {
   listEntries,
   updateEntry,
 } from '../lib/journal.js';
+import { EntryCreateSchema, EntryPatchSchema } from '../lib/journalSchemas.js';
 import { contentDispositionHeader } from '../lib/queryHelpers.js';
 
 const router = Router();
@@ -28,19 +29,6 @@ const upload = multer({
   }),
   limits: { fileSize: JOURNAL_LIMITS.attachmentBytes, files: 1 },
 });
-
-const night = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Nights look like 2026-10-08');
-const ChecklistSchema = z.array(z.object({ text: z.string().max(JOURNAL_LIMITS.checklistText), done: z.boolean() })).max(JOURNAL_LIMITS.checklistItems);
-
-const EntryCreateSchema = z.object({
-  night,
-  objectId: z.string().max(200).nullable().optional(),
-  filePath: z.string().max(1000).nullable().optional(),
-  title: z.string().max(JOURNAL_LIMITS.title).optional(),
-  body: z.string().max(JOURNAL_LIMITS.body).optional(),
-  checklist: ChecklistSchema.optional(),
-});
-const EntryPatchSchema = EntryCreateSchema.partial();
 
 function fail(res: Response, err: unknown): void {
   if (err instanceof JournalError) {

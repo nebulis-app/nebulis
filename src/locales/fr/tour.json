@@ -1,0 +1,60 @@
+{
+  "steps": {
+    "welcome": {
+      "title": "Découvrez Nebulis",
+      "body": "Une visite rapide de votre observatoire : la bibliothèque, votre télescope, la planification d'une nuit et vos images terminées. Quelques minutes.",
+      "hint": "Démarrez la visite quand vous êtes prêt. Vous pouvez la quitter et la relancer à tout moment depuis l'Aide."
+    },
+    "library": {
+      "title": "Votre bibliothèque, au premier plan",
+      "body": "C'est votre point de départ. Chaque objet que vous avez photographié s'y trouve sous forme de carte avec sa meilleure image, le nombre de nuits où vous l'avez capturé et le télescope utilisé.",
+      "hint": "La recherche, les boutons Filtres et Affichage et le réglage de disposition (grille ou mosaïque) vous aident à tout retrouver en quelques secondes."
+    },
+    "telescopes": {
+      "title": "Pointez vers votre télescope",
+      "body": "Voici l'onglet Télescopes. Cliquez sur « Ajouter un télescope intelligent », choisissez votre modèle et saisissez son adresse. Le nom de partage et les valeurs par défaut se remplissent tout seuls.",
+      "hint": "Vous n'avez pas besoin d'importer tout de suite, mais cette étape active les imports nocturnes automatiques."
+    },
+    "sync": {
+      "title": "Synchronisez votre télescope",
+      "body": "Une fois le télescope configuré, ouvrez cette pastille dans la barre du haut et cliquez sur Synchroniser. Elle copie les nouvelles sessions par Wi-Fi (ou USB) et les classe automatiquement dans votre bibliothèque.",
+      "hint": "L'import automatique est activé par défaut pour chaque télescope ajouté, les nouvelles sessions apparaissent donc généralement d'elles-mêmes."
+    },
+    "planner": {
+      "title": "Planifiez la nuit avant qu'elle commence",
+      "body": "Le Planificateur répond à « vaut-il la peine de sortir ce soir ? » puis vous laisse programmer quoi photographier et quand. Choisissez une nuit, faites glisser des cibles dans la chronologie, ou laissez Planifier ma nuit la remplir à partir des prévisions horaires.",
+      "hint": "Vert signifie entièrement visible, ambre partiellement visible et rouge bloqué par votre propre ciel ou par la Lune."
+    },
+    "processed": {
+      "title": "Vos images terminées",
+      "body": "C'est ici qu'arrive votre travail terminé. Ouvrez un objet et sa page rassemble toutes ses images, avec vos images traitées en grand en haut, puis des onglets pour les poses, les nuits et les projets.",
+      "hint": "Ouvrez une nuit pour téléverser une image traitée, et marquez-en une d'une étoile pour en faire l'image de couverture de l'objet dans la bibliothèque."
+    },
+    "explore": {
+      "title": "Découvrez quoi photographier ensuite",
+      "body": "Explorer trouve votre prochaine cible. Cherchez un nom ou un numéro de catalogue, ou parcourez par type. Chaque objet indique si vous pouvez le voir depuis votre site ce soir et s'il tient dans le champ de votre télescope.",
+      "hint": "Ajoutez ce qui vous plaît à votre liste de souhaits, ou planifiez-le pour ce soir en un clic."
+    },
+    "catalogs": {
+      "title": "Suivez votre progression",
+      "body": "Catalogues est l'atlas d'observation : Messier, NGC, IC, Sharpless et Caldwell, chacun avec un tableau de progression de ce que vous avez photographié et de ce qu'il reste. Ouvrez un tableau, touchez un objet pour ses détails, ou ouvrez Mon catalogue pour un mur de vos propres images."
+    },
+    "gallery": {
+      "title": "Montrez-le",
+      "body": "La Galerie transforme vos images traitées en diaporama plein écran que vous pouvez lancer sur une télévision. Ouvrez-la et appuyez sur lecture pour un diaporama automatique et soigné de vos meilleures images."
+    },
+    "observations": {
+      "title": "Chaque nuit, dans un calendrier",
+      "body": "Observations est votre journal. Il montre chaque session par date avec l'objet, le télescope et la présence d'une image terminée, ainsi qu'une carte du monde des endroits où vous vous êtes installé."
+    },
+    "settings": {
+      "title": "Faites-en votre outil",
+      "body": "Les Paramètres vont plus loin que la page du télescope : sites d'observation, emplacement du stockage, options de la bibliothèque, alertes, téléphones et télévisions connectés, et un journal système complet. La zone de recherche en haut trouve n'importe quel réglage par son nom."
+    },
+    "done": {
+      "title": "Vous êtes prêt",
+      "body": "Voilà toute la boucle : connectez un télescope, laissez les imports tourner, trouvez une cible dans Explorer, planifiez les nuits dégagées dans le Planificateur et profitez des images terminées dans la Galerie.",
+      "hint": "Vous vous perdez plus tard ? La page Aide propose des guides écrits avec captures d'écran, et cette visite est toujours à un clic."
+    }
+  }
+}

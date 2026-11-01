@@ -13,7 +13,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
   return dir;
 });
 
-import { rekeyLibraryObject } from '../../server/lib/library/libraryRekey';
+import { rekeyLibraryObject, OBJECT_ID_TABLES } from '../../server/lib/library/libraryRekey';
 import { reconcileLayoutFromDisk, getObjectLayout, setObjectLayout } from '../../server/lib/library/libraryLayout';
 import { getLibraryFilesForObject, MANIFEST_NAME } from '../../server/lib/library/libraryFiles';
 import '../../server/lib/library/objects'; // runs the table-creation + migration blocks
@@ -44,7 +44,7 @@ beforeEach(() => {
   for (const t of [
     'libraryFiles', 'librarySessions', 'libraryDeletedSessions', 'notes',
     'favorites', 'wishlist', 'sessionProcessedImages', 'captureInfo',
-    'plannedSessions', 'processingRuns', 'libraryObjects',
+    'plannedSessions', 'processingRuns', 'calibrationAttachments', 'journalEntries', 'projectArchives', 'libraryObjects',
   ]) {
     if (existing.has(t)) db.prepare(`DELETE FROM ${t}`).run();
   }
@@ -192,5 +192,48 @@ describe('reconcileLayoutFromDisk', () => {
 
     expect(reconcileLayoutFromDisk()).toBe(0);
     expect(getObjectLayout('M42')).toBe('flat');
+  });
+});
+
+describe('rekeyLibraryObject: every table that points at an object', () => {
+  it('covers every table with an objectId column (a new one must be added to OBJECT_ID_TABLES or listed here)', () => {
+    // Not object-keyed rows to move: the object table itself, a redirect (keyed by designation, points at an id) and a setting.
+    const notMoved = new Set(['libraryObjects', 'objectDesignationRedirects', 'appSettings']);
+    const tables = db.prepare<[], { name: string }>("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
+    const withObjectId = tables
+      .filter(t => db.prepare<[], { name: string }>(`PRAGMA table_info(${t.name})`).all().some(c => /^objectId$/i.test(c.name)))
+      .map(t => t.name)
+      .filter(name => !notMoved.has(name));
+    expect([...OBJECT_ID_TABLES].sort()).toEqual(withObjectId.sort());
+  });
+
+  it('moves calibration attachments, journal entries and project archives, with foreign keys enforced', () => {
+    seedObject('NGC224_MOSAIC', 'NGC224_mosaic', 'nested');
+    db.prepare(
+      `INSERT INTO calibrationAttachments (id, objectId, date, calibrationType, folderName, settingsKey, createdAt)
+       VALUES ('c1', 'NGC224_MOSAIC', '2026-01-01', 'dark', 'darks', 'k', '2026-01-01')`,
+    ).run();
+    db.prepare(`INSERT INTO journalEntries (id, night, objectId, createdAt, updatedAt) VALUES ('j1', '2026-01-01', 'NGC224_MOSAIC', 'x', 'x')`).run();
+
+    expect(rekeyLibraryObject('NGC224_MOSAIC', 'M31_MOSAIC')).toBe('rename');
+
+    expect(db.prepare("SELECT objectId FROM calibrationAttachments WHERE id='c1'").get()).toEqual({ objectId: 'M31_MOSAIC' });
+    expect(db.prepare("SELECT objectId FROM journalEntries WHERE id='j1'").get()).toEqual({ objectId: 'M31_MOSAIC' });
+  });
+
+  it('keeps both texts when two objects wrote a note for the same night', () => {
+    seedObject('M31', 'M31', 'nested');
+    seedObject('Andromeda', 'Andromeda', 'nested');
+    const note = (id: string, objectId: string, text: string) => db.prepare(
+      `INSERT INTO notes (id, objectId, date, equipment, notes, createdAt, updatedAt) VALUES (?, ?, '2026-01-01', '', ?, 'x', 'x')`,
+    ).run(id, objectId, text);
+    note('n1', 'M31', 'clear skies');
+    note('n2', 'Andromeda', 'dew on the lens');
+
+    expect(rekeyLibraryObject('Andromeda', 'M31')).toBe('merge');
+
+    const rows = db.prepare<[], { notes: string }>("SELECT notes FROM notes WHERE objectId = 'M31'").all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].notes).toBe('clear skies\n\ndew on the lens');
   });
 });

@@ -1,33 +1,16 @@
 import { Router, Request, Response } from 'express';
-import { z } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
 import {
   getAllNotes,
   getNotesForObject,
   getNote,
-  getNoteById,
   createNote,
   updateNote,
   deleteNote,
 } from '../lib/notes.js';
+import { NoteBodySchema, NoteUpdateBodySchema } from '../lib/noteSchemas.js';
 
 const router = Router();
-
-const NoteBodySchema = z.object({
-  objectId: z.string().min(1),
-  date: z.string().min(1),
-  bortleClass: z.number().nullable().optional(),
-  seeingRating: z.number().nullable().optional(),
-  transparencyRating: z.number().nullable().optional(),
-  moonPhase: z.string().nullable().optional(),
-  moonIllumination: z.number().nullable().optional(),
-  equipment: z.string().optional(),
-  notes: z.string().optional(),
-  rating: z.number().nullable().optional(),
-  location: z.string().optional(),
-});
-
-const NoteUpdateBodySchema = NoteBodySchema.partial();
 
 // List all notes
 router.get('/', (_req: Request, res: Response) => {

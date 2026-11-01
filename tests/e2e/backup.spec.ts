@@ -42,7 +42,15 @@ test.describe('Backup Status', () => {
   });
 
   test('shows when the telescope last synced', async ({ page }) => {
-    await expect(page.getByText(/synced|never synced/i).first()).toBeVisible();
+    // The mock telescope has no lastSyncAt, so the only correct outcome is the never-synced state.
+    await expect(page.getByText(/never synced/i).first()).toBeVisible();
+  });
+
+  test('each telescope card has an edit button that opens the same editor as Settings', async ({ page }) => {
+    await page.getByRole('button', { name: /^edit seestar s50$/i }).click();
+    // AddTelescopeModal in edit mode: the name field carries the telescope's current name.
+    await expect(page.getByRole('dialog').or(page.locator('[role="dialog"], form')).first()).toBeVisible();
+    await expect(page.locator('input[value="Seestar S50"]').first()).toBeVisible();
   });
 
   test('Sync Now button is present when not running', async ({ page }) => {

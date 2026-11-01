@@ -54,7 +54,7 @@ import { writeObjectManifest, MANIFEST_NAME } from './libraryFiles.js';
  * (`catalogCache`, `catalogOverrides`) are intentionally included: after a fold
  * the metadata the user saw under the old id should follow it.
  */
-const OBJECT_ID_TABLES = [
+export const OBJECT_ID_TABLES = [
   'librarySessions',
   'libraryDeletedSessions',
   'libraryFiles',
@@ -68,6 +68,9 @@ const OBJECT_ID_TABLES = [
   'plannedSessions',
   'objectIntegrationGoals',
   'sessionImportLog',
+  'calibrationAttachments',
+  'journalEntries',
+  'projectArchives',
   'catalogCache',
   'catalogOverrides',
 ] as const;
@@ -115,42 +118,62 @@ export function rekeyLibraryObject(
     .get(fromId);
   if (!folderRow) return 'noop'; // nothing to move
 
-  const destExists = !!db
-    .prepare<[string], { objectId: string }>('SELECT objectId FROM libraryObjects WHERE objectId = ?')
-    .get(toId);
+  // One transaction, with foreign keys checked at the end of it: calibrationAttachments points at libraryObjects, and a
+  // rename moves the children before the parent row, which an immediate check would refuse.
+  const destExists = db.transaction((): boolean => {
+    db.pragma('defer_foreign_keys = ON');
+    const destExists = !!db
+      .prepare<[string], { objectId: string }>('SELECT objectId FROM libraryObjects WHERE objectId = ?')
+      .get(toId);
 
-  // Both objects have a note: the generic loop below would drop the source's
-  // (UPDATE OR IGNORE hits the primary key), losing user text. Keep the target's
-  // first and append the source's, then let the loop discard the source row.
-  if (destExists) {
-    const src = db.prepare<[string], { text: string }>('SELECT text FROM objectNotes WHERE objectId = ?').get(fromId);
-    const dst = db.prepare<[string], { text: string }>('SELECT text FROM objectNotes WHERE objectId = ?').get(toId);
-    if (src && dst) {
-      db.prepare('UPDATE objectNotes SET text = ?, updatedAt = ? WHERE objectId = ?')
-        .run(`${dst.text}\n\n${src.text}`, new Date().toISOString(), toId);
+    // Both objects have a note: the generic loop below would drop the source's
+    // (UPDATE OR IGNORE hits the primary key), losing user text. Keep the target's
+    // first and append the source's, then let the loop discard the source row.
+    if (destExists) {
+      const src = db.prepare<[string], { text: string }>('SELECT text FROM objectNotes WHERE objectId = ?').get(fromId);
+      const dst = db.prepare<[string], { text: string }>('SELECT text FROM objectNotes WHERE objectId = ?').get(toId);
+      if (src && dst) {
+        db.prepare('UPDATE objectNotes SET text = ?, updatedAt = ? WHERE objectId = ?')
+          .run(`${dst.text}\n\n${src.text}`, new Date().toISOString(), toId);
+      }
     }
-  }
 
-  for (const table of OBJECT_ID_TABLES) {
-    db.prepare(`UPDATE OR IGNORE ${table} SET objectId = ? WHERE objectId = ?`).run(toId, fromId);
-    db.prepare(`DELETE FROM ${table} WHERE objectId = ?`).run(fromId);
-  }
+    // Per-night notes are unique on (objectId, date). Where both objects wrote a note for the same night the generic
+    // loop would keep the target's and discard the source's; keep both texts instead.
+    if (destExists) {
+      const clashes = db.prepare<[string, string], { dstId: string; dstText: string; srcText: string }>(
+        `SELECT d.id AS dstId, d.notes AS dstText, s.notes AS srcText
+           FROM notes s JOIN notes d ON d.objectId = ? AND d.date = s.date
+          WHERE s.objectId = ?`,
+      ).all(toId, fromId);
+      for (const c of clashes) {
+        if (!c.srcText.trim() || c.dstText.includes(c.srcText)) continue;
+        db.prepare('UPDATE notes SET notes = ? WHERE id = ?').run(c.dstText.trim() ? `${c.dstText}\n\n${c.srcText}` : c.srcText, c.dstId);
+      }
+    }
 
-  if (destExists) {
-    // Merge: fold the source's file count / recency into the destination, then
-    // drop the source row.
-    db.prepare(`
-      UPDATE libraryObjects SET
-        fileCount  = fileCount + COALESCE((SELECT fileCount FROM libraryObjects WHERE objectId = ?), 0),
-        lastImport = MAX(lastImport, COALESCE((SELECT lastImport FROM libraryObjects WHERE objectId = ?), lastImport))
-      WHERE objectId = ?
-    `).run(fromId, fromId, toId);
-    db.prepare('DELETE FROM libraryObjects WHERE objectId = ?').run(fromId);
-  } else {
-    // Rename: the whole row moves, carrying every column (layout,
-    // primaryTelescopeId, galleryImageUserSet, enrichment*, …) with it.
-    db.prepare('UPDATE libraryObjects SET objectId = ? WHERE objectId = ?').run(toId, fromId);
-  }
+    for (const table of OBJECT_ID_TABLES) {
+      db.prepare(`UPDATE OR IGNORE ${table} SET objectId = ? WHERE objectId = ?`).run(toId, fromId);
+      db.prepare(`DELETE FROM ${table} WHERE objectId = ?`).run(fromId);
+    }
+
+    if (destExists) {
+      // Merge: fold the source's file count / recency into the destination, then
+      // drop the source row.
+      db.prepare(`
+        UPDATE libraryObjects SET
+          fileCount  = fileCount + COALESCE((SELECT fileCount FROM libraryObjects WHERE objectId = ?), 0),
+          lastImport = MAX(lastImport, COALESCE((SELECT lastImport FROM libraryObjects WHERE objectId = ?), lastImport))
+        WHERE objectId = ?
+      `).run(fromId, fromId, toId);
+      db.prepare('DELETE FROM libraryObjects WHERE objectId = ?').run(fromId);
+    } else {
+      // Rename: the whole row moves, carrying every column (layout,
+      // primaryTelescopeId, galleryImageUserSet, enrichment*, …) with it.
+      db.prepare('UPDATE libraryObjects SET objectId = ? WHERE objectId = ?').run(toId, fromId);
+    }
+    return destExists;
+  })();
 
   // On a merge the destination keeps its own folder; on a rename the folder
   // name is preserved by the caller, so the source row's is still correct.

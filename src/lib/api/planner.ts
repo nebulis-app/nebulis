@@ -174,6 +174,8 @@ export interface AutoPlanRequest {
   focus?: AutoPlanFocus;
   unimagedOnly?: boolean;
   jitter?: number;
+  /** Objects an earlier take showed, so a shuffle picks others (see server autoPlan avoidIds). */
+  avoidIds?: string[];
   /** Skip cloudy slots and favour steady seeing for small targets. */
   useForecast?: boolean;
   /** Cloud cover (%) above which a slot is skipped (server default 60). */

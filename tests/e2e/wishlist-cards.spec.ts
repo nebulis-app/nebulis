@@ -11,11 +11,8 @@ async function openWishlist(page: Page, width = 1440) {
   await mockAllRoutes(page);
   await mockWishlist(page);
   await page.setViewportSize({ width, height: 1000 });
-  await page.goto('/wishlist');
-  // Role, not text: the empty state's own copy ("Nothing on your wishlist yet")
-  // also contains "your wishlist", and getByText is a case-insensitive substring
-  // match that would trip strict mode while the query is still in flight.
-  await expect(page.getByRole('heading', { name: 'Your wishlist' })).toBeVisible();
+  await page.goto('/explore?tab=wishlist');
+  await expect(page.getByRole('tab', { name: /Wishlist/ })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('Orion Nebula')).toBeVisible();
 }
 
@@ -61,5 +58,60 @@ test.describe('Wishlist cards', () => {
     await expect(up.getByText('Window')).toBeVisible();
     await expect(up.getByText('Not visible tonight')).toHaveCount(0);
     expect(await monthBars(up).count()).toBe(0);
+  });
+});
+
+test.describe('Wishlist tab on Explore', () => {
+  test('the old /wishlist link lands on the Wishlist tab', async ({ page }) => {
+    await mockAllRoutes(page);
+    await mockWishlist(page);
+    await page.goto('/wishlist');
+    await expect(page).toHaveURL(/\/explore\?tab=wishlist$/);
+    await expect(page.getByRole('tab', { name: /Wishlist/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('Orion Nebula')).toBeVisible();
+  });
+
+  test('Explore opens on Discover and switches tabs in place', async ({ page }) => {
+    await mockAllRoutes(page);
+    await mockWishlist(page);
+    await page.goto('/explore');
+    await expect(page.getByRole('tab', { name: 'Discover' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('heading', { name: 'Browse by kind' })).toBeVisible();
+
+    await page.getByRole('tab', { name: /Wishlist/ }).click();
+    await expect(page).toHaveURL(/\/explore\?tab=wishlist$/);
+    await expect(page.getByText('Orion Nebula')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Browse by kind' })).toHaveCount(0);
+
+    // The catalog search stays on screen above both tabs.
+    await expect(page.getByRole('combobox', { name: 'Search the sky' })).toBeVisible();
+
+    await page.getByRole('tab', { name: 'Discover' }).click();
+    await expect(page).toHaveURL(/\/explore$/);
+  });
+});
+
+test.describe('Wishlist toolbar', () => {
+  test('Import and Export sit in one menu and "Add to plan" is the only primary button', async ({ page }) => {
+    await openWishlist(page);
+
+    // No second row of page-level buttons, and no "Add target": the search is right above.
+    await expect(page.getByRole('button', { name: 'Add target' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Your wishlist' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /to tonight's plan$/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Import', exact: true })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'More wishlist actions' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Import' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Export' })).toBeEnabled();
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toHaveCount(0);
+  });
+
+  test('the summary line gives the counts on one line', async ({ page }) => {
+    await openWishlist(page);
+    // The mock list has three targets, one up tonight and one high priority.
+    await expect(page.getByText('3 targets, 1 visible tonight \u00b7 1 high priority')).toBeVisible();
   });
 });

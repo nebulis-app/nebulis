@@ -12,7 +12,6 @@ import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import os from 'os';
 import { randomUUID } from 'crypto';
-import { z } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
 import {
   listSites,
@@ -25,7 +24,6 @@ import {
   setDefaultSite,
   type ObservingSite,
 } from '../lib/observingSites.js';
-import { SKY_MAP_CELLS } from '../lib/skyMapConfig.js';
 import {
   SITE_PHOTO_LIMITS,
   SitePhotoError,
@@ -39,22 +37,16 @@ import {
 import { contentDispositionHeader } from '../lib/queryHelpers.js';
 import { log } from '../lib/logger.js';
 import { isRecord } from '../lib/typeGuards.js';
+import {
+  ActiveSiteBodySchema,
+  SiteBodySchema,
+  SitePhotoCaptionBodySchema,
+  SiteUpdateSchema,
+} from '../lib/observingSiteSchemas.js';
 
 const router = Router();
 
-const SiteBodySchema = z.object({
-  name: z.string().min(1).optional(),
-  latitude: z.number().min(-90).max(90).nullable().optional(),
-  longitude: z.number().min(-180).max(180).nullable().optional(),
-  timezone: z.string().optional(),
-  minAlt: z.number().min(0).max(90).optional(),
-  horizonProfile: z.array(z.number()).length(36).optional(),
-  visibleSkyMap: z.array(z.boolean()).length(SKY_MAP_CELLS).optional(),
-  bortleClass: z.number().int().min(1).max(9).nullable().optional(),
-  isDefault: z.boolean().optional(),
-});
-
-function present(site: ObservingSite) {
+function present(site: ObservingSite): ObservingSite {
   return site;
 }
 
@@ -69,7 +61,7 @@ router.get('/active', (_req: Request, res: Response) => {
 });
 
 router.put('/active', requireAdmin, (req: Request, res: Response) => {
-  const parsed = z.object({ siteId: z.string().nullable() }).safeParse(req.body);
+  const parsed = ActiveSiteBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
     return;
@@ -136,7 +128,7 @@ router.get('/photos/:photoId', async (req: Request, res: Response) => {
 
 // PUT /api/v1/sites/photos/:photoId   { caption }
 router.put('/photos/:photoId', requireAdmin, (req: Request, res: Response) => {
-  const parsed = z.object({ caption: z.string().max(SITE_PHOTO_LIMITS.caption) }).safeParse(req.body);
+  const parsed = SitePhotoCaptionBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
     return;
@@ -209,15 +201,14 @@ router.post('/', requireAdmin, (req: Request, res: Response) => {
 
 router.put('/:id', requireAdmin, (req: Request, res: Response) => {
   const id = String(req.params.id);
-  const parsed = SiteBodySchema.safeParse(req.body);
+  const parsed = SiteUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
     return;
   }
-  // isDefault is not settable through the generic update — use PUT /:id/default,
+  // isDefault is not settable through the generic update: use PUT /:id/default,
   // whose clear-then-set has to be one transaction (see observingSites.ts).
-  const { isDefault: _ignored, ...rest } = parsed.data;
-  const updated = updateSite(id, rest);
+  const updated = updateSite(id, parsed.data);
   if (!updated) {
     res.apiError(404, 'NOT_FOUND', 'Observing site not found');
     return;

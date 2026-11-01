@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import crypto from 'node:crypto';
-import { compareVersions, getCurrentVersion } from '../../server/lib/appUpdate/platform';
+import { compareVersions, getCurrentVersion, isDesktopBuild } from '../../server/lib/appUpdate/platform';
 import { AppUpdateIndex } from '../../server/lib/appUpdate/manifest';
 import { verifyAppManifestSignature } from '../../server/lib/appUpdate/verify';
 import { verifyWithKey, signManifest } from '../../server/lib/catalogPack/verify';
@@ -110,5 +110,38 @@ describe('appUpdate/verify', () => {
     expect(verifyWithKey(data, sig, publicKey)).toBe(true);
     const tampered = Buffer.concat([data, Buffer.from('!')]);
     expect(verifyWithKey(tampered, sig, publicKey)).toBe(false);
+  });
+});
+
+describe('appUpdate/platform isDesktopBuild', () => {
+  const realPlatform = process.platform;
+  const realEnv = process.env.NODE_ENV;
+  const hadPkg = 'pkg' in process;
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+    process.env.NODE_ENV = realEnv;
+    if (!hadPkg) delete (process as unknown as Record<string, unknown>).pkg;
+  });
+
+  it('is false for a Windows source install even in production mode', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    process.env.NODE_ENV = 'production';
+    delete (process as unknown as Record<string, unknown>).pkg;
+    expect(isDesktopBuild()).toBe(false);
+  });
+
+  it('is true for the packaged Windows exe', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    process.env.NODE_ENV = 'production';
+    (process as unknown as Record<string, unknown>).pkg = {};
+    expect(isDesktopBuild()).toBe(true);
+  });
+
+  it('is false outside production', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    process.env.NODE_ENV = 'development';
+    (process as unknown as Record<string, unknown>).pkg = {};
+    expect(isDesktopBuild()).toBe(false);
   });
 });

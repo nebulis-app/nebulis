@@ -567,7 +567,7 @@
       "notMeasured": "Not measured",
       "moreFlags": "+{{count}}",
       "longestGap": "Longest gap {{duration}} at {{time}}",
-      "timelineLabel": "One mark per frame along the night, coloured by grade",
+      "timelineLabel": "One mark per frame along the night, colored by grade",
       "column": {
         "time": "Time",
         "score": "Score",

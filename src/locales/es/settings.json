@@ -22,6 +22,7 @@
     "apiKeys": "Claves de API",
     "alerts": "Alertas",
     "display": "Visualización",
+    "slideshow": "Presentación",
     "organization": "Organización",
     "processing": "Procesamiento",
     "maintenance": "Mantenimiento",
@@ -258,7 +259,7 @@
       "success": "Datos eliminados",
       "successDescription": "Tu configuración y cuentas se conservaron.",
       "close": "Cerrar",
-      "genericError": "El restablecimiento no terminó. Tus datos no se han modificado. Inténtalo de nuevo, o revisa el registro del sistema."
+      "genericError": "El restablecimiento no terminó. Es posible que ya se hayan borrado algunos datos. Revisa el registro del sistema antes de volver a intentarlo."
     }
   },
   "librarySection": {
@@ -282,19 +283,23 @@
         "media": "Combinada"
       },
       "slideshowShowInfo": {
-        "label": "Presentación: mostrar información del objeto",
+        "label": "Mostrar información del objeto",
         "description": "Muestra el nombre, tipo y distancia mientras se reproducen las imágenes."
       },
       "slideshowProcessedOnly": {
-        "label": "Presentación: empezar solo con imágenes procesadas",
+        "label": "Empezar solo con imágenes procesadas",
         "description": "La presentación se abre solo con imágenes procesadas; puedes cambiarlo en cualquier momento."
       }
+    },
+    "slideshow": {
+      "title": "Presentación",
+      "description": "Cómo muestra la presentación las imágenes y la información."
     },
     "imageBehavior": {
       "title": "Comportamiento de imagen",
       "rotate": {
         "label": "Rotar imágenes 90° en sentido antihorario",
-        "description": "Corrige telescopios que capturan con rotación, incluida la presentación de diapositivas."
+        "description": "Gira cada imagen de la presentación un cuarto de vuelta. Úsalo si tu telescopio guarda las imágenes de lado."
       }
     },
     "organization": {
@@ -369,7 +374,7 @@
     "upToDate_beta": "Tienes la última versión beta",
     "lastCheckFailed": "La última comprobación no se pudo completar: {{error}}",
     "checkFailed": "No se pudieron buscar actualizaciones.",
-    "updateStartFailed": "No se pudo iniciar la actualización.",
+    "updateStartFailed": "No se pudo iniciar la actualización. Revisa el registro del servidor e inténtalo de nuevo.",
     "autoUpdate": {
       "label": "Buscar actualizaciones automáticamente",
       "description": "Las actualizaciones se descargan en segundo plano para instalarse más rápido."
@@ -640,7 +645,8 @@
       "bodyAfter": "en su lugar. Nada de la ubicación antigua se copia. Haz esto solo si tus imágenes ya están en la carpeta predeterminada, o si planeas volver a importarlas.",
       "resetFailed": "No se pudo restablecer la ubicación",
       "cancel": "Cancelar",
-      "resetLocation": "Restablecer ubicación"
+      "resetLocation": "Restablecer ubicación",
+      "secondLibraryWarning": "Las nuevas importaciones irán a esa carpeta en el disco propio de este equipo. Si la unidad antigua vuelve más tarde, será una biblioteca aparte y las dos no se fusionarán por sí solas. Si la unidad solo está desconectada, vuelve a conectarla en su lugar."
     },
     "resetToDefaultModal": {
       "title": "Mover la biblioteca de vuelta al valor predeterminado",
@@ -661,7 +667,8 @@
       "filesProgress_one": "{{copied}} / {{count}} archivo",
       "filesProgress_other": "{{copied}} / {{count}} archivos",
       "keepDriveConnected": "Mantén esta unidad conectada. Las importaciones están en pausa hasta que termine el traslado."
-    }
+    },
+    "recoveredNotice": "La unidad de tu biblioteca volvió en otra ruta, así que Nebulis se reconectó por su cuenta. Estaba en {{from}} y ahora está en {{to}}."
   },
   "storageDashboard": {
     "title": "Almacenamiento",
@@ -986,6 +993,7 @@
     "alerts": "Entérese cuando se acerca una noche despejada o termina una importación.",
     "libraryOrganization": "Cómo se nombran, agrupan y cuentan los objetos.",
     "libraryProcessing": "Qué hace Nebulis con los fotogramas una vez que llegan.",
+    "librarySlideshow": "Cómo se reproduce la presentación y qué muestra.",
     "maintenance": "Tareas que el servidor ejecuta por sí solo cada noche.",
     "catalogs": "Imágenes sin conexión y datos de satélites guardados en este servidor."
   },
@@ -1021,7 +1029,9 @@
     "cancel": "Cancelar",
     "saveLabel": "Guardar",
     "connectedFound_one": "Conectado. Se encontró {{count}} carpeta.",
-    "connectedFound_other": "Conectado. Se encontraron {{count}} carpetas."
+    "connectedFound_other": "Conectado. Se encontraron {{count}} carpetas.",
+    "pairThisDrive": "Emparejar esta unidad en su lugar",
+    "unmarkedNote": "Esa unidad USB es de solo lectura, así que Nebulis no pudo marcarla. Se reconoce solo por su ruta, que puede intercambiarse cuando hay dos telescopios conectados a la vez."
   },
   "settingsUI": {
     "moreInfoAriaLabel": "Más información: {{text}}"
@@ -1031,7 +1041,7 @@
     "dialogTitleAdd": "Añadir sitio de observación",
     "editTitle": "Editar sitio de observación",
     "addTitle": "Añadir sitio de observación",
-    "saveFailed": "Ese sitio no se pudo guardar.",
+    "saveFailed": "No se pudo guardar el sitio. Comprueba la conexión con el servidor e inténtalo de nuevo.",
     "nameLabel": "Nombre",
     "namePlaceholder": "p. ej. Patio trasero, sitio de cielo oscuro",
     "geolocationUnsupported": "Este navegador no admite la geolocalización.",
@@ -1078,17 +1088,6 @@
     "pairingCodeAriaLabel": "Código de emparejamiento",
     "link": "Vincular"
   },
-  "archiveBrowserModal": {
-    "ariaLabel": "Datos de calibración archivados",
-    "title": "Archivado desde {{name}}",
-    "subtitle": "Tomas de calibración sin otro sitio adonde ir: se conservan, nunca se modelan como objetos.",
-    "close": "Cerrar",
-    "loading": "Cargando…",
-    "nothingArchived": "Aún no hay nada archivado.",
-    "fileCount_one": "{{count}} archivo",
-    "fileCount_other": "{{count}} archivos",
-    "done": "Hecho"
-  },
   "reassignTelescopeModal": {
     "ariaLabel": "Reasignar sesiones del telescopio",
     "title": "Mover sesiones",
@@ -1114,7 +1113,7 @@
     "connected": "{{name}} conectado",
     "connectedHelp": "Tu teléfono ha iniciado sesión y está listo.",
     "scanInstructions": "Abre Nebulis en tu teléfono, toca <1>Escanear QR</1> y apunta a este código. Se conecta e inicia sesión, sin necesidad de dirección IP.",
-    "generateFailed": "No se pudo generar un código.",
+    "generateFailed": "No se pudo generar un código de vinculación. Comprueba que el servidor sea accesible e inténtalo de nuevo.",
     "qrAlt": "Código QR de emparejamiento",
     "refreshing": "Actualizando…",
     "codeExpiredTapToRefresh": "Código caducado. Toca para actualizar.",
@@ -1133,7 +1132,7 @@
     "passwordTooShort": "Mín. 6 caracteres.",
     "passwordSavedNote": "Se guardará cuando guardes este formulario.",
     "resetPasswordButton": "Restablecer contraseña",
-    "saveFailed": "No se pudieron guardar los cambios.",
+    "saveFailed": "No se pudieron guardar tus cambios. Siguen en este formulario. Inténtalo de nuevo.",
     "resetPasswordConfirmTitle": "¿Restablecer contraseña?",
     "resetPasswordConfirmMessage": "Los dispositivos conectados de {{name}}, incluido cualquier Apple TV o teléfono emparejado, cerrarán sesión y deberán volver a emparejarse."
   },

@@ -186,6 +186,7 @@ const DEVICE_LINKS: Partial<Record<AlertEvent['type'], string>> = {
   'night.dew': 'nebulis://sky',
   'import.finished': 'nebulis://library',
   'import.failed': 'nebulis://settings',
+  'update.available': 'nebulis://settings',
 };
 
 /**

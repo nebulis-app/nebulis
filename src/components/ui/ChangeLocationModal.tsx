@@ -69,8 +69,11 @@ export function ChangeLocationModal({
   const nameError = folderName && (/[\\/]/.test(folderName) || folderName === '.' || folderName === '..')
     ? t('changeLocationModal.folderNameSlashError')
     : '';
+  // Browsing into a folder that already carries the name would nest it (G:\Nebulis\Nebulis), so use it as it is.
+  const browsedFolder = browsePath ? browsePath.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? '' : '';
+  const alreadyNamed = !!folderName && browsedFolder.toLowerCase() === folderName.toLowerCase();
   const targetPath = browsePath && !nameError
-    ? (folderName ? joinPath(browsePath, folderName) : browsePath)
+    ? (folderName && !alreadyNamed ? joinPath(browsePath, folderName) : browsePath)
     : null;
 
   async function handleStart() {

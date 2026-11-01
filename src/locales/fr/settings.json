@@ -22,6 +22,7 @@
     "apiKeys": "Clés d’API",
     "alerts": "Alertes",
     "display": "Affichage",
+    "slideshow": "Diaporama",
     "organization": "Organisation",
     "processing": "Traitement",
     "maintenance": "Maintenance",
@@ -258,7 +259,7 @@
       "success": "Données supprimées",
       "successDescription": "Vos paramètres et comptes ont été conservés.",
       "close": "Fermer",
-      "genericError": "La réinitialisation ne s'est pas terminée. Vos données n'ont pas été modifiées. Réessayez, ou consultez le journal système."
+      "genericError": "La réinitialisation ne s'est pas terminée. Certaines données ont peut-être déjà disparu. Consultez le journal système avant de réessayer."
     }
   },
   "librarySection": {
@@ -282,19 +283,23 @@
         "media": "Combinée"
       },
       "slideshowShowInfo": {
-        "label": "Diaporama : afficher les informations de l'objet",
+        "label": "Afficher les informations de l'objet",
         "description": "Affiche le nom, le type et la distance pendant la lecture des images."
       },
       "slideshowProcessedOnly": {
-        "label": "Diaporama : commencer avec les images traitées uniquement",
+        "label": "Commencer avec les images traitées uniquement",
         "description": "Le diaporama s'ouvre uniquement avec les images traitées ; changez à tout moment."
       }
+    },
+    "slideshow": {
+      "title": "Diaporama",
+      "description": "Comment le diaporama affiche les images et les informations."
     },
     "imageBehavior": {
       "title": "Comportement des images",
       "rotate": {
         "label": "Pivoter les images de 90° dans le sens antihoraire",
-        "description": "Corrige les télescopes qui capturent avec une rotation, diaporama inclus."
+        "description": "Fait pivoter chaque image du diaporama d'un quart de tour. Utile si votre télescope enregistre les images de côté."
       }
     },
     "organization": {
@@ -369,7 +374,7 @@
     "upToDate_beta": "Vous avez la dernière version bêta",
     "lastCheckFailed": "La dernière vérification n'a pas pu se terminer : {{error}}",
     "checkFailed": "Impossible de rechercher des mises à jour.",
-    "updateStartFailed": "Impossible de démarrer la mise à jour.",
+    "updateStartFailed": "Impossible de lancer la mise à jour. Consultez le journal du serveur, puis réessayez.",
     "autoUpdate": {
       "label": "Rechercher les mises à jour automatiquement",
       "description": "Les mises à jour se téléchargent en arrière-plan pour s'installer plus vite."
@@ -640,7 +645,8 @@
       "bodyAfter": "à la place. Rien de l'ancien emplacement n'est copié. Ne faites cela que si vos images sont déjà dans le dossier par défaut, ou si vous prévoyez de les réimporter.",
       "resetFailed": "Impossible de réinitialiser l'emplacement",
       "cancel": "Annuler",
-      "resetLocation": "Réinitialiser l'emplacement"
+      "resetLocation": "Réinitialiser l'emplacement",
+      "secondLibraryWarning": "Les nouveaux imports iront dans ce dossier sur le disque propre de cet ordinateur. Si l'ancien lecteur revient plus tard, ce sera une bibliothèque distincte et les deux ne fusionneront pas toutes seules. Si le lecteur est seulement débranché, rebranchez-le plutôt."
     },
     "resetToDefaultModal": {
       "title": "Ramener la bibliothèque à l'emplacement par défaut",
@@ -661,7 +667,8 @@
       "filesProgress_one": "{{copied}} / {{count}} fichier",
       "filesProgress_other": "{{copied}} / {{count}} fichiers",
       "keepDriveConnected": "Gardez ce lecteur connecté. Les importations sont en pause jusqu'à la fin du déplacement."
-    }
+    },
+    "recoveredNotice": "Le lecteur de votre bibliothèque est revenu sous un autre chemin, donc Nebulis s'y est reconnecté tout seul. Il était à {{from}} et se trouve maintenant à {{to}}."
   },
   "storageDashboard": {
     "title": "Stockage",
@@ -986,6 +993,7 @@
     "alerts": "Soyez prévenu d’une nuit dégagée ou d’un import terminé.",
     "libraryOrganization": "Comment les objets sont nommés, regroupés et comptés.",
     "libraryProcessing": "Ce que Nebulis fait des images une fois arrivées.",
+    "librarySlideshow": "Comment le diaporama se déroule et ce qu'il affiche.",
     "maintenance": "Tâches que le serveur exécute seul chaque nuit.",
     "catalogs": "Imagerie hors ligne et données de satellites conservées sur ce serveur."
   },
@@ -1021,7 +1029,9 @@
     "cancel": "Annuler",
     "saveLabel": "Enregistrer",
     "connectedFound_one": "Connecté. {{count}} dossier trouvé.",
-    "connectedFound_other": "Connecté. {{count}} dossiers trouvés."
+    "connectedFound_other": "Connecté. {{count}} dossiers trouvés.",
+    "pairThisDrive": "Associer plutôt ce lecteur",
+    "unmarkedNote": "Ce lecteur USB est en lecture seule, donc Nebulis n'a pas pu le marquer. Il est reconnu uniquement par son chemin, qui peut s'inverser quand deux télescopes sont branchés en même temps."
   },
   "settingsUI": {
     "moreInfoAriaLabel": "Plus d'informations : {{text}}"
@@ -1031,7 +1041,7 @@
     "dialogTitleAdd": "Ajouter un site d'observation",
     "editTitle": "Modifier le site d'observation",
     "addTitle": "Ajouter un site d'observation",
-    "saveFailed": "Ce site n'a pas pu être enregistré.",
+    "saveFailed": "Impossible d'enregistrer le site. Vérifiez la connexion au serveur, puis réessayez.",
     "nameLabel": "Nom",
     "namePlaceholder": "ex. Jardin, site de ciel noir",
     "geolocationUnsupported": "La géolocalisation n'est pas prise en charge par ce navigateur.",
@@ -1078,17 +1088,6 @@
     "pairingCodeAriaLabel": "Code de couplage",
     "link": "Lier"
   },
-  "archiveBrowserModal": {
-    "ariaLabel": "Données de calibration archivées",
-    "title": "Archivé depuis {{name}}",
-    "subtitle": "Poses de calibration sans autre destination : conservées, jamais modélisées comme objets.",
-    "close": "Fermer",
-    "loading": "Chargement…",
-    "nothingArchived": "Rien d'archivé pour le moment.",
-    "fileCount_one": "{{count}} fichier",
-    "fileCount_other": "{{count}} fichiers",
-    "done": "Terminé"
-  },
   "reassignTelescopeModal": {
     "ariaLabel": "Réattribuer les sessions du télescope",
     "title": "Déplacer les sessions",
@@ -1114,7 +1113,7 @@
     "connected": "{{name}} connecté",
     "connectedHelp": "Votre téléphone est connecté et prêt.",
     "scanInstructions": "Ouvrez Nebulis sur votre téléphone, appuyez sur <1>Scanner un QR</1>, et pointez-le vers ce code. Il se connecte et vous identifie, sans adresse IP nécessaire.",
-    "generateFailed": "Impossible de générer un code.",
+    "generateFailed": "Impossible de générer un code d'appairage. Vérifiez que le serveur est joignable, puis réessayez.",
     "qrAlt": "Code QR de couplage",
     "refreshing": "Actualisation…",
     "codeExpiredTapToRefresh": "Code expiré. Appuyez pour actualiser.",
@@ -1133,7 +1132,7 @@
     "passwordTooShort": "Min. 6 caractères.",
     "passwordSavedNote": "Enregistré lorsque vous enregistrez ce formulaire.",
     "resetPasswordButton": "Réinitialiser le mot de passe",
-    "saveFailed": "Impossible d'enregistrer les modifications.",
+    "saveFailed": "Impossible d'enregistrer vos modifications. Elles sont toujours dans ce formulaire. Réessayez.",
     "resetPasswordConfirmTitle": "Réinitialiser le mot de passe ?",
     "resetPasswordConfirmMessage": "Les appareils connectés de {{name}}, y compris tout Apple TV ou téléphone couplé, seront déconnectés et devront être recouplés."
   },

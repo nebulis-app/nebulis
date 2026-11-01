@@ -4,7 +4,7 @@
  *
  * Nearly every "the app says it's tomorrow" bug passed the normal suite because CI runs in UTC, where UTC and local
  * are the same thing. Running the same tests in Chicago (UTC-5/-6), Auckland (UTC+12/+13) and Kolkata (a half-hour
- * offset) makes that class of bug fail. See "Time zones" in CLAUDE.md.
+ * offset) makes that class of bug fail. See the "Time zones" section of the contributor guidelines.
  *
  * Files are picked by what they test (dates, nights, forecasts, planners, zones), so a new date test is included
  * without editing a list here.

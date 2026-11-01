@@ -12,7 +12,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { getCatalogEntry } from '../data/catalog.js';
+import { getCatalogEntry } from './catalogLookup.js';
 import { SOLAR_SYSTEM_LOOKUP_KEYS, SOLAR_SYSTEM_NASA_TERMS, SOLAR_SYSTEM_ASTROBACKYARD_URLS } from '../data/solar-system-catalog.js';
 import { raToDegs, decToDegs } from './astroCalc.js';
 import { DATA_DIR } from './paths.js';

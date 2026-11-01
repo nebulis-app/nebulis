@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { parseFitsHeader } from '../lib/fitsParser.js';
 import { getLibraryDir } from '../lib/libraryPath.js';
-import { getCatalogEntry } from '../data/catalog.js';
+import { getCatalogEntry } from '../lib/catalogLookup.js';
 import { getById as getDsoById } from '../lib/dsoCatalog.js';
 import { normalizeCatalogId } from '../lib/telescopeFiles.js';
 import { getObjectFolderName } from '../lib/localLibrary.js';

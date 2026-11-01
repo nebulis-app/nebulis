@@ -2,10 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
 import {
-  GEAR_KINDS,
   GearError,
-  MAX_EXTRA_ITEMS,
-  MAX_KIT_ITEMS,
   clearChecks,
   createGear,
   createKit,
@@ -21,31 +18,9 @@ import {
   updateGear,
   updateKit,
 } from '../lib/gear.js';
+import { ItemCreateSchema, ItemPatchSchema, KitSchema, KitPatchSchema, CheckSchema } from '../lib/gearSchemas.js';
 
 const router = Router();
-
-const text = (max: number) => z.string().max(max);
-
-const ItemCreateSchema = z.object({
-  kind: z.enum(GEAR_KINDS),
-  name: z.string().min(1).max(120),
-  brand: text(80).optional(),
-  model: text(80).optional(),
-  specs: z.record(z.string(), z.unknown()).optional(),
-  telescopeId: z.string().nullable().optional(),
-  notes: text(2000).optional(),
-});
-const ItemPatchSchema = ItemCreateSchema.partial();
-
-const KitSchema = z.object({
-  name: z.string().min(1).max(80),
-  itemIds: z.array(z.string().min(1).max(100)).max(MAX_KIT_ITEMS).optional(),
-  extraItems: z.array(text(100)).max(MAX_EXTRA_ITEMS).optional(),
-  siteId: z.string().nullable().optional(),
-});
-const KitPatchSchema = KitSchema.partial();
-
-const CheckSchema = z.object({ itemKey: z.string().min(1).max(200), checked: z.boolean() });
 
 /** Turn a library error into the API's envelope. Anything else is a bug and falls through to the server's handler. */
 function fail(res: Response, err: unknown): void {

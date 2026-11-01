@@ -62,7 +62,7 @@ describe('RESTACKED — no double directory walk (High-6)', () => {
     listDirCalls.length = 0;
     expect(claimImportLock()).toBe(true);
     await runImport(undefined, undefined, { telescopeId: profile.id });
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
 
     // Both restacks still land.
     expect(getAllProcessedImagesForObject('M42')).toHaveLength(1);

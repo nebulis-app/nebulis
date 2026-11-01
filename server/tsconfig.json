@@ -6,6 +6,8 @@
     "esModuleInterop": true,
     "strict": true,
     "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "outDir": "./dist",
     "rootDir": ".",
     "skipLibCheck": true,

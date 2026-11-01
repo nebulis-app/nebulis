@@ -25,9 +25,6 @@ import { Modal } from '../ui/Modal';
  * guess made up front. The first call is made *without* overwrite; if the server comes
  * back with conflicts, those are named and the user is asked whether to replace them.
  * A local edit is therefore never lost without a question that mentioned it.
- *
- * Mirrors `ArchiveBrowserModal`'s shape, which is the existing read-only browser for
- * the unrelated calibration archive.
  */
 /** Files per restore request. The server accepts 500. */
 const RESTORE_BATCH = 400;

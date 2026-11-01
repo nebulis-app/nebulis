@@ -8,6 +8,7 @@ import {
   suggestIntegration,
   MOON_PLANS,
   GOAL_TIERS,
+  MAX_TOTAL_HOURS,
   type GoalTier,
   type MoonPlan,
   type RigKit,
@@ -40,7 +41,7 @@ export interface SuggestionTarget {
 
 /**
  * Suggested goal hours for one object (`src/lib/integrationSuggestion.ts`,
- * explained in `internal-doc/integration-goals.md`). Rendering and the three
+ * explained in the private integration-goals notes). Rendering and the three
  * choices the model cannot know (rig, Moon plan, quality tier) only. It never
  * saves: Apply hands the hours to the goal editor, and Save stays the user's.
  */
@@ -86,35 +87,61 @@ export function IntegrationSuggestionPanel({
       : { filters: customRig?.filters ?? [], inventory: true };
   }, [telescope, isSmart, customRig]);
 
-  const suggestion = useMemo(() => suggestIntegration({
+  // The suggestion for every Moon plan and tier, so each choice can show what it costs before it is picked.
+  const run = useMemo(() => (m: MoonPlan, q: GoalTier) => suggestIntegration({
     objectType: target.objectType,
     magnitude: target.magnitude,
     majorAxisArcmin: target.majorAxisArcmin,
     bortle: target.bortleClass,
     rig,
     kit,
-    moon,
-    tier,
-  }), [target, rig, kit, moon, tier]);
+    moon: m,
+    tier: q,
+  }), [target, rig, kit]);
+  const suggestion = useMemo(() => run(moon, tier), [run, moon, tier]);
 
   const { basis } = suggestion;
   const p = 'objectDetail.integrationSection.suggest';
+  const hoursHint = (s: ReturnType<typeof run>) =>
+    t(s.basis.capped ? `${p}.chipHoursCapped` : `${p}.chipHours`, { hours: s.totalHours });
   const muted = isDark ? 'text-slate-500' : 'text-slate-400';
   const strong = isDark ? 'text-slate-200' : 'text-slate-800';
   const subtle = isDark ? 'text-slate-400' : 'text-slate-600';
-  const buttonCls = `shrink-0 inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg transition ${
-    isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-  }`;
 
+  const brightnessName = t(`${p}.class.${basis.brightness}`);
   const brightnessText = basis.brightnessSource === 'surface-brightness'
-    ? t(`${p}.basisSurface`, {
-      sb: basis.surfaceBrightness?.toFixed(1),
-      brightness: t(`${p}.class.${basis.brightness}`),
-    })
-    : t(`${p}.basisType`, { brightness: t(`${p}.class.${basis.brightness}`) });
+    ? t(`${p}.basisSurface`, { sb: basis.surfaceBrightness?.toFixed(1), brightness: brightnessName })
+    : basis.brightnessSource === 'type-narrowband'
+      ? t(`${p}.basisNarrowband`, { sb: basis.surfaceBrightness?.toFixed(1), brightness: brightnessName })
+      : t(`${p}.basisType`, { brightness: brightnessName });
+
+  // The sum behind the total, one term per factor that is in play.
+  const terms: Array<{ value: string; label: string }> = [
+    { value: `${basis.factors.base} ${t('objectDetail.integrationSection.hoursUnit')}`, label: t(`${p}.eqBase`, { brightness: brightnessName }) },
+    ...(basis.factors.type !== 1 ? [{ value: `× ${basis.factors.type}`, label: t(`${p}.eqStellar`) }] : []),
+    {
+      value: `× ${(basis.factors.sky * basis.factors.moon).toFixed(2)}`,
+      label: t(`${p}.eqSky`, { bortle: basis.bortle, band: t(`${p}.bands.${basis.band}`) }),
+    },
+    ...(basis.factors.tier !== 1 ? [{ value: `× ${basis.factors.tier}`, label: t(`${p}.tiers.${tier}`) }] : []),
+  ];
+  const single = suggestion.filters.length === 1;
+
+  /** A narrowband bucket with no name is the dual-band filter the plan assumes,
+   *  never "no filter": the sky line under the list says narrowband too. */
+  const bucketLabel = (filter: string | null) =>
+    filter ?? (basis.dualBandUnnamed
+      ? t(`${p}.dualBand`)
+      : t('objectDetail.integrationSection.noFilter'));
 
   return (
-    <div className={`rounded-xl border p-3 space-y-3 ${isDark ? 'border-slate-700 bg-slate-800/40' : 'border-slate-200 bg-slate-50'}`}>
+    <div className={`rounded-xl p-3 space-y-3 ${isDark ? 'bg-slate-800/40' : 'bg-slate-50'}`}>
+      <div className="flex items-center gap-2">
+        <p className={`flex-1 text-xs font-semibold ${subtle}`}>{t(`${p}.title`)}</p>
+        <button type="button" onClick={onClose} className={`text-xs ${muted} hover:underline underline-offset-2`}>
+          {t(`${p}.hide`)}
+        </button>
+      </div>
       <div className="space-y-2">
         {telescopes.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
@@ -130,14 +157,10 @@ export function IntegrationSuggestionPanel({
               <option value="">{t(`${p}.shootAny`)}</option>
               {telescopes.map(tel => <option key={tel.id} value={tel.id}>{tel.name}</option>)}
             </select>
+            {rigIsFixed && <span className={`text-xs ${subtle}`}>{t(`${p}.rigs.${rig}`)}</span>}
           </div>
         )}
-        {rigIsFixed ? (
-          <div className="flex items-center gap-2">
-            <span className={`w-16 shrink-0 text-xs ${muted}`}>{t(`${p}.rig`)}</span>
-            <span className={`text-xs font-medium ${subtle}`}>{t(`${p}.rigs.${rig}`)}</span>
-          </div>
-        ) : (
+        {!rigIsFixed && (
           <Segmented
             label={t(`${p}.rig`)}
             value={rig}
@@ -149,46 +172,63 @@ export function IntegrationSuggestionPanel({
         <Segmented
           label={t(`${p}.moon`)}
           value={moon}
-          options={MOON_PLANS.map(v => ({ value: v, label: t(`${p}.moons.${v}`) }))}
+          options={MOON_PLANS.map(v => ({ value: v, label: t(`${p}.moons.${v}`), hint: hoursHint(run(v, tier)) }))}
           onChange={setMoon}
           isDark={isDark}
         />
         <Segmented
           label={t(`${p}.tier`)}
           value={tier}
-          options={GOAL_TIERS.map(v => ({ value: v, label: t(`${p}.tiers.${v}`) }))}
+          options={GOAL_TIERS.map(v => ({ value: v, label: t(`${p}.tiers.${v}`), hint: hoursHint(run(moon, v)) }))}
           onChange={setTier}
           isDark={isDark}
         />
       </div>
 
       <div>
-        <p className={`text-sm font-semibold ${strong}`}>
-          {t(`${p}.total`, { hours: suggestion.totalHours })}
-        </p>
-        <ul className="mt-1 space-y-0.5">
+        <div className="flex items-baseline gap-2">
+          <p className={`text-sm font-semibold ${strong}`}>
+            {single
+              ? t(`${p}.totalSingle`, { hours: suggestion.totalHours, filter: bucketLabel(suggestion.filters[0].filter) })
+              : t(`${p}.total`, { hours: suggestion.totalHours })}
+          </p>
+          {basis.capped && (
+            <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${isDark ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-100 text-amber-800'}`}>
+              {t(`${p}.cappedBadge`)}
+            </span>
+          )}
+        </div>
+        {!single && <ul className="mt-1 space-y-0.5">
           {suggestion.filters.map(f => (
             <li key={f.filter ?? '\u0000none'} className="flex items-baseline gap-2 text-sm">
               <span className={`flex-1 min-w-0 truncate ${subtle}`}>
-                {f.filter ?? t('objectDetail.integrationSection.noFilter')}
+                {bucketLabel(f.filter)}
               </span>
               <span className={`tabular-nums ${strong}`}>
                 {f.hours} {t('objectDetail.integrationSection.hoursUnit')}
               </span>
             </li>
           ))}
-        </ul>
+        </ul>}
+        <p className={`mt-1.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs ${muted}`}>
+          {terms.map(term => (
+            <span key={term.label} className="whitespace-nowrap">
+              <span className={`tabular-nums font-medium ${subtle}`}>{term.value}</span> {term.label}
+            </span>
+          ))}
+        </p>
       </div>
 
       <ul className={`space-y-0.5 text-xs ${muted}`}>
+        {basis.capped && (
+          <li className={isDark ? 'text-amber-400' : 'text-amber-700'}>
+            {t(basis.skyCapped
+              ? (basis.band === 'narrowband' ? `${p}.cappedSkyNarrowband` : `${p}.cappedSky`)
+              : `${p}.cappedTotal`, { bortle: basis.bortle, max: MAX_TOTAL_HOURS })}
+          </li>
+        )}
         <li>{brightnessText}</li>
-        <li>
-          {t(`${p}.skyLine`, {
-            bortle: basis.bortle,
-            band: t(`${p}.bands.${basis.band}`),
-            factor: (basis.factors.sky * basis.factors.moon).toFixed(2),
-          })}
-        </li>
+        {basis.dualBandUnnamed && <li>{t(`${p}.unnamedDualBand`)}</li>}
         {basis.fellBack && (
           <li className={isDark ? 'text-amber-400' : 'text-amber-700'}>
             {t(`${p}.fellBack`, { missing: basis.missing.join(', ') })}
@@ -213,12 +253,11 @@ export function IntegrationSuggestionPanel({
 
       <div className="flex items-center gap-2">
         <div className="flex-1" />
-        <button type="button" onClick={onClose} className={buttonCls}>
-          {t(`${p}.close`)}
-        </button>
         <button
           type="button"
-          onClick={() => onApply(suggestion.filters)}
+          onClick={() => onApply(suggestion.filters.map(f => (
+            f.filter === null && basis.dualBandUnnamed ? { ...f, filter: t(`${p}.dualBand`) } : f
+          )))}
           className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition"
         >
           {t(`${p}.apply`)}
@@ -237,7 +276,8 @@ function Segmented<T extends string>({
 }: {
   label: string;
   value: T;
-  options: ReadonlyArray<{ value: T; label: string }>;
+  /** `hint` is a quiet second line of text on the chip: what picking it would cost. */
+  options: ReadonlyArray<{ value: T; label: string; hint?: string }>;
   onChange: (v: T) => void;
   isDark: boolean;
 }) {
@@ -262,6 +302,7 @@ function Segmented<T extends string>({
               }`}
             >
               {o.label}
+              {o.hint && <span className="ml-1.5 tabular-nums opacity-70">{o.hint}</span>}
             </button>
           );
         })}

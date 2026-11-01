@@ -436,11 +436,9 @@
       "titleOn": "Het beste op {{date}}"
     },
     "browse": {
-      "title": "Bladeren per soort",
-      "myWishlist": "Mijn verlanglijst ({{count}})"
+      "title": "Bladeren per soort"
     },
     "results": {
-      "back": "Terug naar Verkennen",
       "forQuery": "Resultaten voor \"{{query}}\"",
       "inConstellation": "Het beste in {{name}}",
       "all": "Alles",
@@ -450,7 +448,9 @@
       "showEverything": "Alles tonen, ook wat hier nooit opkomt",
       "loadMore": "Meer laden",
       "bestTonight": "Beste vannacht",
-      "bestOn": "Het beste op {{date}}"
+      "bestOn": "Het beste op {{date}}",
+      "breadcrumb": "Waar je bent",
+      "categories": "Categorieën"
     },
     "filters": {
       "visibility": "Tonen",
@@ -497,6 +497,17 @@
     "night": {
       "showing": "Toont {{date}}, de nacht die in de planner is gekozen.",
       "backToTonight": "Terug naar vannacht"
+    },
+    "tabs": {
+      "label": "Onderdelen van Verkennen",
+      "discover": "Ontdekken",
+      "wishlist": "Verlanglijst"
+    },
+    "wishlist": {
+      "summary_one": "{{total}} doel, {{visible}} vannacht zichtbaar",
+      "summary_other": "{{total}} doelen, {{visible}} vannacht zichtbaar",
+      "highPriority_one": "{{formatted}} met hoge prioriteit",
+      "highPriority_other": "{{formatted}} met hoge prioriteit"
     }
   }
 }

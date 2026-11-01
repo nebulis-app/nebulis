@@ -22,7 +22,7 @@ export interface ApiResponse<T = unknown> {
  * Call res.json(data) as normal — the middleware transforms it.
  * To send an error, use res.apiError() instead.
  */
-export function apiEnvelope(req: Request, res: Response, next: NextFunction) {
+export function apiEnvelope(_req: Request, res: Response, next: NextFunction) {
   const originalJson = res.json.bind(res);
 
   // Attach helper for success responses with meta

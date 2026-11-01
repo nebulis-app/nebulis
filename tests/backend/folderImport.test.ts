@@ -85,6 +85,9 @@ describe('scan + commit', () => {
   });
   beforeEach(() => {
     if (fs.existsSync(LIBRARY_DIR)) fs.rmSync(LIBRARY_DIR, { recursive: true, force: true });
+    // The folder wipe above leaves the index rows of earlier tests behind; clear them so
+    // each test sees only what it imported, whatever order the tests run in.
+    for (const table of ['libraryFiles', 'librarySessions', 'libraryObjects']) db.prepare(`DELETE FROM "${table}"`).run();
     // Guard against a prior test leaking the toggle off.
     updateSettingsData({ groupObservingNights: true });
   });

@@ -13,6 +13,7 @@ import { randomBytes, randomUUID } from 'crypto';
 import db from './db.js';
 import { generateDeviceToken, getUserById, type UserRole } from './auth.js';
 import { logEvent } from './systemLog.js';
+import type { ClientApp } from './clientApp.js';
 
 const PAIRING_TTL_MS = 10 * 60 * 1000;       // 10 minutes
 export const POLL_INTERVAL_SEC = 5;
@@ -77,6 +78,9 @@ const stmts = {
     'UPDATE connectedDevices SET revokedAt = ? WHERE userId = ? AND revokedAt IS NULL'
   ),
   touchDevice: db.prepare('UPDATE connectedDevices SET lastSeenAt = ? WHERE id = ?'),
+  touchDeviceWithApp: db.prepare(
+    'UPDATE connectedDevices SET lastSeenAt = ?, clientPlatform = ?, clientVersion = ? WHERE id = ?'
+  ),
   renameDevice: db.prepare('UPDATE connectedDevices SET name = ? WHERE id = ? AND userId = ?'),
   listAllDevices: db.prepare<[], DeviceRow & { ownerUsername: string | null; ownerDisplayName: string | null }>(
     `SELECT cd.id, cd.userId, cd.name, cd.createdAt, cd.lastSeenAt, cd.revokedAt,
@@ -401,6 +405,7 @@ export function isDeviceActive(deviceId: string): boolean {
   return !!row && row.revokedAt === null;
 }
 
-export function touchDevice(deviceId: string): void {
-  stmts.touchDevice.run(Date.now(), deviceId);
+export function touchDevice(deviceId: string, app?: ClientApp | null): void {
+  if (app) stmts.touchDeviceWithApp.run(Date.now(), app.platform, app.version, deviceId);
+  else stmts.touchDevice.run(Date.now(), deviceId);
 }

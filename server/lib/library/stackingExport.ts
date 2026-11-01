@@ -150,7 +150,7 @@ function sumBytes(files: CalibrationFile[]): number {
  * all of them. Filter labels go through the same aliases as the integration
  * breakdown.
  */
-export function listCalibrationCandidates(normalize: FilterNormalizer = filterNormalizer()): CandidateWithFiles[] {
+function listCalibrationCandidates(normalize: FilterNormalizer = filterNormalizer()): CandidateWithFiles[] {
   const out: CandidateWithFiles[] = [];
   for (const group of listCalibrationLibrary()) {
     for (const set of group.settingsGroups) {

@@ -24,13 +24,13 @@ import { getStartrailsObjectId, STARTRAILS_TARGET_NAME } from '../../server/lib/
 const SETTINGS = { importJpg: true, importFits: true, importThumbnails: false, importVideos: false, importSubFrames: true };
 const roots: string[] = [];
 
-afterAll(() => {
+afterAll(async () => {
   vi.unstubAllGlobals();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
   for (const r of roots) fs.rmSync(r, { recursive: true, force: true });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline in tests')));
   db.prepare('DELETE FROM libraryObjects').run();
   db.prepare('DELETE FROM libraryFiles').run();
@@ -77,10 +77,10 @@ const summarize = (rows: Array<{ id: string; fileCount: number; sessions: Array<
     .sort();
 
 describe('link and copy import read the same folder the same way', () => {
-  it('find the same objects, the same file counts and the same session dates', () => {
+  it('find the same objects, the same file counts and the same session dates', async () => {
     const root = dwarfCard();
     const copy = scanImportFolder(root, SETTINGS);
-    const link = scanSource(root, SETTINGS);
+    const link = await scanSource(root, SETTINGS);
 
     const copyRows = summarize(copy.objects.map(o => ({ id: o.targetObjectId ?? o.folderName, fileCount: o.fileCount, sessions: o.sessions })));
     const linkRows = summarize(link.objects.map(o => ({ id: o.objectId, fileCount: o.fileCount, sessions: o.sessions })));
@@ -90,9 +90,9 @@ describe('link and copy import read the same folder the same way', () => {
     expect(linkRows.map(r => r.split(' ')[0]).sort()).toEqual(['c2025r3panstarrs', 'dwarfstartrails', 'ic1396']);
   });
 
-  it('agree on Star Trails specifically: both captures, frames only, no per-frame previews', () => {
+  it('agree on Star Trails specifically: both captures, frames only, no per-frame previews', async () => {
     const root = dwarfCard();
-    const link = scanSource(root, SETTINGS);
+    const link = await scanSource(root, SETTINGS);
     const trails = link.objects.find(o => o.objectId === getStartrailsObjectId());
     expect(trails).toBeDefined();
     expect(trails!.fileCount).toBe(6); // 2 captures x 3 frames; the 6 Thumbnail/ previews stay out
@@ -102,7 +102,7 @@ describe('link and copy import read the same folder the same way', () => {
     expect(link.unresolved).toEqual([]);
   });
 
-  it('date a Star Trails capture by its folder name, not by when the files were copied', () => {
+  it('date a Star Trails capture by its folder name, not by when the files were copied', async () => {
     const root = dwarfCard();
     // A card copied to a new disk: every file now claims to be from years ago (or, in real life, from today).
     const longAgo = new Date('2001-01-01T12:00:00Z');
@@ -115,16 +115,16 @@ describe('link and copy import read the same folder the same way', () => {
     stamp(root);
 
     const copy = scanImportFolder(root, SETTINGS).objects.find(o => norm(o.targetObjectId ?? o.folderName) === 'dwarfstartrails');
-    const link = scanSource(root, SETTINGS).objects.find(o => o.objectId === getStartrailsObjectId());
+    const link = (await scanSource(root, SETTINGS)).objects.find(o => o.objectId === getStartrailsObjectId());
     const dates = (xs: Array<{ date: string }> | undefined) => (xs ?? []).map(s => s.date).sort();
     expect(dates(copy?.sessions)).toEqual(['2026-04-05', '2026-04-16']);
     expect(dates(link?.sessions)).toEqual(['2026-04-05', '2026-04-16']);
   });
 
-  it('name the same excluded folders and account for skipped files in the same words', () => {
+  it('name the same excluded folders and account for skipped files in the same words', async () => {
     const root = dwarfCard();
     const copy = scanImportFolder(root, SETTINGS);
-    const link = scanSource(root, SETTINGS);
+    const link = await scanSource(root, SETTINGS);
     expect(link.excludedFolders).toEqual(copy.excludedFolders);
     expect(link.excludedFolders).toEqual(['CALI_FRAME', 'RESTACKED']);
 
@@ -134,9 +134,9 @@ describe('link and copy import read the same folder the same way', () => {
     expect(folders?.label).toBe(copy.skipped.find(s => s.reason === 'non-observation-folder')?.label);
   });
 
-  it('report the folder each object came from, and where each session date came from', () => {
+  it('report the folder each object came from, and where each session date came from', async () => {
     const root = dwarfCard();
-    const link = scanSource(root, SETTINGS);
+    const link = await scanSource(root, SETTINGS);
     const byId = new Map(link.objects.map(o => [norm(o.objectId), o]));
     expect(byId.get('c2025r3panstarrs')?.sourceName).toBe('C 2025 R3 PANSTARRS');
     expect(byId.get('ic1396')?.sourceName).toBe('IC 1396');
@@ -146,9 +146,9 @@ describe('link and copy import read the same folder the same way', () => {
     expect(byId.get('dwarfstartrails')?.sessions.every(s => s.source === 'folder')).toBe(true);
   });
 
-  it('leave the same folders out', () => {
+  it('leave the same folders out', async () => {
     const root = dwarfCard();
-    const link = scanSource(root, SETTINGS);
+    const link = await scanSource(root, SETTINGS);
     // CALI_FRAME and RESTACKED hold no observations for either path.
     expect(link.objects.some(o => norm(o.objectId) === 'm31')).toBe(false);
     expect(link.objects.some(o => o.objectId.toLowerCase().includes('dark'))).toBe(false);
@@ -156,9 +156,9 @@ describe('link and copy import read the same folder the same way', () => {
 });
 
 describe('linking Star Trails', () => {
-  it('creates the shared object with its curated name and type, not a placeholder', () => {
+  it('creates the shared object with its curated name and type, not a placeholder', async () => {
     const root = dwarfCard();
-    commitSource(root, SETTINGS, { label: 'card' });
+    await commitSource(root, SETTINGS, { label: 'card' });
 
     const row = db.prepare<[string], { objectName: string; objectType: string; constellation: string; description: string }>(
       'SELECT objectName, objectType, constellation, description FROM libraryObjects WHERE objectId = ?',
@@ -169,9 +169,9 @@ describe('linking Star Trails', () => {
     expect(row?.description).toMatch(/Star Trails captures show/);
   });
 
-  it('links only the frames, across both nights, as one object', () => {
+  it('links only the frames, across both nights, as one object', async () => {
     const root = dwarfCard();
-    const { sourceId } = commitSource(root, SETTINGS, { label: 'card' });
+    const { sourceId } = await commitSource(root, SETTINGS, { label: 'card' });
     const rows = db.prepare<[string, string], { relPath: string }>(
       'SELECT relPath FROM libraryFiles WHERE sourceId = ? AND objectId = ?',
     ).all(sourceId, getStartrailsObjectId());
@@ -183,12 +183,12 @@ describe('linking Star Trails', () => {
     expect(sessions.length).toBeGreaterThan(0);
   });
 
-  it('heals the curated name after a rescan, and reports nothing changed', () => {
+  it('heals the curated name after a rescan, and reports nothing changed', async () => {
     const root = dwarfCard();
-    const { sourceId } = commitSource(root, SETTINGS, { label: 'card' });
+    const { sourceId } = await commitSource(root, SETTINGS, { label: 'card' });
     db.prepare('UPDATE libraryObjects SET objectName = objectId, objectType = NULL WHERE objectId = ?').run(getStartrailsObjectId());
 
-    const rescan = rescanSource(sourceId, SETTINGS);
+    const rescan = await rescanSource(sourceId, SETTINGS);
     expect(rescan).toMatchObject({ added: 0, updated: 0, missing: 0, removed: 0 });
     const row = db.prepare<[string], { objectName: string; objectType: string }>(
       'SELECT objectName, objectType FROM libraryObjects WHERE objectId = ?',

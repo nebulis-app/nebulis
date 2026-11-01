@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ZoomIn, ZoomOut, RotateCw, Contrast, Satellite, Loader2, Clock, Zap, AlertCircle, X, Info, MapPin } from 'lucide-react';
 import { identifySatellites, type SatelliteTrailResult } from '../lib/api/observations';
 import { fetchBinary } from '../lib/api/client';
 import { parseFits, renderFitsToCanvas } from '../lib/fits';
-import { FITS_GC_MS } from './lightbox/prefetchFits';
+import { FITS_GC_MS, fitsFrameSizeQuery } from './lightbox/prefetchFits';
+import { FITS_DEFAULT_STRETCH } from './lightbox/zoomControls';
 
 interface FitsViewerProps {
   url: string;
   isDark: boolean;
   filePath?: string;
+  /** A small picture of the frame the server has already rendered. With `hideControls` (the lightbox) it is shown
+   *  straight away and the real frame is only fetched when zoom or stretch asks for more than a JPEG can give. */
+  previewUrl?: string | null;
   fileType?: 'stacked' | 'sub' | 'thumbnail' | 'video' | 'other';
   initialSatResult?: SatelliteTrailResult;
   /** When true, the controls toolbar is hidden — caller manages zoom/stretch in a header. */
@@ -28,10 +32,41 @@ interface FitsViewerProps {
   initialZoom?: number;
 }
 
+/**
+ * The server's FITS preview, shown at the size the real frame will have.
+ *
+ * Every FITS thumbnail the server renders is a square with the frame scaled to fit it and centred on black, whatever
+ * the frame's shape. Stretching that square to the frame's own proportions would squeeze the picture, so the whole
+ * square is drawn at true proportions and the surrounding black is cropped away, leaving exactly the frame's box:
+ * the same size the canvas that replaces it will be.
+ */
+function PreviewPicture({ src, frameW, frameH, zoom }: { src: string | undefined; frameW: number; frameH: number; zoom: number }) {
+  // The frame size comes from the header and may not have arrived yet. The square is drawn with its black bars, which
+  // would flash, so it stays hidden until the size is known.
+  if (frameW <= 0 || frameH <= 0) {
+    return <img src={src} alt="" draggable={false} className="select-none" style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', visibility: 'hidden' }} />;
+  }
+  const boxW = Math.round(frameW * zoom);
+  const boxH = Math.round(frameH * zoom);
+  const side = Math.round(Math.max(frameW, frameH) * zoom);
+  return (
+    <div className="relative flex-shrink-0 overflow-hidden" style={{ width: boxW, height: boxH }}>
+      <img
+        src={src}
+        alt=""
+        draggable={false}
+        className="absolute select-none"
+        style={{ width: side, height: side, maxWidth: 'none', left: Math.round((boxW - side) / 2), top: Math.round((boxH - side) / 2) }}
+      />
+    </div>
+  );
+}
+
 export function FitsViewer({
   url,
   isDark,
   filePath,
+  previewUrl,
   fileType,
   initialSatResult,
   hideControls = false,
@@ -71,20 +106,50 @@ export function FitsViewer({
     return () => window.removeEventListener('keydown', onKey);
   }, [satModalOpen, satHelpOpen, showLocationPrompt]);
 
+  // The preview is a small JPEG the server renders and caches. The real frame is a download of tens of megabytes that
+  // is then decoded, debayered and stretched on this tab's main thread, which is what made opening a frame slow. So a
+  // caller that has a preview shows that first, and the real frame is only fetched once the user asks for something a
+  // JPEG cannot give: zooming past fit, or moving the stretch. A frame fetched earlier is used as it is.
+  const previewing = hideControls && !!previewUrl;
+
+  // The preview is smaller than the frame, so the true frame size comes from its header (a few KB). It keeps the zoom
+  // readout and the fit scale honest while only the preview is on screen.
+  // The previous frame's size stands in while the next one's arrives, so stepping between frames never shows a
+  // preview laid out for the wrong shape. Frames from one sensor share a shape, and the right size follows at once.
+  const dimsQuery = useQuery({
+    ...fitsFrameSizeQuery(filePath ?? ''),
+    enabled: previewing && !!filePath,
+    placeholderData: keepPreviousData,
+  });
+  const dims = dimsQuery.data ?? null;
+  // Without the frame size a preview cannot be scaled like the real thing, so fall back to loading the frame.
+  const previewUsable = previewing && !!filePath && !dimsQuery.isError;
+
+  const wantsFull = !previewUsable
+    || (externalZoom !== undefined && externalZoom !== null)
+    || (externalStretch !== undefined && externalStretch !== FITS_DEFAULT_STRETCH);
+
   // Cached by url (same key namespace as FitsThumbnail/FitsPreview) so
   // navigating away and back to this file — or reopening it in the lightbox
   // after already having viewed it in the grid — doesn't re-download it.
   // staleTime: Infinity because the bytes at a given library URL never change.
+  // While `enabled` is false a frame that is already cached is still returned.
   const fitsQuery = useQuery({
     queryKey: ['fits-binary', url],
     queryFn: async ({ signal }) => parseFits(await fetchBinary(url, signal, t), t),
+    enabled: wantsFull,
     staleTime: Infinity,
     gcTime: FITS_GC_MS,
     retry: false,
   });
   const fitsData = fitsQuery.data ?? null;
+  const showPreview = previewUsable && !fitsData;
   const loading = fitsQuery.isPending;
   const error = fitsQuery.error instanceof Error ? fitsQuery.error.message : null;
+
+  // Size of the frame in pixels, from the decoded data once there is some, else from the header.
+  const frameW = fitsData?.width ?? dims?.width ?? 0;
+  const frameH = fitsData?.height ?? dims?.height ?? 0;
 
   // Internal zoom state — only used when hideControls=false
   const [fitZoom, setFitZoom] = useState<number | null>(null);
@@ -148,29 +213,29 @@ export function FitsViewer({
   }, [filePath, t]);
 
   useEffect(() => {
-    if (fitsData) onNaturalSize?.(fitsData.width, fitsData.height);
-  }, [fitsData, onNaturalSize]);
+    if (frameW > 0) onNaturalSize?.(frameW, frameH);
+  }, [frameW, frameH, onNaturalSize]);
 
   const computeFit = useCallback(() => {
     const el = containerRef.current;
-    if (!el || !fitsData) return;
+    if (!el || frameW <= 0) return;
     const cw = el.clientWidth || el.offsetWidth;
     const ch = el.clientHeight || el.offsetHeight;
     if (cw > 10 && ch > 10) {
-      const fz = Math.min(cw / fitsData.width, ch / fitsData.height, 1);
+      const fz = Math.min(cw / frameW, ch / frameH, 1);
       setFitZoom(fz);
       onFitZoomComputed?.(fz);
     }
-  }, [fitsData, onFitZoomComputed]);
+  }, [frameW, frameH, onFitZoomComputed]);
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || !fitsData) return;
+    if (!el || frameW <= 0) return;
     computeFit();
     const observer = new ResizeObserver(computeFit);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [fitsData, computeFit]);
+  }, [frameW, computeFit, showPreview]);
 
   // The satellite-detection UI is per-file, so it resets whenever the
   // displayed file changes. Render-phase reset (not an effect) so the previous
@@ -192,7 +257,7 @@ export function FitsViewer({
   return (
     <div className={hideControls ? 'w-full h-full flex flex-col' : 'space-y-4'}>
       {/* Loading / error */}
-      {(loading || error) && !fitsData && (
+      {(loading || error) && !fitsData && !showPreview && (
         <div className={`flex items-center justify-center h-64 rounded-xl ${
           error
             ? isDark ? 'bg-slate-900 text-danger-500' : 'bg-red-50 text-danger-600'
@@ -207,10 +272,10 @@ export function FitsViewer({
         </div>
       )}
 
-      {fitsData && (<>
+      {(fitsData || showPreview) && (<>
 
       {/* Standalone controls — only rendered when not controlled by a parent */}
-      {!hideControls && (
+      {fitsData && !hideControls && (
         <div className={`flex flex-wrap items-center gap-4 p-3 rounded-xl ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
           <div className="flex items-center gap-2">
             <button
@@ -321,14 +386,28 @@ export function FitsViewer({
               }`
         }`}
       >
-        <canvas
-          ref={canvasRef}
-          style={{
-            display: 'block',
-            width: fitsData ? Math.round(fitsData.width * zoom) : undefined,
-            height: fitsData ? Math.round(fitsData.height * zoom) : undefined,
-          }}
-        />
+        {fitsData ? (
+          <canvas
+            ref={canvasRef}
+            style={{
+              display: 'block',
+              width: Math.round(fitsData.width * zoom),
+              height: Math.round(fitsData.height * zoom),
+            }}
+          />
+        ) : (
+          <PreviewPicture src={previewUrl ?? undefined} frameW={frameW} frameH={frameH} zoom={zoom} />
+        )}
+
+        {showPreview && wantsFull && !error && (
+          <div className="absolute left-3 top-3 flex items-center gap-2 rounded-lg bg-black/60 px-2.5 py-1.5 text-xs text-white/80">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            {t('fitsViewer.loadingFitsData')}
+          </div>
+        )}
+        {showPreview && error && (
+          <span className="absolute left-3 top-3 rounded-lg bg-red-900/80 px-2.5 py-1.5 text-xs text-red-300">{error}</span>
+        )}
 
         {/* Satellite button overlay — shown when controls are hidden */}
         {hideControls && filePath && fileType === 'sub' && (

@@ -39,6 +39,10 @@ const NARROWBAND_TOKENS = new Set([
   'h', 'ha', 'halpha', 'hα', 'hb', 'hbeta', 'oiii', 'o3', 'sii', 's2', 'nii', 'n2',
   'nb', 'narrowband', 'dual', 'duo', 'dualband', 'duoband', 'tri', 'triband', 'quad', 'quadband',
   'd1', 'd2', 'lextreme', 'lultimate', 'lenhance', 'alpt', 'nbz', 'sho', 'hoo',
+  // The SeeStar S50's built-in LP filter is a dual-band one (Hα 20 nm, OIII
+  // 30 nm), and "LP" is the token its FITS headers carry. An Optolong L-Pro is
+  // written L-Pro or LPRO, which is broadband and stays that way below.
+  'lp',
 ]);
 
 /** Band of a filter by its name; null when the name says nothing (no filter,

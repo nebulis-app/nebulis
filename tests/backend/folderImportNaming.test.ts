@@ -226,4 +226,14 @@ describe('importNaming', () => {
   it('preserves the thumbnail marker so classification holds', () => {
     expect(canonicalImportName('preview_thn.jpg', '2024-01-15', null, null, new Set())).toContain('_thn.jpg');
   });
+
+  it('never lets a dotted folder donate an extension or a path separator', () => {
+    const out = canonicalImportName('v1.2/light', '2026-04-26', null, null, new Set());
+    expect(out).not.toMatch(/[/\\]/);
+    expect(out).toBe('v1.2_light_20260426-120000');
+  });
+
+  it('keeps the real extension when a dotted folder precedes a named file', () => {
+    expect(canonicalImportName('v1.2/light.FIT', '2026-04-26', null, null, new Set())).toBe('v1.2_light_20260426-120000.fit');
+  });
 });

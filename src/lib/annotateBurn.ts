@@ -98,7 +98,7 @@ export function planBurn(data: AnnotationData, width: number, height: number): B
   return { width, height, fontPx, strokePx, rings, labels };
 }
 
-export function drawBurn(ctx: CanvasRenderingContext2D, plan: BurnPlan, fontFamily: string): void {
+function drawBurn(ctx: CanvasRenderingContext2D, plan: BurnPlan, fontFamily: string): void {
   const { fontPx, strokePx } = plan;
   ctx.save();
   for (const ring of plan.rings) {

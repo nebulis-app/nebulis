@@ -85,6 +85,8 @@ describe('parseFitsHeader - property tests', () => {
         text => {
           const header = parseFitsHeader(Buffer.from(text, 'ascii'));
           expect(Array.isArray(header.cards)).toBe(true);
+          // The terminator is missing, so at most one card per full 80-byte record can have been read.
+          expect(header.cards.length).toBeLessThanOrEqual(Math.ceil(text.length / 80));
         },
       ),
       { numRuns: NUM_RUNS },

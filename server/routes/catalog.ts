@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import sharp from '../lib/sharp-optional.js';
 import { assertSafeRaster } from '../lib/imageSniff.js';
-import { getCatalogEntry, searchCatalog, getAllCatalogEntries, getAlsoKnownAs } from '../data/catalog.js';
+import { getCatalogEntry, searchCatalog, getAllCatalogEntries, getAlsoKnownAs } from '../lib/catalogLookup.js';
 import { parsePagination, paginate } from '../middleware/pagination.js';
 import { raToDegs, decToDegs } from '../lib/astroCalc.js';
 import { queryString } from '../lib/queryHelpers.js';

@@ -123,7 +123,7 @@ describe('golden import — runImport (live telescope path)', () => {
     it(`${fixture.name} is stable and idempotent`, async () => {
       const fx = fixture.build();
       const telescopeId = await importFixture(fx, { importSubFrames: fixture.subFrames });
-      expect(getImportStatus().error).toBeFalsy();
+      expect(getImportStatus().error).toBeNull();
 
       const first = stable(snapshotLibraryState(), telescopeId);
       expect(first).toMatchSnapshot();
@@ -135,7 +135,7 @@ describe('golden import — runImport (live telescope path)', () => {
       } finally {
         releaseImportLock();
       }
-      expect(getImportStatus().error).toBeFalsy();
+      expect(getImportStatus().error).toBeNull();
       const second = stable(snapshotLibraryState(), telescopeId);
       expect(persistent(second)).toEqual(persistent(first));
       expect(second.latestHistory?.newFiles ?? 0).toBe(0);
@@ -156,7 +156,7 @@ describe('golden import — syncSessionSubFrames', () => {
     } finally {
       releaseImportLock();
     }
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
 
     const first = stable(snapshotLibraryState(), telescopeId);
     expect(first).toMatchSnapshot();
@@ -193,7 +193,7 @@ describe('golden import — commitFolderImport (wizard path)', () => {
         sessionMap: Object.fromEntries(o.sessions.map(s => [s.date, s.date])),
       })),
     });
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
 
     // No telescope id on the folder path, so no normalization needed.
     const snap = snapshotLibraryState();

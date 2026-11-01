@@ -58,7 +58,7 @@ function renderLinks(text: string, linkClass: string): React.ReactNode[] {
   return out;
 }
 
-/** Renders **bold** spans and [links](https://...) from changelog text. A span holding a Settings path
+/** Renders **bold** and *italic* spans and [links](https://...) from changelog text. A span holding a Settings path
  *  ("Settings -> Library -> Filter aliases") becomes a chip so it reads as a
  *  place to go; any other bold span is a plain lead-in. */
 function renderInline(text: string, strongClass: string, isDark: boolean): React.ReactNode[] {
@@ -67,7 +67,16 @@ function renderInline(text: string, strongClass: string, isDark: boolean): React
     : 'bg-slate-100 text-slate-900 ring-1 ring-slate-200';
   const linkClass = isDark ? 'text-accent-400 hover:underline' : 'text-accent-600 hover:underline';
   return text.split(/\*\*(.+?)\*\*/g).map((part, i) => {
-    if (i % 2 === 0) return <span key={i}>{renderLinks(part, linkClass)}</span>;
+    if (i % 2 === 0) {
+      // *italic* spans sit between the bold ones; odd pieces of this split are the italic text.
+      return (
+        <span key={i}>
+          {part.split(/(?<!\*)\*([^*\s][^*]*)\*(?!\*)/g).map((piece, j) =>
+            j % 2 === 0 ? <span key={j}>{renderLinks(piece, linkClass)}</span> : <em key={j}>{piece}</em>,
+          )}
+        </span>
+      );
+    }
     if (part.includes('->')) {
       return (
         <span key={i} className={`mx-0.5 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[0.85em] font-medium ${chipClass}`}>

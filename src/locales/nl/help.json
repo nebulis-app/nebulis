@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Help",
-    "subtitle": "Alles wat je nodig hebt om Nebulis te gebruiken, van de eerste installatie tot dagelijks gebruik.",
+    "subtitle": "Installatiegidsen, een rondleiding langs elke pagina en antwoorden op veelvoorkomende problemen.",
     "startTour": "Start de rondleiding",
     "guidesHeading": "Gidsen"
   },
@@ -70,7 +70,17 @@
     },
     "objectFilters": {
       "q": "Welke objecten vallen onder elk filter?",
-      "a": "Filters groeperen objecten op hun catalogustype en zoeken daarbij naar woorden in de typenaam. Die namen komen uit de catalogus en blijven Engels, ongeacht de ingestelde taal. De relevante woorden zijn dus \"galaxy\", \"nebula\" en \"cluster\". Elk type met \"galaxy\" valt onder sterrenstelsels: spiraalstelsels, balkspiraalstelsels, onregelmatige stelsels, lensvormige stelsels en starburststelsels, maar ook groepen, paren en drietallen van sterrenstelsels. \"nebula\" omvat emissienevels, reflectienevels, donkere nevels en planetaire nevels. Supernovaresten tellen ook als nevels. \"cluster\" omvat open en bolvormige sterrenhopen. Een object kan onder meerdere filters vallen: een planetaire nevel valt onder zowel nevels als planetaire nevels, een supernovarest onder zowel nevels als supernovaresten, en Cluster + Nebula onder zowel sterrenhopen als nevels. Als een telling één categorie moet kiezen, telt Cluster + Nebula als nevel, omdat de nevelstructuur het onderwerp van de opname is. De Bibliotheek heeft ook specifiekere filters: zonnestelselobjecten, kometen, sterren, planetaire nevels, supernovaresten en Onbekend. Dat laatste filter bevat objecten waarvan het type niet kon worden bepaald."
+      "intro": "Filters groeperen objecten op hun catalogustype. Die namen komen uit de catalogus en blijven Engels, ongeacht de ingestelde taal. De relevante woorden zijn dus \"galaxy\", \"nebula\" en \"cluster\".",
+      "galaxyTerm": "galaxy",
+      "galaxyDef": "Elk type met \"galaxy\": spiraalstelsels, balkspiraalstelsels, onregelmatige stelsels, lensvormige stelsels en starburststelsels, maar ook groepen, paren en drietallen van sterrenstelsels.",
+      "nebulaTerm": "nebula",
+      "nebulaDef": "Emissienevels, reflectienevels, donkere nevels en planetaire nevels. Supernovaresten tellen ook als nevels.",
+      "clusterTerm": "cluster",
+      "clusterDef": "Open en bolvormige sterrenhopen.",
+      "overlapTerm": "Meerdere filters",
+      "overlapDef": "Een planetaire nevel valt onder zowel nevels als planetaire nevels, een supernovarest onder zowel nevels als supernovaresten, en Cluster + Nebula onder zowel sterrenhopen als nevels. Als een telling één categorie moet kiezen, telt Cluster + Nebula als nevel, omdat de nevelstructuur het onderwerp van de opname is.",
+      "libraryTerm": "Alleen in de Bibliotheek",
+      "libraryDef": "Zonnestelselobjecten, kometen, sterren, planetaire nevels, supernovaresten en Onbekend. Dat laatste filter bevat objecten waarvan het type niet kon worden bepaald."
     },
     "findTarget": {
       "q": "Hoe vind ik iets om te fotograferen?",
@@ -279,7 +289,7 @@
     "step2Alt": "Een categoriepagina met objectkaarten, elk gemarkeerd als vannacht zichtbaar of niet, met een opmerking over hoe het in beeld past",
     "step2Caption": "Verkennen → Categorie",
     "step3Title": "Op de verlanglijst zetten of inplannen",
-    "step3Body": "Zet een object op je verlanglijst, plan het voor vannacht, of open Plan een nacht om uit de komende 30 nachten te kiezen. De knop Doel toevoegen van de Verlanglijst opent Verkennen, en kaarten in Verkennen en de Verlanglijst verwijzen terug naar de Planner. Gebruik je Verkennen niet, verberg dan het tabblad onder Instellingen → Algemeen → Navigatiebalk.",
+    "step3Body": "Zet een object op je verlanglijst, plan het voor vannacht, of open Plan een nacht om uit de komende 30 nachten te kiezen. Je verlanglijst is het tweede tabblad van Verkennen, en kaarten in Verkennen verwijzen terug naar de Planner. Gebruik je Verkennen niet, verberg het dan onder Instellingen → Algemeen → Navigatiebalk.",
     "step3Alt": "Een kaart in Verkennen met de knoppen voor verlanglijst, Vannacht plannen en Plan een nacht",
     "step3Caption": "Verkennen → Toevoegen of plannen",
     "note": "Verkennen beoordeelt de zichtbaarheid aan de hand van de waarnemingslocatie in de banner en de kadrering aan de hand van het gezichtsveld van je telescoop. Stel beide eerst in onder Instellingen → Hemel en Instellingen → Telescopen. Heb je meer dan één locatie, wissel dan in de banner."
@@ -317,7 +327,7 @@
     "title": "Instellingen",
     "lead": "Pas de app aan, beheer opslag en verbind apparaten zodat Nebulis bij je werkwijze past.",
     "step1Title": "Je weg vinden",
-    "step1Body": "Het zoekvak bovenaan vindt elke instelling op naam en springt ernaartoe. Druk op / om erin te gaan staan. De zijbalk is gegroepeerd onder Apparatuur, Systeem en Geavanceerd, en alleen de pagina waarop je bent blijft open. Instellingen → Algemeen gaat over het uiterlijk van de app: het thema Licht, Donker, Ruimte of Nacht, welke menu-items in de bovenbalk staan (Verkennen, Verlanglijst, Kalibraties en andere kunnen worden verborgen), maateenheden en Compacte paginabanners, waarmee elke pagina met een ingeklapte banner begint.",
+    "step1Body": "Het zoekvak bovenaan vindt elke instelling op naam en springt ernaartoe. Druk op / om erin te gaan staan. De zijbalk is gegroepeerd onder Apparatuur, Systeem en Geavanceerd, en alleen de pagina waarop je bent blijft open. Instellingen → Algemeen gaat over het uiterlijk van de app: het thema Licht, Donker, Ruimte of Nacht, welke menu-items in de bovenbalk staan (Verkennen, Kalibraties en andere kunnen worden verborgen), maateenheden en Compacte paginabanners, waarmee elke pagina met een ingeklapte banner begint.",
     "step1Alt": "Instellingen met het zoekvak bovenaan, de gegroepeerde zijbalk en het paneel Algemeen met thema's en schakelaars voor de navigatiebalk",
     "step1Caption": "Instellingen → Algemeen",
     "step2Title": "Beheer je account en verbonden apparaten",
@@ -414,7 +424,7 @@
     "step3Body": "Als de ringen zichtbaar zijn, vragen Downloaden en Delen of je het origineel wilt bewaren of een JPEG met de getekende ringen wilt opslaan.",
     "step3Alt": "Het downloadvenster dat vraagt of je het origineel wilt bewaren of een JPEG met de ringen wilt opslaan",
     "step3Caption": "Viewer → Downloaden",
-    "note": "Annoteren zit nu in de webapp. Het komt naar de iPhone-, iPad- en Android-apps in hun versie 2.1.0."
+    "note": "Annoteren zit nu in de webapp. Werk de iPhone-, iPad- en Android-apps bij om het ook daar te krijgen."
   },
   "alerts": {
     "title": "Meldingen",
@@ -428,7 +438,7 @@
     "step2Alt": "De gebeurtenisschakelaars van een kanaal en het tijdstip voor heldere nachten",
     "step2Caption": "Meldingen → Gebeurtenissen",
     "step3Title": "Push naar iPhones",
-    "step3Body": "Push op de iPhone vereist versie 2.1.0 van de iPhone-app, die binnenkort verschijnt. Het loopt via een klein Nebulis-relay dat niets opslaat. Zet Meldingen aan vanaf deze server en kies daarna onder Instellingen → Meldingen → iPhones wat elke telefoon krijgt. Elke iPhone kan een regel Plan voor vannacht of een waarschuwing voor dauwrisico aan zijn melding toevoegen.",
+    "step3Body": "Push op de iPhone vereist de nieuwste iPhone-app. Het loopt via een klein Nebulis-relay dat niets opslaat. Zet Meldingen aan vanaf deze server en kies daarna onder Instellingen → Meldingen → iPhones wat elke telefoon krijgt. Elke iPhone kan een regel Plan voor vannacht of een waarschuwing voor dauwrisico aan zijn melding toevoegen.",
     "step3Alt": "De lijst met iPhones in Instellingen → Meldingen, met de extra regels die elke telefoon kan toevoegen",
     "step3Caption": "Meldingen → iPhones"
   },
@@ -656,7 +666,7 @@
     "step4Body": "Gekoppelde telefoons, tablets en tv's staan bij Instellingen → Account → Apparaten. Elk apparaat heeft een eigen aanmeldtoken. Als je de toegang intrekt, wordt die direct beëindigd zonder andere apparaten te beïnvloeden.",
     "step4Alt": "Instellingen → Account → Apparaten met de knop Apparaat verbinden en een lege apparatenlijst",
     "step4Caption": "Instellingen → Account → Apparaten",
-    "note": "Annoteren, pushmeldingen op de iPhone en foto's van je waarnemingslocaties komen met versie 2.1.0 van de iPhone- en iPad-app, en Annoteren ook in de Android-app."
+    "note": "Annoteren, pushmeldingen op de iPhone en foto's van je waarnemingslocaties zitten in de nieuwste iPhone- en iPad-app, en Annoteren ook in de nieuwste Android-app."
   },
   "pixinsight": {
     "title": "PixInsight-integratie",

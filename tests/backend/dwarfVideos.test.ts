@@ -122,7 +122,7 @@ describe('runImport — Dwarf Videos end-to-end', () => {
     expect(claimImportLock()).toBe(true);
     await runImport(undefined, undefined, { telescopeId: profile.id });
 
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
     // Runs before any other test in this file creates the (deterministic,
     // shared-per-file-DB) Videos object row, so its absence here is
     // meaningful rather than a leftover from test order.
@@ -155,7 +155,7 @@ describe('runImport — Dwarf Videos end-to-end', () => {
     await runImport(undefined, undefined, { telescopeId: profile.id });
 
     const status = getImportStatus();
-    expect(status.error).toBeFalsy();
+    expect(status.error).toBeNull();
     expect(status.objectsDone).toBeGreaterThanOrEqual(1);
 
     const objectId = getVideosObjectId();

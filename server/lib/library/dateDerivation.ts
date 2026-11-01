@@ -237,7 +237,7 @@ export interface DeriveOptions {
 export function deriveFileDate(
   absPath: string,
   relPath: string,
-  stat: fs.Stats,
+  stat: Pick<fs.Stats, 'mtime'>,
   options: DeriveOptions = {},
 ): DerivedDate {
   const fileName = relPath.replace(/\\/g, '/').split('/').pop() ?? relPath;

@@ -22,6 +22,7 @@
     "apiKeys": "API keys",
     "alerts": "Alerts",
     "display": "Display",
+    "slideshow": "Slideshow",
     "organization": "Organization",
     "processing": "Processing",
     "maintenance": "Maintenance",
@@ -174,7 +175,7 @@
     "aTelescope": "a telescope",
     "triggerManual": "Manual",
     "triggerScheduled": "Scheduled",
-    "syncCancelled": "{{trigger}} sync from {{origin}} was cancelled.",
+    "syncCancelled": "{{trigger}} sync from {{origin}} was canceled.",
     "syncFailed": "{{trigger}} sync from {{origin}} failed: {{error}}",
     "syncCompleted_one": "{{trigger}} sync from {{origin}} completed: {{count}} new file.",
     "syncCompleted_other": "{{trigger}} sync from {{origin}} completed: {{count}} new files."
@@ -258,13 +259,13 @@
       "success": "Data deleted",
       "successDescription": "Your settings and accounts were preserved.",
       "close": "Close",
-      "genericError": "The reset did not finish. Your data has not been changed. Try again, or check the system log."
+      "genericError": "The reset did not finish. Some data may already be gone. Check the system log before trying again."
     }
   },
   "librarySection": {
     "display": {
       "title": "Display",
-      "description": "How object cards and slideshow show images and information.",
+      "description": "How object cards show images and information.",
       "cardPictures": {
         "label": "Object card pictures",
         "description": "Reference uses catalog imagery from Hubble, DSS2, NASA and Caldwell: rich color, and it works for every object. My telescope uses your own captures, for objects you have imaged.",
@@ -282,19 +283,23 @@
         "media": "Combined"
       },
       "slideshowShowInfo": {
-        "label": "Slideshow: Show object information",
+        "label": "Show object information",
         "description": "Shows the name, type, and distance while images play."
       },
       "slideshowProcessedOnly": {
-        "label": "Slideshow: Start with processed images only",
+        "label": "Start with processed images only",
         "description": "Slideshow opens with only processed images; switch anytime."
       }
+    },
+    "slideshow": {
+      "title": "Slideshow",
+      "description": "How the slideshow shows images and information."
     },
     "imageBehavior": {
       "title": "Image behavior",
       "rotate": {
         "label": "Rotate images 90° counter-clockwise",
-        "description": "Corrects telescopes that capture rotated, slideshow included."
+        "description": "Turns every slideshow picture a quarter turn. Use it if your telescope saves pictures sideways."
       }
     },
     "organization": {
@@ -369,7 +374,7 @@
     "upToDate_beta": "You're on the latest beta version",
     "lastCheckFailed": "Last check could not complete: {{error}}",
     "checkFailed": "Could not check for updates.",
-    "updateStartFailed": "Could not start the update.",
+    "updateStartFailed": "Could not start the update. Check the server log, then try again.",
     "autoUpdate": {
       "label": "Check for updates automatically",
       "description": "Updates download in the background so they install faster."
@@ -640,7 +645,8 @@
       "bodyAfter": "instead. Nothing at the old location is copied. Do this only if your images are already in the default folder, or you plan to re-import them.",
       "resetFailed": "Could not reset the location",
       "cancel": "Cancel",
-      "resetLocation": "Reset location"
+      "resetLocation": "Reset location",
+      "secondLibraryWarning": "New imports will go to that folder on this computer's own disk. If the old drive comes back later, it will be a separate library, and the two will not merge on their own. If the drive is only unplugged, plug it back in instead."
     },
     "resetToDefaultModal": {
       "title": "Move library back to default",
@@ -661,7 +667,8 @@
       "filesProgress_one": "{{copied}} / {{count}} file",
       "filesProgress_other": "{{copied}} / {{count}} files",
       "keepDriveConnected": "Keep this drive connected. Imports are paused until the move finishes."
-    }
+    },
+    "recoveredNotice": "Your library drive came back at a different path, so Nebulis reconnected to it on its own. It was at {{from}} and is now at {{to}}."
   },
   "storageDashboard": {
     "title": "Storage",
@@ -824,7 +831,7 @@
     "findDeviceNone": "No SeeStar, ASIAIR or Dwarf found on {{subnets}}. Check it is on and on the same Wi-Fi as this computer, or type the address.",
     "findDeviceNoNetwork": "This computer has no local network to scan. Type the address instead.",
     "findDeviceFailed": "Scan failed. Type the address instead.",
-    "findDevicePick": "Found {{count}} — tap one to use it:",
+    "findDevicePick": "Found {{count}}. Tap one to use it:",
     "hostnameHelp": "For reliable connectivity, assign a static IP or DHCP reservation.",
     "advancedConnectionSettings": "Advanced connection settings",
     "advancedShareSettings": "Advanced share settings",
@@ -986,6 +993,7 @@
     "alerts": "Get told when a clear night is coming or an import is done.",
     "libraryOrganization": "How objects are named, grouped, and counted.",
     "libraryProcessing": "What Nebulis does with frames after they arrive.",
+    "librarySlideshow": "How the slideshow plays and what it shows.",
     "maintenance": "Tasks the server runs on its own each night.",
     "catalogs": "Offline imagery and satellite data kept on this server."
   },
@@ -1021,7 +1029,9 @@
     "cancel": "Cancel",
     "saveLabel": "Save",
     "connectedFound_one": "Connected. Found {{count}} folder.",
-    "connectedFound_other": "Connected. Found {{count}} folders."
+    "connectedFound_other": "Connected. Found {{count}} folders.",
+    "pairThisDrive": "Pair this drive instead",
+    "unmarkedNote": "That USB drive is read-only, so Nebulis could not mark it. It is recognized by its path alone, which can swap when two telescopes are plugged in at once."
   },
   "settingsUI": {
     "moreInfoAriaLabel": "More info: {{text}}"
@@ -1031,7 +1041,7 @@
     "dialogTitleAdd": "Add observing site",
     "editTitle": "Edit Observing Site",
     "addTitle": "Add Observing Site",
-    "saveFailed": "Failed to save site.",
+    "saveFailed": "Could not save the site. Check the connection to the server, then try again.",
     "nameLabel": "Name",
     "namePlaceholder": "e.g. Backyard, Dark Sky Site",
     "geolocationUnsupported": "Geolocation is not supported by this browser.",
@@ -1078,17 +1088,6 @@
     "pairingCodeAriaLabel": "Pairing code",
     "link": "Link"
   },
-  "archiveBrowserModal": {
-    "ariaLabel": "Archived calibration data",
-    "title": "Archived from {{name}}",
-    "subtitle": "Calibration frames with nowhere else to go: kept, never modeled as objects.",
-    "close": "Close",
-    "loading": "Loading…",
-    "nothingArchived": "Nothing archived yet.",
-    "fileCount_one": "{{count}} file",
-    "fileCount_other": "{{count}} files",
-    "done": "Done"
-  },
   "reassignTelescopeModal": {
     "ariaLabel": "Reassign telescope sessions",
     "title": "Move sessions",
@@ -1114,7 +1113,7 @@
     "connected": "{{name}} connected",
     "connectedHelp": "Your phone is signed in and ready.",
     "scanInstructions": "Open Nebulis on your phone, tap <1>Scan QR</1>, and point it at this code. It connects and signs in, no IP address needed.",
-    "generateFailed": "Could not generate a code.",
+    "generateFailed": "Could not generate a pairing code. Check the server is reachable, then try again.",
     "qrAlt": "Pairing QR code",
     "refreshing": "Refreshing…",
     "codeExpiredTapToRefresh": "Code expired. Tap to refresh.",
@@ -1133,7 +1132,7 @@
     "passwordTooShort": "Min 6 characters.",
     "passwordSavedNote": "Saved when you save this form.",
     "resetPasswordButton": "Reset password",
-    "saveFailed": "Failed to save changes.",
+    "saveFailed": "Could not save your changes. Your edits are still in this form. Try again.",
     "resetPasswordConfirmTitle": "Reset password?",
     "resetPasswordConfirmMessage": "{{name}}'s connected devices, including any paired Apple TV or phone, will be signed out and need to be paired again."
   },
@@ -1166,7 +1165,7 @@
       "absent": "There is no archive in this folder yet, so it can be adopted as a new one.",
       "match": "This is your archive disk.",
       "foreign": "This disk already holds a different archive. Adopting it will replace that record.",
-      "invalid": "The marker file on this disk is not one Nebulis recognises, so nothing will be written to it.",
+      "invalid": "The marker file on this disk is not one Nebulis recognizes, so nothing will be written to it.",
       "unreadable": "The marker file on this disk cannot be read, so nothing will be written to it.",
       "invalidPath": "That path cannot be used. It cannot be the library folder or the Nebulis data folder.",
       "offline": "This share is not connected. Check that the server is on and the share is available."
@@ -1252,7 +1251,7 @@
     "runFinishedTooYoung_other": "{{count}} files have not reached the minimum age yet.",
     "runNoSpace": "The archive did not run because the archive disk does not have enough free space.",
     "runNotStarted": "The archive did not run. Check that the archive disk is connected.",
-    "runCancelled": "Cancelled. {{copied}} files were archived before it stopped.",
+    "runCancelled": "Canceled. {{copied}} files were archived before it stopped.",
     "runFinishedLinked_one": "{{count}} linked file is not included in the archive.",
     "runFinishedLinked_other": "{{count}} linked files are not included in the archive.",
     "cancelRun": "Cancel",

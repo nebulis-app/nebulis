@@ -8,7 +8,7 @@
  * without cross-referencing the history list underneath.
  */
 import { useTranslation } from 'react-i18next';
-import { RefreshCw, Telescope as TelescopeIcon, Usb, Network, Timer, History } from 'lucide-react';
+import { RefreshCw, Telescope as TelescopeIcon, Usb, Network, Timer, History, Pencil } from 'lucide-react';
 import { formatTransport } from '../../lib/api/library';
 import type { ConnectionType } from '../../lib/api/telescopes';
 import { formatInterval, formatRelativeTime } from '../../lib/timeFormat';
@@ -42,10 +42,12 @@ interface Props {
   runningTelescopeId: string | null;
   pending: boolean;
   onSync: () => void;
+  /** Opens the same editor as Settings, Telescopes. Omit to hide the button. */
+  onEdit?: () => void;
 }
 
 export function TelescopeCard({
-  telescope: tel, isDark, importRunning, runningTelescopeId, pending, onSync,
+  telescope: tel, isDark, importRunning, runningTelescopeId, pending, onSync, onEdit,
 }: Props) {
   const { t } = useTranslation('library');
   const { isNight } = useTheme();
@@ -92,7 +94,22 @@ export function TelescopeCard({
           )}
         </div>
 
-        <StatusPill online={tel.online} configured={tel.configured} isDark={isDark} />
+        <div className="flex shrink-0 items-center gap-1.5">
+          <StatusPill online={tel.online} configured={tel.configured} isDark={isDark} />
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              title={t('telescopeCard.edit')}
+              aria-label={t('telescopeCard.editName', { name: tel.name })}
+              className={`rounded-lg p-1.5 transition-colors ${
+                isDark ? 'text-slate-500 hover:bg-slate-800 hover:text-slate-200' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'
+              }`}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Facts about this telescope as a backup source, kept on one line each so

@@ -126,6 +126,15 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
           )}
         </div>
 
+        {location?.recovered && location.available && (
+          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <Check className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+            <p className={`text-xs leading-relaxed ${body}`}>
+              {t('libraryLocation.recoveredNotice', { from: location.recovered.from, to: location.recovered.to })}
+            </p>
+          </div>
+        )}
+
         {location && !location.available && !migrating && (
           <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
             <Plug className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
@@ -291,6 +300,10 @@ function ForgetLocationModal({
             <span className={`font-mono text-xs break-all ${heading}`}>{defaultPath}</span>{' '}
             {t('libraryLocation.forgetModal.bodyAfter')}
           </p>
+          <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+            <p className={`text-xs leading-relaxed ${body}`}>{t('libraryLocation.forgetModal.secondLibraryWarning')}</p>
+          </div>
           {error && (
             <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
               <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />

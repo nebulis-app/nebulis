@@ -10,7 +10,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
 import { getLocalObjects } from '../lib/library/objects.js';
-import { getCatalogEntry } from '../data/catalog.js';
+import { getCatalogEntry } from '../lib/catalogLookup.js';
 import { prewarmThumbnails, findCachedMaster, startPrefetch, getPrefetchStatus } from '../lib/catalogPrefetch.js';
 import { resolveCanonicalId } from '../lib/catalogAliases.js';
 import { HERSCHEL400_IDS } from '../lib/herschel400Catalog.js';
@@ -159,7 +159,7 @@ router.get('/best-window', (req: Request, res: Response) => {
 });
 
 /** Per-object progress for one catalog, shared by the board and the "My Catalog" wall. */
-export function computeCatalogProgress(catalogKey: string, def: CatalogDef) {
+function computeCatalogProgress(catalogKey: string, def: CatalogDef) {
   const ids = def.buildIds();
   const localObjects = getLocalObjects();
   const libraryMap = loadLibraryMap(localObjects);

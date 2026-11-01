@@ -315,7 +315,7 @@ export function StackingExportModal({ objectId, onClose }: { objectId: string; o
   );
 }
 
-export function GroupCard({ group: g, includeNotKept, multiNight }: { group: StackingPlanGroup; includeNotKept: boolean; multiNight: boolean }) {
+function GroupCard({ group: g, includeNotKept, multiNight }: { group: StackingPlanGroup; includeNotKept: boolean; multiNight: boolean }) {
   const { t } = useTranslation('observations');
   const { isDark } = useTheme();
   const muted = isDark ? 'text-slate-400' : 'text-slate-500';

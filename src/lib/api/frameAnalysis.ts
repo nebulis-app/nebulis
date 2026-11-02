@@ -1,7 +1,7 @@
 import { fetchJSON, authHeaders, BASE } from './client';
 import type { SessionFile } from '../../types';
 
-export type FrameFlag = 'clouds' | 'trails' | 'soft' | 'streak' | 'noStars' | 'noisy';
+export type FrameFlag = 'clouds' | 'faint' | 'trails' | 'soft' | 'streak' | 'spots' | 'noStars' | 'noisy';
 export type FrameGrade = 'good' | 'fair' | 'bad';
 
 export interface FrameMetrics {
@@ -15,8 +15,14 @@ export interface FrameMetrics {
   noise: number;
   gradient: number;
   peakSNR: number | null;
+  /** Star flux (median of the stars ranked 20th–120th by flux): follows transparency. Absent on old results. */
+  signal?: number | null;
   streak: { angle: number; strength: number } | null;
   saturatedFraction: number;
+  /** How plainly the photographed object shows: its brighter part over the sky around it, in units of the sky's spread. Absent on old results. */
+  target?: { x: number; y: number; radius: number; signal: number; snr: number } | null;
+  /** Round shadows on the picture, in grid pixels. Absent on old results. */
+  spots?: { x: number; y: number; diameter: number; depth: number }[];
   ra: number | null;
   dec: number | null;
 }
@@ -24,11 +30,13 @@ export interface FrameMetrics {
 /** One finding with the numbers behind it. The sentence is built in the UI so it follows the display language. */
 export type FrameReason =
   | { flag: 'noStars'; stars: number; typical: number }
-  | { flag: 'clouds'; stars: number; typical: number; percentFewer: number; brighterSky: boolean }
+  | { flag: 'clouds'; stars: number; typical: number; percentFewer: number; percentDimmer?: number | null; brighterSky: boolean }
   | { flag: 'trails'; ratio: number; angle: number | null; plain: boolean }
   | { flag: 'soft'; fwhm: number; typical: number }
   | { flag: 'streak'; angle: number }
-  | { flag: 'noisy'; percentAbove: number };
+  | { flag: 'noisy'; percentAbove: number }
+  | { flag: 'faint'; percent: number; targetPercent: number | null; brighterSky: boolean }
+  | { flag: 'spots'; count: number; otherNights: boolean };
 
 export interface FrameVerdict {
   score: number;
@@ -43,6 +51,12 @@ export interface FrameReference {
   elongation: number;
   noise: number;
   background: number;
+  signal?: number | null;
+  snr?: number | null;
+  bestSnr?: number | null;
+  bestTarget?: number | null;
+  otherFrames?: number;
+  otherNoise?: number | null;
   weak: boolean;
 }
 

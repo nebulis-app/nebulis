@@ -503,11 +503,13 @@
       },
       "flags": {
         "clouds": "Wolken",
-        "trails": "Sternspuren",
+        "trails": "Gestreckte Sterne",
         "soft": "Weiche Sterne",
-        "streak": "Streifen",
+        "streak": "Satellit / Flugzeug",
         "noStars": "Keine Sterne",
-        "noisy": "Rauschig"
+        "noisy": "Rauschig",
+        "faint": "Schwach",
+        "spots": "Sensorflecken"
       },
       "stats": {
         "stars": "Sterne",
@@ -521,6 +523,7 @@
       "reasons": {
         "noStars": "Nur {{stars}} Sterne gefunden, gegenüber etwa {{typical}} in einem typischen Bild dieser Nacht. Der Himmel war bedeckt oder die Optik beschlagen.",
         "clouds": "{{stars}} Sterne gegenüber etwa {{typical}} in einem typischen Bild ({{percent}}% weniger).",
+        "cloudsDimmer": "Die Sterne liefern {{percent}} % weniger Licht als in den besten Aufnahmen der Nacht: dünne Wolken, Dunst oder Tau.",
         "cloudsBrighter": "Der Himmel ist auch heller, wie es bei von unten beleuchteten Wolken der Fall ist.",
         "trailsPlain": "Sterne sind {{ratio}}-mal länger als breit. Das Teleskop hat sich während der Belichtung bewegt oder wurde erschüttert.",
         "trailsPlainAngle": "Sterne sind {{ratio}}-mal länger als breit und in Richtung {{angle}}° gezogen. Das Teleskop hat sich während der Belichtung bewegt oder wurde erschüttert.",
@@ -528,7 +531,14 @@
         "trailsSlightAngle": "Sterne sind {{ratio}}-mal länger als breit und in Richtung {{angle}}° gezogen. Eine leichte Verschmierung, die nach dem Stacken kaum zu sehen ist.",
         "soft": "Sterne sind {{fwhm}} px breit gegenüber typischen {{typical}} px: unscharf oder unruhige Luft.",
         "streak": "Ein gerader Streifen quert das Bild bei etwa {{angle}}° (ein Satellit oder Flugzeug). Stacking mit Ausreißerrejektion entfernt ihn meist.",
-        "noisy": "Das Hintergrundrauschen liegt {{percent}}% über dem typischen Bild der Nacht."
+        "noisy": "Das Hintergrundrauschen liegt {{percent}}% über dem typischen Bild der Nacht.",
+        "faint": "Liefert {{percent}} % des Signal-Rausch-Verhältnisses der besseren Aufnahmen dieses Objekts aus anderen Nächten (gleicher Filter, gleiche Belichtung, gleiches Teleskop).",
+        "faintTarget": "Liefert {{percent}} % des Signal-Rausch-Verhältnisses der besseren Aufnahmen dieses Objekts aus anderen Nächten, und das Objekt selbst zeigt nur {{target}} % seines üblichen Kontrasts.",
+        "faintBrighter": "Der Himmel ist heller als in diesen Nächten: Mond, Dämmerung oder Dunst.",
+        "spotsOtherNights_one": "Ein runder Schatten, den andere Nächte nicht haben: Tau oder Reif nahe am Sensor. Zu anderer Zeit aufgenommene Flats korrigieren ihn nicht.",
+        "spotsOtherNights_other": "{{count}} runde Schatten, die andere Nächte nicht haben: Tau oder Reif nahe am Sensor. Zu anderer Zeit aufgenommene Flats korrigieren sie nicht.",
+        "spotsThisNight_one": "Ein runder Schatten, den die meisten Aufnahmen dieser Nacht nicht haben: Tau oder Reif nahe am Sensor, der kam und ging.",
+        "spotsThisNight_other": "{{count}} runde Schatten, die die meisten Aufnahmen dieser Nacht nicht haben: Tau oder Reif nahe am Sensor, der kam und ging."
       },
       "selectHint": "Klicke auf Bilder, um sie auszuwählen.",
       "selectedCount_one": "{{count}} Bild ausgewählt",
@@ -548,7 +558,8 @@
       "selectFrame": "{{name}} auswählen",
       "markKeep": "Behalten",
       "markReject": "Verwerfen",
-      "followGrade": "Markierung entfernen"
+      "followGrade": "Markierung entfernen",
+      "otherNights": "Auch verglichen mit {{count}} Aufnahmen dieses Objekts aus anderen Nächten, mit gleichem Filter, gleicher Belichtung und gleichem Teleskop."
     },
     "frameList": {
       "notMeasuredTitle": "Öffne die Nacht, um ihre Frames zu messen.",
@@ -573,9 +584,10 @@
         "flags": "Markierungen",
         "stars": "Sterne",
         "fwhm": "Breite px",
-        "round": "Spur",
+        "round": "Dehnung",
         "noise": "Rauschen",
         "snr": "Signal",
+        "target": "Objekt",
         "sky": "Himmel",
         "file": "Datei"
       },
@@ -588,8 +600,16 @@
         "round": "Nach Sternstreckung sortieren: 1,00 ist rund, höher ist gezogen",
         "noise": "Nach Hintergrundrauschen sortieren, leisestes zuerst. Niedriger ist sauberer.",
         "snr": "Nach Signal sortieren: wie weit die hellsten Sterne über dem Rauschen liegen (×). Höher ist besser.",
+        "target": "Wie deutlich sich das fotografierte Objekt in dieser einzelnen Aufnahme zeigt: sein hellerer Teil gegenüber dem Himmel ringsum, geteilt durch das Himmelsrauschen. Unter 1 ist es in einer Aufnahme nicht zu sehen, 1–3 kaum, 3–10 deutlich, über 10 sehr deutlich. Das Stapeln von N Aufnahmen multipliziert den Wert mit etwa √N. Nur zwischen Aufnahmen und Nächten desselben Objekts vergleichen. Leer, wenn das Objekt nicht platziert werden konnte (keine Astrometrie und nicht zentriert, oder nicht im Katalog).",
         "sky": "Nach Himmelshelligkeit sortieren (Rohwerte). Ein Sprung zwischen Bildern kann Wolken, Dunst oder den Mond bedeuten.",
         "file": "Nach Dateiname sortieren"
+      },
+      "targetLevel": {
+        "none": "{{value}}: Das Objekt hebt sich in dieser Aufnahme nicht vom Himmel ab.",
+        "faint": "{{value}}: In einer einzelnen Aufnahme nicht zu sehen; etwa {{frames}} solche Aufnahmen gestapelt erreichen 3.",
+        "barely": "{{value}}: In einer einzelnen Aufnahme kaum zu sehen.",
+        "clear": "{{value}}: In einer einzelnen Aufnahme deutlich zu sehen.",
+        "plain": "{{value}}: In einer einzelnen Aufnahme sehr deutlich zu sehen."
       },
       "menu": {
         "open": "Öffnen",

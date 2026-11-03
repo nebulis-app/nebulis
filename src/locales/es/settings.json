@@ -1081,7 +1081,14 @@
     "photosRemove": "Quitar foto",
     "photosOpen": "Abrir foto",
     "photosCaptionPlaceholder": "Añadir un pie de foto",
-    "photosUploadFailed": "No se pudo subir {{name}}: {{reason}}"
+    "photosUploadFailed": "No se pudo subir {{name}}: {{reason}}",
+    "imagingWindowLabel": "Ventana de captura",
+    "darknessLabel": "Empieza con",
+    "darknessAstronomical": "Noche astronómica (Sol a −18°)",
+    "darknessNautical": "Noche náutica (Sol a −12°)",
+    "startOffsetLabel": "Inicio, minutos tras el anochecer",
+    "endOffsetLabel": "Fin, minutos antes del amanecer",
+    "imagingWindowHelp": "Las horas que la página del tiempo, su puntuación y el aviso de noche despejada cuentan como esta noche. Los filtros de banda estrecha cortan casi todo el brillo del crepúsculo, así que la noche náutica suele bastar y empieza unos 35 minutos antes. Usa los minutos para empezar más tarde o parar antes del amanecer; un valor negativo mueve ese extremo en sentido contrario."
   },
   "enterCodeModal": {
     "title": "Vincular un Apple TV",

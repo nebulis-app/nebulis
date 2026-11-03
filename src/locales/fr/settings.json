@@ -1081,7 +1081,14 @@
     "photosRemove": "Supprimer la photo",
     "photosOpen": "Ouvrir la photo",
     "photosCaptionPlaceholder": "Ajouter une légende",
-    "photosUploadFailed": "Impossible d'envoyer {{name}} : {{reason}}"
+    "photosUploadFailed": "Impossible d'envoyer {{name}} : {{reason}}",
+    "imagingWindowLabel": "Fenêtre d'imagerie",
+    "darknessLabel": "À partir de",
+    "darknessAstronomical": "Nuit astronomique (Soleil à −18°)",
+    "darknessNautical": "Nuit nautique (Soleil à −12°)",
+    "startOffsetLabel": "Début, minutes après la nuit",
+    "endOffsetLabel": "Fin, minutes avant l'aube",
+    "imagingWindowHelp": "Les heures que la page météo, sa note et l'alerte de nuit claire comptent comme « cette nuit ». Les filtres à bande étroite coupent l'essentiel de la lueur du crépuscule : la nuit nautique suffit souvent et commence environ 35 minutes plus tôt. Les minutes permettent de commencer plus tard ou de s'arrêter avant l'aube ; une valeur négative déplace cette borne dans l'autre sens."
   },
   "enterCodeModal": {
     "title": "Lier un Apple TV",

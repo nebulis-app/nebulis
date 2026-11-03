@@ -31,6 +31,7 @@ import {
   type TwilightTimes,
 } from '../../lib/forecastNights';
 import { useTheme } from '../../hooks/useTheme';
+import { formatNumber } from '../../lib/formatLocale';
 
 interface TonightInfo extends TwilightTimes {
   moonIllumination: number;
@@ -46,6 +47,17 @@ interface Props {
   tempUnit: 'celsius' | 'fahrenheit';
   windUnit: 'mph' | 'kmh';
   isDark: boolean;
+}
+
+/** How the site's settings move the window, in words: "starts 30 min later, ends 1 h earlier". */
+function offsetText(t: (k: string, o?: Record<string, unknown>) => string, startMin: number, endMin: number): string {
+  const span = (m: number) => (Math.abs(m) % 60 === 0 ? t('imagingWindow.hours', { count: Math.abs(m) / 60 }) : t('imagingWindow.minutes', { count: Math.abs(m) }));
+  const parts: string[] = [];
+  if (startMin > 0) parts.push(t('imagingWindow.startsLater', { span: span(startMin) }));
+  if (startMin < 0) parts.push(t('imagingWindow.startsEarlier', { span: span(startMin) }));
+  if (endMin > 0) parts.push(t('imagingWindow.endsEarlier', { span: span(endMin) }));
+  if (endMin < 0) parts.push(t('imagingWindow.endsLater', { span: span(endMin) }));
+  return parts.join(', ');
 }
 
 /** One cell in the header label row. */
@@ -141,6 +153,7 @@ export function ImagingWindow({
             </h2>
             <p className={`text-[0.6875rem] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
               {win.astronomical ? t('imagingWindow.astronomicalDark') : t('imagingWindow.nauticalDark')}
+              {(win.startOffsetMin !== 0 || win.endOffsetMin !== 0) && ` · ${offsetText(t, win.startOffsetMin, win.endOffsetMin)}`}
             </p>
           </div>
         </div>
@@ -155,7 +168,7 @@ export function ImagingWindow({
           <span className="opacity-50">→</span>
           <span>{formatTime(win.endIso, timeZone)}</span>
           <span className={`ml-1 text-[0.6875rem] font-normal ${isDark ? 'text-violet-400/60' : 'text-violet-500/70'}`}>
-            {t('imagingWindow.durationHours', { hours: windowHours.length - 1 })}
+            {t('imagingWindow.durationHours', { hours: formatNumber((win.endMs - win.startMs) / 3_600_000, { maximumFractionDigits: 1 }) })}
           </span>
         </div>
       </div>

@@ -110,10 +110,8 @@ export function NightHero({
           style={{ boxShadow: `inset 0 0 0 1px ${isNight ? 'rgba(204,51,51,0.10)' : 'rgba(255,255,255,0.10)'}` }}
         />
         <div className="relative flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5 sm:px-5">
-          <h1 className="font-display flex items-center gap-2 text-lg font-bold tracking-tight text-white">
-            <Crosshair className="h-4 w-4" style={{ color: accent }} />
-            {t('nightHero.title')}
-          </h1>
+          {/* The nav already says Planner; keep the heading for screen readers only. */}
+          <h1 className="sr-only">{t('nightHero.title')}</h1>
           <div
             role={onOpenWeather ? 'button' : undefined}
             tabIndex={onOpenWeather ? 0 : undefined}
@@ -155,6 +153,9 @@ export function NightHero({
               </div>
             </div>
           </div>
+          {conditions?.dewRisk && (
+            <StatChip icon={Droplets} tone="warn">{t('nightHero.dewRisk')}</StatChip>
+          )}
           <div className="ml-auto flex items-center gap-2">
             {siteControl}
             {canAutoPlan && (

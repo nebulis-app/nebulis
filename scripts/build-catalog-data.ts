@@ -62,7 +62,7 @@ if (args.has('--check')) {
     stale ||= !ok;
     console.log(`[check] ${name}: ${v} ${ok ? 'matches' : `is STALE, the server builds ${built.version}`}`);
   }
-  if (stale) console.error('[check] Refresh the apps: run spikes/direct-mode/catalog/gen-catalog.mts (command in CLAUDE.md, "Catalog data") and copy the two .deflate files into both apps.');
+  if (stale) console.error('[check] Refresh the apps: run spikes/direct-mode/catalog/gen-catalog.mts (see the "Catalog data" section of the project notes for the command) and copy the two .deflate files into both apps.');
   process.exit(stale ? 1 : 0);
 }
 console.log(`[data] built version ${built.version}: ${built.plannerCount} planner targets, bundle ${built.packed.length} B, planner ${built.plannerPacked.length} B`);

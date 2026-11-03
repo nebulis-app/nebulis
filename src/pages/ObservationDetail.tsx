@@ -50,7 +50,7 @@ import { SessionNightPanel } from '../components/observationDetail/SessionNightP
 import { SitePanel } from '../components/observationDetail/SitePanel';
 import { ObservationTabs, type ObservationTab } from '../components/observationDetail/ObservationTabs';
 import { VideoPanel } from '../components/observationDetail/VideoPanel';
-import { SessionFileGrid } from '../components/observationDetail/SessionFileGrid';
+import { SessionFileControls, SessionFileGrid } from '../components/observationDetail/SessionFileGrid';
 import { SubframesPanel } from '../components/observationDetail/SubframesPanel';
 import { ProcessedImagesGrid } from '../components/observationDetail/ProcessedImagesGrid';
 import { useTheme } from '../hooks/useTheme';
@@ -521,16 +521,11 @@ export function ObservationDetail() {
           /\.jpe?g$/i.test(file.name) ? { kind: 'telescope', path: file.path } : undefined,
         ),
       };
+    // A plain stacked image gets no badge: the frame count and exposure are
+    // already in the stats strip below the title.
     heroBadge = heroIsUserDesignated
       ? { tone: 'crown', text: t('observationDetail.page.sessionImageBadge') }
-      : {
-        tone: 'stacked',
-        text: [
-          heroIsFits ? t('observationDetail.page.stackedFits') : t('observationDetail.page.stacked'),
-          file.frameCount ? t('observationDetail.page.framesCount', { count: file.frameCount }) : null,
-          file.exposure,
-        ].filter(Boolean).join(' · '),
-      };
+      : null;
     openHeroMedia = () => {
       const idx = filteredFiles.findIndex(f => f.path === file.path);
       // A stacked FITS is in filteredFiles under the default 'all' view but not
@@ -834,6 +829,14 @@ if (isLoading) {
           onChange={setPinnedTab}
           onDropFileOnProcessed={isAdmin ? handleMarkFileAsProcessed : undefined}
           dragActive={draggingPath !== null}
+          trailing={activeTab === 'images' ? (
+            <SessionFileControls
+              viewMode={viewMode}
+              onViewModeChange={mode => { setViewMode(mode); setGalleryPage(0); }}
+              compareMode={compareMode}
+              onToggleCompareMode={() => compareMode ? exitCompareMode() : setCompareMode(true)}
+            />
+          ) : undefined}
           counts={{
             images: imageTabCount,
             subframes: subFrames.length,
@@ -855,12 +858,9 @@ if (isLoading) {
         {activeTab === 'images' && (
         <SessionFileGrid
           files={filteredFiles}
-          viewMode={viewMode}
-          onViewModeChange={mode => { setViewMode(mode); setGalleryPage(0); }}
           galleryPage={galleryPage}
           setGalleryPage={setGalleryPage}
           compareMode={compareMode}
-          onToggleCompareMode={() => compareMode ? exitCompareMode() : setCompareMode(true)}
           compareItems={compareItems}
           toggleCompareItem={toggleCompareItem}
           sessionImagePath={observation?.sessionImage}

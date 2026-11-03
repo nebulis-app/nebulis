@@ -29,10 +29,25 @@ const MAX_FILES = 200_000;
 /** A walk that hits this many directory listings failing back-to-back gives
  *  up: the device has dropped off the network (a station-mode router tearing
  *  down an idle TCP session, say) and every further listing would just burn
- *  its own full smbclient timeout before failing the same way. Missing
- *  directories are not failures (smbListDir returns an empty listing for
- *  those), so a healthy device with an absent folder never trips this. */
+ *  its own full smbclient timeout before failing the same way. A missing
+ *  directory is not a failure here (see isMissingDirectoryError: FTP and local
+ *  drives list it empty, SMB throws), so a healthy device with an absent folder
+ *  never trips this. */
 const MAX_CONSECUTIVE_LIST_FAILURES = 3;
+
+/** A listing that failed only because the folder is not there. SMB reports that as an error (FTP and local drives
+ *  return an empty list), and a device that lacks `Autorun/Dark` is healthy, so these do not count toward
+ *  MAX_CONSECUTIVE_LIST_FAILURES; otherwise three absent folders in a row hid every folder after them (an ASIAIR
+ *  that keeps its calibration under `Plan/`). A Windows share that has dropped can also read as "not found", so
+ *  a long unbroken run of them still ends the sweep. The cap is above the number of folders any one sweep names. */
+const MAX_CONSECUTIVE_MISSING_FOLDERS = 12;
+
+/** True for the error each SMB backend throws when a directory does not exist (smbclient's NT_STATUS, the mounted
+ *  share's ENOENT / "no such file", and the classified mac message). A timeout or refusal never matches. */
+export function isMissingDirectoryError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /NT_STATUS_(?:OBJECT_NAME_NOT_FOUND|OBJECT_PATH_NOT_FOUND|NO_SUCH_FILE)|\bENOENT\b|\bENOTDIR\b|no such file or directory|Share or folder not found/i.test(message);
+}
 
 export interface RemoteArchiveWalkOptions {
   /** Polled before every listing and between entries, so a cancelled sync
@@ -80,7 +95,10 @@ export async function collectRemoteArchiveCandidates(
   const out: RemoteArchiveCandidate[] = [];
   const maxDepth = opts.maxDepth ?? MAX_DEPTH;
   let consecutiveFailures = 0;
-  const stopped = () => opts.shouldCancel?.() === true || consecutiveFailures >= MAX_CONSECUTIVE_LIST_FAILURES;
+  let consecutiveMissing = 0;
+  const stopped = () => opts.shouldCancel?.() === true
+    || consecutiveFailures >= MAX_CONSECUTIVE_LIST_FAILURES
+    || consecutiveMissing >= MAX_CONSECUTIVE_MISSING_FOLDERS;
 
   const visit = async (dir: string, relPrefix: string, depth: number): Promise<void> => {
     if (out.length >= MAX_FILES || depth > maxDepth || stopped()) return;
@@ -92,7 +110,14 @@ export async function collectRemoteArchiveCandidates(
     try {
       entries = await smbListDir(dir, profile);
       consecutiveFailures = 0;
+      consecutiveMissing = 0;
     } catch (err) {
+      if (isMissingDirectoryError(err)) {
+        // The device answered; this folder just is not on it. Not a sign the device dropped off the network.
+        consecutiveFailures = 0;
+        consecutiveMissing++;
+        return;
+      }
       consecutiveFailures++;
       log.warn({ err: err instanceof Error ? err.message : String(err), dir }, '[remote-archive] directory listing failed; skipping');
       if (consecutiveFailures >= MAX_CONSECUTIVE_LIST_FAILURES) {

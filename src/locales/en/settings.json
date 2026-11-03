@@ -474,14 +474,15 @@
     "visitSource": "Visit {{name}}",
     "freeApi": "Free API",
     "bundled": "Bundled",
-    "footerNote": "All external services are free and require no API keys. Data is fetched on demand and cached where possible. A request carries only what the service needs: the coordinates of your observing site for weather and light pollution, and object names for catalog lookups. No account details, usage data or images are ever sent.",
+    "footerNote": "All external services are free and require no API keys. Data is fetched on demand and cached where possible. A request carries only what the service needs: the coordinates of your observing site for weather, light pollution and place names, and object names for catalog lookups. No account details, usage data or images are ever sent.",
     "groups": {
       "astronomyDatabases": "Astronomy Databases",
       "skyImages": "Sky Images",
       "weatherForecasting": "Weather & Forecasting",
       "satelliteTracking": "Satellite Tracking",
       "maps": "Maps",
-      "lightPollution": "Light pollution"
+      "lightPollution": "Light pollution",
+      "nebulisServers": "Nebulis servers"
     },
     "cache": {
       "bundledWithApp": "Bundled with app",
@@ -489,19 +490,24 @@
       "cached24h": "Cached 24 hours"
     },
     "descriptions": {
-      "openngc": "Coordinates, magnitudes, and types for 3,200+ deep sky objects",
+      "openngc": "Names, positions, magnitudes, and types for about 12,000 deep sky objects",
       "sesame": "Name lookups for objects missing from the bundled catalog",
       "simbad": "Size and distance details for catalog objects",
       "hubbleCaldwell": "Hubble images and text for the 88 Caldwell objects",
       "hips": "DSS2 survey images for any coordinate you point at",
       "nasaImageLibrary": "Backup images for planets, moons, and comets",
       "wikipedia": "Plain-language summaries and thumbnails for objects",
-      "openMeteo": "Temperature, humidity, cloud, wind, and rain for your sites",
+      "openMeteo": "Forecast and past weather for your sites, plus place search",
       "sevenTimer": "Seeing and transparency forecasts for imaging nights",
       "sunCalc": "Moon phase, twilight, and sun and moon positions for your sites",
       "celestrak": "Orbital elements for active satellites, used in trail checks",
       "esri": "Map tiles for the observation location viewer",
-      "darkskysites": "Returns your site's Bortle class from the monthly VIIRS satellite composite. Nebulis sends the coordinates of the observing site you have selected, and caches the answer for 24 hours."
+      "darkskysites": "Returns your site's Bortle class from the monthly VIIRS satellite composite. Nebulis sends the coordinates of the observing site you have selected, and caches the answer for 24 hours.",
+      "sdss": "Backup sky pictures when the DSS2 survey cannot be reached. Covers only part of the sky.",
+      "legacySurvey": "Second backup for sky pictures where SDSS has no coverage. Covers only part of the sky.",
+      "nominatim": "Turns the coordinates of your observing site into a place name.",
+      "nebulisDownloads": "Catalog packs and app updates. Nebulis checks here for new versions and downloads them from here.",
+      "nebulisPush": "Delivers iPhone alerts, only when you turn them on."
     }
   },
   "siteManager": {

@@ -572,6 +572,7 @@ export function GalleryModal({
               externalZoom={fits.zoom}
               externalStretch={fits.stretch}
               onFitZoomComputed={fits.setFitZoom}
+              onZoomChange={fits.setZoom}
               onNaturalSize={noteFitsSize}
             />
           </div>
@@ -597,7 +598,7 @@ export function GalleryModal({
               />
             )}
             {annotate && annotatePath && selectedAnnotation && (
-              <AnnotationInfoCard annotation={selectedAnnotation} onClose={() => annotations.select(null)} />
+              <AnnotationInfoCard annotation={selectedAnnotation} zp={zp} onClose={() => annotations.select(null)} />
             )}
           </LightboxPane>
           {/* Sized to the free strip beside the picture, hidden when there is none: never over the picture, never moving it. */}

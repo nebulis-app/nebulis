@@ -19,6 +19,8 @@
     "closeDetails": "Details schließen",
     "addToTonight": "Zu heute Nacht hinzufügen",
     "referenceImageAlt": "Referenzbild von {{name}}",
+    "referenceImageOpen": "{{name}} in voller Größe ansehen",
+    "referenceImageViewerTitle": "Himmelsbild von {{name}}",
     "referenceImage": "Referenzbild",
     "setLocationForSky": "Legen Sie Ihren Standort in den Einstellungen fest, um zu sehen, wo dies an Ihrem Himmel steht.",
     "skyShownAt": "Um {{time}} · Diagramm ziehen, um die Zeit zu ändern",
@@ -78,9 +80,6 @@
     }
   },
   "scheduleTimeline": {
-    "emptyNight": "Für diese Nacht ist noch nichts geplant.",
-    "copyLastNightCount_one": "Letzte Nacht kopieren ({{count}} Block)",
-    "copyLastNightCount_other": "Letzte Nacht kopieren ({{count}} Blöcke)",
     "nightSchedule": "Nachtplan",
     "plannedOfDark": "<1>{{planned}}</1> von {{dark}} geplant",
     "targetCount_one": "{{count}} Ziel",
@@ -349,7 +348,7 @@
   },
   "altitudeBandChart": {
     "noTargetsAriaLabel": "Höhendiagramm, keine Ziele geplant",
-    "emptyHint": "Ziele zum Zeitplan hinzufügen, um hier ihre Höhenkurven zu sehen.",
+    "emptyHint": "Ziele zum Zeitplan hinzufügen oder „Meine Nacht planen“ nutzen, um hier ihre Höhenkurven zu sehen.",
     "ariaLabel": "Höhe jedes geplanten Objekts im Zeitverlauf",
     "timeAltitude": "{{time}} · {{alt}}° Höhe"
   },

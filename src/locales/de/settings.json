@@ -474,14 +474,15 @@
     "visitSource": "{{name}} besuchen",
     "freeApi": "Kostenlose API",
     "bundled": "Enthalten",
-    "footerNote": "Alle externen Dienste sind kostenlos und benötigen keine API-Schlüssel. Daten werden bei Bedarf abgerufen und nach Möglichkeit zwischengespeichert. Eine Anfrage enthält nur, was der Dienst braucht: die Koordinaten deines Beobachtungsstandorts für Wetter und Lichtverschmutzung sowie Objektnamen für Kataloganfragen. Kontodaten, Nutzungsdaten oder Bilder werden nie gesendet.",
+    "footerNote": "Alle externen Dienste sind kostenlos und benötigen keine API-Schlüssel. Daten werden bei Bedarf abgerufen und nach Möglichkeit zwischengespeichert. Eine Anfrage enthält nur, was der Dienst braucht: die Koordinaten deines Beobachtungsstandorts für Wetter, Lichtverschmutzung und Ortsnamen sowie Objektnamen für Kataloganfragen. Kontodaten, Nutzungsdaten oder Bilder werden nie gesendet.",
     "groups": {
       "astronomyDatabases": "Astronomie-Datenbanken",
       "skyImages": "Himmelsbilder",
       "weatherForecasting": "Wetter & Vorhersage",
       "satelliteTracking": "Satellitenverfolgung",
       "maps": "Karten",
-      "lightPollution": "Lichtverschmutzung"
+      "lightPollution": "Lichtverschmutzung",
+      "nebulisServers": "Nebulis-Server"
     },
     "cache": {
       "bundledWithApp": "In der App enthalten",
@@ -489,19 +490,24 @@
       "cached24h": "24 Stunden zwischengespeichert"
     },
     "descriptions": {
-      "openngc": "Koordinaten, Helligkeiten und Typen für über 3.200 Deep-Sky-Objekte",
+      "openngc": "Namen, Positionen, Helligkeiten und Typen für rund 12.000 Deep-Sky-Objekte",
       "sesame": "Namensabfragen für Objekte, die im mitgelieferten Katalog fehlen",
       "simbad": "Größen- und Entfernungsdetails für Katalogobjekte",
       "hubbleCaldwell": "Hubble-Bilder und Texte für die 88 Caldwell-Objekte",
       "hips": "DSS2-Himmelsdurchmusterungsbilder für jede Koordinate",
       "nasaImageLibrary": "Ersatzbilder für Planeten, Monde und Kometen",
       "wikipedia": "Allgemeinverständliche Zusammenfassungen und Vorschaubilder für Objekte",
-      "openMeteo": "Temperatur, Luftfeuchtigkeit, Bewölkung, Wind und Niederschlag für deine Standorte",
+      "openMeteo": "Vorhersage und vergangenes Wetter für deine Standorte sowie die Ortssuche",
       "sevenTimer": "Seeing- und Transparenzvorhersagen für Beobachtungsnächte",
       "sunCalc": "Mondphase, Dämmerung sowie Sonnen- und Mondposition für deine Standorte",
       "celestrak": "Bahnelemente aktiver Satelliten, genutzt für Spurprüfungen",
       "esri": "Kartenkacheln für die Beobachtungsort-Ansicht",
-      "darkskysites": "Liefert die Bortle-Klasse deines Standorts aus dem monatlichen VIIRS-Satellitenmosaik. Nebulis sendet die Koordinaten des ausgewählten Beobachtungsstandorts und speichert die Antwort 24 Stunden lang zwischen."
+      "darkskysites": "Liefert die Bortle-Klasse deines Standorts aus dem monatlichen VIIRS-Satellitenmosaik. Nebulis sendet die Koordinaten des ausgewählten Beobachtungsstandorts und speichert die Antwort 24 Stunden lang zwischen.",
+      "sdss": "Ersatz-Himmelsbilder, wenn die DSS2-Durchmusterung nicht erreichbar ist. Deckt nur einen Teil des Himmels ab.",
+      "legacySurvey": "Zweiter Ersatz für Himmelsbilder, wo SDSS keine Abdeckung hat. Deckt nur einen Teil des Himmels ab.",
+      "nominatim": "Wandelt die Koordinaten deines Beobachtungsstandorts in einen Ortsnamen um.",
+      "nebulisDownloads": "Katalogpakete und App-Updates. Nebulis prüft hier auf neue Versionen und lädt sie von hier herunter.",
+      "nebulisPush": "Stellt iPhone-Benachrichtigungen zu, nur wenn du sie aktivierst."
     }
   },
   "siteManager": {

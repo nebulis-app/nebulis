@@ -67,7 +67,7 @@ export function WishlistPanel({ onExpand, onClose, ...listProps }: Props) {
         </div>
 
         {/* Body */}
-        <div className="min-h-0 flex-1 px-5 py-3 overflow-y-auto">
+        <div className="min-h-0 flex-1 px-5 pb-3 overflow-y-auto">
           <WishlistList {...listProps} />
         </div>
       </div>

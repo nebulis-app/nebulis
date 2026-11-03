@@ -1986,8 +1986,8 @@ export async function runImport(
           : isSeestar ? [SEESTAR_DARK_LIBRARY_FOLDER] : ['CALI_FRAME', 'DWARF_DARK'];
         // Not every device has every folder; collectRemoteArchiveCandidates
         // lists each independently and simply finds nothing for one that's
-        // absent (smbListDir returns an empty listing for a missing remote
-        // directory rather than throwing, matching SMB/local semantics).
+        // absent (FTP and local drives list a missing directory empty; SMB
+        // throws, and the walk recognizes that error and moves on).
         // Only the ASIAIR sweep gets the phantom-tree limits: Dwarf's CALI_FRAME
         // and DWARF_DARK are ordinary folders that need the default walk.
         const candidates = await collectRemoteArchiveCandidates(profile, archiveBase, archiveFolders, {

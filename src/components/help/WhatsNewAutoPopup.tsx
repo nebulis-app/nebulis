@@ -4,9 +4,9 @@ import { ChangelogModal } from '../ChangelogModal';
 import { ENHANCED_WHATS_NEW, versionSeries } from './whatsNewRegistry';
 import { MobileAppsPromoModal } from './MobileAppsPromoModal';
 import { SupportNebulisModal } from './SupportNebulisModal';
-import { shouldShowSupportAsk } from '../../lib/support';
+import { supportAskSeenLocally } from '../../lib/support';
 import { shouldShowMobilePromo } from '../../lib/mobilePromo';
-import { getLastSeenVersion, setLastSeenVersion } from '../../lib/api/auth';
+import { getLastSeenVersion, setLastSeenVersion, getSupportAskSeen, setSupportAskSeen } from '../../lib/api/auth';
 import { fetchJSON } from '../../lib/api/client';
 import { useWhatsNewGate } from '../../contexts/WhatsNewGateContext';
 
@@ -38,7 +38,7 @@ interface VersionInfo {
  * returns false while MOBILE_PROMO_ENABLED is off, so the chain below stays
  * wired but never opens anything. See lib/mobilePromo.ts.
  *
- * The "Enjoying Nebulis?" support ask comes after that, once per browser, and only for someone who
+ * The "Enjoying Nebulis?" support ask comes after that, once per user (the server keeps the record), and only for someone who
  * has used Nebulis before (a first-ever launch has had no chance to find it useful yet). It holds
  * the tour gate until it is closed, so the tour never opens on top of it. If there is no What's New
  * to show (the version was already acknowledged), it appears shortly after load instead.
@@ -79,6 +79,26 @@ export function WhatsNewAutoPopup() {
     staleTime: Infinity,
   });
 
+  // Whether the support ask is still due. An unanswered or failed request counts as not due: better to miss one
+  // ask than to nag someone because the server was briefly unreachable.
+  const supportAskQuery = useQuery({
+    queryKey: ['support-ask-seen'],
+    queryFn: getSupportAskSeen,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const supportAskSettled = !supportAskQuery.isLoading;
+  const supportAskDue = supportAskQuery.data?.seenAt === null && !supportAskSeenLocally();
+
+  // A browser that dismissed the ask before the server kept the record syncs it up, so the user is not asked
+  // again from their other browsers.
+  useEffect(() => {
+    if (supportAskQuery.data?.seenAt !== null || !supportAskSeenLocally()) return;
+    setSupportAskSeen()
+      .then(() => queryClient.invalidateQueries({ queryKey: ['support-ask-seen'] }))
+      .catch(() => { /* tried again on the next load */ });
+  }, [supportAskQuery.data?.seenAt, queryClient]);
+
   const acknowledge = useMutation({
     mutationFn: (version: string) => setLastSeenVersion(version),
     onSuccess: () => {
@@ -111,27 +131,27 @@ export function WhatsNewAutoPopup() {
   useEffect(() => {
     if (decidedNeedRef.current) return;
     const current = versionQuery.data?.version;
-    if (!current || lastSeenQuery.isLoading) return;
+    if (!current || lastSeenQuery.isLoading || !supportAskSettled) return;
     decidedNeedRef.current = true;
     const seen = lastSeenQuery.data?.lastSeenVersion ?? null;
     firstEverRef.current = seen === null;
     if (seen === current) {
       // Nothing to show. The support ask, if it is due, takes over the gate so the tour waits for it.
-      if (shouldShowSupportAsk()) {
+      if (supportAskDue) {
         chainFinishedRef.current = true;
         setTimeout(() => setShowSupport(true), 1200);
       } else {
         markSettled();
       }
     }
-  }, [versionQuery.data?.version, lastSeenQuery.data?.lastSeenVersion, lastSeenQuery.isLoading, markSettled]);
+  }, [versionQuery.data?.version, lastSeenQuery.data?.lastSeenVersion, lastSeenQuery.isLoading, supportAskSettled, supportAskDue, markSettled]);
 
   // The What's New chain is over: ask for the coffee if it is due, otherwise release the tour gate.
   // Idempotent, because "Got it" and the close handlers can both fire for one dismissal.
   const finishChain = () => {
     if (chainFinishedRef.current) return;
     chainFinishedRef.current = true;
-    if (!firstEverRef.current && shouldShowSupportAsk()) setShowSupport(true);
+    if (!firstEverRef.current && supportAskDue) setShowSupport(true);
     else markSettled();
   };
 

@@ -130,6 +130,80 @@ describe('DELETE /library/file on a linked file', () => {
   });
 });
 
+describe('deleting linked originals: guardrails for the wrong disk and for links that leave the folder', () => {
+  const setFingerprint = (value: string | null) =>
+    db.prepare('UPDATE librarySources SET fingerprint = ? WHERE id = ?').run(value, 'src_del');
+
+  it('refuses when the path exists but holds a different disk than the one linked (empty mount point)', async () => {
+    const rel = link('a.jpg', '2026-09-10');
+    setFingerprint(JSON.stringify(['a.jpg', 'b.jpg']));
+    // The share unmounts and the mount point is left behind, empty: unlinking would say ENOENT for every file.
+    fs.unlinkSync(path.join(sourceRoot, 'a.jpg'));
+    const res = await del(`/library/file?path=${encodeURIComponent(rel)}&deleteLinked=1`);
+    expect(res.status).toBe(409);
+    expect(res.body.error?.code).toBe('LINKED_SOURCE_UNAVAILABLE');
+    expect(getLibraryFilesForObject(objectId)).toHaveLength(1);
+  });
+
+  it('still deletes normally when the fingerprint matches the folder', async () => {
+    const rel = link('a.jpg', '2026-09-10');
+    setFingerprint(JSON.stringify(['a.jpg']));
+    expect((await del(`/library/file?path=${encodeURIComponent(rel)}&deleteLinked=1`)).status).toBe(200);
+    expect(fs.existsSync(path.join(sourceRoot, 'a.jpg'))).toBe(false);
+    expect(getLibraryFilesForObject(objectId)).toHaveLength(0);
+  });
+
+  it('does not delete a file that is reached through a symlinked folder pointing outside the linked folder', () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'nebulis-linkeddelete-outside-'));
+    fs.writeFileSync(path.join(outside, 'precious.jpg'), 'keep me');
+    fs.symlinkSync(outside, path.join(sourceRoot, 'elsewhere'));
+    const relPath = `@src/src_del/elsewhere/precious.jpg`;
+    db.prepare(`INSERT OR REPLACE INTO librarySources (id, label, rootPath, enabled, createdAt) VALUES (?, ?, ?, 1, ?)`)
+      .run('src_del', 'Seestar library', sourceRoot, new Date().toISOString());
+    db.prepare(
+      `INSERT OR REPLACE INTO libraryFiles
+         (objectId, relPath, fileName, originalName, role, bytes, captureDate, sourceId, sourcePath, importedAt)
+       VALUES (?, ?, ?, ?, 'stacked', 8, ?, ?, ?, ?)`,
+    ).run(objectId, relPath, 'precious.jpg', 'precious.jpg', '2026-09-10', 'src_del', 'elsewhere/precious.jpg', new Date().toISOString());
+
+    expect(() => deleteLinkedFilesFromDisk(getLibraryFilesForObject(objectId))).toThrow(/outside|leaves/);
+    expect(fs.readFileSync(path.join(outside, 'precious.jpg'), 'utf8')).toBe('keep me');
+    expect(getLibraryFilesForObject(objectId)).toHaveLength(1);
+    fs.rmSync(outside, { recursive: true, force: true });
+  });
+
+  it('deletes a file under a symlinked folder that stays inside the linked folder', () => {
+    fs.mkdirSync(path.join(sourceRoot, 'real'));
+    fs.writeFileSync(path.join(sourceRoot, 'real', 'x.jpg'), 'x');
+    fs.symlinkSync(path.join(sourceRoot, 'real'), path.join(sourceRoot, 'alias'));
+    db.prepare(`INSERT OR REPLACE INTO librarySources (id, label, rootPath, enabled, createdAt) VALUES (?, ?, ?, 1, ?)`)
+      .run('src_del', 'Seestar library', sourceRoot, new Date().toISOString());
+    db.prepare(
+      `INSERT OR REPLACE INTO libraryFiles
+         (objectId, relPath, fileName, originalName, role, bytes, captureDate, sourceId, sourcePath, importedAt)
+       VALUES (?, ?, ?, ?, 'stacked', 1, ?, ?, ?, ?)`,
+    ).run(objectId, '@src/src_del/alias/x.jpg', 'x.jpg', 'x.jpg', '2026-09-10', 'src_del', 'alias/x.jpg', new Date().toISOString());
+    expect(deleteLinkedFilesFromDisk(getLibraryFilesForObject(objectId))).toEqual({ deleted: 1 });
+    expect(fs.existsSync(path.join(sourceRoot, 'real', 'x.jpg'))).toBe(false);
+  });
+
+  it('a symlinked file is unlinked as a link: the file it points at survives', () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'nebulis-linkeddelete-outside-'));
+    fs.writeFileSync(path.join(outside, 'target.jpg'), 'keep me');
+    fs.symlinkSync(path.join(outside, 'target.jpg'), path.join(sourceRoot, 'pointer.jpg'));
+    db.prepare(`INSERT OR REPLACE INTO librarySources (id, label, rootPath, enabled, createdAt) VALUES (?, ?, ?, 1, ?)`)
+      .run('src_del', 'Seestar library', sourceRoot, new Date().toISOString());
+    db.prepare(
+      `INSERT OR REPLACE INTO libraryFiles
+         (objectId, relPath, fileName, originalName, role, bytes, captureDate, sourceId, sourcePath, importedAt)
+       VALUES (?, ?, ?, ?, 'stacked', 1, ?, ?, ?, ?)`,
+    ).run(objectId, '@src/src_del/pointer.jpg', 'pointer.jpg', 'pointer.jpg', '2026-09-10', 'src_del', 'pointer.jpg', new Date().toISOString());
+    expect(deleteLinkedFilesFromDisk(getLibraryFilesForObject(objectId))).toEqual({ deleted: 1 });
+    expect(fs.readFileSync(path.join(outside, 'target.jpg'), 'utf8')).toBe('keep me');
+    fs.rmSync(outside, { recursive: true, force: true });
+  });
+});
+
 describe('deleting an object or a night that has linked files', () => {
   it('drops the object from Nebulis but leaves the originals by default', async () => {
     link('a.jpg', '2026-09-10');

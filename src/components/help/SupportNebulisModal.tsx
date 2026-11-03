@@ -3,6 +3,7 @@ import { Coffee, ExternalLink, Heart, X } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { useTheme } from '../../hooks/useTheme';
 import { COFFEE_URL, markSupportAskSeen } from '../../lib/support';
+import { setSupportAskSeen } from '../../lib/api/auth';
 import qrCode from '../../assets/about/buy-me-a-coffee-qr.svg';
 
 interface Props {
@@ -21,8 +22,15 @@ export function SupportNebulisModal({ isOpen, onClose }: Props) {
   const { t } = useTranslation('common');
   const { isDark } = useTheme();
 
-  function finish() {
+  // The browser keeps its own copy and the server keeps the record. A failed save is not worth interrupting
+  // the close for: this browser will not re-ask, and the next load syncs the local copy up.
+  function rememberSeen() {
     markSupportAskSeen();
+    setSupportAskSeen().catch(() => { /* synced on the next load */ });
+  }
+
+  function finish() {
+    rememberSeen();
     onClose();
   }
 
@@ -77,7 +85,7 @@ export function SupportNebulisModal({ isOpen, onClose }: Props) {
                 href={COFFEE_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={markSupportAskSeen}
+                onClick={rememberSeen}
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors bg-accent-500 text-white hover:bg-accent-600"
               >
                 <Coffee className="w-4 h-4" />

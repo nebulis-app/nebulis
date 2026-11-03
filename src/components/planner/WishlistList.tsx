@@ -18,7 +18,7 @@ import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { formatHm } from '../../lib/timeFormat';
 import { formatPlannerDate } from '../../lib/nightWindow';
 import { useLibraryIdByObjectId } from '../../hooks/useLibraryIdByObjectId';
-import { WISHLIST_PRIORITIES, type WishlistItem, type WishlistPriority } from '../../lib/api/wishlist';
+import type { WishlistItem, WishlistPriority } from '../../lib/api/wishlist';
 import type { PlannerTarget } from '../../lib/api/planner';
 import { WishlistObjectModal } from './WishlistObjectModal';
 import { WishlistCard } from './WishlistCard';
@@ -201,12 +201,14 @@ export function WishlistList({
           and the plain page this component renders inside of. "Select all"
           lives here now instead of as its own row above the grid, so the
           toolbar is the one place bulk actions live. */}
-      <div className={`pb-2.5 border-b ${border} flex flex-wrap items-center gap-2`}>
+      <div className={`pb-2.5 border-b ${border} flex flex-wrap items-center gap-2 ${
+        layout === 'list' ? `sticky top-0 z-10 pt-3 ${isDark ? 'bg-slate-900' : 'bg-white'}` : ''
+      }`}>
         <label className={`flex shrink-0 items-center gap-1.5 text-xs ${subtle}`}>
           <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} className="rounded" />
           {t('wishlistPanel.selectAll')}
         </label>
-        <div className="relative flex-1 min-w-[180px] max-w-xs">
+        <div className="relative flex-1 min-w-[140px] max-w-xs">
           <Search className={`absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 ${subtle}`} />
           <input
             type="text"
@@ -221,6 +223,18 @@ export function WishlistList({
           />
         </div>
 
+        {layout === 'list' ? (
+          <label className={`flex items-center gap-1.5 text-xs ${subtle}`}>
+            {t('wishlistPanel.sortLabel')}
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+              className={`rounded-lg px-2 py-1 text-xs outline-none ${isDark ? 'border border-slate-700 bg-slate-900 text-slate-100' : 'border border-slate-200 bg-slate-100 text-slate-900'}`}
+            >
+              {SORT_ORDER.map(key => <option key={key} value={key}>{t(SORT_LABEL_KEY[key])}</option>)}
+            </select>
+          </label>
+        ) : (
         <div className="flex items-center gap-1">
           <span className={`text-xs mr-1 ${subtle}`}>{t('wishlistPanel.sortLabel')}</span>
           {SORT_ORDER.map(key => (
@@ -237,6 +251,7 @@ export function WishlistList({
             </button>
           ))}
         </div>
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           {selected.size > 0 && (
@@ -304,6 +319,10 @@ export function WishlistList({
                 // The night "Schedule" actually targets: whatever night `target`
                 // was computed for (see WishlistCard's identical note).
                 const scheduleNightLabel = target?.maxAltTime ? formatPlannerDate(new Date(target.maxAltTime)) : null;
+                const meta = [item.type, item.constellation, item.magnitude != null ? t('wishlistPanel.mag', { value: item.magnitude.toFixed(1) }) : null]
+                  .filter(Boolean).join(' · ');
+                // One row per target: the popup is for picking tonight's targets. Priority is shown, not edited, and
+                // notes and removal live in the detail view a click opens (and on the full Wishlist).
                 return (
                   <div
                     key={item.id}
@@ -313,13 +332,13 @@ export function WishlistList({
                     onKeyDown={(e) => { if (e.key === 'Enter') setOpenId(item.id); }}
                     className={`rounded-xl border ${border} ${isDark ? 'bg-slate-900/60 hover:bg-slate-900' : 'bg-slate-50 hover:bg-slate-100'} cursor-pointer transition`}
                   >
-                    <div className="flex items-start gap-3 p-3">
+                    <div className="flex items-center gap-3 px-3 py-2">
                       <input
                         type="checkbox"
                         checked={selected.has(item.id)}
                         onChange={() => toggleSelected(item.id)}
                         onClick={(e) => e.stopPropagation()}
-                        className="mt-4 rounded shrink-0"
+                        className="rounded shrink-0"
                         aria-label={t('wishlistPanel.selectItem', { name: item.name })}
                       />
                       <div className="relative shrink-0">
@@ -327,107 +346,74 @@ export function WishlistList({
                           src={getCatalogThumbnailUrl(item.objectId, item.majorAxisArcmin)}
                           alt=""
                           loading="lazy"
-                          className={`w-14 h-14 rounded-lg object-cover bg-slate-800 ${!target ? 'opacity-80' : ''}`}
+                          className={`w-10 h-10 rounded-lg object-cover bg-slate-800 ${!target ? 'opacity-80' : ''}`}
                         />
                         {isImaged && (
                           <span
-                            className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white ring-2 ring-slate-900"
+                            className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-white ring-2 ring-slate-900"
                             title={t('wishlistObjectModal.imaged')}
                           >
-                            <Check className="h-2.5 w-2.5" />
+                            <Check className="h-2 w-2" />
                           </span>
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[item.priority]}`}
+                            title={t(PRIORITY_LABEL_KEY[item.priority])}
+                            role="img"
+                            aria-label={t(PRIORITY_LABEL_KEY[item.priority])}
+                          />
                           <span className="font-medium text-sm truncate">{formatObjectName(item.objectId, item.name)}</span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onRemove(item.id); }}
-                            className={`shrink-0 p-1 rounded-lg transition ${isDark ? 'text-slate-500 hover:text-red-400 hover:bg-white/5' : 'text-slate-400 hover:text-red-500 hover:bg-slate-100'}`}
-                            aria-label={t('wishlistPanel.remove', { name: item.name })}
-                            title={t('wishlistPanel.remove', { name: item.name })}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
                         </div>
-                        <div className={`text-xs truncate ${subtle}`}>
-                          {[item.type, item.constellation, item.magnitude != null ? t('wishlistPanel.mag', { value: item.magnitude.toFixed(1) }) : null]
-                            .filter(Boolean).join(' · ')}
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-1 empty:hidden">
+                        <div className={`text-xs truncate ${subtle}`}>{item.notes ? `${meta} · ${item.notes}` : meta}</div>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1 empty:hidden">
                           <IntegrationRemainingChips objectId={item.objectId} isDark={isDark} />
                         </div>
+                      </div>
 
-                        <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5">
-                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                            {WISHLIST_PRIORITIES.map(p => (
-                              <button
-                                key={p}
-                                onClick={() => onSetPriority(item.id, p)}
-                                aria-pressed={item.priority === p}
-                                className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] font-medium transition ${
-                                  item.priority === p
-                                    ? isDark ? 'bg-slate-700 text-slate-100' : 'bg-slate-200 text-slate-900'
-                                    : isDark ? 'text-slate-500 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
-                                }`}
-                              >
-                                <span className={`h-1.5 w-1.5 rounded-full ${PRIORITY_DOT[p]}`} />
-                                {t(PRIORITY_LABEL_KEY[p])}
-                              </button>
-                            ))}
-                          </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {target ? (
+                          <span className="hidden sm:flex items-center gap-1 text-[0.625rem] tabular-nums text-emerald-500">
+                            <ArrowUp className="h-2.5 w-2.5" />
+                            {peakAt ? t('wishlistPanel.visibleTonightAt', { deg: Math.round(target.maxAlt), time: peakAt }) : t('wishlistPanel.visibleTonight', { deg: Math.round(target.maxAlt) })}
+                          </span>
+                        ) : (
+                          <span className={`text-[0.625rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                            {t('wishlistPanel.notVisibleTonight')}
+                          </span>
+                        )}
 
-                          <div className="flex items-center gap-2">
-                            {target ? (
-                              <span className="flex items-center gap-1 text-[0.625rem] tabular-nums text-emerald-500">
-                                <ArrowUp className="h-2.5 w-2.5" />
-                                {peakAt ? t('wishlistPanel.visibleTonightAt', { deg: Math.round(target.maxAlt), time: peakAt }) : t('wishlistPanel.visibleTonight', { deg: Math.round(target.maxAlt) })}
+                        {target && (
+                          isScheduled ? (
+                            <span className="flex items-center gap-2">
+                              <span className={`flex items-center gap-1 text-[0.625rem] font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                                <Check className="h-3 w-3" />
+                                {t('wishlistPanel.scheduled')}
                               </span>
-                            ) : (
-                              <span className={`text-[0.625rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                                {t('wishlistPanel.notVisibleTonight')}
-                              </span>
-                            )}
-
-                            {target && (
-                              isScheduled ? (
-                                <span className="flex items-center gap-2">
-                                  <span className={`flex items-center gap-1 text-[0.625rem] font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                                    <Check className="h-3 w-3" />
-                                    {t('wishlistPanel.scheduled')}
-                                  </span>
-                                  {onQuickAdd && (
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); onQuickAdd(target); }}
-                                      className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] font-medium border border-accent-500/50 text-accent-400 hover:bg-accent-500/10 transition"
-                                      title={scheduleNightLabel ? t('wishlistPanel.scheduleAtHighestOn', { date: scheduleNightLabel }) : t('wishlistPanel.scheduleAtHighest')}
-                                    >
-                                      <CalendarPlus className="h-2.5 w-2.5" />
-                                      {t('wishlistPanel.addAnother')}
-                                    </button>
-                                  )}
-                                </span>
-                              ) : onQuickAdd ? (
+                              {onQuickAdd && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); onQuickAdd(target); }}
-                                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] font-medium bg-accent-500 text-white hover:bg-accent-600 transition"
+                                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] font-medium border border-accent-500/50 text-accent-400 hover:bg-accent-500/10 transition"
                                   title={scheduleNightLabel ? t('wishlistPanel.scheduleAtHighestOn', { date: scheduleNightLabel }) : t('wishlistPanel.scheduleAtHighest')}
                                 >
                                   <CalendarPlus className="h-2.5 w-2.5" />
-                                  {t('wishlistPanel.schedule')}
+                                  {t('wishlistPanel.addAnother')}
                                 </button>
-                              ) : null
-                            )}
-                          </div>
-                        </div>
-
-                        <div onClick={(e) => e.stopPropagation()}>
-                          <NotesField
-                            value={item.notes}
-                            isDark={isDark}
-                            onSave={(notes) => onSetNotes(item.id, notes)}
-                          />
-                        </div>
+                              )}
+                            </span>
+                          ) : onQuickAdd ? (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onQuickAdd(target); }}
+                              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] font-medium bg-accent-500 text-white hover:bg-accent-600 transition"
+                              title={scheduleNightLabel ? t('wishlistPanel.scheduleAtHighestOn', { date: scheduleNightLabel }) : t('wishlistPanel.scheduleAtHighest')}
+                            >
+                              <CalendarPlus className="h-2.5 w-2.5" />
+                              {t('wishlistPanel.schedule')}
+                            </button>
+                          ) : null
+                        )}
                       </div>
                     </div>
                   </div>
@@ -463,25 +449,5 @@ export function WishlistList({
         />
       )}
     </div>
-  );
-}
-
-function NotesField({ value, isDark, onSave }: { value: string; isDark: boolean; onSave: (notes: string) => void }) {
-  const { t } = useTranslation('planner');
-  const [draft, setDraft] = useState(value);
-
-  return (
-    <input
-      type="text"
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => { if (draft !== value) onSave(draft); }}
-      placeholder={t('wishlistPanel.notesPlaceholder')}
-      className={`mt-1.5 w-full rounded-lg px-2 py-1 text-xs outline-none transition ${
-        isDark
-          ? 'bg-slate-900 text-slate-200 placeholder:text-slate-600 focus:ring-1 focus:ring-amber-500/50'
-          : 'bg-white text-slate-800 placeholder:text-slate-400 focus:ring-1 focus:ring-amber-500/50'
-      }`}
-    />
   );
 }

@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { deriveFromPath, deriveFileDate } from '../../server/lib/library/dateDerivation';
-import { isPlausibleCalendarDate } from '../../server/lib/telescopeFiles';
+import { isPlausibleCalendarDate, rolloverDateUnconditional } from '../../server/lib/telescopeFiles';
 
 /**
  * Property tests for the date-derivation chain. No DB. The deriveFileDate
@@ -48,6 +48,27 @@ describe('deriveFromPath - property tests', () => {
       }),
       { numRuns: NUM_RUNS },
     );
+  });
+});
+
+describe('deriveFromPath - folder start time (pre-dawn rollover)', () => {
+  const cases: Array<[string, string, string | null]> = [
+    ['M31/DWARF_RAW_TELE_M31_EXP_15_GAIN_60_2026-09-19-01-10-00-000/stacked.jpg', '2026-09-19', '011000'],
+    ['M31/Session_2026-09-19_01-10-00/x.tif', '2026-09-19', '011000'],
+    ['M31/2026-09-19_0110/x.tif', '2026-09-19', '011000'],
+    ['M31/20260919_011000/x.tif', '2026-09-19', '011000'],
+    ['M31/2026-09-19/x.tif', '2026-09-19', null],
+    ['M31/2026-09-19_Ha/x.tif', '2026-09-19', null],
+    ['M31/2026-09-19_99-99-99/x.tif', '2026-09-19', null],
+    ['M31/2026-09-19-300s/x.tif', '2026-09-19', null],
+  ];
+  it.each(cases)('%s', (rel, date, time) => {
+    expect(deriveFromPath(rel)).toEqual({ date, source: 'folder', time });
+  });
+
+  it('rolls a pre-dawn folder back to the previous observing night', () => {
+    const t = deriveFromPath('M31/Session_2026-09-19_01-10-00/x.tif')!;
+    expect(rolloverDateUnconditional(t.date!, t.time)).toBe('2026-09-18');
   });
 });
 

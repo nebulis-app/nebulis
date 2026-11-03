@@ -24,7 +24,7 @@ import { FeaturedProcessed } from './FeaturedProcessed';
 import { SubframeNights } from './SubframeNights';
 import { NightsList } from './NightsList';
 import { ObjectProjectArchivesSection } from '../objectDetail/ObjectProjectArchivesSection';
-import { MediaTabs, MediaToolbar } from './MediaToolbar';
+import { MediaFilterChips, MediaTabs, MediaToolbar } from './MediaToolbar';
 import { TILE_DEFAULT, opensInViewer, parseTileSize, type TileSize } from './tileSizing';
 import { useObjectMedia } from './useObjectMedia';
 import type { ProcessedImage } from '../../types';
@@ -144,8 +144,9 @@ export function ObjectMediaView({ objectId, objectName, isAdmin, onAddObservatio
   const openEditor = useCallback((
     url: string, name: string, sourceKind: 'telescope' | 'processed', overwriteTarget?: Parameters<typeof editRequestFor>[5],
   ) => {
-    setEditRequest(editRequestFor(galleryItems, objectId, url, name, sourceKind, overwriteTarget));
-  }, [galleryItems, objectId]);
+    const owner = viewerItems.find(i => i.downloadUrl === url)?.objectId;
+    setEditRequest(editRequestFor(galleryItems, objectId, url, name, sourceKind, overwriteTarget, owner));
+  }, [galleryItems, viewerItems, objectId]);
 
   const [settingCoverId, setSettingCoverId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -300,14 +301,14 @@ export function ObjectMediaView({ objectId, objectName, isAdmin, onAddObservatio
         if (f) void upload(f);
       } : undefined}
     >
-      <div className={`rounded-2xl border p-3 sm:p-4 ${
-        dragging
-          ? isDark ? 'border-accent-500/60 bg-accent-500/10' : 'border-accent-400 bg-accent-50'
-          : isDark ? 'border-slate-800 bg-slate-900/40' : 'border-slate-200 bg-white/60'
-      }`}>
-        <div className="space-y-3">
+      <MediaTabs
+        state={state}
+        update={media.update}
+        counts={tabCounts}
+        isAdmin={isAdmin}
+        // Projects are zip archives with their own drop zone: sorting, filtering and Add image do not apply.
+        trailing={state.tab !== 'project' ? (
           <MediaToolbar
-            leading={<MediaTabs state={state} update={media.update} counts={tabCounts} isAdmin={isAdmin} />}
             state={state}
             update={media.update}
             clearFilters={media.clearFilters}
@@ -319,38 +320,46 @@ export function ObjectMediaView({ objectId, objectName, isAdmin, onAddObservatio
             onUpload={isAdmin ? () => fileInput.current?.click() : null}
             onReview={canAnalyze ? () => setAnalysisOpen(true) : null}
           />
-          {state.tab === 'sub' && (
-            <div className="flex flex-wrap items-center gap-2">
+        ) : undefined}
+      />
+      <div className={`rounded-2xl border p-3 sm:p-4 ${
+        dragging
+          ? isDark ? 'border-accent-500/60 bg-accent-500/10' : 'border-accent-400 bg-accent-50'
+          : isDark ? 'border-slate-800 bg-slate-900/40' : 'border-slate-200 bg-white/60'
+      }`}>
+        {(media.activeFilterCount > 0 || state.tab === 'sub') && (
+          <div className="mb-3 space-y-3">
+            <MediaFilterChips state={state} update={media.update} clearFilters={media.clearFilters} facets={media.facets} />
+            {state.tab === 'sub' && (
               <div
-                role="group"
-                aria-label={t('objectMedia.subsView.label')}
-                className={`flex overflow-hidden rounded-lg border ${isDark ? 'border-slate-700' : 'border-slate-200'}`}
-              >
-                {(['grid', 'list'] as const).map(v => {
-                  const Icon = v === 'grid' ? LayoutGrid : List;
-                  return (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => chooseSubsView(v)}
-                      aria-pressed={subsView === v}
-                      title={t(`objectMedia.subsView.${v}Title`)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
-                        subsView === v
-                          ? isDark ? 'bg-slate-700 text-slate-100' : 'bg-slate-200 text-slate-800'
-                          : isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-50'
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                      {t(`objectMedia.subsView.${v}`)}
-                    </button>
-                  );
-                })}
-              </div>
-
-            </div>
-          )}
-        </div>
+                  role="group"
+                  aria-label={t('objectMedia.subsView.label')}
+                  className={`flex overflow-hidden rounded-lg border ${isDark ? 'border-slate-700' : 'border-slate-200'}`}
+                >
+                  {(['grid', 'list'] as const).map(v => {
+                    const Icon = v === 'grid' ? LayoutGrid : List;
+                    return (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => chooseSubsView(v)}
+                        aria-pressed={subsView === v}
+                        title={t(`objectMedia.subsView.${v}Title`)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
+                          subsView === v
+                            ? isDark ? 'bg-slate-700 text-slate-100' : 'bg-slate-200 text-slate-800'
+                            : isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-50'
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {t(`objectMedia.subsView.${v}`)}
+                      </button>
+                    );
+                  })}
+                </div>
+            )}
+          </div>
+        )}
 
         <input
           ref={fileInput}

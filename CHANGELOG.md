@@ -1,58 +1,35 @@
 # Changelog
-## 2.2.0 (298) - November 1st, 2026
+## 2.2.0 (306) - November 1st, 2026
 ### New
-- **PixInsight connector:** a script that connects PixInsight to your Nebulis library. ([@jjmartres](https://github.com/jjmartres))
-  - Browse your objects and nights from inside PixInsight and download a night's sub-frames.
-  - Find the matching darks, flats and bias in your Calibration Library.
-  - Back up process icons and project files to an object's Project archives.
-  - Turn it on under **Settings -> Features** (off by default), then add the repository URL shown there in PixInsight (**Resources -> Updates -> Manage Repositories**).
-  - It signs in with a personal key from **Settings -> API keys**. A key acts as you, with your access (a viewer's key is read-only), shows when it was last used and can be revoked at any time. You can have up to 5.
-- **Explore:** a new page, in the top menu, for finding something to photograph.
+- **Combined object page:** a new object page with every picture of the object in one place, in tabs for Images, Subframes, Nights and Projects, with your processed images shown large at the top. It is now the default. Switch to the Classic page, a grid of observations, with the small toggle at the top right of any object page, or pick the default under **Settings -> Library -> Object pages**. Classic may be removed in a future version.
+- **Explore:** a new page, in the top menu, for finding a new target to image.
   - Search any name or catalog number (Pelican, M42, Caldwell 14), or browse by kind: Galaxies, Emission nebulae, Planetary nebulae, Supernova remnants, Star clusters and Showpieces.
-  - The search box and tabs stay on screen when you open a category or a list of results, and a row of category chips moves you straight from one kind to another, keeping your filters.
   - Each object says whether you can see it from your site tonight (or in which months) and whether it fits your telescope's frame, is a tight crop, is tiny or needs a mosaic.
-  - Add it to your wishlist, plan it for tonight, or open Plan a night to pick from the next 30 nights.
-  - Browse tiles work offline, and the Download catalog images job now also fetches the best objects in each category.
-  - Your wishlist moved in as a second tab, beside Discover, so finding a target and keeping it are on one page. Priority, notes, scheduling and JSON import/export work as before, and the search above both tabs adds straight to it. Wishlist is no longer its own item in the top menu; old links and the Planner's Open full Wishlist button land on the tab.
-  - Hide Explore under **Settings -> General -> Navigation bar**. If you had Explore hidden and Wishlist showing, Explore is turned back on once so your list stays one click away.
-- **Best tonight** means the same thing in Planner, Explore and Wishlist: how well a target is placed tonight, blended with how rewarding it is to shoot.
-  - The Planner's target list has an Order menu (Best tonight or Best conditions) and a compass button that opens Explore on the night you are planning.
-  - Explore and Wishlist cards link back to the Planner.
-- **Annotate:** open a picture in the viewer and tap the target button to draw rings and names over the objects in it, each dwith a details card.
-  - Stacked pictures are plate solved in the background, after each sync and every ten minutes while the library is idle. Turn it off under **Settings -> Library**.
+  - Add it to your wishlist, plan it for tonight.
+  - **Wishlist:** a second tab, beside Discover, for the targets you want to shoot but have not yet. Add one from the search box or any card, give it a priority and notes, and schedule it for a night. Export or import the list as JSON. The Planner's Open full Wishlist button opens this tab.
+- **Annotate:** open an image in the viewer and tap the target button to draw rings and names over the objects in it, each with a details card.
+  - Images (png, jpg) are plate solved in the background, after each sync and every ten minutes while the library is idle. Turn it off under **Settings -> Library**.
   - With the rings showing, Download and Share ask whether to keep the original or save a JPEG with the rings drawn in.
-  - Coming to the iPhone, iPad and Android apps in their 2.1.0 release.
-- **Settings:** easier to find your way around.
-  - A search box at the top finds any setting by name and jumps to it. Press / to focus it.
-  - The sidebar is grouped under Equipment, System and Advanced, and only the page you are on stays open.
-  - Sites and Catalogs now live under Sky.
-- **Frame quality:** a night's Sub-frames list (on its observation page) shows what is wrong with each raw frame.
-  - Every frame gets a score from 0 to 100 and a Good, Fair or Bad grade against the rest of its night, with flags for clouds, star trails, soft stars, satellite or plane streaks, no stars and noise.
-  - Sort any column, see the whole night in a strip that names the longest gap, hide good frames with Flagged only, and rest on a row for a larger preview with every reason in words.
-  - Opening a night measures it in the background and keeps the results. **Settings -> Library** can measure new nights automatically.
+- **Frame quality:** a night's Sub-frames list (on its observation page) shows what is wrong with each raw frame. ([@jjmartres](https://github.com/jjmartres))
+  - Every frame gets a score from 0 to 100 and a Good, Fair or Bad grade against the rest of its night, with flags for clouds, faint objects, star trails, soft stars, satellite or plane streaks, sensor spots, no stars and noise.
+  - Sort any column, see the whole night in a strip, hide good frames with Flagged only, and rest on a row for a larger preview with every reason in words.
   - Select bad frames and discard them (a frame in a linked folder asks first).
-  - **Analyze Frames**, on an object page, opens the same review with a night picker. Administrators can run it.
-- **Keep and reject frames:** mark frames Keep, Reject or back to following their grade.
-  - In the picture viewer, press K to keep and X to reject.
-  - Export a night's numbers as a CSV with an accepted column for PixInsight or Siril scripts.
-- **Suggested integration goals:** in an object's Integration section, **Goals** now has a **Suggest goals** button. The Wishlist popup has it too, so you can plan hours for a target before you have imported anything. Explore and the Planner show the progress of a goal that already exists, without editing it. Pick the telescope you will shoot with and the plan only names filters that telescope can use: a SeeStar or Dwarf is treated as a color camera, and for an ASIAIR or custom rig you list its camera and filters under **Settings -> Telescopes**. With no narrowband filter it plans broadband and says so. 
-  - It proposes hours per filter from how bright the object is (its magnitude and size, or its type when the catalog has neither), your site's Bortle class, how much the Moon is allowed to cost, and a quality level: Standard, Deep or Showpiece.
-  - Pick a color or mono camera and the hours are split across the filters we recommend for that kind of object.
-  - It is an estimate to plan with. Use these hours fills the goal fields, and nothing is saved until you press Save.
+  - Opening a night measures it in the background. **Settings -> Library** can measure new nights automatically. **Analyze Frames**, on an object page, opens the same review with a night picker.
+  - Mark frames Keep, Reject or back to following their grade (K and X in the picture viewer), and export a night's numbers as a CSV with an accepted column for PixInsight or Siril scripts.
 - **Export for stacking:** the object menu builds a ZIP of the kept lights from the nights you pick. ([@jjmartres](https://github.com/jjmartres))
   - It adds the matching darks, flats, flat darks and bias from your Calibration Library, laid out for PixInsight WBPP or Siril, and lists what is missing before you download.
   - Combine subs can leave out rejected and bad frames.
 - **Integration per filter:** the object page has an Integration card with the time shot through each filter, a goal you can set per filter, and what is left. ([@jjmartres](https://github.com/jjmartres))
   - Library, Wishlist and Planner cards show it as "4h left · Ha".
   - Merge filter names that differ between telescopes (Ha, H-alpha, H) under **Settings -> Library -> Filter aliases**.
-- **Plan My Night:** smarter about weather, filters and the Moon. ([@jjmartres](https://github.com/jjmartres))
-  - It reads the hourly forecast, leaves cloudy slots empty and says which, and puts small targets in the steadiest air. Turn this off in the Plan My Night dialog.
-  - It suggests the filter with the most time left that the Moon allows, and favours objects with time left toward their goals.
-  - Objects you can only image in narrowband count as narrowband only when your Gear lists a dual-band, tri-band or narrowband filter.
-  - Mark a block broadband or narrowband. A nebula 40 degrees from a full Moon is no longer flagged red when shot through a narrowband filter, and the night header says which kind of filter suits tonight.
-- **Plan vs actual:** scheduled blocks show how much was captured ("1h 40m / 3h"), and the Observations calendar shows planned nights next to what you shot. ([@jjmartres](https://github.com/jjmartres))
-  - Plan a missed block again the next night or mark it skipped.
-  - A block that ended less than a day ago with nothing imported yet shows "Awaiting import".
+  - **Suggest goals** in the Goals field proposes hours per filter from how bright the object is, your site's Bortle class, how much the Moon may cost and a quality level (Standard, Deep or Showpiece). The Wishlist popup has it too, so you can plan a target before importing anything.
+  - Pick the telescope you will shoot with and it only names filters that telescope can use (a SeeStar or Dwarf counts as a color camera; list an ASIAIR or custom rig's camera and filters under **Settings -> Telescopes**). It is an estimate: Use these hours fills the goal fields, and nothing is saved until you press Save.
+- **PixInsight connector:** a script that connects PixInsight to your Nebulis library. ([@jjmartres](https://github.com/jjmartres))
+  - Browse your objects and nights from inside PixInsight and download a night's sub-frames.
+  - Find the matching darks, flats and bias in your Calibration Library.
+  - Back up process icons and project files to an object's Project archives.
+  - Turn it on under **Settings -> Features** (off by default), then add the repository URL shown there in PixInsight (**Resources -> Updates -> Manage Repositories**).
+  - It signs in with a personal key from **Settings -> API keys**. A key acts as you, with your access (a viewer's key is read-only), shows when it was last used and can be revoked at any time. You can have up to 5.
 - **Rigs and optical trains:** each night is tied to one of its telescope's optical configurations (Native, Reducer 0.75x). ([@jjmartres](https://github.com/jjmartres))
   - The rig is the one chosen on the observation page, else read from the focal length in the pictures' headers, else the telescope's only configuration.
   - The object page can group nights by rig, the Observations list has a Rig column and filter, and folder import has an Optical train choice.
@@ -63,10 +40,6 @@
   - iPhone push needs the iPhone app's 2.1.0 release, coming soon. Turn on Alerts from this server, then pick what each phone gets under **Settings -> Alerts -> iPhones**.
   - Each iPhone can add a Tonight's plan line or a Dew risk warning to its alert (also needs app 2.1.0).
 - **My Catalog:** a wall of your own pictures for each catalog, with an edit mode to choose which picture each tile shows and a poster you can save. Open it from a catalog's board on the **Catalogs** page.
-- **Combined object page:** a new object page with every picture of the object in one place, in tabs for Images, Subframes, Nights and Projects, with your processed images shown large at the top. It is now the default. Switch to the Classic page, a grid of observations, with the small toggle at the top right of any object page, or pick the default under **Settings -> Library -> Object pages**. Classic may be removed in a future version.
-- **Mosaic layout:** next to the grid, the Library and the Gallery can show a Mosaic that sizes each tile by how much you have done with it. Switch with the Layout control in their toolbars.
-- **Collapsible banners:** the banner at the top of most pages folds to one slim row with the page's key figures, and Nebulis remembers your choice for each page. The Planner's night banner folds the same way.
-  - Turn on **Settings -> General -> Compact page banners** to start every page folded.
 - **Pictures of your gear and sites:**
   - Add your own photo of a telescope under **Settings -> Telescopes -> Edit**. A cut-out on a transparent background looks best.
   - Add photos of the garden, the skyline or the spot you set up from under each site in **Settings -> Sky -> Sites**. The iPhone and iPad app can take them too, from app 2.1.0.
@@ -80,9 +53,27 @@
   - **Settings -> Storage -> Cleanup:** *Objects with no folder* now also finds objects that have observations but no files, even after *Missing files* was repaired first.
 
 ### Updated
+- **Plan My Night:** smarter about weather, filters and the Moon. ([@jjmartres](https://github.com/jjmartres))
+  - It reads the hourly forecast, leaves cloudy slots empty and says which, and puts small targets in the steadiest air. Turn this off in the Plan My Night dialog.
+  - It suggests the filter with the most time left that the Moon allows, and favors objects with time left toward their goals.
+  - Objects you can only image in narrowband count as narrowband only when your Gear lists a dual-band, tri-band or narrowband filter.
+  - Mark a block broadband or narrowband. A nebula 40 degrees from a full Moon is no longer flagged red when shot through a narrowband filter, and the night header says which kind of filter suits tonight.
+- **Plan vs actual:** scheduled blocks show how much was captured ("1h 40m / 3h"), and the Observations calendar shows planned nights next to what you shot. ([@jjmartres](https://github.com/jjmartres))
+  - Plan a missed block again the next night or mark it skipped.
+  - A block that ended less than a day ago with nothing imported yet shows "Awaiting import".
+- **Best tonight** means the same thing in Planner, Explore and Wishlist: how well a target is placed tonight, blended with how rewarding it is to shoot.
+  - The Planner's target list has an Order menu (Best tonight or Best conditions) and a compass button that opens Explore on the night you are planning.
+  - Explore and Wishlist cards link back to the Planner.
+- **Settings:** easier to find your way around.
+  - A search box at the top finds any setting by name and jumps to it. Press / to focus it.
+  - The sidebar is grouped under Equipment, System and Advanced, and only the page you are on stays open.
+  - Sites and Catalogs now live under Sky.
+- **Mosaic layout:** next to the grid, the Library and the Gallery can show a Mosaic that sizes each tile by how much you have done with it. Switch with the Layout control in their toolbars.
+- **Collapsible banners:** the banner at the top of most pages folds to one slim row with the page's key figures, and Nebulis remembers your choice for each page. The Planner's night banner folds the same way.
+  - Turn on **Settings -> General -> Compact page banners** to start every page folded.
 - **Speed:** FITS thumbnails and previews build about ten to thirty times faster, so a 50 MB stacked frame takes about a tenth of a second.
   - Small stars are kept instead of dropped. Thumbnails are redrawn once after the update.
-  - Catalog and sky pictures load faster and fail less often when the sky survey is slow.
+  - Catalog and sky pictures load faster and fail less often when the sky survey is slow. If the DSS2 sky survey (CDS) cannot be reached, pictures come from the SDSS or Legacy Survey services and are swapped back once it answers.
 - **Object page:** easier to scan.
   - The banner shows the name, one line with status and telescopes, the object's other names, and a single row of figures (observations, sub-frames, magnitude and distance).
   - Tonight's visibility and the filter recommendations share a panel beside it. About is a collapsed row at the bottom, and Integration and Processing Projects share one card.
@@ -97,9 +88,11 @@
 - **Library Health** (**Settings -> Storage -> Cleanup**): a new Duplicate session files check finds a capture stored twice under one object and deletes the second copy only after the bytes match the first.
 - **Folder import** shows "Finishing" once every file is copied, instead of a full bar that looks hung.
 - **Planner:** the night strip has a legend for its bars, dots and Moon disks.
+- **Planner object popup:** a larger picture that opens full size when clicked.
 
 ### Fixed
 - **Forecast and Planner scores now agree:** the same night could read "Bad 16" in the Planner and "Fair 42" on the Sky Forecast page. The three upcoming-night cards on the Forecast page now use the Planner's score, so the Moon and the seeing count in both, and both use the same words (Bad, Poor, Fair, Good, Great, Ideal). Scores on the cards drop on moonlit nights.
+- **Planner pictures of small galaxies** were a speck in a 1 degree field. New downloads are framed to the object.
 - **Caldwell 102 and 103** pointed at the wrong objects. C102 is now the Southern Pleiades (IC 2602) and C103 the Tarantula Nebula.
 - **Library objects:**
   - A target named with a description, such as "NGC 2244 Satellite Cluster" or "10P Tempel", now joins NGC 2244 or 10P instead of showing up as a second object, and its mosaics group under it. Existing objects are merged on the next server start.
@@ -116,14 +109,14 @@
   - Folder import put a FITS file's UTC capture time down as local time, so a frame taken after midnight could land on the next night. Files without a date in their name use the site's time zone now.
   - Downloaded sub-frame ZIPs, the session report and the Moon phase on new notes read the date in the site's time zone instead of the server's.
 
+* Note - Satellite identification will be removed in v2.3. It was more of a novelty when Nebulis was first released and serves no real-world purpose
+
 ## 2.1.2 (292) - October 5th, 2026
 ### New
-- Catalog: an object that sat inside the frame of something you imaged now counts as imaged too (exampleL Imaging M42 also counts M43, and imaging M51 also counts NGC 5195). These tiles show "In M42", the object popup says which object it was imaged with and opens it. How many objects count depends on your telescope's field of view, so a wider scope picks up more. Turn it off under Settings -> Library -> Credit objects in the same frame (on by default).
+- Catalog: an object that sat inside the frame of something you imaged now counts as imaged too (example: Imaging M42 also counts M43, and imaging M51 also counts NGC 5195). These tiles show "In M42", the object popup says which object it was imaged with and opens it. How many objects count depends on your telescope's field of view, so a wider scope picks up more. Turn it off under Settings -> Library -> Credit objects in the same frame (on by default).
 - Add Telescope: a new Find device button looks for SeeStar, ASIAIR and Dwarf devices on your network. Pick one and Nebulis fills in its address and telescope type.
 - Library: change how big the object cards are. Open View and drag the Grid size slider toward the small grid for up to 10 columns, or toward the large one for as few as 2. From 6 columns the cards switch to a compact layout so they stay readable. Nebulis remembers your choice in this browser. The slider shows on tablets and computers; phones stay at 2 columns.
 - Object cover image: choose how the picture is framed. Pick an image in Choose Gallery Image, press Frame image, then drag the box to move it and drag a corner to resize it. Nothing zooms until you move the box. The rotate button switches between a landscape and a portrait frame, so a tall object can have a tall photo. The library card and the object header both use your framing. Images with a saved frame show a Framed badge in the picker.
-- PixInsight: a connector script for PixInsight (from [@jjmartres](https://github.com/jjmartres)). Browse your library from inside PixInsight, download a night's sub-frames, find matching darks, flats and bias, and back up process icons and project files to an object's Project archives. Turn it on under Settings -> Features, add the repository URL shown there in PixInsight (Resources -> Updates -> Manage Repositories), and Nebulis keeps the connector up to date with each release. Off by default.
-- API keys: create personal keys under Settings -> API keys for PixInsight and other tools. A key acts as you, with your access (a viewer's key is read-only), shows when it was last used, and can be revoked at any time. Admins can see and revoke everyone's keys. You can have up to 5.
 
 ### Updated
 - Reclassify object: search now finds an object by any of its names: NGC, IC, Messier, Caldwell or Sharpless number, or a common name. Typing "C20", "Caldwell 20" or "North America" all find NGC 7000, and pasting a Dwarf session folder name works too. Each result shows the catalog ID and the object's other names as colored tags, so you can tell which object you are picking. The search box is ready to type in as soon as the dialog opens.
@@ -163,7 +156,6 @@
 ## 2.1.0 (282) - September 20th, 2026
 ### New
 - Localization: the web app is now available in German, French, and Spanish (Settings -> General -> Language), AI-translated and not yet checked by a native speaker. If you spot a wrong or awkward phrase, or want to contribute a language that isn't listed, open a pull request against the public GitHub repo (nebulis-app/nebulis) - src/locales/CONTRIBUTING-TRANSLATIONS.md walks through exactly what to change and how. You can also send translation feedback to support@nebulis.app.
-- Wishlist: starring an object now builds a real wishlist, reachable from a new top-nav section or the Planner toolbar, with search, priority, notes, scheduling, and JSON export/import. Targets not up tonight show a 12-month altitude chart of their best months instead.
 - Calibrations: a new top-nav section (optional) groups your bias, dark, flat, and flat-dark frames by exposure, binning, gain, and sensor temperature, with one-click ZIP downloads per group, an expiry flag for old dark/bias sets, and the ability to attach flats to the object or night they belong to. (Settings -> Telescopes) ([@jjmartres](https://github.com/jjmartres))
 - Processing Projects: archive your Siril or PixInsight working project (.zip, up to 20 GB) from an object page, with upload progress, cancel, download, and delete. ([@jjmartres](https://github.com/jjmartres))
 - Library: objects get a manual Processing status (Unprocessed / Processing / Processed) with a matching filter. ([@jjmartres](https://github.com/jjmartres))
@@ -177,14 +169,13 @@
 ### Updated
 - Planner: the target list and details dialog are less cluttered, with peak altitude shown as a short "88° · 04:50" and the details dialog leading with Add to Tonight.
 - Navigation bar: the top nav now sizes itself to the room it actually has instead of shrinking labels past eight items, and a newly turned-on item lands next to where it belongs instead of always at the end.
-- Nvavigation bar: you can now hide/show ANY item on the top menu bar, and re-arrange them (Settings -> General -> Navigation Bar)
+- Navigation bar: you can now hide/show ANY item on the top menu bar, and re-arrange them (Settings -> General -> Navigation Bar)
 - Observations: the List view now pages through your observations instead of loading them all at once.
 - Planner: quick-adding a target with the "+" button now avoids the Moon the same way "Plan My Night" already does.
 
 ### Fixed
 - ZWO ASIAIR: flat-dark frames (Autorun/FlatDark, Plan/FlatDark) were never fetched during a live sync, so they never reached the Calibrations library. They are archived now. ([@jjmartres](https://github.com/jjmartres))
 - Catalog filters: supernova remnants now show up consistently as nebulae across the Planner, Catalogs board, and library breakdown.
-- Wishlist: objects missing magnitude, size, or constellation data now star correctly instead of silently failing to add.
 - Settings: the Data Sources note now says what's actually sent (site coordinates for weather and light pollution, object names for catalog lookups).
 - Storage: on macOS, free space now counts purgeable space (like local Time Machine snapshots) as free, matching what Finder and Disk Utility show, instead of reporting hundreds of gigabytes less than what's actually available.
 - Fixed several popups and dialogs not closing on Esc, and the Planner's altitude chart nudging the details dialog as its caption changed length.
@@ -257,7 +248,7 @@
 - Session page: a night that captured only video (lunar/planetary timelapse) now plays that video instead of showing "No images captured"; its card on the object page marks it as video instead of borrowing the object's photo.
 - Star Trails sessions: hid actions that don't apply to them (Compare, Combine, constellation).
 - Backup Status: rebuilt with a cleaner banner showing whether your library is current, last sync time, reachable telescopes, and recent activity, plus live progress/rate/time-left while syncing; each telescope card shows its last sync and whether it syncs on its own.
-- Backup Status: a failed or cancelled sync gets its own panel with the full error. "Files left on the telescope" has an info button listing filenames a page at a time; "files belonging to deleted sessions" links to a restore list so the next sync brings them back.
+- Backup Status: a failed or canceled sync gets its own panel with the full error. "Files left on the telescope" has an info button listing filenames a page at a time; "files belonging to deleted sessions" links to a restore list so the next sync brings them back.
 - Image viewer: now matches the rest of the app (black stage in every theme, arrows on the image itself), sized to the picture instead of the screen, and shows processed images (not just raw frames) with more reliable FITS handling.
 - Satellite trail detection and identification: now works correctly on wide-field and non-SeeStar rigs (ASIAIR, generic SMB telescopes), using the image's real plate scale and orientation from its FITS WCS header instead of assumptions sized for a SeeStar's narrow field, and searching the whole exposure instead of just its first instant.
 - Maintenance: nightly maintenance is now one on/off switch, with a manual "run now" (Settings -> General).
@@ -344,7 +335,7 @@
 - Gallery image and catalog paths are now checked for traversal, and slow filename matching patterns were tightened.
 - Connection errors on a custom SMB share called it a telescope and gave advice about power and Wi-Fi, which does not apply to a NAS or a PC. They now say server and point at the address, the machine being on, and SMB sharing being enabled.
 - The Hostname / IP Address field accepted anything, so "10.0.1.5/SeeStar/" saved without complaint and then failed every connection. It now takes a hostname or IP with an optional port and says which half belongs in which field. The server enforces the same rule, so onboarding and the API get it too.
-- A cancelled or failed folder upload left its files behind for 24 hours, in one reported case 125 GB on the system drive. The space is freed right away now, and the unattended cleanup runs hourly against a 6 hour cutoff.
+- A canceled or failed folder upload left its files behind for 24 hours, in one reported case 125 GB on the system drive. The space is freed right away now, and the unattended cleanup runs hourly against a 6 hour cutoff.
 - Dwarf FTP logs in as "anonymous" with no password by default.
 - Telescope connections read "Wi-Fi" or "USB" everywhere. A DWARF showed "FTP" on the Settings page and "Wi-Fi" on Backup Status for the same connection.
 - The connection tag stayed lit after a telescope stopped responding, because it showed whether an address had been saved rather than whether the telescope answered. It now dims when the telescope goes offline.
@@ -452,7 +443,7 @@
 - Sub-frame download filter — when combining and exporting subframes, you can now choose which type of subframe to export (LP Filter, IRCUT, etc).
 - Planner has a fresh new look with updated colors and a cleaner layout.
 - Added ability to pan within a zoomed in image using click/drag (before was only trackpad)
-- Cleaned up some objects on the Oservation and Library Page (Moved Compare Function).
+- Cleaned up some objects on the Observation and Library Page (Moved Compare Function).
 
 ### Fixed
 - Gallery type filters (Nebula, Galaxy, Cluster, etc.) now correctly show all matching objects — "Dark Nebula" appears under Nebula, "Spiral Galaxy" under Galaxy, and so on. 

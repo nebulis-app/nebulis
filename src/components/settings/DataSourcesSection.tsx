@@ -14,6 +14,8 @@ import {
   ExternalLink,
   Info,
   ChevronDown,
+  Download,
+  Bell,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Sec } from './SettingsUI';
@@ -38,7 +40,7 @@ const DATA_SOURCE_GROUPS: Array<{
   {
     titleKey: 'dataSources.groups.astronomyDatabases',
     sources: [
-      { name: 'OpenNGC Catalog', descriptionKey: 'dataSources.descriptions.openngc', url: 'https://github.com/mattiaverga/OpenNGC', icon: <BookOpen className="w-4 h-4" />, badge: 'bundled', cacheKey: 'dataSources.cache.bundledWithApp' },
+      { name: 'Nebulis catalog (OpenNGC)', descriptionKey: 'dataSources.descriptions.openngc', url: 'https://github.com/mattiaverga/OpenNGC', icon: <BookOpen className="w-4 h-4" />, badge: 'bundled', cacheKey: 'dataSources.cache.bundledWithApp' },
       { name: 'CDS Sesame', descriptionKey: 'dataSources.descriptions.sesame', url: 'https://cdsweb.u-strasbg.fr', icon: <Globe className="w-4 h-4" />, badge: 'free', cacheKey: 'dataSources.cache.cachedToDisk' },
       { name: 'SIMBAD', descriptionKey: 'dataSources.descriptions.simbad', url: 'https://simbad.cds.unistra.fr', icon: <Database className="w-4 h-4" />, badge: 'free' },
     ],
@@ -48,6 +50,8 @@ const DATA_SOURCE_GROUPS: Array<{
     sources: [
       { name: 'NASA Hubble Caldwell Catalog', descriptionKey: 'dataSources.descriptions.hubbleCaldwell', url: 'https://science.nasa.gov/mission/hubble/science/explore-the-night-sky/hubble-caldwell-catalog/', icon: <Image className="w-4 h-4" />, badge: 'free', cacheKey: 'dataSources.cache.cachedToDisk' },
       { name: 'CDS HiPS Sky Survey', descriptionKey: 'dataSources.descriptions.hips', url: 'https://alasky.cds.unistra.fr', icon: <Image className="w-4 h-4" />, badge: 'free', cacheKey: 'dataSources.cache.cachedToDisk' },
+      { name: 'SDSS SkyServer', descriptionKey: 'dataSources.descriptions.sdss', url: 'https://skyserver.sdss.org', icon: <Image className="w-4 h-4" />, badge: 'free', cacheKey: 'dataSources.cache.cachedToDisk' },
+      { name: 'Legacy Survey', descriptionKey: 'dataSources.descriptions.legacySurvey', url: 'https://www.legacysurvey.org', icon: <Image className="w-4 h-4" />, badge: 'free', cacheKey: 'dataSources.cache.cachedToDisk' },
       { name: 'NASA Image Library', descriptionKey: 'dataSources.descriptions.nasaImageLibrary', url: 'https://images.nasa.gov', icon: <Image className="w-4 h-4" />, badge: 'free', cacheKey: 'dataSources.cache.cachedToDisk' },
       { name: 'Wikipedia', descriptionKey: 'dataSources.descriptions.wikipedia', url: 'https://en.wikipedia.org', icon: <FileText className="w-4 h-4" />, badge: 'free' },
     ],
@@ -70,6 +74,7 @@ const DATA_SOURCE_GROUPS: Array<{
     titleKey: 'dataSources.groups.maps',
     sources: [
       { name: 'Esri', descriptionKey: 'dataSources.descriptions.esri', url: 'https://www.esri.com', icon: <Map className="w-4 h-4" />, badge: 'free' },
+      { name: 'OpenStreetMap Nominatim', descriptionKey: 'dataSources.descriptions.nominatim', url: 'https://nominatim.openstreetmap.org', icon: <Map className="w-4 h-4" />, badge: 'free' },
     ],
   },
   {
@@ -79,6 +84,14 @@ const DATA_SOURCE_GROUPS: Array<{
     titleKey: 'dataSources.groups.lightPollution',
     sources: [
       { name: 'DarkSkySites', descriptionKey: 'dataSources.descriptions.darkskysites', url: 'https://darkskysites.com', icon: <Sparkles className="w-4 h-4" />, badge: 'free', cacheKey: 'dataSources.cache.cached24h' },
+    ],
+  },
+  {
+    // Our own hosts. Still outbound requests, so they are listed with everything else.
+    titleKey: 'dataSources.groups.nebulisServers',
+    sources: [
+      { name: 'downloads.nebulis.app', descriptionKey: 'dataSources.descriptions.nebulisDownloads', icon: <Download className="w-4 h-4" />, badge: 'free' },
+      { name: 'push.nebulis.app', descriptionKey: 'dataSources.descriptions.nebulisPush', icon: <Bell className="w-4 h-4" />, badge: 'free' },
     ],
   },
 ];

@@ -474,14 +474,15 @@
     "visitSource": "Visitar {{name}}",
     "freeApi": "API gratuita",
     "bundled": "Incluido",
-    "footerNote": "Todos los servicios externos son gratuitos y no necesitan claves de API. Los datos se solicitan cuando hacen falta y se guardan en caché siempre que es posible. Una petición solo lleva lo que el servicio necesita: las coordenadas de tu lugar de observación para el tiempo y la contaminación lumínica, y nombres de objetos para las búsquedas en el catálogo. Nunca se envían datos de cuenta, de uso ni imágenes.",
+    "footerNote": "Todos los servicios externos son gratuitos y no necesitan claves de API. Los datos se solicitan cuando hacen falta y se guardan en caché siempre que es posible. Una petición solo lleva lo que el servicio necesita: las coordenadas de tu lugar de observación para el tiempo, la contaminación lumínica y los nombres de lugar, y nombres de objetos para las búsquedas en el catálogo. Nunca se envían datos de cuenta, de uso ni imágenes.",
     "groups": {
       "astronomyDatabases": "Bases de datos astronómicas",
       "skyImages": "Imágenes del cielo",
       "weatherForecasting": "Clima y pronóstico",
       "satelliteTracking": "Seguimiento de satélites",
       "maps": "Mapas",
-      "lightPollution": "Contaminación lumínica"
+      "lightPollution": "Contaminación lumínica",
+      "nebulisServers": "Servidores de Nebulis"
     },
     "cache": {
       "bundledWithApp": "Incluido con la aplicación",
@@ -489,19 +490,24 @@
       "cached24h": "Almacenado en caché 24 horas"
     },
     "descriptions": {
-      "openngc": "Coordenadas, magnitudes y tipos de más de 3200 objetos de cielo profundo",
+      "openngc": "Nombres, posiciones, magnitudes y tipos de unos 12.000 objetos de cielo profundo",
       "sesame": "Búsqueda de nombres para objetos que faltan en el catálogo incluido",
       "simbad": "Detalles de tamaño y distancia para los objetos del catálogo",
       "hubbleCaldwell": "Imágenes del Hubble y texto para los 88 objetos Caldwell",
       "hips": "Imágenes del relevamiento DSS2 para cualquier coordenada que señales",
       "nasaImageLibrary": "Imágenes de respaldo para planetas, lunas y cometas",
       "wikipedia": "Resúmenes en lenguaje sencillo y miniaturas para los objetos",
-      "openMeteo": "Temperatura, humedad, nubosidad, viento y lluvia para tus sitios",
+      "openMeteo": "Previsión y tiempo pasado de tus lugares, más la búsqueda de lugares",
       "sevenTimer": "Pronósticos de seeing y transparencia para noches de fotografiado",
       "sunCalc": "Fase lunar, crepúsculo y posiciones del sol y la luna para tus sitios",
       "celestrak": "Elementos orbitales de satélites activos, usados en la comprobación de rastros",
       "esri": "Teselas de mapa para el visor de ubicaciones de observación",
-      "darkskysites": "Devuelve la clase Bortle de tu ubicación a partir del compuesto satelital VIIRS mensual. Nebulis envía las coordenadas del lugar de observación seleccionado y guarda la respuesta en caché durante 24 horas."
+      "darkskysites": "Devuelve la clase Bortle de tu ubicación a partir del compuesto satelital VIIRS mensual. Nebulis envía las coordenadas del lugar de observación seleccionado y guarda la respuesta en caché durante 24 horas.",
+      "sdss": "Imágenes del cielo de respaldo cuando no se puede acceder al sondeo DSS2. Cubre solo parte del cielo.",
+      "legacySurvey": "Segundo respaldo de imágenes del cielo donde SDSS no tiene cobertura. Cubre solo parte del cielo.",
+      "nominatim": "Convierte las coordenadas de tu lugar de observación en un nombre de lugar.",
+      "nebulisDownloads": "Paquetes de catálogo y actualizaciones de la app. Nebulis comprueba aquí si hay versiones nuevas y las descarga desde aquí.",
+      "nebulisPush": "Entrega las alertas al iPhone, solo si las activas."
     }
   },
   "siteManager": {

@@ -2218,7 +2218,14 @@ export const spec = {
       },
       LibraryGalleryImageInput: {
         type: 'object',
-        properties: { imagePath: nullable({ type: 'string' }) },
+        properties: {
+          imagePath: nullable({ type: 'string' }),
+          auto: {
+            type: 'boolean',
+            description:
+              'Clear the user\'s choice and any crop so the object follows the gallery source setting again. Takes precedence over `imagePath`, which is ignored when this is true.',
+          },
+        },
       },
       LibraryGalleryCropInput: {
         type: 'object',
@@ -3035,6 +3042,11 @@ export const spec = {
         properties: { lastSeenVersion: nullable({ type: 'string' }) },
       },
       PreferencesLastSeenVersionInput: jsonSchemaOf(LastSeenVersionBodySchema, 'input'),
+      PreferencesSupportAsk: {
+        type: 'object',
+        required: ['seenAt'],
+        properties: { seenAt: nullable({ type: 'string', format: 'date-time' }) },
+      },
 
       // Device pairing and connected devices.
       PairStartBody: {
@@ -4153,6 +4165,20 @@ export const spec = {
           200: jsonResponse('The acknowledged version', 'PreferencesLastSeenVersion'),
           422: { description: 'VALIDATION_ERROR' },
         },
+      },
+    },
+
+    '/preferences/support-ask': {
+      get: {
+        summary: 'When this user dismissed the "Enjoying Nebulis?" ask',
+        tags: ['Settings'],
+        responses: { 200: jsonResponse('The instant it was dismissed (UTC), or null if never', 'PreferencesSupportAsk') },
+      },
+      put: {
+        summary: 'Record that the support ask was seen',
+        tags: ['Settings'],
+        description: 'Takes no body. Called when the ask is closed or its coffee link is opened. Idempotent: the first call keeps its date.',
+        responses: { 200: jsonResponse('The instant it was first dismissed', 'PreferencesSupportAsk') },
       },
     },
 
@@ -5971,7 +5997,7 @@ export const spec = {
       put: {
         summary: "Choose the object's gallery image",
         tags: ['Library (Local)'],
-        description: 'Admin only. `null` clears the choice. A chosen picture must live in the library.',
+        description: 'Admin only. `null` clears the choice. A chosen picture must live in the library. `auto: true` clears the choice and any crop, follows the gallery source setting, and ignores `imagePath`.',
         parameters: [subIdParam('objectId')],
         requestBody: jsonBody('LibraryGalleryImageInput'),
         responses: {

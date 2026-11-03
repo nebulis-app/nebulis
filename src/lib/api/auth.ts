@@ -86,6 +86,14 @@ export const saveWatermarkPresets = (presets: WatermarkPreset[]) =>
 export const getLastSeenVersion = () =>
   fetchJSON<{ lastSeenVersion: string | null }>('/preferences/last-seen-version');
 
+/** When this user dismissed the "Enjoying Nebulis?" ask (ISO instant), or null if they have not. */
+export const getSupportAskSeen = () =>
+  fetchJSON<{ seenAt: string | null }>('/preferences/support-ask');
+
+/** Record that the support ask was seen. The first call keeps its date. */
+export const setSupportAskSeen = () =>
+  fetchJSON<{ seenAt: string }>('/preferences/support-ask', { method: 'PUT' });
+
 /** Mark `version` as acknowledged for this user. Called when they click
  *  "Got it" on the What's New popup. */
 export const setLastSeenVersion = (version: string) =>

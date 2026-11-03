@@ -420,6 +420,10 @@ export function ObjectDetail() {
         // Star Trails has no catalog entry to fall back to (getCatalogThumbnailUrl
         // would just 404) — show the bundled placeholder until a real capture
         // sets a galleryImage, at which point the branch above wins instead.
+        // Whether this is Star Trails is only known once the object list has loaded, so wait for it
+        // rather than request a catalog image that 404s for that one object.
+        : allObjects === undefined
+          ? null
         : isStartrails
           ? DWARF_STARTRAILS_PLACEHOLDER_IMAGE
           : getCatalogThumbnailUrl(catalogEntry?.id || baseObjectId, catalogEntry?.majorAxisArcmin ?? null, HERO_IMAGE_SIZE, HERO_IMAGE_SIZE);

@@ -1447,7 +1447,8 @@
       "markProcessedFailed": "No se pudo marcar como procesada",
       "favorite": "Favorita",
       "unfavorite": "Quitar de favoritas",
-      "download": "Descargar"
+      "download": "Descargar",
+      "mosaic": "Mosaico"
     },
     "loading": "Cargando medios",
     "loadingMore": "Cargando más",
@@ -1478,6 +1479,8 @@
     "target": "Objetivo",
     "toggle": "Nombrar los objetos de esta imagen",
     "toggleHide": "Ocultar nombres de objetos",
+    "minimize": "Minimizar nombres de objetos",
+    "restore": "Mostrar nombres de objetos",
     "title": "Nombres de objetos",
     "loading": "Buscando objetos...",
     "quality": {

@@ -238,9 +238,14 @@ export function WhatsNewReel({ config, isOpen, onClose, onAcknowledge, acknowled
           {onViewAll ? (
             <button
               onClick={onViewAll}
-              className={`text-xs font-medium transition ${isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
+                isDark
+                  ? 'border-accent-500/40 text-accent-400 hover:bg-accent-500/10'
+                  : 'border-accent-600/40 text-accent-700 hover:bg-accent-50'
+              }`}
             >
               {t(`${config.ns}.viewFullReleaseNotes`)}
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
             </button>
           ) : <span />}
           <div className="flex items-center gap-2">

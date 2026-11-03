@@ -210,8 +210,8 @@ test.describe('Planner Page', () => {
     await expect(page.getByRole('button', { name: 'Collapse header', exact: true })).toBeVisible();
   });
 
-  test('an empty night offers the two ways to start, and sharing waits for a plan', async ({ page }) => {
-    await expect(page.getByText('Nothing planned for this night yet.')).toBeVisible();
+  test('an empty night has no start-up row, and sharing waits for a plan', async ({ page }) => {
+    await expect(page.getByText('Nothing planned for this night yet.')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Share', exact: true })).toBeDisabled();
     // No "More" menu any more: nothing to copy here, so no copy button either.
     await expect(page.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
@@ -230,7 +230,6 @@ test.describe('Planner Page', () => {
     await page.reload();
     await expect(page.getByRole('button', { name: /copy last night/i })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Share', exact: true })).toBeEnabled();
-    await expect(page.getByText('Nothing planned for this night yet.')).toHaveCount(0);
   });
 
   test('the rating key explains the night strip', async ({ page }) => {

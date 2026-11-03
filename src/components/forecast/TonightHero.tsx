@@ -3,14 +3,18 @@
  * doing, when the dark actually starts and ends, and the hour-by-hour shape of
  * the night on a single time axis.
  *
+ * The page title and site picker sit in their own collapsible banner above the
+ * panel, so folding the banner (or "Compact page banners") never hides the
+ * forecast itself.
+ *
  * The panel is dark in every theme. It is a picture of the night sky, and the
  * Catalogs hub sets the same precedent for imagery-backed panels, so the
  * surrounding page stays theme-driven while this stays night-side.
  */
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { CloudSun, Star, Sunrise, Sunset, Timer } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { ForecastHour } from '../../lib/api/planner';
+import type { ForecastHour, NightRating } from '../../lib/api/planner';
 import { translateMoonPhase } from '../../lib/moonPhaseLabel';
 import {
   calculateVisibilityScore,
@@ -21,6 +25,8 @@ import {
   type VisibilityResult,
 } from '../../lib/forecastScore';
 import { scoreNight } from '../../lib/plannerNight';
+import { dateFromKey } from '../../lib/nightWindow';
+import { formatDate } from '../../lib/formatLocale';
 import { MoonDisk } from '../ui/MoonDisk';
 import { NightRibbon } from './NightRibbon';
 import { ScoreDial } from '../ui/ScoreDial';
@@ -59,10 +65,16 @@ interface Props {
   /** The light-pollution tile. Built by the page, which owns the active site
    *  and the detect action, and rendered as a fifth tile in the key-times row. */
   lightPollution?: ReactNode;
+  /** The nights after tonight, for the banner's "next good night" line. Left
+   *  out where the banner has no room for it (the Planner's weather popup). */
+  upcomingNights?: NightRating[];
 }
 
 /** Minimum per-hour score for an hour to count as worth being outside for. */
 const USABLE_SCORE = 55;
+
+/** A night at or above this is worth setting up for (the "Good" band). */
+const GOOD_NIGHT_SCORE = 55;
 
 interface BestWindow {
   start: string;
@@ -128,9 +140,119 @@ export function StatPill({ icon, label, value, sub, action, valueClass }: {
   );
 }
 
-export function TonightHero({
-  hours, tonight, timeZone, darkWindow, tempUnit, selectedTime, onSelect, accent, siteControl, lightPollution,
-}: Props) {
+/** Minutes now, refreshed once a minute, for the dark countdown. */
+function useNowMs(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return now;
+}
+
+/** The two things the panel below does not say: how long until (or left of)
+ *  the dark, and when the next decent night is if tonight is not one. */
+function BannerFacts({ darkWindow, tonightScore, upcomingNights, block }: {
+  /** A paragraph under the subtitle when expanded; bare text inside the collapsed bar's own line. */
+  block: boolean;
+  darkWindow: DarkWindow | null;
+  tonightScore: number;
+  upcomingNights?: NightRating[];
+}) {
+  const { t } = useTranslation('forecast');
+  const now = useNowMs();
+
+  const span = (ms: number) => {
+    const total = Math.max(1, Math.round(ms / 60_000));
+    const hours = Math.floor(total / 60);
+    const minutes = total % 60;
+    return hours > 0 ? t('tonightHero.duration', { hours, minutes }) : t('tonightHero.durationShort', { minutes });
+  };
+
+  let dark: string | null = null;
+  if (darkWindow) {
+    if (now < darkWindow.start) dark = t('tonightHero.darkIn', { time: span(darkWindow.start - now) });
+    else if (now < darkWindow.end) dark = t('tonightHero.darkNow', { time: span(darkWindow.end - now) });
+  }
+
+  let next: string | null = null;
+  if (upcomingNights && tonightScore < GOOD_NIGHT_SCORE) {
+    const night = upcomingNights.find(n => n.score >= GOOD_NIGHT_SCORE);
+    next = night
+      ? t('tonightHero.nextGoodNight', {
+        day: formatDate(dateFromKey(night.date), { weekday: 'long' }),
+        score: night.score,
+      })
+      : t('tonightHero.noGoodNight');
+  }
+
+  if (!dark && !next) return null;
+  const text = (
+    <>
+      {dark}
+      {dark && next && <span className="text-white/25"> · </span>}
+      {next}
+    </>
+  );
+  return block
+    ? <p className="mt-2 text-[0.8125rem] font-medium text-white/75 tabular-nums">{text}</p>
+    : text;
+}
+
+/** The page banner: title, subtitle and the site picker. It folds to a slim row;
+ *  the forecast panel below it stays put. */
+function ForecastBanner({ accent, siteControl, facts }: { accent: string; siteControl?: ReactNode; facts: (block: boolean) => ReactNode }) {
+  const { t } = useTranslation('forecast');
+  return (
+    <CollapsibleHero
+      page="forecast"
+      image={PAGE_HERO.forecast}
+      intensity={0.24}
+      accent={accent}
+      bottomBloom={false}
+      icon={<CloudSun className="h-6 w-6 sm:h-7 sm:w-7" style={{ color: accent }} />}
+      title={t('tonightHero.title')}
+      summary={facts(false)}
+      actions={siteControl}
+      contentClassName="p-6 sm:p-7"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display flex items-center gap-2.5 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+            <CloudSun className="h-6 w-6 sm:h-7 sm:w-7" style={{ color: accent }} />
+            {t('tonightHero.title')}
+          </h1>
+          <p className="mt-2 text-[0.8125rem] text-white/55">
+            {t('tonightHero.subtitle')}
+          </p>
+          {facts(true)}
+        </div>
+        {siteControl}
+      </div>
+    </CollapsibleHero>
+  );
+}
+
+export function TonightHero({ accent, siteControl, upcomingNights, ...panel }: Props) {
+  const { t } = useTranslation('forecast');
+  const tonightScore = scoreNight(panel.hours, panel.tonight.moonIllumination, panel.timeZone, panel.darkWindow, t)?.score ?? 0;
+  return (
+    <div className="space-y-4">
+      <ForecastBanner
+        accent={accent}
+        siteControl={siteControl}
+        facts={block => (
+          <BannerFacts block={block} darkWindow={panel.darkWindow} tonightScore={tonightScore} upcomingNights={upcomingNights} />
+        )}
+      />
+      <TonightPanel {...panel} />
+    </div>
+  );
+}
+
+function TonightPanel({
+  hours, tonight, timeZone, darkWindow, tempUnit, selectedTime, onSelect, lightPollution,
+}: Omit<Props, 'accent' | 'siteControl'>) {
   const { t } = useTranslation('forecast');
   const { isNight } = useTheme();
   const fmt = (iso: string | null) => (iso ? formatTime(iso, timeZone) : null);
@@ -160,40 +282,18 @@ export function TonightHero({
   const astroDawn = fmt(tonight.astronomicalTwilightStart) ?? fmt(tonight.nauticalTwilightStart);
 
   return (
-    <CollapsibleHero
-      page="forecast"
-      image={PAGE_HERO.forecast}
-      intensity={0.24}
-      accent={accent}
-      bloom={hex}
-      bottomBloom={false}
-      icon={<CloudSun className="h-6 w-6 sm:h-7 sm:w-7" style={{ color: accent }} />}
-      title={t('tonightHero.title')}
-      summary={(
-        <>
-          <span className="font-semibold" style={{ color: hex }}>{scoreLabel(nightScore, t)}</span>
-          <span className="text-white/25"> · </span>
-          {translateMoonPhase(t, tonight.moonPhase)} {t('tonightHero.illuminated', { percent: Math.round(tonight.moonIllumination) })}
-        </>
-      )}
-      actions={siteControl}
-      contentClassName="p-6 sm:p-8"
-    >
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="font-display flex items-center gap-2.5 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              <CloudSun className="h-6 w-6 sm:h-7 sm:w-7" style={{ color: accent }} />
-              {t('tonightHero.title')}
-            </h1>
-            <p className="mt-2 text-[0.8125rem] text-white/55">
-              {t('tonightHero.subtitle')}
-            </p>
-          </div>
-          {siteControl}
-        </div>
-
+    <section className="relative overflow-hidden rounded-3xl bg-slate-950 hero-panel">
+      <div
+        className="pointer-events-none absolute inset-0 opacity-70"
+        style={{ background: `radial-gradient(90% 140% at 8% 0%, ${hex}1f 0%, transparent 60%)` }}
+      />
+      <div
+        className="pointer-events-none absolute inset-0 rounded-3xl"
+        style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10)' }}
+      />
+      <div className="relative p-6 sm:p-8">
         {/* Rating + Moon */}
-        <div className="mt-7 flex flex-wrap items-start justify-between gap-8 sm:flex-nowrap sm:gap-6">
+        <div className="flex flex-wrap items-start justify-between gap-8 sm:flex-nowrap sm:gap-6">
           <div className="flex items-center gap-5 sm:gap-6">
             <ScoreDial score={nightScore} size={132} showLabel={false} />
             <div className="min-w-0">
@@ -290,6 +390,7 @@ export function TonightHero({
             onSelect={onSelect}
           />
         </div>
-    </CollapsibleHero>
+      </div>
+    </section>
   );
 }

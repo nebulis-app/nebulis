@@ -1447,7 +1447,8 @@
       "markProcessedFailed": "Could not mark as processed",
       "favorite": "Favorite",
       "unfavorite": "Remove favorite",
-      "download": "Download"
+      "download": "Download",
+      "mosaic": "Mosaic"
     },
     "loading": "Loading media",
     "loadingMore": "Loading more",
@@ -1478,6 +1479,8 @@
     "target": "Target",
     "toggle": "Name the objects in this image",
     "toggleHide": "Hide object names",
+    "minimize": "Minimize object names",
+    "restore": "Show object names",
     "title": "Object names",
     "loading": "Finding objects...",
     "quality": {

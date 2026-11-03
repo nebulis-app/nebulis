@@ -1973,7 +1973,9 @@ export function getLocalObjects(userId = '', search = '', opts: { onlyIds?: Read
       thumbnailUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(obj.objectId)}/thumbnail`,
       // A comet or asteroid with no picture of its own has nothing to show: the card draws its placeholder at once
       // instead of asking the thumbnail route for an image that cannot exist.
-      hasThumbnail: Boolean(exposedGalleryImage) || !isMovingObject(obj.objectId, objectType),
+      // Star Trails is the same: it has no catalog picture, so without a capture image the route can only 404.
+      hasThumbnail: Boolean(exposedGalleryImage)
+        || (!isMovingObject(obj.objectId, objectType) && obj.objectId !== getStartrailsObjectId()),
       sessionsUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(obj.objectId)}/sessions`,
       filesUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(obj.objectId)}/files`,
       subFramesUrl: null,

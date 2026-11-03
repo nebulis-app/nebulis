@@ -18,7 +18,7 @@ export const SESSION_FILE_DRAG_TYPE = 'application/x-nebulis-session-file';
  * rather than another band down the page, and each grid gets the full width
  * where Images and Subframes used to split it in half.
  */
-export function ObservationTabs({ active, onChange, counts, onDropFileOnProcessed, dragActive = false }: {
+export function ObservationTabs({ active, onChange, counts, onDropFileOnProcessed, dragActive = false, trailing }: {
   active: ObservationTab;
   onChange: (tab: ObservationTab) => void;
   /** Present for an admin: lets an Images-tab tile be dropped on the Processed
@@ -27,6 +27,8 @@ export function ObservationTabs({ active, onChange, counts, onDropFileOnProcesse
   /** A tile is being dragged: the Processed tab shows itself as the drop target. */
   dragActive?: boolean;
   counts: { images: number; subframes: number; processed: number; videos: number };
+  /** The active tab's controls, shown at the right of the tab row. */
+  trailing?: React.ReactNode;
 }) {
   const { t } = useTranslation('observations');
   const { isDark, isNight, isSpace } = useTheme();
@@ -47,11 +49,8 @@ export function ObservationTabs({ active, onChange, counts, onDropFileOnProcesse
   ];
 
   return (
-    <div
-      role="tablist"
-      aria-label={t('observationDetail.tabs.sessionFiles')}
-      className={`flex items-center gap-1 overflow-x-auto no-scrollbar border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}
-    >
+    <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b pb-2 sm:pb-0 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+    <div role="tablist" aria-label={t('observationDetail.tabs.sessionFiles')} className="flex min-w-0 items-center gap-1 overflow-x-auto no-scrollbar">
       {tabs.map(({ id, label, count }) => {
         const isActive = active === id;
         const acceptsDrop = id === 'processed' && !!onDropFileOnProcessed;
@@ -100,6 +99,8 @@ export function ObservationTabs({ active, onChange, counts, onDropFileOnProcesse
           </button>
         );
       })}
+    </div>
+    {trailing && <div className="sm:pb-1.5">{trailing}</div>}
     </div>
   );
 }

@@ -235,6 +235,9 @@ describe('WCS projection', () => {
     const sign = flip ? -1 : 1;
     return {
       ...r,
+      // Same -0 rule as `cd` below: fc.double can draw -0 for crval2, and JSON stores it as 0.
+      crval1: r.crval1 + 0,
+      crval2: r.crval2 + 0,
       crpix1: r.width / 2,
       crpix2: r.height / 2,
       // `+ 0` turns -0 into 0: JSON has no negative zero, so a stored -0 reads back as 0.

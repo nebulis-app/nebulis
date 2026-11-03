@@ -5,7 +5,7 @@
  */
 import fs from 'fs';
 import { parentPort } from 'worker_threads';
-import { FrameDecodeError, measureFrame } from './measure.js';
+import { FrameDecodeError, measureFrame, type TargetSpec } from './measure.js';
 import { isRecord } from '../typeGuards.js';
 
 if (parentPort) {
@@ -13,8 +13,11 @@ if (parentPort) {
   port.on('message', (message: unknown) => {
     if (!isRecord(message) || typeof message.id !== 'number' || typeof message.abs !== 'string') return;
     const { id, abs } = message;
+    const t = isRecord(message.target) ? message.target : null;
+    const target: TargetSpec | null = t && typeof t.ra === 'number' && typeof t.dec === 'number' && typeof t.radiusArcmin === 'number'
+      ? { ra: t.ra, dec: t.dec, radiusArcmin: t.radiusArcmin } : null;
     try {
-      const metrics = measureFrame(fs.readFileSync(abs));
+      const metrics = measureFrame(fs.readFileSync(abs), target);
       port.postMessage({ id, ok: true, metrics });
     } catch (err) {
       port.postMessage({

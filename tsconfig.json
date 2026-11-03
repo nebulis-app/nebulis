@@ -1,9 +1,14 @@
 {
   "files": [],
   "references": [
-    { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.node.json" },
-    { "path": "./server/tsconfig.json" },
-    { "path": "./workers/push-relay/tsconfig.json" }
+    {
+      "path": "./tsconfig.app.json"
+    },
+    {
+      "path": "./tsconfig.node.json"
+    },
+    {
+      "path": "./server/tsconfig.json"
+    }
   ]
 }

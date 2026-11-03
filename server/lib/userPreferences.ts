@@ -163,3 +163,34 @@ export function getLastSeenVersion(userId: string): string | null {
 export function setLastSeenVersion(userId: string, version: string): void {
   upsertLastSeenVersionStmt.run(userId, version);
 }
+
+// ─── "Enjoying Nebulis?" support ask (supportAskSeenAt) ─────────────────────
+// Shown once per user. Every way of closing it records it, and the first time wins, so a later
+// browser syncing an older local dismissal cannot move the date.
+
+interface SupportAskRow {
+  supportAskSeenAt: string | null;
+}
+
+const getSupportAskStmt = db.prepare<[string], SupportAskRow>(
+  'SELECT supportAskSeenAt FROM userPreferences WHERE userId = ?',
+);
+
+const upsertSupportAskStmt = db.prepare<[string, string]>(`
+  INSERT INTO userPreferences (userId, supportAskSeenAt, updatedAt)
+  VALUES (?, ?, datetime('now'))
+  ON CONFLICT(userId) DO UPDATE
+    SET supportAskSeenAt = COALESCE(userPreferences.supportAskSeenAt, excluded.supportAskSeenAt),
+        updatedAt        = excluded.updatedAt
+`);
+
+/** When the user dismissed the support ask (ISO instant), or null if they have not. */
+export function getSupportAskSeenAt(userId: string): string | null {
+  return getSupportAskStmt.get(userId)?.supportAskSeenAt ?? null;
+}
+
+/** Record that the user has seen the support ask and return the stored instant. Idempotent: the first call wins. */
+export function setSupportAskSeen(userId: string, now: Date = new Date()): string {
+  upsertSupportAskStmt.run(userId, now.toISOString());
+  return getSupportAskSeenAt(userId) as string;
+}

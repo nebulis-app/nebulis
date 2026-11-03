@@ -25,6 +25,7 @@ import { formatDate, formatNumber } from '../../lib/formatLocale';
 import type { SessionCaptureSummary, SessionWeather } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 import { nightSafeColor } from '../../lib/nightSafeColor';
+import { variantBadgeClass } from '../../lib/variantLabel';
 
 export interface ObservationCardModel {
   /** The variant this night belongs to, which is what the link must point at.
@@ -75,15 +76,6 @@ function splitDate(date: string): { day: string; year: string } | null {
     day: formatDate(dt, { weekday: 'short', month: 'short', day: 'numeric' }),
     year: String(y),
   };
-}
-
-function variantBadgeClass(label: string): string {
-  const l = label.toLowerCase();
-  if (l.includes('mosaic')) return 'bg-amber-500/90 text-white';
-  if (l === 'hα' || l === 'ha') return 'bg-red-500/90 text-white';
-  if (l === 'oiii') return 'bg-cyan-500/90 text-white';
-  if (l === 'sii') return 'bg-blue-500/90 text-white';
-  return 'bg-violet-500/90 text-white';
 }
 
 export function ObservationCard({ observation: o, isDark, tempUnit, onDelete }: Props) {

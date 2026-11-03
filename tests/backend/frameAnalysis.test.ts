@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { measureFrame, measureSyntheticGrid } from '../../server/lib/frameAnalysis/measure';
-import { rankFrames, verdictFor, referenceFor, isFrameKept } from '../../server/lib/frameAnalysis/ranking';
+import { rankFrames, verdictFor, referenceFor, isFrameKept, focalGroups } from '../../server/lib/frameAnalysis/ranking';
 
 /** Deterministic noise so the suite is stable. */
 function rng(seed: number): () => number {
@@ -63,9 +63,52 @@ describe('frame measurement', () => {
     expect(m.elongation).toBeGreaterThan(1.8);
   });
 
-  it('finds a straight streak', () => {
+  it('finds a straight streak, and gives the direction it runs in', () => {
     const m = measureSyntheticGrid(field(W, H, { streak: true, seed: 5 }), W, H);
     expect(m.streak).not.toBeNull();
+    // The line climbs half a pixel per pixel: atan(0.5) ≈ 27°.
+    expect(Math.abs(m.streak!.angle - 26.6)).toBeLessThanOrEqual(2);
+  });
+
+  it('does not take a nebula filament for a streak', () => {
+    for (const sigma of [8, 15, 30]) {
+      const data = field(W, H, { seed: 7 });
+      for (let y = 0; y < H; y++) {
+        for (let x = 60; x < W - 60; x++) {
+          const d = (y - 80 - 0.4 * x) / Math.hypot(1, 0.4);
+          data[y * W + x] += 40 * Math.exp(-(d * d) / (2 * sigma * sigma));
+        }
+      }
+      expect(measureSyntheticGrid(data, W, H).streak).toBeNull();
+    }
+  });
+
+  it('does not take a glow along a side of the frame for a streak', () => {
+    const data = field(W, H, { seed: 8 });
+    for (let y = 0; y < H; y++) for (let x = 0; x < 30; x++) data[y * W + x] += 40 * Math.exp(-x / 8);
+    expect(measureSyntheticGrid(data, W, H).streak).toBeNull();
+  });
+
+  it('does not take stretched stars for a streak', () => {
+    expect(measureSyntheticGrid(field(W, H, { sigmaX: 3.4, sigmaY: 1.4, seed: 3 }), W, H).streak).toBeNull();
+  });
+
+  it('still finds a streak crossing a nebula, at the streak\'s angle', () => {
+    const data = field(W, H, { seed: 9 });
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const d = (y - 80 - 0.4 * x) / Math.hypot(1, 0.4);
+        data[y * W + x] += 40 * Math.exp(-(d * d) / (2 * 15 * 15));
+      }
+    }
+    for (let x = 0; x < W; x++) {
+      const y = Math.round(250 - x * 0.3);
+      for (let d = -1; d <= 1; d++) data[(y + d) * W + x] += 90;
+    }
+    const m = measureSyntheticGrid(data, W, H);
+    expect(m.streak).not.toBeNull();
+    // Falling 0.3 px per pixel: 180° − atan(0.3) ≈ 163°.
+    expect(Math.abs(m.streak!.angle - 163.3)).toBeLessThanOrEqual(2);
   });
 
   it('counts far fewer stars through cloud', () => {
@@ -134,7 +177,8 @@ describe('FITS decode', () => {
 describe('frame ranking', () => {
   const night = (counts: number[]) => counts.map((starCount, i) => ({
     width: 960, height: 540, starCount, fwhm: 3, elongation: 1.1, orientation: null, background: 1000, noise: 10,
-    gradient: 0.02, peakSNR: 40, streak: null, saturatedFraction: 0, ra: null, dec: null, id: i,
+    gradient: 0.02, peakSNR: 40, signal: 5000, streak: null, saturatedFraction: 0, target: null, spots: [],
+    rig: { camera: null, focal: null, scale: null }, ra: null, dec: null, id: i,
   }));
 
   it('marks a frame with far fewer stars than the night as clouds', () => {
@@ -145,6 +189,23 @@ describe('frame ranking', () => {
     expect(last.grade).toBe('bad');
     expect(verdicts[0].flags).toEqual([]);
     expect(verdicts[0].grade).toBe('good');
+  });
+
+  it('scores each frame by its point-source signal over noise against the night\'s better frames', () => {
+    const frames = night([100, 100, 100, 100, 100, 100, 100, 100]);
+    frames[5] = { ...frames[5], signal: 3000 }; // 40 % less light: thin cloud, the star count barely moves
+    frames[6] = { ...frames[6], noise: 20 }; // twice the noise: Moon or dawn
+    frames[7] = { ...frames[7], fwhm: 4.5 }; // poorer seeing
+    const { verdicts } = rankFrames(frames);
+    expect(verdicts[0].score).toBe(100);
+    expect(verdicts[0].grade).toBe('good');
+    expect(verdicts[5].score).toBe(60);
+    expect(verdicts[5].flags).toContain('clouds');
+    expect(verdicts[5].reasons.find(r => r.flag === 'clouds')).toMatchObject({ percentDimmer: 40 });
+    expect(verdicts[6].score).toBe(50);
+    expect(verdicts[6].flags).toContain('noisy');
+    expect(verdicts[7].score).toBe(67);
+    expect(verdicts[7].flags).toContain('soft');
   });
 
   it('does not call a thin set cloudy: too few frames to compare', () => {
@@ -257,5 +318,21 @@ describe('isFrameKept', () => {
     expect(isFrameKept('keep', verdict('bad'))).toBe(true);
     expect(isFrameKept('reject', verdict('good'))).toBe(false);
     expect(isFrameKept('reject', null)).toBe(false);
+  });
+});
+
+describe('focalGroups', () => {
+  it('puts focal lengths within 5 % of the group\'s shortest together, wherever they fall', () => {
+    const of = focalGroups([609, 610, 635, 640, 1200, 1000]);
+    expect(of(609)).toBe(609);
+    expect(of(610)).toBe(609);
+    expect(of(635)).toBe(609); // 4.3 % above 609
+    expect(of(640)).toBe(640); // 5.1 % above 609: a new group
+    expect(of(1000)).toBe(1000);
+    expect(of(1200)).toBe(1200);
+  });
+
+  it('leaves a length it was not given as it is', () => {
+    expect(focalGroups([])(250)).toBe(250);
   });
 });

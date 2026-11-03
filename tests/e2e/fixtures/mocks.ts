@@ -1123,10 +1123,9 @@ export async function mockAllRoutes(page: Page) {
   await page.route('**/api/preferences/last-seen-version', r =>
     r.fulfill(json(ok({ lastSeenVersion: '1.0.0' }))));
   // The one-time "Enjoying Nebulis?" ask has been seen, so it never sits over a spec's clicks.
-  // support-ask.spec.ts removes this to test the ask itself.
-  await page.addInitScript(() => {
-    try { window.localStorage.setItem('nebulis_support_ask_seen', '2026-01-01T00:00:00.000Z'); } catch { /* storage blocked */ }
-  });
+  // support-ask.spec.ts overrides this route to test the ask itself.
+  await page.route('**/api/preferences/support-ask', r =>
+    r.fulfill(json(ok({ seenAt: '2026-01-01T00:00:00.000Z' }))));
 
   // Thumbnails — return a tiny blank PNG
   await page.route('**/thumbnail**', r =>

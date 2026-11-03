@@ -34,7 +34,6 @@ import {
   FileImage,
   Film,
   FolderOpen,
-  Layers,
   Loader2,
   MoreHorizontal,
   NotebookPen,
@@ -67,7 +66,6 @@ export type HeroMedia =
 export type HeroBadge =
   | { tone: 'crown'; text: string }
   | { tone: 'processed'; text: string }
-  | { tone: 'stacked'; text: string }
   | { tone: 'video'; text: string }
   | null;
 
@@ -141,7 +139,6 @@ const FRAME_FADE_MASK = 'radial-gradient(ellipse at center, black 78%, transpare
 const BADGE_TONE = {
   crown: { icon: Crown, className: 'bg-amber-500/90 text-white' },
   processed: { icon: Sparkles, className: 'bg-white/15 text-white ring-1 ring-inset ring-white/25' },
-  stacked: { icon: Layers, className: 'bg-white/15 text-white ring-1 ring-inset ring-white/25' },
   video: { icon: Film, className: 'bg-white/15 text-white ring-1 ring-inset ring-white/25' },
 } as const;
 

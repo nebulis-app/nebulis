@@ -7,10 +7,13 @@ import { ThemeProvider } from '../../src/hooks/useTheme';
 import { SupportNebulisModal } from '../../src/components/help/SupportNebulisModal';
 import { SUPPORT_ASK_SEEN_KEY, COFFEE_URL } from '../../src/lib/support';
 
+const { setSupportAskSeen } = vi.hoisted(() => ({ setSupportAskSeen: vi.fn(() => Promise.resolve({ seenAt: '2026-11-02T23:31:00.000Z' })) }));
+vi.mock('../../src/lib/api/auth', () => ({ setSupportAskSeen }));
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
-beforeEach(() => { localStorage.clear(); document.body.innerHTML = ''; });
+beforeEach(() => { localStorage.clear(); document.body.innerHTML = ''; setSupportAskSeen.mockClear(); });
 
 function open(onClose = vi.fn()) {
   const host = document.createElement('div');
@@ -39,6 +42,16 @@ describe('SupportNebulisModal', () => {
     const close = [...document.body.querySelectorAll('button')].find(b => b.textContent === 'Close')!;
     act(() => { close.click(); });
     expect(localStorage.getItem(SUPPORT_ASK_SEEN_KEY)).not.toBeNull();
+    expect(setSupportAskSeen).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('still closes and keeps its local copy when saving to the server fails', async () => {
+    setSupportAskSeen.mockImplementationOnce(() => Promise.reject(new Error('offline')));
+    const { onClose } = open();
+    const close = [...document.body.querySelectorAll('button')].find(b => b.textContent === 'Close')!;
+    await act(async () => { close.click(); });
+    expect(localStorage.getItem(SUPPORT_ASK_SEEN_KEY)).not.toBeNull();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -64,5 +77,6 @@ describe('SupportNebulisModal', () => {
     link.addEventListener('click', e => e.preventDefault());
     act(() => { link.click(); });
     expect(localStorage.getItem(SUPPORT_ASK_SEEN_KEY)).not.toBeNull();
+    expect(setSupportAskSeen).toHaveBeenCalledTimes(1);
   });
 });

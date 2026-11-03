@@ -1267,6 +1267,11 @@ db.exec(`
   if (!upCols.some(c => c.name === 'lastSeenVersion')) {
     db.prepare('ALTER TABLE userPreferences ADD COLUMN lastSeenVersion TEXT').run();
   }
+  // When this user dismissed the one-time "Enjoying Nebulis?" ask (ISO instant, UTC). NULL means not yet.
+  // Kept here rather than only in the browser so the ask does not come back on every other browser they sign in from.
+  if (!upCols.some(c => c.name === 'supportAskSeenAt')) {
+    db.prepare('ALTER TABLE userPreferences ADD COLUMN supportAskSeenAt TEXT').run();
+  }
 
   // Version of the curated-description backfill that has been applied to
   // libraryObjects. curated-descriptions.json was merged into the one catalog

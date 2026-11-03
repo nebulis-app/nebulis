@@ -99,6 +99,7 @@ import {
   getGalleryImageRow,
   setAutoGalleryImage,
   clearAutoGalleryImage,
+  setGalleryImage,
   setGalleryImageUserChosen,
   getGalleryCrop,
   setGalleryCrop,
@@ -389,6 +390,9 @@ const GalleryCropBodySchema = z.object({
 
 const GalleryImageBodySchema = z.object({
   imagePath: z.string().nullable().optional(),
+  // "Automatic": clear the user's choice so the object follows the gallery
+  // source setting again. Additive; web keeps sending plain imagePath bodies.
+  auto: z.boolean().optional(),
 });
 
 const ProcessingStatusBodySchema = z.object({
@@ -1740,6 +1744,9 @@ router.get('/objects/:objectId/thumbnail', async (req: Request, res: Response) =
             const meta = await sharp(srcPath).metadata();
             if (meta.width && meta.height) pipeline = pipeline.extract(cropRegion(crop, meta.width, meta.height));
           }
+          // Phone photos carry their upright-ness in EXIF; sharp drops metadata on output, so bake it in.
+          // Skipped for crops, whose region is computed from the unrotated pixel dimensions.
+          if (!crop) pipeline = pipeline.rotate();
           await pipeline
             .resize(w, h, { fit: 'inside', withoutEnlargement: true })
             .jpeg({ quality: 80, progressive: true })
@@ -2410,6 +2417,7 @@ async function renderThumbnailOnce(
     try {
       await assertSafeRaster(absPath);
       await sharp(absPath)
+        .rotate()
         .resize(w, h, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 80, progressive: true })
         .toFile(tmpPath);
@@ -3463,7 +3471,8 @@ router.get('/objects/:objectId/gallery-image', async (req: Request, res: Respons
 });
 
 /** Set the gallery image for an object (from an existing library file path).
- *  Pass imagePath=null to reset to the default sky survey image. */
+ *  Pass imagePath=null to reset to the default sky survey image, or
+ *  auto=true to clear the user's choice and follow the gallery source setting. */
 router.put('/objects/:objectId/gallery-image', requireAdmin, (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const bodyParsed = GalleryImageBodySchema.safeParse(req.body ?? {});
@@ -3471,7 +3480,20 @@ router.put('/objects/:objectId/gallery-image', requireAdmin, (req: Request, res:
     res.apiError(400, 'INVALID_PATH', bodyParsed.error.issues[0]?.message ?? 'imagePath must be a string or null');
     return;
   }
-  const { imagePath } = bodyParsed.data;
+  const { imagePath, auto } = bodyParsed.data;
+  // `auto` is the "Automatic" choice: drop the user's pick and any crop, then
+  // leave the object to the gallery source setting. It wins over `imagePath` so
+  // a stale client pick cannot re-pin a picture, and it must not reach the null
+  // branch below, which would pin the cached sky image as a user choice.
+  if (auto === true) {
+    try {
+      setGalleryImage(objectId, null);
+      res.apiSuccess({ objectId, galleryImage: null });
+    } catch (err) {
+      res.apiError(500, 'SET_FAILED', err instanceof Error ? err.message : 'Failed');
+    }
+    return;
+  }
   if (imagePath !== null && imagePath !== undefined && !imagePath.trim()) {
     res.apiError(400, 'INVALID_PATH', 'imagePath must be a non-empty string or null');
     return;
@@ -4033,21 +4055,27 @@ router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, edi
     if (!objDir.startsWith(LIBRARY_DIR + path.sep)) {
       throw new Error('Object id resolves outside the library');
     }
-    if (!fs.existsSync(objDir)) fs.mkdirSync(objDir, { recursive: true });
 
     // `overwritePath` (optional): the image editor's "Save", which replaces one
     // exact existing file rather than adding an "…E.jpg" variant ("Save as new
     // version"). Must be a library-relative path resolving to an existing JPEG
-    // *inside this object's folder* — anything else is rejected so the route
-    // can never be steered to clobber another object's data or escape the tree.
+    // inside ONE object folder of the library. That folder is the object's own,
+    // or the variant object (Mosaic, Hα) that owns the picture: an object page
+    // opens its variants' pictures under the page's own id, so the path's
+    // folder, not `objectId`, says who owns the file. Anything that escapes the
+    // library, or is not a file inside a top-level folder, is rejected.
     const overwriteRaw = typeof req.body?.overwritePath === 'string' ? req.body.overwritePath.trim() : '';
     let filename: string;
     let destPath: string;
+    let ownerDir = objDir;
     if (overwriteRaw) {
       const resolved = path.resolve(LIBRARY_DIR, overwriteRaw);
-      if (!resolved.startsWith(objDir + path.sep)) {
-        throw new Error('overwritePath is outside this object folder');
+      const relToLibrary = path.relative(LIBRARY_DIR, resolved);
+      const relParts = relToLibrary.split(path.sep);
+      if (relToLibrary.startsWith('..') || path.isAbsolute(relToLibrary) || relParts.length < 2 || !relParts[0]) {
+        throw new Error('overwritePath is outside the library');
       }
+      ownerDir = path.resolve(LIBRARY_DIR, relParts[0]);
       if (!/\.jpe?g$/i.test(resolved) || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
         throw new Error('overwritePath does not name an existing JPEG in this object');
       }
@@ -4074,11 +4102,12 @@ router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, edi
       const ext = (file.originalname.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
       filename = `${objectId}_${datePart}-${timePart}E.${ext}`;
       destPath = path.join(objDir, filename);
+      if (!fs.existsSync(objDir)) fs.mkdirSync(objDir, { recursive: true });
     }
     // Belt and braces: whatever the halves produced, the write must land
-    // strictly inside this object's folder.
+    // strictly inside the owning object's folder.
     const destResolved = path.resolve(destPath);
-    if (!destResolved.startsWith(objDir + path.sep)) {
+    if (!destResolved.startsWith(ownerDir + path.sep)) {
       throw new Error('Resolved destination is outside this object folder');
     }
     try {

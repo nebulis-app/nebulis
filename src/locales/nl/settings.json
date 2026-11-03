@@ -474,14 +474,15 @@
     "visitSource": "Ga naar {{name}}",
     "freeApi": "Gratis API",
     "bundled": "Gebundeld",
-    "footerNote": "Alle externe diensten zijn gratis en vereisen geen API-sleutels. Gegevens worden op aanvraag opgehaald en waar mogelijk in de cache opgeslagen. Een verzoek bevat alleen wat de dienst nodig heeft: de coördinaten van je waarneemlocatie voor weergegevens en lichtvervuiling, en objectnamen voor het opzoeken in catalogi. Accountgegevens, gebruiksgegevens en afbeeldingen worden nooit verzonden.",
+    "footerNote": "Alle externe diensten zijn gratis en vereisen geen API-sleutels. Gegevens worden op aanvraag opgehaald en waar mogelijk in de cache opgeslagen. Een verzoek bevat alleen wat de dienst nodig heeft: de coördinaten van je waarneemlocatie voor weergegevens, lichtvervuiling en plaatsnamen, en objectnamen voor het opzoeken in catalogi. Accountgegevens, gebruiksgegevens en afbeeldingen worden nooit verzonden.",
     "groups": {
       "astronomyDatabases": "Astronomische databases",
       "skyImages": "Hemelbeelden",
       "weatherForecasting": "Weer en weersverwachting",
       "satelliteTracking": "Satelliettracking",
       "maps": "Kaarten",
-      "lightPollution": "Lichtvervuiling"
+      "lightPollution": "Lichtvervuiling",
+      "nebulisServers": "Nebulis-servers"
     },
     "cache": {
       "bundledWithApp": "Gebundeld met app",
@@ -489,19 +490,24 @@
       "cached24h": "24 uur in cache opgeslagen"
     },
     "descriptions": {
-      "openngc": "Coördinaten, magnitudes en typen voor meer dan 3.200 deepsky-objecten",
+      "openngc": "Namen, posities, magnitudes en typen voor ongeveer 12.000 deepsky-objecten",
       "sesame": "Naamzoekopdrachten voor objecten die ontbreken in de gebundelde catalogus",
       "simbad": "Grootte- en afstandsdetails voor catalogusobjecten",
       "hubbleCaldwell": "Hubble-afbeeldingen en tekst voor de 88 Caldwell-objecten",
       "hips": "Beelden uit de DSS2-hemelkartering voor elke gekozen hemelpositie",
       "nasaImageLibrary": "Alternatieve afbeeldingen voor planeten, manen en kometen",
       "wikipedia": "Samenvattingen en miniaturen voor objecten in duidelijke taal",
-      "openMeteo": "Temperatuur, luchtvochtigheid, bewolking, wind en regen voor je locaties",
+      "openMeteo": "Weersverwachting en eerder weer voor je locaties, plus het zoeken naar plaatsen",
       "sevenTimer": "Verwachtingen voor seeing en transparantie tijdens opnamenachten",
       "sunCalc": "Maanfase, schemering en posities van zon en maan voor je locaties",
       "celestrak": "Baanelementen van actieve satellieten voor het controleren van satellietsporen",
       "esri": "Kaarttegels voor de weergave van waarneemlocaties",
-      "darkskysites": "Bepaalt de Bortle-klasse van je waarneemlocatie uit de maandelijkse samengestelde VIIRS-satellietbeelden. Nebulis verstuurt de coördinaten van de geselecteerde waarneemlocatie en bewaart het antwoord 24 uur in de cache."
+      "darkskysites": "Bepaalt de Bortle-klasse van je waarneemlocatie uit de maandelijkse samengestelde VIIRS-satellietbeelden. Nebulis verstuurt de coördinaten van de geselecteerde waarneemlocatie en bewaart het antwoord 24 uur in de cache.",
+      "sdss": "Reservebeelden van de hemel als de DSS2-survey niet bereikbaar is. Dekt maar een deel van de hemel.",
+      "legacySurvey": "Tweede reserve voor beelden van de hemel waar SDSS geen dekking heeft. Dekt maar een deel van de hemel.",
+      "nominatim": "Zet de coördinaten van je waarneemlocatie om in een plaatsnaam.",
+      "nebulisDownloads": "Catalogus-pakketten en app-updates. Nebulis controleert hier op nieuwe versies en downloadt ze hier.",
+      "nebulisPush": "Bezorgt iPhone-meldingen, alleen als je ze inschakelt."
     }
   },
   "siteManager": {

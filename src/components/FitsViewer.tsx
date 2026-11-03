@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ZoomIn, ZoomOut, RotateCw, Contrast, Satellite, Loader2, Clock, Zap, AlertCircle, X, Info, MapPin } from 'lucide-react';
@@ -28,6 +28,8 @@ interface FitsViewerProps {
   /** Pixel dimensions of the decoded frame, once they are known. Lets a caller
    *  size its own layout to the frame's shape (the lightbox sizes its panel). */
   onNaturalSize?: (width: number, height: number) => void;
+  /** With `hideControls`: asked for a new zoom by a wheel or trackpad pinch over the frame. */
+  onZoomChange?: (zoom: number) => void;
   /** Initial uncontrolled zoom (e.g. 0.32 for 32%). Overridden once the user zooms. */
   initialZoom?: number;
 }
@@ -74,6 +76,7 @@ export function FitsViewer({
   externalStretch,
   onFitZoomComputed,
   onNaturalSize,
+  onZoomChange,
   initialZoom,
 }: FitsViewerProps) {
   const { t } = useTranslation('library');
@@ -248,6 +251,111 @@ export function FitsViewer({
     setSatError(null);
     setSatModalOpen(false);
   }
+
+  // Wheel and trackpad pinch over the frame zoom the frame, not the page.
+  // Chrome and Firefox report a pinch as a `wheel` with `ctrlKey`, Safari as
+  // `gesturestart`/`gesturechange`; both have to be cancelled natively
+  // (non-passive) or the browser zooms the whole page. The point under the
+  // pointer stays put: `pendingAnchor` is applied once the new size is laid out.
+  const zoomRef = useRef(zoom);
+  useLayoutEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  const zoomMax = hideControls ? 16 : 4;
+  const applyZoom = useCallback((next: number) => {
+    const clamped = Math.min(zoomMax, Math.max(0.05, next));
+    if (hideControls) onZoomChange?.(clamped);
+    else setUserZoom(clamped);
+  }, [hideControls, onZoomChange, zoomMax]);
+  const pendingAnchor = useRef<{ fx: number; fy: number; clientX: number; clientY: number } | null>(null);
+  const gestureStartZoom = useRef<number | null>(null);
+
+  const zoomAt = useCallback((next: number, clientX: number, clientY: number) => {
+    const box = containerRef.current?.firstElementChild?.getBoundingClientRect();
+    if (box && box.width > 0 && box.height > 0) {
+      pendingAnchor.current = {
+        fx: (clientX - box.left) / box.width,
+        fy: (clientY - box.top) / box.height,
+        clientX,
+        clientY,
+      };
+    }
+    applyZoom(next);
+  }, [applyZoom]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        zoomAt(zoomRef.current * Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
+        return;
+      }
+      // Two-finger trackpad scroll (or the wheel) pans the zoomed frame.
+      el.scrollLeft += e.deltaX;
+      el.scrollTop += e.deltaY;
+    };
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      gestureStartZoom.current = zoomRef.current;
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      if (!('scale' in e) || !('clientX' in e) || !('clientY' in e)) return;
+      const { scale, clientX, clientY } = e;
+      if (typeof scale !== 'number' || typeof clientX !== 'number' || typeof clientY !== 'number') return;
+      if (!Number.isFinite(scale) || scale <= 0) return;
+      zoomAt((gestureStartZoom.current ?? zoomRef.current) * scale, clientX, clientY);
+    };
+    const onGestureEnd = () => { gestureStartZoom.current = null; };
+    // Click and hold with a mouse (or pen) drags the frame, once it overflows the pane.
+    let drag: { x: number; y: number; left: number; top: number } | null = null;
+    const onPointerMove = (e: PointerEvent) => {
+      if (!drag) return;
+      el.scrollLeft = drag.left - (e.clientX - drag.x);
+      el.scrollTop = drag.top - (e.clientY - drag.y);
+    };
+    const endDrag = () => {
+      drag = null;
+      el.style.cursor = '';
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', endDrag);
+      document.removeEventListener('pointercancel', endDrag);
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.pointerType === 'touch' || e.button !== 0) return;
+      if ((e.target as Element).closest('button, a, input')) return;
+      if (el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1) return;
+      e.preventDefault();
+      drag = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop };
+      el.style.cursor = 'grabbing';
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', endDrag);
+      document.addEventListener('pointercancel', endDrag);
+    };
+    el.addEventListener('pointerdown', onPointerDown);
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('gesturestart', onGestureStart);
+    el.addEventListener('gesturechange', onGestureChange);
+    el.addEventListener('gestureend', onGestureEnd);
+    return () => {
+      endDrag();
+      el.removeEventListener('pointerdown', onPointerDown);
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('gesturestart', onGestureStart);
+      el.removeEventListener('gesturechange', onGestureChange);
+      el.removeEventListener('gestureend', onGestureEnd);
+    };
+  }, [zoomAt]);
+
+  useLayoutEffect(() => {
+    const a = pendingAnchor.current;
+    const el = containerRef.current;
+    const box = el?.firstElementChild?.getBoundingClientRect();
+    if (!a || !el || !box) return;
+    pendingAnchor.current = null;
+    el.scrollLeft += box.left + a.fx * box.width - a.clientX;
+    el.scrollTop += box.top + a.fy * box.height - a.clientY;
+  }, [zoom]);
 
   useEffect(() => {
     if (!fitsData || !canvasRef.current) return;

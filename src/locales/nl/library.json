@@ -1447,7 +1447,8 @@
       "markProcessedFailed": "Markeren als bewerkt is mislukt",
       "favorite": "Favoriet",
       "unfavorite": "Favoriet verwijderen",
-      "download": "Downloaden"
+      "download": "Downloaden",
+      "mosaic": "Mozaïek"
     },
     "loading": "Media laden",
     "loadingMore": "Meer laden",
@@ -1478,6 +1479,8 @@
     "target": "Doel",
     "toggle": "Objecten in deze afbeelding benoemen",
     "toggleHide": "Objectnamen verbergen",
+    "minimize": "Objectnamen minimaliseren",
+    "restore": "Objectnamen tonen",
     "title": "Objectnamen",
     "loading": "Objecten zoeken...",
     "quality": {

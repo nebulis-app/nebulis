@@ -1931,6 +1931,20 @@
   },
   {
     "method": "GET",
+    "path": "/preferences/support-ask",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/preferences/support-ask",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
     "path": "/preferences/watermarks",
     "guards": [
       "<anonymous>"

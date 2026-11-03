@@ -110,6 +110,7 @@ export function AnnotationOverlay({ data, zp, selectedId, onSelect }: {
           <button
             key={a.id}
             type="button"
+            data-annotation-info={a.id}
             // A press here must not start a pan or a double-click zoom.
             onPointerDown={e => e.stopPropagation()}
             onDoubleClick={e => e.stopPropagation()}

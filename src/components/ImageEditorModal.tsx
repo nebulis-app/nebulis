@@ -145,6 +145,9 @@ function applyImageTransform(
   return { destW, destH };
 }
 
+/** Rows of the export canvas adjusted at a time, so a huge stack never needs a whole-frame pixel copy. */
+const EXPORT_STRIP_ROWS = 256;
+
 function applyPixelAdjustments(
   data: Uint8ClampedArray,
   brightness: number,
@@ -1092,9 +1095,14 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
 
       // Pixel adjustments at full res
       if (adj.brightness !== 0 || adj.contrast !== 0 || adj.saturation !== 0) {
-        const id = ctx.getImageData(0, 0, offscreen.width, offscreen.height);
-        applyPixelAdjustments(id.data, adj.brightness, adj.contrast, adj.saturation);
-        ctx.putImageData(id, 0, 0);
+        // In strips: one getImageData over a 24 MP frame is a third full-size copy on top of the decoded picture and
+        // this canvas, which is enough for Safari to kill the tab with no error. The adjustment is per pixel.
+        for (let y = 0; y < offscreen.height; y += EXPORT_STRIP_ROWS) {
+          const rows = Math.min(EXPORT_STRIP_ROWS, offscreen.height - y);
+          const strip = ctx.getImageData(0, y, offscreen.width, rows);
+          applyPixelAdjustments(strip.data, adj.brightness, adj.contrast, adj.saturation);
+          ctx.putImageData(strip, 0, y);
+        }
       }
 
       // Text layers at full resolution
@@ -1127,6 +1135,9 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
       const blob = await new Promise<Blob>((resolve, reject) =>
         offscreen.toBlob(b => b ? resolve(b) : reject(new Error(t('imageEditorModal.save.exportFailed'))), 'image/jpeg', 0.93),
       );
+      // Safari keeps a canvas's backing store until it is resized, so give the memory back before the upload.
+      offscreen.width = 0;
+      offscreen.height = 0;
 
       const title = saveTitle.trim() || `${imageName.replace(/\.[^.]+$/, '')} ${t('imageEditorModal.save.editedSuffix')}`;
       const file  = new File([blob], `${title}.jpg`, { type: 'image/jpeg' });

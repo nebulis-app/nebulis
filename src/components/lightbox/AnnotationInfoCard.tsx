@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -6,6 +7,7 @@ import type { FrameAnnotation } from '../../lib/api/annotate';
 import { getCatalogObjectInfo } from '../../lib/api/catalog';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { formatAliases, formatDesignation } from '../../lib/formatDesignation';
+import type { ZoomPan } from './useZoomPan';
 
 const LINK =
   'inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[0.7188rem] font-medium text-white/85 '
@@ -23,6 +25,36 @@ function externalLinks(a: FrameAnnotation, wikiUrl: string | null) {
   };
 }
 
+const EDGE = 8;
+const GAP = 18;
+/** Narrower panes keep the bottom sheet: there is no room to sit beside a ring. */
+const MIN_ANCHORED_PANE = 480;
+
+/**
+ * Where to put the card so it sits beside the ring's (i) button and stays
+ * inside the pane. Null when there is no button on screen to sit beside (it
+ * is panned or zoomed out of view), so the caller falls back to the corner.
+ */
+function anchoredPosition(card: HTMLElement, id: string): { left: number; top: number } | null {
+  const pane = card.offsetParent;
+  if (!(pane instanceof HTMLElement)) return null;
+  const paneBox = pane.getBoundingClientRect();
+  if (paneBox.width < MIN_ANCHORED_PANE) return null;
+  const btn = Array.from(pane.querySelectorAll<HTMLElement>('[data-annotation-info]'))
+    .find(b => b.dataset.annotationInfo === id);
+  if (!btn) return null;
+  const b = btn.getBoundingClientRect();
+  const x = b.left + b.width / 2 - paneBox.left;
+  const y = b.top + b.height / 2 - paneBox.top;
+  if (x < 0 || y < 0 || x > paneBox.width || y > paneBox.height) return null;
+  const w = card.offsetWidth;
+  const h = card.offsetHeight;
+  const left = Math.min(Math.max(x - w / 2, EDGE), Math.max(EDGE, paneBox.width - w - EDGE));
+  const below = y + GAP;
+  const top = below + h <= paneBox.height - EDGE ? below : y - GAP - h;
+  return { left, top: Math.min(Math.max(top, EDGE), Math.max(EDGE, paneBox.height - h - EDGE)) };
+}
+
 /**
  * What an identified object is: a picture, the basic facts, a short
  * description, other names, and where to read or see more.
@@ -32,7 +64,25 @@ function externalLinks(a: FrameAnnotation, wikiUrl: string | null) {
  * overrides) and load only when a ring's (i) is pressed. Sits over a corner of
  * the stage rather than inside the picture, so it stays readable at any zoom.
  */
-export function AnnotationInfoCard({ annotation: a, onClose }: { annotation: FrameAnnotation; onClose: () => void }) {
+export function AnnotationInfoCard({ annotation: a, zp, onClose }: { annotation: FrameAnnotation; zp: ZoomPan; onClose: () => void }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const { zoom, rotation, pan } = zp;
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    const place = () => setPos(prev => {
+      const next = anchoredPosition(card, a.id);
+      return prev?.left === next?.left && prev?.top === next?.top ? prev : next;
+    });
+    place();
+    // The card grows when its details arrive and the pane changes with the window.
+    const observer = new ResizeObserver(place);
+    observer.observe(card);
+    if (card.offsetParent) observer.observe(card.offsetParent);
+    return () => observer.disconnect();
+  }, [a.id, zoom, rotation, pan.x, pan.y]);
+
   const { t } = useTranslation('library');
   const { data: info, isLoading, isError } = useQuery({
     queryKey: ['catalog-info', a.id],
@@ -56,13 +106,17 @@ export function AnnotationInfoCard({ annotation: a, onClose }: { annotation: Fra
 
   return (
     <div
+      ref={cardRef}
       role="dialog"
       aria-label={a.label}
       onPointerDown={e => e.stopPropagation()}
       onDoubleClick={e => e.stopPropagation()}
       onWheel={e => e.stopPropagation()}
-      className="absolute inset-x-2 bottom-2 z-30 max-h-[70%] cursor-default select-text overflow-y-auto rounded-xl bg-black/75 p-3
-        text-xs text-white/80 ring-1 ring-inset ring-white/10 backdrop-blur-md sm:inset-x-auto sm:bottom-auto sm:right-2 sm:top-2 sm:w-80"
+      style={pos ? { left: pos.left, top: pos.top } : undefined}
+      className={`absolute z-30 max-h-[70%] cursor-default select-text overflow-y-auto rounded-xl bg-black/75 p-3
+        text-xs text-white/80 ring-1 ring-inset ring-white/10 backdrop-blur-md ${
+        pos ? 'w-80 max-w-[calc(100%-1rem)]' : 'inset-x-2 bottom-2 sm:inset-x-auto sm:bottom-auto sm:right-2 sm:top-2 sm:w-80'
+      }`}
     >
       <div className="flex items-start gap-3">
         <img

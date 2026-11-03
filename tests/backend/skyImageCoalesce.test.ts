@@ -13,6 +13,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 });
 
 import { prefetchSkyImage } from '../../server/lib/skyImage';
+import { resetCdsBreaker } from '../../server/lib/skyImageFallback';
 
 afterAll(() => {
   vi.unstubAllGlobals();
@@ -46,6 +47,8 @@ function controllableFetch() {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  // These tests fail CDS on purpose; keep one test's failures from opening the breaker for the next.
+  resetCdsBreaker();
 });
 
 describe('prefetchSkyImage — concurrent requests share one fetch', () => {

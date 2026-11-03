@@ -1447,7 +1447,8 @@
       "markProcessedFailed": "Konnte nicht als bearbeitet markiert werden",
       "favorite": "Favorit",
       "unfavorite": "Favorit entfernen",
-      "download": "Herunterladen"
+      "download": "Herunterladen",
+      "mosaic": "Mosaik"
     },
     "loading": "Medien werden geladen",
     "loadingMore": "Weitere werden geladen",
@@ -1478,6 +1479,8 @@
     "target": "Ziel",
     "toggle": "Objekte in diesem Bild benennen",
     "toggleHide": "Objektnamen ausblenden",
+    "minimize": "Objektnamen minimieren",
+    "restore": "Objektnamen einblenden",
     "title": "Objektnamen",
     "loading": "Objekte werden gesucht ...",
     "quality": {

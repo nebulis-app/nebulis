@@ -6,6 +6,9 @@
  *   2. Objects in local catalog → CDS HiPS DSS2 color survey
  *   3. Any astronomical name → CDS Sesame resolver → CDS HiPS
  *
+ * When CDS fails several times in a row it is skipped for a while and the SDSS and Legacy Survey cutout services
+ * stand in (see skyImageFallback.ts). A picture from one of those is marked, and the CDS one replaces it later.
+ *
  * Extracted from server/routes/catalog.ts to break the upward lib→route dependency
  * that existed when catalogPrefetch.ts imported prefetchSkyImage from a route file.
  */
@@ -17,6 +20,10 @@ import { SOLAR_SYSTEM_LOOKUP_KEYS, SOLAR_SYSTEM_NASA_TERMS, SOLAR_SYSTEM_ASTROBA
 import { raToDegs, decToDegs } from './astroCalc.js';
 import { DATA_DIR } from './paths.js';
 import { isRecord } from './typeGuards.js';
+import {
+  cdsIsSkipped, recordCdsFailure, recordCdsSuccess, fetchFallbackSkyImage,
+  markFallbackImage, isFallbackImage, clearFallbackMark,
+} from './skyImageFallback.js';
 
 // Local constants — kept self-contained to avoid a circular dependency with
 // catalogPrefetch.ts (which imports this module). catalogPrefetch exports the
@@ -33,6 +40,18 @@ function masterCacheKey(id: string): string {
 
 function imageCachePath(id: string): string {
   return path.join(SKY_CACHE_DIR, `${masterCacheKey(id)}.jpg`);
+}
+
+/** Thumbnails cut from a DSS2 master are named by id and source, not by the master's content, so a master that is
+ *  replaced (a backup picture giving way to the CDS one) leaves them stale until they are removed. */
+export function dropDerivedThumbnails(id: string): void {
+  const prefix = `${id.replace(/\s+/g, '').toUpperCase().replace(/[^A-Z0-9_.-]/g, '_')}_dss2_`;
+  const dir = path.join(SKY_CACHE_DIR, 'resized');
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      if (name.startsWith(prefix) && /^\d+x\d+(_cover)?\.jpg$/i.test(name.slice(prefix.length))) fs.unlinkSync(path.join(dir, name));
+    }
+  } catch { /* no thumbnails yet */ }
 }
 
 // ─── Sesame coordinate resolver ──────────────────────────────────────
@@ -243,24 +262,34 @@ async function fetchSkyImageUncoalesced(
   const fov = opts.fov || 1.0;
   const cachePath = imageCachePath(id);
   const normalizedId = id.replace(/\s+/g, '').toUpperCase();
+  /** The cached picture is a backup one and CDS is worth trying again for it. */
+  let upgrading = false;
 
   if (opts.force) {
     negativeImageCache.delete(normalizedId);
     transientNegativeCache.delete(normalizedId);
     try { fs.unlinkSync(cachePath); } catch { /* not present */ }
+    clearFallbackMark(cachePath);
+    dropDerivedThumbnails(id);
   } else {
     try {
       const stat = fs.statSync(cachePath);
-      if (stat.size > 0) return cachePath;
+      if (stat.size > 0) {
+        // A backup picture stays until CDS answers again; then the CDS one replaces it.
+        if (!isFallbackImage(cachePath) || cdsIsSkipped()) return cachePath;
+        upgrading = true;
+      }
     } catch { /* no cache */ }
 
-    const negCacheTs = negativeImageCache.get(normalizedId);
-    if (negCacheTs && Date.now() - negCacheTs < NEGATIVE_CACHE_TTL_MS) {
-      return null;
-    }
-    const transientTs = transientNegativeCache.get(normalizedId);
-    if (transientTs && Date.now() - transientTs < TRANSIENT_NEGATIVE_TTL_MS) {
-      return null;
+    if (!upgrading) {
+      const negCacheTs = negativeImageCache.get(normalizedId);
+      if (negCacheTs && Date.now() - negCacheTs < NEGATIVE_CACHE_TTL_MS) {
+        return null;
+      }
+      const transientTs = transientNegativeCache.get(normalizedId);
+      if (transientTs && Date.now() - transientTs < TRANSIENT_NEGATIVE_TTL_MS) {
+        return null;
+      }
     }
   }
 
@@ -331,36 +360,64 @@ async function fetchSkyImageUncoalesced(
     + `&projection=TAN`
     + `&format=jpg`;
 
-  try {
-    const resp = await fetchHips2fits(query, opts.timeoutMs ?? 60000);
-    if (!resp.ok) {
+  // What a failed attempt returns: the cached backup picture when this was an upgrade attempt, else nothing.
+  const keepWhatWeHave = upgrading ? cachePath : null;
+
+  if (!cdsIsSkipped()) {
+    try {
+      const resp = await fetchHips2fits(query, opts.timeoutMs ?? 60000);
+      if (resp.ok) {
+        const buffer = Buffer.from(await resp.arrayBuffer());
+        fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+        fs.writeFileSync(cachePath, buffer);
+        if (upgrading) {
+          clearFallbackMark(cachePath);
+          dropDerivedThumbnails(id);
+        }
+        return cachePath;
+      }
       // id is request-controlled (catalog id from the URL); keep it out of
       // the format-string position (console.warn %-substitutes its first
       // argument) and pass it as a %s argument instead.
       console.warn('[skyImage] CDS HiPS fetch failed for %s: HTTP %s (ra=%s, dec=%s, fov=%s)', id, resp.status, ra, dec, fov);
       if (resp.status >= 400 && resp.status < 500) {
-        negativeImageCache.set(normalizedId, Date.now());
-        saveNegativeCache();
-      } else {
-        // 5xx: CDS itself is having trouble. Same treatment as a network
-        // failure — short transient entry so we stop hammering it but retry
-        // within minutes rather than hours.
-        transientNegativeCache.set(normalizedId, Date.now());
+        if (!upgrading) {
+          negativeImageCache.set(normalizedId, Date.now());
+          saveNegativeCache();
+        }
+        return keepWhatWeHave;
       }
-      return null;
+      // 5xx: CDS itself is having trouble. Same treatment as a network
+      // failure — short transient entry so we stop hammering it but retry
+      // within minutes rather than hours.
+    } catch (err) {
+      console.warn('[skyImage] CDS HiPS fetch error for %s:', id, err instanceof Error ? err.message : err);
+      // Network-level failure (timeout, DNS, unreachable). The image likely
+      // exists upstream, so remember the failure only briefly — long enough to
+      // stop an offline session from re-hanging on every thumbnail request.
     }
-    const buffer = Buffer.from(await resp.arrayBuffer());
-    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-    fs.writeFileSync(cachePath, buffer);
-    return cachePath;
-  } catch (err) {
-    console.warn('[skyImage] CDS HiPS fetch error for %s:', id, err instanceof Error ? err.message : err);
-    // Network-level failure (timeout, DNS, unreachable). The image likely
-    // exists upstream, so remember the failure only briefly — long enough to
-    // stop an offline session from re-hanging on every thumbnail request.
-    transientNegativeCache.set(normalizedId, Date.now());
-    return null;
+    // The failure was counted by fetchHips2fits. Below the limit this request simply fails; at the limit CDS is
+    // now being skipped and the backup sources take over, starting with this request.
+    if (!cdsIsSkipped()) {
+      if (!upgrading) transientNegativeCache.set(normalizedId, Date.now());
+      return keepWhatWeHave;
+    }
   }
+
+  if (upgrading) return cachePath;
+  const backup = await fetchFallbackSkyImage({
+    ra, dec, fovDeg: fov, width: MASTER_WIDTH, height: MASTER_HEIGHT,
+    timeoutMs: Math.min(opts.timeoutMs ?? 20000, 20000),
+  });
+  if (backup) {
+    console.warn('[skyImage] CDS unavailable, using %s for %s', backup.source, id);
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    fs.writeFileSync(cachePath, backup.buffer);
+    markFallbackImage(cachePath, backup.source);
+    return cachePath;
+  }
+  transientNegativeCache.set(normalizedId, Date.now());
+  return null;
 }
 
 // ─── CDS hips2fits hosts ─────────────────────────────────────────────────
@@ -385,6 +442,7 @@ async function fetchHips2fits(query: string, totalTimeoutMs: number): Promise<Re
       if (resp.ok || (resp.status >= 400 && resp.status < 500)) {
         const i = HIPS_HOSTS.indexOf(host);
         if (i > 0) { HIPS_HOSTS.splice(i, 1); HIPS_HOSTS.unshift(host); }
+        recordCdsSuccess();
         return resp;
       }
       lastResp = resp;
@@ -392,6 +450,8 @@ async function fetchHips2fits(query: string, totalTimeoutMs: number): Promise<Re
       lastErr = err;
     }
   }
+  // No host gave a usable answer: one failure for the circuit breaker, however many hosts were tried.
+  recordCdsFailure();
   if (lastResp) return lastResp;
   throw lastErr;
 }
@@ -432,6 +492,26 @@ export async function fetchSkyCutout(opts: {
     if (stat.size > 0) return cachePath;
   } catch { /* no cache */ }
 
+  // A backup cutout lives in its own file, used only while CDS is being skipped, so the CDS cutout is fetched and
+  // cached as soon as CDS answers again and nothing has to be replaced.
+  const backupPath = path.join(CUTOUT_DIR, `${key}.backup.jpg`);
+  const backupCutout = async (): Promise<string | null> => {
+    try {
+      const stat = fs.statSync(backupPath);
+      if (stat.size > 0) return backupPath;
+    } catch { /* not fetched yet */ }
+    const backup = await fetchFallbackSkyImage({
+      ra: opts.ra, dec: opts.dec, fovDeg: fov, width: size, height: size,
+      timeoutMs: Math.min(opts.timeoutMs ?? 15000, 15000),
+    });
+    if (!backup) return null;
+    fs.mkdirSync(CUTOUT_DIR, { recursive: true });
+    fs.writeFileSync(backupPath, backup.buffer);
+    return backupPath;
+  };
+
+  if (cdsIsSkipped()) return backupCutout();
+
   const query = `?hips=CDS/P/DSS2/color`
     + `&width=${size}&height=${size}`
     + `&fov=${fov}`
@@ -443,7 +523,7 @@ export async function fetchSkyCutout(opts: {
     const resp = await fetchHips2fits(query, opts.timeoutMs ?? 15000);
     if (!resp.ok) {
       console.warn('[skyImage] cutout fetch failed for %s: HTTP %s (fov=%s)', opts.id, resp.status, fov);
-      return null;
+      return cdsIsSkipped() ? backupCutout() : null;
     }
     const buffer = Buffer.from(await resp.arrayBuffer());
     fs.mkdirSync(CUTOUT_DIR, { recursive: true });
@@ -451,6 +531,6 @@ export async function fetchSkyCutout(opts: {
     return cachePath;
   } catch (err) {
     console.warn('[skyImage] cutout fetch error for %s:', opts.id, err instanceof Error ? err.message : err);
-    return null;
+    return cdsIsSkipped() ? backupCutout() : null;
   }
 }

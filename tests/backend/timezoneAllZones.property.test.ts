@@ -22,17 +22,41 @@ describe('every IANA zone', () => {
     expect(ALL_ZONES.length).toBeGreaterThan(300);
   });
 
-  it('UTC -> zoned -> UTC lands on the same wall clock, never later, at most one shift earlier', () => {
+  it('UTC -> zoned -> UTC lands on the same wall clock, at most one DST shift away from the original instant', () => {
+    // When clocks fall back, one wall-clock hour happens twice. Which of the two instants comes back is not
+    // fixed: zones west of UTC settle on the earlier, zones east of UTC (Europe) on the later. Both are
+    // correct, so the only promises are the same wall clock and no more than one shift of distance.
     fc.assert(
       fc.property(instantArb, zoneArb, (t, tz) => {
         const p = localParts(t, tz);
         const back = zonedDateTimeToUtc(localDateKey(t, tz), { hour: p.hour, minute: p.minute, second: p.second }, tz);
         expect(localParts(back, tz), tz).toEqual(p);
-        expect(back.getTime(), tz).toBeLessThanOrEqual(t.getTime());
-        expect(t.getTime() - back.getTime(), tz).toBeLessThanOrEqual(HOUR_MS);
+        expect(Math.abs(t.getTime() - back.getTime()), tz).toBeLessThanOrEqual(HOUR_MS);
       }),
-      { numRuns: 1500 },
+      {
+        numRuns: 1500,
+        // Found by random search: the first pass through the repeated hour in zones east of UTC.
+        examples: [
+          [new Date('2034-10-29T00:00:00.000Z'), 'Europe/Podgorica'],
+          [new Date('2011-10-30T00:00:00.000Z'), 'Europe/Tallinn'],
+          [new Date('2043-10-25T00:00:00.000Z'), 'Europe/Athens'],
+        ],
+      },
     );
+  });
+
+  it('a repeated fall-back hour resolves to one of its two real instants, in both east and west zones', () => {
+    // Tallinn: 04:00 EEST -> 03:00 EET at 01:00Z on 2011-10-30, so 03:30 happens at 00:30Z and again at 01:30Z.
+    // New York: 02:00 EDT -> 01:00 EST at 06:00Z on 2026-11-01, so 01:30 happens at 05:30Z and again at 06:30Z.
+    const cases: Array<[string, string, number[]]> = [
+      ['Europe/Tallinn', '2011-10-30', [Date.UTC(2011, 9, 30, 0, 30), Date.UTC(2011, 9, 30, 1, 30)]],
+      ['America/New_York', '2026-11-01', [Date.UTC(2026, 10, 1, 5, 30), Date.UTC(2026, 10, 1, 6, 30)]],
+    ];
+    for (const [tz, key, instants] of cases) {
+      const hour = tz === 'Europe/Tallinn' ? 3 : 1;
+      const back = zonedDateTimeToUtc(key, { hour, minute: 30 }, tz).getTime();
+      expect(instants, tz).toContain(back);
+    }
   });
 
   it('every zone resolves a midday wall time exactly, on every day of a year', () => {

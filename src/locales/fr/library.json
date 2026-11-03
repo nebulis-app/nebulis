@@ -1447,7 +1447,8 @@
       "markProcessedFailed": "Impossible de marquer comme traité",
       "favorite": "Favori",
       "unfavorite": "Retirer des favoris",
-      "download": "Télécharger"
+      "download": "Télécharger",
+      "mosaic": "Mosaïque"
     },
     "loading": "Chargement des médias",
     "loadingMore": "Chargement de la suite",
@@ -1478,6 +1479,8 @@
     "target": "Cible",
     "toggle": "Nommer les objets de cette image",
     "toggleHide": "Masquer les noms d'objets",
+    "minimize": "Réduire les noms d'objets",
+    "restore": "Afficher les noms d'objets",
     "title": "Noms des objets",
     "loading": "Recherche des objets...",
     "quality": {

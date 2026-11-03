@@ -227,6 +227,7 @@ export function ForecastPage() {
               accent={accent}
               siteControl={siteControl}
               lightPollution={<LightPollutionPill site={currentSite} />}
+              upcomingNights={upcomingNights}
             />
           ) : (
             <div className={`rounded-2xl border p-6 text-sm ${

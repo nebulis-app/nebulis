@@ -345,13 +345,24 @@ export function getLinkedFileRows(objectId: string, date?: string): LibraryFileR
  */
 export function deleteLinkedFilesFromDisk(rows: LibraryFileRow[]): { deleted: number } {
   const removed: LibraryFileRow[] = [];
+  const unavailable = () => new LinkedDeleteError('LINKED_SOURCE_UNAVAILABLE', 'The linked folder cannot be reached right now, so nothing was deleted. Reconnect the drive or share and try again.');
+  // Sources already confirmed to be the disk that was linked, so the check runs once per source per call.
+  const verifiedSources = new Set<string>();
   try {
     for (const row of rows) {
       if (row.sourceId === null) continue;
       const resolved = resolveLibraryFile(row.relPath);
-      const source = db.prepare<[string], { rootPath: string }>('SELECT rootPath FROM librarySources WHERE id = ?').get(row.sourceId);
-      if (!resolved || !source || !fs.existsSync(source.rootPath)) {
-        throw new LinkedDeleteError('LINKED_SOURCE_UNAVAILABLE', 'The linked folder cannot be reached right now, so nothing was deleted. Reconnect the drive or share and try again.');
+      const source = db.prepare<[string], { rootPath: string; fingerprint: string | null }>('SELECT rootPath, fingerprint FROM librarySources WHERE id = ?').get(row.sourceId);
+      if (!resolved || !source || !fs.existsSync(source.rootPath)) throw unavailable();
+      if (!verifiedSources.has(row.sourceId)) {
+        // An empty mount point, or a different disk mounted at the same path, exists and is readable, so "it exists"
+        // is not enough: every unlink would fail ENOENT, read as "already gone", and the rows would be dropped
+        // while the originals sit on the real disk. The fingerprint taken at link time tells the two apart.
+        if (!fingerprintMatches(source.fingerprint, source.rootPath)) throw unavailable();
+        verifiedSources.add(row.sourceId);
+      }
+      if (!directoryStaysInsideRoot(resolved.abs, source.rootPath)) {
+        throw new LinkedDeleteError('LINKED_DELETE_FAILED', `Did not delete "${row.fileName}": it is reached through a link that leaves ${source.rootPath}, so the file is not inside the linked folder.`);
       }
       try {
         fs.unlinkSync(resolved.abs);
@@ -370,6 +381,26 @@ export function deleteLinkedFilesFromDisk(rows: LibraryFileRow[]): { deleted: nu
     retireEmptyObjects(new Set(removed.map(r => r.objectId)));
   }
   return { deleted: removed.length };
+}
+
+/**
+ * Whether the folder holding `absFile` really sits inside the linked root once symlinks are followed. The
+ * containment check in fileResolver is lexical, and the scan follows symlinked folders on purpose, so a file under
+ * a link to another disk passes it, and unlinking it would remove the real file out there. A symlinked *file* is
+ * fine: unlinking it removes only the link. A folder that no longer exists means the file is gone, which the caller
+ * already treats as deleted.
+ */
+function directoryStaysInsideRoot(absFile: string, rootPath: string): boolean {
+  let realDir: string;
+  let realRoot: string;
+  try {
+    realRoot = fs.realpathSync(rootPath);
+    realDir = fs.realpathSync(path.dirname(absFile));
+  } catch {
+    return true;
+  }
+  const rel = path.relative(realRoot, realDir);
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
 /** What deleting an object or night would take from linked folders: file count, bytes, and folder labels. */
@@ -782,7 +813,7 @@ function isSameOrInside(inner: string, outer: string): boolean {
     ? (v: string) => v.toLowerCase()
     : (v: string) => v;
   const rel = path.relative(fold(outer), fold(inner));
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
 /**

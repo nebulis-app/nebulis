@@ -147,7 +147,12 @@ test.describe('Annotation tile placement', () => {
     // A wide picture fills the pane at fit: nothing beside it.
     expect((await tileOverlapsPicture(dialog, img)).shown).toBe(false);
     await expect(dialog.locator('[data-annotation-dot]')).toBeVisible();
-    // Zoomed far into a portrait one, likewise.
+    // The names are still one click away, and open over the picture only when asked.
+    await dialog.getByRole('button', { name: 'Show object names' }).click();
+    await expect(dialog.locator('[data-annotation-peek]')).toBeVisible();
+    await expect(dialog.getByText('Object names')).toBeVisible();
+    await dialog.getByRole('button', { name: /^Details for Maia Nebula/ }).last().click();
+    await expect(page.locator('[role="dialog"][aria-label="Maia Nebula"]')).toBeVisible();
   });
 
   test('zoomed in the tile is gone and the dot stays; back at fit the tile returns', async ({ page }) => {
@@ -286,5 +291,27 @@ test.describe('Saving an annotated picture', () => {
     ]);
     expect(download.suggestedFilename()).toBe(FILE.name);
     await expect(page.getByRole('dialog', { name: 'Save this picture' })).toHaveCount(0);
+  });
+});
+
+test.describe('Annotation details card', () => {
+  test.use({ viewport: { width: 3008, height: 1692 } });
+
+  test('opens beside its ring and stays inside the picture pane', async ({ page }) => {
+    const { dialog } = await open(page, 4000, 2250);
+    await page.route('**/api/catalog/**/info', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ok({
+      name: 'Maia Nebula', type: 'Reflection Nebula', constellation: 'Taurus', magnitude: 4, description: 'A reflection nebula. '.repeat(40),
+      ra: 1, dec: 2, distance: '440 ly', distanceLy: 440, size: '30 arcmin', imageUrl: '', wikiUrl: null,
+      alsoKnownAs: ['Maia', 'IC 349', 'Sh2-1', 'M 45'], override: null,
+    })) }));
+    await dialog.getByRole('button', { name: /^Details for Maia Nebula/ }).first().click();
+    const card = page.locator('[role="dialog"][aria-label="Maia Nebula"]');
+    await expect(card).toBeVisible();
+    const pane = (await dialog.locator('[data-lightbox-pane]').boundingBox())!;
+    const box = (await card.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(pane.x - 1);
+    expect(box.y).toBeGreaterThanOrEqual(pane.y - 1);
+    expect(box.x + box.width).toBeLessThanOrEqual(pane.x + pane.width + 1);
+    expect(box.y + box.height).toBeLessThanOrEqual(pane.y + pane.height + 1);
   });
 });

@@ -15,6 +15,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 import db from '../../server/lib/db';
 import {
   getWatermarkPresets, setWatermarkPresets, getLastSeenVersion, setLastSeenVersion,
+  getSupportAskSeenAt, setSupportAskSeen,
   WatermarkPresetsBodySchema, type WatermarkPreset,
 } from '../../server/lib/userPreferences';
 
@@ -158,6 +159,29 @@ describe('lastSeenVersion', () => {
     expect(getLastSeenVersion('u1')).toBe('2.1.1');
     setLastSeenVersion('u1', '2.1.2');
     expect(getLastSeenVersion('u1')).toBe('2.1.2');
+    expect(db.prepare<[string], { c: number }>('SELECT COUNT(*) AS c FROM userPreferences WHERE userId = ?').get('u1')!.c).toBe(1);
+  });
+});
+
+describe('support ask (supportAskSeenAt)', () => {
+  it('is null until the user has seen it', () => {
+    expect(getSupportAskSeenAt('u1')).toBeNull();
+  });
+
+  it('stores the instant, and the first dismissal keeps its date', () => {
+    const first = setSupportAskSeen('u1', new Date('2026-11-02T23:31:00Z'));
+    expect(first).toBe('2026-11-02T23:31:00.000Z');
+    expect(setSupportAskSeen('u1', new Date('2026-12-25T10:00:00Z'))).toBe(first);
+    expect(getSupportAskSeenAt('u1')).toBe(first);
+  });
+
+  it('is per user and does not disturb the same row\'s lastSeenVersion', () => {
+    setLastSeenVersion('u1', '2.2.0');
+    setSupportAskSeen('u1');
+    expect(getLastSeenVersion('u1')).toBe('2.2.0');
+    expect(getSupportAskSeenAt('u2')).toBeNull();
+    setSupportAskSeen('u2');
+    expect(getSupportAskSeenAt('u2')).not.toBeNull();
     expect(db.prepare<[string], { c: number }>('SELECT COUNT(*) AS c FROM userPreferences WHERE userId = ?').get('u1')!.c).toBe(1);
   });
 });

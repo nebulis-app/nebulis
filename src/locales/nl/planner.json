@@ -19,6 +19,8 @@
     "closeDetails": "Details sluiten",
     "addToTonight": "Toevoegen aan vannacht",
     "referenceImageAlt": "Referentiebeeld van {{name}}",
+    "referenceImageOpen": "{{name}} op volledige grootte bekijken",
+    "referenceImageViewerTitle": "Hemelbeeld van {{name}}",
     "referenceImage": "Referentiebeeld",
     "setLocationForSky": "Stel je locatie in via Instellingen om te zien waar dit object aan je hemel staat.",
     "skyShownAt": "Om {{time}} · sleep over de grafiek om de tijd te wijzigen",
@@ -78,9 +80,6 @@
     }
   },
   "scheduleTimeline": {
-    "emptyNight": "Voor deze nacht is nog niets gepland.",
-    "copyLastNightCount_one": "Vorige nacht kopiëren ({{count}} blok)",
-    "copyLastNightCount_other": "Vorige nacht kopiëren ({{count}} blokken)",
     "nightSchedule": "Nachtplanning",
     "plannedOfDark": "<1>{{planned}}</1> van {{dark}} gepland",
     "targetCount_one": "{{count}} object",
@@ -349,7 +348,7 @@
   },
   "altitudeBandChart": {
     "noTargetsAriaLabel": "Hoogtegrafiek, geen objecten ingepland",
-    "emptyHint": "Voeg objecten toe aan de planning om hier hun hoogtecurves te bekijken.",
+    "emptyHint": "Voeg objecten toe aan de planning, of gebruik Plan mijn nacht, om hier hun hoogtecurves te bekijken.",
     "ariaLabel": "Hoogte van elk gepland object in de loop van de tijd",
     "timeAltitude": "{{time}} · {{alt}}° hoogte"
   },

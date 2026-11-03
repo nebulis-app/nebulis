@@ -24,22 +24,29 @@ interface Props {
   onUpload: (() => void) | null;
   /** Admin only: opens the frame review on the Subframes tab, where it takes the place of Add image. */
   onReview: (() => void) | null;
-  /** Rendered at the left of the controls row (the tabs), so tabs and controls share one line. */
-  leading?: React.ReactNode;
 }
 
-export function MediaTabs({ state, update, counts, isAdmin }: Pick<Props, 'state' | 'update' | 'counts'> & { isAdmin: boolean }) {
+export function MediaTabs({ state, update, counts, isAdmin, trailing }: Pick<Props, 'state' | 'update' | 'counts'> & {
+  isAdmin: boolean;
+  /** The page's controls, shown at the right of the tab row. */
+  trailing?: React.ReactNode;
+}) {
   const { t } = useTranslation('library');
-  const { isDark } = useTheme();
+  const { isDark, isNight, isSpace } = useTheme();
+  const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-accent-500';
+  const accentBorder = isNight ? 'border-red-400' : isSpace ? 'border-violet-400' : 'border-accent-500';
   // Hide a tab with nothing in it, but never the one you are on, Images, Subframes, Nights, or (for an admin, who can
   // add to it) Projects. Subframes explains how to get them when there are none.
   const tabs = MEDIA_TABS.filter(id => id === 'all' || id === 'sub' || id === 'nights' || (id === 'project' && isAdmin)
     || id === state.tab || (counts?.[id] ?? 0) > 0);
 
+  // Same underlined row as the observation page's ObservationTabs, so the two pages navigate alike.
   return (
-    <div role="tablist" aria-label={t('objectMedia.tabsLabel')} className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
+    <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b pb-2 sm:pb-0 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+    <div role="tablist" aria-label={t('objectMedia.tabsLabel')} className="flex min-w-0 items-center gap-1 overflow-x-auto no-scrollbar">
       {tabs.map(id => {
         const active = id === state.tab;
+        const count = counts?.[id] ?? 0;
         return (
           <button
             key={id}
@@ -47,17 +54,27 @@ export function MediaTabs({ state, update, counts, isAdmin }: Pick<Props, 'state
             type="button"
             aria-selected={active}
             onClick={() => update({ tab: id })}
-            className={`flex shrink-0 items-baseline gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
+            className={`font-display text-[0.8125rem] font-medium inline-flex items-center gap-2 px-3.5 py-2.5 border-b-2 -mb-px whitespace-nowrap transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
               active
-                ? isDark ? 'bg-slate-800 text-white' : 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
-                : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'
+                ? `${accentText} ${accentBorder}`
+                : `border-transparent ${isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'}`
             }`}
           >
             {t(`objectMedia.tab.${id}`)}
-            {counts && counts[id] > 0 && <span className={`text-xs tabular-nums ${active ? 'text-slate-400' : 'text-slate-500'}`}>{counts[id]}</span>}
+            {count > 0 && (
+              <span className={`text-[0.6875rem] font-sans tabular-nums px-1.5 py-px rounded-full ${
+                active
+                  ? isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-300 text-accent-700'
+                  : isDark ? 'bg-slate-800 text-slate-500' : 'bg-slate-100 text-slate-500'
+              }`}>
+                {count}
+              </span>
+            )}
           </button>
         );
       })}
+    </div>
+    {trailing && <div className="sm:pb-1.5">{trailing}</div>}
     </div>
   );
 }
@@ -96,9 +113,51 @@ function ToolbarButton({ icon, label, open, active, badge, onClick }: {
   );
 }
 
+/** View, Filters and the tab's add button. Sits at the right of the tab row. */
 export function MediaToolbar({
-  state, update, clearFilters, activeFilterCount, counts, facets, size, onSizeChange, onUpload, onReview, leading,
+  state, update, clearFilters, activeFilterCount, counts, facets, size, onSizeChange, onUpload, onReview,
 }: Props) {
+  const { t } = useTranslation('library');
+  const { isDark } = useTheme();
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {state.tab !== 'nights' && <ViewPopover state={state} update={update} size={size} onSizeChange={onSizeChange} />}
+      <FilterPopover state={state} update={update} clearFilters={clearFilters} count={activeFilterCount} facets={facets} counts={counts} />
+      {state.tab === 'sub' ? onReview && (
+        <button
+          type="button"
+          onClick={onReview}
+          title={t('objectMedia.analyzeFramesTitle')}
+          className={`${TOOLBAR_BTN} font-semibold ${
+            isDark
+              ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 ring-accent-500/30'
+              : 'bg-accent-500 text-white hover:bg-accent-600 ring-accent-500'
+          }`}
+        >
+          <ScanSearch className="h-4 w-4" />
+          {t('objectMedia.toolbar.reviewFrames')}
+        </button>
+      ) : state.tab !== 'nights' && onUpload && (
+        <button
+          type="button"
+          onClick={onUpload}
+          className={`${TOOLBAR_BTN} font-semibold ${
+            isDark
+              ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 ring-accent-500/30'
+              : 'bg-accent-500 text-white hover:bg-accent-600 ring-accent-500'
+          }`}
+        >
+          <ImagePlus className="h-4 w-4" />
+          {t('objectMedia.toolbar.addImage')}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** One removable chip per active filter, under the tab row. */
+export function MediaFilterChips({ state, update, clearFilters, facets }: Pick<Props, 'state' | 'update' | 'clearFilters' | 'facets'>) {
   const { t } = useTranslation('library');
   const { isDark } = useTheme();
 
@@ -122,52 +181,13 @@ export function MediaToolbar({
   if (state.favorites) chips.push({ key: 'favorites', label: t('objectMedia.filters.favoritesOnly'), clear: () => update({ favorites: false }) });
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {leading && <div className="min-w-0 max-w-full">{leading}</div>}
-
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {state.tab !== 'nights' && <ViewPopover state={state} update={update} size={size} onSizeChange={onSizeChange} />}
-          <FilterPopover state={state} update={update} clearFilters={clearFilters} count={activeFilterCount} facets={facets} counts={counts} />
-          {state.tab === 'sub' ? onReview && (
-            <button
-              type="button"
-              onClick={onReview}
-              title={t('objectMedia.analyzeFramesTitle')}
-              className={`${TOOLBAR_BTN} font-semibold ${
-                isDark
-                  ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 ring-accent-500/30'
-                  : 'bg-accent-500 text-white hover:bg-accent-600 ring-accent-500'
-              }`}
-            >
-              <ScanSearch className="h-4 w-4" />
-              {t('objectMedia.toolbar.reviewFrames')}
-            </button>
-          ) : state.tab !== 'nights' && onUpload && (
-            <button
-              type="button"
-              onClick={onUpload}
-              className={`${TOOLBAR_BTN} font-semibold ${
-                isDark
-                  ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 ring-accent-500/30'
-                  : 'bg-accent-500 text-white hover:bg-accent-600 ring-accent-500'
-              }`}
-            >
-              <ImagePlus className="h-4 w-4" />
-              {t('objectMedia.toolbar.addImage')}
-            </button>
-          )}
-        </div>
-      </div>
-
-      <ActiveFilterChips
-        chips={chips}
-        isDark={isDark}
-        removeLabel={name => t('objectMedia.filters.remove', { name })}
-        clearAllLabel={t('objectMedia.filters.clear')}
-        onClearAll={clearFilters}
-      />
-    </div>
+    <ActiveFilterChips
+      chips={chips}
+      isDark={isDark}
+      removeLabel={name => t('objectMedia.filters.remove', { name })}
+      clearAllLabel={t('objectMedia.filters.clear')}
+      onClearAll={clearFilters}
+    />
   );
 }
 

@@ -169,25 +169,42 @@ function firstString(
 
 /** Look for a date embedded in any folder segment of the file's path within
  *  its object (e.g. "M31/2024-01-15/Ha/light_001.fits"). Accepts dashed
- *  (2024-01-15) and compact (20240115) forms. */
+ *  (2024-01-15) and compact (20240115) forms. A time of day right after the
+ *  date (a Dwarf session folder's start time) is returned too, so the
+ *  observing-night rollover can apply to files that carry no time themselves. */
 export function deriveFromPath(relPath: string): DerivedDate | null {
   const segments = relPath.replace(/\\/g, '/').split('/');
   // Walk leaf-to-root so the most specific (closest) folder wins.
   for (let i = segments.length - 2; i >= 0; i--) {
     const found = matchDateInText(segments[i]);
-    if (found) return { date: found, source: 'folder', time: null };
+    if (found) return { date: found.date, source: 'folder', time: found.time };
   }
   return null;
 }
 
-function matchDateInText(text: string): string | null {
+/** A time of day right after the date in a folder name (`_01-10-00`, `-0110`,
+ *  `T011000`), as HHMMSS, or null. Without it a pre-dawn capture folder could
+ *  never roll back to the observing night it belongs to. Seconds are optional
+ *  (HHMM reads as HHMM00); the digits must form a valid clock time to count,
+ *  so an arbitrary number after a date is not mistaken for one. */
+function timeAfterDate(rest: string): string | null {
+  const m = rest.match(/^[-_T ](\d{2})[-:.]?(\d{2})(?:[-:.]?(\d{2}))?(?!\d)/);
+  if (!m) return null;
+  const hh = m[1], mm = m[2], ss = m[3] ?? '00';
+  if (+hh > 23 || +mm > 59 || +ss > 59) return null;
+  return `${hh}${mm}${ss}`;
+}
+
+function matchDateInText(text: string): { date: string; time: string | null } | null {
   const dashed = text.match(/(20\d{2}|19\d{2})-(\d{2})-(\d{2})/);
   if (dashed && isPlausibleDate(dashed[1], dashed[2], dashed[3])) {
-    return `${dashed[1]}-${dashed[2]}-${dashed[3]}`;
+    const end = (dashed.index ?? 0) + dashed[0].length;
+    return { date: `${dashed[1]}-${dashed[2]}-${dashed[3]}`, time: timeAfterDate(text.slice(end)) };
   }
   const compact = text.match(/(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})(?!\d)/);
   if (compact && isPlausibleDate(compact[1], compact[2], compact[3])) {
-    return `${compact[1]}-${compact[2]}-${compact[3]}`;
+    const end = (compact.index ?? 0) + compact[0].length;
+    return { date: `${compact[1]}-${compact[2]}-${compact[3]}`, time: timeAfterDate(text.slice(end)) };
   }
   return null;
 }

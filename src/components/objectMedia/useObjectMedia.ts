@@ -123,7 +123,7 @@ export function useObjectMedia(objectId: string) {
   const first: ObjectMedia | undefined = pages?.[0];
   const items = useMemo<MediaItem[]>(() => pages?.flatMap(p => p.items) ?? [], [pages]);
   const counts = useMemo<MediaCounts | undefined>(
-    () => (first ? { ...first.counts, nights: first.facets.nights.length } : undefined),
+    () => (first ? { ...first.counts, nights: first.nightCount } : undefined),
     [first],
   );
 

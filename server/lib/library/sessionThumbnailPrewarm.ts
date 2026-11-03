@@ -68,6 +68,7 @@ async function renderIfMissing(cachePath: string, srcAbsPath: string): Promise<'
     try {
       await assertSafeRaster(srcAbsPath);
       await sharp(srcAbsPath)
+        .rotate()
         .resize(SIZE, SIZE, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 80, progressive: true })
         .toFile(tmpPath);

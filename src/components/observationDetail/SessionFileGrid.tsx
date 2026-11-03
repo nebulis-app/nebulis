@@ -12,17 +12,62 @@ import { SESSION_FILE_DRAG_TYPE } from './ObservationTabs';
 
 const GALLERY_PAGE_SIZE = 24;
 
+/** Compare and the All / Image / FITS filter. They sit at the right of the tab row, not inside the grid's card. */
+export function SessionFileControls({ viewMode, onViewModeChange, compareMode, onToggleCompareMode }: {
+  viewMode: 'all' | 'fits' | 'image';
+  onViewModeChange: (mode: 'all' | 'fits' | 'image') => void;
+  compareMode: boolean;
+  onToggleCompareMode: () => void;
+}) {
+  const { isDark } = useTheme();
+  const { t } = useTranslation('observations');
+  const viewModeLabels: Record<'all' | 'image' | 'fits', string> = {
+    all: t('observationDetail.sessionFileGrid.viewModeAll'),
+    image: t('observationDetail.sessionFileGrid.viewModeImage'),
+    fits: t('observationDetail.sessionFileGrid.viewModeFits'),
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={onToggleCompareMode}
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${
+          compareMode
+            ? isDark ? 'bg-accent-500/10 text-accent-400 border border-accent-500/30' : 'bg-accent-300 text-accent-700 border border-accent-400'
+            : isDark ? 'text-slate-500 hover:text-accent-400 hover:bg-accent-500/10 border border-transparent' : 'text-slate-400 hover:text-accent-500 hover:bg-accent-50 border border-transparent'
+        }`}
+        title={compareMode ? t('observationDetail.sessionFileGrid.exitCompareTitle') : t('observationDetail.sessionFileGrid.compareTitle')}
+      >
+        <Columns className="w-3.5 h-3.5" />
+        {compareMode ? t('observationDetail.sessionFileGrid.exitCompare') : t('observationDetail.sessionFileGrid.compare')}
+      </button>
+      <div className={`flex rounded-xl overflow-hidden border ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+        {(['all', 'image', 'fits'] as const).map(mode => (
+          <button
+            key={mode}
+            onClick={() => onViewModeChange(mode)}
+            className={`px-3 py-1.5 text-xs font-medium transition ${
+              viewMode === mode
+                ? isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-300 text-accent-700'
+                : isDark ? 'bg-slate-900 text-slate-400 hover:bg-slate-800' : 'bg-white text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            {viewModeLabels[mode]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** The "Images" panel: telescope-captured files (stacked + individual, not
  *  subframes), with view-mode filtering, pagination, compare-mode selection,
  *  session-image designation, and per-image favoriting. */
 export function SessionFileGrid({
   files,
-  viewMode,
-  onViewModeChange,
   galleryPage,
   setGalleryPage,
   compareMode,
-  onToggleCompareMode,
   compareItems,
   toggleCompareItem,
   sessionImagePath,
@@ -38,12 +83,9 @@ export function SessionFileGrid({
   onDragPathChange,
 }: {
   files: SessionFile[];
-  viewMode: 'all' | 'fits' | 'image';
-  onViewModeChange: (mode: 'all' | 'fits' | 'image') => void;
   galleryPage: number;
   setGalleryPage: React.Dispatch<React.SetStateAction<number>>;
   compareMode: boolean;
-  onToggleCompareMode: () => void;
   compareItems: [CompareItem | null, CompareItem | null];
   toggleCompareItem: (key: string, file: CompareFile) => void;
   sessionImagePath: string | null | undefined;
@@ -62,48 +104,9 @@ export function SessionFileGrid({
 }) {
   const { isDark } = useTheme();
   const { t } = useTranslation('observations');
-  const viewModeLabels: Record<'all' | 'image' | 'fits', string> = {
-    all: t('observationDetail.sessionFileGrid.viewModeAll'),
-    image: t('observationDetail.sessionFileGrid.viewModeImage'),
-    fits: t('observationDetail.sessionFileGrid.viewModeFits'),
-  };
 
   return (
     <div className={`rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
-      {/* No title row: the selected tab immediately above already names this
-          panel and carries its count, so the bar is only its controls. */}
-      <div className={`flex items-center justify-end p-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onToggleCompareMode}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${
-              compareMode
-                ? isDark ? 'bg-accent-500/10 text-accent-400 border border-accent-500/30' : 'bg-accent-300 text-accent-700 border border-accent-400'
-                : isDark ? 'text-slate-500 hover:text-accent-400 hover:bg-accent-500/10 border border-transparent' : 'text-slate-400 hover:text-accent-500 hover:bg-accent-50 border border-transparent'
-            }`}
-            title={compareMode ? t('observationDetail.sessionFileGrid.exitCompareTitle') : t('observationDetail.sessionFileGrid.compareTitle')}
-          >
-            <Columns className="w-3.5 h-3.5" />
-            {compareMode ? t('observationDetail.sessionFileGrid.exitCompare') : t('observationDetail.sessionFileGrid.compare')}
-          </button>
-          <div className={`flex rounded-xl overflow-hidden border ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-            {(['all', 'image', 'fits'] as const).map(mode => (
-              <button
-                key={mode}
-                onClick={() => onViewModeChange(mode)}
-                className={`px-3 py-1.5 text-xs font-medium transition ${
-                  viewMode === mode
-                    ? isDark ? 'bg-accent-500/15 text-accent-400' : 'bg-accent-300 text-accent-700'
-                    : isDark ? 'bg-slate-900 text-slate-400 hover:bg-slate-800' : 'bg-white text-slate-500 hover:bg-slate-50'
-                }`}
-              >
-                {viewModeLabels[mode]}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
       {files.length > 0 ? (
         <>
           {/* auto-fill, not auto-fit: a night with two files keeps two tile-sized

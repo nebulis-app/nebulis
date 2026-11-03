@@ -96,7 +96,8 @@ describe('link and copy import read the same folder the same way', () => {
     const trails = link.objects.find(o => o.objectId === getStartrailsObjectId());
     expect(trails).toBeDefined();
     expect(trails!.fileCount).toBe(6); // 2 captures x 3 frames; the 6 Thumbnail/ previews stay out
-    expect(trails!.sessions.map(s => s.date).sort()).toEqual(['2026-04-05', '2026-04-16']);
+    // CAP_A starts at 00:22, before the 07:00 rollover, so it belongs to the night of the 4th.
+    expect(trails!.sessions.map(s => s.date).sort()).toEqual(['2026-04-04', '2026-04-16']);
     // Named for what it is, so the review screen does not read "no catalog match" beside it.
     expect(trails!.catalogMatch).toMatchObject({ name: STARTRAILS_TARGET_NAME, type: 'Star Trails' });
     expect(link.unresolved).toEqual([]);
@@ -117,8 +118,8 @@ describe('link and copy import read the same folder the same way', () => {
     const copy = scanImportFolder(root, SETTINGS).objects.find(o => norm(o.targetObjectId ?? o.folderName) === 'dwarfstartrails');
     const link = (await scanSource(root, SETTINGS)).objects.find(o => o.objectId === getStartrailsObjectId());
     const dates = (xs: Array<{ date: string }> | undefined) => (xs ?? []).map(s => s.date).sort();
-    expect(dates(copy?.sessions)).toEqual(['2026-04-05', '2026-04-16']);
-    expect(dates(link?.sessions)).toEqual(['2026-04-05', '2026-04-16']);
+    expect(dates(copy?.sessions)).toEqual(['2026-04-04', '2026-04-16']);
+    expect(dates(link?.sessions)).toEqual(['2026-04-04', '2026-04-16']);
   });
 
   it('name the same excluded folders and account for skipped files in the same words', async () => {

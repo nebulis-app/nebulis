@@ -81,8 +81,6 @@ interface ScheduleTimelineProps {
   onShowFraming?: (session: PlannedSession) => void;
   /** Buttons for the end of the header: what you do with the plan as a whole (copy, share). */
   headerActions?: ReactNode;
-  /** Shown under the header while the night has no blocks, in place of a bare empty canvas. */
-  emptyState?: ReactNode;
   /** Reports the runtime pixels-per-minute scale so the page's drag/drop math
    *  (which converts pointer pixels to times) matches what's rendered here. */
   onScaleChange?: (pxPerMinute: number) => void;
@@ -175,7 +173,6 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
     onShowDetails,
     onShowFraming,
     headerActions,
-    emptyState,
     onScaleChange,
     observerTimezone,
   },
@@ -279,23 +276,36 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      {/* The header carries what is true of the schedule as a whole: how much
-          of the dark you have booked, and the two windows the canvas below
-          draws. These used to sit in a panel above the page, away from the
-          thing they describe. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-white/10 bg-slate-950/80 px-4 py-2.5 backdrop-blur">
-        <div className="flex items-baseline gap-2.5">
-          <span className="text-sm font-medium text-white">{t('scheduleTimeline.nightSchedule')}</span>
+      {/* One slim row: how much of the dark is booked, as a bar and a number.
+          The title and the dark window are not repeated here, because the
+          dashed window and the hour ticks below already draw them. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-white/10 bg-slate-950/80 px-4 py-2 backdrop-blur">
+        <div className="flex min-w-0 items-center gap-3">
           {darkMinutes > 0 && (
-            <span className="text-[0.6875rem] text-white/45 tabular-nums">
-              <Trans
-                i18nKey="scheduleTimeline.plannedOfDark"
-                ns="planner"
-                values={{ planned: formatDuration(plannedMinutes), dark: formatDuration(darkMinutes) }}
-                components={{ 1: <span className="font-medium text-white/75" /> }}
-              />
-              {targetCount > 0 && ` · ${t('scheduleTimeline.targetCount', { count: targetCount })}`}
-            </span>
+            <>
+              <span
+                role="progressbar"
+                aria-label={t('scheduleTimeline.nightSchedule')}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.min(100, Math.round((plannedMinutes / darkMinutes) * 100))}
+                className="h-1.5 w-28 shrink-0 overflow-hidden rounded-full bg-white/10"
+              >
+                <span
+                  className="block h-full rounded-full bg-accent-500 transition-[width]"
+                  style={{ width: `${Math.min(100, (plannedMinutes / darkMinutes) * 100)}%` }}
+                />
+              </span>
+              <span className="truncate text-[0.6875rem] text-white/45 tabular-nums">
+                <Trans
+                  i18nKey="scheduleTimeline.plannedOfDark"
+                  ns="planner"
+                  values={{ planned: formatDuration(plannedMinutes), dark: formatDuration(darkMinutes) }}
+                  components={{ 1: <span className="font-medium text-white/75" /> }}
+                />
+                {targetCount > 0 && ` · ${t('scheduleTimeline.targetCount', { count: targetCount })}`}
+              </span>
+            </>
           )}
         </div>
         <div className="flex items-center gap-3 text-[0.6875rem] text-white/45 tabular-nums">
@@ -304,15 +314,9 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
               {t('scheduleTimeline.clearest', { start: fmtHm(bestWindow.start), end: fmtHm(bestWindow.end) })}
             </span>
           )}
-          {darkStart && darkEnd && (
-            <span>
-              {t('scheduleTimeline.dark', { start: fmtHm(darkStart), end: fmtHm(darkEnd), duration: formatDuration(darkMinutes) })}
-            </span>
-          )}
           {headerActions}
         </div>
       </div>
-      {emptyState}
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" style={{ background }}>
         <div
@@ -422,7 +426,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
                 <span className="inline-flex items-center gap-1.5 text-[0.6875rem] font-medium">
                   <Plus className="h-3.5 w-3.5" />
                   {t('scheduleTimeline.freeDuration', { duration: formatDuration(gap.minutes) })}
-                  <span className="hidden opacity-0 transition group-hover:opacity-100 sm:inline">{t('scheduleTimeline.fillIt')}</span>
+                  <span className={`hidden transition sm:inline ${sessions.length === 0 ? '' : 'opacity-0 group-hover:opacity-100'}`}>{t('scheduleTimeline.fillIt')}</span>
                 </span>
               </button>
             );

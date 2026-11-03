@@ -125,6 +125,8 @@ export interface MediaFacets {
 
 export interface ObjectMedia {
   counts: Record<MediaKind | 'all', number>;
+  /** Distinct nights across every kind, so the Nights tab keeps its count whichever tab is showing. */
+  nightCount: number;
   facets: MediaFacets;
   groups: MediaGroup[];
   items: MediaItem[];
@@ -433,6 +435,7 @@ export function buildObjectMedia(all: MediaItem[], q: MediaQuery): ObjectMedia {
 
   return {
     counts,
+    nightCount: new Set(all.flatMap(i => (i.date ? [i.date] : []))).size,
     facets,
     groups,
     items: page,

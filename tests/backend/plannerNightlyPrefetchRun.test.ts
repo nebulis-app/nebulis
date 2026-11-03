@@ -10,6 +10,7 @@ const m = vi.hoisted(() => ({
   getActiveSite: vi.fn(),
   findCachedMaster: vi.fn(),
   prewarmThumbnails: vi.fn(),
+  fovForEntry: vi.fn(),
   prefetchSkyImage: vi.fn(),
   purgeJunkFiles: vi.fn(),
   purgeStaleImportTmp: vi.fn(),
@@ -25,7 +26,9 @@ vi.mock('../../server/lib/dsoCatalog.js', () => ({ getPlannerCatalog: m.getPlann
 vi.mock('../../server/lib/astroCalc.js', () => ({ getNightWindow: m.getNightWindow, visibilityWindow: m.visibilityWindow }));
 vi.mock('../../server/lib/telescopes.js', () => ({ getSettingsData: m.getSettingsData, updateSettingsData: m.updateSettingsData }));
 vi.mock('../../server/lib/observingSites.js', () => ({ getActiveSite: m.getActiveSite }));
-vi.mock('../../server/lib/catalogPrefetch.js', () => ({ findCachedMaster: m.findCachedMaster, prewarmThumbnails: m.prewarmThumbnails }));
+vi.mock('../../server/lib/catalogPrefetch.js', () => ({
+  findCachedMaster: m.findCachedMaster, prewarmThumbnails: m.prewarmThumbnails, fovForEntry: m.fovForEntry,
+}));
 vi.mock('../../server/lib/skyImage.js', () => ({ prefetchSkyImage: m.prefetchSkyImage }));
 vi.mock('../../server/lib/library/housekeeping.js', () => ({
   purgeJunkFiles: m.purgeJunkFiles, purgeStaleImportTmp: m.purgeStaleImportTmp, pruneImportLog: m.pruneImportLog,
@@ -111,14 +114,17 @@ describe('runPlannerNightlyPrefetch', () => {
   });
 
   it('fetches a missing master once and warms it when the fetch succeeds', async () => {
-    m.getPlannerCatalog.mockReturnValue([{ id: 'M42', ra: 5.5, dec: -5 }]);
+    m.getPlannerCatalog.mockReturnValue([{ id: 'M42', ra: 5.5, dec: -5, majorAxisArcmin: 65 }]);
     m.visibilityWindow.mockReturnValue({ maxAlt: 50, rises: true });
     m.findCachedMaster.mockReturnValueOnce(null).mockReturnValueOnce({ path: '/c/m42.jpg', source: 'dss2' });
+    m.fovForEntry.mockReturnValue(2.7);
     m.prefetchSkyImage.mockResolvedValue(true);
 
     await runPlannerNightlyPrefetch();
 
-    expect(m.prefetchSkyImage).toHaveBeenCalledWith('M42');
+    // The field follows the object's size; without it every master came back at the 1 degree default.
+    expect(m.fovForEntry).toHaveBeenCalledWith(65);
+    expect(m.prefetchSkyImage).toHaveBeenCalledWith('M42', { fov: 2.7 });
     expect(m.prewarmThumbnails).toHaveBeenCalledWith('M42', '/c/m42.jpg', 'dss2');
   });
 

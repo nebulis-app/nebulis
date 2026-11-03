@@ -5,6 +5,13 @@ import { AnnotateIcon } from './AnnotateIcon';
 import { QUALITY_DOT } from './annotateStyle';
 import { LB_ACTIVE, LB_DANGER_BTN, LB_ICON_BTN, LB_TEXT_BTN } from './chrome';
 
+// Keep and reject read as green and red at rest (a traffic-light pair, like the
+// planner's block stripes), and fill in once chosen. Semantic, not brand.
+const KEEP_IDLE = '!text-emerald-400/70 hover:!bg-emerald-500/15 hover:!text-emerald-300';
+const KEEP_ACTIVE = '!bg-emerald-500/20 !text-emerald-300 hover:!bg-emerald-500/30';
+const REJECT_IDLE = '!text-red-400/70 hover:!bg-red-500/15 hover:!text-red-300';
+const REJECT_ACTIVE = '!bg-red-500/20 !text-red-300 hover:!bg-red-500/30';
+
 interface Props {
   /** Keep / reject a frame while paging through a night. */
   review?: { state: 'keep' | 'reject' | null; onToggle: (decision: 'keep' | 'reject') => void };
@@ -38,7 +45,7 @@ export function LightboxActions({
             aria-pressed={review.state === 'keep'}
             title={t('galleryModal.keepFrame')}
             aria-label={t('galleryModal.keepFrame')}
-            className={`${LB_ICON_BTN} ${review.state === 'keep' ? LB_ACTIVE : ''}`}
+            className={`${LB_ICON_BTN} ${review.state === 'keep' ? KEEP_ACTIVE : KEEP_IDLE}`}
           >
             <Check className="h-4 w-4" />
           </button>
@@ -48,7 +55,7 @@ export function LightboxActions({
             aria-pressed={review.state === 'reject'}
             title={t('galleryModal.rejectFrame')}
             aria-label={t('galleryModal.rejectFrame')}
-            className={`${LB_ICON_BTN} ${review.state === 'reject' ? LB_ACTIVE : ''}`}
+            className={`${LB_ICON_BTN} ${review.state === 'reject' ? REJECT_ACTIVE : REJECT_IDLE}`}
           >
             <Ban className="h-4 w-4" />
           </button>

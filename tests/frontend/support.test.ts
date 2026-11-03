@@ -1,23 +1,23 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { shouldShowSupportAsk, markSupportAskSeen, SUPPORT_ASK_SEEN_KEY, COFFEE_URL } from '../../src/lib/support';
+import { supportAskSeenLocally, markSupportAskSeen, SUPPORT_ASK_SEEN_KEY, COFFEE_URL } from '../../src/lib/support';
 
 beforeEach(() => {
   localStorage.clear();
   vi.restoreAllMocks();
 });
 
-describe('support ask gating', () => {
-  it('is due until it has been seen, then never again', () => {
-    expect(shouldShowSupportAsk()).toBe(true);
+describe('support ask local copy', () => {
+  it('has no record until the ask is marked seen, then keeps one', () => {
+    expect(supportAskSeenLocally()).toBe(false);
     markSupportAskSeen();
-    expect(shouldShowSupportAsk()).toBe(false);
+    expect(supportAskSeenLocally()).toBe(true);
     expect(localStorage.getItem(SUPPORT_ASK_SEEN_KEY)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it('is not shown when storage cannot remember that it was, rather than asking on every load', () => {
+  it('counts unreadable storage as no record, since the server is what remembers the dismissal', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
-    expect(shouldShowSupportAsk()).toBe(false);
+    expect(supportAskSeenLocally()).toBe(false);
   });
 
   it('marking it seen with storage blocked does not throw', () => {

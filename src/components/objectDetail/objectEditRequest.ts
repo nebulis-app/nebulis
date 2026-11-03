@@ -24,9 +24,12 @@ export function editRequestFor(
   name: string,
   sourceKind: 'telescope' | 'processed',
   overwriteTarget: OverwriteTarget | undefined,
+  /** The object that owns a telescope file, when the caller knows it. A session file does not say, and a variant's
+   *  file (Mosaic, Hα) would otherwise be saved under the page's own object. */
+  telescopeOwnerId?: string,
 ): ObjectEditRequest {
   const match = items.find(i => (i.kind === 'file' ? i.file.downloadUrl : i.img.url) === url);
-  const owner = match?.kind === 'processed' ? match.img.objectId : pageObjectId;
+  const owner = match?.kind === 'processed' ? match.img.objectId : telescopeOwnerId ?? pageObjectId;
   const date = match?.kind === 'processed' ? match.img.date : match?.file.date ?? null;
   // Replacing an original happens inside its own night, so without one only "Save as new" is offered.
   const canOverwrite = overwriteTarget && !(overwriteTarget.kind === 'telescope' && !date);

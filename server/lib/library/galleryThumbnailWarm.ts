@@ -49,6 +49,7 @@ export async function warmObjectThumbnails(
             fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
             await assertSafeRaster(srcPath);
             await sharp(srcPath)
+              .rotate()
               .resize(THUMB_W, THUMB_H, { fit: 'inside', withoutEnlargement: true })
               .jpeg({ quality: 80, progressive: true })
               .toFile(cachePath);

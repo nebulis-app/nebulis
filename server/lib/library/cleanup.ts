@@ -17,6 +17,7 @@ import db from '../db.js';
 import { getLibraryDir } from '../libraryPath.js';
 import { probePath, type PathProbe } from '../fsProbe.js';
 import { getFolderName } from './objects.js';
+import { pinnedLibraryLooksUnmounted } from './analyze.js';
 import { deleteLocalFilesByRelPath, refreshObjectFileCount } from './observations.js';
 import { deleteLibraryFileRow } from './libraryFiles.js';
 
@@ -53,6 +54,7 @@ async function partitionByExistence(
   const present: SubRow[] = [];
   const stale: SubRow[] = [];
   let unreadable = 0;
+  if (rows.length > 0 && await pinnedLibraryLooksUnmounted()) return { present, stale, unreadable: rows.length };
   const root = getLibraryDir();
   for (let i = 0; i < rows.length; i += STAT_BATCH) {
     const batch = rows.slice(i, i + STAT_BATCH);

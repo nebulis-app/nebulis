@@ -147,8 +147,10 @@ export function zonedDateTimeToUtc(
   }
   // An ambiguous (fall-back) target always converges — some instant's wall
   // clock genuinely equals it — and the iteration above settles on whichever
-  // of the two matching instants it reaches first, which in practice is the
-  // earlier (still-DST) occurrence. A target inside a spring-forward gap
+  // of the two matching instants it reaches first. That is the earlier
+  // (still-DST) occurrence west of UTC but the later one east of UTC, where
+  // the search starts from the wall time read as UTC and walks back. Callers
+  // must not depend on which. A target inside a spring-forward gap
   // never converges — no instant's wall clock equals it — which is exactly
   // the signal to fall back to the documented gap policy instead of
   // returning whatever `utcMs` the loop happened to end on.

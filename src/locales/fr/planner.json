@@ -19,6 +19,8 @@
     "closeDetails": "Fermer les détails",
     "addToTonight": "Ajouter à ce soir",
     "referenceImageAlt": "Image de référence de {{name}}",
+    "referenceImageOpen": "Voir {{name}} en taille réelle",
+    "referenceImageViewerTitle": "Image du ciel de {{name}}",
     "referenceImage": "Image de référence",
     "setLocationForSky": "Définissez votre position dans Paramètres pour voir où cela se situe dans votre ciel.",
     "skyShownAt": "À {{time}} · faites glisser le graphique pour changer l'heure",
@@ -78,9 +80,6 @@
     }
   },
   "scheduleTimeline": {
-    "emptyNight": "Rien n'est encore planifié pour cette nuit.",
-    "copyLastNightCount_one": "Copier la nuit précédente ({{count}} bloc)",
-    "copyLastNightCount_other": "Copier la nuit précédente ({{count}} blocs)",
     "nightSchedule": "Horaire de la nuit",
     "plannedOfDark": "<1>{{planned}}</1> sur {{dark}} planifié",
     "targetCount_one": "{{count}} cible",
@@ -349,7 +348,7 @@
   },
   "altitudeBandChart": {
     "noTargetsAriaLabel": "Graphique d'altitude, aucune cible programmée",
-    "emptyHint": "Ajoutez des cibles à l'horaire pour voir ici leurs courbes d'altitude.",
+    "emptyHint": "Ajoutez des cibles à l'horaire, ou utilisez Planifier ma nuit, pour voir ici leurs courbes d'altitude.",
     "ariaLabel": "Altitude de chaque objet programmé au fil du temps",
     "timeAltitude": "{{time}} · {{alt}}° d'altitude"
   },

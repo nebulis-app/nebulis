@@ -525,6 +525,14 @@
   },
   {
     "method": "GET",
+    "path": "/forecast/outlook",
+    "guards": [
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
     "path": "/forecast/recorded",
     "guards": [
       "<anonymous>"

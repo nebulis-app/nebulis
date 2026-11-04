@@ -86,7 +86,10 @@ export function SitesMap({
       ref={containerRef}
       role="img"
       aria-label={t('siteManager.mapAria')}
-      className={`mb-3 h-56 w-full overflow-hidden rounded-xl border sm:h-64 ${isDark ? 'border-slate-700' : 'border-slate-200'}`}
+      // Leaflet's panes and controls carry z-indexes of 400 to 1000. Isolating the map keeps them inside it, under the
+      // site editor and every other dialog (z-[90]), as ObservationMap and ObservationsWorldMap already do.
+      style={{ isolation: 'isolate', zIndex: 0 }}
+      className={`relative mb-3 h-56 w-full overflow-hidden rounded-xl border sm:h-64 ${isDark ? 'border-slate-700' : 'border-slate-200'}`}
     />
   );
 }

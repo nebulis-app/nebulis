@@ -131,5 +131,22 @@
     "minutes_other": "{{count}} min",
     "hours_one": "{{count}} h",
     "hours_other": "{{count}} h"
+  },
+  "outlook": {
+    "title": "Two weeks ahead",
+    "basis": "{{runs}} model runs · {{models}}",
+    "explain": "Chance of a usable night: the share of ensemble runs giving at least {{hours}} h of dark sky with clouds up to {{cloud}}%. Past a week, read it as a trend.",
+    "unavailable": "The long-range outlook is not available right now.",
+    "noData": "no model covers this night yet",
+    "runsClear": "{{pct}} of runs clear ({{clear}}/{{runs}}, ≥ {{hours}} h)",
+    "clouds": "clouds ~{{median}}% ({{low}}–{{high}}%)",
+    "moonUp": "Moon {{pct}}%, up at midnight",
+    "moonDown": "Moon {{pct}}%, down at midnight",
+    "firstWeek": "Next 7 nights",
+    "trend": "Trend",
+    "colNight": "Night",
+    "colChance": "Chance of a usable night",
+    "colClouds": "Median cloud cover",
+    "colMoon": "Moon"
   }
 }

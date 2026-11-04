@@ -31,7 +31,18 @@ describe('resolveImagingWindow', () => {
       startMs: Date.parse(at('20:00')),
       endMs: Date.parse(at('05:00', '15')),
       astronomical: true,
+      startOffsetMin: 0,
+      endOffsetMin: 0,
     });
+  });
+
+  it('uses the site\'s own window when the server sends one, and none when it sends null', () => {
+    const w = resolveImagingWindow({
+      ...FULL_TWILIGHT,
+      imagingWindow: { start: at('20:30'), end: at('04:00', '15'), darkness: 'nautical', startOffsetMin: 30, endOffsetMin: 60 },
+    });
+    expect(w).toMatchObject({ startMs: Date.parse(at('20:30')), endMs: Date.parse(at('04:00', '15')), astronomical: false, startOffsetMin: 30, endOffsetMin: 60 });
+    expect(resolveImagingWindow({ ...FULL_TWILIGHT, imagingWindow: null })).toBeNull();
   });
 
   it('falls back to nautical twilight, flagged as not astronomical', () => {
@@ -97,6 +108,12 @@ describe('hoursInWindow', () => {
     expect(hoursInWindow(hours, win).map(h => h.time)).toEqual([
       at('20:00'), at('21:00'), at('22:00'), at('23:00'),
     ]);
+  });
+
+  it('takes the hour a window opens in when it opens between two hours', () => {
+    const late = { ...win, startMs: Date.parse(at('20:02')), endMs: Date.parse(at('22:38')) };
+    const hours = [hour(at('19:00')), hour(at('20:00')), hour(at('21:00')), hour(at('22:00')), hour(at('23:00'))];
+    expect(hoursInWindow(hours, late).map(h => h.time)).toEqual([at('20:00'), at('21:00'), at('22:00')]);
   });
 
   it('returns an empty list when no hour falls inside', () => {

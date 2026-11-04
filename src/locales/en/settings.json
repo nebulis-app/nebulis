@@ -1081,7 +1081,14 @@
     "photosRemove": "Remove photo",
     "photosOpen": "Open photo",
     "photosCaptionPlaceholder": "Add a caption",
-    "photosUploadFailed": "Could not upload {{name}}: {{reason}}"
+    "photosUploadFailed": "Could not upload {{name}}: {{reason}}",
+    "imagingWindowLabel": "Imaging window",
+    "darknessLabel": "Starts from",
+    "darknessAstronomical": "Astronomical night (Sun −18°)",
+    "darknessNautical": "Nautical night (Sun −12°)",
+    "startOffsetLabel": "Start, minutes after dusk",
+    "endOffsetLabel": "End, minutes before dawn",
+    "imagingWindowHelp": "The hours the forecast page, its score and the clear-night alert count as tonight. Narrowband filters cut most twilight glow, so nautical night often works and starts about 35 minutes earlier. Use the minutes to start later or stop before dawn; a negative value moves that end the other way."
   },
   "enterCodeModal": {
     "title": "Link an Apple TV",

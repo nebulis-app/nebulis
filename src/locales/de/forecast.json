@@ -122,6 +122,14 @@
     "moonUpSplit": "Sichtbar bis {{until}}, dann wieder ab {{from}}.",
     "moonDownAllWindow": "Er bleibt über das gesamte Fenster unter dem Horizont.",
     "moonTimesUnknown": "Auf- und Untergangszeiten sind für diese Nacht nicht verfügbar.",
-    "brightMoon": "Heller Mond. Setze lieber auf Planeten und Sternhaufen."
+    "brightMoon": "Heller Mond. Setze lieber auf Planeten und Sternhaufen.",
+    "startsLater": "beginnt {{span}} nach der Dämmerung",
+    "startsEarlier": "beginnt {{span}} vor der Dämmerung",
+    "endsEarlier": "endet {{span}} vor der Morgendämmerung",
+    "endsLater": "endet {{span}} nach der Morgendämmerung",
+    "minutes_one": "{{count}} Min.",
+    "minutes_other": "{{count}} Min.",
+    "hours_one": "{{count}} Std.",
+    "hours_other": "{{count}} Std."
   }
 }

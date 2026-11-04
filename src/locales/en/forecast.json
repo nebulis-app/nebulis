@@ -122,6 +122,14 @@
     "moonUpSplit": "Up until {{until}}, then again from {{from}}.",
     "moonDownAllWindow": "It stays below the horizon for the whole window.",
     "moonTimesUnknown": "Its rise and set times are not available for this night.",
-    "brightMoon": "Bright Moon. Favor planets and star clusters."
+    "brightMoon": "Bright Moon. Favor planets and star clusters.",
+    "startsLater": "starts {{span}} after dusk",
+    "startsEarlier": "starts {{span}} before dusk",
+    "endsEarlier": "ends {{span}} before dawn",
+    "endsLater": "ends {{span}} after dawn",
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "hours_one": "{{count}} h",
+    "hours_other": "{{count}} h"
   }
 }

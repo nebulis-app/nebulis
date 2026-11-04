@@ -9,6 +9,7 @@
  */
 import SunCalc from 'suncalc';
 import { getNightWindow } from '../astroCalc.js';
+import { DEFAULT_WINDOW_PREFS, resolveWindow, windowPrefsOf, type ImagingWindowPrefs } from '../imagingWindow.js';
 import {
   buildForecast,
   CACHE_TTL_MS,
@@ -44,6 +45,8 @@ export interface ClearNightInput {
   from: Date;
   /** What is planned for the night, when it was looked up. Carried through as it is. */
   plan?: TonightPlan | null;
+  /** The site's imaging window settings; the astronomical night when absent. */
+  window?: ImagingWindowPrefs;
 }
 
 /** The air this close to its dew point (°C) dews over optics: within 1.5 it almost certainly does, within 3 it can. */
@@ -83,15 +86,12 @@ export function summarizePlan(sessions: { objectName: string; startTime: string;
   return { objects, blocks: live.length };
 }
 
-/** Dark window of a night: astronomical, or nautical where the sky never gets
- *  astronomically dark (high-latitude summer). Null when neither exists. */
-export function darkWindow(night: string, lat: number, lon: number, timeZone: string): { start: Date; end: Date } | null {
+/** Imaging window of a night, as the site wants it (lib/imagingWindow.ts): by default astronomical, or nautical
+ *  where the sky never gets astronomically dark (high-latitude summer). Null when there is none. */
+export function darkWindow(night: string, lat: number, lon: number, timeZone: string, prefs: ImagingWindowPrefs = DEFAULT_WINDOW_PREFS): { start: Date; end: Date } | null {
   const anchor = zonedDateTimeToUtc(night, { hour: 12 }, timeZone);
-  const w = getNightWindow(anchor, lat, lon);
-  const start = w.astronomicalDusk ?? w.nauticalDusk;
-  const end = w.astronomicalDawn ?? w.nauticalDawn;
-  if (!start || !end || end <= start) return null;
-  return { start, end };
+  const w = resolveWindow(getNightWindow(anchor, lat, lon), prefs);
+  return w ? { start: w.start, end: w.end } : null;
 }
 
 function moonAltitude(t: Date, lat: number, lon: number): number {
@@ -113,7 +113,7 @@ function moonCrossings(start: Date, end: Date, lat: number, lon: number): { rise
 }
 
 export function evaluateClearNight(input: ClearNightInput): ClearNightAlertData | null {
-  const win = darkWindow(input.night, input.lat, input.lon, input.timeZone);
+  const win = darkWindow(input.night, input.lat, input.lon, input.timeZone, input.window);
   if (!win) return null;
   const start = Math.max(win.start.getTime(), input.from.getTime());
   const end = win.end.getTime();
@@ -228,7 +228,8 @@ export async function runClearNightCheck(now: Date, send: boolean): Promise<Clea
 
   const config = getAlertConfig();
   // Blocks that overlap the dark window, with an hour either side so one planned a little before dusk or after dawn still counts.
-  const dark = darkWindow(night, site.latitude, site.longitude, tz);
+  const windowPrefs = windowPrefsOf(site);
+  const dark = darkWindow(night, site.latitude, site.longitude, tz, windowPrefs);
   const plan = dark
     ? summarizePlan(plannedBetween(new Date(dark.start.getTime() - HOUR_MS).toISOString(), new Date(dark.end.getTime() + HOUR_MS).toISOString()))
     : null;
@@ -242,6 +243,7 @@ export async function runClearNightCheck(now: Date, send: boolean): Promise<Clea
     maxCloudCover: config.clearNight.maxCloudCover,
     from: now,
     plan,
+    window: windowPrefs,
   });
   if (!result) return { ...base, result: null, reason: 'no_dark_window' };
   if (!send) return { ...base, result, reason: 'preview' };

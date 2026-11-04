@@ -26,7 +26,7 @@ import { ImagingWindow } from '../components/forecast/ImagingWindow';
 import { LightPollutionPill } from '../components/forecast/LightPollutionPill';
 import { NightOutlookCard } from '../components/forecast/NightOutlookCard';
 import { RatingLegend } from '../components/ui/RatingLegend';
-import { hoursForNight } from '../lib/forecastNights';
+import { hoursForNight, resolveImagingWindow } from '../lib/forecastNights';
 
 export function ForecastPage() {
   const { t } = useTranslation('forecast');
@@ -83,15 +83,13 @@ export function ForecastPage() {
 
   const tz = forecast?.timezone || currentSite?.timezone || undefined;
 
-  // The precise dark window for moon-penalty calculations. Prefer astronomical
-  // twilight, fall back to nautical. May be null at high latitudes in summer.
+  // Tonight's imaging window, as the site's settings make it (astronomical night by default, nautical where it never
+  // gets that dark), for the moon penalty and the hourly scoring. May be null at high latitudes in summer.
   // Memoised because it is a dependency of the ribbon's per-hour scoring.
   const darkWindow: DarkWindow | null = useMemo(() => {
     if (!forecast) return null;
-    const windowStart = forecast.tonight.astronomicalTwilightEnd || forecast.tonight.nauticalTwilightEnd;
-    const windowEnd = forecast.tonight.astronomicalTwilightStart || forecast.tonight.nauticalTwilightStart;
-    if (!windowStart || !windowEnd) return null;
-    return { start: new Date(windowStart).getTime(), end: new Date(windowEnd).getTime() };
+    const win = resolveImagingWindow(forecast.tonight);
+    return win ? { start: win.startMs, end: win.endMs } : null;
   }, [forecast]);
 
   // The window used to filter the hourly strip. When there's no astronomical or

@@ -29,6 +29,7 @@ import { randomUUID } from 'crypto';
 import db from './db.js';
 import { SKY_MAP_CELLS } from './skyMapConfig.js';
 import { deleteSitePhotosFor } from './sitePhotos.js';
+import { clampOffset, isDarknessLevel, windowPrefsOf, type DarknessLevel } from './imagingWindow.js';
 
 export interface ObservingSite {
   id: string;
@@ -43,6 +44,11 @@ export interface ObservingSite {
    *  no mask has been drawn (which the visibility check reads as "all visible"). */
   visibleSkyMap: boolean[];
   bortleClass: number | null;
+  /** Imaging window (lib/imagingWindow.ts): the twilight it starts from, and minutes after that dusk it opens and
+   *  before that dawn it closes. */
+  darkness: DarknessLevel;
+  windowStartOffsetMin: number;
+  windowEndOffsetMin: number;
   isDefault: boolean;
   sortOrder: number;
   createdAt: string;
@@ -61,6 +67,9 @@ interface ObservingSiteRow {
   horizonProfile: string;
   visibleSkyMap: string;
   bortleClass: number | null;
+  darkness: string | null;
+  windowStartOffsetMin: number | null;
+  windowEndOffsetMin: number | null;
   isDefault: number;
   sortOrder: number;
   createdAt: string;
@@ -80,13 +89,14 @@ const stmts = {
   insert: db.prepare(
     `INSERT INTO observingSites
        (id, name, latitude, longitude, timezone, minAlt, horizonProfile,
-        visibleSkyMap, bortleClass, isDefault, sortOrder, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        visibleSkyMap, bortleClass, darkness, windowStartOffsetMin, windowEndOffsetMin, isDefault, sortOrder, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ),
   update: db.prepare(
     `UPDATE observingSites
         SET name = ?, latitude = ?, longitude = ?, timezone = ?, minAlt = ?,
-            horizonProfile = ?, visibleSkyMap = ?, bortleClass = ?, sortOrder = ?
+            horizonProfile = ?, visibleSkyMap = ?, bortleClass = ?,
+            darkness = ?, windowStartOffsetMin = ?, windowEndOffsetMin = ?, sortOrder = ?
       WHERE id = ?`,
   ),
   delete: db.prepare('DELETE FROM observingSites WHERE id = ?'),
@@ -142,6 +152,10 @@ function rowToSite(row: ObservingSiteRow): ObservingSite {
     horizonProfile: parseHorizonProfile(row.horizonProfile),
     visibleSkyMap: parseVisibleSkyMap(row.visibleSkyMap),
     bortleClass: row.bortleClass,
+    ...(() => {
+      const w = windowPrefsOf({ darkness: row.darkness, windowStartOffsetMin: row.windowStartOffsetMin, windowEndOffsetMin: row.windowEndOffsetMin });
+      return { darkness: w.darkness, windowStartOffsetMin: w.startOffsetMin, windowEndOffsetMin: w.endOffsetMin };
+    })(),
     isDefault: row.isDefault === 1,
     sortOrder: row.sortOrder,
     createdAt: row.createdAt,
@@ -298,6 +312,9 @@ export function createSite(data: Partial<ObservingSite>): ObservingSite {
       serializeHorizon(data.horizonProfile),
       serializeSkyMap(data.visibleSkyMap),
       isFiniteNumber(data.bortleClass) ? Math.round(data.bortleClass) : null,
+      isDarknessLevel(data.darkness) ? data.darkness : 'astronomical',
+      clampOffset(data.windowStartOffsetMin),
+      clampOffset(data.windowEndOffsetMin),
       makeDefault ? 1 : 0,
       sortOrder,
       new Date().toISOString(),
@@ -326,6 +343,9 @@ export function updateSite(id: string, data: Partial<ObservingSite>): ObservingS
     serializeHorizon(merged.horizonProfile),
     serializeSkyMap(merged.visibleSkyMap),
     isFiniteNumber(merged.bortleClass) ? Math.round(merged.bortleClass) : null,
+    isDarknessLevel(merged.darkness) ? merged.darkness : current.darkness,
+    clampOffset(merged.windowStartOffsetMin),
+    clampOffset(merged.windowEndOffsetMin),
     isFiniteNumber(merged.sortOrder) ? merged.sortOrder : current.sortOrder,
     id,
   );

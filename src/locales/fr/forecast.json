@@ -122,6 +122,14 @@
     "moonUpSplit": "Levée jusqu'à {{until}}, puis de nouveau à partir de {{from}}.",
     "moonDownAllWindow": "Elle reste sous l'horizon pendant toute la fenêtre.",
     "moonTimesUnknown": "Les heures de lever et de coucher ne sont pas disponibles pour cette nuit.",
-    "brightMoon": "Lune brillante. Privilégiez les planètes et les amas d'étoiles."
+    "brightMoon": "Lune brillante. Privilégiez les planètes et les amas d'étoiles.",
+    "startsLater": "commence {{span}} après la nuit",
+    "startsEarlier": "commence {{span}} avant la nuit",
+    "endsEarlier": "s'arrête {{span}} avant l'aube",
+    "endsLater": "s'arrête {{span}} après l'aube",
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "hours_one": "{{count}} h",
+    "hours_other": "{{count}} h"
   }
 }

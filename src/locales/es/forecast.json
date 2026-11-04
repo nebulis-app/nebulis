@@ -122,6 +122,14 @@
     "moonUpSplit": "Visible hasta las {{until}} y de nuevo desde las {{from}}.",
     "moonDownAllWindow": "Permanece bajo el horizonte durante toda la ventana.",
     "moonTimesUnknown": "No hay horas de salida y puesta disponibles para esta noche.",
-    "brightMoon": "Luna brillante. Mejor planetas y cúmulos de estrellas."
+    "brightMoon": "Luna brillante. Mejor planetas y cúmulos de estrellas.",
+    "startsLater": "empieza {{span}} después del anochecer",
+    "startsEarlier": "empieza {{span}} antes del anochecer",
+    "endsEarlier": "termina {{span}} antes del amanecer",
+    "endsLater": "termina {{span}} después del amanecer",
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "hours_one": "{{count}} h",
+    "hours_other": "{{count}} h"
   }
 }

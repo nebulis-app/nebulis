@@ -163,6 +163,26 @@ test.describe('Settings Page', () => {
     await expect(page.getByPlaceholder(/74\.0060/)).toHaveValue('-122.42');
   });
 
+  test('sets a site\'s imaging window and sends it on save', async ({ page }) => {
+    let putBody: Record<string, unknown> | null = null;
+    await page.route('**/api/sites/*', async (route) => {
+      if (route.request().method() !== 'PUT') return route.fallback();
+      putBody = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: { ...putBody, id: 'site-1' } }) });
+    });
+    await page.getByRole('button', { name: 'Sky', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Imaging window')).toBeVisible();
+    await dialog.getByLabel('Starts from').selectOption('nautical');
+    await dialog.getByLabel('Start, minutes after dusk').fill('30');
+    await dialog.getByLabel('End, minutes before dawn').fill('60');
+    await dialog.screenshot({ path: 'test-results/site-imaging-window.png' });
+    await dialog.getByRole('button', { name: /save changes/i }).click();
+    await expect.poll(() => putBody).not.toBeNull();
+    expect(putBody).toMatchObject({ darkness: 'nautical', windowStartOffsetMin: 30, windowEndOffsetMin: 60 });
+  });
+
   // ─── API key management ───────────────────────────────────────────────────
   // Removed. The Settings API-key card (generate/revoke against
   // /api/settings/generate-api-key and /api/settings/api-key) is gone from the

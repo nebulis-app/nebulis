@@ -1081,7 +1081,14 @@
     "photosRemove": "Foto entfernen",
     "photosOpen": "Foto öffnen",
     "photosCaptionPlaceholder": "Beschriftung hinzufügen",
-    "photosUploadFailed": "{{name}} konnte nicht hochgeladen werden: {{reason}}"
+    "photosUploadFailed": "{{name}} konnte nicht hochgeladen werden: {{reason}}",
+    "imagingWindowLabel": "Aufnahmefenster",
+    "darknessLabel": "Beginnt mit",
+    "darknessAstronomical": "Astronomische Nacht (Sonne −18°)",
+    "darknessNautical": "Nautische Nacht (Sonne −12°)",
+    "startOffsetLabel": "Beginn, Minuten nach der Dämmerung",
+    "endOffsetLabel": "Ende, Minuten vor der Morgendämmerung",
+    "imagingWindowHelp": "Die Stunden, die die Wetterseite, ihre Wertung und die Klare-Nacht-Benachrichtigung als heute Nacht zählen. Schmalbandfilter schneiden den größten Teil des Dämmerungslichts ab, daher reicht oft die nautische Nacht, die etwa 35 Minuten früher beginnt. Mit den Minuten beginnen Sie später oder hören vor der Morgendämmerung auf; ein negativer Wert verschiebt dieses Ende in die andere Richtung."
   },
   "enterCodeModal": {
     "title": "Apple TV verknüpfen",

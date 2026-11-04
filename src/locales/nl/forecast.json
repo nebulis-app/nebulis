@@ -122,6 +122,14 @@
     "moonUpSplit": "Boven de horizon tot {{until}}, daarna weer vanaf {{from}}.",
     "moonDownAllWindow": "De maan blijft de hele periode onder de horizon.",
     "moonTimesUnknown": "De opkomst- en ondergangstijden van de maan zijn niet beschikbaar voor deze nacht.",
-    "brightMoon": "Heldere maan. Kies bij voorkeur planeten en sterrenhopen."
+    "brightMoon": "Heldere maan. Kies bij voorkeur planeten en sterrenhopen.",
+    "startsLater": "begint {{span}} na de schemering",
+    "startsEarlier": "begint {{span}} voor de schemering",
+    "endsEarlier": "eindigt {{span}} voor de dageraad",
+    "endsLater": "eindigt {{span}} na de dageraad",
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "hours_one": "{{count}} u",
+    "hours_other": "{{count}} u"
   }
 }

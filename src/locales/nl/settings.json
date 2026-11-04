@@ -1081,7 +1081,14 @@
     "photosRemove": "Foto verwijderen",
     "photosOpen": "Foto openen",
     "photosCaptionPlaceholder": "Voeg een bijschrift toe",
-    "photosUploadFailed": "{{name}} kon niet worden geüpload: {{reason}}"
+    "photosUploadFailed": "{{name}} kon niet worden geüpload: {{reason}}",
+    "imagingWindowLabel": "Opnamevenster",
+    "darknessLabel": "Begint bij",
+    "darknessAstronomical": "Astronomische nacht (zon −18°)",
+    "darknessNautical": "Nautische nacht (zon −12°)",
+    "startOffsetLabel": "Begin, minuten na de schemering",
+    "endOffsetLabel": "Einde, minuten voor de dageraad",
+    "imagingWindowHelp": "De uren die de weerpagina, haar score en de melding voor een heldere nacht als vannacht tellen. Smalbandfilters snijden het meeste schemerlicht weg, dus de nautische nacht volstaat vaak en begint zo'n 35 minuten eerder. Met de minuten begin je later of stop je voor de dageraad; een negatieve waarde verschuift dat einde de andere kant op."
   },
   "enterCodeModal": {
     "title": "Apple TV koppelen",

@@ -103,4 +103,40 @@ describe('FITS pixel bounds (client viewer decoder)', () => {
     const ab = new Uint8Array(fitsFile(badCards(0, 0), Buffer.alloc(16))).buffer;
     expect(() => parseFits(ab)).toThrow();
   });
+
+  it('throws on a BITPIX it cannot decode instead of rendering garbage', () => {
+    // BITPIX=64 is valid FITS; it used to be read as 16-bit data at an 8-byte stride.
+    for (const bitpix of ['64', '12', '0']) {
+      const cards: [string, string][] = [
+        ['SIMPLE', '                   T'],
+        ['BITPIX', bitpix.padStart(20)],
+        ['NAXIS', '                   2'],
+        ['NAXIS1', '                  16'],
+        ['NAXIS2', '                  16'],
+      ];
+      const ab = new Uint8Array(fitsFile(cards, Buffer.alloc(16 * 16 * 8))).buffer;
+      expect(() => parseFits(ab), `BITPIX ${bitpix}`).toThrow();
+    }
+  });
+
+  it.each([
+    ['8', 1, (b: Buffer, i: number) => b.writeUInt8(i % 200, i)],
+    ['32', 4, (b: Buffer, i: number) => b.writeInt32BE(i, i * 4)],
+    ['-32', 4, (b: Buffer, i: number) => b.writeFloatBE(i, i * 4)],
+    ['-64', 8, (b: Buffer, i: number) => b.writeDoubleBE(i, i * 8)],
+  ] as const)('still decodes BITPIX %s', (bitpix, bytes, write) => {
+    const pixels = Buffer.alloc(16 * 16 * bytes);
+    for (let i = 0; i < 256; i++) write(pixels, i);
+    const cards: [string, string][] = [
+      ['SIMPLE', '                   T'],
+      ['BITPIX', bitpix.padStart(20)],
+      ['NAXIS', '                   2'],
+      ['NAXIS1', '                  16'],
+      ['NAXIS2', '                  16'],
+    ];
+    const data = parseFits(new Uint8Array(fitsFile(cards, pixels)).buffer);
+    expect(data.imageData).toHaveLength(256);
+    expect(data.imageData[7]).toBe(7);
+    expect(data.imageData[255]).toBe(255 % (bitpix === '8' ? 200 : 100000));
+  });
 });

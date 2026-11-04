@@ -5,7 +5,8 @@
  *   npm run verify              typecheck + lint + unit tests (the default gate)
  *   npm run verify -- --e2e     also run the Playwright suite (mocked, tests/e2e)
  *   npm run verify -- --build   also run the production build
- *   npm run verify -- --all     everything above
+ *   npm run verify -- --all     everything above, plus the Mac app's USB/drive-identity XCTests on a Mac (npm run test:mac)
+ *   npm run verify -- --mac     only that Mac stage, in addition to the default gate
  *   npm run verify -- --lab     also run the Import Lab's Docker lifecycle: lab:up,
  *                                tier 2 (real browser/server) and tier 3 (real
  *                                Docker SMB/FTP), then lab:down. Needs Docker.
@@ -73,6 +74,9 @@ const wantAll = Boolean(flags.all);
 const wantE2e = wantAll || Boolean(flags.e2e);
 const wantBuild = wantAll || Boolean(flags.build);
 const wantLab = Boolean(flags.lab);
+// The Mac app's XCTests only exist where there is a Mac and Xcode; elsewhere the stage is simply absent, never a failure.
+const canRunMac = process.platform === 'darwin' && fs.existsSync(path.resolve(ROOT, '..', 'nebulis-apple', 'NebulisDesktop', 'NebulisDesktop.xcodeproj'));
+const wantMac = (wantAll || Boolean(flags.mac)) && canRunMac;
 const jsonOnly = Boolean(flags.json);
 const only = typeof flags.only === 'string' ? flags.only : null;
 const wantOpen = Boolean(flags.open);
@@ -106,6 +110,9 @@ function summarize(name, output) {
     const problems = /(\d+) problems? \((\d+) errors?, (\d+) warnings?\)/.exec(output);
     if (problems) return `${problems[2]} errors, ${problems[3]} warnings`;
     return /no problems/i.test(output) ? 'clean' : '';
+  }
+  if (name === 'mac:usb') {
+    return (/test:mac (?:passed|skipped|FAILED)[^\n]*/.exec(output) ?? [''])[0];
   }
   if (name === 'e2e' || name === 'lab:e2e-real') {
     const passed = /(\d+) passed/.exec(output);
@@ -152,6 +159,16 @@ const STAGES = [
           name: 'e2e',
           description: 'Playwright end-to-end (mocked, tests/e2e)',
           command: () => [bin('playwright'), ['test']],
+          timeoutMs: 30 * 60 * 1000,
+        },
+      ]
+    : []),
+  ...(wantMac
+    ? [
+        {
+          name: 'mac:usb',
+          description: 'Mac app USB + drive identity (XCTest: real disk images, swap, read-only, Wi-Fi identity)',
+          command: () => [process.execPath, [path.join(ROOT, 'scripts', 'test-mac.mjs')]],
           timeoutMs: 30 * 60 * 1000,
         },
       ]

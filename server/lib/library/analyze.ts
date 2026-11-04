@@ -19,8 +19,8 @@
  */
 import path from 'path';
 import db from '../db.js';
-import { getLibraryDir } from '../libraryPath.js';
-import { probePath } from '../fsProbe.js';
+import { getLibraryDir, getDefaultLibraryDir, isLibraryPinned } from '../libraryPath.js';
+import { probePath, directoryHoldsNothing } from '../fsProbe.js';
 import { findLayoutDrift, reconcileLayoutFromDisk } from './libraryLayout.js';
 import { countFlatObjects } from './libraryRenest.js';
 import { findDuplicateSessionFiles, fixDuplicateSessionFiles, type DuplicateRepair } from './duplicateSessions.js';
@@ -61,6 +61,14 @@ export class LibraryUnreadableError extends Error {
   }
 }
 
+/** A pinned `LIBRARY_DIR` whose folder is empty or absent: the bind-mounted share is almost certainly not there. The
+ *  availability guard skips pinned libraries (no marker to check), so without this every record reads as stale and
+ *  a repair would wipe the index. Callers pass it only when they have records that should be on disk. */
+export async function pinnedLibraryLooksUnmounted(): Promise<boolean> {
+  // Pinned, so the library folder is the override itself (getDefaultLibraryDir returns it).
+  return isLibraryPinned() && directoryHoldsNothing(getDefaultLibraryDir());
+}
+
 const STAT_BATCH = 64;
 /** Cap the object list in the payload; the count is still exact. */
 const MISSING_OBJECT_LIST_CAP = 50;
@@ -71,6 +79,7 @@ async function findStaleRows(): Promise<{ stale: FileRow[]; unreadable: number }
   const rows = db
     .prepare<[], FileRow>('SELECT objectId, relPath FROM libraryFiles WHERE sourceId IS NULL')
     .all();
+  if (rows.length > 0 && await pinnedLibraryLooksUnmounted()) return { stale: [], unreadable: rows.length };
   const root = getLibraryDir();
   const stale: FileRow[] = [];
   let unreadable = 0;
@@ -86,8 +95,12 @@ async function findStaleRows(): Promise<{ stale: FileRow[]; unreadable: number }
 }
 
 /** Live objects with no linked-folder files whose folder is not on disk.
- *  Only objects that once held files qualify: an object with no records and no file
- *  count never had a folder to lose, so its absence proves nothing. */
+ *  Only objects that once held files or a session qualify: an object with no records,
+ *  no file count and no session never had a folder to lose, so its absence proves
+ *  nothing. A session counts because every way of creating one (import, manual
+ *  observation) creates the folder too, and because the "missing files" repair
+ *  zeroes `fileCount` and deletes the rows, which would otherwise hide the object
+ *  from this check whenever that repair ran first. */
 async function findMissingObjects(): Promise<{ missing: MissingObject[]; unreadable: number }> {
   const root = getLibraryDir();
   const objs = db
@@ -97,9 +110,14 @@ async function findMissingObjects(): Promise<{ missing: MissingObject[]; unreada
        FROM libraryObjects o
        WHERE o.deleted = 0
          AND NOT EXISTS (SELECT 1 FROM libraryFiles f WHERE f.objectId = o.objectId AND f.sourceId IS NOT NULL)
-         AND (o.fileCount > 0 OR EXISTS (SELECT 1 FROM libraryFiles f WHERE f.objectId = o.objectId))`,
+         AND (
+           o.fileCount > 0
+           OR EXISTS (SELECT 1 FROM libraryFiles f WHERE f.objectId = o.objectId)
+           OR EXISTS (SELECT 1 FROM librarySessions s WHERE s.objectId = o.objectId)
+         )`,
     )
     .all();
+  if (objs.length > 0 && await pinnedLibraryLooksUnmounted()) return { missing: [], unreadable: objs.length };
   const missing: MissingObject[] = [];
   let unreadable = 0;
   for (let i = 0; i < objs.length; i += STAT_BATCH) {
@@ -124,6 +142,7 @@ async function findMissingProcessed(): Promise<{ missing: ProcessedRow[]; unread
        FROM sessionProcessedImages p LEFT JOIN libraryObjects o ON o.objectId = p.objectId`,
     )
     .all();
+  if (rows.length > 0 && await pinnedLibraryLooksUnmounted()) return { missing: [], unreadable: rows.length };
   const root = getLibraryDir();
   const missing: ProcessedRow[] = [];
   let unreadable = 0;

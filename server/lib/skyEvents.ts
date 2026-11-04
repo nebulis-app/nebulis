@@ -394,7 +394,7 @@ const GEAR: Partial<Record<SkyEventKind, (e: RawSkyEvent) => GearNeed[]>> = {
   conjunction: () => ['wideLens'],
 };
 
-export function judgeEvent(e: RawSkyEvent, s: SkySite): SkyEvent {
+function judgeEvent(e: RawSkyEvent, s: SkySite): SkyEvent {
   const { j, night } = judge(e, s);
   const at = j.interferenceAt ?? j.best?.time ?? new Date(e.peak);
   const moon = moonInterferenceAt(at, s);

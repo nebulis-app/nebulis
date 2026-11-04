@@ -18,6 +18,8 @@ export interface PaginatedResult<T> {
   };
 }
 
+const MAX_PAGE = 1_000_000;
+
 /**
  * Parse pagination params from query string.
  * Supports: ?page=1&limit=50 (default: page 1, limit 50, max 200)
@@ -30,11 +32,12 @@ export function parsePagination(req: Request, defaultLimit = 50): PaginationPara
 
   const hasOffset = req.query.offset !== undefined;
   if (hasOffset) {
-    const offset = Math.max(0, parseInt(String(req.query.offset), 10) || 0);
+    const offset = Math.min(MAX_PAGE * limit, Math.max(0, parseInt(String(req.query.offset), 10) || 0));
     return { page: Math.floor(offset / limit) + 1, limit, offset };
   }
 
-  const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+  // Capped so an absurd value cannot overflow to Infinity, which SQLite rejects as a bound OFFSET (a 500).
+  const page = Math.min(MAX_PAGE, Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1));
   const offset = (page - 1) * limit;
   return { page, limit, offset };
 }

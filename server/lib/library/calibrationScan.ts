@@ -344,9 +344,8 @@ function calibrationExpiryDays(): number {
 function isExpiredCalibration(type: CalibrationFrameType | 'mixed', capturedAt: string | null): boolean {
   if (type !== 'bias' && type !== 'dark') return false;
   if (!capturedAt) return false;
-  const expiryCutoff = new Date();
-  expiryCutoff.setDate(expiryCutoff.getDate() - calibrationExpiryDays());
-  return new Date(capturedAt).getTime() < expiryCutoff.getTime();
+  const expiryCutoffMs = Date.now() - calibrationExpiryDays() * 86_400_000;
+  return new Date(capturedAt).getTime() < expiryCutoffMs;
 }
 
 /** The bundle's own "captured at" — the latest of each file's parsed

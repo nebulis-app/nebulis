@@ -7,7 +7,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { getLibraryDir, TimeoutError, statLibraryFileForServe } from '../libraryPath.js';
+import { getLibraryDir } from '../libraryPath.js';
 import db from '../db.js';
 import { getSettingsData } from '../telescopes.js';
 import type { TransportKind } from '../telescopeTransports.js';
@@ -18,7 +18,7 @@ import {
   sessionNightFor,
 } from '../telescopeFiles.js';
 import { resolveCanonicalId, expandSearchAliases, getAliasesForCanonical, normalizeDesignation, isDesignationShaped } from '../catalogAliases.js';
-import { getCatalogEntry } from '../../data/catalog.js';
+import { getCatalogEntry } from '../catalogLookup.js';
 import { parseNicknames } from './nicknames.js';
 import { parseGalleryCrop } from './galleryCrop.js';
 import { SOLAR_SYSTEM_LOOKUP_KEYS } from '../../data/solar-system-catalog.js';
@@ -39,6 +39,7 @@ import {
 } from './libraryFiles.js';
 import { listObjectFiles, getObjectLayout } from './libraryLayout.js';
 import { rekeyLibraryObject } from './libraryRekey.js';
+import { consolidateObjectFolder } from './libraryConsolidate.js';
 import { setDesignationRedirect } from './designationRedirects.js';
 import { deleteCaptureInfoForObject } from './captureInfo.js';
 import { getStartrailsObjectId, patchStartrailsObjectMeta } from './dwarfStartrails.js';
@@ -981,6 +982,10 @@ export const stmts = {
     'SELECT galleryImage, galleryImageUserSet, galleryCrop FROM libraryObjects WHERE objectId = ?',
   ),
   setGalleryImage:         db.prepare('UPDATE libraryObjects SET galleryImage = ?, galleryImageUserSet = 0, galleryCrop = NULL WHERE objectId = ?'),
+  // For reads that tidy up the cover as a side effect. Neither can overwrite a picture the user chose, or one that was
+  // set between the read and this write: the first fills an empty auto cover, the second clears an auto cover only.
+  setAutoGalleryImage:     db.prepare("UPDATE libraryObjects SET galleryImage = ?, galleryCrop = NULL WHERE objectId = ? AND galleryImageUserSet = 0 AND (galleryImage IS NULL OR galleryImage = '')"),
+  clearAutoGalleryImage:   db.prepare('UPDATE libraryObjects SET galleryImage = NULL, galleryCrop = NULL WHERE objectId = ? AND galleryImageUserSet = 0'),
   setGalleryCrop:          db.prepare('UPDATE libraryObjects SET galleryCrop = ? WHERE objectId = ?'),
   setGalleryImageUserSet:  db.prepare('UPDATE libraryObjects SET galleryImage = ?, galleryImageUserSet = 1, galleryCrop = NULL WHERE objectId = ?'),
 
@@ -1196,11 +1201,11 @@ export function applyCatalogMetaToLibraryObject(objectId: string): boolean {
  * id has no row yet) vs merge (destination already exists, in which case
  * colliding rows are dropped and fileCount/lastImport fold into it) across
  * every objectId-scoped table. Deliberately DB-only, same as those
- * migrations: `relPath` (not `folderName`) is the authoritative on-disk
- * pointer for every moved file, so a stale-looking folder name after a
- * reclassify is cosmetic, not broken — physical directory consolidation is a
- * separate, best-effort concern (see repairAliasDirectories) and out of scope
- * here.
+ * migrations for the rows. A rename keeps the old folder, which is still
+ * correct. A merge keeps the destination's folder, which every list surface
+ * walks, so the source's files are then moved into it (libraryConsolidate.ts):
+ * never overwriting or deleting, with anything that would collide left in place
+ * and counted in `filesLeftBehind`.
  *
  * When `remember` is set, records a redirect so a future import or sub-frame
  * sync of this object's current (wrong) designation routes straight to the
@@ -1213,7 +1218,7 @@ export function reclassifyObject(
   objectId: string,
   targetCatalogId: string,
   opts: { remember: boolean; userId?: string | null },
-): { mode: 'rename' | 'merge'; objectId: string } {
+): { mode: 'rename' | 'merge'; objectId: string; filesMoved: number; filesLeftBehind: number } {
   const exists = db
     .prepare<[string], { objectId: string }>('SELECT objectId FROM libraryObjects WHERE objectId = ?')
     .get(objectId);
@@ -1229,6 +1234,12 @@ export function reclassifyObject(
     .prepare('SELECT 1 FROM libraryFiles WHERE objectId = ? AND sourceId IS NOT NULL LIMIT 1')
     .get(objectId);
 
+  // Read before the rekey deletes the source row: a merge leaves the files in this folder.
+  const source = db
+    .prepare<[string], { folderName: string }>('SELECT folderName FROM libraryObjects WHERE objectId = ?')
+    .get(objectId);
+  const sourceLayout = getObjectLayout(objectId);
+
   db.pragma('foreign_keys = OFF');
   let mode: 'rename' | 'merge' | 'noop';
   try {
@@ -1243,7 +1254,35 @@ export function reclassifyObject(
   }
   if (mode === 'noop') throw new Error('Already classified as this object');
 
-  return { mode, objectId: newId };
+  // A merge keeps the destination's folder, and every list surface walks only that folder, so the source's files
+  // would disappear from the UI while staying on disk. Bring them across; anything that would overwrite stays put.
+  let filesMoved = 0;
+  let filesLeftBehind = 0;
+  if (mode === 'merge' && source) {
+    const dest = db
+      .prepare<[string], { folderName: string }>('SELECT folderName FROM libraryObjects WHERE objectId = ?')
+      .get(newId);
+    if (dest) {
+      try {
+        const moved = consolidateObjectFolder({
+          libraryDir: getLibraryDir(),
+          fromFolder: source.folderName,
+          fromLayout: sourceLayout,
+          toFolder: dest.folderName,
+          toLayout: getObjectLayout(newId),
+          toObjectId: newId,
+        });
+        filesMoved = moved.moved;
+        filesLeftBehind = moved.leftBehind;
+        if (moved.moved > 0) writeObjectManifest(newId, dest.folderName);
+      } catch (err) {
+        // The database merge already committed; say so in the log and leave the files where they are.
+        console.warn(`[library] reclassify ${objectId} -> ${newId}: could not consolidate folders:`, err instanceof Error ? err.message : err);
+      }
+    }
+  }
+
+  return { mode, objectId: newId, filesMoved, filesLeftBehind };
 }
 
 // Backfill: populate catalog columns for any existing rows that have NULL catalogId or distanceLy
@@ -1791,7 +1830,15 @@ function findManagedFallbackImage(objectId: string): string | null {
 const fallbackMissCache = new Map<string, { lastImport: string | null; at: number }>();
 const FALLBACK_MISS_TTL_MS = 5 * 60 * 1000;
 
-export function getLocalObjects(userId = '', search = '') {
+/** The two columns that decide which variant family an object belongs to: no filesystem work, one query. */
+export function listObjectGroupingRows(): { id: string; catalogId: string }[] {
+  return db
+    .prepare<[], { objectId: string; catalogId: string | null }>('SELECT objectId, catalogId FROM libraryObjects WHERE deleted = 0')
+    .all()
+    .map(r => ({ id: r.objectId, catalogId: r.catalogId || normalizeCatalogId(r.objectId) }));
+}
+
+export function getLocalObjects(userId = '', search = '', opts: { onlyIds?: ReadonlySet<string> } = {}) {
   const LIBRARY_DIR = getLibraryDir();
   ensureLibraryDir();
   const objects = search.trim()
@@ -1808,6 +1855,9 @@ export function getLocalObjects(userId = '', search = '') {
         ).all(...params);
       })()
     : stmts.getAllObjects.all();
+  // A caller that wants one object (and its variants) must not pay for the whole library: the per-object work below
+  // includes a directory scan for every object that has no picture yet.
+  const wanted = opts.onlyIds ? objects.filter(o => opts.onlyIds!.has(o.objectId)) : objects;
 
   const settings = getSettingsData();
   const preferSkySurvey = typeof settings.galleryImageSource === 'string'
@@ -1835,7 +1885,7 @@ export function getLocalObjects(userId = '', search = '') {
     stmts.getProjectArchiveCounts.all().map(r => [r.objectId, r.count]),
   );
 
-  return objects.map(obj => {
+  return wanted.map(obj => {
     const sessionRows = sessionsByObject.get(obj.objectId) ?? [];
     const sessions = sessionRows.map(r => r.date);
     // Distinct telescope ids that have ever captured this object, ordered
@@ -1864,7 +1914,7 @@ export function getLocalObjects(userId = '', search = '') {
       if (!missStillValid) {
         const fallback = findFallbackObservationImage(obj.objectId);
         if (fallback) {
-          stmts.setGalleryImage.run(fallback, obj.objectId);
+          stmts.setAutoGalleryImage.run(fallback, obj.objectId);
           galleryImage = fallback;
           fallbackMissCache.delete(obj.objectId);
         } else {
@@ -1913,7 +1963,7 @@ export function getLocalObjects(userId = '', search = '') {
       filterTags: getLibraryObjectFilterTags(objectType),
       constellation: obj.constellation || 'Unknown',
       description: obj.description || '',
-      magnitude: obj.magnitude || null,
+      magnitude: obj.magnitude ?? null,
       ra: obj.ra || null,
       dec: obj.dec || null,
       distanceLy: obj.distanceLy || null,
@@ -1923,7 +1973,9 @@ export function getLocalObjects(userId = '', search = '') {
       thumbnailUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(obj.objectId)}/thumbnail`,
       // A comet or asteroid with no picture of its own has nothing to show: the card draws its placeholder at once
       // instead of asking the thumbnail route for an image that cannot exist.
-      hasThumbnail: Boolean(exposedGalleryImage) || !isMovingObject(obj.objectId, objectType),
+      // Star Trails is the same: it has no catalog picture, so without a capture image the route can only 404.
+      hasThumbnail: Boolean(exposedGalleryImage)
+        || (!isMovingObject(obj.objectId, objectType) && obj.objectId !== getStartrailsObjectId()),
       sessionsUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(obj.objectId)}/sessions`,
       filesUrl: `${LIBRARY_API_BASE}/objects/${encodeURIComponent(obj.objectId)}/files`,
       subFramesUrl: null,
@@ -1974,28 +2026,17 @@ export function getLocalThumbnail(objectId: string): Buffer | null {
   return null;
 }
 
-export async function getLocalFile(relativePath: string): Promise<{ abs: string; name: string } | null> {
-  // Resolution + containment lives in fileResolver.ts now — see its header for
-  // why this used to be five separate inline copies across the library routes.
+/**
+ * Resolve a client-supplied library path for serving, without reading it.
+ * Containment lives in fileResolver.ts; the caller streams the result (see
+ * serveFile.ts) instead of buffering the whole file the way this used to.
+ */
+export function resolveLocalFileForServe(relativePath: string): { abs: string; name: string } | null {
   const resolved = resolveLibraryFile(relativePath);
   if (!resolved) return null;
-  const fullPath = resolved.abs;
-
-  const filename = path.basename(fullPath);
-  if (!isRealFile(filename)) return null;
-
-  // Stat only (timeout-bounded on a network library) and let the route stream
-  // the bytes: reading the whole file into a Buffer cost memory proportional to
-  // file size on a route that needs no credential.
-  try {
-    const st = await statLibraryFileForServe(fullPath);
-    if (!st.isFile()) return null;
-    return { abs: fullPath, name: filename };
-  } catch (err) {
-    // A slow disk is not a missing file: let the route answer 503 (retryable) rather than a 404.
-    if (err instanceof TimeoutError) throw err;
-    return null;
-  }
+  const name = path.basename(resolved.abs);
+  if (!isRealFile(name)) return null;
+  return { abs: resolved.abs, name };
 }
 
 // ─── Tombstone deletes ────────────────────────────────────────────────────────

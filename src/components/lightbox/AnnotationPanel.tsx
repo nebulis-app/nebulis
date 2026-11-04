@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Download, Loader2, RotateCw, ScanSearch } from 'lucide-react';
+import { ChevronsLeft, Download, Info, Loader2, RotateCw, ScanSearch } from 'lucide-react';
 import type { AnnotateQuality } from '../../lib/api/annotate';
 import type { useImageAnnotations } from './useImageAnnotations';
 
@@ -26,14 +26,16 @@ const BTN =
  * Only an admin can start the install (the endpoint is admin-only), so the
  * button is hidden for everyone else.
  */
-export function AnnotationPanel({ annotations, canInstall, zoomedPastEstimate = false }: {
+export function AnnotationPanel({ annotations, canInstall, zoomedPastEstimate = false, onMinimize }: {
   annotations: AnnotationState;
   canInstall: boolean;
   /** The picture is zoomed well past fit, where an estimate shows its error. */
   zoomedPastEstimate?: boolean;
+  /** Tucks the tile against the side; the dock leaves a tab to bring it back. */
+  onMinimize?: () => void;
 }) {
   const { t } = useTranslation('library');
-  const { data, isLoading, error, install, installPending, retrySolve, hiddenIds, setShown, setAllShown } = annotations;
+  const { data, isLoading, error, install, installPending, retrySolve, hiddenIds, setShown, setAllShown, selectedId, select } = annotations;
 
   const installing = !!data && (data.solver.state === 'downloading' || data.solver.state === 'extracting');
   const percent = data ? Math.round(data.solver.progress * 100) : 0;
@@ -49,12 +51,25 @@ export function AnnotationPanel({ annotations, canInstall, zoomedPastEstimate = 
       <div className="flex items-center gap-2">
         <ScanSearch className="h-3.5 w-3.5 flex-shrink-0 text-accent-400" aria-hidden="true" />
         <span className="font-medium text-white">{t('annotate.title')}</span>
-        {data && (
-          <span className={`ml-auto rounded-full px-2 py-0.5 text-[0.6562rem] font-medium ${BADGE[data.quality]}`}>
-            {t(`annotate.quality.${data.quality}`)}
-          </span>
+        {onMinimize && (
+          <button
+            type="button"
+            onClick={onMinimize}
+            aria-label={t('annotate.minimize')}
+            title={t('annotate.minimize')}
+            className="-mr-1 ml-auto rounded-full p-1 text-white/60 outline-none transition hover:bg-white/15 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60"
+          >
+            <ChevronsLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
         )}
       </div>
+      {data && (
+        <div className="mt-2 flex justify-center">
+          <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-[0.6562rem] font-medium ${BADGE[data.quality]}`}>
+            {t(`annotate.quality.${data.quality}`)}
+          </span>
+        </div>
+      )}
 
       {isLoading && (
         <p className="mt-2 flex items-center gap-1.5 text-white/60">
@@ -92,14 +107,28 @@ export function AnnotationPanel({ annotations, canInstall, zoomedPastEstimate = 
                 {data.annotations.map(a => {
                   const on = !hiddenIds.has(a.id);
                   return (
-                    <li key={a.id}>
-                      <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-white/5">
+                    <li key={a.id} className="flex items-center gap-1">
+                      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-white/5">
                         <input type="checkbox" checked={on} onChange={e => setShown(a.id, e.target.checked)}
                           className="h-3.5 w-3.5 flex-shrink-0 accent-accent-400" />
                         <span className={`min-w-0 truncate ${on ? 'text-white/90' : 'text-white/40'}`}>{a.label}</span>
                         {a.designation && <span className="flex-shrink-0 text-white/45">{a.designation}</span>}
                         {a.isTarget && <span className="ml-auto flex-shrink-0 text-accent-300">{t('annotate.target')}</span>}
                       </label>
+                      {/* The ring's own (i) is out of reach when zoomed past it, so every row can open its details too. */}
+                      <button
+                        type="button"
+                        disabled={!on}
+                        onClick={() => select(selectedId === a.id ? null : a.id)}
+                        title={t('annotate.info.open', { name: a.label })}
+                        aria-label={t('annotate.info.open', { name: a.label })}
+                        aria-pressed={selectedId === a.id}
+                        className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-white/55 outline-none transition
+                          hover:bg-white/15 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60 disabled:pointer-events-none disabled:opacity-30
+                          aria-pressed:bg-accent-500 aria-pressed:text-black"
+                      >
+                        <Info className="h-3 w-3" aria-hidden="true" />
+                      </button>
                     </li>
                   );
                 })}

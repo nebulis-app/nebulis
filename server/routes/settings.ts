@@ -7,12 +7,12 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
-import { getSettingsData, updateSettingsData, getApiKey, setApiKey, getAllProfiles } from '../lib/telescopes.js';
+import { getSettingsData, updateSettingsData, setApiKey, getAllProfiles } from '../lib/telescopes.js';
 import { getDefaultSite, updateSite, type ObservingSite } from '../lib/observingSites.js';
 import {
   createApiKeyForUser, getUserApiKeys, getAllApiKeys, revokeApiKey, MAX_API_KEYS_PER_USER,
 } from '../lib/auth.js';
-import { SKY_MAP_BANDS } from '../lib/skyMapConfig.js';
+import { SKY_MAP_BANDS, SKY_MAP_CELLS } from '../lib/skyMapConfig.js';
 import { UPDATE_CHANNELS } from '../lib/appUpdate/manifest.js';
 import {
   GALLERY_IMAGE_SOURCES,
@@ -24,7 +24,7 @@ import {
 import { resetLibraryData, getLibraryDbStats, createManualDatabaseBackup } from '../lib/db.js';
 import { DATA_DIR } from '../lib/paths.js';
 import { isRecord } from '../lib/typeGuards.js';
-import { getLibraryDir, isDefaultLocation, getLibraryId, writeMarker, isLibraryAvailable, isNetworkLocation } from '../lib/libraryPath.js';
+import { getLibraryDir, isDefaultLocation, getLibraryId, writeMarker, isLibraryAvailable, isNetworkLocation, canRemoveLibraryTree } from '../lib/libraryPath.js';
 import { startPrefetch, cancelPrefetch } from '../lib/catalogPrefetch.js';
 import { clearPackState } from '../lib/catalogPack/state.js';
 import { runUpdateCheck, stopAppUpdateChecker } from '../lib/appUpdate/updater.js';
@@ -37,6 +37,7 @@ import {
 } from '../lib/debugLogger.js';
 import { getCurrentVersion } from '../lib/appUpdate/platform.js';
 import { logEvent } from '../lib/systemLog.js';
+import { SettingsApiKeyCreateBodySchema, SettingsResetDatabaseBodySchema } from '../lib/settingsSchemas.js';
 
 const router = Router();
 
@@ -54,9 +55,9 @@ const SettingsUpdateBodySchema = z.object({
   timezone: z.string().optional(),
   minAlt: z.number().optional(),
   horizonProfile: z.array(z.number()).length(36).optional(),
-  // Any boolean array is accepted. The storage layer (saveSettingsRow) already
-  // normalizes wrong-length arrays to empty ([]), so no refine needed here.
-  visibleSkyMap: z.array(z.boolean()).optional(),
+  // A wrong-length map would be stored as [] ("whole sky visible"), so reject it
+  // here instead of answering 200 and silently erasing the user's mask.
+  visibleSkyMap: z.array(z.boolean()).length(SKY_MAP_CELLS).optional(),
   syncEnabled: z.boolean().optional(),
   syncJpg: z.boolean().optional(),
   syncFits: z.boolean().optional(),
@@ -103,10 +104,6 @@ const SettingsUpdateBodySchema = z.object({
   objectPageLayout: z.enum(OBJECT_PAGE_LAYOUTS).optional(),
   annotateAutoSolve: z.boolean().optional(),
   autoMeasureFrames: z.boolean().optional(),
-});
-
-const ResetDatabaseBodySchema = z.object({
-  confirmation: z.literal('delete'),
 });
 
 // The full Settings shape, as returned by GET/PUT. Derived (not hand-copied)
@@ -472,8 +469,6 @@ router.post('/nightly/run', requireAdmin, (_req: Request, res: Response) => {
 // everyone's. Keys cannot mint or revoke keys themselves: a leaked key must not
 // be able to plant a longer-lived replacement, so these need a sign-in session.
 
-const ApiKeyCreateSchema = z.object({ name: z.string().max(50).optional() });
-
 /** The signed-in user's id, or null after sending the 401/403 response. */
 function requireSignedInSession(req: Request, res: Response): string | null {
   if (!req.userId) {
@@ -482,6 +477,11 @@ function requireSignedInSession(req: Request, res: Response): string | null {
   }
   if (req.viaApiKey) {
     res.apiError(403, 'API_KEY_NOT_ALLOWED', 'API keys cannot manage API keys. Sign in to the web app instead.');
+    return null;
+  }
+  // A paired device (a borrowed TV or phone) must not be able to plant a key that outlives "Disconnect device".
+  if (req.viaDeviceToken) {
+    res.apiError(403, 'DEVICE_TOKEN_NOT_ALLOWED', 'A paired device cannot manage API keys. Sign in to the web app instead.');
     return null;
   }
   return req.userId;
@@ -506,7 +506,7 @@ router.get('/api-keys', (req: Request, res: Response) => {
 router.post('/api-keys', strictRateLimiter, (req: Request, res: Response) => {
   const userId = requireSignedInSession(req, res);
   if (userId === null) return;
-  const parsed = ApiKeyCreateSchema.safeParse(req.body ?? {});
+  const parsed = SettingsApiKeyCreateBodySchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.apiError(400, 'INVALID_BODY', 'name must be at most 50 characters');
     return;
@@ -589,7 +589,7 @@ router.delete('/api-key', requireAdmin, (req: Request, res: Response) => {
 // Reset database — purge all data except settings
 router.delete('/reset-database', requireAdmin, strictRateLimiter, async (req: Request, res: Response) => {
   const libraryDir = getLibraryDir();
-  const parsed = ResetDatabaseBodySchema.safeParse(req.body ?? {});
+  const parsed = SettingsResetDatabaseBodySchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.apiError(400, 'CONFIRMATION_REQUIRED', 'You must send { "confirmation": "delete" } to confirm');
     return;
@@ -625,10 +625,17 @@ router.delete('/reset-database', requireAdmin, strictRateLimiter, async (req: Re
     // directory belongs to this install. If the path is stale (e.g. a
     // relocated external drive that is no longer mounted), skip deletion to
     // avoid recursively removing an unrelated path.
+    let libraryRemoved = false;
     if (await isLibraryAvailable()) {
-      try {
-        fs.rmSync(libraryDir, { recursive: true });
-      } catch { /* directory may not exist */ }
+      const removable = canRemoveLibraryTree(libraryDir);
+      if (removable.ok) {
+        try {
+          fs.rmSync(libraryDir, { recursive: true });
+          libraryRemoved = true;
+        } catch { /* directory may not exist */ }
+      } else {
+        console.warn(`[reset-database] left ${libraryDir} in place: ${removable.reason}`);
+      }
     }
     // The dirs below are always under DATA_DIR which the server controls.
     const serverDirsToRemove = [
@@ -667,7 +674,7 @@ router.delete('/reset-database', requireAdmin, strictRateLimiter, async (req: Re
     //    directory and marker so the app knows the drive is still connected.
     //    Without this, isLibraryAvailable() returns false and the "reconnect
     //    your drive" banner appears even though the drive was never disconnected.
-    if (!isDefaultLocation()) {
+    if (!isDefaultLocation() && libraryRemoved) {
       try {
         fs.mkdirSync(libraryDir, { recursive: true });
         writeMarker(libraryDir, getLibraryId());

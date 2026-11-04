@@ -63,6 +63,7 @@ import { buildObjectMetrics, summarizeObject } from '../components/objectDetail/
 import { ObjectProcessedSection } from '../components/objectDetail/ObjectProcessedSection';
 import { ObjectProjectArchivesSection } from '../components/objectDetail/ObjectProjectArchivesSection';
 import { ObjectIntegrationSection } from '../components/objectDetail/ObjectIntegrationSection';
+import type { SuggestionTarget } from '../components/objectDetail/IntegrationSuggestionPanel';
 import { ObjectMediaView } from '../components/objectMedia/ObjectMediaView';
 import { TourAnchor } from '../components/tour/TourAnchor';
 import { DWARF_STARTRAILS_OBJECT_TYPE, DWARF_STARTRAILS_PLACEHOLDER_IMAGE } from '../lib/dwarfStartrails';
@@ -419,6 +420,10 @@ export function ObjectDetail() {
         // Star Trails has no catalog entry to fall back to (getCatalogThumbnailUrl
         // would just 404) — show the bundled placeholder until a real capture
         // sets a galleryImage, at which point the branch above wins instead.
+        // Whether this is Star Trails is only known once the object list has loaded, so wait for it
+        // rather than request a catalog image that 404s for that one object.
+        : allObjects === undefined
+          ? null
         : isStartrails
           ? DWARF_STARTRAILS_PLACEHOLDER_IMAGE
           : getCatalogThumbnailUrl(catalogEntry?.id || baseObjectId, catalogEntry?.majorAxisArcmin ?? null, HERO_IMAGE_SIZE, HERO_IMAGE_SIZE);
@@ -499,6 +504,20 @@ export function ObjectDetail() {
     const type = catalogEntry?.type || baseObject?.type;
     return type?.trim() ? filterRecommendations(type) : null;
   }, [catalogEntry?.type, isSyntheticDwarfObject, baseObject?.type]);
+
+  // Inputs for the suggested integration goals. Same gate as the filter
+  // guidance above: synthetic targets have no catalog physics to reason from.
+  const suggestionTarget = useMemo<SuggestionTarget | null>(() => {
+    if (isSyntheticDwarfObject) return null;
+    const type = catalogEntry?.type || baseObject?.type;
+    if (!type?.trim()) return null;
+    return {
+      objectType: type,
+      magnitude: typeof catalogEntry?.magnitude === 'number' ? catalogEntry.magnitude : null,
+      majorAxisArcmin: catalogEntry?.majorAxisArcmin ?? null,
+      bortleClass: site?.bortleClass ?? null,
+    };
+  }, [catalogEntry?.type, catalogEntry?.magnitude, catalogEntry?.majorAxisArcmin, baseObject?.type, isSyntheticDwarfObject, site?.bortleClass]);
 
   // Telescopes that have actually been on this target, in the library's own
   // recency order, resolved to names and colours.
@@ -755,7 +774,7 @@ export function ObjectDetail() {
           {/* Project archives live on the Projects tab above; what is left here is the integration by filter. */}
           {!isSyntheticDwarfObject && (
             <ObjectProjectPanel key={activeObjectId} stacked sharedOpen={false}>
-              <ObjectIntegrationSection objectId={activeObjectId} isAdmin={isAdmin} bare />
+              <ObjectIntegrationSection objectId={activeObjectId} isAdmin={isAdmin} suggestionTarget={suggestionTarget} bare />
             </ObjectProjectPanel>
           )}
           {aboutPanels}
@@ -771,7 +790,7 @@ export function ObjectDetail() {
 
           <ObjectProjectPanel key={activeObjectId} stacked>
             {!isSyntheticDwarfObject && (
-              <ObjectIntegrationSection objectId={activeObjectId} isAdmin={isAdmin} bare />
+              <ObjectIntegrationSection objectId={activeObjectId} isAdmin={isAdmin} suggestionTarget={suggestionTarget} bare />
             )}
             <ObjectProjectArchivesSection objectId={activeObjectId} isAdmin={isAdmin} bare />
           </ObjectProjectPanel>

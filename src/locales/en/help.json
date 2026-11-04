@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Help",
-    "subtitle": "Everything you need to use Nebulis, from first install to everyday use.",
+    "subtitle": "Setup guides, a tour of every page, and answers to common problems.",
     "startTour": "Start the guided tour",
     "guidesHeading": "Guides"
   },
@@ -70,7 +70,17 @@
     },
     "objectFilters": {
       "q": "What does each object filter include?",
-      "a": "Filters group objects by their catalog type, matching the type text itself. Those type names come from the catalog and stay in English whatever language you use, so the words that matter are \"galaxy\", \"nebula\" and \"cluster\". Any type containing \"galaxy\" lands in the galaxy filter: spiral, barred, irregular, lenticular and starburst galaxies, plus galaxy groups, pairs and triplets. \"nebula\" covers emission, reflection, dark and planetary nebulae, and supernova remnants count as nebulae too. \"cluster\" covers open and globular clusters. An object can appear under more than one filter: a planetary nebula is both a nebula and a planetary nebula, a supernova remnant is both a nebula and a supernova remnant, and Cluster + Nebula is both a cluster and a nebula. Where a count has to choose one family, Cluster + Nebula counts as a nebula, because the nebulosity is what it is imaged for. The Library adds finer filters on top: solar system objects, comets, stars, planetary nebulae, supernova remnants, and Unknown, which holds objects whose type could not be resolved."
+      "intro": "Filters group objects by their catalog type. The type names come from the catalog and stay in English whatever language you use, so the words that matter are \"galaxy\", \"nebula\" and \"cluster\".",
+      "galaxyTerm": "galaxy",
+      "galaxyDef": "Any type containing \"galaxy\": spiral, barred, irregular, lenticular and starburst galaxies, plus galaxy groups, pairs and triplets.",
+      "nebulaTerm": "nebula",
+      "nebulaDef": "Emission, reflection, dark and planetary nebulae. Supernova remnants count as nebulae too.",
+      "clusterTerm": "cluster",
+      "clusterDef": "Open and globular clusters.",
+      "overlapTerm": "More than one filter",
+      "overlapDef": "A planetary nebula is both a nebula and a planetary nebula, a supernova remnant is both a nebula and a supernova remnant, and Cluster + Nebula is both a cluster and a nebula. Where a count has to choose one family, Cluster + Nebula counts as a nebula, because the nebulosity is what it is imaged for.",
+      "libraryTerm": "Library-only filters",
+      "libraryDef": "Solar system objects, comets, stars, planetary nebulae, supernova remnants, and Unknown, which holds objects whose type could not be resolved."
     },
     "findTarget": {
       "q": "How do I find something to photograph?",
@@ -90,7 +100,7 @@
     },
     "locationSharing": {
       "q": "Does Nebulis send my location anywhere?",
-      "a": "Only to fetch conditions for your sky. Your observing site's coordinates go to Open-Meteo and 7Timer for the forecast, and to DarkSkySites for your light pollution class. Those are the coordinates of the site you set up in Settings, not your device's location, and nothing else about you is included. Every service Nebulis uses is listed under Settings, Data Sources."
+      "a": "Only to fetch conditions for your sky. Your observing site's coordinates go to Open-Meteo and 7Timer for the forecast, to DarkSkySites for your light pollution class, and to OpenStreetMap Nominatim for the name of the place. Those are the coordinates of the site you set up in Settings, not your device's location, and nothing else about you is included. Every service Nebulis uses is listed under Settings, Data Sources."
     }
   },
   "gettingStarted": {
@@ -189,7 +199,7 @@
   "tourObservations": {
     "title": "Observations",
     "lead": "Every imaging session you've ever logged, browsable by calendar, list, or map.",
-    "step1Title": "See your imaging activity at a glance",
+    "step1Title": "See your imaging activity in one view",
     "step1Body": "The header totals nights out, distinct objects, sessions, and files across your whole history, and a bar chart breaks sessions down by month for the selected year. Below it, the Calendar view lays out every session on the day it happened, with a thumbnail and time for each object. Nights you planned in the Planner show next to what you shot, so you can see where a plan did not turn into pictures. The banner at the top folds to one slim row with the page's key figures.",
     "step1Alt": "Observations page showing lifetime totals, a monthly bar chart, and a calendar grid with session thumbnails on each day",
     "step1Caption": "Observations → Calendar",
@@ -198,7 +208,7 @@
     "step2Alt": "Observations List view showing a sortable table of sessions with Object, Catalog, and Date columns",
     "step2Caption": "Observations → List",
     "step3Title": "Review session details and notes",
-    "step3Body": "Click any session to open its full detail page: the stacked image, integration time, frames stacked, exposure and filter used, plus panels for the object itself, sky conditions that night, and where you observed from. Its Sub-frames list scores every raw frame (see Frame quality and stacking). Add notes, choose the rig, combine subs, or delete the session from here.",
+    "step3Body": "Click any session to open its full detail page. It shows the stacked image, integration time, frames stacked, exposure and filter used, plus panels for the object itself, sky conditions that night, and where you observed from. Its Sub-frames list scores every raw frame (see Frame quality and stacking). Add notes, choose the rig, combine subs, or delete the session from here.",
     "step3Alt": "M45 Pleiades observation detail page showing the stacked image, integration stats, and About, Conditions, and Observed from panels",
     "step3Caption": "Observations → Session Details",
     "step4Title": "See where you've observed from",
@@ -210,12 +220,12 @@
   "tourForecast": {
     "title": "Forecast",
     "lead": "A single 0–100 score for tonight, plus the astronomical facts and weather behind it.",
-    "step1Title": "Read tonight's score at a glance",
+    "step1Title": "Read tonight's score right away",
     "step1Body": "The ring on the left boils cloud cover, seeing and jet stream, and moon interference down to one 0–100 rating with a plain-language verdict underneath. Dark hours, sunset, sunrise, and the best imaging window sit alongside it, and the ribbon below traces sky quality through the night, worst to best, so you can see exactly when it gets good.",
     "step1Alt": "Sky Forecast page showing a 55/100 Good rating, moon phase, dark hours, sunset and sunrise times, best window, and a colored night-quality ribbon",
     "step1Caption": "Forecast → Tonight",
     "step2Title": "Check the nights just ahead",
-    "step2Body": "Below the ribbon, \"The nights ahead\" cards give each upcoming night its own score and a cloud-cover trend line, so you can tell at a glance whether tomorrow is worth staying up for or better spent processing what you already have.",
+    "step2Body": "Below the ribbon, \"The nights ahead\" cards score each upcoming night. Each card has its own score and a cloud-cover trend line, so you can tell whether tomorrow is worth staying up for or better spent processing what you already have.",
     "step2Alt": "Two upcoming-night cards showing a 64 Good score for Thursday and a 94 Excellent score for Friday, each with a cloud cover trend line",
     "step2Caption": "Forecast → The nights ahead",
     "step3Title": "Switch between your observing sites",
@@ -244,7 +254,7 @@
     "step4Alt": "Planner header showing a Fair score, Waxing Gibbous moon at 61% illuminated, and a Plan my night button",
     "step4Caption": "Planner → Conditions",
     "step5Title": "Let Plan my night fill the gaps",
-    "step5Body": "Plan my night builds a schedule from your targets. It reads the hourly forecast, leaves cloudy slots empty and says which, and puts small targets in the steadiest air. It suggests the filter with the most time left that the Moon allows, and favours objects with time left toward their goals. You can mark any block broadband or narrowband. Objects you can only image in narrowband count as narrowband only when your Gear lists a dual-band, tri-band or narrowband filter. Turn the weather check off in the Plan my night dialog if you want a plan that ignores clouds.",
+    "step5Body": "Plan my night builds a schedule from your targets. It reads the hourly forecast, leaves cloudy slots empty and says which, and puts small targets in the steadiest air. It suggests the filter with the most time left that the Moon allows, and favors objects with time left toward their goals. You can mark any block broadband or narrowband. Objects you can only image in narrowband count as narrowband only when your Gear lists a dual-band, tri-band or narrowband filter. Turn the weather check off in the Plan my night dialog if you want a plan that ignores clouds.",
     "step5Alt": "The Plan my night dialog, with the weather option and the proposed blocks, each with a suggested filter",
     "step5Caption": "Planner → Plan my night",
     "step6Title": "Compare the plan with what you shot",
@@ -279,7 +289,7 @@
     "step2Alt": "A category page of object cards, each marked as up tonight or not, and with a note on how it fits the frame",
     "step2Caption": "Explore → Category",
     "step3Title": "Wishlist it or plan it",
-    "step3Body": "Add an object to your wishlist, plan it for tonight, or open Plan a night to pick from the next 30 nights. The Wishlist page's Add target button opens Explore, and Explore and Wishlist cards link back to the Planner. If you don't use Explore, hide its tab under Settings → General → Navigation bar.",
+    "step3Body": "Add an object to your wishlist, plan it for tonight, or open Plan a night to pick from the next 30 nights. Your wishlist is the second tab on Explore, and Explore cards link back to the Planner. If you don't use Explore, hide it under Settings → General → Navigation bar.",
     "step3Alt": "An Explore card with the wishlist, Plan tonight and Plan a night buttons",
     "step3Caption": "Explore → Add or plan",
     "note": "Explore judges visibility from the observing site shown in its banner and framing from your telescope's field of view. Set both up under Settings → Sky and Settings → Telescopes first. If you have more than one site, switch between them in the banner."
@@ -288,7 +298,7 @@
     "title": "Catalogs",
     "lead": "Track your progress through classic observing programs, and research your next target.",
     "step1Title": "Pick a catalog to work through",
-    "step1Body": "Catalogs opens on a scoreboard: how many unique objects you've imaged across every catalog combined, then a card for each one, Messier, Caldwell, Herschel 400, Sharpless, with its imaged percentage and a breakdown by galaxies, nebulae, clusters, and other. Open a board to start working through it.",
+    "step1Body": "Catalogs opens on a scoreboard of everything you've imaged. It shows how many unique objects you've imaged across every catalog combined, then a card for each one, Messier, Caldwell, Herschel 400, Sharpless, with its imaged percentage and a breakdown by galaxies, nebulae, clusters, and other. Open a board to start working through it.",
     "step1Alt": "Catalogs landing page showing overall progress and catalog cards for Messier, Caldwell, Herschel 400, and Sharpless with imaged percentages",
     "step1Caption": "Catalogs → Overview",
     "step2Title": "Browse a catalog and see what you still need",
@@ -296,7 +306,7 @@
     "step2Alt": "Messier catalog board showing progress bars by object type and a grid of objects with checkmarks and session counts on imaged ones",
     "step2Caption": "Catalogs → Browse a board",
     "step3Title": "Look up an object before you shoot it",
-    "step3Body": "Click any entry to open a quick-reference card: type, constellation, magnitude, coordinates, a description with a Wikipedia link, and a bar chart of its maximum altitude for each of the next 12 months so you know which season suits it best.",
+    "step3Body": "Click any entry to open a quick-reference card. It shows type, constellation, magnitude, coordinates, a description with a Wikipedia link, and a bar chart of its maximum altitude for each of the next 12 months so you know which season suits it best.",
     "step3Alt": "M16 Eagle Nebula quick reference card showing a description, Wikipedia link, and a monthly max-altitude bar chart with Feb through Oct highlighted as the best window",
     "step3Caption": "Catalogs → Object reference",
     "step4Title": "Jump straight to observing or planning it",
@@ -317,7 +327,7 @@
     "title": "Settings",
     "lead": "Configure your app, manage storage, connect devices, and control your Nebulis experience.",
     "step1Title": "Find your way around",
-    "step1Body": "The search box at the top finds any setting by name and jumps to it. Press / to focus it. The sidebar is grouped under Equipment, System and Advanced, and only the page you are on stays open. Settings → General covers the look and feel of the app: Light, Dark, Space, or Night theme, which menu items show in the top bar (Explore, Wishlist, Calibrations and others can be hidden), measurement units, and Compact page banners, which starts every page with its banner folded.",
+    "step1Body": "The search box at the top finds any setting by name and jumps to it. Press / to focus it. The sidebar is grouped under Equipment, System and Advanced, and only the page you are on stays open. Settings → General covers the look and feel of the app: Light, Dark, Space, or Night theme, which menu items show in the top bar (Explore, Calibrations and others can be hidden), measurement units, and Compact page banners, which starts every page with its banner folded.",
     "step1Alt": "Settings with the search box at the top, the grouped sidebar, and the General pane showing themes and navigation bar toggles",
     "step1Caption": "Settings → General",
     "step2Title": "Manage your account and connected devices",
@@ -345,7 +355,7 @@
     "step7Alt": "Advanced settings showing theme options, data management, and expert controls",
     "step7Caption": "Settings → Advanced",
     "step8Title": "Tune how the Library works",
-    "step8Body": "Settings → Library holds the options behind several 2.2 features: the default Object pages layout (Combined or Classic), Analyze frames after import, which measures new nights in the background, plate solving of stacked pictures for Annotate, Credit objects in the same frame, and Filter aliases, which merge filter names that differ between telescopes (Ha, H-alpha and H).",
+    "step8Body": "Settings → Library holds the options behind several 2.2 features. They are the default Object pages layout (Combined or Classic), Analyze frames after import, which measures new nights in the background, plate solving of stacked pictures for Annotate, Credit objects in the same frame, and Filter aliases, which merge filter names that differ between telescopes (Ha, H-alpha and H).",
     "step8Alt": "Settings → Library, showing the Object pages choice, the frame analysis and plate solving switches, and Filter aliases",
     "step8Caption": "Settings → Library",
     "step9Title": "Send alerts to your phone or chat",
@@ -358,11 +368,11 @@
     "title": "Frame quality and stacking",
     "lead": "See which raw frames are worth keeping, then hand the best ones to PixInsight or Siril with the right calibration frames.",
     "step1Title": "Open a night's Sub-frames list",
-    "step1Body": "Open an observation page and look at its Sub-frames list. Opening a night measures it in the background and keeps the results. Every frame gets a score from 0 to 100 and a Good, Fair or Bad grade against the rest of its night, with flags for clouds, star trails, soft stars, satellite or plane streaks, no stars and noise. To measure new nights as soon as they import, turn on Analyze frames after import under Settings → Library.",
+    "step1Body": "Open an observation page and look at its Sub-frames list. Opening a night measures it in the background and keeps the results. Every frame gets a score from 0 to 100 and a Good, Fair or Bad grade: 100 is as good as this night gets, or as the object's better nights with the same filter, exposure and telescope when they have been measured too. Flags point out clouds, a faint frame, stretched stars, soft stars, satellite or plane streaks, shadows on the sensor, no stars and noise. To measure new nights as soon as they import, turn on Analyze frames after import under Settings → Library.",
     "step1Alt": "A night's Sub-frames list with a score, grade and flags for each raw frame",
     "step1Caption": "Observation → Sub-frames",
     "step2Title": "Sort, scan and preview",
-    "step2Body": "Sort any column. The strip above the list shows the whole night and names the longest gap. Turn on Flagged only to hide the good frames, and rest on a row for a larger preview with every reason in words.",
+    "step2Body": "Sort any column. Width is the stars' FWHM in pixels, Elong. how much longer than wide they are (1.00 is round), Signal how far the brightest stars rise above the noise, and Object how plainly the photographed object shows: its brighter part over the sky around it, in units of the sky's noise. Under 1 the object cannot be seen in a single frame, 1–3 barely, 3–10 clearly, over 10 plainly, and stacking N frames multiplies it by about √N. The strip above the list shows the whole night and names the longest gap. Turn on Flagged only to hide the good frames, and rest on a row for a larger preview with every reason in words.",
     "step2Alt": "The night strip above the Sub-frames list, with a preview open on a flagged frame",
     "step2Caption": "Sub-frames → Strip and preview",
     "step3Title": "Keep, reject or discard",
@@ -414,7 +424,7 @@
     "step3Body": "With the rings showing, Download and Share ask whether to keep the original or save a JPEG with the rings drawn in.",
     "step3Alt": "The Download dialog asking whether to keep the original or save a JPEG with the rings",
     "step3Caption": "Viewer → Download",
-    "note": "Annotate is in the web app now. It comes to the iPhone, iPad and Android apps in their 2.1.0 release."
+    "note": "Annotate is in the web app now. Update the iPhone, iPad and Android apps to get it there too."
   },
   "alerts": {
     "title": "Alerts",
@@ -428,7 +438,7 @@
     "step2Alt": "A channel's event switches and the clear-night time",
     "step2Caption": "Alerts → Events",
     "step3Title": "Push to iPhones",
-    "step3Body": "iPhone push needs the iPhone app's 2.1.0 release, which is coming soon. It goes through a small Nebulis relay that stores nothing. Turn on Alerts from this server, then pick what each phone gets under Settings → Alerts → iPhones. Each iPhone can add a Tonight's plan line or a Dew risk warning to its alert.",
+    "step3Body": "iPhone push needs the latest iPhone app. It goes through a small Nebulis relay that stores nothing. Turn on Alerts from this server, then pick what each phone gets under Settings → Alerts → iPhones. Each iPhone can add a Tonight's plan line or a Dew risk warning to its alert.",
     "step3Alt": "The iPhones list in Settings → Alerts, with the extra lines each phone can add",
     "step3Caption": "Alerts → iPhones"
   },
@@ -656,7 +666,7 @@
     "step4Body": "Every phone, tablet, and TV you've linked shows up under Settings → Account → Devices. Each one carries its own sign-in token, so revoking a device here cuts its access immediately without touching anyone else's.",
     "step4Alt": "Settings → Account → Devices, with a Connect a device button and an empty device list",
     "step4Caption": "Settings → Account → Devices",
-    "note": "Annotate, iPhone push alerts and photos of your observing sites arrive in the iPhone and iPad app's 2.1.0 release, and Annotate in the Android app's too."
+    "note": "Annotate, iPhone push alerts and photos of your observing sites are in the latest iPhone and iPad app, and Annotate is in the latest Android app too."
   },
   "pixinsight": {
     "title": "PixInsight integration",
@@ -709,7 +719,7 @@
     "screenshotSuffix": "screenshot",
     "planner": {
       "title": "Planner, redesigned around picking a night",
-      "lead": "See two weeks at a glance.",
+      "lead": "See two weeks in one view.",
       "description": "A two-week strip shows each night's forecast rating, Moon phase, and whether you already have a plan. The schedule reads the weather forecast hour by hour, with a twilight gradient and a line marking the current time."
     },
     "forecast": {
@@ -766,6 +776,8 @@
     "done": "Done",
     "screenshotSuffix": "screenshot",
     "viewFullSize": "View full size: {{title}}",
+    "previous": "Previous screenshot",
+    "next": "Next screenshot",
     "explore": {
       "title": "Explore",
       "lead": "Find your next target.",
@@ -789,7 +801,9 @@
     "myMedia": {
       "title": "Combined object page",
       "lead": "Every picture of an object, on one page.",
-      "description": "Pictures, sub-frames, nights and project files on one page, in tabs, with no digging through observations."
+      "description": "Pictures, sub-frames, nights and project files on one page, in tabs, with no digging through observations.",
+      "shotObject": "Object page",
+      "shotObservation": "Observation page"
     },
     "integration": {
       "title": "Integration by filter",
@@ -799,7 +813,7 @@
     "planMyNight": {
       "title": "Smarter Plan My Night",
       "lead": "Plans around the weather.",
-      "description": "Plan My Night reads the hourly forecast and skips cloudy hours, suggests a filter for each block, and favours objects with time left toward their goals."
+      "description": "Plan My Night reads the hourly forecast and skips cloudy hours, suggests a filter for each block, and favors objects with time left toward their goals."
     },
     "mosaic": {
       "title": "Mosaic layout",

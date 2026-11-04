@@ -82,29 +82,17 @@ describe('getNightWindow', () => {
     const summerDate = new Date('2024-06-21T00:00:00Z');
     const nw = getNightWindow(summerDate, LAT, LON);
     // In summer, nights are shorter but should still exist at 40°N
-    expect(nw.nightStart).not.toBeNull();
-    expect(nw.nightEnd).not.toBeNull();
-    if (nw.nightStart && nw.nightEnd) {
-      const durationMs = nw.nightEnd.getTime() - nw.nightStart.getTime();
-      const durationHours = durationMs / 3600000;
-      // Summer night at 40°N: roughly 4-8 hours of astronomical darkness
-      expect(durationHours).toBeGreaterThan(2);
-      expect(durationHours).toBeLessThan(12);
-    }
+    // Short night: dusk 02:38Z, dawn 07:19Z, about 4.7 h of astronomical darkness.
+    expect(nw.nightStart?.toISOString().slice(0, 16)).toBe('2024-06-21T02:38');
+    expect(nw.nightEnd?.toISOString().slice(0, 16)).toBe('2024-06-21T07:19');
   });
 
   it('works for a winter date (longer night at northern latitudes)', () => {
     const winterDate = new Date('2024-12-21T00:00:00Z');
     const nw = getNightWindow(winterDate, LAT, LON);
-    expect(nw.nightStart).not.toBeNull();
-    expect(nw.nightEnd).not.toBeNull();
-    if (nw.nightStart && nw.nightEnd) {
-      const durationMs = nw.nightEnd.getTime() - nw.nightStart.getTime();
-      const durationHours = durationMs / 3600000;
-      // Winter night at 40°N: roughly 10-15 hours of astronomical darkness
-      expect(durationHours).toBeGreaterThan(8);
-      expect(durationHours).toBeLessThan(18);
-    }
+    // Long night: dusk 23:11Z the day before, dawn 10:39Z, about 11.5 h of astronomical darkness.
+    expect(nw.nightStart?.toISOString().slice(0, 16)).toBe('2024-12-20T23:11');
+    expect(nw.nightEnd?.toISOString().slice(0, 16)).toBe('2024-12-21T10:39');
   });
 
   it('returns non-null for typical mid-latitude locations', () => {

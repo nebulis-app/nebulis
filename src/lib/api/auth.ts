@@ -50,11 +50,13 @@ export const updateUserRole = (id: string, role: UserRole) =>
 export const updateUserProfile = (id: string, data: { displayName: string; email: string }) =>
   fetchJSON<AppUser[]>(`/auth/users/${id}/profile`, { method: 'PUT', body: JSON.stringify(data) });
 
-// Watermark presets (per-user, stored server-side)
+// Watermark presets (per-user, stored server-side). Mirrors
+// server/lib/userPreferences.ts's WatermarkPresetSchema, kept in sync manually.
 export interface WatermarkPreset {
   id: string;
   name: string;
   text: string;
+  /** Preview-canvas pixels. Written for compatibility; `sizePct` wins when present. */
   fontSize: number;
   fontFamily: string;
   color: string;
@@ -63,6 +65,11 @@ export interface WatermarkPreset {
   opacity: number;
   align: 'left' | 'center' | 'right';
   angle: number;
+  /** Font size as a fraction of the rendered picture height. Absent on presets saved before this field. */
+  sizePct?: number;
+  /** 0–1 anchor on the rendered canvas. Absent on presets saved before this field. */
+  x?: number;
+  y?: number;
 }
 
 export const getWatermarkPresets = () =>
@@ -78,6 +85,14 @@ export const saveWatermarkPresets = (presets: WatermarkPreset[]) =>
  *  when they've never seen it, which is true on first login. */
 export const getLastSeenVersion = () =>
   fetchJSON<{ lastSeenVersion: string | null }>('/preferences/last-seen-version');
+
+/** When this user dismissed the "Enjoying Nebulis?" ask (ISO instant), or null if they have not. */
+export const getSupportAskSeen = () =>
+  fetchJSON<{ seenAt: string | null }>('/preferences/support-ask');
+
+/** Record that the support ask was seen. The first call keeps its date. */
+export const setSupportAskSeen = () =>
+  fetchJSON<{ seenAt: string }>('/preferences/support-ask', { method: 'PUT' });
 
 /** Mark `version` as acknowledged for this user. Called when they click
  *  "Got it" on the What's New popup. */

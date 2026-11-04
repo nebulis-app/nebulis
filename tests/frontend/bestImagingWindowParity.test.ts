@@ -7,6 +7,7 @@ import {
   computeBestImagingWindow as serverCompute,
   isUpTonight as serverIsUpTonight,
 } from '../../server/lib/bestImagingWindow';
+import { lookupTimeZoneForCoordinates } from '../../server/lib/observerTimezone';
 
 /**
  * Cross-implementation parity test.
@@ -47,7 +48,7 @@ describe('computeBestImagingWindow client port matches server implementation', (
     for (const { ra, dec, lat, lon, minAlt } of cases) {
       vi.useFakeTimers();
       vi.setSystemTime(REFERENCE_DATE);
-      const client = clientCompute(ra, dec, lat, lon, minAlt);
+      const client = clientCompute(ra, dec, lat, lon, minAlt, lookupTimeZoneForCoordinates(lat, lon) ?? undefined);
       vi.useRealTimers();
 
       const server = serverCompute(ra, dec, lat, lon, minAlt, REFERENCE_DATE);
@@ -65,7 +66,7 @@ describe('computeBestImagingWindow client port matches server implementation', (
 
     vi.useFakeTimers();
     vi.setSystemTime(other);
-    const client = clientCompute(ra, dec, lat, lon, minAlt);
+    const client = clientCompute(ra, dec, lat, lon, minAlt, lookupTimeZoneForCoordinates(lat, lon) ?? undefined);
     vi.useRealTimers();
 
     const server = serverCompute(ra, dec, lat, lon, minAlt, other);
@@ -77,40 +78,39 @@ describe('computeBestImagingWindow client port matches server implementation', (
 });
 
 describe('isUpTonight client port matches server implementation', () => {
-  // Both sides anchor "tonight" on the local wall clock with a 07:00 rollover
-  // (plannerToday() in src/lib/nightWindow.ts; a matching anchor in
-  // server/lib/bestImagingWindow.ts) rather than on `now`'s own calendar day.
-  // A previous version of the server port skipped that rollover entirely, so
-  // a call placed between midnight and 07:00 asked about the *next* evening's
-  // window instead of the one still running, and could answer differently
-  // than the client for the same instant. This target/night genuinely flips
-  // across that boundary (confirmed by direct search), so it actually
-  // exercises the bug rather than happening to agree either way.
+  // Both sides anchor "tonight" on the SITE's wall clock with a 07:00 rollover
+  // (plannerToday(now, timeZone) in src/lib/nightWindow.ts; observingNightAnchor
+  // in server/lib/bestImagingWindow.ts, with the zone looked up from the
+  // coordinates). They used to read the machine's own clock instead, so a
+  // server in UTC (Docker) rolled over at 02:00 in New York and asked about the
+  // wrong night until dawn. The instants below are written in UTC and mean
+  // New York wall-clock times, so the result cannot depend on the test
+  // machine's zone. This target/night genuinely flips across the boundary
+  // (confirmed by direct search), so it exercises the rollover rather than
+  // happening to agree either way.
   const RA = 10.6, DEC = 15, LAT = 40.7128, LON = -74.006, MIN_ALT = 60;
+  const NYC = 'America/New_York';
+  const client = (now: Date) => clientIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, now, NYC);
+  const server = (now: Date) => serverIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, now);
 
   it('agrees for a call in the early hours, still inside the previous evening\'s window', () => {
-    const at2am = new Date(2025, 10, 22, 2, 0, 0); // Nov 22, 02:00 local
-    expect(clientIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, at2am))
-      .toBe(serverIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, at2am));
+    const at2am = new Date('2025-11-22T07:00:00Z'); // Nov 22, 02:00 EST
+    expect(client(at2am)).toBe(server(at2am));
   });
 
   it('agrees right at the 07:00 rollover boundary, on both sides of it', () => {
-    const justBefore = new Date(2025, 10, 22, 6, 59, 0);
-    const justAfter = new Date(2025, 10, 22, 7, 0, 0);
+    const justBefore = new Date('2025-11-22T11:59:00Z'); // 06:59 EST
+    const justAfter = new Date('2025-11-22T12:00:00Z');  // 07:00 EST
 
-    expect(clientIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, justBefore))
-      .toBe(serverIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, justBefore));
-    expect(clientIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, justAfter))
-      .toBe(serverIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, justAfter));
+    expect(client(justBefore)).toBe(server(justBefore));
+    expect(client(justAfter)).toBe(server(justAfter));
     // And the rollover actually changes the answer for this fixture, so the
     // test above is not vacuously true.
-    expect(clientIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, justBefore))
-      .not.toBe(clientIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, justAfter));
+    expect(client(justBefore)).not.toBe(client(justAfter));
   });
 
   it('agrees during the evening, well away from the rollover', () => {
-    const evening = new Date(2025, 10, 21, 20, 0, 0);
-    expect(clientIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, evening))
-      .toBe(serverIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, evening));
+    const evening = new Date('2025-11-22T01:00:00Z'); // Nov 21, 20:00 EST
+    expect(client(evening)).toBe(server(evening));
   });
 });

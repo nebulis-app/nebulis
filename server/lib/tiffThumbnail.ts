@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import sharp from './sharp-optional.js';
+import { assertSafeRaster } from './imageSniff.js';
 import { computeAutoStretch, applyStretch } from './mtfStretch.js';
 
 // Bumped when the rendering pipeline changes so stale thumbnails regenerate.
@@ -40,8 +41,10 @@ export function tiffThumbnailPath(tiffPath: string, tier: TiffThumbnailTier = 't
 export async function generateTiffThumbnail(
   tiffPath: string,
   tier: TiffThumbnailTier = 'thumb',
+  /** Write here instead of beside the source. Set for a linked file, which Nebulis must never write next to. */
+  thumbPathOverride?: string,
 ): Promise<void> {
-  const thumbPath = tiffThumbnailPath(tiffPath, tier);
+  const thumbPath = thumbPathOverride ?? tiffThumbnailPath(tiffPath, tier);
   if (fs.existsSync(thumbPath)) return;
 
   fs.mkdirSync(path.dirname(thumbPath), { recursive: true });
@@ -58,6 +61,7 @@ export async function generateTiffThumbnail(
     } else {
       // Not the linear-float shape this module exists for (e.g. an ordinary
       // 8-bit TIFF) — sharp's normal path has no clipping problem for those.
+      await assertSafeRaster(tiffPath);
       await sharp(tiffPath)
         .resize(size, size, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 85 })

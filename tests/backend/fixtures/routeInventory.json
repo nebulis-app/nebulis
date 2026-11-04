@@ -1568,6 +1568,29 @@
     ]
   },
   {
+    "method": "GET",
+    "path": "/library/redirects",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/library/redirects/:designation",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/library/redirects/:designation",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
     "method": "DELETE",
     "path": "/library/sample-object",
     "guards": [
@@ -1724,6 +1747,29 @@
     "method": "GET",
     "path": "/notes/object/:objectId/:date",
     "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/object-notes/:objectId",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/object-notes/:objectId",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/object-notes/:objectId",
+    "guards": [
+      "requireAdmin",
       "<anonymous>"
     ]
   },
@@ -1887,6 +1933,20 @@
   {
     "method": "PUT",
     "path": "/preferences/last-seen-version",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/preferences/support-ask",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/preferences/support-ask",
     "guards": [
       "<anonymous>"
     ]
@@ -2651,6 +2711,14 @@
     ]
   },
   {
+    "method": "PUT",
+    "path": "/telescopes/:id/rig",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
     "method": "GET",
     "path": "/telescopes/:id/transports",
     "guards": [
@@ -2694,6 +2762,7 @@
     "method": "GET",
     "path": "/telescopes/drives",
     "guards": [
+      "requireAdmin",
       "<anonymous>"
     ]
   },

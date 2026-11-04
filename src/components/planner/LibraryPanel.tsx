@@ -227,21 +227,13 @@ export function LibraryPanel({
       // that merely contain the text (NGC3900).
       return deferredQuery ? rankTargets(matched, deferredQuery) : matched;
     }
-    // Default view: already-imaged + top "popular" by best-tonight.
-    // "Popular" = has at least one human-friendly common name (Messier, named
-    // galaxies, well-known NGC/IC). Cap at POPULAR_LIMIT so the DOM stays light.
-    const seen = new Set<string>();
+    // Default view: the best-ranked "popular" targets, in the chosen order. "Popular" = has at least one
+    // human-friendly common name (Messier, named galaxies, well-known NGC/IC). Imaged objects get no
+    // special place: they rank like any other and keep their tick, and search finds the rest.
     const out: PlannerTarget[] = [];
-    const push = (t: PlannerTarget) => { if (!seen.has(t.id)) { seen.add(t.id); out.push(t); } };
-
-    // Already-imaged objects are always relevant, so pin them at the top.
-    for (const t of sortedTargets) if (t.isAlreadyImaged) push(t);
-
-    // Then fill with popular objects in the chosen order (Best tonight by default).
-    const popular = sortedTargets.filter(t => t.commonNames.length > 0);
-    for (const t of popular) {
+    for (const t of sortedTargets) {
       if (out.length >= POPULAR_LIMIT) break;
-      push(t);
+      if (t.commonNames.length > 0) out.push(t);
     }
     return out;
   }, [sortedTargets, filter, scope, deferredQuery, isNarrowing, wishlist.idSet, serverKeys]);
@@ -262,9 +254,8 @@ export function LibraryPanel({
     return filtered.filter(t => visibilityById.get(t.id) !== false);
   }, [filtered, visibilityById, hideBlocked]);
 
-  // Cap rendered rows to keep the DOM light even on broad filters. Pinned
-  // already-imaged rows are kept in the default view by construction; in
-  // narrowed mode the cap is purely a soft limit.
+  // Cap rendered rows to keep the DOM light even on broad filters. In narrowed mode
+  // the cap is purely a soft limit.
   // Ordering runs before the cap, so a varied mix decides which rows survive it
   // rather than only reshuffling the ones that did. variedMix is a permutation,
   // so hiddenCount below is unaffected.

@@ -15,6 +15,9 @@ const TEST_DATA_DIR = vi.hoisted(() => {
   return dir;
 });
 
+// The pipeline's stages reach the network (catalog enrichment, weather).
+vi.mock('../../server/lib/library/postImport', () => ({ runPostImport: vi.fn() }));
+
 import fs from 'fs';
 import path from 'path';
 import { apiEnvelope } from '../../server/middleware/apiEnvelope';

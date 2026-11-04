@@ -27,6 +27,7 @@
  * NOT import this module, so there is no cycle.
  */
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import db from './db.js';
@@ -41,6 +42,9 @@ import {
   invalidateNetworkLibraryReachability,
 } from './libraryNetwork.js';
 import { parseJsonRecord } from './typeGuards.js';
+import { listVolumes } from './volumes.js';
+import { isLibraryMigrating } from './libraryMaintenance.js';
+import { locateLibrary, RETIRED_MARKER_FILENAME } from './libraryLocator.js';
 
 export const MARKER_FILENAME = '.nebulis-library.json';
 
@@ -52,6 +56,9 @@ export interface LibraryMarker {
   createdAt?: string;
   appVersion?: string;
   note?: string;
+  /** Set when "Use an existing library" stamped this marker onto a folder that had none. The folder was the user's, not
+   *  something Nebulis created, so a database reset must never delete it. */
+  adoptedUnverified?: boolean;
 }
 
 /** Thrown by ensureLibraryDir() when a relocated library is not reachable. */
@@ -218,13 +225,14 @@ export async function statLibraryFileForServe(absPath: string): Promise<fs.Stats
 function parseMarker(text: string): LibraryMarker | null {
   const parsed = parseJsonRecord(text);
   if (!parsed) return null;
-  const { libraryId, createdAt, appVersion, note } = parsed;
+  const { libraryId, createdAt, appVersion, note, adoptedUnverified } = parsed;
   if (typeof libraryId !== 'string' || libraryId.length === 0) return null;
   return {
     libraryId,
     createdAt: typeof createdAt === 'string' ? createdAt : undefined,
     appVersion: typeof appVersion === 'string' ? appVersion : undefined,
     note: typeof note === 'string' ? note : undefined,
+    adoptedUnverified: adoptedUnverified === true ? true : undefined,
   };
 }
 
@@ -380,6 +388,32 @@ function readAppVersion(): string {
   }
 }
 
+/**
+ * Whether a database reset may recursively delete this library folder.
+ *
+ * "Use an existing library" accepts any non-empty folder and stamps a marker onto it, so a matching marker alone does
+ * not prove Nebulis created the folder. Refused: a folder adopted without a marker of its own, a filesystem or volume
+ * root, the user's home folder, and anything that holds the home folder or the data directory.
+ */
+export function canRemoveLibraryTree(dir: string, protectedDirs: string[] = [os.homedir(), DATA_DIR]): { ok: true } | { ok: false; reason: string } {
+  const resolved = path.resolve(dir);
+  if (path.parse(resolved).root === resolved) return { ok: false, reason: 'it is a filesystem root' };
+  if (/^\/(Volumes|mnt|media)\/[^/]+$|^\/(run\/media|media)\/[^/]+\/[^/]+$/.test(resolved)) {
+    return { ok: false, reason: 'it is the top of a drive' };
+  }
+  for (const guarded of protectedDirs) {
+    const g = path.resolve(guarded);
+    const rel = path.relative(resolved, g);
+    if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) {
+      return { ok: false, reason: 'it is, or contains, your home or data folder' };
+    }
+  }
+  if (readMarker(resolved)?.adoptedUnverified) {
+    return { ok: false, reason: 'it was adopted from an existing folder, so Nebulis cannot tell which files are its own' };
+  }
+  return { ok: true };
+}
+
 /** Read and parse the marker at a directory, or null if absent/invalid. */
 export function readMarker(dir: string): LibraryMarker | null {
   try {
@@ -389,13 +423,33 @@ export function readMarker(dir: string): LibraryMarker | null {
   }
 }
 
+/**
+ * Leave a note beside a library folder that was moved elsewhere. The move copies the library and keeps the old one, with
+ * its marker, so without a note the old folder looks like the library to anything searching for it by ID.
+ * Best-effort: a drive that will not take a small file is not a reason to fail a move that already succeeded.
+ */
+export function retireLibraryCopy(dir: string, movedTo: string): void {
+  try {
+    fs.writeFileSync(
+      path.join(dir, RETIRED_MARKER_FILENAME),
+      JSON.stringify({ libraryId: getLibraryId(), movedTo, movedAt: new Date().toISOString(), note: 'This library was moved. This folder is an old copy and can be removed.' }, null, 2),
+      'utf8',
+    );
+  } catch {
+    // Informational only.
+  }
+}
+
 /** Write (or refresh) the marker file at a library directory. */
-export function writeMarker(dir: string, libraryId: string): void {
+export function writeMarker(dir: string, libraryId: string, opts: { adoptedUnverified?: boolean } = {}): void {
+  // A folder that becomes the library again (moved back to, or adopted) is no longer an old copy.
+  try { fs.rmSync(path.join(dir, RETIRED_MARKER_FILENAME), { force: true }); } catch { /* informational only */ }
   const marker: LibraryMarker = {
     libraryId,
     createdAt: new Date().toISOString(),
     appVersion: readAppVersion(),
     note: 'This folder holds your Nebulis astronomy library. Do not rename or delete files here.',
+    ...(opts.adoptedUnverified ? { adoptedUnverified: true } : {}),
   };
   fs.writeFileSync(path.join(dir, MARKER_FILENAME), JSON.stringify(marker, null, 2), 'utf8');
 }
@@ -461,9 +515,86 @@ export async function isLibraryAvailable(): Promise<boolean> {
   }
   if (isDefaultLocation()) return true;
   const dir = getLibraryDir();
-  if (!fs.existsSync(dir)) return false;
-  const marker = readMarker(dir);
-  return marker !== null && marker.libraryId === getLibraryId();
+  if (fs.existsSync(dir)) {
+    const marker = readMarker(dir);
+    if (marker !== null && marker.libraryId === getLibraryId()) return true;
+  }
+  // Not at the saved path. The drive may simply have come back somewhere else.
+  return recoverRelocatedLibrary();
+}
+
+// ─── Finding a library whose drive came back at a different path ────────────
+
+export interface LibraryRecovery {
+  /** The saved path that held nothing. */
+  from: string;
+  /** Where the library was found, and is now saved. */
+  to: string;
+  at: string;
+}
+
+let lastRecovery: LibraryRecovery | null = null;
+let lastRecoveryAttempt = 0;
+let recoveryInFlight: Promise<boolean> | null = null;
+/** `isLibraryAvailable` runs every minute and on every library write; the drives are not searched that often. */
+const RECOVERY_GAP_MS = 30_000;
+const RECOVERY_IO_TIMEOUT_MS = 3_000;
+
+/** The last time the library was found at a new path in this run of the server, for the Settings notice. */
+export function getLibraryRecovery(): LibraryRecovery | null {
+  return lastRecovery;
+}
+
+/**
+ * Look for our library by its marker on the mounted drives, and if exactly one folder holds it, make that the saved
+ * path. Called only when the saved path no longer holds the library, never while a move is running, and never for a
+ * pinned or network location. Saying nothing is always the safe answer: an unavailable library only pauses imports,
+ * while reconnecting to the wrong folder would start a second library.
+ */
+async function recoverRelocatedLibrary(): Promise<boolean> {
+  if (recoveryInFlight) return recoveryInFlight;
+  if (Date.now() - lastRecoveryAttempt < RECOVERY_GAP_MS) return false;
+  lastRecoveryAttempt = Date.now();
+  recoveryInFlight = (async () => {
+    try {
+      if (isLibraryMigrating()) return false;
+      const libraryId = getLibraryId();
+      if (!libraryId) return false;
+      const from = getLibraryDir();
+      const volumes = await listVolumes();
+      const result = await locateLibrary({
+        libraryId,
+        configuredPath: from,
+        volumeRoots: volumes.map(v => v.path),
+        readMarkerId: async dir => (await readMarkerAsync(dir, RECOVERY_IO_TIMEOUT_MS))?.libraryId ?? null,
+        isRetired: dir => withTimeout(fs.promises.access(path.join(dir, RETIRED_MARKER_FILENAME)), RECOVERY_IO_TIMEOUT_MS).then(() => true, () => false),
+        listDirs: async dir => (await withTimeout(fs.promises.readdir(dir, { withFileTypes: true }), RECOVERY_IO_TIMEOUT_MS))
+          .filter(e => e.isDirectory()).map(e => e.name),
+      });
+      if (result.status === 'ambiguous') {
+        console.warn(`[library] ${result.dirs.length} folders hold this library's marker (${result.dirs.join(', ')}); not reconnecting by guesswork.`);
+        return false;
+      }
+      if (result.status !== 'found') return false;
+      await setLibraryPath(result.dir);
+      lastRecovery = { from, to: result.dir, at: new Date().toISOString() };
+      console.log(`[library] The library drive came back at a different path. Reconnected: ${from} -> ${result.dir}`);
+      return true;
+    } catch (err) {
+      console.warn('[library] Looking for the library on the mounted drives failed:', err instanceof Error ? err.message : err);
+      return false;
+    } finally {
+      recoveryInFlight = null;
+    }
+  })();
+  return recoveryInFlight;
+}
+
+/** For tests: forget the throttle and any earlier recovery. */
+export function resetLibraryRecovery(): void {
+  lastRecovery = null;
+  lastRecoveryAttempt = 0;
+  recoveryInFlight = null;
 }
 
 /**
@@ -552,6 +683,8 @@ export interface LibraryLocationInfo {
   /** true when the `LIBRARY_DIR` env var pins the location: the UI should hide
    *  "Change location" / "Move" and show the path as fixed by the deployment. */
   pinned: boolean;
+  /** Set when the library's drive came back at a different path and Nebulis reconnected to it on its own. */
+  recovered: LibraryRecovery | null;
 }
 
 export async function getLibraryLocationInfo(): Promise<LibraryLocationInfo> {
@@ -572,6 +705,7 @@ export async function getLibraryLocationInfo(): Promise<LibraryLocationInfo> {
     },
     networkLibrarySupported: process.platform === 'win32' || process.platform === 'darwin',
     pinned: isLibraryPinned(),
+    recovered: lastRecovery,
   };
 }
 

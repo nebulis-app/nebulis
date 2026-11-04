@@ -961,3 +961,9 @@ html.space::before {
 @media (prefers-reduced-motion: reduce) {
   .image-editor-fade-in { animation: none; }
 }
+
+/* Leaflet panes and controls use z-index up to 1000. Without their own stacking
+   context they paint over modals that open above a map. */
+.leaflet-container {
+  isolation: isolate;
+}

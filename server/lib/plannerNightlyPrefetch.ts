@@ -15,10 +15,10 @@ import { getPlannerCatalog } from './dsoCatalog.js';
 import { getNightWindow, visibilityWindow } from './astroCalc.js';
 import { getSettingsData, updateSettingsData } from './telescopes.js';
 import { getActiveSite } from './observingSites.js';
-import { findCachedMaster, prewarmThumbnails } from './catalogPrefetch.js';
+import { findCachedMaster, fovForEntry, prewarmThumbnails } from './catalogPrefetch.js';
 import { prefetchSkyImage } from './skyImage.js';
 import { purgeJunkFiles, purgeStaleImportTmp, pruneImportLog } from './library/housekeeping.js';
-import { prewarmSessionThumbnails } from './library/sessionThumbnailPrewarm.js';
+import { runPostImport } from './library/postImport.js';
 import { pruneSystemLog } from './systemLog.js';
 import { refreshForecastCache } from './forecastCache.js';
 import { checkAndUpdatePacks } from './catalogPack/updater.js';
@@ -145,9 +145,9 @@ async function runNightlyTasks(): Promise<void> {
   }
 
   try {
-    await prewarmSessionThumbnails('nightly');
+    await runPostImport({ reason: 'nightly' }).done;
   } catch (err) {
-    console.error('[nightly] Session thumbnail prewarm failed:', err instanceof Error ? err.message : err);
+    console.error('[nightly] Post-import sweep failed:', err instanceof Error ? err.message : err);
   }
 
   try {
@@ -215,6 +215,7 @@ export async function runPlannerNightlyPrefetch(): Promise<void> {
   console.log(`[planner-prefetch] ${visibleIds.length} objects visible tonight — warming thumbnails`);
   updateSettingsData({ plannerPrefetchLastRun: Date.now() });
 
+  const majorAxisById = new Map(catalog.map(e => [e.id, e.majorAxisArcmin]));
   let warmed = 0, skipped = 0, errors = 0;
   const CONCURRENCY = 3;
 
@@ -223,7 +224,9 @@ export async function runPlannerNightlyPrefetch(): Promise<void> {
       try {
         let master = findCachedMaster(id);
         if (!master) {
-          const fetched = await prefetchSkyImage(id);
+          // The field follows the object's size: without it every master comes back at the 1 degree default,
+          // and a small galaxy is a speck in the middle of it.
+          const fetched = await prefetchSkyImage(id, { fov: fovForEntry(majorAxisById.get(id) ?? null) });
           if (fetched) master = findCachedMaster(id);
         }
         if (master) {

@@ -12,7 +12,6 @@
     "observations": "Observations",
     "forecast": "Forecast",
     "planner": "Planner",
-    "wishlist": "Wishlist",
     "explore": "Explore",
     "catalogs": "Catalogs",
     "calibrations": "Calibrations",
@@ -30,25 +29,25 @@
   },
   "auth": {
     "title": "Sign in to Nebulis",
-    "subtitle": "Sign in to continue",
+    "subtitle": "Sign in with your account for this server. Your library stays on this machine.",
     "username": "Username",
-    "usernamePlaceholder": "e.g. astro_fan",
+    "usernamePlaceholder": "Your username",
     "password": "Password",
     "signIn": "Sign in",
     "signingIn": "Signing in…",
-    "loginFailed": "Login failed"
+    "loginFailed": "That username and password don't match. Try again."
   },
   "onboarding": {
     "usernameRequired": "Username is required",
     "usernameTooShort": "Username must be at least 3 characters",
     "passwordRequired": "Password is required",
-    "passwordTooShort": "Password must be at least 4 characters",
+    "passwordTooShort": "Use at least 6 characters.",
     "passwordMismatch": "Passwords do not match",
-    "createUserFailed": "Failed to create user",
+    "createUserFailed": "Could not create that account. Check the username is not taken, then try again.",
     "connectionTested_one": "Connected! Found {{count}} observation on the device.",
     "connectionTested_other": "Connected! Found {{count}} observations on the device.",
-    "connectionFailed": "Connection failed",
-    "saveSettingsFailed": "Failed to save settings"
+    "connectionFailed": "Could not reach that device. Check it is powered on and on the same network.",
+    "saveSettingsFailed": "Could not save your settings. Check the connection to the server, then try again."
   },
   "layout": {
     "skipToMainContent": "Skip to main content",
@@ -141,7 +140,14 @@
     "customPathPlaceholder": "Or paste a custom path...",
     "detected_one": "Detected {{count}} {{noun}} volume. Pick one or paste a custom path.",
     "detected_other": "Detected {{count}} {{noun}} volumes. Pick one or paste a custom path.",
-    "plugIn": "Plug the {{noun}} into this computer via USB and tap refresh."
+    "plugIn": "Plug the {{noun}} into this computer via USB and tap refresh.",
+    "driveSize": "{{size}}, {{free}} free",
+    "driveObjects_one": "{{count}} object folder",
+    "driveObjects_other": "{{count}} object folders",
+    "driveLatest": "latest {{date}}",
+    "notPaired": "Not paired yet",
+    "readOnly": "Read-only",
+    "readOnlyHint": "Nebulis cannot write to this drive, so it cannot mark it. It will be recognized by its path alone, which can swap when two telescopes are plugged in."
   },
   "dwarfLocalPathPicker": {
     "usbStoragePath": "Dwarf USB storage path",
@@ -179,6 +185,9 @@
     "willBeStoredIn": "Your library will be stored in <1>{{path}}</1>.",
     "folderCreatedAutomatically": "This folder is created automatically if it does not exist.",
     "moveLibraryHere": "Move library here",
+    "useLibraryHere": "Use this library",
+    "useExisting": "Use an existing library",
+    "useExistingHint": "For a backup or a library already in the folder. Nothing is copied.",
     "pickDriveToBegin": "Pick a drive to begin",
     "moveTo": "Move to <1>{{path}}</1>",
     "couldNotStartMove": "Could not start the move",
@@ -325,10 +334,29 @@
     "saving": "Saving…",
     "gotIt": "Got it"
   },
+  "supportAsk": {
+    "title": "Enjoying Nebulis?",
+    "body1": "Nebulis is free, and I intend to keep it that way. I build it in my spare time for people who share my love of the night sky.",
+    "body2": "My goal is to make Nebulis the best astronomical library and management platform available, giving astrophotographers and astronomy enthusiasts a place to organize, explore, and get the most out of their observations.",
+    "body3": "If Nebulis has been useful to you, you can support its continued development by buying me a coffee. It helps me dedicate more time to making Nebulis better, and it's always appreciated.",
+    "scan": "Scan the code with your phone, or use the button below.",
+    "qrAlt": "QR code for the Buy Me a Coffee page",
+    "button": "Buy me a coffee",
+    "close": "Close",
+    "freeNote": "Nebulis will always be free to use. The only exceptions are mobile apps distributed through app stores.",
+    "salutation": "Clear skies!",
+    "onlyOnce": "You'll only see this message once. You can always find it again under Settings → About."
+  },
   "errorBoundary": {
-    "title": "Something went wrong",
-    "description": "An unexpected error occurred. Refresh the page to continue.",
+    "title": "Nebulis hit an unexpected error",
+    "description": "Reload to pick up where you left off. Your library and settings are unchanged.",
     "reloadPage": "Reload page"
+  },
+  "routeError": {
+    "title": "This page hit a problem",
+    "description": "Something on this page failed to load. The rest of Nebulis still works.",
+    "tryAgain": "Try again",
+    "backToLibrary": "Back to Library"
   },
   "heroToggle": {
     "collapse": "Collapse banner",

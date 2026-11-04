@@ -22,6 +22,7 @@
     "apiKeys": "Claves de API",
     "alerts": "Alertas",
     "display": "Visualización",
+    "slideshow": "Presentación",
     "organization": "Organización",
     "processing": "Procesamiento",
     "maintenance": "Mantenimiento",
@@ -258,7 +259,7 @@
       "success": "Datos eliminados",
       "successDescription": "Tu configuración y cuentas se conservaron.",
       "close": "Cerrar",
-      "genericError": "El restablecimiento no terminó. Tus datos no se han modificado. Inténtalo de nuevo, o revisa el registro del sistema."
+      "genericError": "El restablecimiento no terminó. Es posible que ya se hayan borrado algunos datos. Revisa el registro del sistema antes de volver a intentarlo."
     }
   },
   "librarySection": {
@@ -282,19 +283,23 @@
         "media": "Combinada"
       },
       "slideshowShowInfo": {
-        "label": "Presentación: mostrar información del objeto",
+        "label": "Mostrar información del objeto",
         "description": "Muestra el nombre, tipo y distancia mientras se reproducen las imágenes."
       },
       "slideshowProcessedOnly": {
-        "label": "Presentación: empezar solo con imágenes procesadas",
+        "label": "Empezar solo con imágenes procesadas",
         "description": "La presentación se abre solo con imágenes procesadas; puedes cambiarlo en cualquier momento."
       }
+    },
+    "slideshow": {
+      "title": "Presentación",
+      "description": "Cómo muestra la presentación las imágenes y la información."
     },
     "imageBehavior": {
       "title": "Comportamiento de imagen",
       "rotate": {
         "label": "Rotar imágenes 90° en sentido antihorario",
-        "description": "Corrige telescopios que capturan con rotación, incluida la presentación de diapositivas."
+        "description": "Gira cada imagen de la presentación un cuarto de vuelta. Úsalo si tu telescopio guarda las imágenes de lado."
       }
     },
     "organization": {
@@ -369,7 +374,7 @@
     "upToDate_beta": "Tienes la última versión beta",
     "lastCheckFailed": "La última comprobación no se pudo completar: {{error}}",
     "checkFailed": "No se pudieron buscar actualizaciones.",
-    "updateStartFailed": "No se pudo iniciar la actualización.",
+    "updateStartFailed": "No se pudo iniciar la actualización. Revisa el registro del servidor e inténtalo de nuevo.",
     "autoUpdate": {
       "label": "Buscar actualizaciones automáticamente",
       "description": "Las actualizaciones se descargan en segundo plano para instalarse más rápido."
@@ -469,14 +474,15 @@
     "visitSource": "Visitar {{name}}",
     "freeApi": "API gratuita",
     "bundled": "Incluido",
-    "footerNote": "Todos los servicios externos son gratuitos y no necesitan claves de API. Los datos se solicitan cuando hacen falta y se guardan en caché siempre que es posible. Una petición solo lleva lo que el servicio necesita: las coordenadas de tu lugar de observación para el tiempo y la contaminación lumínica, y nombres de objetos para las búsquedas en el catálogo. Nunca se envían datos de cuenta, de uso ni imágenes.",
+    "footerNote": "Todos los servicios externos son gratuitos y no necesitan claves de API. Los datos se solicitan cuando hacen falta y se guardan en caché siempre que es posible. Una petición solo lleva lo que el servicio necesita: las coordenadas de tu lugar de observación para el tiempo, la contaminación lumínica y los nombres de lugar, y nombres de objetos para las búsquedas en el catálogo. Nunca se envían datos de cuenta, de uso ni imágenes.",
     "groups": {
       "astronomyDatabases": "Bases de datos astronómicas",
       "skyImages": "Imágenes del cielo",
       "weatherForecasting": "Clima y pronóstico",
       "satelliteTracking": "Seguimiento de satélites",
       "maps": "Mapas",
-      "lightPollution": "Contaminación lumínica"
+      "lightPollution": "Contaminación lumínica",
+      "nebulisServers": "Servidores de Nebulis"
     },
     "cache": {
       "bundledWithApp": "Incluido con la aplicación",
@@ -484,19 +490,24 @@
       "cached24h": "Almacenado en caché 24 horas"
     },
     "descriptions": {
-      "openngc": "Coordenadas, magnitudes y tipos de más de 3200 objetos de cielo profundo",
+      "openngc": "Nombres, posiciones, magnitudes y tipos de unos 12.000 objetos de cielo profundo",
       "sesame": "Búsqueda de nombres para objetos que faltan en el catálogo incluido",
       "simbad": "Detalles de tamaño y distancia para los objetos del catálogo",
       "hubbleCaldwell": "Imágenes del Hubble y texto para los 88 objetos Caldwell",
       "hips": "Imágenes del relevamiento DSS2 para cualquier coordenada que señales",
       "nasaImageLibrary": "Imágenes de respaldo para planetas, lunas y cometas",
       "wikipedia": "Resúmenes en lenguaje sencillo y miniaturas para los objetos",
-      "openMeteo": "Temperatura, humedad, nubosidad, viento y lluvia para tus sitios",
+      "openMeteo": "Previsión y tiempo pasado de tus lugares, más la búsqueda de lugares",
       "sevenTimer": "Pronósticos de seeing y transparencia para noches de fotografiado",
       "sunCalc": "Fase lunar, crepúsculo y posiciones del sol y la luna para tus sitios",
       "celestrak": "Elementos orbitales de satélites activos, usados en la comprobación de rastros",
       "esri": "Teselas de mapa para el visor de ubicaciones de observación",
-      "darkskysites": "Devuelve la clase Bortle de tu ubicación a partir del compuesto satelital VIIRS mensual. Nebulis envía las coordenadas del lugar de observación seleccionado y guarda la respuesta en caché durante 24 horas."
+      "darkskysites": "Devuelve la clase Bortle de tu ubicación a partir del compuesto satelital VIIRS mensual. Nebulis envía las coordenadas del lugar de observación seleccionado y guarda la respuesta en caché durante 24 horas.",
+      "sdss": "Imágenes del cielo de respaldo cuando no se puede acceder al sondeo DSS2. Cubre solo parte del cielo.",
+      "legacySurvey": "Segundo respaldo de imágenes del cielo donde SDSS no tiene cobertura. Cubre solo parte del cielo.",
+      "nominatim": "Convierte las coordenadas de tu lugar de observación en un nombre de lugar.",
+      "nebulisDownloads": "Paquetes de catálogo y actualizaciones de la app. Nebulis comprueba aquí si hay versiones nuevas y las descarga desde aquí.",
+      "nebulisPush": "Entrega las alertas al iPhone, solo si las activas."
     }
   },
   "siteManager": {
@@ -627,6 +638,11 @@
     "moveCompleteBefore": "Tu biblioteca ahora vive en",
     "moveCompleteAfter": "Abre algunas observaciones para confirmar que todo se ve bien. La copia antigua se dejó en su sitio y no se eliminó. Una vez que hayas verificado la nueva ubicación, puedes eliminar tú mismo la copia antigua en:",
     "gotIt": "Entendido",
+    "adopted": {
+      "title": "Biblioteca existente conectada",
+      "summary": "{{registered}} objeto(s) encontrados con archivos, {{retired}} movidos a la papelera porque su carpeta no está aquí, {{removed}} registro(s) de archivo eliminados porque el archivo no está aquí.",
+      "skipped": "No se ejecutó la limpieza: {{reason}}"
+    },
     "forgetModal": {
       "title": "Restablecer a la carpeta predeterminada",
       "subtitle": "Para cuando la unidad o ruta antigua ha desaparecido para siempre. No se mueven ni eliminan archivos.",
@@ -635,7 +651,8 @@
       "bodyAfter": "en su lugar. Nada de la ubicación antigua se copia. Haz esto solo si tus imágenes ya están en la carpeta predeterminada, o si planeas volver a importarlas.",
       "resetFailed": "No se pudo restablecer la ubicación",
       "cancel": "Cancelar",
-      "resetLocation": "Restablecer ubicación"
+      "resetLocation": "Restablecer ubicación",
+      "secondLibraryWarning": "Las nuevas importaciones irán a esa carpeta en el disco propio de este equipo. Si la unidad antigua vuelve más tarde, será una biblioteca aparte y las dos no se fusionarán por sí solas. Si la unidad solo está desconectada, vuelve a conectarla en su lugar."
     },
     "resetToDefaultModal": {
       "title": "Mover la biblioteca de vuelta al valor predeterminado",
@@ -656,7 +673,8 @@
       "filesProgress_one": "{{copied}} / {{count}} archivo",
       "filesProgress_other": "{{copied}} / {{count}} archivos",
       "keepDriveConnected": "Mantén esta unidad conectada. Las importaciones están en pausa hasta que termine el traslado."
-    }
+    },
+    "recoveredNotice": "La unidad de tu biblioteca volvió en otra ruta, así que Nebulis se reconectó por su cuenta. Estaba en {{from}} y ahora está en {{to}}."
   },
   "storageDashboard": {
     "title": "Almacenamiento",
@@ -918,6 +936,17 @@
     "mergeAddTo": "Añadir a {{name}}",
     "opticalConfigsTitle": "Configuraciones ópticas",
     "opticalConfigsHelp": "No se conoce un campo de visión fijo para este telescopio. Añade una entrada por cada configuración óptica que uses realmente (por ejemplo, \"Native\" y \"0.8x Reducer\") y elige cuál está montada ahora. La vista previa de Encuadre y Mosaico usa la que esté activa.",
+    "rigTitle": "Con qué fotografía",
+    "rigHelp": "Sirve para planificar cuántas horas necesita un objetivo, de modo que el plan solo nombre filtros que tienes. Separa los nombres de los filtros con comas.",
+    "rigSensor": "Cámara",
+    "rigSensorUnset": "Sin definir",
+    "rigSensorColor": "Color",
+    "rigSensorMono": "Mono",
+    "rigFilters": "Filtros que tienes",
+    "rigFiltersPlaceholder": "Ha, OIII, SII, L-eXtreme",
+    "rigAdd": "Añadir {{name}}",
+    "rigSave": "Guardar",
+    "rigSaved": "Guardado",
     "activeLabel": "ACTIVA",
     "opticalConfigSummary": "{{focal}}mm · {{width}}×{{height}}mm",
     "opticalConfigSummaryWithPixel": "{{focal}}mm · {{width}}×{{height}}mm · {{pixel}}µm px",
@@ -970,6 +999,7 @@
     "alerts": "Entérese cuando se acerca una noche despejada o termina una importación.",
     "libraryOrganization": "Cómo se nombran, agrupan y cuentan los objetos.",
     "libraryProcessing": "Qué hace Nebulis con los fotogramas una vez que llegan.",
+    "librarySlideshow": "Cómo se reproduce la presentación y qué muestra.",
     "maintenance": "Tareas que el servidor ejecuta por sí solo cada noche.",
     "catalogs": "Imágenes sin conexión y datos de satélites guardados en este servidor."
   },
@@ -1005,7 +1035,9 @@
     "cancel": "Cancelar",
     "saveLabel": "Guardar",
     "connectedFound_one": "Conectado. Se encontró {{count}} carpeta.",
-    "connectedFound_other": "Conectado. Se encontraron {{count}} carpetas."
+    "connectedFound_other": "Conectado. Se encontraron {{count}} carpetas.",
+    "pairThisDrive": "Emparejar esta unidad en su lugar",
+    "unmarkedNote": "Esa unidad USB es de solo lectura, así que Nebulis no pudo marcarla. Se reconoce solo por su ruta, que puede intercambiarse cuando hay dos telescopios conectados a la vez."
   },
   "settingsUI": {
     "moreInfoAriaLabel": "Más información: {{text}}"
@@ -1015,7 +1047,7 @@
     "dialogTitleAdd": "Añadir sitio de observación",
     "editTitle": "Editar sitio de observación",
     "addTitle": "Añadir sitio de observación",
-    "saveFailed": "Ese sitio no se pudo guardar.",
+    "saveFailed": "No se pudo guardar el sitio. Comprueba la conexión con el servidor e inténtalo de nuevo.",
     "nameLabel": "Nombre",
     "namePlaceholder": "p. ej. Patio trasero, sitio de cielo oscuro",
     "geolocationUnsupported": "Este navegador no admite la geolocalización.",
@@ -1049,7 +1081,14 @@
     "photosRemove": "Quitar foto",
     "photosOpen": "Abrir foto",
     "photosCaptionPlaceholder": "Añadir un pie de foto",
-    "photosUploadFailed": "No se pudo subir {{name}}: {{reason}}"
+    "photosUploadFailed": "No se pudo subir {{name}}: {{reason}}",
+    "imagingWindowLabel": "Ventana de captura",
+    "darknessLabel": "Empieza con",
+    "darknessAstronomical": "Noche astronómica (Sol a −18°)",
+    "darknessNautical": "Noche náutica (Sol a −12°)",
+    "startOffsetLabel": "Inicio, minutos tras el anochecer",
+    "endOffsetLabel": "Fin, minutos antes del amanecer",
+    "imagingWindowHelp": "Las horas que la página del tiempo, su puntuación y el aviso de noche despejada cuentan como esta noche. Los filtros de banda estrecha cortan casi todo el brillo del crepúsculo, así que la noche náutica suele bastar y empieza unos 35 minutos antes. Usa los minutos para empezar más tarde o parar antes del amanecer; un valor negativo mueve ese extremo en sentido contrario."
   },
   "enterCodeModal": {
     "title": "Vincular un Apple TV",
@@ -1061,17 +1100,6 @@
     "linkConfirm": "¿Vincular <1>{{name}}</1> a tu cuenta?",
     "pairingCodeAriaLabel": "Código de emparejamiento",
     "link": "Vincular"
-  },
-  "archiveBrowserModal": {
-    "ariaLabel": "Datos de calibración archivados",
-    "title": "Archivado desde {{name}}",
-    "subtitle": "Tomas de calibración sin otro sitio adonde ir: se conservan, nunca se modelan como objetos.",
-    "close": "Cerrar",
-    "loading": "Cargando…",
-    "nothingArchived": "Aún no hay nada archivado.",
-    "fileCount_one": "{{count}} archivo",
-    "fileCount_other": "{{count}} archivos",
-    "done": "Hecho"
   },
   "reassignTelescopeModal": {
     "ariaLabel": "Reasignar sesiones del telescopio",
@@ -1098,7 +1126,7 @@
     "connected": "{{name}} conectado",
     "connectedHelp": "Tu teléfono ha iniciado sesión y está listo.",
     "scanInstructions": "Abre Nebulis en tu teléfono, toca <1>Escanear QR</1> y apunta a este código. Se conecta e inicia sesión, sin necesidad de dirección IP.",
-    "generateFailed": "No se pudo generar un código.",
+    "generateFailed": "No se pudo generar un código de vinculación. Comprueba que el servidor sea accesible e inténtalo de nuevo.",
     "qrAlt": "Código QR de emparejamiento",
     "refreshing": "Actualizando…",
     "codeExpiredTapToRefresh": "Código caducado. Toca para actualizar.",
@@ -1117,7 +1145,7 @@
     "passwordTooShort": "Mín. 6 caracteres.",
     "passwordSavedNote": "Se guardará cuando guardes este formulario.",
     "resetPasswordButton": "Restablecer contraseña",
-    "saveFailed": "No se pudieron guardar los cambios.",
+    "saveFailed": "No se pudieron guardar tus cambios. Siguen en este formulario. Inténtalo de nuevo.",
     "resetPasswordConfirmTitle": "¿Restablecer contraseña?",
     "resetPasswordConfirmMessage": "Los dispositivos conectados de {{name}}, incluido cualquier Apple TV o teléfono emparejado, cerrarán sesión y deberán volver a emparejarse."
   },
@@ -1315,6 +1343,14 @@
     "loading": "Cargando...",
     "nothingArchived": "Todavía no se ha archivado nada.",
     "notInLibrary": "Ya no está en la biblioteca",
+    "willBeAdded": "No está en la biblioteca, se volverá a añadir",
+    "restoreAll_one": "Restaurar {{count}} objeto",
+    "restoreAll_other": "Restaurar {{count}} objetos",
+    "restoreAllProgress": "Restaurando {{done}} de {{total}}...",
+    "restoreAllConfirm_one": "¿Copiar del archivo a la biblioteca todo lo que falta de {{count}} objeto? Los objetos que la biblioteca ya no tiene se vuelven a añadir.",
+    "restoreAllConfirm_other": "¿Copiar del archivo a la biblioteca todo lo que falta de {{count}} objetos? Los objetos que la biblioteca ya no tiene se vuelven a añadir. Puede tardar un rato.",
+    "createdCount_one": "{{count}} objeto vuelto a añadir",
+    "createdCount_other": "{{count}} objetos vueltos a añadir",
     "missingLocally": "{{count}} faltan en local",
     "subframe": "toma individual",
     "presentLocally": "presente en local",

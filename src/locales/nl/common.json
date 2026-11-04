@@ -12,7 +12,6 @@
     "observations": "Waarnemingen",
     "forecast": "Weersverwachting",
     "planner": "Planner",
-    "wishlist": "Verlanglijst",
     "explore": "Verkennen",
     "catalogs": "Catalogi",
     "calibrations": "Kalibraties",
@@ -30,25 +29,25 @@
   },
   "auth": {
     "title": "Inloggen bij Nebulis",
-    "subtitle": "Log in om verder te gaan",
+    "subtitle": "Log in met je account voor deze server. Je bibliotheek blijft op deze computer.",
     "username": "Gebruikersnaam",
-    "usernamePlaceholder": "bijv. astro_fan",
+    "usernamePlaceholder": "Je gebruikersnaam",
     "password": "Wachtwoord",
     "signIn": "Inloggen",
     "signingIn": "Inloggen...",
-    "loginFailed": "Inloggen mislukt"
+    "loginFailed": "Die gebruikersnaam en dit wachtwoord komen niet overeen. Probeer het opnieuw."
   },
   "onboarding": {
     "usernameRequired": "Gebruikersnaam is verplicht",
     "usernameTooShort": "De gebruikersnaam moet minstens 3 tekens bevatten",
     "passwordRequired": "Wachtwoord is verplicht",
-    "passwordTooShort": "Het wachtwoord moet minstens 4 tekens bevatten",
+    "passwordTooShort": "Het wachtwoord moet minstens 6 tekens bevatten",
     "passwordMismatch": "De wachtwoorden komen niet overeen",
-    "createUserFailed": "De gebruiker kon niet worden aangemaakt",
+    "createUserFailed": "Dat account kon niet worden gemaakt. Controleer of de gebruikersnaam nog vrij is en probeer het opnieuw.",
     "connectionTested_one": "Verbonden! {{count}} waarneming gevonden op het apparaat.",
     "connectionTested_other": "Verbonden! {{count}} waarnemingen gevonden op het apparaat.",
-    "connectionFailed": "Verbinding mislukt",
-    "saveSettingsFailed": "De instellingen konden niet worden opgeslagen"
+    "connectionFailed": "Dat apparaat is niet bereikbaar. Controleer of het aanstaat en op hetzelfde netwerk zit.",
+    "saveSettingsFailed": "Je instellingen konden niet worden opgeslagen. Controleer de verbinding met de server en probeer het opnieuw."
   },
   "layout": {
     "skipToMainContent": "Ga naar de hoofdinhoud",
@@ -141,7 +140,14 @@
     "customPathPlaceholder": "Of plak een ander pad...",
     "detected_one": "{{count}} volume van {{noun}} gevonden. Kies het volume of plak een ander pad.",
     "detected_other": "{{count}} volumes van {{noun}} gevonden. Kies een volume of plak een ander pad.",
-    "plugIn": "Sluit de {{noun}} via USB aan op deze computer en tik op vernieuwen."
+    "plugIn": "Sluit de {{noun}} via USB aan op deze computer en tik op vernieuwen.",
+    "driveSize": "{{size}}, {{free}} vrij",
+    "driveObjects_one": "{{count}} objectmap",
+    "driveObjects_other": "{{count}} objectmappen",
+    "driveLatest": "laatst {{date}}",
+    "notPaired": "Nog niet gekoppeld",
+    "readOnly": "Alleen-lezen",
+    "readOnlyHint": "Nebulis kan niet naar deze schijf schrijven en kan hem dus niet markeren. Hij wordt alleen herkend aan zijn pad, dat kan wisselen als twee telescopen zijn aangesloten."
   },
   "dwarfLocalPathPicker": {
     "usbStoragePath": "Pad naar de USB-opslag van Dwarf",
@@ -179,6 +185,9 @@
     "willBeStoredIn": "Je bibliotheek wordt opgeslagen in <1>{{path}}</1>.",
     "folderCreatedAutomatically": "Deze map wordt automatisch aangemaakt als deze niet bestaat.",
     "moveLibraryHere": "Bibliotheek hierheen verplaatsen",
+    "useLibraryHere": "Deze bibliotheek gebruiken",
+    "useExisting": "Een bestaande bibliotheek gebruiken",
+    "useExistingHint": "Voor een back-up of een bibliotheek die al in de map staat. Er wordt niets gekopieerd.",
     "pickDriveToBegin": "Kies een schijf om te beginnen",
     "moveTo": "Verplaatsen naar <1>{{path}}</1>",
     "couldNotStartMove": "Het verplaatsen kon niet worden gestart",
@@ -325,10 +334,29 @@
     "saving": "Opslaan...",
     "gotIt": "Begrepen"
   },
+  "supportAsk": {
+    "title": "Vind je Nebulis fijn?",
+    "body1": "Nebulis is gratis en ik ben van plan dat zo te houden. Ik bouw het in mijn vrije tijd voor mensen die mijn liefde voor de nachtelijke hemel delen.",
+    "body2": "Mijn doel is om van Nebulis de beste astronomische bibliotheek en het beste beheerplatform te maken: een plek waar astrofotografen en astronomieliefhebbers hun waarnemingen kunnen ordenen, verkennen en er het meeste uit kunnen halen.",
+    "body3": "Heb je iets aan Nebulis gehad, dan kun je de verdere ontwikkeling steunen door een kopje koffie voor me te kopen. Zo kan ik meer tijd steken in het verbeteren van Nebulis, en het wordt altijd gewaardeerd.",
+    "scan": "Scan de code met je telefoon of gebruik de knop hieronder.",
+    "qrAlt": "QR-code naar de Buy Me a Coffee-pagina",
+    "button": "Trakteer me op een koffie",
+    "close": "Sluiten",
+    "freeNote": "Nebulis blijft altijd gratis te gebruiken. De enige uitzonderingen zijn mobiele apps die via appwinkels worden verspreid.",
+    "salutation": "Heldere luchten!",
+    "onlyOnce": "Je ziet dit bericht maar één keer. Je vindt het altijd terug onder Instellingen → Over."
+  },
   "errorBoundary": {
-    "title": "Er ging iets mis",
-    "description": "Er is een onverwachte fout opgetreden. Vernieuw de pagina om verder te gaan.",
+    "title": "Nebulis is op een onverwachte fout gestuit",
+    "description": "Laad de pagina opnieuw om verder te gaan waar je was gebleven. Je bibliotheek en instellingen zijn ongewijzigd.",
     "reloadPage": "Pagina opnieuw laden"
+  },
+  "routeError": {
+    "title": "Er ging iets mis op deze pagina",
+    "description": "Iets op deze pagina kon niet worden geladen. De rest van Nebulis werkt nog.",
+    "tryAgain": "Opnieuw proberen",
+    "backToLibrary": "Terug naar de bibliotheek"
   },
   "heroToggle": {
     "collapse": "Banner inklappen",

@@ -44,6 +44,8 @@ import fs from 'fs';
 import { parseFitsHeader } from '../fitsParser.js';
 import { parseFilename, isPlausibleCalendarDate } from '../telescopeFiles.js';
 import { exifDateFromFile } from '../exifDate.js';
+import { lookupTimeZoneForCoordinates } from '../observerTimezone.js';
+import { localParts } from '../timezone.js';
 
 /** Where a file's session date came from, in priority order. Drives the
  *  confidence badge in the review UI: 'fits' and 'filename' are both
@@ -83,8 +85,16 @@ const FITS_EXTENSIONS = new Set(['.fit', '.fits', '.fts']);
  *  Handles the two common shapes:
  *    DATE-OBS = '2024-01-15T22:30:45.123'   (combined)
  *    DATE-OBS = '2024-01-15' + TIME-OBS = '22:30:45'   (split)
+ *
+ *  DATE-OBS is UTC, so a dated-and-timed card is converted to the site's
+ *  local date and time before it is returned: the rest of the pipeline (and
+ *  observingNightDate's 07:00 rollover) works in local wall-clock time, and a
+ *  02:30 CDT capture is 07:30 UTC, which the rollover would no longer pull
+ *  back onto the night it belongs to. DATE-LOC, when written, is already
+ *  local and wins. The zone comes from the header's own site coordinates,
+ *  else `timeZone` (callers pass the active site's), else the process zone.
  *  Returns null when the file isn't FITS or carries no usable date. */
-export function deriveFromFits(absPath: string): DerivedDate | null {
+export function deriveFromFits(absPath: string, timeZone?: string): DerivedDate | null {
   let fd: number | null = null;
   try {
     fd = fs.openSync(absPath, 'r');
@@ -94,7 +104,8 @@ export function deriveFromFits(absPath: string): DerivedDate | null {
     const header = parseFitsHeader(read === FITS_HEADER_BYTES ? buf : buf.subarray(0, read));
     const values = header.values;
 
-    const rawDate = firstString(values, ['DATE-OBS', 'DATE_OBS', 'DATEOBS', 'DATE']);
+    const localDate = firstString(values, ['DATE-LOC', 'DATE_LOC']);
+    const rawDate = localDate ?? firstString(values, ['DATE-OBS', 'DATE_OBS', 'DATEOBS', 'DATE']);
     if (!rawDate) return null;
 
     const isoMatch = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}):(\d{2}))?/);
@@ -115,7 +126,17 @@ export function deriveFromFits(absPath: string): DerivedDate | null {
       const tMatch = rawTime?.match(/(\d{2}):(\d{2}):(\d{2})/);
       if (tMatch) time = `${tMatch[1]}${tMatch[2]}${tMatch[3]}`;
     }
-    return { date, source: 'fits', time };
+    // A bare UTC date with no time cannot be shifted reliably; keep it as is.
+    if (localDate || !time) return { date, source: 'fits', time };
+
+    const utc = new Date(Date.UTC(+y, +mo - 1, +d, +time.slice(0, 2), +time.slice(2, 4), +time.slice(4, 6)));
+    const local = localParts(utc, headerTimeZone(values) ?? timeZone);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return {
+      date: `${local.year}-${pad(local.month)}-${pad(local.day)}`,
+      source: 'fits',
+      time: `${pad(local.hour)}${pad(local.minute)}${pad(local.second)}`,
+    };
   } catch {
     return null;
   } finally {
@@ -123,6 +144,16 @@ export function deriveFromFits(absPath: string): DerivedDate | null {
       try { fs.closeSync(fd); } catch { /* best-effort */ }
     }
   }
+}
+
+/** IANA zone of the site the header records (SITELAT/SITELONG), or null. */
+function headerTimeZone(values: Record<string, string | number | boolean>): string | null {
+  const num = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' ? parseFloat(v) : NaN);
+  const lat = num(values['OBS-LAT'] ?? values['SITELAT']);
+  const lon = num(values['OBS-LONG'] ?? values['SITELONG']);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180 || (lat === 0 && lon === 0)) return null;
+  return lookupTimeZoneForCoordinates(lat, lon);
 }
 
 function firstString(
@@ -138,25 +169,42 @@ function firstString(
 
 /** Look for a date embedded in any folder segment of the file's path within
  *  its object (e.g. "M31/2024-01-15/Ha/light_001.fits"). Accepts dashed
- *  (2024-01-15) and compact (20240115) forms. */
+ *  (2024-01-15) and compact (20240115) forms. A time of day right after the
+ *  date (a Dwarf session folder's start time) is returned too, so the
+ *  observing-night rollover can apply to files that carry no time themselves. */
 export function deriveFromPath(relPath: string): DerivedDate | null {
   const segments = relPath.replace(/\\/g, '/').split('/');
   // Walk leaf-to-root so the most specific (closest) folder wins.
   for (let i = segments.length - 2; i >= 0; i--) {
     const found = matchDateInText(segments[i]);
-    if (found) return { date: found, source: 'folder', time: null };
+    if (found) return { date: found.date, source: 'folder', time: found.time };
   }
   return null;
 }
 
-function matchDateInText(text: string): string | null {
+/** A time of day right after the date in a folder name (`_01-10-00`, `-0110`,
+ *  `T011000`), as HHMMSS, or null. Without it a pre-dawn capture folder could
+ *  never roll back to the observing night it belongs to. Seconds are optional
+ *  (HHMM reads as HHMM00); the digits must form a valid clock time to count,
+ *  so an arbitrary number after a date is not mistaken for one. */
+function timeAfterDate(rest: string): string | null {
+  const m = rest.match(/^[-_T ](\d{2})[-:.]?(\d{2})(?:[-:.]?(\d{2}))?(?!\d)/);
+  if (!m) return null;
+  const hh = m[1], mm = m[2], ss = m[3] ?? '00';
+  if (+hh > 23 || +mm > 59 || +ss > 59) return null;
+  return `${hh}${mm}${ss}`;
+}
+
+function matchDateInText(text: string): { date: string; time: string | null } | null {
   const dashed = text.match(/(20\d{2}|19\d{2})-(\d{2})-(\d{2})/);
   if (dashed && isPlausibleDate(dashed[1], dashed[2], dashed[3])) {
-    return `${dashed[1]}-${dashed[2]}-${dashed[3]}`;
+    const end = (dashed.index ?? 0) + dashed[0].length;
+    return { date: `${dashed[1]}-${dashed[2]}-${dashed[3]}`, time: timeAfterDate(text.slice(end)) };
   }
   const compact = text.match(/(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})(?!\d)/);
   if (compact && isPlausibleDate(compact[1], compact[2], compact[3])) {
-    return `${compact[1]}-${compact[2]}-${compact[3]}`;
+    const end = (compact.index ?? 0) + compact[0].length;
+    return { date: `${compact[1]}-${compact[2]}-${compact[3]}`, time: timeAfterDate(text.slice(end)) };
   }
   return null;
 }
@@ -170,15 +218,12 @@ function isPlausibleDate(y: string, mo: string, d: string): boolean {
   return isPlausibleCalendarDate(`${y}-${mo}-${d}`);
 }
 
-/** Local-time date + time from a file's modified timestamp. Always succeeds. */
-export function deriveFromMtime(mtime: Date): DerivedDate {
-  const y = mtime.getFullYear();
-  const mo = String(mtime.getMonth() + 1).padStart(2, '0');
-  const d = String(mtime.getDate()).padStart(2, '0');
-  const hh = String(mtime.getHours()).padStart(2, '0');
-  const mm = String(mtime.getMinutes()).padStart(2, '0');
-  const ss = String(mtime.getSeconds()).padStart(2, '0');
-  return { date: `${y}-${mo}-${d}`, source: 'mtime', time: `${hh}${mm}${ss}` };
+/** Site-local date + time from a file's modified timestamp. Always succeeds.
+ *  Callers pass the site's zone: a Docker server's own zone is UTC. */
+export function deriveFromMtime(mtime: Date, timeZone?: string): DerivedDate {
+  const p = localParts(mtime, timeZone);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return { date: `${p.year}-${pad(p.month)}-${pad(p.day)}`, source: 'mtime', time: `${pad(p.hour)}${pad(p.minute)}${pad(p.second)}` };
 }
 
 export interface DeriveOptions {
@@ -187,6 +232,9 @@ export interface DeriveOptions {
    *  poor session signal for libraries that were moved/copied between drives,
    *  so the UI lets the user turn it off. Default: true (mtime allowed). */
   useMtimeFallback?: boolean;
+  /** Site zone for converting FITS UTC times and mtimes (activeSiteTimeZone()).
+   *  Default: the process zone, which is UTC in Docker, so pass it. */
+  timeZone?: string;
 }
 
 /**
@@ -206,7 +254,7 @@ export interface DeriveOptions {
 export function deriveFileDate(
   absPath: string,
   relPath: string,
-  stat: fs.Stats,
+  stat: Pick<fs.Stats, 'mtime'>,
   options: DeriveOptions = {},
 ): DerivedDate {
   const fileName = relPath.replace(/\\/g, '/').split('/').pop() ?? relPath;
@@ -219,7 +267,7 @@ export function deriveFileDate(
   }
 
   if (FITS_EXTENSIONS.has(ext)) {
-    const fromFits = deriveFromFits(absPath);
+    const fromFits = deriveFromFits(absPath, options.timeZone);
     if (fromFits) return fromFits;
   }
 
@@ -234,7 +282,7 @@ export function deriveFileDate(
   }
 
   if (options.useMtimeFallback !== false) {
-    return deriveFromMtime(stat.mtime);
+    return deriveFromMtime(stat.mtime, options.timeZone);
   }
 
   return { date: null, source: 'none', time: null };

@@ -34,7 +34,7 @@ export const GAP_TOLERANCE_FRACTION_OF_DIAGONAL = 0.06;
 /** Reject detections scoring below this confidence. Floor-level detections
  *  (≤0.1) are artifact-class in practice: moon limbs, mosaic border edges.
  *  Real trails score 0.3+ (length and thinness both contribute). */
-export const MIN_CONFIDENCE = 0.15;
+const MIN_CONFIDENCE = 0.15;
 
 // ─── Star-mask shape thresholds ──────────────────────────────────────
 // `linearity` in createStarMask is pixelCount / bboxDiagonal, which for an

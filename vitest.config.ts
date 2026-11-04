@@ -29,9 +29,15 @@ export default defineConfig({
     // Backend tests share a single SQLite database — run files sequentially
     // to prevent concurrent beforeEach cleanups from racing across test files.
     fileParallelism: false,
+    // A stray `.only` would silently narrow the suite and leave CI green.
+    allowOnly: false,
     coverage: {
       provider: 'v8',
-      include: ['server/**/*.ts'],
+      // A red run is the one where a coverage regression most needs to be visible.
+      reportOnFailure: true,
+      // `src/lib` and `src/hooks` are plain TypeScript the frontend tests can reach, so they
+      // are measured. Components and pages are layout, covered from outside by Playwright.
+      include: ['server/**/*.ts', 'src/lib/**/*.ts', 'src/hooks/**/*.ts'],
       exclude: [
         'server/index.ts',         // startup wiring, not unit-testable
         'server/routes/openapi.ts', // static spec literal
@@ -46,16 +52,26 @@ export default defineConfig({
       // blends into the global average and could mask a
       // regression in lib/'s actual business logic while the blended number
       // still clears the global floor.
+      // Actual minus about two points, so a real regression trips CI. Measured 2026-11-01:
+      // all measured files 72.5 / 65.8 / 72.8 / 74.1 (stmts / branches / funcs / lines),
+      // server/lib 81.4 / 74.2 / 86.1, src 49.0 / 47.7 / 40.6. The global figure blends server
+      // and src, so the per-area floors below are the ones that carry the promise.
       thresholds: {
-        statements: 29,
-        branches: 24,
-        functions: 33,
-        lines: 29,
+        statements: 70,
+        branches: 63,
+        functions: 70,
+        lines: 72,
         'server/lib/**': {
-          statements: 39,
-          branches: 34,
-          functions: 43,
-          lines: 40,
+          statements: 79,
+          branches: 72,
+          functions: 84,
+          lines: 78,
+        },
+        'src/**': {
+          statements: 47,
+          branches: 46,
+          functions: 38,
+          lines: 47,
         },
       },
       reporter: ['text', 'json', 'html'],

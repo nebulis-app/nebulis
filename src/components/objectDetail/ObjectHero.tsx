@@ -242,35 +242,23 @@ export function ObjectHero({
             <span className="text-white/20">/</span>
             <span className="truncate text-white/70">{displayName}</span>
           </nav>
-          {layoutSwitch && (
-            <div
-              role="group"
-              aria-label={t('objectDetail.hero.layoutSwitch')}
-              className="inline-flex shrink-0 rounded-lg border border-white/10 bg-black/30 p-0.5 backdrop-blur-sm"
-            >
-              {([
-                { id: 'nights', icon: CalendarDays, label: t('objectDetail.hero.layoutByNight') },
-                { id: 'media', icon: LayoutGrid, label: t('objectDetail.hero.layoutAllPhotos') },
-              ] as const).map(({ id, icon: Icon, label }) => {
-                const active = layoutSwitch.current === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    aria-pressed={active}
-                    title={label}
-                    onClick={() => { if (!active) layoutSwitch.onToggle(); }}
-                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[0.75rem] font-medium transition ${
-                      active ? 'bg-white/15 text-white shadow-sm' : 'text-white/55 hover:text-white'
-                    }`}
-                  >
-                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span className="hidden sm:inline">{label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {layoutSwitch && (() => {
+            // One button that flips the view. Its icon and name are those of the view it switches TO.
+            const toMedia = layoutSwitch.current === 'nights';
+            const target = toMedia ? t('objectDetail.hero.layoutAllPhotos') : t('objectDetail.hero.layoutByNight');
+            const Icon = toMedia ? LayoutGrid : CalendarDays;
+            return (
+              <button
+                type="button"
+                title={target}
+                aria-label={`${t('objectDetail.hero.layoutSwitch')}: ${target}`}
+                onClick={layoutSwitch.onToggle}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/30 text-white/60 backdrop-blur-sm transition hover:text-white"
+              >
+                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            );
+          })()}
         </div>
 
         {/* Picture | identity, and a third column for the aside from 1440px. Below that

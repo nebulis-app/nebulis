@@ -20,7 +20,7 @@
  * Pure: catalog lookups only, no filesystem and no database, so the scan, the
  * commit fallback and a unit test all get the same answer.
  */
-import { getCatalogEntry, findCatalogEntryByExactName, type CatalogEntry } from '../../data/catalog.js';
+import { getCatalogEntry, findCatalogEntryByExactName, type CatalogEntry } from '../catalogLookup.js';
 import { normalizeCatalogId, variantSuffix } from '../telescopeFiles.js';
 import { normalizeDesignation, resolveCanonicalId } from '../catalogAliases.js';
 

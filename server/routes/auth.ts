@@ -1,10 +1,17 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { z } from 'zod';
-import { registerUser, loginUser, verifyToken, getUserById, getUserCount, getAllUsers, deleteUser, updateUserPassword, updateUserRole, updateUserProfile, getUserTokenVersion, USER_ROLES } from '../lib/auth.js';
+import { registerUser, loginUser, verifyToken, getUserById, getUserCount, getAllUsers, deleteUser, updateUserPassword, updateUserRole, updateUserProfile, getUserTokenVersion } from '../lib/auth.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { isDeviceActive, touchDevice, revokeAllDevicesForUser } from '../lib/devicePairing.js';
 import { logEvent } from '../lib/systemLog.js';
 import { isRecord } from '../lib/typeGuards.js';
+import {
+  AuthCreateUserBodySchema,
+  AuthLoginBodySchema,
+  AuthPasswordBodySchema,
+  AuthProfileBodySchema,
+  AuthRegisterBodySchema,
+  AuthRoleBodySchema,
+} from '../lib/authSchemas.js';
 
 const router = Router();
 
@@ -66,9 +73,9 @@ function noteFailure(req: Request): void {
   }
 }
 
-function noteSuccess(req: Request): void {
-  rateBuckets.delete(clientIp(req));
-}
+// A successful sign-in deliberately does NOT clear the bucket: anyone holding one valid account (a family member's
+// viewer login) could otherwise reset the counter between nine guesses at the admin password, forever. Failures age
+// out with the window instead.
 
 // Periodic GC so the map doesn't grow unbounded.
 setInterval(() => {
@@ -79,39 +86,6 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000).unref?.();
-
-const RegisterBodySchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1),
-  displayName: z.string().optional(),
-  email: z.string().optional(),
-});
-
-const LoginBodySchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1),
-});
-
-const CreateUserBodySchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1),
-  displayName: z.string().optional(),
-  email: z.string().optional(),
-  role: z.enum(USER_ROLES).optional(),
-});
-
-const PasswordBodySchema = z.object({
-  password: z.string().min(1),
-});
-
-const ProfileBodySchema = z.object({
-  displayName: z.string().min(1),
-  email: z.string().email().optional().or(z.literal('')),
-});
-
-const RoleBodySchema = z.object({
-  role: z.enum(USER_ROLES),
-});
 
 // getUserCount() > 0 and the eventual insert inside registerUser() are
 // separated by an await (bcrypt.hash), so two concurrent first-registration
@@ -137,7 +111,7 @@ router.post('/register', rateLimit, async (req: Request, res: Response) => {
       if (getUserCount() > 0) {
         throw new RegistrationClosedError();
       }
-      const parsed = RegisterBodySchema.safeParse(req.body);
+      const parsed = AuthRegisterBodySchema.safeParse(req.body);
       if (!parsed.success) {
         throw new RegisterValidationError(parsed.error.issues[0]?.message ?? 'Invalid request body');
       }
@@ -173,7 +147,7 @@ router.post('/login', rateLimit, async (req: Request, res: Response) => {
   const ip = clientIp(req);
   const userAgent = req.headers['user-agent'] ?? 'unknown';
 
-  const parsed = LoginBodySchema.safeParse(req.body);
+  const parsed = AuthLoginBodySchema.safeParse(req.body);
   if (!parsed.success) {
     console.warn('[auth] login_attempt outcome=missing_credentials ip=%s ua=%s', ip, userAgent);
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
@@ -183,7 +157,6 @@ router.post('/login', rateLimit, async (req: Request, res: Response) => {
   try {
     const { username, password } = parsed.data;
     const result = await loginUser(username, password);
-    noteSuccess(req);
     console.log('[auth] login_attempt outcome=success username=%s ip=%s ua=%s', username, ip, userAgent);
     logEvent({
       category: 'auth',
@@ -282,7 +255,7 @@ router.get('/users', requireAdmin, (_req: Request, res: Response) => {
 
 // Create a user (admin action — no token returned, just creates the account)
 router.post('/users', requireAdmin, async (req: Request, res: Response) => {
-  const parsed = CreateUserBodySchema.safeParse(req.body);
+  const parsed = AuthCreateUserBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
     return;
@@ -344,7 +317,7 @@ router.delete('/users/:id', requireAdmin, (req: Request, res: Response) => {
 
 // Reset a user's password
 router.put('/users/:id/password', requireAdmin, async (req: Request, res: Response) => {
-  const parsed = PasswordBodySchema.safeParse(req.body);
+  const parsed = AuthPasswordBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
     return;
@@ -381,7 +354,7 @@ router.put('/users/:id/password', requireAdmin, async (req: Request, res: Respon
 
 // Update a user's display name and email
 router.put('/users/:id/profile', requireAdmin, async (req: Request, res: Response) => {
-  const parsed = ProfileBodySchema.safeParse(req.body);
+  const parsed = AuthProfileBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
     return;
@@ -398,7 +371,7 @@ router.put('/users/:id/profile', requireAdmin, async (req: Request, res: Respons
 
 // Change a user's role
 router.put('/users/:id/role', requireAdmin, (req: Request, res: Response) => {
-  const parsed = RoleBodySchema.safeParse(req.body);
+  const parsed = AuthRoleBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
     return;

@@ -10,7 +10,8 @@
  * favours what a viewer recognises (Messier, a common name, bright, large) and
  * the frame's own target is always kept.
  */
-import { getCatalog, getPlannerCatalog, type DsoEntry } from '../dsoCatalog.js';
+import { getCatalog, type DsoEntry } from '../dsoCatalog.js';
+import { getAnnotationCatalog } from './ringCentres.js';
 import { resolveCanonicalId } from '../catalogAliases.js';
 import { angularSeparationDeg, pixelScaleArcsec, pixelToSky, skyToPixel, type Wcs } from './wcs.js';
 
@@ -165,7 +166,7 @@ export function annotateFrame(wcs: Wcs, opts: AnnotateOptions = {}): FrameAnnota
 
   const found: Hit[] = [];
 
-  for (const e of getPlannerCatalog()) {
+  for (const e of getAnnotationCatalog()) {
     const raDeg = e.ra * 15;
     const radiusDeg = ((e.majorAxisArcmin ?? 0) / 2) / 60;
     if (angularSeparationDeg(centre.raDeg, centre.decDeg, raDeg, e.dec) > halfDiagDeg + radiusDeg) continue;

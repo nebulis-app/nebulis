@@ -15,6 +15,7 @@ import { journalRouter } from '../../server/routes/journal';
 import { libraryRouter } from '../../server/routes/library';
 import { metaRouter } from '../../server/routes/meta';
 import { notesRouter } from '../../server/routes/notes';
+import { objectNotesRouter } from '../../server/routes/objectNotes';
 import { observationsRouter } from '../../server/routes/observations';
 import { openapiRouter } from '../../server/routes/openapi';
 import { pairRouter } from '../../server/routes/pair';
@@ -66,6 +67,7 @@ const V1_MOUNTS: Array<[prefix: string, routerName: string]> = [
   ['/settings', 'settingsRouter'],
   ['/storage', 'storageRouter'],
   ['/notes', 'notesRouter'],
+  ['/object-notes', 'objectNotesRouter'],
   ['/telescopes', 'telescopesRouter'],
   ['/sites', 'sitesRouter'],
   ['/forecast', 'forecastRouter'],
@@ -104,6 +106,7 @@ const ROUTERS: Record<string, Router> = {
   libraryRouter,
   metaRouter,
   notesRouter,
+  objectNotesRouter,
   observationsRouter,
   openapiRouter,
   pairRouter,

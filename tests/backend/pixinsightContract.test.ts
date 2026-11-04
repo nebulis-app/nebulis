@@ -122,7 +122,7 @@ describe('connector → server contract: response shapes', () => {
     const { body } = await api('GET', '/library/objects');
     expect(Array.isArray(body.data)).toBe(true);
     const m31 = body.data.find((o: { id: string }) => o.id === 'M31');
-    expect(m31).toBeTruthy();
+    expect(m31).toMatchObject({ id: 'M31' });
     expect(typeof m31.name).toBe('string');
     expect(typeof m31.folderName).toBe('string');
     expect(m31.sessionCount === undefined || typeof m31.sessionCount === 'number').toBe(true);
@@ -132,7 +132,7 @@ describe('connector → server contract: response shapes', () => {
     const { body } = await api('GET', '/library/objects/M31/sessions');
     expect(Array.isArray(body.data)).toBe(true);
     const night = body.data.find((s: { date: string }) => s.date === '2024-10-08');
-    expect(night).toBeTruthy();
+    expect(night).toMatchObject({ date: '2024-10-08' });
     // The calibration matcher builds one light spec per filter × exposure from these.
     expect(night.filters).toEqual(['LP']);
     expect(night.exposures).toEqual([10]);
@@ -148,7 +148,7 @@ describe('connector → server contract: response shapes', () => {
     const { body } = await api('GET', '/library/calibrations');
     expect(Array.isArray(body.data.groups)).toBe(true);
     const bias = body.data.groups.find((g: { type: string }) => g.type === 'bias');
-    expect(bias).toBeTruthy();
+    expect(bias).toMatchObject({ type: 'bias' });
     for (const k of ['type', 'typeLabel', 'scopeLabel', 'folderName']) expect(typeof bias[k]).toBe('string');
     expect(bias.scope === null || typeof bias.scope === 'string').toBe(true);
     expect(Array.isArray(bias.settingsGroups)).toBe(true);

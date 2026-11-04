@@ -21,6 +21,8 @@ interface Props {
   onOpen: (row: ExploreRow) => void;
   /** Ref so the page can focus the box from the "/" shortcut. */
   inputRef?: React.RefObject<HTMLInputElement | null>;
+  /** Starting text, e.g. the query a results list is showing. */
+  initialText?: string;
 }
 
 const MIN_CHARS = 1;
@@ -33,7 +35,7 @@ const DEBOUNCE_MS = 150;
  * bare query goes to the full results grid. A constellation name also offers
  * "best of <constellation>".
  */
-export function ExploreSearch({ siteId, fov, night = null, upLabel, ready, isDark, wishlistIds, onAdd, onOpen, inputRef }: Props) {
+export function ExploreSearch({ siteId, fov, night = null, upLabel, ready, isDark, wishlistIds, onAdd, onOpen, inputRef, initialText = '' }: Props) {
   const { t } = useTranslation('catalogs');
   const navigate = useNavigate();
   const listId = useId();
@@ -41,8 +43,8 @@ export function ExploreSearch({ siteId, fov, night = null, upLabel, ready, isDar
   const input = inputRef ?? localRef;
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const [text, setText] = useState('');
-  const [debounced, setDebounced] = useState('');
+  const [text, setText] = useState(initialText);
+  const [debounced, setDebounced] = useState(initialText.trim());
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
 

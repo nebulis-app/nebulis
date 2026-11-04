@@ -76,7 +76,7 @@ describe('archive: telescope scoping', () => {
 
     expect(claimImportLock()).toBe(true);
     await runImport(undefined, undefined, { telescopeId: profile.id });
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
 
     const folders = listArchivedFolders(profile.id);
     expect(folders.map(f => f.name).sort()).toEqual(['CALI_FRAME', 'DWARF_DARK']);
@@ -138,7 +138,7 @@ describe('archive: telescope scoping', () => {
 
     expect(claimImportLock()).toBe(true);
     await runImport(undefined, undefined, { telescopeId: profile.id });
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
 
     const folders = listArchivedFolders(profile.id);
     expect(folders.map(f => f.name)).toContain('DCIM');
@@ -172,7 +172,7 @@ describe('archive: telescope scoping', () => {
 
     expect(claimImportLock()).toBe(true);
     await runImport(undefined, undefined, { telescopeId: profile.id });
-    expect(getImportStatus().error).toBeFalsy();
+    expect(getImportStatus().error).toBeNull();
 
     const folders = listArchivedFolders(profile.id);
     // The library folder itself must never be treated as an archivable

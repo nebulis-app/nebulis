@@ -29,6 +29,8 @@ interface Props {
   onNext: () => void;
   observerLat: number | null;
   observerLon: number | null;
+  /** The site's IANA zone, so "tonight" rolls over at the site's 07:00 like the planner. */
+  observerTimezone?: string;
   minAlt?: number;
   isDark: boolean;
   isNight: boolean;
@@ -48,6 +50,7 @@ export function CatalogObjectModal({
   onNext,
   observerLat,
   observerLon,
+  observerTimezone,
   minAlt = 20,
   isDark,
   isNight,
@@ -110,15 +113,16 @@ export function CatalogObjectModal({
       observerLat,
       observerLon,
       minAlt,
+      observerTimezone,
     );
-  }, [object.ra, object.dec, observerLat, observerLon, minAlt, hasLocation]);
+  }, [object.ra, object.dec, observerLat, observerLon, minAlt, hasLocation, observerTimezone]);
 
   // Does the object ever clear the horizon during tonight's dark window from
   // this location? null = can't tell (no location / no coords / no dark window),
   // in which case we don't warn or disable anything.
   const upTonight = useMemo(
-    () => isUpTonight(object.ra, object.dec, observerLat, observerLon),
-    [object.ra, object.dec, observerLat, observerLon],
+    () => isUpTonight(object.ra, object.dec, observerLat, observerLon, 0, new Date(), observerTimezone),
+    [object.ra, object.dec, observerLat, observerLon, observerTimezone],
   );
   const notVisibleTonight = upTonight === false;
 

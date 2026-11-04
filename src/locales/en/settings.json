@@ -22,6 +22,7 @@
     "apiKeys": "API keys",
     "alerts": "Alerts",
     "display": "Display",
+    "slideshow": "Slideshow",
     "organization": "Organization",
     "processing": "Processing",
     "maintenance": "Maintenance",
@@ -174,7 +175,7 @@
     "aTelescope": "a telescope",
     "triggerManual": "Manual",
     "triggerScheduled": "Scheduled",
-    "syncCancelled": "{{trigger}} sync from {{origin}} was cancelled.",
+    "syncCancelled": "{{trigger}} sync from {{origin}} was canceled.",
     "syncFailed": "{{trigger}} sync from {{origin}} failed: {{error}}",
     "syncCompleted_one": "{{trigger}} sync from {{origin}} completed: {{count}} new file.",
     "syncCompleted_other": "{{trigger}} sync from {{origin}} completed: {{count}} new files."
@@ -258,13 +259,13 @@
       "success": "Data deleted",
       "successDescription": "Your settings and accounts were preserved.",
       "close": "Close",
-      "genericError": "The reset did not finish. Your data has not been changed. Try again, or check the system log."
+      "genericError": "The reset did not finish. Some data may already be gone. Check the system log before trying again."
     }
   },
   "librarySection": {
     "display": {
       "title": "Display",
-      "description": "How object cards and slideshow show images and information.",
+      "description": "How object cards show images and information.",
       "cardPictures": {
         "label": "Object card pictures",
         "description": "Reference uses catalog imagery from Hubble, DSS2, NASA and Caldwell: rich color, and it works for every object. My telescope uses your own captures, for objects you have imaged.",
@@ -282,19 +283,23 @@
         "media": "Combined"
       },
       "slideshowShowInfo": {
-        "label": "Slideshow: Show object information",
+        "label": "Show object information",
         "description": "Shows the name, type, and distance while images play."
       },
       "slideshowProcessedOnly": {
-        "label": "Slideshow: Start with processed images only",
+        "label": "Start with processed images only",
         "description": "Slideshow opens with only processed images; switch anytime."
       }
+    },
+    "slideshow": {
+      "title": "Slideshow",
+      "description": "How the slideshow shows images and information."
     },
     "imageBehavior": {
       "title": "Image behavior",
       "rotate": {
         "label": "Rotate images 90° counter-clockwise",
-        "description": "Corrects telescopes that capture rotated, slideshow included."
+        "description": "Turns every slideshow picture a quarter turn. Use it if your telescope saves pictures sideways."
       }
     },
     "organization": {
@@ -369,7 +374,7 @@
     "upToDate_beta": "You're on the latest beta version",
     "lastCheckFailed": "Last check could not complete: {{error}}",
     "checkFailed": "Could not check for updates.",
-    "updateStartFailed": "Could not start the update.",
+    "updateStartFailed": "Could not start the update. Check the server log, then try again.",
     "autoUpdate": {
       "label": "Check for updates automatically",
       "description": "Updates download in the background so they install faster."
@@ -469,14 +474,15 @@
     "visitSource": "Visit {{name}}",
     "freeApi": "Free API",
     "bundled": "Bundled",
-    "footerNote": "All external services are free and require no API keys. Data is fetched on demand and cached where possible. A request carries only what the service needs: the coordinates of your observing site for weather and light pollution, and object names for catalog lookups. No account details, usage data or images are ever sent.",
+    "footerNote": "All external services are free and require no API keys. Data is fetched on demand and cached where possible. A request carries only what the service needs: the coordinates of your observing site for weather, light pollution and place names, and object names for catalog lookups. No account details, usage data or images are ever sent.",
     "groups": {
       "astronomyDatabases": "Astronomy Databases",
       "skyImages": "Sky Images",
       "weatherForecasting": "Weather & Forecasting",
       "satelliteTracking": "Satellite Tracking",
       "maps": "Maps",
-      "lightPollution": "Light pollution"
+      "lightPollution": "Light pollution",
+      "nebulisServers": "Nebulis servers"
     },
     "cache": {
       "bundledWithApp": "Bundled with app",
@@ -484,19 +490,24 @@
       "cached24h": "Cached 24 hours"
     },
     "descriptions": {
-      "openngc": "Coordinates, magnitudes, and types for 3,200+ deep sky objects",
+      "openngc": "Names, positions, magnitudes, and types for about 12,000 deep sky objects",
       "sesame": "Name lookups for objects missing from the bundled catalog",
       "simbad": "Size and distance details for catalog objects",
       "hubbleCaldwell": "Hubble images and text for the 88 Caldwell objects",
       "hips": "DSS2 survey images for any coordinate you point at",
       "nasaImageLibrary": "Backup images for planets, moons, and comets",
       "wikipedia": "Plain-language summaries and thumbnails for objects",
-      "openMeteo": "Temperature, humidity, cloud, wind, and rain for your sites",
+      "openMeteo": "Forecast and past weather for your sites, plus place search",
       "sevenTimer": "Seeing and transparency forecasts for imaging nights",
       "sunCalc": "Moon phase, twilight, and sun and moon positions for your sites",
       "celestrak": "Orbital elements for active satellites, used in trail checks",
       "esri": "Map tiles for the observation location viewer",
-      "darkskysites": "Returns your site's Bortle class from the monthly VIIRS satellite composite. Nebulis sends the coordinates of the observing site you have selected, and caches the answer for 24 hours."
+      "darkskysites": "Returns your site's Bortle class from the monthly VIIRS satellite composite. Nebulis sends the coordinates of the observing site you have selected, and caches the answer for 24 hours.",
+      "sdss": "Backup sky pictures when the DSS2 survey cannot be reached. Covers only part of the sky.",
+      "legacySurvey": "Second backup for sky pictures where SDSS has no coverage. Covers only part of the sky.",
+      "nominatim": "Turns the coordinates of your observing site into a place name.",
+      "nebulisDownloads": "Catalog packs and app updates. Nebulis checks here for new versions and downloads them from here.",
+      "nebulisPush": "Delivers iPhone alerts, only when you turn them on."
     }
   },
   "siteManager": {
@@ -627,6 +638,11 @@
     "moveCompleteBefore": "Your library now lives at",
     "moveCompleteAfter": "Open a few observations to confirm everything looks right. The old copy was left in place and was not deleted. Once you have verified the new location, you can remove the old copy yourself at:",
     "gotIt": "Got it",
+    "adopted": {
+      "title": "Existing library connected",
+      "summary": "{{registered}} object(s) found with files, {{retired}} moved to the trash because their folder is not here, {{removed}} file record(s) removed because the file is not here.",
+      "skipped": "Cleanup was not run: {{reason}}"
+    },
     "forgetModal": {
       "title": "Reset to default folder",
       "subtitle": "For when the old drive or path is gone for good. No files are moved or deleted.",
@@ -635,7 +651,8 @@
       "bodyAfter": "instead. Nothing at the old location is copied. Do this only if your images are already in the default folder, or you plan to re-import them.",
       "resetFailed": "Could not reset the location",
       "cancel": "Cancel",
-      "resetLocation": "Reset location"
+      "resetLocation": "Reset location",
+      "secondLibraryWarning": "New imports will go to that folder on this computer's own disk. If the old drive comes back later, it will be a separate library, and the two will not merge on their own. If the drive is only unplugged, plug it back in instead."
     },
     "resetToDefaultModal": {
       "title": "Move library back to default",
@@ -656,7 +673,8 @@
       "filesProgress_one": "{{copied}} / {{count}} file",
       "filesProgress_other": "{{copied}} / {{count}} files",
       "keepDriveConnected": "Keep this drive connected. Imports are paused until the move finishes."
-    }
+    },
+    "recoveredNotice": "Your library drive came back at a different path, so Nebulis reconnected to it on its own. It was at {{from}} and is now at {{to}}."
   },
   "storageDashboard": {
     "title": "Storage",
@@ -819,7 +837,7 @@
     "findDeviceNone": "No SeeStar, ASIAIR or Dwarf found on {{subnets}}. Check it is on and on the same Wi-Fi as this computer, or type the address.",
     "findDeviceNoNetwork": "This computer has no local network to scan. Type the address instead.",
     "findDeviceFailed": "Scan failed. Type the address instead.",
-    "findDevicePick": "Found {{count}} — tap one to use it:",
+    "findDevicePick": "Found {{count}}. Tap one to use it:",
     "hostnameHelp": "For reliable connectivity, assign a static IP or DHCP reservation.",
     "advancedConnectionSettings": "Advanced connection settings",
     "advancedShareSettings": "Advanced share settings",
@@ -918,6 +936,17 @@
     "mergeAddTo": "Add to {{name}}",
     "opticalConfigsTitle": "Optical configurations",
     "opticalConfigsHelp": "No fixed field of view is known for this telescope. Add one entry per optical setup you actually use (for example \"Native\" and \"0.8x Reducer\") and pick which is mounted right now. The Framing & Mosaic preview uses whichever is active.",
+    "rigTitle": "What it shoots with",
+    "rigHelp": "Used to plan how many hours a target needs, so the plan only names filters you have. Separate filter names with commas.",
+    "rigSensor": "Camera",
+    "rigSensorUnset": "Not set",
+    "rigSensorColor": "Color",
+    "rigSensorMono": "Mono",
+    "rigFilters": "Filters you own",
+    "rigFiltersPlaceholder": "Ha, OIII, SII, L-eXtreme",
+    "rigAdd": "Add {{name}}",
+    "rigSave": "Save",
+    "rigSaved": "Saved",
     "activeLabel": "ACTIVE",
     "opticalConfigSummary": "{{focal}}mm · {{width}}×{{height}}mm",
     "opticalConfigSummaryWithPixel": "{{focal}}mm · {{width}}×{{height}}mm · {{pixel}}µm px",
@@ -970,6 +999,7 @@
     "alerts": "Get told when a clear night is coming or an import is done.",
     "libraryOrganization": "How objects are named, grouped, and counted.",
     "libraryProcessing": "What Nebulis does with frames after they arrive.",
+    "librarySlideshow": "How the slideshow plays and what it shows.",
     "maintenance": "Tasks the server runs on its own each night.",
     "catalogs": "Offline imagery and satellite data kept on this server."
   },
@@ -1005,7 +1035,9 @@
     "cancel": "Cancel",
     "saveLabel": "Save",
     "connectedFound_one": "Connected. Found {{count}} folder.",
-    "connectedFound_other": "Connected. Found {{count}} folders."
+    "connectedFound_other": "Connected. Found {{count}} folders.",
+    "pairThisDrive": "Pair this drive instead",
+    "unmarkedNote": "That USB drive is read-only, so Nebulis could not mark it. It is recognized by its path alone, which can swap when two telescopes are plugged in at once."
   },
   "settingsUI": {
     "moreInfoAriaLabel": "More info: {{text}}"
@@ -1015,7 +1047,7 @@
     "dialogTitleAdd": "Add observing site",
     "editTitle": "Edit Observing Site",
     "addTitle": "Add Observing Site",
-    "saveFailed": "Failed to save site.",
+    "saveFailed": "Could not save the site. Check the connection to the server, then try again.",
     "nameLabel": "Name",
     "namePlaceholder": "e.g. Backyard, Dark Sky Site",
     "geolocationUnsupported": "Geolocation is not supported by this browser.",
@@ -1049,7 +1081,14 @@
     "photosRemove": "Remove photo",
     "photosOpen": "Open photo",
     "photosCaptionPlaceholder": "Add a caption",
-    "photosUploadFailed": "Could not upload {{name}}: {{reason}}"
+    "photosUploadFailed": "Could not upload {{name}}: {{reason}}",
+    "imagingWindowLabel": "Imaging window",
+    "darknessLabel": "Starts from",
+    "darknessAstronomical": "Astronomical night (Sun −18°)",
+    "darknessNautical": "Nautical night (Sun −12°)",
+    "startOffsetLabel": "Start, minutes after dusk",
+    "endOffsetLabel": "End, minutes before dawn",
+    "imagingWindowHelp": "The hours the forecast page, its score and the clear-night alert count as tonight. Narrowband filters cut most twilight glow, so nautical night often works and starts about 35 minutes earlier. Use the minutes to start later or stop before dawn; a negative value moves that end the other way."
   },
   "enterCodeModal": {
     "title": "Link an Apple TV",
@@ -1061,17 +1100,6 @@
     "linkConfirm": "Link <1>{{name}}</1> to your account?",
     "pairingCodeAriaLabel": "Pairing code",
     "link": "Link"
-  },
-  "archiveBrowserModal": {
-    "ariaLabel": "Archived calibration data",
-    "title": "Archived from {{name}}",
-    "subtitle": "Calibration frames with nowhere else to go: kept, never modeled as objects.",
-    "close": "Close",
-    "loading": "Loading…",
-    "nothingArchived": "Nothing archived yet.",
-    "fileCount_one": "{{count}} file",
-    "fileCount_other": "{{count}} files",
-    "done": "Done"
   },
   "reassignTelescopeModal": {
     "ariaLabel": "Reassign telescope sessions",
@@ -1098,7 +1126,7 @@
     "connected": "{{name}} connected",
     "connectedHelp": "Your phone is signed in and ready.",
     "scanInstructions": "Open Nebulis on your phone, tap <1>Scan QR</1>, and point it at this code. It connects and signs in, no IP address needed.",
-    "generateFailed": "Could not generate a code.",
+    "generateFailed": "Could not generate a pairing code. Check the server is reachable, then try again.",
     "qrAlt": "Pairing QR code",
     "refreshing": "Refreshing…",
     "codeExpiredTapToRefresh": "Code expired. Tap to refresh.",
@@ -1117,7 +1145,7 @@
     "passwordTooShort": "Min 6 characters.",
     "passwordSavedNote": "Saved when you save this form.",
     "resetPasswordButton": "Reset password",
-    "saveFailed": "Failed to save changes.",
+    "saveFailed": "Could not save your changes. Your edits are still in this form. Try again.",
     "resetPasswordConfirmTitle": "Reset password?",
     "resetPasswordConfirmMessage": "{{name}}'s connected devices, including any paired Apple TV or phone, will be signed out and need to be paired again."
   },
@@ -1150,7 +1178,7 @@
       "absent": "There is no archive in this folder yet, so it can be adopted as a new one.",
       "match": "This is your archive disk.",
       "foreign": "This disk already holds a different archive. Adopting it will replace that record.",
-      "invalid": "The marker file on this disk is not one Nebulis recognises, so nothing will be written to it.",
+      "invalid": "The marker file on this disk is not one Nebulis recognizes, so nothing will be written to it.",
       "unreadable": "The marker file on this disk cannot be read, so nothing will be written to it.",
       "invalidPath": "That path cannot be used. It cannot be the library folder or the Nebulis data folder.",
       "offline": "This share is not connected. Check that the server is on and the share is available."
@@ -1236,7 +1264,7 @@
     "runFinishedTooYoung_other": "{{count}} files have not reached the minimum age yet.",
     "runNoSpace": "The archive did not run because the archive disk does not have enough free space.",
     "runNotStarted": "The archive did not run. Check that the archive disk is connected.",
-    "runCancelled": "Cancelled. {{copied}} files were archived before it stopped.",
+    "runCancelled": "Canceled. {{copied}} files were archived before it stopped.",
     "runFinishedLinked_one": "{{count}} linked file is not included in the archive.",
     "runFinishedLinked_other": "{{count}} linked files are not included in the archive.",
     "cancelRun": "Cancel",
@@ -1315,6 +1343,14 @@
     "loading": "Loading...",
     "nothingArchived": "Nothing has been archived yet.",
     "notInLibrary": "Not in the library any more",
+    "willBeAdded": "Not in the library, will be added back",
+    "restoreAll_one": "Restore {{count}} object",
+    "restoreAll_other": "Restore {{count}} objects",
+    "restoreAllProgress": "Restoring {{done}} of {{total}}...",
+    "restoreAllConfirm_one": "Copy everything missing for {{count}} object from the archive into the library? Objects the library no longer has are added back.",
+    "restoreAllConfirm_other": "Copy everything missing for {{count}} objects from the archive into the library? Objects the library no longer has are added back. This can take a while.",
+    "createdCount_one": "{{count}} object added back",
+    "createdCount_other": "{{count}} objects added back",
     "missingLocally": "{{count}} missing locally",
     "subframe": "subframe",
     "presentLocally": "present locally",

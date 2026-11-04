@@ -17,7 +17,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Worker } from 'worker_threads';
-import { FrameDecodeError, measureFrame, type FrameMetrics } from './measure.js';
+import { FrameDecodeError, measureFrame, type FrameMetrics, type TargetSpec } from './measure.js';
 import { coerceMetrics } from './metricsRecord.js';
 import { isRecord } from '../typeGuards.js';
 import { log } from '../logger.js';
@@ -27,6 +27,7 @@ const IDLE_STOP_MS = 60_000;
 
 interface Pending {
   abs: string;
+  target: TargetSpec | null;
   resolve: (m: FrameMetrics) => void;
   reject: (e: Error) => void;
 }
@@ -82,7 +83,7 @@ function giveUpOnWorker(reason: string): void {
   const waiting = [...pending.values()];
   pending.clear();
   for (const p of waiting) {
-    void fs.promises.readFile(p.abs).then(buf => p.resolve(measureFrame(buf))).catch(err => p.reject(err instanceof Error ? err : new Error(String(err))));
+    void fs.promises.readFile(p.abs).then(buf => p.resolve(measureFrame(buf, p.target))).catch(err => p.reject(err instanceof Error ? err : new Error(String(err))));
   }
 }
 
@@ -150,14 +151,14 @@ function startWorker(): Worker | null {
 }
 
 /** Measure the FITS file at an absolute path, off the main thread when a worker can run. */
-export async function measureOffThread(abs: string): Promise<FrameMetrics> {
+export async function measureOffThread(abs: string, target: TargetSpec | null = null): Promise<FrameMetrics> {
   const w = startWorker();
-  if (!w) return measureFrame(await fs.promises.readFile(abs));
+  if (!w) return measureFrame(await fs.promises.readFile(abs), target);
   return new Promise<FrameMetrics>((resolve, reject) => {
     const id = nextId++;
-    pending.set(id, { abs, resolve, reject });
+    pending.set(id, { abs, target, resolve, reject });
     if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-    w.postMessage({ id, abs });
+    w.postMessage({ id, abs, target });
   });
 }
 

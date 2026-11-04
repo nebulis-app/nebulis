@@ -22,6 +22,7 @@
     "features": "Integraties",
     "alerts": "Meldingen",
     "display": "Weergave",
+    "slideshow": "Diavoorstelling",
     "organization": "Indeling",
     "processing": "Verwerking",
     "maintenance": "Onderhoud",
@@ -258,7 +259,7 @@
       "success": "Gegevens verwijderd",
       "successDescription": "Je instellingen en accounts zijn behouden.",
       "close": "Sluiten",
-      "genericError": "Het opnieuw instellen is niet voltooid. Je gegevens zijn niet gewijzigd. Probeer het opnieuw of controleer het systeemlogboek."
+      "genericError": "Het opnieuw instellen is niet voltooid. Mogelijk zijn sommige gegevens al verwijderd. Controleer het systeemlogboek voordat je het opnieuw probeert."
     }
   },
   "librarySection": {
@@ -282,19 +283,23 @@
         "media": "Gecombineerd"
       },
       "slideshowShowInfo": {
-        "label": "Diavoorstelling: objectinformatie weergeven",
+        "label": "Objectinformatie weergeven",
         "description": "Toont de naam, het type en de afstand terwijl de afbeeldingen worden afgespeeld."
       },
       "slideshowProcessedOnly": {
-        "label": "Diavoorstelling: starten met alleen bewerkte afbeeldingen",
+        "label": "Starten met alleen bewerkte afbeeldingen",
         "description": "De diavoorstelling opent met alleen bewerkte afbeeldingen. Je kunt dit op elk moment wijzigen."
       }
+    },
+    "slideshow": {
+      "title": "Diavoorstelling",
+      "description": "Hoe de diavoorstelling afbeeldingen en informatie toont."
     },
     "imageBehavior": {
       "title": "Afbeeldingsweergave",
       "rotate": {
         "label": "Roteer afbeeldingen 90° tegen de klok in",
-        "description": "Corrigeert de oriëntatie van gedraaid opgeslagen telescoopbeelden, ook in de diavoorstelling."
+        "description": "Draait elke afbeelding in de diavoorstelling een kwartslag. Handig als uw telescoop beelden zijdelings opslaat."
       }
     },
     "organization": {
@@ -369,7 +374,7 @@
     "upToDate_beta": "Je gebruikt de nieuwste bètaversie",
     "lastCheckFailed": "Laatste controle kon niet worden voltooid: {{error}}",
     "checkFailed": "Controleren op updates is mislukt.",
-    "updateStartFailed": "De update kon niet worden gestart.",
+    "updateStartFailed": "De update kon niet worden gestart. Bekijk het serverlogboek en probeer het opnieuw.",
     "autoUpdate": {
       "label": "Automatisch controleren op updates",
       "description": "Updates worden op de achtergrond gedownload, zodat ze sneller worden geïnstalleerd."
@@ -469,14 +474,15 @@
     "visitSource": "Ga naar {{name}}",
     "freeApi": "Gratis API",
     "bundled": "Gebundeld",
-    "footerNote": "Alle externe diensten zijn gratis en vereisen geen API-sleutels. Gegevens worden op aanvraag opgehaald en waar mogelijk in de cache opgeslagen. Een verzoek bevat alleen wat de dienst nodig heeft: de coördinaten van je waarneemlocatie voor weergegevens en lichtvervuiling, en objectnamen voor het opzoeken in catalogi. Accountgegevens, gebruiksgegevens en afbeeldingen worden nooit verzonden.",
+    "footerNote": "Alle externe diensten zijn gratis en vereisen geen API-sleutels. Gegevens worden op aanvraag opgehaald en waar mogelijk in de cache opgeslagen. Een verzoek bevat alleen wat de dienst nodig heeft: de coördinaten van je waarneemlocatie voor weergegevens, lichtvervuiling en plaatsnamen, en objectnamen voor het opzoeken in catalogi. Accountgegevens, gebruiksgegevens en afbeeldingen worden nooit verzonden.",
     "groups": {
       "astronomyDatabases": "Astronomische databases",
       "skyImages": "Hemelbeelden",
       "weatherForecasting": "Weer en weersverwachting",
       "satelliteTracking": "Satelliettracking",
       "maps": "Kaarten",
-      "lightPollution": "Lichtvervuiling"
+      "lightPollution": "Lichtvervuiling",
+      "nebulisServers": "Nebulis-servers"
     },
     "cache": {
       "bundledWithApp": "Gebundeld met app",
@@ -484,19 +490,24 @@
       "cached24h": "24 uur in cache opgeslagen"
     },
     "descriptions": {
-      "openngc": "Coördinaten, magnitudes en typen voor meer dan 3.200 deepsky-objecten",
+      "openngc": "Namen, posities, magnitudes en typen voor ongeveer 12.000 deepsky-objecten",
       "sesame": "Naamzoekopdrachten voor objecten die ontbreken in de gebundelde catalogus",
       "simbad": "Grootte- en afstandsdetails voor catalogusobjecten",
       "hubbleCaldwell": "Hubble-afbeeldingen en tekst voor de 88 Caldwell-objecten",
       "hips": "Beelden uit de DSS2-hemelkartering voor elke gekozen hemelpositie",
       "nasaImageLibrary": "Alternatieve afbeeldingen voor planeten, manen en kometen",
       "wikipedia": "Samenvattingen en miniaturen voor objecten in duidelijke taal",
-      "openMeteo": "Temperatuur, luchtvochtigheid, bewolking, wind en regen voor je locaties",
+      "openMeteo": "Weersverwachting en eerder weer voor je locaties, plus het zoeken naar plaatsen",
       "sevenTimer": "Verwachtingen voor seeing en transparantie tijdens opnamenachten",
       "sunCalc": "Maanfase, schemering en posities van zon en maan voor je locaties",
       "celestrak": "Baanelementen van actieve satellieten voor het controleren van satellietsporen",
       "esri": "Kaarttegels voor de weergave van waarneemlocaties",
-      "darkskysites": "Bepaalt de Bortle-klasse van je waarneemlocatie uit de maandelijkse samengestelde VIIRS-satellietbeelden. Nebulis verstuurt de coördinaten van de geselecteerde waarneemlocatie en bewaart het antwoord 24 uur in de cache."
+      "darkskysites": "Bepaalt de Bortle-klasse van je waarneemlocatie uit de maandelijkse samengestelde VIIRS-satellietbeelden. Nebulis verstuurt de coördinaten van de geselecteerde waarneemlocatie en bewaart het antwoord 24 uur in de cache.",
+      "sdss": "Reservebeelden van de hemel als de DSS2-survey niet bereikbaar is. Dekt maar een deel van de hemel.",
+      "legacySurvey": "Tweede reserve voor beelden van de hemel waar SDSS geen dekking heeft. Dekt maar een deel van de hemel.",
+      "nominatim": "Zet de coördinaten van je waarneemlocatie om in een plaatsnaam.",
+      "nebulisDownloads": "Catalogus-pakketten en app-updates. Nebulis controleert hier op nieuwe versies en downloadt ze hier.",
+      "nebulisPush": "Bezorgt iPhone-meldingen, alleen als je ze inschakelt."
     }
   },
   "siteManager": {
@@ -627,6 +638,11 @@
     "moveCompleteBefore": "Je bibliotheek staat nu in",
     "moveCompleteAfter": "Open een paar waarnemingen om te controleren of alles klopt. De oude kopie staat nog op de oorspronkelijke locatie en is niet verwijderd. Nadat je de nieuwe locatie hebt gecontroleerd, kun je de oude kopie zelf verwijderen op:",
     "gotIt": "Begrepen",
+    "adopted": {
+      "title": "Bestaande bibliotheek verbonden",
+      "summary": "{{registered}} object(en) met bestanden gevonden, {{retired}} naar de prullenbak verplaatst omdat hun map hier niet staat, {{removed}} bestandsrecord(s) verwijderd omdat het bestand hier niet staat.",
+      "skipped": "De opschoning is niet uitgevoerd: {{reason}}"
+    },
     "forgetModal": {
       "title": "Terugzetten naar standaardmap",
       "subtitle": "Voor als de oude schijf of het oude pad definitief niet meer beschikbaar is. Er worden geen bestanden verplaatst of verwijderd.",
@@ -635,7 +651,8 @@
       "bodyAfter": "in plaats daarvan. Bestanden op de oude locatie worden niet gekopieerd. Doe dit alleen als je afbeeldingen al in de standaardmap staan of als je ze opnieuw gaat importeren.",
       "resetFailed": "De locatie kon niet worden teruggezet",
       "cancel": "Annuleren",
-      "resetLocation": "Locatie opnieuw instellen"
+      "resetLocation": "Locatie opnieuw instellen",
+      "secondLibraryWarning": "Nieuwe imports gaan naar die map op de eigen schijf van deze computer. Komt de oude schijf later terug, dan is dat een aparte bibliotheek en voegen de twee zich niet vanzelf samen. Is de schijf alleen losgekoppeld, sluit hem dan liever weer aan."
     },
     "resetToDefaultModal": {
       "title": "Bibliotheek terugverplaatsen naar de standaardlocatie",
@@ -656,7 +673,8 @@
       "filesProgress_one": "{{copied}} / {{count}} bestand",
       "filesProgress_other": "{{copied}} / {{count}} bestanden",
       "keepDriveConnected": "Houd deze schijf aangesloten. Het importeren wordt gepauzeerd totdat de verplaatsing is voltooid."
-    }
+    },
+    "recoveredNotice": "De schijf met je bibliotheek kwam terug op een ander pad, dus Nebulis heeft zelf opnieuw verbinding gemaakt. Hij stond op {{from}} en staat nu op {{to}}."
   },
   "storageDashboard": {
     "title": "Opslag",
@@ -918,6 +936,17 @@
     "mergeAddTo": "Toevoegen aan {{name}}",
     "opticalConfigsTitle": "Optische configuraties",
     "opticalConfigsHelp": "Voor deze telescoop is geen vast gezichtsveld bekend. Voeg een configuratie toe voor elke optische opstelling die je gebruikt, bijvoorbeeld zonder reducer en met een 0,8x-reducer. Kies welke nu is gemonteerd. Kadrering en mozaïek gebruikt de actieve configuratie.",
+    "rigTitle": "Waarmee het fotografeert",
+    "rigHelp": "Wordt gebruikt om te plannen hoeveel uur een doel nodig heeft, zodat het plan alleen filters noemt die je hebt. Scheid filternamen met komma’s.",
+    "rigSensor": "Camera",
+    "rigSensorUnset": "Niet ingesteld",
+    "rigSensorColor": "Kleur",
+    "rigSensorMono": "Mono",
+    "rigFilters": "Filters die je hebt",
+    "rigFiltersPlaceholder": "Ha, OIII, SII, L-eXtreme",
+    "rigAdd": "{{name}} toevoegen",
+    "rigSave": "Opslaan",
+    "rigSaved": "Opgeslagen",
     "activeLabel": "ACTIEF",
     "opticalConfigSummary": "{{focal}}mm · {{width}}×{{height}}mm",
     "opticalConfigSummaryWithPixel": "{{focal}}mm · {{width}}×{{height}}mm · {{pixel}}µm px",
@@ -970,6 +999,7 @@
     "alerts": "Krijg bericht als er een heldere nacht aankomt of een import klaar is.",
     "libraryOrganization": "Hoe objecten worden benoemd, gegroepeerd en geteld.",
     "libraryProcessing": "Wat Nebulis met beelden doet nadat ze zijn binnengekomen.",
+    "librarySlideshow": "Hoe de diavoorstelling wordt afgespeeld en wat hij toont.",
     "maintenance": "Taken die de server elke nacht zelf uitvoert.",
     "catalogs": "Offline beelden en satellietgegevens die op deze server staan."
   },
@@ -1005,7 +1035,9 @@
     "cancel": "Annuleren",
     "saveLabel": "Opslaan",
     "connectedFound_one": "Verbonden. {{count}} map gevonden.",
-    "connectedFound_other": "Verbonden. {{count}} mappen gevonden."
+    "connectedFound_other": "Verbonden. {{count}} mappen gevonden.",
+    "pairThisDrive": "Koppel in plaats daarvan deze schijf",
+    "unmarkedNote": "Die USB-schijf is alleen-lezen, dus Nebulis kon hem niet markeren. Hij wordt alleen herkend aan zijn pad, dat kan wisselen als twee telescopen tegelijk zijn aangesloten."
   },
   "settingsUI": {
     "moreInfoAriaLabel": "Meer info: {{text}}"
@@ -1015,7 +1047,7 @@
     "dialogTitleAdd": "Waarneemlocatie toevoegen",
     "editTitle": "Waarneemlocatie bewerken",
     "addTitle": "Waarneemlocatie toevoegen",
-    "saveFailed": "De waarneemlocatie kon niet worden opgeslagen.",
+    "saveFailed": "De locatie kon niet worden opgeslagen. Controleer de verbinding met de server en probeer het opnieuw.",
     "nameLabel": "Naam",
     "namePlaceholder": "bijv. Achtertuin, donkere waarneemlocatie",
     "geolocationUnsupported": "Geolocatie wordt niet ondersteund door deze browser.",
@@ -1049,7 +1081,14 @@
     "photosRemove": "Foto verwijderen",
     "photosOpen": "Foto openen",
     "photosCaptionPlaceholder": "Voeg een bijschrift toe",
-    "photosUploadFailed": "{{name}} kon niet worden geüpload: {{reason}}"
+    "photosUploadFailed": "{{name}} kon niet worden geüpload: {{reason}}",
+    "imagingWindowLabel": "Opnamevenster",
+    "darknessLabel": "Begint bij",
+    "darknessAstronomical": "Astronomische nacht (zon −18°)",
+    "darknessNautical": "Nautische nacht (zon −12°)",
+    "startOffsetLabel": "Begin, minuten na de schemering",
+    "endOffsetLabel": "Einde, minuten voor de dageraad",
+    "imagingWindowHelp": "De uren die de weerpagina, haar score en de melding voor een heldere nacht als vannacht tellen. Smalbandfilters snijden het meeste schemerlicht weg, dus de nautische nacht volstaat vaak en begint zo'n 35 minuten eerder. Met de minuten begin je later of stop je voor de dageraad; een negatieve waarde verschuift dat einde de andere kant op."
   },
   "enterCodeModal": {
     "title": "Apple TV koppelen",
@@ -1061,17 +1100,6 @@
     "linkConfirm": "<1>{{name}}</1> aan je account koppelen?",
     "pairingCodeAriaLabel": "Koppelingscode",
     "link": "Koppelen"
-  },
-  "archiveBrowserModal": {
-    "ariaLabel": "Gearchiveerde kalibratiegegevens",
-    "title": "Gearchiveerd van {{name}}",
-    "subtitle": "Kalibratieframes zonder andere bestemming: wel bewaard, maar niet als objecten in de bibliotheek opgenomen.",
-    "close": "Sluiten",
-    "loading": "Laden...",
-    "nothingArchived": "Nog niets gearchiveerd.",
-    "fileCount_one": "{{count}} bestand",
-    "fileCount_other": "{{count}} bestanden",
-    "done": "Klaar"
   },
   "reassignTelescopeModal": {
     "ariaLabel": "Telescoopsessies opnieuw toewijzen",
@@ -1098,7 +1126,7 @@
     "connected": "{{name}} verbonden",
     "connectedHelp": "Je telefoon is aangemeld en klaar voor gebruik.",
     "scanInstructions": "Open Nebulis op je telefoon, tik op <1>QR-code scannen</1> en scan deze code. Je telefoon maakt verbinding en meldt zich aan zonder dat je een IP-adres hoeft in te voeren.",
-    "generateFailed": "Er kon geen code worden gegenereerd.",
+    "generateFailed": "Er kon geen koppelcode worden gemaakt. Controleer of de server bereikbaar is en probeer het opnieuw.",
     "qrAlt": "QR-code voor het koppelen",
     "refreshing": "Vernieuwen…",
     "codeExpiredTapToRefresh": "Code verlopen. Tik om te vernieuwen.",
@@ -1117,7 +1145,7 @@
     "passwordTooShort": "Minimaal 6 tekens.",
     "passwordSavedNote": "Wordt opgeslagen wanneer je dit formulier opslaat.",
     "resetPasswordButton": "Wachtwoord opnieuw instellen",
-    "saveFailed": "De wijzigingen konden niet worden opgeslagen.",
+    "saveFailed": "Je wijzigingen konden niet worden opgeslagen. Ze staan nog in dit formulier. Probeer het opnieuw.",
     "resetPasswordConfirmTitle": "Wachtwoord opnieuw instellen?",
     "resetPasswordConfirmMessage": "De aangesloten apparaten van {{name}}, inclusief een gekoppelde Apple TV of telefoon, worden uitgelogd en moeten opnieuw worden gekoppeld."
   },
@@ -1315,6 +1343,14 @@
     "loading": "Laden...",
     "nothingArchived": "Er is nog niets gearchiveerd.",
     "notInLibrary": "Niet meer in de bibliotheek",
+    "willBeAdded": "Niet in de bibliotheek, wordt weer toegevoegd",
+    "restoreAll_one": "{{count}} object herstellen",
+    "restoreAll_other": "{{count}} objecten herstellen",
+    "restoreAllProgress": "{{done}} van {{total}} herstellen...",
+    "restoreAllConfirm_one": "Alles wat ontbreekt voor {{count}} object uit het archief naar de bibliotheek kopiëren? Objecten die de bibliotheek niet meer heeft, worden weer toegevoegd.",
+    "restoreAllConfirm_other": "Alles wat ontbreekt voor {{count}} objecten uit het archief naar de bibliotheek kopiëren? Objecten die de bibliotheek niet meer heeft, worden weer toegevoegd. Dit kan even duren.",
+    "createdCount_one": "{{count}} object weer toegevoegd",
+    "createdCount_other": "{{count}} objecten weer toegevoegd",
     "missingLocally": "{{count}} ontbreekt lokaal",
     "subframe": "subframe",
     "presentLocally": "lokaal aanwezig",

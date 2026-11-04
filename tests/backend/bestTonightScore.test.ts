@@ -143,3 +143,23 @@ describe('computeBestTonightScore — total', () => {
     expect(s.total).toBeCloseTo(1, 10);
   });
 });
+
+describe('computeBestTonightScore — moon penalty', () => {
+  it('leaves the score alone when no penalty is passed', () => {
+    const a = computeBestTonightScore(target({ maxAlt: 70, magnitude: 3 }), NIGHT_START, NIGHT_END).total;
+    const b = computeBestTonightScore(target({ maxAlt: 70, magnitude: 3, moonPenalty: 0 }), NIGHT_START, NIGHT_END).total;
+    expect(b).toBe(a);
+  });
+
+  it('cuts a fully moon-spoiled object to 40% of its score', () => {
+    const base = computeBestTonightScore(target({ maxAlt: 70, magnitude: 3 }), NIGHT_START, NIGHT_END).total;
+    const spoiled = computeBestTonightScore(target({ maxAlt: 70, magnitude: 3, moonPenalty: 1 }), NIGHT_START, NIGHT_END).total;
+    expect(spoiled).toBeCloseTo(base * 0.4, 10);
+  });
+
+  it('clamps an out-of-range penalty', () => {
+    const base = computeBestTonightScore(target({ maxAlt: 70 }), NIGHT_START, NIGHT_END).total;
+    expect(computeBestTonightScore(target({ maxAlt: 70, moonPenalty: 5 }), NIGHT_START, NIGHT_END).total).toBeCloseTo(base * 0.4, 10);
+    expect(computeBestTonightScore(target({ maxAlt: 70, moonPenalty: -1 }), NIGHT_START, NIGHT_END).total).toBe(base);
+  });
+});

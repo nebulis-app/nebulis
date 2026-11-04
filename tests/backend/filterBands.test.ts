@@ -26,8 +26,15 @@ describe('bandForFilterName', () => {
     expect(bandForFilterName(null)).toBeNull();
   });
 
+  it('reads the SeeStar LP token as the dual-band filter it is', () => {
+    expect(bandForFilterName('LP')).toBe('narrowband');
+    expect(client.bandForFilterName('LP')).toBe('narrowband');
+    // Optolong's L-Pro is a broadband filter, however it is written.
+    for (const f of ['L-Pro', 'LPRO']) expect(bandForFilterName(f), f).toBe('broadband');
+  });
+
   it('matches the browser copy', () => {
-    for (const f of ['D2', 'L-eXtreme', 'RGB', 'Filter 3']) expect(client.bandForFilterName(f)).toBe(bandForFilterName(f));
+    for (const f of ['D2', 'L-eXtreme', 'RGB', 'Filter 3', 'LP', 'L-Pro']) expect(client.bandForFilterName(f)).toBe(bandForFilterName(f));
     for (const t of ['Emission Nebula', 'Reflection Nebula', 'Spiral Galaxy']) expect(client.bandForObjectType(t)).toBe(bandForObjectType(t));
   });
 });

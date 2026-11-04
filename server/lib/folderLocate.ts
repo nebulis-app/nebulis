@@ -142,6 +142,9 @@ async function searchRoots(): Promise<string[]> {
   if (process.platform === 'win32') roots.push(...await windowsDriveRoots());
   else if (process.platform === 'darwin') roots.push('/Users/Shared', ...await macVolumeRoots());
   else roots.push(...(await withTimeout(listVolumes().catch(() => []), FS_CALL_TIMEOUT_MS * 2, [])).map(v => v.path));
+  // Extra roots for tests and unusual setups: a folder deeper than MAX_DEPTH under home is only findable through Spotlight,
+  // which lags behind folders created a moment ago.
+  roots.push(...(process.env.NEBULIS_LOCATE_EXTRA_ROOTS ?? '').split(path.delimiter).filter(Boolean));
   return [...new Set(roots)];
 }
 

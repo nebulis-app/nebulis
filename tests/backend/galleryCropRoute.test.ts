@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import http from 'http';
 import type { AddressInfo } from 'net';
 import express from 'express';
@@ -63,6 +63,12 @@ beforeAll(async () => {
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 
+// Every test starts from the same row: image chosen by the user, no crop. Tests change both, so without
+// this they pass or fail depending on which ran before them.
+beforeEach(() => {
+  db.prepare('UPDATE libraryObjects SET galleryImage = ?, galleryImageUserSet = 1, galleryCrop = NULL WHERE objectId = ?').run(REL, OBJECT_ID);
+});
+
 afterAll(async () => {
   await new Promise<void>(resolve => server.close(() => resolve()));
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
@@ -97,6 +103,7 @@ describe('object gallery crop', () => {
   });
 
   it('exposes the crop on GET gallery-image', async () => {
+    expect((await putCrop({ x: 0.75, y: 0.5, zoom: 2 })).status).toBe(200);
     const res = await fetch(`${baseUrl}/objects/${OBJECT_ID}/gallery-image`);
     const body = await res.json() as { data?: { galleryCrop?: unknown }; galleryCrop?: unknown };
     expect((body.data ?? body).galleryCrop).toEqual({ x: 0.75, y: 0.5, zoom: 2 });

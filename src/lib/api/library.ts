@@ -1476,6 +1476,7 @@ export interface MediaGroup {
 
 export interface ObjectMedia {
   counts: Record<MediaTabId, number>;
+  nightCount: number;
   facets: {
     telescopes: Array<MediaTelescope & { count: number }>;
     filters: Array<{ value: string; count: number }>;

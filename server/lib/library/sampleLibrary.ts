@@ -452,6 +452,7 @@ const OBJECT_SCOPED_TABLES = [
   'captureInfo',
   'favorites',
   'notes',
+  'objectNotes',
   'wishlist',
   'plannedSessions',
   'sessionProcessedImages',

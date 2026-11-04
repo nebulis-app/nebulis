@@ -21,7 +21,7 @@ const ORDER_KEY = 'nebulis-nav-order';
 const ALL_SEEDED = [
   'nebulis-nav-forecast-default-seeded-v1',
   'nebulis-nav-calibrations-default-seeded-v1',
-  'nebulis-nav-wishlist-default-visible-v1',
+  'nebulis-nav-wishlist-merged-into-explore-v1',
 ];
 
 const GOOD_OPTICS = { focalMm: 400, sensorWMm: 23.5, sensorHMm: 15.7, pixelSizeUm: 3.76 };
@@ -117,7 +117,7 @@ describe('NavVisibilityProvider initial state from storage', () => {
 
     expect(order).toEqual([
       'help', 'library', 'gallery', 'observations', 'forecast',
-      'planner', 'wishlist', 'explore', 'catalogs', 'calibrations', 'settings',
+      'planner', 'explore', 'catalogs', 'calibrations', 'settings',
     ]);
   });
 

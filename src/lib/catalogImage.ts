@@ -55,6 +55,16 @@ export function getCatalogThumbnailUrl(
 }
 
 /**
+ * The full-size master for this object (no resize), for viewing it large. Same field of view as the thumbnail, so
+ * both come from the one picture on disk.
+ */
+export function getCatalogFullImageUrl(catalogId: string, majorAxisArcmin?: number | null): string {
+  const base = `/api/catalog/${encodeURIComponent(catalogId)}/image`;
+  if (majorAxisArcmin == null) return base;
+  return `${base}?fov=${fovForSize(majorAxisArcmin)}`;
+}
+
+/**
  * Direct static URL for the pre-generated DSS2 thumbnail. No routing overhead,
  * 30-day browser cache. Use this as the primary src on catalog grids and let the
  * API URL be the onError fallback (handles objects whose best source isn't dss2).

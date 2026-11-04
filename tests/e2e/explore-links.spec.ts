@@ -162,7 +162,7 @@ test('a wishlist card links to the Planner and to the Explore tile it belongs to
   await mockAllRoutes(page);
   await mockWishlist(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto('/wishlist');
+  await page.goto('/explore?tab=wishlist');
   await expect(page.getByText('Orion Nebula')).toBeVisible();
   // Orion Nebula is an emission nebula: its "Find similar" is that tile.
   // The card's small actions appear on hover.

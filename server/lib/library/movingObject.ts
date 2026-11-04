@@ -11,7 +11,7 @@
  */
 export function looksLikeComet(objectId: string): boolean {
   const id = objectId.trim();
-  if (/^\d{1,4}P(?:[\s_/-]*[A-Za-z][A-Za-z'-]*.*)?$/i.test(id)) return true;
+  if (/^\d{1,4}P(?:[\s_/-]*[A-Za-z].*)?$/i.test(id)) return true;
   if (/^\d{1,4}[CD][\s_/-]*[A-Za-z][A-Za-z'-]+/i.test(id)) return true;
   return /^[CPDXI][\s/_-]?\d{4}[\s_]?[A-Z]{1,2}\d*/i.test(id) && !/^C\d{1,3}$/i.test(id);
 }

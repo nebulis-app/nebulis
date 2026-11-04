@@ -12,7 +12,9 @@
  * one window.
  */
 import { altAz, getNightWindow } from './astroCalc.js';
-import { OBSERVING_NIGHT_ROLLOVER_HOUR } from './telescopeFiles.js';
+import { lookupTimeZoneForCoordinates } from './observerTimezone.js';
+import { observingNightAnchor } from './telescopeFiles.js';
+import { localParts } from './timezone.js';
 
 export interface MonthlyAltSample {
   /** Month label: "Jan", "Feb", etc. */
@@ -50,10 +52,16 @@ export function computeBestImagingWindow(
   now: Date = new Date(),
 ): BestImagingWindow {
   const months: MonthlyAltSample[] = [];
+  // The month is the site's, and each sample is anchored at mean solar noon at
+  // the site's longitude, like observerNoonAnchor in the client. A noon on the
+  // server's own clock is another solar day for a site far from it (Sydney seen
+  // from a server in Iowa), so the answer depended on where the server ran.
+  const here = localParts(now, lookupTimeZoneForCoordinates(lat, lon));
 
   for (let i = 0; i < 12; i++) {
-    const anchor = new Date(now.getFullYear(), now.getMonth() + i, 15, 12, 0, 0);
-    const label = MONTH_ABBR[anchor.getMonth()];
+    const utcNoon = Date.UTC(here.year, here.month - 1 + i, 15, 12, 0, 0);
+    const anchor = new Date(utcNoon - (lon / 15) * 3_600_000);
+    const label = MONTH_ABBR[new Date(utcNoon).getUTCMonth()];
 
     const night = nightWindowFor(anchor, lat, lon);
     if (!night) {
@@ -129,17 +137,14 @@ export function isUpTonight(
   lon: number,
   minAlt = 0,
   now: Date = new Date(),
+  timeZone: string | null = lookupTimeZoneForCoordinates(lat, lon),
 ): boolean | null {
-  // "Astronomer's today": before 07:00 local the relevant window is still the
-  // one that began last evening, exactly like plannerToday() in
-  // src/lib/nightWindow.ts (client) — including its use of the local wall
-  // clock rather than a threaded timezone, since isUpTonight takes no
-  // timeZone parameter on either side. This used to anchor on `now`'s own
-  // calendar day unconditionally, so a 2am call asked about the *next*
-  // evening's window instead of the one still running, and could disagree
-  // with the client's answer for the same instant.
-  const dayOffset = now.getHours() < OBSERVING_NIGHT_ROLLOVER_HOUR ? -1 : 0;
-  const anchor = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset, 12, 0, 0);
+  // "Astronomer's today": before 07:00 at the site the relevant window is
+  // still the one that began last evening, like plannerToday() in the client.
+  // The rollover is read in the site's own zone, looked up from the
+  // coordinates: the server's clock is UTC in Docker, which put the rollover
+  // at 01:00 or 02:00 in the US and asked about the wrong night until dawn.
+  const anchor = observingNightAnchor(now, timeZone);
   const night = nightWindowFor(anchor, lat, lon);
   if (!night) return null;
   const stepMs = 10 * 60 * 1000;

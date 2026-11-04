@@ -120,9 +120,9 @@ export const WishlistCard = memo(function WishlistCard({
   const hasLocation = observerLat != null && observerLon != null;
   const bestWindow = useMemo(
     () => (!target && hasLocation && ra != null && dec != null
-      ? computeBestImagingWindow(ra, dec, observerLat, observerLon, minAlt)
+      ? computeBestImagingWindow(ra, dec, observerLat, observerLon, minAlt, observerTimezone)
       : null),
-    [target, hasLocation, ra, dec, observerLat, observerLon, minAlt],
+    [target, hasLocation, ra, dec, observerLat, observerLon, minAlt, observerTimezone],
   );
 
   return (

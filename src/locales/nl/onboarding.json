@@ -1,7 +1,7 @@
 {
   "step1": {
     "heading": "Beheerdersaccount aanmaken",
-    "subheading": "Stel je inloggegevens in",
+    "subheading": "Kies de gebruikersnaam en het wachtwoord waarmee je inlogt.",
     "usernameLabel": "Gebruikersnaam",
     "usernamePlaceholder": "admin",
     "passwordLabel": "Wachtwoord",
@@ -40,7 +40,7 @@
   },
   "step3": {
     "heading": "Automatisch importeren",
-    "subheading": "Stel in hoe vaak het systeem gegevens van je telescoop importeert",
+    "subheading": "Kies hoe vaak Nebulis je telescoop op nieuwe bestanden controleert.",
     "importFrequencyLabel": "Importfrequentie",
     "interval": {
       "manual": "Alleen handmatig: niet automatisch importeren",
@@ -91,6 +91,7 @@
     "back": "Terug",
     "creating": "Aanmaken...",
     "continue": "Doorgaan",
+    "createAccount": "Account maken",
     "saving": "Opslaan...",
     "finishSetup": "Instellen voltooien"
   }

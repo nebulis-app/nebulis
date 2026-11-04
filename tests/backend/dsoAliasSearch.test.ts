@@ -343,7 +343,9 @@ describe('the Planner catalog', () => {
       }
     }
     expect(problems.slice(0, 10)).toEqual([]);
-  }, 60_000);
+    // 313 objects x 5 spellings, each a full scan of the catalog: about 19 s on a laptop, over 60 s on a shared CI
+    // runner with coverage on, so the limit leaves room for that rather than flaking.
+  }, 240_000);
 
   it('gives every entry what scheduling needs: finite coordinates, a type and a name', () => {
     const bad = planner.filter((e) => !Number.isFinite(e.ra) || !Number.isFinite(e.dec) || !e.type || !e.typeCode || !e.name).map((e) => e.id);

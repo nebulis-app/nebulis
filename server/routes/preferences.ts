@@ -1,21 +1,17 @@
 import { Router } from 'express';
-import { z } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
 import {
   getWatermarkPresets,
   setWatermarkPresets,
   getLastSeenVersion,
   setLastSeenVersion,
-  WatermarkPresetSchema,
+  getSupportAskSeenAt,
+  setSupportAskSeen,
+  LastSeenVersionBodySchema,
+  WatermarkPresetsBodySchema,
 } from '../lib/userPreferences.js';
 
 export const preferencesRouter = Router();
-
-const WatermarkPresetsBodySchema = z.array(WatermarkPresetSchema);
-
-const LastSeenVersionBodySchema = z.object({
-  version: z.string().min(1).max(64),
-});
 
 // Fall back to 'default' when auth is disabled (no-user / API-key mode)
 function resolveUserId(req: { userId?: string }): string {
@@ -46,6 +42,17 @@ preferencesRouter.put('/watermarks', requireAdmin, (req, res) => {
 preferencesRouter.get('/last-seen-version', (req, res) => {
   const userId = resolveUserId(req);
   res.apiSuccess({ lastSeenVersion: getLastSeenVersion(userId) });
+});
+
+/** GET /preferences/support-ask — when this user dismissed the "Enjoying Nebulis?" ask, or null if they have not. */
+preferencesRouter.get('/support-ask', (req, res) => {
+  res.apiSuccess({ seenAt: getSupportAskSeenAt(resolveUserId(req)) });
+});
+
+/** PUT /preferences/support-ask — record that the ask was seen (closed, or the coffee link opened). Takes no body.
+ *  Idempotent: the first dismissal keeps its date. */
+preferencesRouter.put('/support-ask', (req, res) => {
+  res.apiSuccess({ seenAt: setSupportAskSeen(resolveUserId(req)) });
 });
 
 /** PUT /preferences/last-seen-version — mark this version as seen. Called

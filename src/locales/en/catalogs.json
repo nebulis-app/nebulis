@@ -33,7 +33,7 @@
     "sharpless": {
       "label": "Sharpless",
       "tagline": "313 clouds of glowing hydrogen, the emission nebulae behind many of the sky's familiar names.",
-      "blurb": "Stewart Sharpless catalogued 313 HII regions from the National Geographic sky survey plates. These are the hydrogen-alpha clouds narrowband imagers chase: large, faint, and full of structure. Some carry familiar names like the Cave, the Wizard, and the Pacman, but plenty are unnamed fields waiting for a long exposure."
+      "blurb": "Stewart Sharpless cataloged 313 HII regions from the National Geographic sky survey plates. These are the hydrogen-alpha clouds narrowband imagers chase: large, faint, and full of structure. Some carry familiar names like the Cave, the Wizard, and the Pacman, but plenty are unnamed fields waiting for a long exposure."
     }
   },
   "objectClass": {
@@ -100,7 +100,7 @@
     "sortObjects": "Sort objects"
   },
   "catalogObjectModal": {
-    "maxAltitudeHeading": "Max altitude during darkness — next 12 months",
+    "maxAltitudeHeading": "Max altitude during darkness, next 12 months",
     "bestSingle": "Best: {{date}}",
     "bestRange": "Best: {{start}} – {{end}}",
     "monthAltitude": "{{label}}: {{deg}}°",
@@ -436,11 +436,9 @@
       "titleOn": "Best on {{date}}"
     },
     "browse": {
-      "title": "Browse by kind",
-      "myWishlist": "My wishlist ({{count}})"
+      "title": "Browse by kind"
     },
     "results": {
-      "back": "Back to Explore",
       "forQuery": "Results for \"{{query}}\"",
       "inConstellation": "Best in {{name}}",
       "all": "Everything",
@@ -450,7 +448,9 @@
       "showEverything": "Show everything, even what never rises here",
       "loadMore": "Load more",
       "bestTonight": "Best tonight",
-      "bestOn": "Best on {{date}}"
+      "bestOn": "Best on {{date}}",
+      "breadcrumb": "Where you are",
+      "categories": "Categories"
     },
     "filters": {
       "visibility": "Show",
@@ -497,6 +497,17 @@
     "night": {
       "showing": "Showing {{date}}, the night chosen in the Planner.",
       "backToTonight": "Back to tonight"
+    },
+    "tabs": {
+      "label": "Explore sections",
+      "discover": "Discover",
+      "wishlist": "Wishlist"
+    },
+    "wishlist": {
+      "summary_one": "{{total}} target, {{visible}} visible tonight",
+      "summary_other": "{{total}} targets, {{visible}} visible tonight",
+      "highPriority_one": "{{formatted}} high priority",
+      "highPriority_other": "{{formatted}} high priority"
     }
   }
 }

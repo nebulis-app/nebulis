@@ -46,7 +46,7 @@ describe('classifyType', () => {
 });
 
 // ── Catalog data integrity checks ────────────────────────────────────────────
-import { getCatalogEntry } from '../../server/data/catalog';
+import { getCatalogEntry } from '../../server/lib/catalogLookup';
 
 describe('Messier catalog entries', () => {
   it('has a resolvable entry for every M1–M110', () => {

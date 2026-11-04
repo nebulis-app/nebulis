@@ -115,9 +115,33 @@ function formsOf(p: string): string[] {
  */
 function candidateFormsOf(p: string): string[] {
   const forms = formsOf(p);
-  const deepest = realpathDeepest(p);
-  if (deepest && !forms.includes(deepest)) forms.push(deepest);
+  const resolved = realpathWithMissingTail(p);
+  if (resolved && !forms.includes(resolved)) forms.push(resolved);
   return forms;
+}
+
+/**
+ * Where `p` really is, even when its last parts do not exist yet: the real path of
+ * the deepest existing ancestor with the missing parts put back on.
+ *
+ * The ancestor alone is not the path. Comparing it stood in for the missing folder,
+ * so two sibling folders that were both still to be created each resolved to their
+ * shared parent and "overlapped", and an archive folder not yet made refused to sit
+ * beside a linked folder on the same disk.
+ */
+function realpathWithMissingTail(p: string): string | null {
+  let current = path.resolve(p);
+  const tail: string[] = [];
+  while (true) {
+    try {
+      return path.join(fs.realpathSync.native(current), ...tail);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return null;
+      tail.unshift(path.basename(current));
+      current = parent;
+    }
+  }
 }
 
 /**

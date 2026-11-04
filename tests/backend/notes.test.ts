@@ -9,10 +9,14 @@ import {
   deleteNote,
 } from '../../server/lib/notes';
 import db from '../../server/lib/db';
+import { getActiveSite, updateSite } from '../../server/lib/observingSites';
 
 describe('notes', () => {
   beforeEach(() => {
     db.prepare('DELETE FROM notes').run();
+    // The Moon phase is read at 22:00 at the site. Pin the site to UTC so the
+    // expected figures hold whatever zone the test machine is in (npm run test:tz).
+    updateSite(getActiveSite().id, { timezone: 'UTC' });
   });
 
   it('creates a note', () => {

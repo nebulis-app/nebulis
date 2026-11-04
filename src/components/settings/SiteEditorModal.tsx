@@ -18,6 +18,12 @@ import { SitePhotosSection } from './SitePhotosSection';
  * editor already lives in the Planner (Set Visible Sky) and now targets
  * whichever site is active there, so this modal doesn't duplicate it.
  */
+/** Minutes from an input, rounded and held to what the server accepts (-180 to 360). */
+function clampOffset(raw: string): number {
+  const n = Math.round(Number(raw));
+  return Number.isFinite(n) ? Math.min(360, Math.max(-180, n)) : 0;
+}
+
 export function SiteEditorModal({
   isDark,
   existing,
@@ -39,6 +45,9 @@ export function SiteEditorModal({
   const [longitude, setLongitude] = useState<number | null>(existing?.longitude ?? null);
   const [timezone, setTimezone] = useState(existing?.timezone ?? '');
   const [minAlt, setMinAlt] = useState(existing?.minAlt ?? 20);
+  const [darkness, setDarkness] = useState<'astronomical' | 'nautical'>(existing?.darkness ?? 'astronomical');
+  const [startOffset, setStartOffset] = useState(existing?.windowStartOffsetMin ?? 0);
+  const [endOffset, setEndOffset] = useState(existing?.windowEndOffsetMin ?? 0);
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const [detectStatus, setDetectStatus] = useState<'idle' | 'detecting' | 'success' | 'error'>('idle');
   const [detectError, setDetectError] = useState('');
@@ -93,12 +102,17 @@ export function SiteEditorModal({
         longitude,
         timezone,
         minAlt,
+        darkness,
+        windowStartOffsetMin: startOffset,
+        windowEndOffsetMin: endOffset,
       };
       return isEdit ? updateSite(existing.id, data) : createSite(data);
     },
     onSuccess: (saved) => {
       queryClient.invalidateQueries({ queryKey: ['sites'] });
       queryClient.invalidateQueries({ queryKey: ['settings'] });
+      // The forecast carries tonight's imaging window, which these settings shape.
+      queryClient.invalidateQueries({ queryKey: ['forecast'] });
       onClose(saved.id);
     },
     retry: false,
@@ -109,7 +123,8 @@ export function SiteEditorModal({
       isOpen
       onClose={() => { if (!mutation.isPending) onClose(); }}
       title={isEdit ? t('siteEditorModal.dialogTitleEdit') : t('siteEditorModal.dialogTitleAdd')}
-      className={`w-full max-w-md rounded-2xl border shadow-2xl ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
+      // Held to the screen's height with the fields scrolling between a fixed header and buttons, so Save stays in reach on a short screen.
+      className={`flex w-full max-w-md max-h-[calc(100dvh-2rem)] flex-col rounded-2xl border shadow-2xl ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
     >
         <div className={`flex items-center justify-between p-5 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
           <div className="flex items-center gap-3">
@@ -128,7 +143,7 @@ export function SiteEditorModal({
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 space-y-4">
           {mutation.error && (
             <div className={`p-3 rounded-lg border text-sm ${isDark ? 'bg-red-950/30 border-red-900/50 text-red-200' : 'bg-red-50 border-red-200 text-red-800'}`}>
               {mutation.error instanceof Error ? mutation.error.message : t('siteEditorModal.saveFailed')}
@@ -239,10 +254,46 @@ export function SiteEditorModal({
             <p className={helperClass}>{t('siteEditorModal.minAltitudeHelp')}</p>
           </div>
 
+          <fieldset>
+            <legend className={labelClass}>{t('siteEditorModal.imagingWindowLabel')}</legend>
+            <div className="mt-1 grid grid-cols-2 gap-3">
+              <label className="col-span-2 block">
+                <span className={helperClass}>{t('siteEditorModal.darknessLabel')}</span>
+                <select
+                  value={darkness}
+                  onChange={e => setDarkness(e.target.value === 'nautical' ? 'nautical' : 'astronomical')}
+                  className={inputClass}
+                >
+                  <option value="astronomical">{t('siteEditorModal.darknessAstronomical')}</option>
+                  <option value="nautical">{t('siteEditorModal.darknessNautical')}</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className={helperClass}>{t('siteEditorModal.startOffsetLabel')}</span>
+                <input
+                  type="number" inputMode="numeric" step={15} min={-180} max={360}
+                  value={startOffset}
+                  onChange={e => setStartOffset(clampOffset(e.target.value))}
+                  className={inputClass}
+                />
+              </label>
+              <label className="block">
+                <span className={helperClass}>{t('siteEditorModal.endOffsetLabel')}</span>
+                <input
+                  type="number" inputMode="numeric" step={15} min={-180} max={360}
+                  value={endOffset}
+                  onChange={e => setEndOffset(clampOffset(e.target.value))}
+                  className={inputClass}
+                />
+              </label>
+            </div>
+            <p className={helperClass}>{t('siteEditorModal.imagingWindowHelp')}</p>
+          </fieldset>
+
           <SitePhotosSection isDark={isDark} siteId={existing?.id} />
         </div>
 
-        <div className={`flex items-center justify-end gap-3 px-5 pb-5`}>
+        <div className={`flex shrink-0 items-center justify-end gap-3 px-5 pb-5 pt-3`}>
           <button
             type="button"
             onClick={() => onClose()}

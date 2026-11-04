@@ -170,3 +170,8 @@ export const DEFAULT_ALERT_CONFIG: AlertConfig = {
   language: 'en',
   clearNight: { checkTime: '17:00', minClearHours: 3, maxCloudCover: 30 },
 };
+
+/** Evening only (12:00-23:59): the check evaluates the local calendar date as the night, so a time after
+ *  midnight would look at the wrong night. Beside the config shape so the route schema and the store
+ *  validate the same pattern. */
+export const EVENING_HHMM = /^(1[2-9]|2[0-3]):[0-5]\d$/;

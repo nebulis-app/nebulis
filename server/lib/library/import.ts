@@ -10,11 +10,13 @@ import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { getLibraryDir } from '../libraryPath.js';
-import { THUMBNAILS_DIR } from '../paths.js';
 import { generateFitsThumbnail } from '../fitsThumbnail.js';
-import sharp from '../sharp-optional.js';
 import db from '../db.js';
 import { writeImportHistory } from './importHistory.js';
+import { runPostImport, waitUpTo } from './postImport.js';
+
+// Re-exported for the tests that pin its behaviour.
+export { waitUpTo };
 import {
   getProfileById,
   getManualImportProfiles,
@@ -24,7 +26,8 @@ import {
 import { getOpticalConfigsForProfile } from '../telescopeOpticalConfigs.js';
 import { setSessionOpticalConfig } from './sessionOptics.js';
 import { smbListDir, smbGetFile, type SmbEntry } from '../smb.js';
-import { selectActiveTransport, markTransportSeen, type TransportKind } from '../telescopeTransports.js';
+import { markTransportSeen, type TransportKind } from '../telescopeTransports.js';
+import { prepareActiveTransport, judgeStorageIdentity } from '../driveBindings.js';
 import { writeIdentityIfMissing } from '../deviceIdentity.js';
 import {
   getWalkerConfig,
@@ -69,6 +72,7 @@ import {
 } from '../telescopeFiles.js';
 import { resolveCanonicalId, applyCatalogPreference } from '../catalogAliases.js';
 import { getDesignationRedirect } from './designationRedirects.js';
+import { resolveImportObjectId } from './importObjectId.js';
 import { getByName as getCatalogEntryByName } from '../dsoCatalog.js';
 import { findCatalogEntryByExactName } from '../../data/catalog.js';
 import { exifDateFromFile } from '../exifDate.js';
@@ -79,10 +83,9 @@ import {
   loadIndex,
   loadSettings,
   resolveCatalogMeta,
-  enrichObjectData,
   type LibraryIndex,
 } from './objects.js';
-import { resolveObjectImagePath, invalidateAllImagesCache, objectThumbnailDiskCacheKey } from './gallery.js';
+import { invalidateAllImagesCache } from './gallery.js';
 import { writeFileIntoLibrary, copyTransportFile } from './importWrite.js';
 import { recordLibraryFiles, roleForFile, resolverFor, writeObjectManifest, getLibraryFileRow, getLibraryFilesForObject, type RecordFileInput } from './libraryFiles.js';
 import { classifyExistingCopy } from './existingCopy.js';
@@ -103,7 +106,7 @@ import {
   sanitizeSessionFolder,
   type LibraryLayout,
 } from './libraryLayout.js';
-import { enqueueSessionWeatherBackfill, getSessionTelescopeId } from './observations.js';
+import { getSessionTelescopeId } from './observations.js';
 import {
   classifyImportFile,
   isDwarfMasterStack,
@@ -117,6 +120,8 @@ import {
 import { isRecord } from '../typeGuards.js';
 import { isContainerFolder, groupByTarget, stripCaptureModeSuffix } from './objectDiscovery.js';
 import { isCalibrationFolderName, SEESTAR_DARK_LIBRARY_FOLDER } from './calibrationFolders.js';
+import { activeSiteTimeZone } from '../siteTimeZone.js';
+import { localParts } from '../timezone.js';
 import {
   collectObjectSources,
   walkObjectFiles,
@@ -322,73 +327,9 @@ export function createWorkerQueue<T>(concurrency: number, process: (item: T) => 
  * key is always identical to what the route will look up. Runs up to 4
  * objects concurrently to saturate the sharp/libvips thread pool.
  */
-/** How long an import waits for thumbnail pre-warming before it reports done.
- *  A target with no local image falls back to a sky-survey fetch with a long
- *  timeout, so on a slow or offline network the wait used to hold the progress
- *  dialog at 100% for a minute or more. The workers keep running after this and
- *  anything unfinished is generated on first view. */
-const THUMB_PREWARM_MAX_WAIT_MS = 10_000;
-
-/** Resolve when `work` settles or `ms` passes, whichever is first. Never rejects:
- *  the work's own errors are handled inside it, and the caller only wants to stop
- *  waiting. */
-export async function waitUpTo(work: Promise<unknown>, ms: number): Promise<void> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    await Promise.race([
-      work.catch(() => undefined),
-      new Promise<void>(resolve => { timer = setTimeout(resolve, ms); }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-async function pregenerateObjectThumbnails(objectIds: Iterable<string>): Promise<void> {
-  const THUMB_W = 400;
-  const THUMB_H = 400;
-  const ids = Array.from(objectIds);
-  log.info({ count: ids.length }, '[thumb] Pre-generating gallery thumbnails for %d object(s)', ids.length);
-
-  importStatus.warmingThumbnails = { done: 0, total: ids.length };
-
-  const queue = ids.slice();
-  const CONCURRENCY = 4;
-  // Local counter, not a read-modify-write off importStatus.warmingThumbnails:
-  // that field can be reset to null by a subsequent runImport() call (module-
-  // level importStatus, guarded only by the import lock) while these workers
-  // are still mid-await, which would null-deref on the next increment.
-  let done = 0;
-
-  await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
-    while (queue.length > 0) {
-      const objectId = queue.shift();
-      if (!objectId) break;
-      try {
-        const srcPath = await resolveObjectImagePath(objectId);
-        if (srcPath && fs.existsSync(srcPath)) {
-          const mtimeMs = fs.statSync(srcPath).mtimeMs;
-          const cacheKey = objectThumbnailDiskCacheKey(srcPath, THUMB_W, THUMB_H, mtimeMs);
-          const cachePath = path.join(THUMBNAILS_DIR, `${cacheKey}.jpg`);
-          if (!fs.existsSync(cachePath)) {
-            fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
-            await sharp(srcPath)
-              .resize(THUMB_W, THUMB_H, { fit: 'inside', withoutEnlargement: true })
-              .jpeg({ quality: 80, progressive: true })
-              .toFile(cachePath);
-          }
-        }
-      } catch (err) {
-        // Never block import completion — the thumbnail regenerates on
-        // demand elsewhere — but a repeated failure here is worth seeing.
-        log.warn({ err: err instanceof Error ? err.message : String(err), objectId }, '[import] thumbnail pre-warm failed');
-      }
-      done++;
-      importStatus.warmingThumbnails = { done, total: ids.length };
-    }
-  }));
-
-  importStatus.warmingThumbnails = null;
+/** Object ids that received at least one new file in this run. */
+function newFileObjectIds(files: ReadonlyArray<{ name: string }>): Set<string> {
+  return new Set(files.map(f => resolveImportObjectId(f.name.split('/')[0])));
 }
 
 // If a previous run left importRunning = 1 in the DB, the server crashed mid-import.
@@ -791,7 +732,20 @@ export async function runImport(
   // wins when present; otherwise we use the configured SMB transport. The
   // selected transport's connection fields override the profile's legacy
   // mirror columns for the rest of this import.
-  const activeTransport = selectActiveTransport(baseProfile.id);
+  // `prepareActiveTransport` also follows a USB drive to wherever it is mounted now, and refuses a drive that belongs
+  // to a different telescope rather than importing its files under this one.
+  const prepared = await prepareActiveTransport(baseProfile);
+  if (prepared.error) {
+    importStatus.error = prepared.error;
+    importStatus.running = false;
+    importStatus.telescopeId = baseProfile.id;
+    importStatus.telescopeName = baseProfile.name;
+    try { stmts.setImportRunning.run(0, null); } catch (err) {
+      console.warn('[import] setImportRunning failed:', err instanceof Error ? err.message : err);
+    }
+    return;
+  }
+  const activeTransport = prepared.transport;
   const profile: TelescopeProfile = activeTransport
     ? {
         ...baseProfile,
@@ -881,11 +835,21 @@ export async function runImport(
   let runDeviceId: string | null = baseProfile.deviceId ?? null;
   if (activeTransport && baseProfile.trackDeviceIdentity) {
     try {
-      const probe = await writeIdentityIfMissing(activeTransport, { model: profile.model });
+      // Storage with no ID yet gets this telescope's own, so one device reached two ways carries one ID.
+      const probe = await writeIdentityIfMissing(activeTransport, { model: profile.model, deviceId: baseProfile.deviceId ?? undefined });
       markTransportSeen(activeTransport.id);
-      if (!runDeviceId) {
-        runDeviceId = probe.identity.deviceId;
+      // An ID that could not be written to the storage exists nowhere: keep it off the profile and out of the dedup key.
+      const verdict = judgeStorageIdentity(baseProfile, probe.readonly ? null : probe.identity.deviceId);
+      if (verdict.action === 'adopt') {
+        runDeviceId = verdict.deviceId;
         setProfileDeviceId(profile.id, runDeviceId);
+      } else if (verdict.action === 'warn') {
+        log.warn(
+          { telescopeId: profile.id, transportId: activeTransport.id, found: verdict.found, reason: verdict.reason, owner: verdict.ownerName },
+          verdict.reason === 'other-telescope'
+            ? `[import] the storage carries ${verdict.ownerName ?? 'another telescope'}'s device id, not ${profile.name}'s; importing anyway`
+            : `[import] the storage carries a different device id from ${profile.name}'s; importing anyway`,
+        );
       }
     } catch (err) {
       log.warn(
@@ -982,8 +946,8 @@ export async function runImport(
       debugLog('import:discover', `Dwarf: found ${discovered.length} object(s) total`);
       if (discovered.length > 0) debugLog('import:discover', `Objects: ${discovered.map(o => o.folderName).join(', ')}`);
       toImport = discovered
-        .filter(o => !targetObjectId || resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId)
-        .filter(o => !index.objects[resolveCanonicalId(normalizeObjectId(o.folderName))]?.deleted)
+        .filter(o => !targetObjectId || resolveImportObjectId(o.folderName) === targetObjectId)
+        .filter(o => !index.objects[resolveImportObjectId(o.folderName)]?.deleted)
         .map(o => ({
           objectName: o.folderName,
           subFolderName: null,
@@ -997,8 +961,8 @@ export async function runImport(
       debugLog('import:discover', `ASIAIR: found ${discovered.length} object(s) total`);
       if (discovered.length > 0) debugLog('import:discover', `Objects: ${discovered.map(o => o.folderName).join(', ')}`);
       toImport = discovered
-        .filter(o => !targetObjectId || resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId)
-        .filter(o => !index.objects[resolveCanonicalId(normalizeObjectId(o.folderName))]?.deleted)
+        .filter(o => !targetObjectId || resolveImportObjectId(o.folderName) === targetObjectId)
+        .filter(o => !index.objects[resolveImportObjectId(o.folderName)]?.deleted)
         .map(o => ({
           objectName: o.folderName,
           subFolderName: null,
@@ -1084,8 +1048,8 @@ export async function runImport(
 
       toImport = [
         ...genericObjects
-          .filter(o => !targetObjectId || resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId)
-          .filter(o => !index.objects[resolveCanonicalId(normalizeObjectId(o.folderName))]?.deleted)
+          .filter(o => !targetObjectId || resolveImportObjectId(o.folderName) === targetObjectId)
+          .filter(o => !index.objects[resolveImportObjectId(o.folderName)]?.deleted)
           .map(o => ({
             objectName: o.folderName,
             subFolderName: null,
@@ -1093,10 +1057,10 @@ export async function runImport(
             genericSessionFolders: o._genericSessionFolders ?? [],
           })),
         ...(targetObjectId
-          ? normalFolders.filter(e => resolveCanonicalId(normalizeObjectId(stripCaptureModeSuffix(e.name))) === targetObjectId)
+          ? normalFolders.filter(e => resolveImportObjectId(stripCaptureModeSuffix(e.name)) === targetObjectId)
           : normalFolders
         )
-          .filter(e => !index.objects[resolveCanonicalId(normalizeObjectId(stripCaptureModeSuffix(e.name)))]?.deleted)
+          .filter(e => !index.objects[resolveImportObjectId(stripCaptureModeSuffix(e.name))]?.deleted)
           .map(objEntry => {
             // `Lunar_video` and `Lunar` are one object; the suffix is a SeeStar
             // capture mode, not part of the target name. The `_sub` lookup still
@@ -1115,8 +1079,8 @@ export async function runImport(
             };
           }),
         ...expandedEntries
-          .filter(e => !targetObjectId || resolveCanonicalId(normalizeObjectId(e.objectName)) === targetObjectId)
-          .filter(e => !index.objects[resolveCanonicalId(normalizeObjectId(e.objectName))]?.deleted),
+          .filter(e => !targetObjectId || resolveImportObjectId(e.objectName) === targetObjectId)
+          .filter(e => !index.objects[resolveImportObjectId(e.objectName)]?.deleted),
       ];
     }
 
@@ -1140,7 +1104,7 @@ export async function runImport(
       // that already exists keeps whatever shape it has — mixing both inside
       // one folder would put some of a session beside the folder holding the
       // rest, which no read path could explain.
-      const objIdForLayout = resolveCanonicalId(normalizeObjectId(objectName));
+      const objIdForLayout = resolveImportObjectId(objectName);
       const objectLayout = layoutForImport(objIdForLayout, !!index.objects[objIdForLayout]);
 
       // Vendor-specific file enumeration → unified ImportFile[].
@@ -1174,7 +1138,7 @@ export async function runImport(
         } catch (err) {
           const reason = err instanceof Error ? err.message : String(err);
           debugLog('import:error', `Failed to list Dwarf session files for "${objectName}" — ${reason}`);
-          console.error(`[import] Failed to list Dwarf session files for "${objectName}":`, reason);
+          console.error('[import] Failed to list Dwarf session files for', objectName, reason);
           const msg = `Could not read session files for "${objectName}" (${reason}).`;
           importStatus.error = importStatus.error ? `${importStatus.error}; ${msg}` : msg;
           importStatus.objectsDone++;
@@ -1279,7 +1243,7 @@ export async function runImport(
         } catch (err) {
           const reason = err instanceof Error ? err.message : String(err);
           debugLog('import:error', `Failed to list generic session files for "${objectName}" — ${reason}`);
-          console.error(`[import] Failed to list generic session files for "${objectName}":`, reason);
+          console.error('[import] Failed to list generic session files for', objectName, reason);
           const msg = `Could not read session files for "${objectName}" (${reason}).`;
           importStatus.error = importStatus.error ? `${importStatus.error}; ${msg}` : msg;
           importStatus.objectsDone++;
@@ -1350,7 +1314,7 @@ export async function runImport(
         } catch (err) {
           const reason = err instanceof Error ? err.message : String(err);
           debugLog('import:error', `Failed to list ASIAIR files for "${objectName}" — ${reason}`);
-          console.error(`[import] Failed to list ASIAIR files for "${objectName}":`, reason);
+          console.error('[import] Failed to list ASIAIR files for', objectName, reason);
           const msg = `Could not read files for "${objectName}" (${reason}).`;
           importStatus.error = importStatus.error ? `${importStatus.error}; ${msg}` : msg;
           importStatus.objectsDone++;
@@ -1470,7 +1434,7 @@ export async function runImport(
       // folder name, so an aliased folder ("NGC 7089", "C63", "Lunar") must
       // resolve to the same id used to look up deletedSessions or a deleted
       // session silently re-imports on the next run.
-      const objIdNormalized = resolveCanonicalId(normalizeObjectId(objectName));
+      const objIdNormalized = resolveImportObjectId(objectName);
 
       let filteredType = 0; let filteredTombstone = 0; let filteredDate = 0;
       allFiles = allFiles.filter(f => {
@@ -1512,7 +1476,7 @@ export async function runImport(
       const priorSessionDates = new Set(index.objects[objIdNormalized]?.sessions ?? []);
       debugLog('import:object', `${objectName}: ${allFiles.length} file(s) to process${hasPriorImport ? ' (prior import exists)' : ' (new object)'}`);
       if (allFiles.length === 0 && !hasPriorImport) {
-        console.log(`[import] Skipping empty folder: ${objectName}`);
+        console.log('[import] Skipping empty folder:', objectName);
         importStatus.objectsDone++;
         continue;
       }
@@ -1527,7 +1491,7 @@ export async function runImport(
       const newObjectFolderName = applyCatalogPreference(objIdNormalized, preferCaldwell);
       const objLocalDir = safeObjectDir(existingSmbFolderName || newObjectFolderName);
       if (!objLocalDir) {
-        console.warn(`[import] Skipping object with unsafe name: ${objectName}`);
+        console.warn('[import] Skipping object with unsafe name:', objectName);
         importStatus.objectsDone++;
         continue;
       }
@@ -1654,7 +1618,7 @@ export async function runImport(
           downloadErrors++;
           if (!firstDownloadError) firstDownloadError = outcome.reason;
           debugLog('import:error', `Download failed: ${objectName}/${file.localName} — ${outcome.reason}`);
-          console.error(`Download failed: ${file.localName}:`, outcome.reason);
+          console.error('Download failed:', file.localName, outcome.reason);
           importStatus.filesDone++;
           importStatus.currentObjectFilesDone++;
           importStatus.bytesDone += file.size || 0;
@@ -1834,7 +1798,7 @@ export async function runImport(
           }
         })();
       } catch (saveErr) {
-        console.error(`[import] Failed to save index for ${objectName}:`, saveErr instanceof Error ? saveErr.message : saveErr);
+        console.error('[import] Failed to save index for', objectName, saveErr instanceof Error ? saveErr.message : saveErr);
       }
 
       // Audit trail: one row per object per import run that actually did
@@ -2022,8 +1986,8 @@ export async function runImport(
           : isSeestar ? [SEESTAR_DARK_LIBRARY_FOLDER] : ['CALI_FRAME', 'DWARF_DARK'];
         // Not every device has every folder; collectRemoteArchiveCandidates
         // lists each independently and simply finds nothing for one that's
-        // absent (smbListDir returns an empty listing for a missing remote
-        // directory rather than throwing, matching SMB/local semantics).
+        // absent (FTP and local drives list a missing directory empty; SMB
+        // throws, and the walk recognizes that error and moves on).
         // Only the ASIAIR sweep gets the phantom-tree limits: Dwarf's CALI_FRAME
         // and DWARF_DARK are ordinary folders that need the default walk.
         const candidates = await collectRemoteArchiveCandidates(profile, archiveBase, archiveFolders, {
@@ -2110,36 +2074,15 @@ export async function runImport(
     }
     importStatus.lastRun = lastImportTs;
 
-    // Enrich with Wikipedia description + SIMBAD size data. Best-effort network
-    // call; enrichObjectData internally checks whether the object is already
-    // fully enriched and returns immediately if so.
-    for (const objectId of touchedObjectIds) {
-      try {
-        debugLog('import:object', `${objectId}: enriching catalog data`);
-        await enrichObjectData(objectId);
-        debugLog('import:object', `${objectId}: enrichment complete`);
-      } catch {
-        debugLog('import:object', `${objectId}: enrichment failed (non-fatal)`);
-      }
-      // Weather is queued, not awaited — a slow archive API for a 25-night
-      // object used to add minutes to import completion (FC-3).
-      try { enqueueSessionWeatherBackfill(objectId); } catch { /* best-effort */ }
-    }
-
-    // Pre-warm the gallery thumbnail cache for every object that received new
-    // files so the library grid loads instantly on first view.
-    if (importNewFiles.length > 0) {
-      const newObjectIds = new Set(importNewFiles.map(f => resolveCanonicalId(normalizeObjectId(f.name.split('/')[0]))));
-      debugLog('import:thumb', `Pre-warming gallery thumbnails for ${newObjectIds.size} object(s): ${Array.from(newObjectIds).join(', ')}`);
-      await waitUpTo(pregenerateObjectThumbnails(newObjectIds), THUMB_PREWARM_MAX_WAIT_MS);
-      debugLog('import:thumb', 'Gallery thumbnail pre-warm complete');
-
-      // Also warm the per-session (Nights calendar) thumbnails for the new
-      // nights. Fire-and-forget: never hold up import completion for it.
-      void import('./sessionThumbnailPrewarm.js')
-        .then(m => m.prewarmSessionThumbnails('post-import'))
-        .catch(err => debugLog('import:thumb', `session thumbnail prewarm failed: ${err instanceof Error ? err.message : err}`));
-    }
+    // Everything that follows an import (catalog enrichment, weather, gallery and
+    // session thumbnails, sub-frame headers) is one shared pipeline: see
+    // postImport.ts. The import waits for its foreground stages only.
+    await runPostImport({
+      reason: 'telescope-import',
+      touched: touchedObjectIds,
+      withNewFiles: newFileObjectIds(importNewFiles),
+      onThumbnailProgress: p => { importStatus.warmingThumbnails = p; },
+    }).foreground;
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     debugLog('import:error', `Fatal: ${reason}`);
@@ -2228,7 +2171,8 @@ export async function syncSessionSubFrames(
 
   // Mirror runImport: select the active transport (USB wins over SMB when present)
   // so sub-frame sync uses the same connection as a regular import would.
-  const activeTransport = baseProfile ? selectActiveTransport(baseProfile.id) : null;
+  const prepared = baseProfile ? await prepareActiveTransport(baseProfile) : { transport: null, error: null };
+  const activeTransport = prepared.transport;
   const profile: TelescopeProfile | null = baseProfile && activeTransport
     ? {
         ...baseProfile,
@@ -2284,6 +2228,16 @@ export async function syncSessionSubFrames(
     importObjectsTouched = new Map();
     importSessionsTouched = new Map();
     importSkips = new Map();
+  }
+
+  // A USB drive that belongs to a different telescope: say so rather than sync from it.
+  if (prepared.error) {
+    importStatus.error = prepared.error;
+    importStatus.running = false;
+    importStatus.telescopeId = baseProfile?.id ?? null;
+    importStatus.telescopeName = baseProfile?.name ?? null;
+    try { stmts.setImportRunning.run(0, null); } catch { /* best-effort */ }
+    return;
   }
 
   // Local-fs profiles (Dwarf USB) have no hostname; require localPath instead.
@@ -2360,7 +2314,7 @@ export async function syncSessionSubFrames(
     if (isGeneric) {
       debugLog('subframe-sync:discover', `Generic: scanning for sub-frames of "${targetObjectId}" on ${targetDate}`);
       const discovered = await discoverGenericObjects(profile);
-      const obj = discovered.find(o => resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId);
+      const obj = discovered.find(o => resolveImportObjectId(o.folderName) === targetObjectId);
       // Session folders are <YYYY-MM-DD>_<HHMM> by construction, so the date
       // is always the first 10 characters — same rule runImport applies.
       const sessions = (obj?._genericSessionFolders ?? []).filter(s => s.slice(0, 10) === targetDate);
@@ -2380,7 +2334,7 @@ export async function syncSessionSubFrames(
       // Resolve aliases the same way the branches below do: the device's folder
       // name is a raw target string that may differ from the canonical id once
       // catalog aliasing is applied.
-      const obj = discovered.find(o => resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId);
+      const obj = discovered.find(o => resolveImportObjectId(o.folderName) === targetObjectId);
       if (!obj) {
         debugLog('subframe-sync:discover', `ASIAIR: no target folder found for "${targetObjectId}"`);
         importStatus.error = `${profile.name} has no ASIAIR frames for "${targetObjectId}". Capture the object first, then sync.`;
@@ -2421,7 +2375,7 @@ export async function syncSessionSubFrames(
       // for (e.g. "IC342") once catalog aliasing is applied. Without this,
       // sub-frame sync for any object whose canonical id differs from its
       // device folder name silently found no match and synced nothing.
-      const obj = discovered.find(o => resolveCanonicalId(normalizeObjectId(o.folderName)) === targetObjectId);
+      const obj = discovered.find(o => resolveImportObjectId(o.folderName) === targetObjectId);
       if (!obj) {
         debugLog('subframe-sync:discover', `Dwarf: no session folder found for "${targetObjectId}"`);
         importStatus.error = `${profile.name} has no Dwarf session folders for "${targetObjectId}". Capture the object on the telescope first, then sync.`;
@@ -2557,8 +2511,7 @@ export async function syncSessionSubFrames(
       // resolveCanonicalId would never match the object it was reclassified
       // into.
       const subFolder = subFolders.find(s => {
-        const raw = normalizeObjectId(getObjectFromSubFolder(s.name));
-        return (getDesignationRedirect(raw) ?? resolveCanonicalId(raw)) === targetObjectId;
+        return resolveImportObjectId(getObjectFromSubFolder(s.name)) === targetObjectId;
       });
       if (!subFolder) {
         debugLog('subframe-sync:discover', `SeeStar: no sub-frame folder for "${targetObjectId}"`);
@@ -2762,7 +2715,7 @@ export async function syncSessionSubFrames(
           }
         })();
       } catch (saveErr) {
-        console.error(`[subframe-sync] Failed to save index for ${targetObjectId}:`, saveErr instanceof Error ? saveErr.message : saveErr);
+        console.error('[subframe-sync] Failed to save index for', targetObjectId, saveErr instanceof Error ? saveErr.message : saveErr);
       }
     }
     const lastImportTs = new Date().toISOString();
@@ -2779,6 +2732,11 @@ export async function syncSessionSubFrames(
         objectsTouched: importObjectsTouched,
         sessionsTouched: importSessionsTouched,
         source: 'subframe',
+      });
+      void runPostImport({
+        reason: 'subframe-sync',
+        touched: importObjectsTouched.keys(),
+        withNewFiles: newFileObjectIds(importNewFiles),
       });
     }
   } catch (err) {
@@ -2969,6 +2927,11 @@ export async function syncObjectSubFrames(
     objectsTouched: importObjectsTouched,
     sessionsTouched: importSessionsTouched,
     source: 'subframe',
+  });
+  void runPostImport({
+    reason: 'subframe-sync',
+    touched: importObjectsTouched.keys(),
+    withNewFiles: newFileObjectIds(importNewFiles),
   });
 
   if (reclaimed) releaseImportLock();
@@ -3479,8 +3442,9 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
     // first 50k files and reported plain success with no sign anything was
     // left behind.
     const truncatedFolders: string[] = [];
+    const siteTimeZone = activeSiteTimeZone();
     for (const { source, objPlan } of active) {
-      const { files, skipped: walkSkips, truncated: sourceTruncated } = walkObjectFiles(source, settings);
+      const { files, skipped: walkSkips, truncated: sourceTruncated } = walkObjectFiles(source, settings, siteTimeZone);
       for (const [reason, v] of walkSkips) countSkip(importSkips, reason, v.count, v.bytes, v.samples);
       if (sourceTruncated) truncatedFolders.push(source.folderName);
       walked.push({ source, objPlan, files });
@@ -3661,6 +3625,17 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
         return sessionFolderFor(source, night, null) ?? night;
       };
 
+      // What this object already holds from each source file, by the source
+      // path recorded when it was copied. A flat object's name embeds the
+      // capture time in the site's zone (canonicalImportName), so the name a
+      // re-run would build changes when that zone does (an upgrade that started
+      // reading FITS DATE-OBS as UTC, or a different active site). Matching by
+      // that name alone then copied the same file in a second time.
+      const priorBySource = new Map<string, { relPath: string; bytes: number }>();
+      for (const row of getLibraryFilesForObject(targetObjectId)) {
+        if (row.sourcePath && !row.sourceId && !row.missingSince) priorBySource.set(row.sourcePath, row);
+      }
+
       let cancelledMidObject = false;
       const folderFileRows: RecordFileInput[] = [];
       for (const file of files) {
@@ -3688,6 +3663,20 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
 
         const sessionDir = sessionDirFor(file, target);
         const used = usedIn(sessionDir);
+
+        const prior = priorBySource.get(file.relPath);
+        if (prior && prior.bytes === file.size) {
+          const priorPath = path.join(getLibraryDir(), prior.relPath);
+          let same = false;
+          try { same = fs.existsSync(priorPath) && (await classifyExistingCopy(priorPath, file.absPath)) === 'identical'; }
+          catch { same = false; }
+          if (same) {
+            log.info({ file: prior.relPath, objectId: targetObjectId }, '[folder-import] exists (same source file)');
+            importStatus.skippedFiles++;
+            importStatus.filesDone++;
+            continue;
+          }
+        }
 
         // Idempotency: the deterministic "natural" name (no dedup) tells us
         // whether this file was already imported on a previous run. Nested
@@ -4067,21 +4056,13 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
     stmts.updateMetaLastImport.run(index.lastImport);
     importStatus.lastRun = index.lastImport;
 
-    // Best-effort enrichment + weather for everything we touched. Done after
-    // saveIndex so the rows exist for enrichObjectData to update.
-    for (const objectId of dirByObjectId.keys()) {
-      try { await enrichObjectData(objectId); } catch (err) {
-        log.warn({ err: err instanceof Error ? err.message : String(err), objectId }, '[folder-import] catalog enrichment failed');
-      }
-      // Queued, not awaited — off the import-completion critical path (FC-3).
-      try { enqueueSessionWeatherBackfill(objectId); } catch { /* best-effort */ }
-    }
-
-    // Pre-warm gallery thumbnails for newly-imported objects.
-    if (importNewFiles.length > 0) {
-      const newObjectIds = new Set(importNewFiles.map(f => resolveCanonicalId(normalizeObjectId(f.name.split('/')[0]))));
-      await waitUpTo(pregenerateObjectThumbnails(newObjectIds), THUMB_PREWARM_MAX_WAIT_MS);
-    }
+    // Rows exist now (saveIndex above), so enrichment has something to update.
+    await runPostImport({
+      reason: 'folder-import',
+      touched: dirByObjectId.keys(),
+      withNewFiles: newFileObjectIds(importNewFiles),
+      onThumbnailProgress: p => { importStatus.warmingThumbnails = p; },
+    }).foreground;
   } catch (err) {
     const raw = err instanceof Error ? err.message : 'Folder import failed.';
     const lower = raw.toLowerCase();
@@ -4239,10 +4220,10 @@ export function createManualObservation(
     if (!MANUAL_OBSERVATION_IMAGE_EXTENSIONS.has(ext)) {
       throw new Error(`Unsupported image type "${imageExt}". Use JPG or PNG.`);
     }
-    const now = new Date();
-    const rawHms = `${String(now.getHours()).padStart(2, '0')}${
-      String(now.getMinutes()).padStart(2, '0')}${
-      String(now.getSeconds()).padStart(2, '0')}`;
+    const now = localParts(new Date(), activeSiteTimeZone());
+    const rawHms = `${String(now.hour).padStart(2, '0')}${
+      String(now.minute).padStart(2, '0')}${
+      String(now.second).padStart(2, '0')}`;
     const ts = `${dateMatch[1]}${dateMatch[2]}${dateMatch[3]}-${clampToNightSafeTime(rawHms)}`;
     const filename = `${objectId}_${ts}.${ext}`;
     let writeDir = objDir;
@@ -4288,6 +4269,12 @@ export function createManualObservation(
     if (stampId) stmts.addSessionStamped.run(objectId, d, stampId);
     else stmts.addSession.run(objectId, d);
   }
+
+  void runPostImport({
+    reason: 'manual-observation',
+    touched: [objectId],
+    withNewFiles: imageBuffer && imageExt ? [objectId] : [],
+  });
 
   return { objectId, date };
 }

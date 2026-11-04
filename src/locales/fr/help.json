@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Aide",
-    "subtitle": "Tout ce dont vous avez besoin pour utiliser Nebulis, de l'installation initiale à l'usage quotidien.",
+    "subtitle": "Guides d'installation, visite de chaque page et réponses aux problèmes courants.",
     "startTour": "Démarrer la visite guidée",
     "guidesHeading": "Guides"
   },
@@ -70,7 +70,17 @@
     },
     "objectFilters": {
       "q": "Que contient chaque filtre d'objets ?",
-      "a": "Les filtres regroupent les objets par type de catalogue, en comparant le texte du type lui-même. Ces types viennent du catalogue et restent en anglais quelle que soit votre langue : les mots à connaître sont \"galaxy\", \"nebula\" et \"cluster\". Tout type contenant \"galaxy\" se range dans le filtre des galaxies : galaxies spirales, barrées, irrégulières, lenticulaires et à sursaut de formation, ainsi que groupes, paires et triplets de galaxies. \"nebula\" couvre les nébuleuses en émission, par réflexion, sombres et planétaires, et les rémanents de supernova comptent aussi comme des nébuleuses. \"cluster\" couvre les amas ouverts et globulaires. Un objet peut apparaître sous plusieurs filtres : une nébuleuse planétaire est à la fois nébuleuse et nébuleuse planétaire, un rémanent de supernova est à la fois nébuleuse et rémanent de supernova, et Cluster + Nebula est à la fois amas et nébuleuse. Quand un comptage doit choisir une seule famille, Cluster + Nebula compte comme une nébuleuse, car c'est la nébulosité qui fait l'intérêt de l'objet. La bibliothèque ajoute des filtres plus fins : objets du système solaire, comètes, étoiles, nébuleuses planétaires, rémanents de supernova et Inconnu, qui rassemble les objets dont le type n'a pas pu être déterminé."
+      "intro": "Les filtres regroupent les objets par type de catalogue. Ces types viennent du catalogue et restent en anglais quelle que soit votre langue : les mots à connaître sont \"galaxy\", \"nebula\" et \"cluster\".",
+      "galaxyTerm": "galaxy",
+      "galaxyDef": "Tout type contenant \"galaxy\" : galaxies spirales, barrées, irrégulières, lenticulaires et à sursaut de formation, ainsi que groupes, paires et triplets de galaxies.",
+      "nebulaTerm": "nebula",
+      "nebulaDef": "Nébuleuses en émission, par réflexion, sombres et planétaires. Les rémanents de supernova comptent aussi comme des nébuleuses.",
+      "clusterTerm": "cluster",
+      "clusterDef": "Amas ouverts et globulaires.",
+      "overlapTerm": "Plusieurs filtres",
+      "overlapDef": "Une nébuleuse planétaire est à la fois nébuleuse et nébuleuse planétaire, un rémanent de supernova est à la fois nébuleuse et rémanent de supernova, et Cluster + Nebula est à la fois amas et nébuleuse. Quand un comptage doit choisir une seule famille, Cluster + Nebula compte comme une nébuleuse, car c'est la nébulosité qui fait l'intérêt de l'objet.",
+      "libraryTerm": "Filtres de la bibliothèque",
+      "libraryDef": "Objets du système solaire, comètes, étoiles, nébuleuses planétaires, rémanents de supernova et Inconnu, qui rassemble les objets dont le type n'a pas pu être déterminé."
     },
     "findTarget": {
       "q": "Comment trouver quelque chose à photographier ?",
@@ -90,7 +100,7 @@
     },
     "locationSharing": {
       "q": "Nebulis envoie-t-il ma position quelque part ?",
-      "a": "Uniquement pour obtenir les conditions de votre ciel. Les coordonnées de votre lieu d'observation sont transmises à Open-Meteo et 7Timer pour la prévision, et à DarkSkySites pour votre classe de pollution lumineuse. Ce sont les coordonnées du lieu que vous avez défini dans les paramètres, pas la position de votre appareil, et rien d'autre vous concernant n'est inclus. Tous les services utilisés par Nebulis sont listés dans Paramètres, Sources de données."
+      "a": "Uniquement pour obtenir les conditions de votre ciel. Les coordonnées de votre lieu d'observation sont transmises à Open-Meteo et 7Timer pour la prévision, à DarkSkySites pour votre classe de pollution lumineuse, et à OpenStreetMap Nominatim pour le nom du lieu. Ce sont les coordonnées du lieu que vous avez défini dans les paramètres, pas la position de votre appareil, et rien d'autre vous concernant n'est inclus. Tous les services utilisés par Nebulis sont listés dans Paramètres, Sources de données."
     }
   },
   "gettingStarted": {
@@ -279,7 +289,7 @@
     "step2Alt": "Une page de catégorie avec des cartes d'objets, chacune indiquant si l'objet est visible cette nuit, avec une note sur son adéquation au champ",
     "step2Caption": "Explorer → Catégorie",
     "step3Title": "L'ajouter à la liste de souhaits ou le planifier",
-    "step3Body": "Ajoutez un objet à votre liste de souhaits, planifiez-le pour ce soir, ou ouvrez Planifier une nuit pour choisir parmi les 30 prochaines nuits. Le bouton Ajouter une cible de la Liste de souhaits ouvre Explorer, et les cartes d'Explorer et de la Liste de souhaits renvoient vers le Planificateur. Si vous n'utilisez pas Explorer, masquez son onglet dans Paramètres → Général → Barre de navigation.",
+    "step3Body": "Ajoutez un objet à votre liste de souhaits, planifiez-le pour ce soir, ou ouvrez Planifier une nuit pour choisir parmi les 30 prochaines nuits. Votre liste de souhaits est le deuxième onglet d'Explorer, et les cartes d'Explorer renvoient vers le Planificateur. Si vous n'utilisez pas Explorer, masquez-le dans Paramètres → Général → Barre de navigation.",
     "step3Alt": "Une carte d'Explorer avec les boutons de liste de souhaits, Planifier ce soir et Planifier une nuit",
     "step3Caption": "Explorer → Ajouter ou planifier",
     "note": "Explorer juge la visibilité d'après le site d'observation affiché dans sa bannière, et le cadrage d'après le champ de votre télescope. Configurez les deux d'abord dans Paramètres → Ciel et Paramètres → Télescopes. Si vous avez plusieurs sites, passez de l'un à l'autre dans la bannière."
@@ -317,7 +327,7 @@
     "title": "Paramètres",
     "lead": "Configurez votre application, gérez le stockage, connectez des appareils et contrôlez votre expérience Nebulis.",
     "step1Title": "S'y retrouver",
-    "step1Body": "La zone de recherche en haut trouve n'importe quel réglage par son nom et s'y rend. Appuyez sur / pour y placer le curseur. La barre latérale est organisée en Équipement, Système et Avancé, et seule la page où vous êtes reste ouverte. Paramètres → Général couvre l'apparence de l'application : thème Clair, Sombre, Espace ou Nuit, éléments du menu du haut (Explorer, Liste de souhaits, Calibrations et d'autres peuvent être masqués), unités de mesure et Bannières de page compactes, qui fait démarrer chaque page avec sa bannière repliée.",
+    "step1Body": "La zone de recherche en haut trouve n'importe quel réglage par son nom et s'y rend. Appuyez sur / pour y placer le curseur. La barre latérale est organisée en Équipement, Système et Avancé, et seule la page où vous êtes reste ouverte. Paramètres → Général couvre l'apparence de l'application : thème Clair, Sombre, Espace ou Nuit, éléments du menu du haut (Explorer, Calibrations et d'autres peuvent être masqués), unités de mesure et Bannières de page compactes, qui fait démarrer chaque page avec sa bannière repliée.",
     "step1Alt": "Paramètres avec la zone de recherche en haut, la barre latérale organisée et le volet Général montrant les thèmes et les interrupteurs de la barre de navigation",
     "step1Caption": "Paramètres → Général",
     "step2Title": "Gérer votre compte et les appareils connectés",
@@ -358,11 +368,11 @@
     "title": "Qualité des images et empilement",
     "lead": "Voyez quelles images brutes valent la peine d'être gardées, puis confiez les meilleures à PixInsight ou Siril avec les bonnes images de calibration.",
     "step1Title": "Ouvrir la liste des sous-poses d'une nuit",
-    "step1Body": "Ouvrez une page d'observation et regardez sa liste de sous-poses. L'ouverture d'une nuit la mesure en arrière-plan et conserve les résultats. Chaque image reçoit une note de 0 à 100 et un niveau Bonne, Moyenne ou Mauvaise par rapport au reste de sa nuit, avec des indicateurs pour les nuages, les traînées d'étoiles, les étoiles floues, les traces de satellite ou d'avion, l'absence d'étoiles et le bruit. Pour mesurer les nouvelles nuits dès leur import, activez Analyser les images après l'import dans Paramètres → Bibliothèque.",
+    "step1Body": "Ouvrez une page d'observation et regardez sa liste de sous-poses. L'ouverture d'une nuit la mesure en arrière-plan et conserve les résultats. Chaque image reçoit une note de 0 à 100 et un niveau Bonne, Moyenne ou Mauvaise : 100 correspond à la meilleure image de la nuit, ou des meilleures nuits de l'objet avec le même filtre, la même pose et le même télescope quand elles ont aussi été mesurées. Des indicateurs signalent les nuages, une image peu visible, les étoiles allongées, les étoiles floues, les traces de satellite ou d'avion, les ombres sur le capteur, l'absence d'étoiles et le bruit. Pour mesurer les nouvelles nuits dès leur import, activez Analyser les images après l'import dans Paramètres → Bibliothèque.",
     "step1Alt": "La liste des sous-poses d'une nuit avec une note, un niveau et des indicateurs pour chaque image brute",
     "step1Caption": "Observation → Sous-poses",
     "step2Title": "Trier, parcourir et prévisualiser",
-    "step2Body": "Triez selon n'importe quelle colonne. La bande au-dessus de la liste montre toute la nuit et indique le plus long intervalle. Activez Signalées seulement pour masquer les bonnes images, et arrêtez-vous sur une ligne pour obtenir un aperçu plus grand avec chaque raison en toutes lettres.",
+    "step2Body": "Triez selon n'importe quelle colonne. Largeur est la FWHM des étoiles en pixels, Allong. combien elles sont plus longues que larges (1,00 pour des étoiles rondes), Signal de combien les étoiles les plus brillantes dépassent le bruit, et Objet la netteté avec laquelle l'objet photographié ressort : sa partie la plus claire par rapport au ciel autour, en unités de bruit du ciel. Sous 1 l'objet est invisible sur une pose seule, de 1 à 3 à peine visible, de 3 à 10 bien visible, au-delà de 10 très net ; empiler N poses le multiplie par environ √N. La bande au-dessus de la liste montre toute la nuit et indique le plus long intervalle. Activez Signalées seulement pour masquer les bonnes images, et arrêtez-vous sur une ligne pour obtenir un aperçu plus grand avec chaque raison en toutes lettres.",
     "step2Alt": "La bande de la nuit au-dessus de la liste des sous-poses, avec l'aperçu d'une image signalée",
     "step2Caption": "Sous-poses → Bande et aperçu",
     "step3Title": "Garder, rejeter ou supprimer",
@@ -414,7 +424,7 @@
     "step3Body": "Lorsque les cercles sont affichés, Télécharger et Partager demandent s'il faut garder l'original ou enregistrer un JPEG avec les cercles dessinés.",
     "step3Alt": "La fenêtre de téléchargement demandant s'il faut garder l'original ou enregistrer un JPEG avec les cercles",
     "step3Caption": "Visionneuse → Télécharger",
-    "note": "Annoter est disponible dans l'application web. Cette fonction arrive dans les applications iPhone, iPad et Android avec leur version 2.1.0."
+    "note": "Annoter est disponible dans l'application web. Mettez à jour les applications iPhone, iPad et Android pour l'avoir aussi."
   },
   "alerts": {
     "title": "Alertes",
@@ -428,7 +438,7 @@
     "step2Alt": "Les interrupteurs d'événements d'un canal et l'heure de la vérification des nuits dégagées",
     "step2Caption": "Alertes → Événements",
     "step3Title": "Notifications push sur iPhone",
-    "step3Body": "Les notifications push sur iPhone nécessitent la version 2.1.0 de l'application iPhone, qui arrive bientôt. Elles passent par un petit relais Nebulis qui ne stocke rien. Activez les alertes depuis ce serveur, puis choisissez ce que reçoit chaque téléphone dans Paramètres → Alertes → iPhone. Chaque iPhone peut ajouter à son alerte une ligne Plan de ce soir ou un avertissement de risque de rosée.",
+    "step3Body": "Les notifications push sur iPhone nécessitent la dernière version de l'application iPhone. Elles passent par un petit relais Nebulis qui ne stocke rien. Activez les alertes depuis ce serveur, puis choisissez ce que reçoit chaque téléphone dans Paramètres → Alertes → iPhone. Chaque iPhone peut ajouter à son alerte une ligne Plan de ce soir ou un avertissement de risque de rosée.",
     "step3Alt": "La liste des iPhone dans Paramètres → Alertes, avec les lignes supplémentaires que chaque téléphone peut ajouter",
     "step3Caption": "Alertes → iPhone"
   },
@@ -656,7 +666,7 @@
     "step4Body": "Chaque téléphone, tablette et TV que vous avez associé apparaît dans Paramètres → Compte → Appareils. Chacun porte son propre jeton de connexion, donc révoquer un appareil ici coupe son accès immédiatement sans toucher à celui des autres.",
     "step4Alt": "Paramètres → Compte → Appareils, avec un bouton Connecter un appareil et une liste d'appareils vide",
     "step4Caption": "Paramètres → Compte → Appareils",
-    "note": "Annoter, les notifications push sur iPhone et les photos de vos sites d'observation arrivent avec la version 2.1.0 de l'application iPhone et iPad, et Annoter aussi dans l'application Android."
+    "note": "Annoter, les notifications push sur iPhone et les photos de vos sites d'observation sont dans la dernière version de l'application iPhone et iPad, et Annoter aussi dans celle d'Android."
   },
   "pixinsight": {
     "title": "Intégration PixInsight",
@@ -766,6 +776,8 @@
     "done": "Terminé",
     "screenshotSuffix": "capture d'écran",
     "viewFullSize": "Voir en taille réelle : {{title}}",
+    "previous": "Capture précédente",
+    "next": "Capture suivante",
     "explore": {
       "title": "Explorer",
       "lead": "Trouvez votre prochaine cible.",
@@ -789,7 +801,9 @@
     "myMedia": {
       "title": "Page d'objet combinée",
       "lead": "Toutes les images d'un objet sur une seule page.",
-      "description": "Images, sous-poses, nuits et fichiers de projet sur une seule page, en onglets, sans fouiller dans les observations."
+      "description": "Images, sous-poses, nuits et fichiers de projet sur une seule page, en onglets, sans fouiller dans les observations.",
+      "shotObject": "Page de l'objet",
+      "shotObservation": "Page de l'observation"
     },
     "integration": {
       "title": "Intégration par filtre",

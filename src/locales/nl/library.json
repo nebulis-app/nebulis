@@ -157,14 +157,14 @@
     "filters": "Filters",
     "unableToLoad": "De bibliotheek kon niet worden geladen",
     "loadErrorFallback": "Je bibliotheek is niet bereikbaar. Controleer of de Nebulis-server draait en vernieuw de pagina om het opnieuw te proberen.",
-    "importStartFailed": "Het importeren kon niet worden gestart",
+    "importStartFailed": "De import kon niet worden gestart. Controleer of de telescoop bereikbaar is en probeer het opnieuw.",
     "objectCount_one": "{{count}} object in de bibliotheek",
     "objectCount_other": "{{count}} objecten in de bibliotheek",
     "noFavoritesYet": "Nog geen favorieten",
     "noFavoritesHint": "Geef een object een ster op de detailpagina om het aan je favorieten toe te voegen.",
     "noSearchMatches": "Geen objecten komen overeen met je zoekopdracht",
     "libraryEmpty": "Je bibliotheek is leeg",
-    "libraryEmptyHint": "Importeer afbeeldingen van je SeeStar om je lokale bibliotheek op te bouwen. Stel eerst de telescoopverbinding in via Instellingen.",
+    "libraryEmptyHint": "Afbeeldingen verschijnen hier zodra je importeert vanaf een verbonden telescoop of een waarneming uploadt.",
     "importFromAllTelescopes_one": "Importeren van {{count}} telescoop",
     "importFromAllTelescopes_other": "Importeren van alle {{count}} telescopen",
     "importFromTelescope": "Importeren vanuit telescoop",
@@ -422,7 +422,64 @@
       "save": "Opslaan",
       "invalidHours": "Voer een aantal uren tussen 0 en 1000 in.",
       "missingFilterName": "Geef het nieuwe filter een naam.",
-      "saveFailed": "De doelen konden niet worden opgeslagen."
+      "saveFailed": "De doelen konden niet worden opgeslagen.",
+      "suggest": {
+        "button": "Doelen voorstellen",
+        "rig": "Camera",
+        "rigs": {
+          "color": "Kleurencamera",
+          "mono": "Monocamera"
+        },
+        "moon": "Maan",
+        "moons": {
+          "dark": "Donkere nachten",
+          "mixed": "Meeste nachten",
+          "any": "Negeren"
+        },
+        "tier": "Kwaliteit",
+        "tiers": {
+          "standard": "Standaard",
+          "deep": "Diep",
+          "showpiece": "Paradepaardje"
+        },
+        "total": "{{hours}} u in totaal",
+        "class": {
+          "bright": "helder",
+          "moderate": "matig",
+          "faint": "zwak",
+          "very-faint": "zeer zwak"
+        },
+        "basisSurface": "Gemiddelde oppervlaktehelderheid {{sb}} mag/boogsec², ingedeeld als {{brightness}}.",
+        "basisType": "Geen grootte of magnitude in de catalogus, daarom op objecttype ingedeeld als {{brightness}}.",
+        "dualBand": "Dubbelband",
+        "unnamedDualBand": "Gaat uit van een dubbelbandfilter. Hernoem de rij naar jouw filter.",
+        "bands": {
+          "narrowband": "smalband",
+          "broadband": "breedband"
+        },
+        "bortleAssumed": "De actieve locatie heeft geen Bortle-klasse, dus Bortle {{bortle}} wordt aangenomen. Stel die in via Instellingen onder Waarneemlocaties.",
+        "disclaimer": "Een schatting, geen meting. Er wordt niets opgeslagen tot je op Opslaan drukt.",
+        "apply": "Deze uren gebruiken",
+        "shootWith": "Fotograferen met",
+        "shootAny": "Niet opgegeven",
+        "fellBack": "Je uitrusting mist de aanbevolen filters ({{missing}}), dus dit plan gebruikt wat je hebt.",
+        "missing": "Niet in je uitrusting: {{missing}}.",
+        "setRigHint": "Stel de camera en filters van deze telescoop in voor een plan dat bij je uitrusting past.",
+        "setRigLink": "Telescoopinstellingen openen",
+        "title": "Voorgesteld doel",
+        "hide": "Verbergen",
+        "chipHours": "{{hours}} u",
+        "chipHoursCapped": "{{hours}}+ u",
+        "totalSingle": "{{hours}} u · {{filter}}",
+        "cappedBadge": "begrensd",
+        "eqBase": "{{brightness}} object",
+        "eqStellar": "sterrenveld",
+        "eqSky": "hemel Bortle {{bortle}} en maan, {{band}}filter",
+        "basisNarrowband": "Ingedeeld als {{brightness}} op objecttype. De catalogusmagnitude geeft {{sb}} mag/boogsec², maar dat is zichtbaar licht en zegt weinig door een smalbandfilter.",
+        "cappedSky": "Vanaf Bortle {{bortle}} bepaalt de hemel de grens. Een donkerdere plek of een smalbandfilter helpen meer dan extra uren.",
+        "cappedSkyNarrowband": "Vanaf Bortle {{bortle}} bepaalt de hemel de grens. Een donkerdere plek helpt meer dan extra uren.",
+        "cappedTotal": "Begrensd op {{max}} u, een redelijk maximum voor één object."
+      }
     },
     "projectArchivesSection": {
       "heading": "Bewerkingsprojecten",
@@ -694,7 +751,9 @@
     "sync": "Synchroniseren",
     "notSetUp": "Niet ingesteld",
     "online": "Online",
-    "offline": "Offline"
+    "offline": "Offline",
+    "edit": "Telescoop bewerken",
+    "editName": "{{name}} bewerken"
   },
   "deletedSessionsModal": {
     "title": "Verwijderde sessies",
@@ -898,15 +957,29 @@
       "impact": "Impact"
     },
     "presets": {
-      "savedPresets": "Opgeslagen voorinstellingen",
-      "saveAsPresetTitle": "Opslaan als voorinstelling",
-      "namePlaceholder": "Naam van de voorinstelling…",
-      "loadFailed": "Opgeslagen voorinstellingen konden niet worden geladen. Open de editor opnieuw.",
-      "empty": "Geen opgeslagen voorinstellingen. Klik op + om de huidige instellingen op te slaan.",
-      "applyTitle": "Toepassen",
+      "watermarks": "Watermerken",
+      "saveCurrent": "Opslaan als watermerk",
+      "saveSubmit": "Watermerk opslaan",
+      "selectTextHint": "Voeg hieronder een tekstblok toe om een herbruikbaar watermerk te maken.",
+      "namePlaceholder": "Naam van het watermerk…",
+      "loadFailed": "Watermerken konden niet worden geladen. Open de editor opnieuw.",
+      "empty": "Nog geen watermerken.",
+      "applyTitle": "Dit watermerk toepassen",
+      "renameTitle": "Naam wijzigen",
+      "renameSave": "Naam opslaan",
+      "updateNamed": "„{{name}}” bijwerken",
+      "updateFailed": "Het watermerk kon niet worden bijgewerkt. Probeer het opnieuw.",
       "deleteTitle": "Verwijderen",
-      "saveFailed": "De watermerkvoorinstelling kon niet worden opgeslagen. Probeer het opnieuw.",
-      "deleteFailed": "De watermerkvoorinstelling kon niet worden verwijderd. Probeer het opnieuw."
+      "deleteConfirm": "„{{name}}” verwijderen? Tekst die al op de afbeelding staat blijft.",
+      "deleteConfirmLabel": "Verwijderen",
+      "deleteFailed": "Het watermerk kon niet worden verwijderd. Probeer het opnieuw.",
+      "cancel": "Annuleren",
+      "nameTaken": "Die naam is al in gebruik.",
+      "replaceLabel": "Vervangen",
+      "replaceWarning": "„{{name}}” bestaat al.",
+      "maxReached": "Je kunt maximaal {{count}} watermerken opslaan.",
+      "saveFailed": "Het watermerk kon niet worden opgeslagen. Probeer het opnieuw.",
+      "renameFailed": "De naam van het watermerk kon niet worden gewijzigd. Probeer het opnieuw."
     },
     "cropPanel": {
       "hint": "Sleep om een uitsnede te tekenen. Versleep de randen of hoeken om de afmetingen te wijzigen. Sleep binnen de uitsnede om deze te verplaatsen. Druk op Enter of klik op Bijsnijden toepassen om te bevestigen.",
@@ -1111,7 +1184,7 @@
     "driveIsGoneReset": "De schijf is verdwenen. Terugzetten naar de standaardmap.",
     "shareWord": "netwerkshare",
     "driveWord": "schijf",
-    "resetExplanation": "Hiermee gebruikt Nebulis weer de standaardbibliotheekmap (<1>{{path}}</1>). Bestanden op de oude locatie worden <2>niet</2> gekopieerd. Gebruik dit alleen als die {{shareOrDrive}} definitief niet meer beschikbaar is. Je afbeeldingen moeten al in de standaardmap staan, tenzij je ze opnieuw gaat importeren.",
+    "resetExplanation": "Hiermee gebruikt Nebulis weer de standaardbibliotheekmap (<1>{{path}}</1>). Bestanden op de oude locatie worden <2>niet</2> gekopieerd. Gebruik dit alleen als die {{shareOrDrive}} definitief niet meer beschikbaar is. Je afbeeldingen moeten al in de standaardmap staan, tenzij je ze opnieuw gaat importeren. Nieuwe imports gaan naar de interne schijf, en komt {{shareOrDrive}} later terug, dan is dat een aparte bibliotheek die zich niet vanzelf samenvoegt.",
     "resetFailed": "De locatie kon niet worden teruggezet",
     "resetToDefaultFolder": "Terugzetten naar standaardmap"
   },
@@ -1374,7 +1447,8 @@
       "markProcessedFailed": "Markeren als bewerkt is mislukt",
       "favorite": "Favoriet",
       "unfavorite": "Favoriet verwijderen",
-      "download": "Downloaden"
+      "download": "Downloaden",
+      "mosaic": "Mozaïek"
     },
     "loading": "Media laden",
     "loadingMore": "Meer laden",
@@ -1405,6 +1479,8 @@
     "target": "Doel",
     "toggle": "Objecten in deze afbeelding benoemen",
     "toggleHide": "Objectnamen verbergen",
+    "minimize": "Objectnamen minimaliseren",
+    "restore": "Objectnamen tonen",
     "title": "Objectnamen",
     "loading": "Objecten zoeken...",
     "quality": {

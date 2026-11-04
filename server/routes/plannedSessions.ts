@@ -18,9 +18,7 @@ import { z } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
 import * as PlannedSessions from '../lib/plannedSessions.js';
 import { computePlanOutcomes, summarizePlanByNight, type PlanOutcome } from '../lib/planOutcome.js';
-import { getActiveSite } from '../lib/observingSites.js';
-import { lookupTimeZoneForCoordinates } from '../lib/observerTimezone.js';
-import { timeZoneOrLocal } from '../lib/timezone.js';
+import { activeSiteTimeZone } from '../lib/siteTimeZone.js';
 import { log } from '../lib/logger.js';
 
 const router = Router();
@@ -34,13 +32,7 @@ const ListQuerySchema = z.object({
 
 
 /** Observer time zone for nights and capture times: the active site's. */
-function observerTimeZone(): string {
-  const site = getActiveSite();
-  const looked = site.latitude != null && site.longitude != null
-    ? lookupTimeZoneForCoordinates(site.latitude, site.longitude)
-    : null;
-  return looked ?? timeZoneOrLocal(site.timezone);
-}
+const observerTimeZone = activeSiteTimeZone;
 
 const DAY_MS = 86_400_000;
 

@@ -3,7 +3,7 @@ import express from 'express';
 import http from 'http';
 import type { AddressInfo } from 'net';
 import { SHARPLESS_CATALOG, sharplessToCatalogEntry } from '../../server/lib/sharplessCatalog';
-import { getCatalogEntry } from '../../server/data/catalog';
+import { getBaseCatalogEntry } from '../../server/data/catalog';
 import { raToHours, raToDegs } from '../../server/lib/astroCalc';
 import { apiEnvelope } from '../../server/middleware/apiEnvelope';
 import { catalogsRouter } from '../../server/routes/catalogs';
@@ -24,7 +24,7 @@ describe('Sharpless RA is converted to hours like every other catalog entry', ()
 
   it('keeps every lookup inside 0-24 hours, whether the entry is bare or curated', () => {
     for (const e of SHARPLESS_CATALOG) {
-      const hours = raToHours(getCatalogEntry(e.id)!.ra!);
+      const hours = raToHours(getBaseCatalogEntry(e.id)!.ra!);
       expect(hours, e.id).toBeGreaterThanOrEqual(0);
       expect(hours, e.id).toBeLessThan(24);
     }

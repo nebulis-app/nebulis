@@ -41,7 +41,6 @@ const curatedMap = new Map(catalog.map(e => [e.id.toUpperCase(), e]));
 // filtered to what a smart telescope can image.
 
 import { caldwellToNgcId } from '../lib/caldwellCatalog.js';
-import { mergeOverride, entryFromOverride } from '../lib/catalogOverrides.js';
 import { expandSearchAliases, normalizeDesignation, resolveCanonicalId } from '../lib/catalogAliases.js';
 import { getSharplessEntry, sharplessToCatalogEntry } from '../lib/sharplessCatalog.js';
 
@@ -118,15 +117,18 @@ for (const entry of openNgcData) {
 console.log(`[catalog] Loaded ${openNgcData.length} OpenNGC entries, ${messierToNgc.size} Messier cross-references`);
 
 /**
- * Static-data lookup chain for a catalog entry. Internal helper — public
- * callers should use getCatalogEntry, which wraps this with user overrides.
+ * Static-data lookup chain for a catalog entry, with no user overrides.
  *
- * Recursing into this function (not into getCatalogEntry) for the Caldwell
- * alias step keeps override application a single, top-level concern: the
- * override for the requested id is the only one that ever applies, even if
- * an override also happens to exist for the underlying NGC backing the alias.
+ * This module is the data layer: it must not import the database. App code
+ * wants `getCatalogEntry` from `server/lib/catalogLookup.ts`, which layers the
+ * user's overrides on top of this. Build scripts that bake the shipped catalog
+ * call this directly so a developer's local overrides never leak into a bundle.
+ *
+ * The Caldwell alias step recurses here (not into the override-aware lookup),
+ * so the override for the requested id is the only one that ever applies, even
+ * if an override also exists for the NGC object backing the alias.
  */
-function lookupCatalogEntry(id: string): CatalogEntry | undefined {
+export function getBaseCatalogEntry(id: string): CatalogEntry | undefined {
   const key = id.toUpperCase().replace(/\s+/g, '');
 
   // 0. Solar system objects (Moon, planets, named moons, etc.)
@@ -149,7 +151,7 @@ function lookupCatalogEntry(id: string): CatalogEntry | undefined {
   const ngcAlias = caldwellToNgcId(key);
   if (ngcAlias) {
     const aliasKey = ngcAlias.toUpperCase().replace(/\s+/g, '');
-    const aliasEntry = lookupCatalogEntry(aliasKey);
+    const aliasEntry = getBaseCatalogEntry(aliasKey);
     if (aliasEntry) {
       // Return the entry with the Caldwell id so callers get back "C21" not "NGC4449"
       return { ...aliasEntry, id };
@@ -228,21 +230,6 @@ function lookupCatalogEntry(id: string): CatalogEntry | undefined {
   }
 
   return undefined;
-}
-
-/**
- * Get a catalog entry by ID. Checks curated entries first (which have
- * descriptions), then falls back to the comprehensive OpenNGC database.
- *
- * User overrides (catalogOverrides table) are layered on top: any non-null
- * override field wins over the static source. If no static entry exists but
- * an override row does, a synthetic entry is returned — this is how users
- * add objects the bundled catalogs don't know about.
- */
-export function getCatalogEntry(id: string): CatalogEntry | undefined {
-  const base = lookupCatalogEntry(id);
-  if (base) return mergeOverride(base, id);
-  return entryFromOverride(id);
 }
 
 export function searchCatalog(query: string): CatalogEntry[] {

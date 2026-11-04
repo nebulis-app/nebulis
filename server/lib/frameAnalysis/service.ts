@@ -7,10 +7,14 @@ import db from '../db.js';
 import { resolveLibraryFile } from '../library/fileResolver.js';
 import { getLocalFiles } from '../library/observations.js';
 import { isRecord } from '../typeGuards.js';
-import { FRAME_METRICS_VERSION, FrameDecodeError, type FrameMetrics } from './measure.js';
+import { getCatalogEntry } from '../catalogLookup.js';
+import { parseDecToDegs, parseRaToDegs } from '../fitsWcs.js';
+import { getLibraryObjectNames } from '../library/objects.js';
+import { normalizeCatalogId, parseFilename } from '../telescopeFiles.js';
+import { FRAME_METRICS_VERSION, FrameDecodeError, type FrameMetrics, type TargetSpec } from './measure.js';
 import { coerceMetrics } from './metricsRecord.js';
 import { measureOffThread } from './measureOffThread.js';
-import { rankFrames, isFrameKept, type FrameReference, type FrameVerdict } from './ranking.js';
+import { rankFrames, isFrameKept, focalGroups, type FrameReference, type FrameVerdict } from './ranking.js';
 
 export class FrameFileError extends Error {
   constructor(readonly code: 'FORBIDDEN' | 'NOT_FOUND' | 'UNREADABLE', message: string) {
@@ -55,6 +59,27 @@ function statLibraryFile(relPath: string): { abs: string; size: number; mtimeMs:
 }
 
 /**
+ * Where the object a library file belongs to sits on the sky, from the catalog: the object is the one whose folder
+ * holds the file. Null for an object the catalog does not place or size (a comet, a custom name), which then gets
+ * no target measurement.
+ */
+export function targetForFile(relPath: string): TargetSpec | null {
+  const norm = relPath.replace(/\\/g, '/');
+  let best: { objectId: string; folderName: string } | null = null;
+  for (const o of getLibraryObjectNames()) {
+    const folder = o.folderName.replace(/\\/g, '/').replace(/\/+$/, '');
+    if (folder && norm.startsWith(`${folder}/`) && (!best || folder.length > best.folderName.length)) best = { objectId: o.objectId, folderName: folder };
+  }
+  if (!best) return null;
+  const entry = getCatalogEntry(normalizeCatalogId(best.objectId)) ?? getCatalogEntry(best.objectId);
+  if (!entry?.ra || !entry.dec || !entry.majorAxisArcmin || !(entry.majorAxisArcmin > 0)) return null;
+  const ra = parseRaToDegs(entry.ra, { decimalIsHours: true });
+  const dec = parseDecToDegs(entry.dec);
+  if (!Number.isFinite(ra) || !Number.isFinite(dec) || (ra === 0 && dec === 0)) return null;
+  return { ra, dec, radiusArcmin: entry.majorAxisArcmin / 2 };
+}
+
+/**
  * The measurement of one library file, from the store when the file is unchanged, otherwise read and stored.
  * The reading and the star search run on a worker thread; this thread only touches the database.
  */
@@ -66,7 +91,9 @@ export async function measureLibraryFile(relPath: string, force = false): Promis
   }
   let metrics: FrameMetrics;
   try {
-    metrics = await measureOffThread(file.abs);
+    let target: TargetSpec | null = null;
+    try { target = targetForFile(relPath); } catch { /* no catalog place: measured without a target */ }
+    metrics = await measureOffThread(file.abs, target);
   } catch (err) {
     if (err instanceof FrameDecodeError) throw new FrameFileError('UNREADABLE', err.message);
     throw err;
@@ -135,6 +162,49 @@ export interface FrameAnalysisReport {
 }
 
 /**
+ * Frames are compared only with frames taken the same way: the same filter and exposure, through the same camera at
+ * the same focal length (a library can hold one object shot with several telescopes, or a smart telescope and a
+ * rig), at the same frame size (binning, crop). FOCALLEN is often rounded or entered by hand, so focal lengths
+ * within 5 % of the shortest one in their group count as the same train (see `focalGroups` in ranking.ts).
+ */
+function setKey(filter: string | null, exposure: string | null, m: FrameMetrics, focalOf: (focal: number) => number): string {
+  const focal = m.rig.focal !== null ? focalOf(m.rig.focal) : '';
+  return [(filter ?? '').trim().toLowerCase(), (exposure ?? '').trim(), (m.rig.camera ?? '').toLowerCase(), focal, `${m.width}x${m.height}`].join('|');
+}
+
+interface OtherNightFrame {
+  filter: string | null;
+  exposure: string | null;
+  metrics: FrameMetrics;
+}
+
+/**
+ * The stored measurements of the objects' frames from other nights, read straight from the store (no file is
+ * opened). A frame measured by an older analyzer is left out, as it would be re-measured.
+ */
+function otherNightsMetrics(objectIds: string[], exclude: Set<string>): OtherNightFrame[] {
+  const out: OtherNightFrame[] = [];
+  const folders = new Set<string>();
+  const wanted = new Set(objectIds);
+  for (const o of getLibraryObjectNames()) if (wanted.has(o.objectId) && o.folderName) folders.add(o.folderName.replace(/\\/g, '/').replace(/\/+$/, ''));
+  const stmt = db.prepare("SELECT relPath, version, metricsJson FROM frameMetrics WHERE relPath LIKE ? ESCAPE '\\'");
+  for (const folder of folders) {
+    const like = `${folder.replace(/[\\%_]/g, c => `\\${c}`)}/%`;
+    for (const row of stmt.all(like)) {
+      if (!isRecord(row) || typeof row.relPath !== 'string' || row.version !== FRAME_METRICS_VERSION || typeof row.metricsJson !== 'string') continue;
+      if (exclude.has(row.relPath)) continue;
+      const parsed = parseFilename(row.relPath.split('/').pop() ?? '');
+      if (parsed.type !== 'sub') continue;
+      let metrics: FrameMetrics | null = null;
+      try { metrics = coerceMetrics(JSON.parse(row.metricsJson)); } catch { metrics = null; }
+      if (!metrics) continue;
+      out.push({ filter: parsed.filter || null, exposure: parsed.exposure || null, metrics });
+    }
+  }
+  return out;
+}
+
+/**
  * Every raw FITS sub-frame of a night in capture order, with whatever has been measured so far and a verdict for
  * each measured frame. Nothing is measured here: the caller asks for the missing ones one at a time.
  */
@@ -155,8 +225,32 @@ export function buildSessionReport(objectIds: string[], date: string): FrameAnal
   });
 
   const measuredRows = frames.filter(r => r.metrics !== null);
-  const { verdicts, reference } = rankFrames(measuredRows.flatMap(r => (r.metrics ? [r.metrics] : [])));
-  measuredRows.forEach((row, i) => { row.verdict = verdicts[i]; });
+  const otherNights = otherNightsMetrics(objectIds, new Set(frames.map(f => f.path)));
+  const focalOf = focalGroups([...measuredRows.map(r => r.metrics!.rig.focal), ...otherNights.map(o => o.metrics.rig.focal)]
+    .filter((f): f is number => f !== null));
+  const history = new Map<string, FrameMetrics[]>();
+  for (const o of otherNights) {
+    const key = setKey(o.filter, o.exposure, o.metrics, focalOf);
+    const list = history.get(key);
+    if (list) list.push(o.metrics); else history.set(key, [o.metrics]);
+  }
+  // Frames are only comparable through the same filter for the same time: a D2 frame brings far less light than
+  // a D1 one, a 60 s frame less than a 180 s one, and judged together the weaker set would read as clouded.
+  const groups = new Map<string, FrameAnalysisRow[]>();
+  for (const row of measuredRows) {
+    const key = setKey(row.file.filter, row.file.exposure, row.metrics!, focalOf);
+    const list = groups.get(key);
+    if (list) list.push(row); else groups.set(key, [row]);
+  }
+  let reference: FrameReference | null = null;
+  let largest = 0;
+  for (const rows of groups.values()) {
+    const key = setKey(rows[0].file.filter, rows[0].file.exposure, rows[0].metrics!, focalOf);
+    const ranked = rankFrames(rows.flatMap(r => (r.metrics ? [r.metrics] : [])), history.get(key) ?? []);
+    rows.forEach((row, i) => { row.verdict = ranked.verdicts[i]; });
+    // The summary line describes the night's main set.
+    if (rows.length > largest) { largest = rows.length; reference = ranked.reference; }
+  }
   const reviews = readReviews(frames.map(r => r.path));
   for (const row of frames) {
     row.review = reviews.get(row.path) ?? null;

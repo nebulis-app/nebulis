@@ -1,7 +1,8 @@
 /**
- * One of the nights ahead. Tonight is not shown here: it gets the hero panel,
- * and repeating it with the server's coarser night rating would put two
- * different numbers for the same night on one screen.
+ * One of the nights ahead. Tonight is not shown here: it gets the hero panel.
+ * The score is the shared night score (server/lib/nightScore.ts), the same
+ * number the Planner's night strip shows for this night, and the word comes
+ * from the client's own band table so it matches the hero and the strip.
  *
  * The sparkline is drawn from the same hourly model data the hero uses, so the
  * card shows the shape of the cloud cover, not just its average.
@@ -9,7 +10,7 @@
 import { Cloud, CloudRain, Droplets, Wind } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ForecastHour, NightRating } from '../../lib/api/planner';
-import { formatWind, scoreHex, translateScoreRating } from '../../lib/forecastScore';
+import { formatWind, scoreHex, scoreLabel } from '../../lib/forecastScore';
 import { formatDate } from '../../lib/formatLocale';
 import { useTheme } from '../../hooks/useTheme';
 
@@ -119,7 +120,7 @@ export function NightOutlookCard({ night, hours, isDark, windUnit, timeZone }: P
               {night.score}
             </p>
             <p className="mt-1 text-[0.6875rem] font-semibold uppercase tracking-[0.12em]" style={{ color: hex }}>
-              {translateScoreRating(t, night.rating)}
+              {scoreLabel(night.score, t)}
             </p>
           </div>
         </div>

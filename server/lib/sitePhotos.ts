@@ -14,6 +14,9 @@ import path from 'path';
 import sharp from 'sharp';
 import db from './db.js';
 import { DATA_DIR } from './paths.js';
+import { SITE_PHOTO_LIMITS } from './sitePhotoLimits.js';
+
+export { SITE_PHOTO_LIMITS } from './sitePhotoLimits.js';
 
 export interface SitePhoto {
   id: string;
@@ -24,14 +27,6 @@ export interface SitePhoto {
   caption: string;
   createdAt: string;
 }
-
-export const SITE_PHOTO_LIMITS = {
-  /** Per site. */
-  photos: 40,
-  bytes: 30 * 1024 * 1024,
-  caption: 300,
-  fileName: 200,
-} as const;
 
 export class SitePhotoError extends Error {
   constructor(public code: 'NOT_FOUND' | 'VALIDATION_ERROR', message: string) {

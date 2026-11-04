@@ -24,6 +24,13 @@ interface FitsHeader {
   [key: string]: string | number | boolean | undefined;
 }
 
+/** The pixel formats readPlane can decode. BITPIX=64 (64-bit integer) is valid FITS but is not handled here. */
+const SUPPORTED_BITPIX = [8, 16, 32, -32, -64] as const;
+type FitsBitpix = typeof SUPPORTED_BITPIX[number];
+
+const isFitsBitpix = (value: number): value is FitsBitpix =>
+  SUPPORTED_BITPIX.some(entry => entry === value);
+
 interface RgbPlanes {
   r: Float32Array;
   g: Float32Array;
@@ -116,10 +123,11 @@ export function parseFits(buffer: ArrayBuffer, t?: TFunc): FitsData {
     throw new Error(corruptMessage(t));
   }
   const pixelCount = width * height;
-  const bytesPerPixel = Math.abs(bitpix) / 8;
-  if (!Number.isFinite(bytesPerPixel) || bytesPerPixel <= 0) {
+  // An unsupported BITPIX used to fall into the Int16 branch below and render a plausible garbage image.
+  if (!isFitsBitpix(bitpix)) {
     throw new Error(corruptMessage(t));
   }
+  const bytesPerPixel = Math.abs(bitpix) / 8;
   // Only the planes this viewer decodes have to be present: plane 0 always, and
   // all three for an RGB cube. A 4-plane cube (LRGB) still only reads plane 0.
   const planesToRead = naxis3 === 3 ? 3 : 1;
@@ -141,7 +149,10 @@ export function parseFits(buffer: ArrayBuffer, t?: TFunc): FitsData {
         case 32:  rawVal = view.getInt32(bytePos, false); break;
         case -32: rawVal = view.getFloat32(bytePos, false); break;
         case -64: rawVal = view.getFloat64(bytePos, false); break;
-        default:  rawVal = view.getInt16(bytePos, false);
+        default: {
+          const unsupported: never = bitpix;
+          throw new Error(`Unsupported BITPIX ${String(unsupported)}`);
+        }
       }
 
       plane[i] = rawVal * bscale + bzero;

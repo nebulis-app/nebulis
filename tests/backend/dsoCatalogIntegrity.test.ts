@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DSO_RECORDS, recordFor, normalizeCatalogNumber } from '../../server/lib/dsoCatalogData';
 import { resolveCanonicalId } from '../../server/lib/catalogAliases';
-import { getAlsoKnownAs, getCatalogEntry } from '../../server/data/catalog';
+import { getAlsoKnownAs, getBaseCatalogEntry } from '../../server/data/catalog';
 
 // The rules a hand edit to server/data/dso-catalog.json has to keep. The file is
 // the single source for every object's names and catalog numbers, so these are
@@ -126,15 +126,16 @@ describe('what the app shows', () => {
   });
 
   it('resolves a faint NGC number that is not browsed to a real object', () => {
-    const entry = getCatalogEntry('NGC5');
+    const entry = getBaseCatalogEntry('NGC5');
     expect(entry?.type).toBe('Galaxy');
-    expect(entry?.ra).toBeTruthy();
+    // NGC 5 sits at 00h07m49s: a real position, not merely a non-empty string.
+    expect(Number(entry?.ra)).toBeCloseTo(0.1302, 3);
   });
 
   it('shows the verified names', () => {
-    expect(getCatalogEntry('IC63')?.name).toBe('Ghost of Cassiopeia');
-    expect(getCatalogEntry('IC2602')?.name).toBe('Southern Pleiades');
-    expect(getCatalogEntry('C103')?.name).toBe('Tarantula Nebula');
-    expect(getCatalogEntry('NGC6445')?.name).toBe('Box Nebula');
+    expect(getBaseCatalogEntry('IC63')?.name).toBe('Ghost of Cassiopeia');
+    expect(getBaseCatalogEntry('IC2602')?.name).toBe('Southern Pleiades');
+    expect(getBaseCatalogEntry('C103')?.name).toBe('Tarantula Nebula');
+    expect(getBaseCatalogEntry('NGC6445')?.name).toBe('Box Nebula');
   });
 });

@@ -17,7 +17,7 @@
  *            (a planetary nebula on a black field is not a mosaic hole).
  *
  * Entries are keyed by canonical id. Edit them with scripts/catalog-pick.ts;
- * the layout is described in the catalog images notes.
+ * the layout is in the private catalog images notes.
  */
 import fs from 'node:fs';
 import path from 'node:path';

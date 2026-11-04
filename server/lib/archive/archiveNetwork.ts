@@ -37,6 +37,7 @@ import { DATA_DIR } from '../paths.js';
 import { sanitizePath, validatePathNoTraversal } from '../smb.shared.js';
 import { tcpProbe, SMB_PORT } from '../smbReachability.js';
 import { log } from '../logger.js';
+import { trimTrailing } from '../trimTrailing.js';
 import { isWithinRoot } from './archivePath.js';
 import type { ArchiveNetworkConfig, ArchiveNetworkCredentials } from './archiveConfig.js';
 
@@ -100,7 +101,7 @@ export function networkDisplayPath(network: ShareAddress): string {
  *  `etc`, which is a valid relative path, so an absolute subpath would be silently
  *  reinterpreted instead of refused. */
 function normalizedSubpath(network: ShareAddress): string {
-  return network.subpath.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+  return trimTrailing(network.subpath.trim().replace(/\\/g, '/'), '/');
 }
 
 /**
@@ -222,7 +223,7 @@ function assertSafeCredentials(network: ArchiveNetworkCredentials): void {
  * `\\192.168.1.12\Nebulis2` into the server field, where the address is fine and the
  * field is wrong. The caller needs to hear which one.
  */
-export function unsafeField(network: ArchiveNetworkCredentials): string | null {
+function unsafeField(network: ArchiveNetworkCredentials): string | null {
   try {
     assertSafeCredentials(network);
     return null;

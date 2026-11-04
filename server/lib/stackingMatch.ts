@@ -167,7 +167,7 @@ export function pickDark(group: LightGroupInput, all: CalCandidate[]): { pick: C
   return { pick: { candidate: chosen, source: 'matched', deltaTempC: round1(delta(chosen)) }, issues };
 }
 
-export function pickBias(group: LightGroupInput, all: CalCandidate[]): CalPick | null {
+function pickBias(group: LightGroupInput, all: CalCandidate[]): CalPick | null {
   const chosen = best(
     all.filter(c => c.type === 'bias' && sameSetting(c.gain, group.gain) && sameSetting(c.binning, group.binning)),
     c => [group.scope && c.scope !== group.scope ? 1 : 0, c.isExpired ? 1 : 0, timeScore(c), -c.fileCount],

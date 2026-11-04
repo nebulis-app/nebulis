@@ -117,12 +117,36 @@ test.describe('Explore', () => {
     await page.getByRole('link', { name: 'Galaxies' }).click();
 
     await expect(page).toHaveURL(/\/explore\/galaxies$/);
-    await expect(page.getByRole('heading', { name: 'Galaxies', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Galaxies', level: 2 })).toBeVisible();
     const m31 = page.getByRole('button', { name: /Open M31/ });
     await expect(m31).toContainText('Best Jul to Dec');
     await expect(page.getByRole('button', { name: /Open NGC253/ })).toContainText('Low from here');
     // Not up tonight, so planning it for tonight is not offered.
     await expect(page.getByRole('button', { name: 'Plan tonight' }).first()).toBeDisabled();
+  });
+
+  test('a category keeps the search and tabs, and its chips move sideways keeping the filters', async ({ page }) => {
+    await mockExplore(page);
+    await page.goto('/explore/galaxies?visibility=tonight');
+
+    await expect(page.getByRole('combobox', { name: 'Search the sky' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Discover' })).toHaveAttribute('aria-selected', 'true');
+    const chips = page.getByRole('group', { name: 'Categories' });
+    await expect(chips.getByRole('link', { name: 'Galaxies' })).toHaveAttribute('aria-current', 'page');
+
+    await chips.getByRole('link', { name: 'Star clusters' }).click();
+    await expect(page).toHaveURL(/\/explore\/clusters\?visibility=tonight$/);
+    await expect(page.getByRole('heading', { name: 'Star clusters', level: 2 })).toBeVisible();
+
+    // The breadcrumb's first step goes back to the Discover landing.
+    await page.getByRole('navigation', { name: 'Where you are' }).getByRole('link', { name: 'Discover' }).click();
+    await expect(page).toHaveURL(/\/explore$/);
+  });
+
+  test('search results keep the query in the box', async ({ page }) => {
+    await mockExplore(page);
+    await page.goto('/explore/all?q=andromeda');
+    await expect(page.getByRole('combobox', { name: 'Search the sky' })).toHaveValue('andromeda');
   });
 
   test('the visibility filter lives in the URL so a link reproduces the view', async ({ page }) => {

@@ -22,6 +22,7 @@
 import fs from 'fs';
 import path from 'path';
 import sharp from './sharp-optional.js';
+import { assertSafeRaster } from './imageSniff.js';
 import db from './db.js';
 import { getCatalog, getById as getDsoById } from './dsoCatalog.js';
 import { exploreCoreEntries } from './explore/core.js';
@@ -118,6 +119,7 @@ export async function prewarmThumbnails(id: string, masterPath: string, source: 
       // `cover` variants always render at full W×H (no `withoutEnlargement`)
       // because letterboxing a small master into a TV-sized frame defeats
       // the whole point of asking for a fill.
+      await assertSafeRaster(masterPath);
       await sharp(masterPath)
         .resize(w, h, fit === 'cover'
           ? { fit: 'cover', position: 'centre' }
@@ -125,7 +127,7 @@ export async function prewarmThumbnails(id: string, masterPath: string, source: 
         .jpeg({ quality: 85, mozjpeg: true })
         .toFile(dest);
     } catch (err) {
-      console.warn(`[prefetch] prewarm failed for ${id} ${w}x${h} (${fit}):`, err instanceof Error ? err.message : err);
+      console.warn('[prefetch] prewarm failed for', id, `${w}x${h} (${fit}):`, err instanceof Error ? err.message : err);
     }
   }));
 }

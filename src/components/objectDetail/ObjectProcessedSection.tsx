@@ -309,12 +309,13 @@ export function ObjectProcessedSection({
         deletingProcessedId={deletingId}
       />
 
+      {/* Keep the viewer open: the edited record comes back from the refetch with a new URL, and the viewer swaps in
+          the new picture in place instead of leaving the user on the grid to hunt for it. */}
       <ObjectImageEditor
         request={editRequest}
         onClose={() => setEditRequest(null)}
         onSaved={() => {
           void queryClient.invalidateQueries({ queryKey: ['processed-images-all', objectId] });
-          setGalleryOpen(false);
         }}
       />
     </div>

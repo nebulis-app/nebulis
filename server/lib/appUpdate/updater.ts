@@ -21,7 +21,7 @@ import { fetchJson, fetchText, downloadToFile } from '../catalogPack/download.js
 import { verifyFileSha256 } from '../catalogPack/verify.js';
 import { verifyAppManifestSignature } from './verify.js';
 import { AppUpdateIndex, type UpdateChannel } from './manifest.js';
-import { getUpdatePlatform, getCurrentVersion, compareVersions } from './platform.js';
+import { getUpdatePlatform, getCurrentVersion, compareVersions, isDesktopBuild } from './platform.js';
 import { getSettingsData } from '../telescopes.js';
 import { UPDATES_DIR, setUpdateStatus, getUpdateStatus } from './state.js';
 import { logEvent } from '../systemLog.js';
@@ -52,9 +52,7 @@ export function isAutoUpdateEnabled(): boolean {
 
 /** Auto-poll only for opted-in, packaged desktop builds. */
 function shouldAutoPoll(): boolean {
-  return isAutoUpdateEnabled()
-    && getUpdatePlatform() !== null
-    && process.env.NODE_ENV === 'production';
+  return isAutoUpdateEnabled() && isDesktopBuild();
 }
 
 export function startAppUpdateChecker(): void {

@@ -10,6 +10,7 @@ import { processingStatusLabel } from '../lib/processingStatus';
 import { useTheme } from '../hooks/useTheme';
 import { nightSafeColor } from '../lib/nightSafeColor';
 import { LibraryIntegrationRemainingChips } from './planner/IntegrationRemainingChips';
+import { DWARF_STARTRAILS_OBJECT_TYPE, DWARF_STARTRAILS_PLACEHOLDER_IMAGE } from '../lib/dwarfStartrails';
 
 interface ObjectCardProps {
   object: AstroObject;
@@ -77,7 +78,12 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes,
     object.galleryImageVersion ?? object.galleryImage,
   );
   // The server says up front when there is nothing to fetch, so the placeholder shows with no request.
-  const imgError = failedUrl === imageUrl || object.hasThumbnail === false;
+  const thumbnailFailed = failedUrl === imageUrl || object.hasThumbnail === false;
+  // Star Trails has no catalog image to fall back to, so a card with no capture picture shows the same bundled
+  // cover as the object page rather than the generic sparkle.
+  const showStartrailsCover = thumbnailFailed && object.type === DWARF_STARTRAILS_OBJECT_TYPE;
+  const imgError = thumbnailFailed && !showStartrailsCover;
+  const displayUrl = showStartrailsCover ? DWARF_STARTRAILS_PLACEHOLDER_IMAGE : imageUrl;
 
   // Unifying Lens, not a Cache Hack: no setQueryData, no rollback. `mutationKey`
   // is shared by every ObjectCard instance, so Gallery.tsx's useMutationState
@@ -128,7 +134,7 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes,
         {/* Sky survey image */}
         {!imgError && (
           <img
-            src={imageUrl}
+            src={displayUrl}
             alt={object.name}
             loading="lazy"
             onLoad={() => setImgLoaded(true)}

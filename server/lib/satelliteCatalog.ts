@@ -467,6 +467,7 @@ export class SatelliteCatalog {
     if (this._archiving) return;
     this._archiving = true;
     try {
+      // eslint-disable-next-line local/no-utc-date-key -- TLE archives are filed by UTC day, like their epochs
       const dateStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
       const archivePath = path.join(ARCHIVE_DIR, `${dateStr}.json.gz`);
       if (fs.existsSync(archivePath)) return;

@@ -32,23 +32,7 @@ import { verifyDownloadToken } from '../../server/lib/downloadToken';
 
 const mockedVerifyDownloadToken = verifyDownloadToken as ReturnType<typeof vi.fn>;
 
-// Mock fs so loadApiKey can be controlled
-vi.mock('fs', async () => {
-  const actual = await vi.importActual<typeof import('fs')>('fs');
-  return {
-    ...actual,
-    default: { ...actual, existsSync: vi.fn(), readFileSync: vi.fn() },
-    existsSync: vi.fn(),
-    readFileSync: vi.fn(),
-  };
-});
-import fs from 'fs';
-// Real (non-mocked) admin-API-key storage. The `setApiKey`/`getApiKey` local
-// helper below mocks `fs` for a `loadApiKey()` that no longer exists —
-// apiKey moved to a DB column (telescopes.ts) at some point and this file's
-// mocks were never updated, so every test using the local helper actually
-// exercises the fresh-install open-access fallback, not the API-key
-// comparison branch. Aliased to avoid colliding with that stale helper.
+// Real admin-API-key storage (DB-backed, telescopes.ts).
 import { setApiKey as setRealApiKey, getApiKey as getRealApiKey } from '../../server/lib/telescopes';
 
 const mockedVerifyToken = verifyToken as ReturnType<typeof vi.fn>;
@@ -57,8 +41,6 @@ const mockedGetUserTokenVersion = getUserTokenVersion as ReturnType<typeof vi.fn
 const mockedGetUserById = getUserById as ReturnType<typeof vi.fn>;
 const mockedIsDeviceActive = isDeviceActive as ReturnType<typeof vi.fn>;
 const mockedTouchDevice = touchDevice as ReturnType<typeof vi.fn>;
-const mockedExistsSync = fs.existsSync as ReturnType<typeof vi.fn>;
-const mockedReadFileSync = fs.readFileSync as ReturnType<typeof vi.fn>;
 
 function mockReq(overrides: any = {}) {
   return {
@@ -73,16 +55,6 @@ function mockRes() {
   const res: any = {};
   res.apiError = vi.fn();
   return res;
-}
-
-/** Configure fs mocks so loadApiKey() returns the given key (empty string if none). */
-function setApiKey(key: string) {
-  if (key) {
-    mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({ apiKey: key }));
-  } else {
-    mockedExistsSync.mockReturnValue(false);
-  }
 }
 
 describe('apiAuth middleware', () => {
@@ -138,13 +110,11 @@ describe('apiAuth middleware', () => {
     expect(req.userRole).toBe('viewer');
   });
 
-  // NOTE: `setApiKey` here only drives the stale fs-mocked loadApiKey() helper,
-  // so this request actually falls through to the fresh-install open-access
-  // branch (the real DB-backed API-key path is covered by the
+  // No users and no stored API key, so this request falls through to the fresh-install
+  // open-access branch (the DB-backed API-key path is covered by the
   // 'apiAuth admin API key (real DB-backed storage)' block below). The role it
   // grants is viewer since auditreport.md MEDIUM 1.
   it('allows a Bearer value when JWT fails, via the open-access branch, as viewer', () => {
-    setApiKey('my-secret-key');
     const req = mockReq({ headers: { authorization: 'Bearer my-secret-key' } });
     const res = mockRes();
     const next = vi.fn();
@@ -159,7 +129,6 @@ describe('apiAuth middleware', () => {
 
   // Same note as above: open-access branch, not the API-key comparison.
   it('allows an X-API-Key value via the open-access branch, as viewer', () => {
-    setApiKey('header-key');
     const req = mockReq({ headers: { 'x-api-key': 'header-key' } });
     const res = mockRes();
     const next = vi.fn();
@@ -171,8 +140,7 @@ describe('apiAuth middleware', () => {
     expect(req.userRole).toBe('viewer');
   });
 
-  it('accepts JWT in X-API-Key header when API key does not match', () => {
-    setApiKey('different-key');
+  it('accepts a valid JWT sent in the X-API-Key header', () => {
     // No Bearer header, so verifyToken is only called once (from the X-API-Key path)
     mockedVerifyToken.mockReturnValueOnce({ userId: 7, username: 'bob' });
     mockedGetUserById.mockReturnValue({ id: 7, username: 'bob', role: 'viewer', tokenVersion: 0 });
@@ -186,7 +154,6 @@ describe('apiAuth middleware', () => {
   });
 
   it('rejects API key in query param (round-2: query-string fallback removed)', () => {
-    setApiKey('query-key');
     mockedGetUserCount.mockReturnValue(1);
     const req = mockReq({ query: { apiKey: 'query-key' } });
     const res = mockRes();
@@ -199,7 +166,6 @@ describe('apiAuth middleware', () => {
   });
 
   it('allows open access when no API key configured and no users exist (fresh install)', () => {
-    setApiKey('');
     mockedGetUserCount.mockReturnValue(0);
     const req = mockReq();
     const res = mockRes();
@@ -216,7 +182,6 @@ describe('apiAuth middleware', () => {
   });
 
   it('rejects when auth required but not provided', () => {
-    setApiKey('configured-key');
     mockedGetUserCount.mockReturnValue(1);
     const req = mockReq();
     const res = mockRes();
@@ -228,8 +193,7 @@ describe('apiAuth middleware', () => {
     expect(res.apiError).toHaveBeenCalledWith(401, 'AUTH_REQUIRED', expect.stringContaining('Authentication required'));
   });
 
-  it('rejects invalid Bearer token when API key also does not match', () => {
-    setApiKey('real-key');
+  it('rejects an invalid Bearer token once users exist', () => {
     mockedGetUserCount.mockReturnValue(1);
     const req = mockReq({ headers: { authorization: 'Bearer wrong-token' } });
     const res = mockRes();
@@ -257,7 +221,6 @@ describe('apiAuth middleware', () => {
   });
 
   it('rejects API key via query param even when key matches (round-2)', () => {
-    setApiKey('query-key');
     mockedGetUserCount.mockReturnValue(1);
     const req = mockReq({ query: { apiKey: 'query-key' } });
     const res = mockRes();
@@ -270,7 +233,6 @@ describe('apiAuth middleware', () => {
   });
 
   it('allows GET during fresh-install open-access window (no users, no key), as viewer', () => {
-    setApiKey('');
     mockedGetUserCount.mockReturnValue(0);
     const req = mockReq({ method: 'GET' });
     const res = mockRes();
@@ -284,7 +246,6 @@ describe('apiAuth middleware', () => {
   });
 
   it('denies PUT during fresh-install open-access window (round-2 2.3 fix)', () => {
-    setApiKey('');
     mockedGetUserCount.mockReturnValue(0);
     const req = mockReq({ method: 'PUT' });
     const res = mockRes();
@@ -297,7 +258,6 @@ describe('apiAuth middleware', () => {
   });
 
   it('denies DELETE during fresh-install open-access window (round-2 2.3 fix)', () => {
-    setApiKey('');
     mockedGetUserCount.mockReturnValue(0);
     const req = mockReq({ method: 'DELETE' });
     const res = mockRes();
@@ -365,7 +325,30 @@ describe('apiAuth device-token (jti) branch — token revocation regressions', (
     expect(next).toHaveBeenCalled();
     expect(req.userRole).toBe('admin');
     expect(req.userId).toBe('user-1');
-    expect(mockedTouchDevice).toHaveBeenCalledWith('device-3');
+    // No X-Client-Platform header, so no app is recorded for the device.
+    expect(mockedTouchDevice).toHaveBeenCalledWith('device-3', null);
+  });
+
+  it('passes the X-Client-Platform app to touchDevice so the device records what it runs', () => {
+    mockedVerifyToken.mockReturnValue({ userId: 'user-1', username: 'alice', role: 'admin', jti: 'device-4' });
+    mockedGetUserById.mockReturnValue({ id: 'user-1', username: 'alice', role: 'admin' });
+    const req = mockReq({ headers: { authorization: 'Bearer device-token', 'x-client-platform': 'Nebulis-iOS/2.1.2' } });
+    const next = vi.fn();
+
+    apiAuth(req, mockRes(), next);
+
+    expect(next).toHaveBeenCalled();
+    expect(mockedTouchDevice).toHaveBeenCalledWith('device-4', { platform: 'Nebulis-iOS', version: '2.1.2' });
+  });
+
+  it('ignores a malformed X-Client-Platform value rather than storing it', () => {
+    mockedVerifyToken.mockReturnValue({ userId: 'user-1', username: 'alice', role: 'admin', jti: 'device-5' });
+    mockedGetUserById.mockReturnValue({ id: 'user-1', username: 'alice', role: 'admin' });
+    const req = mockReq({ headers: { authorization: 'Bearer device-token', 'x-client-platform': '<script>/1' } });
+
+    apiAuth(req, mockRes(), vi.fn());
+
+    expect(mockedTouchDevice).toHaveBeenCalledWith('device-5', null);
   });
 
   it('still rejects a revoked device before ever consulting the user row', () => {
@@ -410,7 +393,6 @@ describe('apiAuth bypass-list anchoring', () => {
     // Mark the install as non-fresh so anything that does NOT bypass auth
     // hits AUTH_REQUIRED rather than the fresh-install open-access window.
     mockedGetUserCount.mockReturnValue(1);
-    setApiKey('configured-key');
   });
 
   function check(path: string, method = 'GET') {
@@ -572,9 +554,7 @@ describe('apiAuth bypass-list anchoring', () => {
 });
 
 // Exercises the real admin-API-key path end to end (DB-backed setApiKey/
-// getApiKey, sealed at rest, compared with timingSafeEqual) rather than the
-// stale fs-mocked `loadApiKey()` helper above, which no longer intercepts
-// anything real and only passes by accident via the fresh-install fallback.
+// getApiKey, sealed at rest, compared with timingSafeEqual).
 describe('apiAuth admin API key (real DB-backed storage)', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -583,7 +563,7 @@ describe('apiAuth admin API key (real DB-backed storage)', () => {
     });
     // Non-fresh-install: without this, a wrong/missing key request with no
     // other credentials would fall through to the open-access GET bypass
-    // and pass for the wrong reason, exactly like the stale tests above.
+    // and pass for the wrong reason.
     mockedGetUserCount.mockReturnValue(1);
   });
 

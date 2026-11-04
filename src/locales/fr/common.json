@@ -12,7 +12,6 @@
     "observations": "Observations",
     "forecast": "Prévisions",
     "planner": "Planificateur",
-    "wishlist": "Liste de souhaits",
     "explore": "Explorer",
     "catalogs": "Catalogues",
     "calibrations": "Calibrations",
@@ -30,25 +29,25 @@
   },
   "auth": {
     "title": "Connexion à Nebulis",
-    "subtitle": "Connectez-vous pour continuer",
+    "subtitle": "Connectez-vous avec votre compte pour ce serveur. Votre bibliothèque reste sur cette machine.",
     "username": "Nom d'utilisateur",
-    "usernamePlaceholder": "p. ex. astro_fan",
+    "usernamePlaceholder": "Votre nom d'utilisateur",
     "password": "Mot de passe",
     "signIn": "Se connecter",
     "signingIn": "Connexion en cours…",
-    "loginFailed": "Échec de la connexion"
+    "loginFailed": "Ce nom d'utilisateur et ce mot de passe ne correspondent pas. Réessayez."
   },
   "onboarding": {
     "usernameRequired": "Le nom d'utilisateur est obligatoire",
     "usernameTooShort": "Le nom d'utilisateur doit comporter au moins 3 caractères",
     "passwordRequired": "Le mot de passe est obligatoire",
-    "passwordTooShort": "Le mot de passe doit comporter au moins 4 caractères",
+    "passwordTooShort": "Le mot de passe doit comporter au moins 6 caractères",
     "passwordMismatch": "Les mots de passe ne correspondent pas",
-    "createUserFailed": "Échec de la création de l'utilisateur",
+    "createUserFailed": "Impossible de créer ce compte. Vérifiez que le nom d'utilisateur n'est pas déjà pris, puis réessayez.",
     "connectionTested_one": "Connecté ! {{count}} observation trouvée sur l'appareil.",
     "connectionTested_other": "Connecté ! {{count}} observations trouvées sur l'appareil.",
-    "connectionFailed": "Échec de la connexion",
-    "saveSettingsFailed": "Échec de l'enregistrement des paramètres"
+    "connectionFailed": "Impossible de joindre cet appareil. Vérifiez qu'il est allumé et sur le même réseau.",
+    "saveSettingsFailed": "Impossible d'enregistrer vos paramètres. Vérifiez la connexion au serveur, puis réessayez."
   },
   "layout": {
     "skipToMainContent": "Passer au contenu principal",
@@ -141,7 +140,14 @@
     "customPathPlaceholder": "Ou collez un chemin personnalisé...",
     "detected_one": "{{count}} volume {{noun}} détecté. Choisissez-en un ou collez un chemin personnalisé.",
     "detected_other": "{{count}} volumes {{noun}} détectés. Choisissez-en un ou collez un chemin personnalisé.",
-    "plugIn": "Branchez le {{noun}} sur cet ordinateur via USB et appuyez sur actualiser."
+    "plugIn": "Branchez le {{noun}} sur cet ordinateur via USB et appuyez sur actualiser.",
+    "driveSize": "{{size}}, {{free}} libres",
+    "driveObjects_one": "{{count}} dossier d'objet",
+    "driveObjects_other": "{{count}} dossiers d'objets",
+    "driveLatest": "dernier {{date}}",
+    "notPaired": "Pas encore associé",
+    "readOnly": "Lecture seule",
+    "readOnlyHint": "Nebulis ne peut pas écrire sur ce lecteur, donc il ne peut pas le marquer. Il sera reconnu uniquement par son chemin, qui peut s'inverser quand deux télescopes sont branchés."
   },
   "dwarfLocalPathPicker": {
     "usbStoragePath": "Chemin de stockage USB Dwarf",
@@ -179,6 +185,9 @@
     "willBeStoredIn": "Votre bibliothèque sera stockée dans <1>{{path}}</1>.",
     "folderCreatedAutomatically": "Ce dossier est créé automatiquement s'il n'existe pas.",
     "moveLibraryHere": "Déplacer la bibliothèque ici",
+    "useLibraryHere": "Utiliser cette bibliothèque",
+    "useExisting": "Utiliser une bibliothèque existante",
+    "useExistingHint": "Pour une sauvegarde ou une bibliothèque déjà présente dans le dossier. Rien n'est copié.",
     "pickDriveToBegin": "Choisissez un lecteur pour commencer",
     "moveTo": "Déplacer vers <1>{{path}}</1>",
     "couldNotStartMove": "Impossible de démarrer le déplacement",
@@ -325,10 +334,29 @@
     "saving": "Enregistrement…",
     "gotIt": "Compris"
   },
+  "supportAsk": {
+    "title": "Vous appréciez Nebulis ?",
+    "body1": "Nebulis est gratuit, et j'ai l'intention que cela continue. Je le développe sur mon temps libre pour celles et ceux qui partagent mon amour du ciel nocturne.",
+    "body2": "Mon objectif est de faire de Nebulis la meilleure bibliothèque et plateforme de gestion astronomique, un endroit où astrophotographes et passionnés d'astronomie peuvent organiser et explorer leurs observations, et en tirer le meilleur.",
+    "body3": "Si Nebulis vous a été utile, vous pouvez soutenir son développement en m'offrant un café. Cela m'aide à consacrer plus de temps à l'améliorer, et c'est toujours apprécié.",
+    "scan": "Scannez le code avec votre téléphone, ou utilisez le bouton ci-dessous.",
+    "qrAlt": "Code QR vers la page Buy Me a Coffee",
+    "button": "M'offrir un café",
+    "close": "Fermer",
+    "freeNote": "Nebulis sera toujours gratuit. Les seules exceptions sont les applications mobiles distribuées via les boutiques d'applications.",
+    "salutation": "Ciel dégagé !",
+    "onlyOnce": "Vous ne verrez ce message qu'une seule fois. Vous le retrouverez à tout moment dans Réglages → À propos."
+  },
   "errorBoundary": {
-    "title": "Un problème est survenu",
-    "description": "Une erreur inattendue s'est produite. Actualisez la page pour continuer.",
+    "title": "Nebulis a rencontré une erreur inattendue",
+    "description": "Rechargez pour reprendre là où vous en étiez. Votre bibliothèque et vos paramètres sont inchangés.",
     "reloadPage": "Actualiser la page"
+  },
+  "routeError": {
+    "title": "Cette page a rencontré un problème",
+    "description": "Un élément de cette page n'a pas pu se charger. Le reste de Nebulis fonctionne toujours.",
+    "tryAgain": "Réessayer",
+    "backToLibrary": "Retour à la bibliothèque"
   },
   "heroToggle": {
     "collapse": "Réduire la bannière",

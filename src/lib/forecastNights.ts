@@ -8,7 +8,7 @@
  * and `resolveImagingWindow` / `hoursInWindow` below are what turn those into
  * the bounds the imaging window table tabulates.
  */
-import type { ForecastHour } from './api/planner';
+import type { ForecastHour, ImagingWindowInfo } from './api/planner';
 
 /** Local YYYY-MM-DD for a moment, in the forecast's timezone. 'en-CA' is
  *  locale-invariant PARSING: it happens to be the one built-in locale whose
@@ -21,7 +21,9 @@ export function localDateKey(ms: number, timeZone?: string): string {
       ...(timeZone ? { timeZone } : {}),
     }).format(new Date(ms));
   } catch {
-    return new Date(ms).toISOString().slice(0, 10);
+    // An unusable zone falls back to the viewer's clock, never to UTC.
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 }
 
@@ -41,6 +43,7 @@ export function localHourOfDay(ms: number, timeZone?: string): number {
 export function nextDateKey(dateKey: string): string {
   const d = new Date(dateKey + 'T12:00:00Z');
   d.setUTCDate(d.getUTCDate() + 1);
+  // eslint-disable-next-line local/no-utc-date-key -- d is a noon-UTC carrier for the key, not a real moment
   return d.toISOString().slice(0, 10);
 }
 
@@ -66,6 +69,8 @@ export interface TwilightTimes {
   astronomicalTwilightStart?: string | null;
   nauticalTwilightEnd?: string | null;
   nauticalTwilightStart?: string | null;
+  /** The window as the site's settings make it, from the server. Null: those settings leave none tonight. */
+  imagingWindow?: ImagingWindowInfo | null;
 }
 
 /** A night's dark window, in absolute milliseconds and as the source strings. */
@@ -80,6 +85,9 @@ export interface ImagingWindow {
    *  nautical fallback. That fallback is what a high-latitude summer night
    *  gets: the Sun never reaches -18°, so there is no astronomical darkness. */
   astronomical: boolean;
+  /** Minutes the site's settings move the window's ends by (0 and 0 for the plain twilight). */
+  startOffsetMin: number;
+  endOffsetMin: number;
 }
 
 /**
@@ -92,6 +100,18 @@ export interface ImagingWindow {
  * following night's dawn ahead of tonight's dusk at high latitudes in summer.
  */
 export function resolveImagingWindow(twilight: TwilightTimes): ImagingWindow | null {
+  // The site's own window, when the server sent one. `null` is an answer too: the settings leave no window.
+  if (twilight.imagingWindow !== undefined) {
+    const w = twilight.imagingWindow;
+    if (!w) return null;
+    const startMs = new Date(w.start).getTime(), endMs = new Date(w.end).getTime();
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
+    return {
+      startIso: w.start, endIso: w.end, startMs, endMs,
+      astronomical: w.darkness === 'astronomical',
+      startOffsetMin: w.startOffsetMin, endOffsetMin: w.endOffsetMin,
+    };
+  }
   const startIso = twilight.astronomicalTwilightEnd || twilight.nauticalTwilightEnd;
   const endIso = twilight.astronomicalTwilightStart || twilight.nauticalTwilightStart;
   if (!startIso || !endIso) return null;
@@ -101,13 +121,17 @@ export function resolveImagingWindow(twilight: TwilightTimes): ImagingWindow | n
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
   if (endMs <= startMs) return null;
 
-  return { startIso, endIso, startMs, endMs, astronomical: !!twilight.astronomicalTwilightEnd };
+  return { startIso, endIso, startMs, endMs, astronomical: !!twilight.astronomicalTwilightEnd, startOffsetMin: 0, endOffsetMin: 0 };
 }
 
-/** The hours falling inside the window, inclusive of both bounds. */
+/**
+ * The forecast hours of the window, both bounds included. A window that opens between two hours also takes the hour
+ * it opens in, so one opening at 19:02 starts on the 19:00 row rather than an hour later; one closing at 05:38 ends
+ * on the 05:00 row.
+ */
 export function hoursInWindow(hours: ForecastHour[], win: ImagingWindow): ForecastHour[] {
   return hours.filter(h => {
     const ms = new Date(h.time).getTime();
-    return ms >= win.startMs && ms <= win.endMs;
+    return ms > win.startMs - 3_600_000 && ms <= win.endMs;
   });
 }

@@ -28,7 +28,7 @@ import {
   type DragMoveEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { CalendarRange, CalendarPlus, Check, Copy, ListTree, Frame, Moon, Share2, Sparkles, Telescope } from 'lucide-react';
+import { CalendarRange, CalendarPlus, Check, Copy, ListTree, Frame, Moon, Share2, Telescope } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../hooks/useTheme';
 import { getPlannerTargets, getForecastForSite, getBlockVerdicts, type ForecastHour, type PlannerTarget } from '../lib/api/planner';
@@ -37,7 +37,8 @@ import { SitePicker } from '../components/SitePicker';
 import { listPlannedSessions, createPlannedSession, updatePlannedSession, deletePlannedSession, type PlannedSession, type PlannedSessionCreate } from '../lib/api/plannedSessions';
 import { getCatalogObjectInfo } from '../lib/api/catalog';
 import { getSettings } from '../lib/api/settings';
-import { getCatalogThumbnailUrl } from '../lib/catalogImage';
+import { getCatalogThumbnailUrl, getCatalogFullImageUrl } from '../lib/catalogImage';
+import { CatalogImageViewer } from '../components/catalogs/CatalogImageViewer';
 import { LocationPrompt } from '../components/LocationPrompt';
 import { AltitudeChart } from '../components/AltitudeChart';
 import { SkyChart } from '../components/planner/SkyChart';
@@ -62,6 +63,7 @@ import { classifyFit, fitDisplayStrings, objectExtentArcmin } from '../lib/teles
 import { FitBadge } from '../components/FitBadge';
 import { filterRecommendations } from '../lib/filterRecommendations';
 import { FilterRecommendationPanel } from '../components/ui/FilterRecommendationPanel';
+import { ObjectIntegrationSection } from '../components/objectDetail/ObjectIntegrationSection';
 import {
   dateFromKey,
   formatPlannerDate,
@@ -140,9 +142,6 @@ export function PlannerPage() {
   // When arriving from "Plan Tonight" on a catalog, open on the night the plan
   // was scheduled into rather than the planner's own default "today".
   const initialFocusDate = typeof navRecord?.focusDate === 'string' ? navRecord.focusDate : undefined;
-  // Set when the Wishlist page's "Minimize" button sent us back here — reopen
-  // the popup instead of landing on a bare Planner.
-  const initialOpenWishlist = navRecord?.openWishlist === true;
 
   // ── Observing site ───────────────────────────────────────────────────────
   // Every location/sky value below (coordinates, minAlt, horizon, visible-sky
@@ -526,7 +525,7 @@ export function PlannerPage() {
   const [autoPlanOpen, setAutoPlanOpen] = useState(false);
   const [autoPlanRange, setAutoPlanRange] = useState<{ start: Date; end: Date; clearFirst: boolean } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
-  const [wishlistOpen, setWishlistOpen] = useState(initialOpenWishlist);
+  const [wishlistOpen, setWishlistOpen] = useState(false);
   const [addingAllWishlist, setAddingAllWishlist] = useState(false);
   const [weatherOpen, setWeatherOpen] = useState(false);
   const [weatherHourTime, setWeatherHourTime] = useState<string | null>(null);
@@ -1264,7 +1263,7 @@ export function PlannerPage() {
   const canShareNight = sessions.length > 0 && hasWindow;
   const scheduleActions = (
     <>
-      {sessions.length > 0 && prevNightCount > 0 && (
+      {prevNightCount > 0 && (
         <button
           type="button"
           onClick={handleCopyFromPrevNight}
@@ -1288,36 +1287,6 @@ export function PlannerPage() {
       </button>
     </>
   );
-  // A night with nothing on it offers the two ways to start, front and centre, rather than a bare canvas.
-  const emptyNight = sessions.length === 0 ? (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/10 bg-slate-950/60 px-4 py-3">
-      <span className="text-sm text-white/70">{t('scheduleTimeline.emptyNight')}</span>
-      <div className="flex flex-wrap items-center gap-2">
-        {canAutoPlan && (
-          <button
-            type="button"
-            onClick={openAutoPlan}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-accent-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-600"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            {t('nightHero.planMyNight')}
-          </button>
-        )}
-        {prevNightCount > 0 && (
-          <button
-            type="button"
-            onClick={handleCopyFromPrevNight}
-            disabled={copyingPrevNight}
-            title={t('plannerActions.copyLastNightTitle')}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white/80 ring-1 ring-inset ring-white/15 transition hover:bg-white/10 disabled:opacity-40"
-          >
-            <Copy className="h-3.5 w-3.5" />
-            {copyingPrevNight ? t('plannerActions.copying') : t('scheduleTimeline.copyLastNightCount', { count: prevNightCount })}
-          </button>
-        )}
-      </div>
-    </div>
-  ) : null;
 
   const schedulePane = hasWindow ? (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-inset ring-white/10 hero-panel">
@@ -1351,13 +1320,12 @@ export function PlannerPage() {
           onShowDetails={handleShowSessionDetails}
           onShowFraming={handleShowFraming}
           headerActions={scheduleActions}
-          emptyState={emptyNight}
         />
       </div>
       {/* The band chart squeezes a 12-hour axis into the pane width, so it is
           only legible from tablet up. On a phone the timeline takes the height
           instead. */}
-      {observerLat != null && observerLon != null && (
+      {observerLat != null && observerLon != null && sessions.length > 0 && (
         <div className="hidden shrink-0 md:block">
           <AltitudeBandChart
             nightStart={timelineStart!}
@@ -1381,7 +1349,7 @@ export function PlannerPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <TourAnchor id="planner" className="block">
       <NightHero
         date={selectedDate}
@@ -1569,7 +1537,7 @@ export function PlannerPage() {
           onQuickAdd={hasWindow ? handleQuickAdd : undefined}
           onAddAllVisibleToPlan={handleAddAllWishlistToPlan}
           addingAll={addingAllWishlist}
-          onExpand={() => navigate('/wishlist', { state: { fromPlanner: true } })}
+          onExpand={() => navigate('/explore?tab=wishlist')}
           onClose={() => setWishlistOpen(false)}
         />
       )}
@@ -1870,6 +1838,13 @@ function SessionDetailsModal({
   // and WishlistObjectModal — costs no extra request.
   const filterRec = info?.type?.trim() ? filterRecommendations(info.type) : null;
 
+  // Progress toward a goal that already exists, read-only. Goals are set on
+  // the object page and in the Wishlist, where a target has been chosen; this
+  // modal is reached from a list of tonight's candidates, and its rows and
+  // blocks already show what is left.
+  const goalObjectId = libraryObjectId ?? objectId;
+  const hasGoals = !!useIntegrationProgress()(goalObjectId);
+
   // Worst-case moon proximity across tonight's whole dark window (not just
   // the currently-scrubbed instant the sky tracker's own caption already
   // shows) — answers "will the moon actually be a problem tonight" as one
@@ -1899,6 +1874,8 @@ function SessionDetailsModal({
   }, [hasLocation, moonIllumination, blockStart, blockEnd, ra, dec, observerLat, observerLon, observerTimezone, moonCheck]);
 
   const referenceUrl = getCatalogThumbnailUrl(objectId, majorAxisArcmin);
+  const referenceFullUrl = getCatalogFullImageUrl(objectId, majorAxisArcmin);
+  const [referenceOpen, setReferenceOpen] = useState(false);
 
   const fov = useResolvedFov();
   const fit = useMemo(() => classifyFit(fov, objectExtentArcmin(null, majorAxisArcmin)), [fov, majorAxisArcmin]);
@@ -1973,14 +1950,21 @@ function SessionDetailsModal({
               WishlistObjectModal/CatalogObjectModal rather than a large
               square image. */}
           <div className="flex gap-4 items-start">
-            <img
-              src={referenceUrl}
-              alt={t('plannerPage.referenceImageAlt', { name: objectName })}
-              loading="lazy"
-              className={`${description ? 'w-36 h-36' : 'w-20 h-20'} shrink-0 rounded-xl overflow-hidden border object-cover ${
-                isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-slate-100'
+            <button
+              type="button"
+              onClick={() => setReferenceOpen(true)}
+              aria-label={t('plannerPage.referenceImageOpen', { name: objectName })}
+              className={`group relative h-36 w-36 shrink-0 cursor-zoom-in overflow-hidden rounded-xl border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 ${
+                isDark ? 'border-slate-800 bg-slate-950 hover:border-slate-600' : 'border-slate-200 bg-slate-100 hover:border-slate-400'
               }`}
-            />
+            >
+              <img
+                src={referenceUrl}
+                alt={t('plannerPage.referenceImageAlt', { name: objectName })}
+                loading="lazy"
+                className="h-full w-full object-cover transition group-hover:scale-[1.03]"
+              />
+            </button>
             <div className="min-w-0">
               {description ? (
                 <>
@@ -2185,6 +2169,8 @@ function SessionDetailsModal({
               )}
             </div>
           </div>
+
+          {hasGoals && <ObjectIntegrationSection key={goalObjectId} objectId={goalObjectId} isAdmin={false} />}
         </div>
 
         {/* Actions — pinned footer. Same three actions as
@@ -2266,6 +2252,14 @@ function SessionDetailsModal({
         savedFraming={framingSetup}
         onSaveFraming={onSaveFraming}
         onClose={() => setFramingOpen(false)}
+      />
+    )}
+    {referenceOpen && (
+      <CatalogImageViewer
+        src={referenceFullUrl}
+        thumbSrc={referenceUrl}
+        name={objectName}
+        onClose={() => setReferenceOpen(false)}
       />
     )}
     </>

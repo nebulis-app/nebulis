@@ -11,7 +11,8 @@ import {
   forecastSiteKey,
 } from '../lib/forecastCache.js';
 import { getNightConditions } from '../lib/nightConditions.js';
-import { resolveSite } from '../lib/observingSites.js';
+import { resolveSite, type ObservingSite } from '../lib/observingSites.js';
+import { resolveWindowFromIso, windowPrefsOf } from '../lib/imagingWindow.js';
 import { burstyRateLimiter } from '../middleware/rateLimit.js';
 import {
   computeOutlook,
@@ -25,8 +26,37 @@ const router = Router();
 
 // ─── Combined forecast endpoint ─────────────────────────────────
 
+/**
+ * The forecast with tonight's imaging window for the site added: the site's chosen twilight and offsets applied to
+ * tonight's twilight times. Added per request rather than cached, since the forecast is cached per grid cell and
+ * two sites on one cell can want different windows. Null when the settings leave no window tonight.
+ */
+function withImagingWindow<T>(data: T, site: ObservingSite): T {
+  if (!data || typeof data !== 'object' || !('tonight' in data)) return data;
+  const tonight = (data as { tonight?: Record<string, unknown> | null }).tonight;
+  if (!tonight || typeof tonight !== 'object') return data;
+  const prefs = windowPrefsOf(site);
+  const str = (k: string) => (typeof tonight[k] === 'string' ? (tonight[k] as string) : null);
+  const win = resolveWindowFromIso({
+    astronomicalTwilightEnd: str('astronomicalTwilightEnd'),
+    astronomicalTwilightStart: str('astronomicalTwilightStart'),
+    nauticalTwilightEnd: str('nauticalTwilightEnd'),
+    nauticalTwilightStart: str('nauticalTwilightStart'),
+  }, prefs);
+  return {
+    ...data,
+    tonight: {
+      ...tonight,
+      imagingWindow: win
+        ? { start: win.start.toISOString(), end: win.end.toISOString(), darkness: win.darkness, startOffsetMin: prefs.startOffsetMin, endOffsetMin: prefs.endOffsetMin }
+        : null,
+    },
+  };
+}
+
 router.get('/', burstyRateLimiter, async (req: Request, res: Response) => {
   let resolvedLat: number | null = null;
+  let site: ObservingSite | null = null;
   let resolvedLon: number | null = null;
   try {
     // siteId wins; otherwise explicit lat/lon (existing clients that read
@@ -49,7 +79,7 @@ router.get('/', burstyRateLimiter, async (req: Request, res: Response) => {
       return;
     }
 
-    const site = resolveSite({
+    site = resolveSite({
       siteId,
       lat: validLat ? rawLat : undefined,
       lon: validLon ? rawLon : undefined,
@@ -79,7 +109,7 @@ router.get('/', burstyRateLimiter, async (req: Request, res: Response) => {
     // cached empty forecast is never served: re-fetch instead so a bad entry
     // recovers on the next request rather than sticking for the full TTL.
     if (!forceRefresh && cached && cacheAge < CACHE_TTL_MS && cachedUsable) {
-      res.apiSuccess(cached.data);
+      res.apiSuccess(withImagingWindow(cached.data, site!));
       return;
     }
 
@@ -88,7 +118,7 @@ router.get('/', burstyRateLimiter, async (req: Request, res: Response) => {
     if (isUsableForecast(data)) {
       setForecastCacheEntry({ data, fetchedAt: now, lat: resolvedLat, lon: resolvedLon, lastRequestedAt: now });
       snapshotNightConditions(data, resolvedLat, resolvedLon);
-      res.apiSuccess(data);
+      res.apiSuccess(withImagingWindow(data, site!));
       return;
     }
 
@@ -97,17 +127,17 @@ router.get('/', burstyRateLimiter, async (req: Request, res: Response) => {
     // stale; otherwise hand the empty payload back for the client to show its
     // own retryable "forecast unavailable" state.
     if (cached && cachedUsable) {
-      res.apiSuccess(cached.data);
+      res.apiSuccess(withImagingWindow(cached.data, site!));
       return;
     }
-    res.apiSuccess(data);
+    res.apiSuccess(withImagingWindow(data, site!));
   } catch (err: unknown) {
     // On error, serve a stale entry for this site if we have one.
     const stale = resolvedLat !== null && resolvedLon !== null
       ? getForecastCacheEntry(resolvedLat, resolvedLon)
       : null;
     if (stale) {
-      res.apiSuccess(stale.data);
+      res.apiSuccess(site ? withImagingWindow(stale.data, site) : stale.data);
       return;
     }
     const message = err instanceof Error ? err.message : 'Forecast fetch failed';

@@ -19,6 +19,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 import fs from 'fs';
 import { apiEnvelope } from '../../server/middleware/apiEnvelope';
 import { libraryRouter } from '../../server/routes/library';
+import { observationsRouter } from '../../server/routes/observations';
 import { getImportStatus } from '../../server/lib/library/import';
 import { stmts } from '../../server/lib/library/objects';
 import { createProfile } from '../../server/lib/telescopes';
@@ -43,6 +44,7 @@ beforeAll(async () => {
     req.userRole = 'admin';
     next();
   });
+  app.use('/observations', observationsRouter);
   app.use('/', libraryRouter);
 
   server = http.createServer(app);
@@ -89,6 +91,15 @@ describe('library routes — no double URL-decoding of route params', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data.objectId).toBe('M%Test');
+  });
+});
+
+describe('GET /observations/:objectId/:date — no double URL-decoding', () => {
+  it('does not throw a URIError for an objectId with a literal "%"', async () => {
+    const res = await fetch(`${baseUrl}/observations/${encodeURIComponent('50%')}/2026-06-21`);
+    // The old second decodeURIComponent('50%') threw "URI malformed", which the handler turned into a 500.
+    const body = await res.json();
+    expect(body.error?.message ?? '').not.toMatch(/URI malformed/i);
   });
 });
 

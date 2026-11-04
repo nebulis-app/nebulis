@@ -15,6 +15,12 @@ describe('editRequestFor', () => {
     });
   });
 
+  it('saves a variant\'s original under the object that owns it, not the page', () => {
+    const items: GalleryItem[] = [{ kind: 'file', file: file({ path: 'NGC 6960_mosaic/Stacked.jpg' }) }];
+    const r = editRequestFor(items, 'NGC6960', '/f/stacked', 'Stacked.jpg', 'telescope', undefined, 'NGC6960_mosaic');
+    expect(r.objectId).toBe('NGC6960_mosaic');
+  });
+
   it('offers no replacing of an original that has no night', () => {
     const items: GalleryItem[] = [{ kind: 'file', file: file({ date: null }) }];
     const r = editRequestFor(items, 'M31', '/f/stacked', 'Stacked.jpg', 'telescope', { kind: 'telescope', path: 'M31/Stacked.jpg' });

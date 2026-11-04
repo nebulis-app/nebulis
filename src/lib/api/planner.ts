@@ -53,9 +53,22 @@ interface ForecastData {
     nauticalTwilightStart: string;
     darkHours: number;
     nauticalDarkHours: number;
+    /** Tonight's imaging window as the site's settings make it (twilight level and offsets). Null when those
+     *  settings leave no window tonight; absent from an older server, which then means the astronomical night. */
+    imagingWindow?: ImagingWindowInfo | null;
   };
   nightRatings: NightRating[];
   sources: { weather: string | null; seeing: string | null };
+}
+
+export interface ImagingWindowInfo {
+  start: string;
+  end: string;
+  /** The twilight the window starts from (astronomical falls back to nautical where it never gets that dark). */
+  darkness: 'astronomical' | 'nautical';
+  /** Minutes after dusk the window opens, and before dawn it closes, as set on the site. */
+  startOffsetMin: number;
+  endOffsetMin: number;
 }
 
 /** Forecast for an explicit observing site rather than raw coordinates. */
@@ -205,6 +218,8 @@ export interface AutoPlanRequest {
   focus?: AutoPlanFocus;
   unimagedOnly?: boolean;
   jitter?: number;
+  /** Objects an earlier take showed, so a shuffle picks others (see server autoPlan avoidIds). */
+  avoidIds?: string[];
   /** Skip cloudy slots and favour steady seeing for small targets. */
   useForecast?: boolean;
   /** Cloud cover (%) above which a slot is skipped (server default 60). */

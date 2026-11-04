@@ -108,12 +108,14 @@ export function ObjectProjectArchivesSection({
               : t('objectDetail.projectArchivesSection.noneYet')}
           </span>
         </button>
-        {isOpen && isAdmin && hasArchives && (
+        {isOpen && isAdmin && (
           <button
             type="button"
             onClick={() => { setPendingFile(null); setUploadOpen(true); }}
             className={`shrink-0 inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg transition ${
-              isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              bare
+                ? isDark ? 'bg-accent-500/15 text-accent-400 hover:bg-accent-500/25' : 'bg-accent-500 text-white hover:bg-accent-600'
+                : isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
             <Plus className="w-3.5 h-3.5" />

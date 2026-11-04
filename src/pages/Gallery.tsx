@@ -567,7 +567,7 @@ export function Gallery() {
           />
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 shrink-0">
           {/* Filters */}
           <div ref={filtersRef} className="relative">
             <button

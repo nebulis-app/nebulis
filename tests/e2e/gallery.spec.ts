@@ -163,16 +163,35 @@ test.describe('Gallery', () => {
   test('nav links are rendered', async ({ page }) => {
     // The standalone Storage link is gone (reached directly or from Settings).
     // Forecast and Calibrations are hidden by default, so they are not part of
-    // the default nav strip; Wishlist is on by default.
+    // the default nav strip. Wishlist is a tab on Explore, not a nav item.
     await expect(page.getByRole('link', { name: 'Library', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Gallery', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Observations', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Planner', exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Wishlist', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Explore', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Wishlist', exact: true })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Catalogs', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Help', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Forecast', exact: true })).toBeHidden();
     await expect(page.getByRole('link', { name: 'Calibrations', exact: true })).toBeHidden();
   });
+});
+
+test.describe('Gallery toolbar on phones', () => {
+  // The Add button is the only way into folder import for someone who already has a library, and the page hides
+  // horizontal overflow, so a toolbar that runs past the screen leaves no way to reach it.
+  for (const width of [320, 360, 390]) {
+    test(`Add button is fully on screen at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await mockAllRoutes(page);
+      await page.goto('/');
+      const add = page.getByRole('button', { name: 'Add', exact: true });
+      await expect(add).toBeVisible();
+      const box = await add.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+    });
+  }
 });

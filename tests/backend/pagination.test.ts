@@ -60,6 +60,17 @@ describe('parsePagination', () => {
     expect(result.page).toBe(1);
   });
 
+  it('caps an absurd page so the offset stays a finite number SQLite will bind', () => {
+    const result = parsePagination(mockReq({ page: '9'.repeat(400), limit: '200' }));
+    expect(Number.isFinite(result.offset)).toBe(true);
+    expect(Number.isSafeInteger(result.offset)).toBe(true);
+  });
+
+  it('caps an absurd offset the same way', () => {
+    const result = parsePagination(mockReq({ offset: '9'.repeat(400), limit: '200' }));
+    expect(Number.isSafeInteger(result.offset)).toBe(true);
+  });
+
   it('treats a non-numeric offset as 0', () => {
     const result = parsePagination(mockReq({ offset: 'abc' }));
     expect(result.offset).toBe(0);

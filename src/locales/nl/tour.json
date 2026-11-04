@@ -1,0 +1,60 @@
+{
+  "steps": {
+    "welcome": {
+      "title": "Maak kennis met Nebulis",
+      "body": "Een korte rondleiding door je sterrenwacht: de bibliotheek, je telescoop, een nacht plannen en je afgewerkte afbeeldingen. Een paar minuten.",
+      "hint": "Start de rondleiding wanneer je klaar bent. Je kunt altijd stoppen en opnieuw beginnen via Help."
+    },
+    "library": {
+      "title": "Je bibliotheek, vooraan",
+      "body": "Dit is je thuisbasis. Elk object dat je hebt gefotografeerd staat hier als kaart met de mooiste afbeelding, het aantal nachten dat je het vastlegde en de telescoop waarmee het is gemaakt.",
+      "hint": "Zoeken, de knoppen Filters en Weergave en de lay-outknop (raster of mozaïek) helpen je alles in seconden te vinden."
+    },
+    "telescopes": {
+      "title": "Richt Nebulis op je telescoop",
+      "body": "Dit is het tabblad Telescopen. Klik op 'Slimme telescoop toevoegen', kies je model en voer het adres in. De sharenaam en standaardwaarden worden vanzelf ingevuld.",
+      "hint": "Je hoeft niet meteen te importeren, maar met deze stap schakel je de automatische nachtelijke imports in."
+    },
+    "sync": {
+      "title": "Synchroniseer je telescoop",
+      "body": "Zodra een telescoop is ingesteld, open je deze knop in de bovenbalk en klik je op Synchroniseren. Nieuwe sessies worden via wifi (of USB) gekopieerd en automatisch in je bibliotheek geplaatst.",
+      "hint": "Automatisch importeren staat standaard aan voor elke telescoop die je toevoegt, dus nieuwe sessies verschijnen meestal vanzelf."
+    },
+    "planner": {
+      "title": "Plan de nacht voordat hij begint",
+      "body": "De Planner beantwoordt 'is het vanavond de moeite waard om erop uit te gaan?' en laat je daarna plannen wat je wanneer fotografeert. Kies een nacht, sleep doelen naar de tijdlijn of laat Plan mijn nacht hem vullen met de uurlijkse verwachting.",
+      "hint": "Groen betekent volledig zichtbaar, oranje gedeeltelijk zichtbaar en rood geblokkeerd door je eigen horizon of de Maan."
+    },
+    "processed": {
+      "title": "Je afgewerkte afbeeldingen",
+      "body": "Hier komt je afgewerkte werk terecht. Open een object en de pagina verzamelt alle afbeeldingen ervan, met je bewerkte afbeeldingen groot bovenaan en daaronder tabbladen voor losse opnamen, nachten en projecten.",
+      "hint": "Open een nacht om een bewerkte afbeelding te uploaden en geef er een een ster om de omslagafbeelding van het object in de bibliotheek te maken."
+    },
+    "explore": {
+      "title": "Ontdek wat je hierna fotografeert",
+      "body": "Verkennen vindt je volgende doel. Zoek op een naam of catalogusnummer of blader op soort. Elk object laat zien of je het vanavond vanaf je locatie kunt zien en of het in het beeldveld van je telescoop past.",
+      "hint": "Zet alles wat je leuk vindt op je verlanglijst of plan het met één tik in voor vanavond."
+    },
+    "catalogs": {
+      "title": "Volg je voortgang",
+      "body": "Catalogi is de waarnemingsatlas: Messier, NGC, IC, Sharpless en Caldwell, elk met een voortgangsbord van wat je hebt gefotografeerd en wat nog openstaat. Open een bord, tik op een object voor details of open Mijn catalogus voor een muur met je eigen afbeeldingen."
+    },
+    "gallery": {
+      "title": "Laat het zien",
+      "body": "De Galerij maakt van je bewerkte afbeeldingen een schermvullende diavoorstelling die je op een tv kunt afspelen. Open hem en druk op afspelen voor een nette, automatische show van je beste werk."
+    },
+    "observations": {
+      "title": "Elke nacht, in een kalender",
+      "body": "Waarnemingen is je logboek. Het toont elke sessie per datum met het object, de telescoop en of er een afgewerkte afbeelding is, plus een wereldkaart van waar je hebt gestaan."
+    },
+    "settings": {
+      "title": "Maak het van jou",
+      "body": "Instellingen gaat verder dan de telescooppagina: waarneemlocaties, opslaglocatie, bibliotheekopties, meldingen, gekoppelde telefoons en tv's en een volledig systeemlogboek. Het zoekvak bovenaan vindt elke instelling op naam."
+    },
+    "done": {
+      "title": "Je bent klaar",
+      "body": "Dat is de hele cyclus: koppel één telescoop, laat de imports draaien, vind een doel in Verkennen, plan heldere nachten in de Planner en geniet van de afgewerkte afbeeldingen in de Galerij.",
+      "hint": "Later de weg kwijt? De Help-pagina heeft geschreven handleidingen met schermafbeeldingen en deze rondleiding staat altijd één klik weg."
+    }
+  }
+}

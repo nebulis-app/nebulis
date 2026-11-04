@@ -41,11 +41,6 @@ export function minutesBetween(a: Date, b: Date): number {
   return (b.getTime() - a.getTime()) / 60000;
 }
 
-export function yToTime(y: number, nightStart: Date): Date {
-  const minutes = Math.max(0, y / PX_PER_MINUTE);
-  return new Date(nightStart.getTime() + minutes * 60000);
-}
-
 export function snapToGrid(t: Date): Date {
   const snapMs = SNAP_MINUTES * 60_000;
   return new Date(Math.round(t.getTime() / snapMs) * snapMs);

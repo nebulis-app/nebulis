@@ -58,7 +58,19 @@ try {
   fs.appendFileSync(LOG_PATH, `\n=== ${new Date().toISOString()} starting ===\n`);
 } catch { /* best-effort */ }
 
-const fileStream = pino.destination({ dest: LOG_PATH, sync: true, mkdir: true });
+// An unwritable log file (a root-owned server.log left by an older Docker image, a
+// read-only mount) must not stop the server booting: log to stdout only and say so.
+function openFileStream(): ReturnType<typeof pino.destination> {
+  try {
+    return pino.destination({ dest: LOG_PATH, sync: true, mkdir: true });
+  } catch (err) {
+    process.stderr.write(`[logger] cannot write ${LOG_PATH} (${err instanceof Error ? err.message : String(err)}); logging to stdout only\n`);
+    // /dev/null keeps the destination surface (reopen) the rotation timer below relies on.
+    return pino.destination({ dest: os.devNull, sync: true });
+  }
+}
+
+const fileStream = openFileStream();
 
 // The boot-time check above only runs once, so a server that stays up for weeks
 // would grow server.log without bound. Re-check hourly and reopen the stream

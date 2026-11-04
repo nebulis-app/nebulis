@@ -4,7 +4,6 @@ import {
   map7TimerTransparency,
   map7TimerCloud,
   interpolateSeeingTransparency,
-  rateNightConditions,
   getMoonPhaseName,
   parseSevenTimerInit,
   parseOpenMeteoHour,
@@ -14,7 +13,6 @@ import {
   setForecastCacheEntry,
   buildForecast,
   _clearForecastCache,
-  type ForecastHour,
 } from '../../server/lib/forecastCache';
 import { getSettingsData, updateSettingsData } from '../../server/lib/telescopes';
 
@@ -115,80 +113,6 @@ describe('interpolateSeeingTransparency', () => {
     interpolateSeeingTransparency(hours);
     expect(hours[1].seeing).toBe(3); // (1 + 4*2)/3 rounded = round(1*(1/3)+4*(2/3)) = 3
     expect(hours[1].transparency).toBeNull();
-  });
-});
-
-function mkHour(overrides: Partial<ForecastHour>): ForecastHour {
-  return {
-    time: '2026-06-21T00:00:00.000Z',
-    cloudCover: 0,
-    cloudCoverLow: 0,
-    cloudCoverMid: 0,
-    cloudCoverHigh: 0,
-    seeing: null,
-    transparency: null,
-    humidity: 0,
-    temperature: 0,
-    dewPoint: 0,
-    wind: 0,
-    visibility: null,
-    precipProb: 0,
-    jetStream: null,
-    cape: null,
-    ...overrides,
-  };
-}
-
-describe('rateNightConditions', () => {
-  it('scores a perfectly clear, calm, dry night as 100/Excellent', () => {
-    const hours = [mkHour({ cloudCover: 0, humidity: 0, wind: 0, precipProb: 0 })];
-    const result = rateNightConditions(hours);
-    expect(result.score).toBe(100);
-    expect(result.rating).toBe('Excellent');
-  });
-
-  it('scores a fully overcast, rainy, windy night near 0/Bad', () => {
-    const hours = [mkHour({ cloudCover: 100, humidity: 100, wind: 60, precipProb: 100 })];
-    const result = rateNightConditions(hours);
-    expect(result.score).toBe(0);
-    expect(result.rating).toBe('Bad');
-  });
-
-  it('averages across multiple hours rather than scoring only one', () => {
-    const hours = [
-      mkHour({ cloudCover: 0, humidity: 0, wind: 0, precipProb: 0 }),
-      mkHour({ cloudCover: 100, humidity: 0, wind: 0, precipProb: 0 }),
-    ];
-    const result = rateNightConditions(hours);
-    // avgCloud = 50 -> score = 100 - 50*0.6 = 70
-    expect(result.avgCloudCover).toBe(50);
-    expect(result.score).toBe(70);
-    expect(result.rating).toBe('Good');
-  });
-
-  it('does not penalize humidity at or below the 60% floor', () => {
-    const hours = [mkHour({ cloudCover: 0, humidity: 60, wind: 0, precipProb: 0 })];
-    expect(rateNightConditions(hours).score).toBe(100);
-  });
-
-  it('does not penalize wind at or below the 15 km/h floor', () => {
-    const hours = [mkHour({ cloudCover: 0, humidity: 0, wind: 15, precipProb: 0 })];
-    expect(rateNightConditions(hours).score).toBe(100);
-  });
-
-  it.each([
-    [80, 'Excellent'],
-    [60, 'Good'],
-    [40, 'Fair'],
-    [20, 'Poor'],
-    [19, 'Bad'],
-  ])('rates score %d as %s', (targetScore, expectedRating) => {
-    // Only cloud cover contributes (0.6 per %), so pick cloudCover to land
-    // exactly on the target score with everything else at its zero-penalty floor.
-    const cloudCover = (100 - targetScore) / 0.6;
-    const hours = [mkHour({ cloudCover, humidity: 0, wind: 0, precipProb: 0 })];
-    const result = rateNightConditions(hours);
-    expect(result.rating).toBe(expectedRating);
   });
 });
 

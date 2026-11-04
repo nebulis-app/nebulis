@@ -41,10 +41,8 @@ router.get('/:objectId/:date', (req: Request, res: Response) => {
   try {
     const objectId = String(req.params.objectId);
     const date = String(req.params.date);
-    const detail = getLocalObservationDetail(
-      decodeURIComponent(objectId),
-      decodeURIComponent(date),
-    );
+    // Express has already decoded the params; decoding again throws on a literal "%".
+    const detail = getLocalObservationDetail(objectId, date);
     res.apiSuccess(detail);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to get observation detail';

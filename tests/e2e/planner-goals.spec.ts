@@ -63,7 +63,7 @@ test.describe('Plan My Night: goals', () => {
     await page.route('**/api/library/integration/progress', r => r.fulfill(json(ok([]))));
     await page.goto('/planner');
     await openPlanMyNight(page);
-    await expect(page.getByLabel('Favour objects with time left toward their goals')).toHaveCount(0);
+    await expect(page.getByLabel('Favor objects with time left toward their goals')).toHaveCount(0);
   });
 
   test.describe('with a goal on Orion', () => {
@@ -75,7 +75,7 @@ test.describe('Plan My Night: goals', () => {
     });
 
     test('the switch is on by default', async ({ page }) => {
-      await expect(page.getByLabel('Favour objects with time left toward their goals')).toBeChecked();
+      await expect(page.getByLabel('Favor objects with time left toward their goals')).toBeChecked();
     });
 
     test('building sends the goals with the candidates and asks the server to favour them', async ({ page }) => {
@@ -95,7 +95,7 @@ test.describe('Plan My Night: goals', () => {
 
     test('switching it off plans exactly as before: no goals sent, nothing favoured', async ({ page }) => {
       const posted = await mockPlan(page);
-      await page.getByLabel('Favour objects with time left toward their goals').uncheck();
+      await page.getByLabel('Favor objects with time left toward their goals').uncheck();
       await page.getByRole('button', { name: 'Build my plan' }).click();
       await expect(page.getByText('Add to', { exact: false }).first()).toBeVisible();
 

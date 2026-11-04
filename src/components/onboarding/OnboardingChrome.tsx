@@ -106,7 +106,7 @@ export function OnboardingChrome({
                 {isCreatingUser ? (
                   <><RotateCw className="w-4 h-4 animate-spin" /> {t('chrome.creating')}</>
                 ) : (
-                  <>{t('chrome.continue')} <ChevronRight className="w-4 h-4" /></>
+                  <>{t('chrome.createAccount')} <ChevronRight className="w-4 h-4" /></>
                 )}
               </button>
             )}

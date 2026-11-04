@@ -18,6 +18,9 @@ const setStmt = db.prepare(
    ON CONFLICT(designation) DO UPDATE SET targetObjectId = excluded.targetObjectId,
      createdAt = excluded.createdAt, createdBy = excluded.createdBy`,
 );
+const listStmt = db.prepare<[], { designation: string; targetObjectId: string; createdAt: string }>(
+  'SELECT designation, targetObjectId, createdAt FROM objectDesignationRedirects ORDER BY designation',
+);
 const deleteStmt = db.prepare('DELETE FROM objectDesignationRedirects WHERE designation = ?');
 
 function normalize(designation: string): string {
@@ -36,4 +39,9 @@ export function setDesignationRedirect(designation: string, targetObjectId: stri
 
 export function deleteDesignationRedirect(designation: string): void {
   deleteStmt.run(normalize(designation));
+}
+
+/** Every redirect, so the apps can show what "remember this" has been remembering. */
+export function listDesignationRedirects(): { designation: string; targetObjectId: string; createdAt: string }[] {
+  return listStmt.all();
 }

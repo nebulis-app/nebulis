@@ -72,7 +72,9 @@ function buildForecastMock() {
   const HOUR = 3600_000;
   const at = (h: number) => new Date(base + h * HOUR).toISOString();
   const dateKey = (dayOffset: number) => {
-    const d = new Date(base + dayOffset * 24 * HOUR);
+    // Calendar arithmetic, not +24h: on a DST-change day a 24h step lands at 23:00 the previous day and duplicates a key.
+    const d = new Date(midnightLocal);
+    d.setDate(d.getDate() + dayOffset);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
@@ -117,7 +119,7 @@ function buildForecastMock() {
       nauticalDarkHours: 8,
     },
     nightRatings: [
-      { date: dateKey(0), score: 85, rating: 'Great', avgCloudCover: 10, avgHumidity: 40, avgWind: 8, precipChance: 0, confidence: 'normal' },
+      { date: dateKey(0), score: 85, rating: 'Ideal', avgCloudCover: 10, avgHumidity: 40, avgWind: 8, precipChance: 0, confidence: 'normal' },
       { date: dateKey(1), score: 62, rating: 'Good', avgCloudCover: 38, avgHumidity: 55, avgWind: 12, precipChance: 10, confidence: 'normal' },
       { date: dateKey(2), score: 31, rating: 'Poor', avgCloudCover: 78, avgHumidity: 72, avgWind: 20, precipChance: 45, confidence: 'normal' },
       { date: dateKey(3), score: 54, rating: 'Fair', avgCloudCover: 52, avgHumidity: 60, avgWind: 14, precipChance: 20, confidence: 'low' },
@@ -677,6 +679,7 @@ export const MOCK = {
       startedAt: null,
       completedAt: null,
       previousPath: null,
+      adopted: null,
     },
   },
 
@@ -1164,6 +1167,10 @@ export async function mockAllRoutes(page: Page) {
     }))));
   await page.route('**/api/preferences/last-seen-version', r =>
     r.fulfill(json(ok({ lastSeenVersion: '1.0.0' }))));
+  // The one-time "Enjoying Nebulis?" ask has been seen, so it never sits over a spec's clicks.
+  // support-ask.spec.ts overrides this route to test the ask itself.
+  await page.route('**/api/preferences/support-ask', r =>
+    r.fulfill(json(ok({ seenAt: '2026-01-01T00:00:00.000Z' }))));
 
   // Thumbnails — return a tiny blank PNG
   await page.route('**/thumbnail**', r =>
@@ -1387,7 +1394,7 @@ export async function mockArchiveRoutes(page: Page, options: ArchiveRouteOptions
 
 
   const objects = options.objects ?? [
-    { folderName: 'M 31', objectId: 'M31', firstArchivedAt: '2026-01-01T00:00:00.000Z', lastArchivedAt: '2026-03-01T00:00:00.000Z', filesTotal: 2, subframes: 1, bytes: 2048, missingLocally: 1 },
+    { folderName: 'M 31', objectId: 'M31', willCreate: false, firstArchivedAt: '2026-01-01T00:00:00.000Z', lastArchivedAt: '2026-03-01T00:00:00.000Z', filesTotal: 2, subframes: 1, bytes: 2048, missingLocally: 1 },
   ];
   const files = options.files ?? [
     { relPath: '2026-01-01_22-00-00/Stacked_10_M31.jpg', isSubframe: false, bytes: 1024, presentLocally: true },

@@ -252,7 +252,9 @@ function parseFilenameFormat(filename: string): ParsedFilename {
   // The middle chunk between Bin and the timestamp holds the filter, the
   // optional camera model, and the gain in order-of-presence, so it is
   // captured whole and split below rather than guessed at with alternation.
-  const asiairMatch = withoutCopySuffix.match(
+  // The length cap keeps the lazy groups below from backtracking over a crafted
+  // name; no real ASIAIR filename comes close to it.
+  const asiairMatch = withoutCopySuffix.length > 300 ? null : withoutCopySuffix.match(
     /^(Light|Dark|Flat|Bias)_(?:(.+?)_)?(\d+(?:[._]\d+)?m?s)_Bin\d+((?:_[A-Za-z0-9+-]+)*?)_(\d{8})-(\d{6})\d*(?:_\d+deg)?(?:_-?\d+(?:[._]\d+)?C)?(?:_(\d+))?\.[^.]+$/i,
   );
   if (asiairMatch) {
@@ -672,9 +674,11 @@ export function normalizeCatalogId(folderId: string): string {
   // adjacent \d* groups ambiguous over the same digits (e.g. "panel12" can
   // split as panel+"12"+"" or panel+"1"+"2"), which is the shape a crafted
   // folder name can turn into polynomial-time backtracking.
-  return folderId
-    .replace(/[_\s]+(mosai[ck]|mosiac|panel|ha|oiii|sii|sho|hoo|rgb|lrgb|nb|narrowband|broadband|luminance|lum|bicolor|tricolor|hargb|photo|video)\s*\d*$/i, '')
-    .replace(/\s+/g, '');
+  // A real folder name is short; skip the suffix strip for a crafted long one.
+  const suffixStripped = folderId.length > 200
+    ? folderId
+    : folderId.replace(/[_\s]+(mosai[ck]|mosiac|panel|ha|oiii|sii|sho|hoo|rgb|lrgb|nb|narrowband|broadband|luminance|lum|bicolor|tricolor|hargb|photo|video)\s*\d*$/i, '');
+  return suffixStripped.replace(/\s+/g, '');
 }
 
 /**

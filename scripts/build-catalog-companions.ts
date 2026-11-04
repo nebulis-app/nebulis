@@ -24,7 +24,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { LISTED_ROWS } from '../server/lib/dsoCatalogData.js';
-import { getAllCatalogEntries, getCatalogEntry } from '../server/data/catalog.js';
+import { getAllCatalogEntries, getBaseCatalogEntry } from '../server/data/catalog.js';
 import { HERSCHEL400_IDS } from '../server/lib/herschel400Catalog.js';
 import { SHARPLESS_CATALOG } from '../server/lib/sharplessCatalog.js';
 import { raToHours, decToDegs } from '../server/lib/astroCalc.js';
@@ -42,7 +42,7 @@ function pointFor(id: string): Point | null {
   // Position of the canonical object, as the Sharpless board does (catalogs.ts):
   // Sh2-1 and IC1470 are one object and must not get a position that depends on
   // which of the two this loop happened to reach first.
-  const entry = getCatalogEntry(companionKey(id)) ?? getCatalogEntry(id);
+  const entry = getBaseCatalogEntry(companionKey(id)) ?? getBaseCatalogEntry(id);
   if (!entry || entry.ra == null || entry.dec == null) return null;
   const raDeg = raToHours(entry.ra) * 15;
   const dec = decToDegs(entry.dec);

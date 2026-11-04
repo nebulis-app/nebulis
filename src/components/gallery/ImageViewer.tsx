@@ -11,7 +11,7 @@ import { useZoomPan } from '../lightbox/useZoomPan';
 import { zoomControlsFromPan } from '../lightbox/zoomControls';
 import { useLightboxKeys } from '../lightbox/useLightboxKeys';
 import { useAdjacentPreload } from '../lightbox/useAdjacentPreload';
-import { shareImage, shareOutcomeMessage } from '../lightbox/shareImage';
+import { shareImage, shareOutcomeMessage, warmShareImage } from '../lightbox/shareImage';
 import { useAnnotatedExport } from '../lightbox/useAnnotatedExport';
 import { AnnotationOverlay } from '../lightbox/AnnotationOverlay';
 import { LightboxActions, AnnotateToggle } from '../lightbox/LightboxActions';
@@ -219,7 +219,7 @@ export function ImageViewer({
     <LightboxActions
       onEdit={isAdmin && onEditImage && /\.(jpe?g|png|webp)$/i.test(image.name) ? () => onEditImage(image) : undefined}
       favorite={{ isFavorite: image.isFavorite, onToggle: () => onToggleFavorite(image) }}
-      share={{ busy: sharing, onShare: exporter.share }}
+      share={{ busy: sharing, onShare: exporter.share, onWarm: () => { if (image) warmShareImage(image.downloadUrl); } }}
       download={{
         href: image.downloadUrl,
         fileName: image.name,
@@ -292,7 +292,7 @@ export function ImageViewer({
               : null}
           />
           {annotate && selectedAnnotation && (
-            <AnnotationInfoCard annotation={selectedAnnotation} onClose={() => annotations.select(null)} />
+            <AnnotationInfoCard annotation={selectedAnnotation} zp={zp} onClose={() => annotations.select(null)} />
           )}
         </LightboxPane>
         {/* Sized to the free strip beside the picture, hidden when there is none: never over the picture, never moving it. */}

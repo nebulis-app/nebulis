@@ -330,6 +330,7 @@ function subtitleKeyFor(groupId: string, sectionId: string | null): string {
     case 'library':
       if (sectionId === 'organization') return 'subtitle.libraryOrganization';
       if (sectionId === 'processing') return 'subtitle.libraryProcessing';
+      if (sectionId === 'slideshow') return 'subtitle.librarySlideshow';
       return 'subtitle.library';
     case 'updates':  return 'subtitle.updates';
     case 'account':

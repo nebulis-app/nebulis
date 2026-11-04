@@ -126,7 +126,7 @@ describe('alerts routes', () => {
     expect(ok.body.data).toMatchObject({ ok: true, status: 200, error: null, channel: { lastStatus: 'ok' } });
     expect(received).toHaveLength(1);
     expect(received[0]!.url).toContain('/nebulis-topic?title=Nebulis+test+alert');
-    expect(received[0]!.body).toBe('If you can read this, alerts to this channel work.');
+    expect(received[0]!.body).toBe('Alerts to this channel work. Choose which ones you get in Settings → Alerts.');
 
     replyStatus = 404;
     const failed = await call('POST', `/channels/${body.data.id}/test`);

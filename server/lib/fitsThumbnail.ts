@@ -88,13 +88,17 @@ export function purgeStaleFitsThumbnails(fitsPath: string): number {
 export async function generateFitsThumbnail(
   fitsPath: string,
   tier: FitsThumbnailTier = 'thumb',
+  /** Write here instead of beside the source. Set for a linked file, which Nebulis must never write next to. */
+  thumbPathOverride?: string,
 ): Promise<void> {
-  const thumbPath = fitsThumbnailPath(fitsPath, tier);
+  const thumbPath = thumbPathOverride ?? fitsThumbnailPath(fitsPath, tier);
   if (fs.existsSync(thumbPath)) return;
 
   fs.mkdirSync(path.dirname(thumbPath), { recursive: true });
 
-  const nodeBuffer = fs.readFileSync(fitsPath);
+  // Async: a synchronous read of a 50 MB frame (or any frame on a network or USB volume) held the event loop, and with
+  // it every other request, for the whole read.
+  const nodeBuffer = await fs.promises.readFile(fitsPath);
   const size = TIERS[tier].size;
 
   // Large frames: average blocks while the file streams past, never holding the picture at full size.
@@ -105,16 +109,16 @@ export async function generateFitsThumbnail(
     await sharp(reduced.rgb, { raw: { width: size, height: size, channels: 3 } })
       .jpeg({ quality: 85 })
       .toFile(thumbPath);
-    purgeStaleFitsThumbnails(fitsPath);
+    if (!thumbPathOverride) purgeStaleFitsThumbnails(fitsPath);
     return;
   }
 
-  // Node.js Buffer may share its underlying ArrayBuffer with an offset, so copy
-  // the bytes out to get a clean, offset-free ArrayBuffer before handing it to
-  // DataView. Copying through Uint8Array (rather than `buffer.slice(...)`)
-  // gives a genuine `ArrayBuffer` back: `Buffer.buffer` is typed
-  // `ArrayBufferLike`, which is what the assertion here used to paper over.
-  const ab = new Uint8Array(nodeBuffer).buffer;
+  // A Buffer from readFile of a file this size owns its whole ArrayBuffer, so hand that over instead of copying the
+  // frame a second time. A pooled (small) Buffer shares its ArrayBuffer with others and has to be sliced out.
+  const owned = nodeBuffer.buffer;
+  const ab: ArrayBuffer = owned instanceof ArrayBuffer && nodeBuffer.byteOffset === 0 && nodeBuffer.byteLength === owned.byteLength
+    ? owned
+    : new Uint8Array(nodeBuffer).buffer;
 
   const parsed = parseFitsPixels(ab);
   if (parsed.width === 0 || parsed.height === 0 || parsed.imageData.length === 0) {
@@ -126,7 +130,7 @@ export async function generateFitsThumbnail(
   await sharp(rgb, { raw: { width: size, height: size, channels: 3 } })
     .jpeg({ quality: 85 })
     .toFile(thumbPath);
-  purgeStaleFitsThumbnails(fitsPath);
+  if (!thumbPathOverride) purgeStaleFitsThumbnails(fitsPath);
 }
 
 // ─── FITS pixel parser (mirrors src/lib/fits.ts — browser DataView works in Node too) ───

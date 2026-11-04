@@ -157,14 +157,14 @@
     "filters": "Filter",
     "unableToLoad": "Bibliothek konnte nicht geladen werden",
     "loadErrorFallback": "Deine Bibliothek konnte nicht erreicht werden. Prüfe, ob der Nebulis-Server läuft, und aktualisiere dann, um es erneut zu versuchen.",
-    "importStartFailed": "Import konnte nicht gestartet werden",
+    "importStartFailed": "Der Import konnte nicht gestartet werden. Prüfe, ob das Teleskop erreichbar ist, und versuche es erneut.",
     "objectCount_one": "{{count}} Objekt in der Bibliothek",
     "objectCount_other": "{{count}} Objekte in der Bibliothek",
     "noFavoritesYet": "Noch keine Favoriten",
     "noFavoritesHint": "Markiere ein Objekt auf seiner Detailseite mit einem Stern, um es zu deinen Favoriten hinzuzufügen.",
     "noSearchMatches": "Keine Objekte entsprechen deiner Suche",
     "libraryEmpty": "Deine Bibliothek ist leer",
-    "libraryEmptyHint": "Importiere Bilder von deinem SeeStar, um deine lokale Bibliothek aufzubauen. Richte zuerst deine Teleskopverbindung in den Einstellungen ein.",
+    "libraryEmptyHint": "Bilder erscheinen hier, sobald du von einem verbundenen Teleskop importierst oder eine Beobachtung hochlädst.",
     "importFromAllTelescopes_one": "Von allen {{count}} Teleskop importieren",
     "importFromAllTelescopes_other": "Von allen {{count}} Teleskopen importieren",
     "importFromTelescope": "Vom Teleskop importieren",
@@ -283,9 +283,9 @@
     "framingMosaicTitle": "Vorschau, wie dieses Objekt in dein Teleskop passt, und ein Mosaik planen",
     "downloadFailed": "Der Download konnte nicht gestartet werden. Versuche es erneut.",
     "deleteObjectTitle": "Objekt löschen",
-    "deleteObjectBody": "Dies löscht dauerhaft jede lokale Bilddatei für <1>{{name}}</1> — das lässt sich nicht rückgängig machen. Außerdem wird {{name}} von zukünftigen Synchronisierungen ausgeschlossen, sodass das Teleskop es nicht automatisch wieder hinzufügt; das lässt sich jederzeit auf der Seite dieses Objekts rückgängig machen. Beobachtungsnotizen bleiben erhalten.",
+    "deleteObjectBody": "Dies löscht dauerhaft jede lokale Bilddatei für <1>{{name}}</1>. Das lässt sich nicht rückgängig machen. Außerdem wird {{name}} von zukünftigen Synchronisierungen ausgeschlossen, sodass das Teleskop es nicht automatisch wieder hinzufügt; das lässt sich jederzeit auf der Seite dieses Objekts rückgängig machen. Beobachtungsnotizen bleiben erhalten.",
     "deleteObservationTitle": "Beobachtung löschen",
-    "deleteObservationBody": "Dies löscht dauerhaft jede lokale Datei der Beobachtung <1>{{objectId}}</1> vom <3>{{date}}</3> — das lässt sich nicht rückgängig machen. Außerdem wird diese Beobachtung von zukünftigen Synchronisierungen ausgeschlossen, sodass das Teleskop sie nicht automatisch wieder hinzufügt; das lässt sich jederzeit im Abschnitt Beobachtungen dieser Seite rückgängig machen.",
+    "deleteObservationBody": "Dies löscht dauerhaft jede lokale Datei der Beobachtung <1>{{objectId}}</1> vom <3>{{date}}</3>. Das lässt sich nicht rückgängig machen. Außerdem wird diese Beobachtung von zukünftigen Synchronisierungen ausgeschlossen, sodass das Teleskop sie nicht automatisch wieder hinzufügt; das lässt sich jederzeit im Abschnitt Beobachtungen dieser Seite rückgängig machen.",
     "dangerConfirm": {
       "cancel": "Abbrechen",
       "deletePermanently": "Endgültig löschen",
@@ -422,7 +422,64 @@
       "save": "Speichern",
       "invalidHours": "Gib eine Stundenzahl zwischen 0 und 1000 ein.",
       "missingFilterName": "Gib dem neuen Filter einen Namen.",
-      "saveFailed": "Die Ziele konnten nicht gespeichert werden."
+      "saveFailed": "Die Ziele konnten nicht gespeichert werden.",
+      "suggest": {
+        "button": "Ziele vorschlagen",
+        "rig": "Kamera",
+        "rigs": {
+          "color": "Farbkamera",
+          "mono": "Mono-Kamera"
+        },
+        "moon": "Mond",
+        "moons": {
+          "dark": "Dunkle Nächte",
+          "mixed": "Meiste Nächte",
+          "any": "Ignorieren"
+        },
+        "tier": "Qualität",
+        "tiers": {
+          "standard": "Standard",
+          "deep": "Tief",
+          "showpiece": "Glanzstück"
+        },
+        "total": "{{hours}} h insgesamt",
+        "class": {
+          "bright": "hell",
+          "moderate": "mittel",
+          "faint": "schwach",
+          "very-faint": "sehr schwach"
+        },
+        "basisSurface": "Mittlere Flächenhelligkeit {{sb}} mag/Bogensek.², eingestuft als {{brightness}}.",
+        "basisType": "Keine Größe oder Helligkeit im Katalog, daher nach Objekttyp als {{brightness}} eingestuft.",
+        "dualBand": "Dual-Band",
+        "unnamedDualBand": "Der Plan rechnet mit einem Dual-Band-Filter. Die Zeile nach dem eigenen Filter benennen.",
+        "bands": {
+          "narrowband": "Schmalband",
+          "broadband": "Breitband"
+        },
+        "bortleAssumed": "Der aktive Standort hat keine Bortle-Klasse, daher wird Bortle {{bortle}} angenommen. Sie lässt sich in den Einstellungen unter Beobachtungsorte setzen.",
+        "disclaimer": "Eine Schätzung, keine Messung. Gespeichert wird erst mit Speichern.",
+        "apply": "Diese Stunden übernehmen",
+        "shootWith": "Aufnehmen mit",
+        "shootAny": "Nicht angegeben",
+        "fellBack": "In der Ausrüstung fehlen die empfohlenen Filter ({{missing}}), daher nutzt dieser Plan das Vorhandene.",
+        "missing": "Nicht in der Ausrüstung: {{missing}}.",
+        "setRigHint": "Kamera und Filter dieses Teleskops festlegen, damit der Plan zur Ausrüstung passt.",
+        "setRigLink": "Teleskop-Einstellungen öffnen",
+        "title": "Vorgeschlagenes Ziel",
+        "hide": "Ausblenden",
+        "chipHours": "{{hours}} h",
+        "chipHoursCapped": "{{hours}}+ h",
+        "totalSingle": "{{hours}} h · {{filter}}",
+        "cappedBadge": "begrenzt",
+        "eqBase": "Objekt: {{brightness}}",
+        "eqStellar": "Sternfeld",
+        "eqSky": "Himmel Bortle {{bortle}} und Mond, {{band}}-Filter",
+        "basisNarrowband": "Nach Objekttyp als {{brightness}} eingestuft. Aus der Katalog-Helligkeit ergeben sich {{sb}} mag/Bogensek.², doch das ist sichtbares Licht und sagt durch einen Schmalbandfilter wenig aus.",
+        "cappedSky": "Ab Bortle {{bortle}} setzt der Himmel die Grenze. Ein dunklerer Standort oder ein Schmalbandfilter bringen mehr als zusätzliche Stunden.",
+        "cappedSkyNarrowband": "Ab Bortle {{bortle}} setzt der Himmel die Grenze. Ein dunklerer Standort bringt mehr als zusätzliche Stunden.",
+        "cappedTotal": "Auf {{max}} h begrenzt, eine sinnvolle Obergrenze für ein Objekt."
+      }
     },
     "projectArchivesSection": {
       "heading": "Bearbeitungsprojekte",
@@ -694,7 +751,9 @@
     "sync": "Synchronisieren",
     "notSetUp": "Nicht eingerichtet",
     "online": "Online",
-    "offline": "Offline"
+    "offline": "Offline",
+    "edit": "Teleskop bearbeiten",
+    "editName": "{{name}} bearbeiten"
   },
   "deletedSessionsModal": {
     "title": "Gelöschte Sitzungen",
@@ -898,15 +957,29 @@
       "impact": "Impact"
     },
     "presets": {
-      "savedPresets": "Gespeicherte Vorlagen",
-      "saveAsPresetTitle": "Als Vorlage speichern",
-      "namePlaceholder": "Name der Vorlage…",
-      "loadFailed": "Gespeicherte Vorlagen konnten nicht geladen werden. Versuchen Sie, den Editor neu zu öffnen.",
-      "empty": "Keine gespeicherten Vorlagen. Klicken Sie auf +, um die aktuellen Einstellungen zu speichern.",
-      "applyTitle": "Anwenden",
+      "watermarks": "Wasserzeichen",
+      "saveCurrent": "Als Wasserzeichen speichern",
+      "saveSubmit": "Wasserzeichen speichern",
+      "selectTextHint": "Fügen Sie unten einen Textblock hinzu, um ein wiederverwendbares Wasserzeichen zu erstellen.",
+      "namePlaceholder": "Name des Wasserzeichens…",
+      "loadFailed": "Wasserzeichen konnten nicht geladen werden. Öffnen Sie den Editor erneut.",
+      "empty": "Noch keine Wasserzeichen.",
+      "applyTitle": "Dieses Wasserzeichen anwenden",
+      "renameTitle": "Umbenennen",
+      "renameSave": "Namen speichern",
+      "updateNamed": "„{{name}}“ aktualisieren",
+      "updateFailed": "Das Wasserzeichen konnte nicht aktualisiert werden. Bitte erneut versuchen.",
       "deleteTitle": "Löschen",
-      "saveFailed": "Wasserzeichen-Vorlage konnte nicht gespeichert werden. Bitte erneut versuchen.",
-      "deleteFailed": "Wasserzeichen-Vorlage konnte nicht gelöscht werden. Bitte erneut versuchen."
+      "deleteConfirm": "„{{name}}“ löschen? Text, der bereits auf dem Bild ist, bleibt.",
+      "deleteConfirmLabel": "Löschen",
+      "deleteFailed": "Das Wasserzeichen konnte nicht gelöscht werden. Bitte erneut versuchen.",
+      "cancel": "Abbrechen",
+      "nameTaken": "Dieser Name wird bereits verwendet.",
+      "replaceLabel": "Ersetzen",
+      "replaceWarning": "„{{name}}“ existiert bereits.",
+      "maxReached": "Sie können bis zu {{count}} Wasserzeichen speichern.",
+      "saveFailed": "Das Wasserzeichen konnte nicht gespeichert werden. Bitte erneut versuchen.",
+      "renameFailed": "Das Wasserzeichen konnte nicht umbenannt werden. Bitte erneut versuchen."
     },
     "cropPanel": {
       "hint": "Ziehen Sie, um einen Zuschneidebereich zu zeichnen. Ziehen Sie an Kanten oder Ecken, um ihn zu verändern. Zum Verschieben innen ziehen. Enter drücken oder auf Anwenden klicken, um zu bestätigen.",
@@ -1111,7 +1184,7 @@
     "driveIsGoneReset": "Dieses Laufwerk ist dauerhaft weg. Auf den Standardordner zurücksetzen.",
     "shareWord": "Freigabe",
     "driveWord": "Laufwerk",
-    "resetExplanation": "Dadurch wird Nebulis wieder auf seinen integrierten Bibliotheksordner zurückgesetzt (<1>{{path}}</1>). Dateien am alten Speicherort werden <2>nicht</2> kopiert. Verwende dies nur, wenn diese {{shareOrDrive}} endgültig verschwunden ist und deine Bilder bereits im Standardordner liegen, oder du sie erneut importierst.",
+    "resetExplanation": "Dadurch wird Nebulis wieder auf seinen integrierten Bibliotheksordner zurückgesetzt (<1>{{path}}</1>). Dateien am alten Speicherort werden <2>nicht</2> kopiert. Verwende dies nur, wenn diese {{shareOrDrive}} endgültig verschwunden ist und deine Bilder bereits im Standardordner liegen, oder du sie erneut importierst. Neue Importe landen auf dem internen Laufwerk, und wenn {{shareOrDrive}} später zurückkommt, ist es eine eigene, getrennte Bibliothek, die sich nicht von selbst zusammenführt.",
     "resetFailed": "Der Speicherort konnte nicht zurückgesetzt werden",
     "resetToDefaultFolder": "Auf Standardordner zurücksetzen"
   },
@@ -1374,7 +1447,8 @@
       "markProcessedFailed": "Konnte nicht als bearbeitet markiert werden",
       "favorite": "Favorit",
       "unfavorite": "Favorit entfernen",
-      "download": "Herunterladen"
+      "download": "Herunterladen",
+      "mosaic": "Mosaik"
     },
     "loading": "Medien werden geladen",
     "loadingMore": "Weitere werden geladen",
@@ -1405,6 +1479,8 @@
     "target": "Ziel",
     "toggle": "Objekte in diesem Bild benennen",
     "toggleHide": "Objektnamen ausblenden",
+    "minimize": "Objektnamen minimieren",
+    "restore": "Objektnamen einblenden",
     "title": "Objektnamen",
     "loading": "Objekte werden gesucht ...",
     "quality": {

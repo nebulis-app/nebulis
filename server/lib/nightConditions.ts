@@ -7,14 +7,17 @@
  * ends up with the newest value we saw for it. Seeing and transparency come
  * from 7Timer, which has no history, so they can only ever be captured this way.
  *
- * Deliberately free of imports from forecastCache.ts (which calls this): the
- * caller hands in the hours and the night-rating function.
+ * Deliberately free of runtime imports from forecastCache.ts (which calls
+ * this): the caller hands in the hours. The score itself is the shared night
+ * score (nightScore.ts), so the logbook, the Planner and the Forecast cards
+ * can never rate the same night differently.
  */
 import SunCalc from 'suncalc';
 import db from './db.js';
 import { addDaysToDateKey, timeZoneOrLocal, zonedDateTimeToUtc } from './timezone.js';
 import { observingNightDateKey } from './telescopeFiles.js';
 import type { ForecastHour } from './forecastCache.js';
+import { scoreNightHours, type NightScore } from './nightScore.js';
 
 export type NightConditionsSource = 'forecast' | 'archive';
 
@@ -44,6 +47,8 @@ interface NightWindow {
   /** Astronomical dark, else nautical, else sunset to sunrise. */
   coreStart: Date;
   coreEnd: Date;
+  /** Which of those `core*` is. `none` means the sun never gets 12 degrees down (high-latitude summer). */
+  darkKind: 'astronomical' | 'nautical' | 'none';
   darkHours: number;
   middle: Date;
 }
@@ -66,17 +71,75 @@ export function nightWindow(night: string, lat: number, lon: number, timeZone: s
   const nauticalStart = valid(today.nauticalDusk), nauticalEnd = valid(next.nauticalDawn);
   const hasNautical = nauticalStart !== null && nauticalEnd !== null && nauticalEnd > nauticalStart;
   let coreStart = sunset, coreEnd = sunrise, darkHours = 0;
+  let darkKind: NightWindow['darkKind'] = 'none';
   if (hasAstro) {
-    coreStart = astroStart; coreEnd = astroEnd;
+    coreStart = astroStart; coreEnd = astroEnd; darkKind = 'astronomical';
     darkHours = (astroEnd.getTime() - astroStart.getTime()) / 3600000;
   } else if (hasNautical) {
-    coreStart = nauticalStart; coreEnd = nauticalEnd;
+    coreStart = nauticalStart; coreEnd = nauticalEnd; darkKind = 'nautical';
   }
   return {
-    sunset, sunrise, coreStart, coreEnd,
+    sunset, sunrise, coreStart, coreEnd, darkKind,
     darkHours: Math.round(darkHours * 10) / 10,
     middle: new Date((sunset.getTime() + sunrise.getTime()) / 2),
   };
+}
+
+/**
+ * The night score for the hours inside a night's dark window. The moon is
+ * sampled at the middle of that window, the same instant the Planner's night
+ * strip uses, so a night reads the same wherever it is shown.
+ */
+export function scoreNightWindow(
+  hours: ForecastHour[],
+  w: Pick<NightWindow, 'coreStart' | 'coreEnd' | 'darkKind'>,
+  timeZone: string,
+): NightScore | null {
+  const start = w.coreStart.getTime(), end = w.coreEnd.getTime();
+  const moonIllumination = Math.round(SunCalc.getMoonIllumination(new Date((start + end) / 2)).fraction * 100);
+  return scoreNightHours(hours, {
+    moonIllumination,
+    darkWindow: w.darkKind === 'none' ? null : { start, end },
+    timeZone,
+  });
+}
+
+/**
+ * The score of one observing night, from a forecast's hours: the dark window's
+ * hours when the sun sets and rises, else the fixed 20:00-06:00 local band
+ * (midnight sun, polar night), where there is no dark window to measure against
+ * and the Moon is judged over 19:00-05:00. Null when fewer than two hours fall
+ * in the night. This is what the Forecast outlook cards show.
+ */
+export function scoreObservingNight(
+  hours: ForecastHour[],
+  night: string,
+  lat: number,
+  lon: number,
+  timeZone: string,
+): NightScore | null {
+  const tz = timeZoneOrLocal(timeZone);
+  const w = nightWindow(night, lat, lon, tz);
+  if (w) {
+    const start = w.coreStart.getTime(), end = w.coreEnd.getTime();
+    const inNight = hours.filter((h) => {
+      const t = new Date(h.time).getTime();
+      return t >= start && t <= end;
+    });
+    return inNight.length < 2 ? null : scoreNightWindow(inNight, w, tz);
+  }
+
+  const anchor = zonedDateTimeToUtc(night, { hour: 22 }, tz).getTime();
+  const inBand = hours.filter((h) => {
+    const diff = (new Date(h.time).getTime() - anchor) / 3600000;
+    return diff >= -2 && diff <= 8;
+  });
+  if (inBand.length < 2) return null;
+  return scoreNightHours(inBand, {
+    moonIllumination: Math.round(SunCalc.getMoonIllumination(new Date(anchor)).fraction * 100),
+    darkWindow: null,
+    timeZone: tz,
+  });
 }
 
 function median(values: number[]): number | null {
@@ -100,15 +163,16 @@ export function mergeHours(older: ForecastHour[], newer: ForecastHour[]): Foreca
 
 export function summarizeNight(
   hours: ForecastHour[],
-  w: Pick<NightWindow, 'coreStart' | 'coreEnd'>,
-  rate: (hours: ForecastHour[]) => { score: number },
+  w: Pick<NightWindow, 'coreStart' | 'coreEnd' | 'darkKind'>,
+  timeZone: string,
 ): Pick<NightConditions, 'avgCloud' | 'maxWind' | 'minDewGap' | 'avgHumidity' | 'medianSeeing' | 'nightScore'> | null {
   const core = hours.filter((h) => {
     const t = new Date(h.time).getTime();
     return t >= w.coreStart.getTime() - 1800_000 && t <= w.coreEnd.getTime() + 1800_000;
   });
   const used = core.length > 0 ? core : hours;
-  if (used.length === 0) return null;
+  const rated = scoreNightWindow(used, w, timeZone);
+  if (!rated) return null;
   const mean = (f: (h: ForecastHour) => number) => used.reduce((s, h) => s + f(h), 0) / used.length;
   return {
     avgCloud: Math.round(mean((h) => h.cloudCover) * 10) / 10,
@@ -116,7 +180,7 @@ export function summarizeNight(
     minDewGap: Math.round(Math.min(...used.map((h) => h.temperature - h.dewPoint)) * 10) / 10,
     avgHumidity: Math.round(mean((h) => h.humidity) * 10) / 10,
     medianSeeing: median(used.flatMap((h) => (h.seeing == null ? [] : [h.seeing]))),
-    nightScore: rate(used).score,
+    nightScore: rated.score,
   };
 }
 
@@ -168,7 +232,6 @@ export interface RecordInput {
   lon: number;
   timezone: string;
   hourly: ForecastHour[];
-  rate: (hours: ForecastHour[]) => { score: number };
   now?: Date;
 }
 
@@ -201,7 +264,7 @@ export function recordNightConditions(input: RecordInput): NightConditions | nul
 
     const existing = getNightConditions(input.siteKey, night, 'forecast');
     const hours = mergeHours(existing?.hours ?? [], fresh);
-    const summary = summarizeNight(hours, w, input.rate);
+    const summary = summarizeNight(hours, w, tz);
     if (!summary) return null;
 
     const record: NightConditions = {

@@ -1,11 +1,13 @@
 import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Download, FileDown, Play, Sparkles, Star, Undo2 } from 'lucide-react';
+import { Download, FileDown, Layers, Play, Sparkles, Star, Undo2 } from 'lucide-react';
 import { FitsThumbnail } from '../FitsThumbnail';
 import { useTheme } from '../../hooks/useTheme';
 import { nightSafeColor } from '../../lib/nightSafeColor';
 import { formatDate } from '../../lib/formatLocale';
+import { localDateKeyOfTimestamp } from '../../lib/nightWindow';
 import { formatBytes } from '../../lib/utils';
+import { variantBadgeClass, variantLabelOf } from '../../lib/variantLabel';
 import type { MediaItem } from '../../lib/api/library';
 import { opensInViewer, TILE_DATE_FROM, TILE_WIDE_FROM, type TileSize } from './tileSizing';
 
@@ -42,11 +44,14 @@ export const MediaTile = memo(function MediaTile({
   const kindLabel = t(`objectMedia.kind.${item.kind}`);
   const night = nightLabel(item.date);
   // The small date in the corner: the night, else the day a processed file or project was added. Left off the compact tiles.
-  const cornerDate = size >= TILE_DATE_FROM ? nightLabel(item.date ?? item.capturedAt?.slice(0, 10) ?? null) : null;
+  const cornerDate = size >= TILE_DATE_FROM ? nightLabel(item.date ?? localDateKeyOfTimestamp(item.capturedAt)) : null;
   const label = [kindLabel, night, item.telescope?.name].filter(Boolean).join(', ');
   const showFormat = item.format === 'FITS' || item.format === 'TIFF';
   const canMarkProcessed = !!onMarkProcessed && item.kind === 'telescope' && item.isImage && !item.isFits && !!item.date;
   const canMarkUnprocessed = !!onMarkUnprocessed && item.kind === 'processed' && item.isImage && !!item.recordId && !!item.date;
+  // A variant is its own object (`M31_mosaic`, `M16_Ha`), so its pictures are known by the owning object's id.
+  const variant = variantLabelOf(item.objectId);
+  const isMosaic = variant === 'Mosaic';
   const canFavorite = item.kind !== 'video' && (item.isImage || item.isFits);
 
   const surface = isDark ? 'bg-slate-800' : 'bg-slate-100';
@@ -134,6 +139,13 @@ export const MediaTile = memo(function MediaTile({
         </span>
       )}
 
+      {variant && (
+        <span className={`pointer-events-none absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 ${variantBadgeClass(variant)}`}>
+          {isMosaic && <Layers className="h-3 w-3" />}
+          {isMosaic ? t('objectMedia.tile.mosaic') : variant}
+        </span>
+      )}
+
       {canMarkProcessed && (
         <button
           type="button"
@@ -198,7 +210,7 @@ export function ProjectCard({ item }: { item: MediaItem }) {
           {item.title || item.name}
         </span>
         <span className="block truncate text-xs text-slate-500">
-          {[item.software, formatBytes(item.size), nightLabel(item.capturedAt?.slice(0, 10) ?? null)].filter(Boolean).join(' · ')}
+          {[item.software, formatBytes(item.size), nightLabel(localDateKeyOfTimestamp(item.capturedAt))].filter(Boolean).join(' · ')}
         </span>
       </span>
       <Download

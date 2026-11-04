@@ -126,6 +126,15 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
           )}
         </div>
 
+        {location?.recovered && location.available && (
+          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <Check className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+            <p className={`text-xs leading-relaxed ${body}`}>
+              {t('libraryLocation.recoveredNotice', { from: location.recovered.from, to: location.recovered.to })}
+            </p>
+          </div>
+        )}
+
         {location && !location.available && !migrating && (
           <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
             <Plug className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
@@ -160,6 +169,33 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
               <p className={`text-xs font-mono mt-1.5 break-all px-2 py-1.5 rounded-lg ${isDark ? 'bg-slate-900 text-slate-300' : 'bg-white text-slate-600'}`}>
                 {migration.previousPath}
               </p>
+              <button
+                type="button"
+                onClick={dismissNotice}
+                className={`text-xs font-medium mt-2.5 px-3 py-1.5 rounded-lg ${isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              >
+                {t('libraryLocation.gotIt')}
+              </button>
+            </div>
+          </div>
+        )}
+        {migration?.phase === 'complete' && migration.adopted && !dismissed && (
+          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <Check className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <p className={`text-sm font-medium ${heading}`}>{t('libraryLocation.adopted.title')}</p>
+              <p className={`text-xs leading-relaxed mt-1 ${body}`}>
+                {t('libraryLocation.adopted.summary', {
+                  registered: migration.adopted.registeredObjects,
+                  retired: migration.adopted.retiredObjects,
+                  removed: migration.adopted.staleRecordsRemoved,
+                })}
+              </p>
+              {migration.adopted.skipped && (
+                <p className={`text-xs leading-relaxed mt-1 ${body}`}>
+                  {t('libraryLocation.adopted.skipped', { reason: migration.adopted.skipped })}
+                </p>
+              )}
               <button
                 type="button"
                 onClick={dismissNotice}
@@ -264,6 +300,10 @@ function ForgetLocationModal({
             <span className={`font-mono text-xs break-all ${heading}`}>{defaultPath}</span>{' '}
             {t('libraryLocation.forgetModal.bodyAfter')}
           </p>
+          <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+            <p className={`text-xs leading-relaxed ${body}`}>{t('libraryLocation.forgetModal.secondLibraryWarning')}</p>
+          </div>
           {error && (
             <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
               <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />

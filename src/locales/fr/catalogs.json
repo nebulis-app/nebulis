@@ -436,11 +436,9 @@
       "titleOn": "Le meilleur le {{date}}"
     },
     "browse": {
-      "title": "Parcourir par type",
-      "myWishlist": "Ma liste de souhaits ({{count}})"
+      "title": "Parcourir par type"
     },
     "results": {
-      "back": "Retour à Explorer",
       "forQuery": "Résultats pour « {{query}} »",
       "inConstellation": "Le meilleur dans {{name}}",
       "all": "Tout",
@@ -450,7 +448,9 @@
       "showEverything": "Tout afficher, même ce qui ne se lève jamais ici",
       "loadMore": "Charger plus",
       "bestTonight": "Meilleurs cette nuit",
-      "bestOn": "Le meilleur le {{date}}"
+      "bestOn": "Le meilleur le {{date}}",
+      "breadcrumb": "Où vous êtes",
+      "categories": "Catégories"
     },
     "filters": {
       "visibility": "Afficher",
@@ -497,6 +497,17 @@
     "night": {
       "showing": "Affichage du {{date}}, la nuit choisie dans le planificateur.",
       "backToTonight": "Retour à cette nuit"
+    },
+    "tabs": {
+      "label": "Sections d’Explorer",
+      "discover": "Découvrir",
+      "wishlist": "Liste de souhaits"
+    },
+    "wishlist": {
+      "summary_one": "{{total}} cible, {{visible}} visibles ce soir",
+      "summary_other": "{{total}} cibles, {{visible}} visibles ce soir",
+      "highPriority_one": "{{formatted}} en priorité haute",
+      "highPriority_other": "{{formatted}} en priorité haute"
     }
   }
 }

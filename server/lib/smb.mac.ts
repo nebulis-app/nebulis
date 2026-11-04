@@ -9,6 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import dns from 'dns';
 import { execFile, execFileSync } from 'child_process';
 import { promisify } from 'util';
 import {
@@ -22,13 +23,24 @@ import {
 } from './smb.shared.js';
 import type { TelescopeProfile } from './telescopes.js';
 import { childProcessOutput } from './errors.js';
+import { withDeadline, mapLimit } from './deadline.js';
 
 type ProfileArg = Partial<Pick<TelescopeProfile, 'hostname' | 'shareName' | 'username' | 'password'>> | null | undefined;
 
 const execFileAsync = promisify(execFile);
 
+/** Longest a probe of a mounted share may take. A stale SMB mount makes the kernel block the call for minutes, and each
+ *  blocked call holds one libuv thread, which the whole server shares with every async fs, DNS and crypto call. */
+const MOUNT_PROBE_TIMEOUT_MS = 5_000;
+const LIST_DIR_TIMEOUT_MS = 30_000;
+const STAT_TIMEOUT_MS = 10_000;
+/** How many file stats one directory listing keeps in flight. */
+const STAT_CONCURRENCY = 16;
+
 interface MountEntry {
   mountDir: string;
+  /** When the OS mount table last confirmed this mount still points at the share it was made for. */
+  verifiedAt?: number;
   /** True when `mountDir` is a mount we adopted rather than created, for
    *  example one the user mounted in Finder. Those must never be unmounted
    *  by us. */
@@ -81,7 +93,8 @@ async function teardownMount(key: string): Promise<void> {
   // mount, and pulling it out from under them would be a surprising side
   // effect of opening a settings page.
   if (entry.adopted) return;
-  await execFileAsync('umount', [entry.mountDir]).catch(() => {});
+  // -f and a deadline: a plain umount of a stale mount waits on the dead server and never returns.
+  await execFileAsync('umount', ['-f', entry.mountDir], { timeout: 10_000 }).catch(() => {});
   try { fs.rmdirSync(entry.mountDir); } catch { /* ignore */ }
 }
 
@@ -93,9 +106,9 @@ async function teardownMount(key: string): Promise<void> {
  *    //user@host._smb._tcp.local/Seestar on /Volumes/Seestar (smbfs, nodev, ...)
  *  Note there is no password, and the host is whatever name the share was
  *  mounted with, which may be a Bonjour name where we hold an IP. */
-interface MountedShare { user: string; host: string; share: string; mountPoint: string }
+export interface MountedShare { user: string; host: string; share: string; mountPoint: string }
 
-function parseMountLine(line: string): MountedShare | null {
+export function parseMountLine(line: string): MountedShare | null {
   const m = /^\/\/([^@/]+)@([^/]+)\/(\S+) on (.+?) \((.*)\)\s*$/.exec(line);
   if (!m || !m[5].startsWith('smbfs')) return null;
   return {
@@ -108,6 +121,67 @@ function parseMountLine(line: string): MountedShare | null {
     share: decodeURIComponent(m[3]),
     mountPoint: m[4],
   };
+}
+
+export type HostComparison = 'same' | 'different' | 'unknown';
+type Resolver = (host: string) => Promise<string[]>;
+
+/** The addresses a host name answers to. `Seestar._smb._tcp.local`, which is how a Finder mount is listed, is looked up as `Seestar.local`. */
+async function resolveHost(host: string): Promise<string[]> {
+  const name = host.replace('._smb._tcp', '');
+  if (/^[\d.]+$/.test(name) || name.includes(':')) return [name];
+  try {
+    const found = await Promise.race([
+      dns.promises.lookup(name, { all: true }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2_000).unref()),
+    ]);
+    return found.map(a => a.address);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Whether two host names are one machine. 'different' only on positive evidence: both resolve and share no address. A name that
+ * will not resolve is 'unknown', never 'different', because the same server is routinely mounted by IP and by Bonjour name.
+ */
+export async function compareHosts(a: string, b: string, resolve: Resolver = resolveHost): Promise<HostComparison> {
+  if (a.toLowerCase() === b.toLowerCase()) return 'same';
+  const [ra, rb] = await Promise.all([resolve(a), resolve(b)]);
+  if (ra.length === 0 || rb.length === 0) return 'unknown';
+  return ra.some(x => rb.includes(x)) ? 'same' : 'different';
+}
+
+/**
+ * Which of the shares already mounted under this share name and user is the profile's own. Two Seestars both call their share
+ * `EMMC Images` and log in as `guest`, so with one open in Finder the other must not take its mount.
+ *
+ * The mount whose host is the profile's (by name or by address) wins. Failing that, a mount whose host cannot be resolved is taken
+ * only if it is the one such mount. A mount that provably belongs to a different machine is never taken.
+ */
+export async function pickExistingMount(candidates: MountedShare[], hostname: string, resolve: Resolver = resolveHost): Promise<string | null> {
+  const verdicts = await Promise.all(candidates.map(async c => ({ c, v: await compareHosts(c.host, hostname, resolve) })));
+  const same = verdicts.find(x => x.v === 'same');
+  if (same) return same.c.mountPoint;
+  const unknown = verdicts.filter(x => x.v === 'unknown');
+  return unknown.length === 1 ? unknown[0].c.mountPoint : null;
+}
+
+/** How long a mount confirmed against the mount table is trusted. Every directory listing asks `ensureMount`, so this keeps `mount` off the hot path. */
+const MOUNT_RECHECK_MS = 10_000;
+
+/** Whether the OS mount at `entry.mountDir` is still the share this profile asked for. A failed check never condemns a mount that otherwise works. */
+async function mountStillMatches(entry: MountEntry, settings: SmbProfile): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync('mount', [], { timeout: 5_000 });
+    const real = (p: string) => { try { return fs.realpathSync(p); } catch { return p; } };
+    const here = real(entry.mountDir);
+    const row = stdout.split('\n').map(parseMountLine).find(m => m !== null && real(m.mountPoint) === here);
+    if (!row) return false;
+    return row.share === parseShareName(settings.shareName).share && (await compareHosts(row.host, settings.hostname)) !== 'different';
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -129,14 +203,13 @@ async function findExistingMount(settings: SmbProfile): Promise<string | null> {
   const { share } = parseShareName(settings.shareName);
   const user = settings.username || 'guest';
   try {
-    const { stdout } = await execFileAsync('mount', []);
+    const { stdout } = await execFileAsync('mount', [], { timeout: 5_000 });
     const candidates = stdout
       .split('\n')
       .map(parseMountLine)
       .filter((m): m is MountedShare => m !== null && m.share === share && m.user === user);
     if (candidates.length === 0) return null;
-    const exact = candidates.find(m => m.host === settings.hostname);
-    return (exact ?? candidates[0]).mountPoint;
+    return await pickExistingMount(candidates, settings.hostname);
   } catch { /* ignore */ }
   return null;
 }
@@ -155,9 +228,14 @@ async function ensureMount(settings: SmbProfile): Promise<string> {
 
   const existingEntry = mounts.get(key);
   if (existingEntry) {
-    // Quick liveness check — if the mount point is gone or disconnected, remount.
+    // Quick liveness check — if the mount point is gone or disconnected, remount. Now and then also confirm the mount is still the
+    // share we made it for: something else can be mounted at the same place, and it would pass the access check.
     try {
-      await fs.promises.access(existingEntry.mountDir, fs.constants.R_OK);
+      await withDeadline(fs.promises.access(existingEntry.mountDir, fs.constants.R_OK), MOUNT_PROBE_TIMEOUT_MS, 'mount check');
+      if (!existingEntry.verifiedAt || Date.now() - existingEntry.verifiedAt > MOUNT_RECHECK_MS) {
+        if (!(await mountStillMatches(existingEntry, settings))) throw new Error('the mount is no longer this share');
+        existingEntry.verifiedAt = Date.now();
+      }
       return withSubpath(existingEntry.mountDir);
     } catch {
       await teardownMount(key);
@@ -231,28 +309,28 @@ export async function smbListDir(smbPath: string, profile?: ProfileArg): Promise
 
   const fullPath = assertInsideRoot(mp, smbPath);
   try {
-    const dirents = await fs.promises.readdir(fullPath, { withFileTypes: true });
-    // Stat all file entries in parallel — one logical wait regardless of count,
-    // so the wall-clock cost is ~1 round-trip rather than N sequential ones.
+    const dirents = await withDeadline(fs.promises.readdir(fullPath, { withFileTypes: true }), LIST_DIR_TIMEOUT_MS, 'directory listing');
     // Size and mtime are needed for import progress tracking and size-mismatch
-    // checks; directories don't need them.
-    return await Promise.all(
-      dirents
-        .filter(d => d.name !== '.' && d.name !== '..')
-        .map(async (d): Promise<SmbEntry> => {
-          const entry: SmbEntry = {
-            name: d.name,
-            type: d.isDirectory() ? 'dir' : 'file',
-          };
-          if (d.isFile()) {
-            try {
-              const stat = await fs.promises.stat(path.join(fullPath, d.name));
-              entry.size = stat.size;
-              entry.mtime = stat.mtime.toISOString();
-            } catch { /* race: file removed between readdir and stat — skip size */ }
-          }
-          return entry;
-        }),
+    // checks; directories don't need them. Stats run a bounded number at a time:
+    // an unbounded fan-out over a few thousand files queued that many blocking
+    // calls on the shared libuv threadpool.
+    return await mapLimit(
+      dirents.filter(d => d.name !== '.' && d.name !== '..'),
+      STAT_CONCURRENCY,
+      async (d): Promise<SmbEntry> => {
+        const entry: SmbEntry = {
+          name: d.name,
+          type: d.isDirectory() ? 'dir' : 'file',
+        };
+        if (d.isFile()) {
+          try {
+            const stat = await withDeadline(fs.promises.stat(path.join(fullPath, d.name)), STAT_TIMEOUT_MS, 'file stat');
+            entry.size = stat.size;
+            entry.mtime = stat.mtime.toISOString();
+          } catch { /* race: file removed between readdir and stat, or a slow stat: skip size */ }
+        }
+        return entry;
+      },
     );
   } catch (err) {
     await teardownMount(profileKey(settings));

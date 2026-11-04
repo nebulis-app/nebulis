@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Ayuda",
-    "subtitle": "Todo lo que necesitas para usar Nebulis, desde la instalación inicial hasta el uso diario.",
+    "subtitle": "Guías de configuración, un recorrido por cada página y respuestas a los problemas habituales.",
     "startTour": "Iniciar el recorrido guiado",
     "guidesHeading": "Guías"
   },
@@ -70,7 +70,17 @@
     },
     "objectFilters": {
       "q": "¿Qué incluye cada filtro de objetos?",
-      "a": "Los filtros agrupan los objetos por su tipo de catálogo, comparando el propio texto del tipo. Esos tipos vienen del catálogo y siguen en inglés sea cual sea tu idioma, así que las palabras que importan son \"galaxy\", \"nebula\" y \"cluster\". Todo tipo que contenga \"galaxy\" entra en el filtro de galaxias: espirales, barradas, irregulares, lenticulares y de brote estelar, además de grupos, pares y tríos de galaxias. \"nebula\" abarca las nebulosas de emisión, de reflexión, oscuras y planetarias, y los restos de supernova también cuentan como nebulosas. \"cluster\" abarca los cúmulos abiertos y globulares. Un objeto puede aparecer en más de un filtro: una nebulosa planetaria es a la vez nebulosa y nebulosa planetaria, un resto de supernova es a la vez nebulosa y resto de supernova, y Cluster + Nebula es a la vez cúmulo y nebulosa. Cuando un recuento tiene que elegir una sola familia, Cluster + Nebula cuenta como nebulosa, porque la nebulosidad es lo que hace atractivo el objeto. La biblioteca añade filtros más finos: objetos del sistema solar, cometas, estrellas, nebulosas planetarias, restos de supernova y Desconocido, que reúne los objetos cuyo tipo no se pudo determinar."
+      "intro": "Los filtros agrupan los objetos por su tipo de catálogo. Esos tipos vienen del catálogo y siguen en inglés sea cual sea tu idioma, así que las palabras que importan son \"galaxy\", \"nebula\" y \"cluster\".",
+      "galaxyTerm": "galaxy",
+      "galaxyDef": "Todo tipo que contenga \"galaxy\": espirales, barradas, irregulares, lenticulares y de brote estelar, además de grupos, pares y tríos de galaxias.",
+      "nebulaTerm": "nebula",
+      "nebulaDef": "Nebulosas de emisión, de reflexión, oscuras y planetarias. Los restos de supernova también cuentan como nebulosas.",
+      "clusterTerm": "cluster",
+      "clusterDef": "Cúmulos abiertos y globulares.",
+      "overlapTerm": "Más de un filtro",
+      "overlapDef": "Una nebulosa planetaria es a la vez nebulosa y nebulosa planetaria, un resto de supernova es a la vez nebulosa y resto de supernova, y Cluster + Nebula es a la vez cúmulo y nebulosa. Cuando un recuento tiene que elegir una sola familia, Cluster + Nebula cuenta como nebulosa, porque la nebulosidad es lo que hace atractivo el objeto.",
+      "libraryTerm": "Solo en la biblioteca",
+      "libraryDef": "Objetos del sistema solar, cometas, estrellas, nebulosas planetarias, restos de supernova y Desconocido, que reúne los objetos cuyo tipo no se pudo determinar."
     },
     "findTarget": {
       "q": "¿Cómo encuentro algo para fotografiar?",
@@ -90,7 +100,7 @@
     },
     "locationSharing": {
       "q": "¿Nebulis envía mi ubicación a algún sitio?",
-      "a": "Solo para obtener las condiciones de tu cielo. Las coordenadas de tu lugar de observación van a Open-Meteo y 7Timer para la previsión, y a DarkSkySites para tu clase de contaminación lumínica. Son las coordenadas del lugar que definiste en los ajustes, no la ubicación de tu dispositivo, y no se incluye nada más sobre ti. Todos los servicios que usa Nebulis están en Ajustes, Fuentes de datos."
+      "a": "Solo para obtener las condiciones de tu cielo. Las coordenadas de tu lugar de observación van a Open-Meteo y 7Timer para la previsión, a DarkSkySites para tu clase de contaminación lumínica, y a OpenStreetMap Nominatim para el nombre del lugar. Son las coordenadas del lugar que definiste en los ajustes, no la ubicación de tu dispositivo, y no se incluye nada más sobre ti. Todos los servicios que usa Nebulis están en Ajustes, Fuentes de datos."
     }
   },
   "gettingStarted": {
@@ -279,7 +289,7 @@
     "step2Alt": "Una página de categoría con tarjetas de objetos, cada una marcada como visible esta noche o no, y con una nota sobre cómo encaja en el encuadre",
     "step2Caption": "Explorar → Categoría",
     "step3Title": "Añadirlo a la lista de deseos o planificarlo",
-    "step3Body": "Añade un objeto a tu lista de deseos, planifícalo para esta noche, o abre Planificar una noche para elegir entre las próximas 30 noches. El botón Añadir objetivo de la Lista de deseos abre Explorar, y las tarjetas de Explorar y de la Lista de deseos enlazan de vuelta al Planificador. Si no usas Explorar, oculta su pestaña en Configuración → General → Barra de navegación.",
+    "step3Body": "Añade un objeto a tu lista de deseos, planifícalo para esta noche, o abre Planificar una noche para elegir entre las próximas 30 noches. Tu lista de deseos es la segunda pestaña de Explorar, y las tarjetas de Explorar enlazan de vuelta al Planificador. Si no usas Explorar, ocúltalo en Configuración → General → Barra de navegación.",
     "step3Alt": "Una tarjeta de Explorar con los botones de lista de deseos, Planificar esta noche y Planificar una noche",
     "step3Caption": "Explorar → Añadir o planificar",
     "note": "Explorar juzga la visibilidad según el sitio de observación que aparece en su banner y el encuadre según el campo de visión de tu telescopio. Configura ambos antes en Configuración → Cielo y Configuración → Telescopios. Si tienes más de un sitio, cambia entre ellos en el banner."
@@ -317,7 +327,7 @@
     "title": "Configuración",
     "lead": "Configura tu aplicación, gestiona el almacenamiento, conecta dispositivos y controla tu experiencia con Nebulis.",
     "step1Title": "Orientarte",
-    "step1Body": "El cuadro de búsqueda de arriba encuentra cualquier ajuste por su nombre y salta hasta él. Pulsa / para ponerte en él. La barra lateral está agrupada en Equipo, Sistema y Avanzado, y solo permanece abierta la página en la que estás. Configuración → General abarca el aspecto de la aplicación: tema Claro, Oscuro, Espacio o Noche, qué elementos del menú aparecen en la barra superior (Explorar, Lista de deseos, Calibraciones y otros se pueden ocultar), unidades de medida y Banners de página compactos, que hace que cada página empiece con su banner plegado.",
+    "step1Body": "El cuadro de búsqueda de arriba encuentra cualquier ajuste por su nombre y salta hasta él. Pulsa / para ponerte en él. La barra lateral está agrupada en Equipo, Sistema y Avanzado, y solo permanece abierta la página en la que estás. Configuración → General abarca el aspecto de la aplicación: tema Claro, Oscuro, Espacio o Noche, qué elementos del menú aparecen en la barra superior (Explorar, Calibraciones y otros se pueden ocultar), unidades de medida y Banners de página compactos, que hace que cada página empiece con su banner plegado.",
     "step1Alt": "Configuración con el cuadro de búsqueda arriba, la barra lateral agrupada y el panel General con los temas y los interruptores de la barra de navegación",
     "step1Caption": "Configuración → General",
     "step2Title": "Gestiona tu cuenta y dispositivos conectados",
@@ -358,11 +368,11 @@
     "title": "Calidad de fotogramas y apilado",
     "lead": "Descubre qué fotogramas en bruto merece la pena conservar y pasa los mejores a PixInsight o Siril con los fotogramas de calibración adecuados.",
     "step1Title": "Abrir la lista de subtomas de una noche",
-    "step1Body": "Abre una página de observación y mira su lista de subtomas. Al abrir una noche se mide en segundo plano y se guardan los resultados. Cada fotograma recibe una puntuación de 0 a 100 y una nota Bueno, Regular o Malo en comparación con el resto de su noche, con marcas para nubes, estelas de estrellas, estrellas desenfocadas, trazas de satélites o aviones, ausencia de estrellas y ruido. Para medir las noches nuevas en cuanto se importen, activa Analizar fotogramas tras importar en Configuración → Biblioteca.",
+    "step1Body": "Abre una página de observación y mira su lista de subtomas. Al abrir una noche se mide en segundo plano y se guardan los resultados. Cada fotograma recibe una puntuación de 0 a 100 y una nota Bueno, Regular o Malo: 100 es el mejor fotograma de la noche o, si también se han medido, de las mejores noches del objeto con el mismo filtro, exposición y telescopio. Hay marcas para nubes, fotogramas débiles, estrellas alargadas, estrellas desenfocadas, trazas de satélites o aviones, sombras en el sensor, ausencia de estrellas y ruido. Para medir las noches nuevas en cuanto se importen, activa Analizar fotogramas tras importar en Configuración → Biblioteca.",
     "step1Alt": "La lista de subtomas de una noche con puntuación, nota y marcas para cada fotograma en bruto",
     "step1Caption": "Observación → Subtomas",
     "step2Title": "Ordenar, repasar y previsualizar",
-    "step2Body": "Ordena por cualquier columna. La franja sobre la lista muestra toda la noche y señala el hueco más largo. Activa Solo marcados para ocultar los fotogramas buenos, y detente sobre una fila para ver una vista previa más grande con cada motivo explicado con palabras.",
+    "step2Body": "Ordena por cualquier columna. Ancho es la FWHM de las estrellas en píxeles, Alarg. cuánto más largas que anchas son (1,00 es redonda), Señal cuánto superan el ruido las estrellas más brillantes, y Objeto lo claramente que se ve el objeto fotografiado: su parte más brillante frente al cielo que lo rodea, en unidades del ruido del cielo. Por debajo de 1 el objeto no se ve en un solo fotograma, de 1 a 3 apenas, de 3 a 10 con claridad y por encima de 10 muy nítido; apilar N fotogramas lo multiplica por aproximadamente √N. La franja sobre la lista muestra toda la noche y señala el hueco más largo. Activa Solo marcados para ocultar los fotogramas buenos, y detente sobre una fila para ver una vista previa más grande con cada motivo explicado con palabras.",
     "step2Alt": "La franja de la noche sobre la lista de subtomas, con una vista previa abierta de un fotograma marcado",
     "step2Caption": "Subtomas → Franja y vista previa",
     "step3Title": "Conservar, rechazar o descartar",
@@ -414,7 +424,7 @@
     "step3Body": "Con los anillos visibles, Descargar y Compartir preguntan si quieres conservar el original o guardar un JPEG con los anillos dibujados.",
     "step3Alt": "El cuadro de descarga que pregunta si conservar el original o guardar un JPEG con los anillos",
     "step3Caption": "Visor → Descargar",
-    "note": "Anotar ya está en la aplicación web. Llega a las aplicaciones de iPhone, iPad y Android con su versión 2.1.0."
+    "note": "Anotar ya está en la aplicación web. Actualiza las aplicaciones de iPhone, iPad y Android para tenerlo también allí."
   },
   "alerts": {
     "title": "Alertas",
@@ -428,7 +438,7 @@
     "step2Alt": "Los interruptores de eventos de un canal y la hora de la noche despejada",
     "step2Caption": "Alertas → Eventos",
     "step3Title": "Notificaciones push al iPhone",
-    "step3Body": "Las notificaciones push en iPhone necesitan la versión 2.1.0 de la aplicación para iPhone, que llegará pronto. Pasan por un pequeño relé de Nebulis que no almacena nada. Activa las alertas desde este servidor y luego elige qué recibe cada teléfono en Configuración → Alertas → iPhones. Cada iPhone puede añadir a su alerta una línea con el Plan de esta noche o un aviso de riesgo de rocío.",
+    "step3Body": "Las notificaciones push en iPhone necesitan la última versión de la aplicación para iPhone. Pasan por un pequeño relé de Nebulis que no almacena nada. Activa las alertas desde este servidor y luego elige qué recibe cada teléfono en Configuración → Alertas → iPhones. Cada iPhone puede añadir a su alerta una línea con el Plan de esta noche o un aviso de riesgo de rocío.",
     "step3Alt": "La lista de iPhones en Configuración → Alertas, con las líneas adicionales que puede añadir cada teléfono",
     "step3Caption": "Alertas → iPhones"
   },
@@ -656,7 +666,7 @@
     "step4Body": "Cada teléfono, tableta y TV que has vinculado aparece en Configuración → Cuenta → Dispositivos. Cada uno lleva su propio token de inicio de sesión, así que revocar un dispositivo aquí corta su acceso inmediatamente sin afectar al de ningún otro.",
     "step4Alt": "Configuración → Cuenta → Dispositivos, con un botón Conectar un dispositivo y una lista de dispositivos vacía",
     "step4Caption": "Configuración → Cuenta → Dispositivos",
-    "note": "Anotar, las notificaciones push en iPhone y las fotos de tus sitios de observación llegan con la versión 2.1.0 de la aplicación para iPhone y iPad, y Anotar también en la de Android."
+    "note": "Anotar, las notificaciones push en iPhone y las fotos de tus sitios de observación están en la última versión de la aplicación para iPhone y iPad, y Anotar también en la de Android."
   },
   "pixinsight": {
     "title": "Integración con PixInsight",
@@ -766,6 +776,8 @@
     "done": "Hecho",
     "screenshotSuffix": "captura de pantalla",
     "viewFullSize": "Ver a tamaño completo: {{title}}",
+    "previous": "Captura anterior",
+    "next": "Captura siguiente",
     "explore": {
       "title": "Explorar",
       "lead": "Encuentra tu próximo objetivo.",
@@ -789,7 +801,9 @@
     "myMedia": {
       "title": "Página de objeto combinada",
       "lead": "Todas las imágenes de un objeto, en una página.",
-      "description": "Imágenes, subtomas, noches y archivos de proyecto en una sola página, en pestañas, sin tener que buscar entre las observaciones."
+      "description": "Imágenes, subtomas, noches y archivos de proyecto en una sola página, en pestañas, sin tener que buscar entre las observaciones.",
+      "shotObject": "Página del objeto",
+      "shotObservation": "Página de la observación"
     },
     "integration": {
       "title": "Integración por filtro",

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Telescope as TelescopeIcon,
   Trash2,
+  Pencil,
   Archive,
   ArchiveRestore,
   ArrowRightLeft,
@@ -484,6 +485,17 @@ function TelescopeRow({
           <Aperture className="w-3.5 h-3.5" />
         </Link>
       )}
+      <button
+        onClick={(e) => { e.stopPropagation(); onEdit(); }}
+        disabled={isPending}
+        title={t('connectionSection.editTelescope')}
+        aria-label={t('connectionSection.editTelescope')}
+        className={`p-1.5 rounded-lg transition disabled:opacity-30 disabled:cursor-not-allowed ${
+          isDark ? 'hover:bg-slate-800 text-slate-400 hover:text-teal-400' : 'hover:bg-slate-100 text-slate-500 hover:text-teal-600'
+        }`}
+      >
+        <Pencil className="w-3.5 h-3.5" />
+      </button>
       <button
         onClick={(e) => { e.stopPropagation(); onSync(); }}
         disabled={isAnyImportRunning || isPending}

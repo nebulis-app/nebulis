@@ -318,7 +318,7 @@ export function startArchiveScheduler(): void {
   console.log('[archive] Scheduler started');
 }
 
-export function stopArchiveScheduler(): void {
+function stopArchiveScheduler(): void {
   if (checkInterval !== null) {
     clearInterval(checkInterval);
     checkInterval = null;

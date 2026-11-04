@@ -27,6 +27,10 @@ import { classifyFit, fitDisplayStrings, objectExtentArcmin } from '../../lib/te
 import { FitBadge } from '../FitBadge';
 import { formatHm } from '../../lib/timeFormat';
 import { searchDsoCatalog, type PlannerTarget } from '../../lib/api/planner';
+import { getActiveSite } from '../../lib/api/sites';
+import { useAuth } from '../../contexts/AuthContext';
+import { useIntegrationProgress } from '../../hooks/useIntegrationProgress';
+import { ObjectIntegrationSection } from '../objectDetail/ObjectIntegrationSection';
 import type { WishlistCandidate } from '../../hooks/useWishlist';
 import { WISHLIST_PRIORITIES, type WishlistItem, type WishlistPriority } from '../../lib/api/wishlist';
 
@@ -115,6 +119,7 @@ export function WishlistObjectModal({
   const { t } = useTranslation('planner');
   const { t: tCatalogs } = useTranslation('catalogs');
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [framingOpen, setFramingOpen] = useState(false);
   const [notesDraft, setNotesDraft] = useState(item.notes);
@@ -187,12 +192,12 @@ export function WishlistObjectModal({
 
   const bestWindow = useMemo(() => {
     if (!hasLocation || ra == null || dec == null) return null;
-    return computeBestImagingWindow(ra, dec, observerLat, observerLon, minAlt);
-  }, [ra, dec, observerLat, observerLon, minAlt, hasLocation]);
+    return computeBestImagingWindow(ra, dec, observerLat, observerLon, minAlt, observerTimezone);
+  }, [ra, dec, observerLat, observerLon, minAlt, hasLocation, observerTimezone]);
 
   const upTonight = useMemo(
-    () => (ra != null && dec != null ? isUpTonight(ra, dec, observerLat, observerLon) : null),
-    [ra, dec, observerLat, observerLon],
+    () => (ra != null && dec != null ? isUpTonight(ra, dec, observerLat, observerLon, 0, new Date(), observerTimezone) : null),
+    [ra, dec, observerLat, observerLon, observerTimezone],
   );
   const notVisibleTonight = upTonight === false;
   // Drives the hoverable tonight-only altitude curve, next to the filter
@@ -206,6 +211,22 @@ export function WishlistObjectModal({
   const description = info?.description?.trim() || '';
   const wikiUrl = info?.wikiUrl || null;
   const filterRec = (info?.type ?? item.type)?.trim() ? filterRecommendations(info?.type || item.type) : null;
+
+  // Hours to plan for a target that may not be in the library yet. The object
+  // page, the usual home of goals, is only linked once something is imported,
+  // so a new target would otherwise have nowhere to set one. Goals are keyed by
+  // object id and need no frames; an imported object keeps its library id.
+  const goalObjectId = libraryObjectId ?? item.objectId;
+  // A preview is something browsed, not chosen: no editor, so browsing cannot
+  // leave goals behind for targets that never get shot. It still shows the
+  // progress of a goal that already exists.
+  const hasGoals = !!useIntegrationProgress()(goalObjectId);
+  const showGoals = !isPreview || hasGoals;
+  const { data: site } = useQuery({ queryKey: ['active-site'], queryFn: getActiveSite, staleTime: 60_000 });
+  const goalType = (info?.type || item.type)?.trim();
+  const suggestionTarget = goalType
+    ? { objectType: goalType, magnitude: item.magnitude, majorAxisArcmin: item.majorAxisArcmin, bortleClass: site?.bortleClass ?? null }
+    : null;
 
   const accentBg = isNight ? 'bg-red-500' : isSpace ? 'bg-violet-500' : 'bg-amber-500';
   const accentText = isNight ? 'text-red-400' : isSpace ? 'text-violet-400' : 'text-amber-400';
@@ -362,6 +383,15 @@ export function WishlistObjectModal({
                   />
                 )}
               </div>
+            )}
+
+            {showGoals && (
+              <ObjectIntegrationSection
+                key={goalObjectId}
+                objectId={goalObjectId}
+                isAdmin={isAdmin && !isPreview}
+                suggestionTarget={suggestionTarget}
+              />
             )}
 
             {hasLocation && bestWindow ? (

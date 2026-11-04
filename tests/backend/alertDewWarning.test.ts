@@ -10,6 +10,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
   _fs.mkdirSync(_root, { recursive: true });
   const dir = _fs.mkdtempSync(_path.join(_root, 'nebulis-alertdew-test-'));
   process.env.DATA_DIR = dir;
+  process.env.NEBULIS_PHONE_ALERTS = "1";
   return dir;
 });
 

@@ -28,11 +28,11 @@ type Vars = Record<string, string | number>;
 
 const STRINGS = {
   en: {
-    importFinishedTitle: 'Import finished',
-    importFinishedBody: '{count} new files from {origin}: {objects}',
-    importFinishedNoObjects: '{count} new files from {origin}',
-    importFailedTitle: 'Import failed',
-    importFailedBody: '{origin}: {error}',
+    importFinishedTitle: '{count} new files from {origin}',
+    importFinishedBody: '{objects}',
+    importFinishedNoObjects: 'Open the library to see them.',
+    importFailedTitle: 'Import failed: {origin}',
+    importFailedBody: '{error}',
     originFolder: 'a local folder',
     originTelescope: 'the telescope',
     more: '+{count} more',
@@ -54,20 +54,20 @@ const STRINGS = {
     dewTitle: 'Dew warning: {site}',
     dewLikely: 'Dew likely from {time}',
     dewPossible: 'Dew possible from {time}',
-    dewLow: 'Low {temp} tonight',
+    dewLow: 'Low {temp}. Start your dew heater.',
     seeing1: 'excellent', seeing2: 'good', seeing3: 'average', seeing4: 'poor', seeing5: 'bad',
     updateTitle: 'Nebulis {version} is available',
-    updateBody: 'You are running {current}.',
+    updateBody: 'You are on {current}. Open Settings to update.',
     testTitle: 'Nebulis test alert',
-    testBody: 'If you can read this, alerts to this channel work.',
+    testBody: 'Alerts to this channel work. Choose which ones you get in Settings → Alerts.',
     decimal: '.',
   },
   fr: {
-    importFinishedTitle: 'Import terminé',
-    importFinishedBody: '{count} nouveaux fichiers depuis {origin} : {objects}',
-    importFinishedNoObjects: '{count} nouveaux fichiers depuis {origin}',
-    importFailedTitle: "Échec de l'import",
-    importFailedBody: '{origin} : {error}',
+    importFinishedTitle: '{count} nouveaux fichiers depuis {origin}',
+    importFinishedBody: '{objects}',
+    importFinishedNoObjects: 'Ouvrez la bibliothèque pour les voir.',
+    importFailedTitle: "Échec de l'import : {origin}",
+    importFailedBody: '{error}',
     originFolder: 'un dossier local',
     originTelescope: 'le télescope',
     more: 'et {count} autres',
@@ -89,20 +89,20 @@ const STRINGS = {
     dewTitle: 'Alerte rosée : {site}',
     dewLikely: 'Rosée probable dès {time}',
     dewPossible: 'Rosée possible dès {time}',
-    dewLow: 'Minimum {temp} cette nuit',
+    dewLow: 'Minimum {temp}. Allumez votre résistance anti-buée.',
     seeing1: 'excellent', seeing2: 'bon', seeing3: 'moyen', seeing4: 'médiocre', seeing5: 'mauvais',
     updateTitle: 'Nebulis {version} est disponible',
-    updateBody: 'Version installée : {current}.',
+    updateBody: 'Version installée : {current}. Ouvrez les paramètres pour mettre à jour.',
     testTitle: 'Alerte de test Nebulis',
-    testBody: 'Si vous lisez ceci, les alertes vers ce canal fonctionnent.',
+    testBody: 'Les alertes vers ce canal fonctionnent. Choisissez lesquelles recevoir dans Paramètres → Alertes.',
     decimal: ',',
   },
   de: {
-    importFinishedTitle: 'Import abgeschlossen',
-    importFinishedBody: '{count} neue Dateien von {origin}: {objects}',
-    importFinishedNoObjects: '{count} neue Dateien von {origin}',
-    importFailedTitle: 'Import fehlgeschlagen',
-    importFailedBody: '{origin}: {error}',
+    importFinishedTitle: '{count} neue Dateien von {origin}',
+    importFinishedBody: '{objects}',
+    importFinishedNoObjects: 'Öffnen Sie die Bibliothek, um sie zu sehen.',
+    importFailedTitle: 'Import fehlgeschlagen: {origin}',
+    importFailedBody: '{error}',
     originFolder: 'einem lokalen Ordner',
     originTelescope: 'dem Teleskop',
     more: '+{count} weitere',
@@ -124,20 +124,20 @@ const STRINGS = {
     dewTitle: 'Tauwarnung: {site}',
     dewLikely: 'Tau wahrscheinlich ab {time}',
     dewPossible: 'Tau möglich ab {time}',
-    dewLow: 'Tiefstwert {temp} heute Nacht',
+    dewLow: 'Tiefstwert {temp}. Schalten Sie Ihre Tauheizung ein.',
     seeing1: 'ausgezeichnet', seeing2: 'gut', seeing3: 'mittel', seeing4: 'schlecht', seeing5: 'sehr schlecht',
     updateTitle: 'Nebulis {version} ist verfügbar',
-    updateBody: 'Installiert ist {current}.',
+    updateBody: 'Installiert ist {current}. Öffnen Sie die Einstellungen zum Aktualisieren.',
     testTitle: 'Nebulis-Testalarm',
-    testBody: 'Wenn Sie dies lesen, funktionieren Alarme an diesen Kanal.',
+    testBody: 'Alarme an diesen Kanal funktionieren. Wählen Sie unter Einstellungen → Benachrichtigungen aus, welche Sie erhalten.',
     decimal: ',',
   },
   es: {
-    importFinishedTitle: 'Importación terminada',
-    importFinishedBody: '{count} archivos nuevos desde {origin}: {objects}',
-    importFinishedNoObjects: '{count} archivos nuevos desde {origin}',
-    importFailedTitle: 'La importación falló',
-    importFailedBody: '{origin}: {error}',
+    importFinishedTitle: '{count} archivos nuevos desde {origin}',
+    importFinishedBody: '{objects}',
+    importFinishedNoObjects: 'Abre la biblioteca para verlos.',
+    importFailedTitle: 'La importación falló: {origin}',
+    importFailedBody: '{error}',
     originFolder: 'una carpeta local',
     originTelescope: 'el telescopio',
     more: 'y {count} más',
@@ -159,20 +159,20 @@ const STRINGS = {
     dewTitle: 'Aviso de rocío: {site}',
     dewLikely: 'Rocío probable desde las {time}',
     dewPossible: 'Rocío posible desde las {time}',
-    dewLow: 'Mínima de {temp} esta noche',
+    dewLow: 'Mínima de {temp}. Enciende tu calefactor anticondensación.',
     seeing1: 'excelente', seeing2: 'bueno', seeing3: 'medio', seeing4: 'malo', seeing5: 'muy malo',
     updateTitle: 'Nebulis {version} está disponible',
-    updateBody: 'Versión instalada: {current}.',
+    updateBody: 'Versión instalada: {current}. Abre Configuración para actualizar.',
     testTitle: 'Alerta de prueba de Nebulis',
-    testBody: 'Si puede leer esto, las alertas a este canal funcionan.',
+    testBody: 'Las alertas a este canal funcionan. Elige cuáles recibir en Configuración → Alertas.',
     decimal: ',',
   },
   nl: {
-    importFinishedTitle: 'Import voltooid',
-    importFinishedBody: '{count} nieuwe bestanden van {origin}: {objects}',
-    importFinishedNoObjects: '{count} nieuwe bestanden van {origin}',
-    importFailedTitle: 'Import mislukt',
-    importFailedBody: '{origin}: {error}',
+    importFinishedTitle: '{count} nieuwe bestanden van {origin}',
+    importFinishedBody: '{objects}',
+    importFinishedNoObjects: 'Open de bibliotheek om ze te bekijken.',
+    importFailedTitle: 'Import mislukt: {origin}',
+    importFailedBody: '{error}',
     originFolder: 'een lokale map',
     originTelescope: 'de telescoop',
     more: '+{count} meer',
@@ -194,12 +194,12 @@ const STRINGS = {
     dewTitle: 'Dauwwaarschuwing: {site}',
     dewLikely: 'Dauw waarschijnlijk vanaf {time}',
     dewPossible: 'Dauw mogelijk vanaf {time}',
-    dewLow: 'Laagste temperatuur {temp} vannacht',
+    dewLow: 'Laagste temperatuur {temp}. Zet je dauwverwarming aan.',
     seeing1: 'uitstekend', seeing2: 'goed', seeing3: 'gemiddeld', seeing4: 'slecht', seeing5: 'zeer slecht',
     updateTitle: 'Nebulis {version} is beschikbaar',
-    updateBody: 'Geïnstalleerd: {current}.',
+    updateBody: 'Geïnstalleerd: {current}. Open Instellingen om bij te werken.',
     testTitle: 'Nebulis-testmelding',
-    testBody: 'Als je dit leest, werken meldingen naar dit kanaal.',
+    testBody: 'Meldingen naar dit kanaal werken. Kies in Instellingen → Meldingen welke je krijgt.',
     decimal: ',',
   },
 } satisfies Record<AlertLanguage, Record<string, string>>;
@@ -233,6 +233,12 @@ const MAX_LISTED_OBJECTS = 5;
 function importOrigin(d: ImportAlertData, s: (typeof STRINGS)[AlertLanguage]): string {
   if (d.source === 'folder') return s.originFolder;
   return d.telescopeName ?? s.originTelescope;
+}
+
+/** The error text usually opens with the device name ("S50: The S50 refused..."), which the title now carries. */
+function withoutOrigin(error: string, origin: string): string {
+  const prefix = `${origin}:`;
+  return error.startsWith(prefix) ? error.slice(prefix.length).trimStart() : error;
 }
 
 function objectList(d: ImportAlertData, s: (typeof STRINGS)[AlertLanguage]): string {
@@ -325,21 +331,23 @@ export function formatAlert(event: AlertEvent, lang: AlertLanguage, options: Ale
       const d = event.data;
       const vars = { count: d.newFiles, origin: importOrigin(d, s), objects: objectList(d, s) };
       return {
-        title: s.importFinishedTitle,
+        title: fill(s.importFinishedTitle, vars),
         body: fill(d.objects.length > 0 ? s.importFinishedBody : s.importFinishedNoObjects, vars),
         tags: ['inbox_tray'],
         url: null,
         lead: null,
       };
     }
-    case 'import.failed':
+    case 'import.failed': {
+      const origin = importOrigin(event.data, s);
       return {
-        title: s.importFailedTitle,
-        body: fill(s.importFailedBody, { origin: importOrigin(event.data, s), error: event.data.error ?? '?' }),
+        title: fill(s.importFailedTitle, { origin }),
+        body: fill(s.importFailedBody, { error: withoutOrigin(event.data.error ?? '?', origin) }),
         tags: ['warning'],
         url: null,
         lead: null,
       };
+    }
     case 'night.clear': {
       const body = clearNightBody(event.data, lang, options);
       return {

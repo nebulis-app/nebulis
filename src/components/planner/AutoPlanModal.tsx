@@ -11,7 +11,7 @@
  * for the same inputs. This component only collects the knobs, renders the
  * result, and hands finished blocks back to the planner.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, Moon, ArrowUp, X, Shuffle, Clock, Hash, Telescope, Cloud, CloudOff, Wind, Hourglass, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatHm } from '../../lib/timeFormat';
@@ -74,6 +74,8 @@ const FOCUS_OPTIONS: { value: AutoPlanFocus; labelKey: string }[] = [
 ];
 
 const HALF_HOUR = 30 * 60_000;
+/** Altitude-equivalent degrees of randomness for a Shuffle: wide enough for any object up in the slot to win. */
+const SHUFFLE_JITTER = 40;
 /** The start/end selects reach this far before dusk and after dawn, so the user
  *  can image into twilight on either side of the dark window. */
 const GRID_PAD = 2 * 60 * 60_000;
@@ -158,7 +160,7 @@ export function AutoPlanModal({
   const anyGoals = useMemo(() => targetsWithGoals.some(t => t.goals), [targetsWithGoals]);
 
   const build = useCallback(
-    (jitter: number) => {
+    (jitter: number, avoidIds?: string[]) => {
       const s = Math.min(startMs, endMs);
       const e = Math.max(startMs, endMs);
       const windowMinutes = (e - s) / 60_000;
@@ -186,6 +188,7 @@ export function AutoPlanModal({
         focus,
         unimagedOnly,
         jitter,
+        avoidIds,
         useForecast: avoidClouds,
         maxCloudCover,
         favorGoals: anyGoals && favorGoals,
@@ -194,11 +197,15 @@ export function AutoPlanModal({
     [startMs, endMs, splitMode, minutesPerObject, objectCount, focus, unimagedOnly, avoidClouds, maxCloudCover, targets, targetsWithGoals, anyGoals, favorGoals, observerLat, observerLon, minAlt, moonIllumination, visibleSkyMap],
   );
 
+  /** Every object any take of this plan has shown, so a shuffle can move on from them. */
+  const shownIds = useRef(new Set<string>());
+
   const handleBuild = useCallback(async () => {
     setBuilding(true);
     setBuildError(null);
     try {
       const result = await build(0);
+      shownIds.current = new Set(result.blocks.map(b => b.target.id));
       setBlocks(result.blocks);
       setWeather(result.weather);
       setGoalsSummary(result.goals);
@@ -214,7 +221,10 @@ export function AutoPlanModal({
     setBuilding(true);
     setBuildError(null);
     try {
-      const result = await build(8);
+      // Wide enough jitter that any object up in the slot can win, and the earlier takes' objects stand aside,
+      // so each shuffle shows something new until the night runs out of candidates.
+      const result = await build(SHUFFLE_JITTER, [...shownIds.current]);
+      for (const b of result.blocks) shownIds.current.add(b.target.id);
       setBlocks(result.blocks);
       setWeather(result.weather);
       setGoalsSummary(result.goals);

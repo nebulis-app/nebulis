@@ -7,7 +7,6 @@ export type NavItemId =
   | 'observations'
   | 'forecast'
   | 'planner'
-  | 'wishlist'
   | 'explore'
   | 'catalogs'
   | 'calibrations'
@@ -26,7 +25,6 @@ export const NAV_ITEMS: { id: NavItemId; labelKey: string }[] = [
   { id: 'observations',  labelKey: 'nav.observations' },
   { id: 'forecast',      labelKey: 'nav.forecast' },
   { id: 'planner',       labelKey: 'nav.planner' },
-  { id: 'wishlist',      labelKey: 'nav.wishlist' },
   { id: 'explore',       labelKey: 'nav.explore' },
   { id: 'catalogs',      labelKey: 'nav.catalogs' },
   { id: 'calibrations',  labelKey: 'nav.calibrations' },
@@ -76,9 +74,29 @@ const DEFAULT_HIDDEN_SEEDS: { id: NavItemId; seededKey: string }[] = [
  *  this is a no-op for them; a user who hid it by hand *after* the old seed
  *  sees it come back once, which is the same one-time trade the original
  *  seeding already made. */
-const DEFAULT_VISIBLE_SEEDS: { id: NavItemId; seededKey: string }[] = [
-  { id: 'wishlist', seededKey: 'nebulis-nav-wishlist-default-visible-v1' },
-];
+const DEFAULT_VISIBLE_SEEDS: { id: NavItemId; seededKey: string }[] = [];
+
+/** Wishlist used to be its own nav item and is now a tab on Explore. Its id is
+ *  dropped from storage like any removed id, but someone who kept Wishlist in
+ *  the bar and had hidden Explore would lose their way to the list entirely.
+ *  Once per browser: if the stored hidden list predates the merge and showed
+ *  Wishlist (its id was absent), Explore is un-hidden. `rawHidden` is the
+ *  stored list before unknown ids are filtered out, since 'wishlist' is no
+ *  longer a NavItemId. */
+const WISHLIST_MERGE_KEY = 'nebulis-nav-wishlist-merged-into-explore-v1';
+
+export function applyWishlistMerge(
+  rawHidden: unknown[],
+  hidden: Set<NavItemId>,
+  store: Pick<Storage, 'getItem' | 'setItem'>,
+): { hidden: Set<NavItemId>; changed: boolean } {
+  if (store.getItem(WISHLIST_MERGE_KEY) === '1') return { hidden, changed: false };
+  store.setItem(WISHLIST_MERGE_KEY, '1');
+  if (rawHidden.includes('wishlist') || !hidden.has('explore')) return { hidden, changed: false };
+  const next = new Set(hidden);
+  next.delete('explore');
+  return { hidden: next, changed: true };
+}
 
 /** Applies both seed lists to a stored hidden set: each flag is read, acted on
  *  and written back exactly once per browser. `store` is `localStorage` in the
@@ -122,7 +140,10 @@ function getInitialHidden(): Set<NavItemId> {
     // A non-array payload used to throw on `.filter` and land in the catch.
     if (!Array.isArray(parsed)) return defaultHidden();
     const valid = parsed.filter((id: unknown): id is NavItemId => isNavItemId(id) && id !== LOCKED_VISIBLE_ID);
-    const { hidden, changed } = applyDefaultSeeds(new Set(valid), localStorage);
+    const seeded = applyDefaultSeeds(new Set(valid), localStorage);
+    const merged = applyWishlistMerge(parsed, seeded.hidden, localStorage);
+    const hidden = merged.hidden;
+    const changed = seeded.changed || merged.changed;
     if (changed) localStorage.setItem(VISIBILITY_STORAGE_KEY, JSON.stringify([...hidden]));
 
     return hidden;
@@ -133,11 +154,11 @@ function getInitialHidden(): Set<NavItemId> {
 
 /** A stored order can predate an item (a browser that saved a custom order
  *  before a later version introduced a new nav item, e.g. Wishlist) or
- *  carry a now-removed one. Unknown ids are dropped; anything missing is
- *  inserted right after its `NAV_ITEMS` predecessor via `insertMissing`
- *  rather than always at the very end — a user who once reordered their nav
- *  should still see a new item show up next to where it canonically belongs
- *  (Wishlist after Planner) instead of tacked on after Help. */
+ *  carry a now-removed one (Wishlist, merged into Explore). Unknown ids are
+ *  dropped; anything missing is inserted right after its `NAV_ITEMS`
+ *  predecessor via `insertMissing` rather than always at the very end — a
+ *  user who once reordered their nav should still see a new item show up next
+ *  to where it canonically belongs instead of tacked on after Help. */
 function getInitialOrder(): NavItemId[] {
   if (typeof window === 'undefined') return NAV_ITEM_IDS;
   try {

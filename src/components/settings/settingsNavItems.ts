@@ -60,6 +60,7 @@ export const SETTINGS_NAV: SettingsNavGroup[] = [
     section: 'main',
     items: [
       { id: 'display', labelKey: 'nav.display' },
+      { id: 'slideshow', labelKey: 'nav.slideshow' },
       { id: 'organization', labelKey: 'nav.organization' },
       { id: 'processing', labelKey: 'nav.processing' },
     ],

@@ -18,12 +18,16 @@ import { isRegularFile as isFile, localPathFor, rootFolderPathFor } from './arch
 import { resolveContainedArchivePath } from './archivePath.js';
 import { ensureArchiveDestinationReady } from './archiveDestination.js';
 import { readArchiveManifest } from './archiveManifest.js';
+import { archivedObjectIdentity } from './archiveRestoreObjects.js';
 import type { ArchiveConfig } from './archiveConfig.js';
 
 export interface ArchivedObjectSummary {
   folderName: string;
   /** Null when the local library no longer has this object. */
   objectId: string | null;
+  /** True when the library does not have it but a restore would create it, or bring it back
+   *  from the trash. False for a root folder such as `RESTACKED/`, which has no object. */
+  willCreate: boolean;
   firstArchivedAt: string;
   lastArchivedAt: string;
   filesTotal: number;
@@ -92,6 +96,7 @@ export async function listArchivedObjects(config: ArchiveConfig): Promise<Archiv
       objectId,
       firstArchivedAt: entry.firstArchivedAt,
       lastArchivedAt: entry.lastArchivedAt,
+      willCreate: objectId === null && archivedObjectIdentity(folderName, entry) !== null,
       filesTotal: entry.files.length,
       subframes,
       bytes,

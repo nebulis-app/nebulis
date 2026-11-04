@@ -9,17 +9,60 @@
  */
 export type ShareOutcome = 'shared' | 'copied-image' | 'copied-link' | 'cancelled' | 'failed';
 
+/**
+ * Pictures fetched ahead of a share. Safari lets `navigator.share` and a clipboard write run only straight from the
+ * click that asked for them; waiting on a download first spends that permission, and then the share and the link copy
+ * after it both fail. So the picture is fetched when the pointer reaches the share button, and the click finds it
+ * ready and shares at once. Held briefly and in small number: the bytes behind a URL can change when a picture is
+ * edited and saved over itself.
+ */
+const WARM_MAX = 4;
+const WARM_MS = 60_000;
+const warmed = new Map<string, { promise: Promise<Blob | null>; blob: Blob | null; at: number }>();
+
+async function fetchBlob(src: string): Promise<Blob | null> {
+  try {
+    const res = await fetch(src);
+    return res.ok ? await res.blob() : null;
+  } catch {
+    // Offline or the file moved. The caller falls through to link sharing.
+    return null;
+  }
+}
+
+/** Start fetching the picture a share would send. Safe to call on every hover or focus. */
+export function warmShareImage(src: string): void {
+  const existing = warmed.get(src);
+  if (existing && Date.now() - existing.at < WARM_MS) return;
+  const entry: { promise: Promise<Blob | null>; blob: Blob | null; at: number } = {
+    promise: Promise.resolve(null), blob: null, at: Date.now(),
+  };
+  entry.promise = fetchBlob(src).then(blob => {
+    entry.blob = blob;
+    if (!blob && warmed.get(src) === entry) warmed.delete(src);
+    return blob;
+  });
+  warmed.set(src, entry);
+  while (warmed.size > WARM_MAX) {
+    const oldest = warmed.keys().next().value;
+    if (oldest === undefined) break;
+    warmed.delete(oldest);
+  }
+}
+
 export async function shareImage(
   src: string,
   fileName: string,
   title: string,
 ): Promise<ShareOutcome> {
+  // Nothing may be awaited before the share when the picture is already in hand: that is the click's one chance.
   let blob: Blob | null = null;
-  try {
-    const res = await fetch(src);
-    if (res.ok) blob = await res.blob();
-  } catch {
-    // Offline or the file moved. Fall through to link sharing.
+  const ready = warmed.get(src);
+  if (ready?.blob && Date.now() - ready.at < WARM_MS) {
+    blob = ready.blob;
+  } else {
+    warmShareImage(src);
+    blob = await (warmed.get(src)?.promise ?? fetchBlob(src));
   }
 
   if (blob) {
@@ -31,7 +74,8 @@ export async function shareImage(
   try {
     await navigator.clipboard.writeText(absolute);
     return 'copied-link';
-  } catch {
+  } catch (err) {
+    console.warn('[share] could not copy the link either:', err);
     return 'failed';
   }
 }
@@ -55,6 +99,7 @@ export async function shareBlob(
     } catch (err) {
       // The user dismissing the sheet is a normal outcome, not an error.
       if (err instanceof DOMException && err.name === 'AbortError') return 'cancelled';
+      console.warn('[share] the share sheet refused the picture:', err);
     }
   }
 

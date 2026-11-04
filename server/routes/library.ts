@@ -7,6 +7,7 @@
 import { markGeometryEdited } from '../lib/annotate/geometryEdits.js';
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { ImportBodySchema } from '../lib/library/importSchemas.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { strictRateLimiter, burstyRateLimiter } from '../middleware/rateLimit.js';
 import fs from 'fs';
@@ -23,7 +24,7 @@ import { THUMBNAILS_DIR } from '../lib/paths.js';
 import { getLibraryDir, isLibraryAvailable, statLibraryFileForServe, TimeoutError } from '../lib/libraryPath.js';
 import { resolveLibraryFile, LinkedFileReadOnlyError } from '../lib/library/fileResolver.js';
 import {
-  getIntegrationBreakdown,
+  getIntegrationBreakdownAsync,
   getIntegrationProgressForGoalObjects,
   setIntegrationGoals,
   getFilterAliases,
@@ -32,16 +33,21 @@ import {
   MAX_FILTER_NAME_LENGTH,
 } from '../lib/library/integration.js';
 import { replaceLibraryFile, ReplaceFileError, originalBackupFile, restoreOriginalBackup } from '../lib/library/replaceFile.js';
+import { sendLibraryFile } from '../lib/library/serveFile.js';
 import { getObjectLayout, sessionFolderFor } from '../lib/library/libraryLayout.js';
 import { runRender } from '../lib/renderQueue.js';
 import { getClusterItems } from '../lib/library/cluster.js';
 import { collectMediaItems, buildObjectMedia, MEDIA_KINDS, MEDIA_GROUP_BYS, MEDIA_SORTS } from '../lib/library/objectMedia.js';
 import { mintDownloadToken, DOWNLOAD_TOKEN_TTL_MS } from '../lib/downloadToken.js';
 import { isLibraryMigrating } from '../lib/libraryMaintenance.js';
-import { acquireLibraryLock, libraryBusyRefusal } from '../lib/libraryBusy.js';
+import { acquireLibraryLock, libraryBusyRefusal, isLibraryBusy } from '../lib/libraryBusy.js';
 import { getSite } from '../lib/observingSites.js';
+import { activeSiteTimeZone } from '../lib/siteTimeZone.js';
+import { localParts } from '../lib/timezone.js';
 import { plantSampleObject, purgeSampleObject } from '../lib/library/sampleLibrary.js';
 import sharp from '../lib/sharp-optional.js';
+import { assertSafeRaster } from '../lib/imageSniff.js';
+import { linkedThumbnailPath } from '../lib/linkedDerivatives.js';
 import { generateFitsThumbnail, fitsThumbnailPath, type FitsThumbnailTier } from '../lib/fitsThumbnail.js';
 import { buildSessionReport, measureLibraryFile, setFrameReview, FrameFileError, type FrameAnalysisRow } from '../lib/frameAnalysis/service.js';
 import { enqueueFrames, queueStateFor } from '../lib/frameAnalysis/queue.js';
@@ -59,9 +65,10 @@ import {
   cancelImport,
   claimImportLock,
   getLocalObjects,
+  listObjectGroupingRows,
   getLocalSessions,
   getLocalFiles,
-  getLocalFile,
+  resolveLocalFileForServe,
   getLocalObservations,
   getLocalObservationDetail,
   getObjectLocation,
@@ -90,6 +97,8 @@ import {
   invalidateAllImagesCache,
   createManualObservation,
   getGalleryImageRow,
+  setAutoGalleryImage,
+  clearAutoGalleryImage,
   setGalleryImage,
   setGalleryImageUserChosen,
   getGalleryCrop,
@@ -167,6 +176,7 @@ import { prefetchSkyImage } from '../lib/skyImage.js';
 import { getById as getDsoById } from '../lib/dsoCatalog.js';
 import { caldwellToNgcId } from '../lib/caldwellCatalog.js';
 import { resolveCanonicalId } from '../lib/catalogAliases.js';
+import { listDesignationRedirects, setDesignationRedirect, deleteDesignationRedirect } from '../lib/library/designationRedirects.js';
 import { cometKey } from '../lib/library/movingObject.js';
 import { getSettingsData, getProfileById } from '../lib/telescopes.js';
 import {
@@ -222,6 +232,17 @@ const upload = multer({
 });
 
 const router = Router();
+
+/**
+ * True (after answering 409) when an import, an archive run, a restore or a linked scan holds the library. The deletes
+ * and moves below are synchronous, so they cannot interleave with one another, but they can run between the awaits of
+ * one of those operations and rewrite the rows or files it is working on.
+ */
+function refuseWhileLibraryBusy(res: Response, action: string): boolean {
+  if (!getImportStatus().running && !isLibraryBusy()) return false;
+  sendImportBusy(res, `An import is running. Wait for it to finish, then ${action}.`);
+  return true;
+}
 
 /** 409 for a request that could not take the shared library lock. */
 function sendImportBusy(res: Response, importMessage: string): void {
@@ -290,12 +311,6 @@ function respondFsGuardError(res: Response, err: unknown): void {
 }
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
-
-const ImportBodySchema = z.object({
-  objectId: z.string().optional(),
-  telescopeId: z.string().optional(),
-  all: z.boolean().optional(),
-});
 
 const SessionTelescopeBodySchema = z.object({
   telescopeId: z.string().min(1, 'telescopeId is required'),
@@ -375,6 +390,9 @@ const GalleryCropBodySchema = z.object({
 
 const GalleryImageBodySchema = z.object({
   imagePath: z.string().nullable().optional(),
+  // "Automatic": clear the user's choice so the object follows the gallery
+  // source setting again. Additive; web keeps sending plain imagePath bodies.
+  auto: z.boolean().optional(),
 });
 
 const ProcessingStatusBodySchema = z.object({
@@ -593,11 +611,37 @@ router.post('/objects/:objectId/sync-subframes', requireAdmin, (req: Request, re
 });
 
 /**
+ * The redirects "Reclassify → remember" has recorded: a designation that future imports file under another object. Listed so
+ * they can be reviewed, pointed somewhere else, or removed.
+ */
+router.get('/redirects', (_req: Request, res: Response) => {
+  res.apiSuccess({ redirects: listDesignationRedirects() });
+});
+
+const RedirectBodySchema = z.object({ targetObjectId: z.string().trim().min(1, 'targetObjectId is required') });
+
+router.put('/redirects/:designation', requireAdmin, (req: Request, res: Response) => {
+  const parsed = RedirectBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(400, 'BAD_REQUEST', parsed.error.issues[0]?.message ?? 'targetObjectId is required');
+    return;
+  }
+  setDesignationRedirect(String(req.params.designation), resolveCanonicalId(parsed.data.targetObjectId), req.userId ?? undefined);
+  res.apiSuccess({ redirects: listDesignationRedirects() });
+});
+
+router.delete('/redirects/:designation', requireAdmin, (req: Request, res: Response) => {
+  deleteDesignationRedirect(String(req.params.designation));
+  res.apiSuccess({ redirects: listDesignationRedirects() });
+});
+
+/**
  * Reclassify an object to a different catalog identity (Object Detail →
  * "..." → Reclassify), for when a target's designation was ambiguous or
  * mis-picked on import. Renames or merges depending on whether the target
- * catalog id already has a library object — see reclassifyObject's doc
- * comment in objects.ts for why this is DB-only (no on-disk folder move).
+ * catalog id already has a library object. A merge also moves the source
+ * folder's files into the destination's folder; the response says how many
+ * moved and how many had to stay because they would have overwritten a file.
  */
 router.post('/objects/:objectId/reclassify', requireAdmin, (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
@@ -762,7 +806,7 @@ router.post('/import/scan', requireAdmin, (req: Request, res: Response) => {
       `JPG:${scanSettings.importJpg !== false} FITS:${scanSettings.importFits !== false} ` +
       `Thumbs:${scanSettings.importThumbnails !== false} Subs:${scanSettings.importSubFrames === true} ` +
       `Video:${scanSettings.importVideos === true} Archive-all:${scanSettings.archiveAllFiles === true}`);
-    const scanResult = scanImportFolder(rootPath, scanSettings, scanProfile?.kind);
+    const scanResult = scanImportFolder(rootPath, scanSettings, scanProfile?.kind, activeSiteTimeZone());
     debugLog('import:folder-scan',
       `Scan matched ${scanResult.totals.files} importable file(s) across ` +
       `${scanResult.totals.objects} object(s), ${scanResult.totals.sessions} session(s)` +
@@ -850,7 +894,7 @@ router.get('/sources', requireAdmin, (_req: Request, res: Response) => {
   }
 });
 
-router.post('/sources/scan', requireAdmin, (req: Request, res: Response) => {
+router.post('/sources/scan', requireAdmin, async (req: Request, res: Response) => {
   const parsed = LinkScanBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.apiError(400, 'MISSING_PATH', parsed.error.issues[0]?.message ?? 'rootPath is required');
@@ -858,13 +902,13 @@ router.post('/sources/scan', requireAdmin, (req: Request, res: Response) => {
   }
   try {
     assertLinkableRoot(parsed.data.rootPath);
-    res.apiSuccess(scanSource(parsed.data.rootPath, linkSettings(parsed.data)));
+    res.apiSuccess(await scanSource(parsed.data.rootPath, linkSettings(parsed.data)));
   } catch (err) {
     sendLinkError(res, err, 'SCAN_FAILED');
   }
 });
 
-router.post('/sources', requireAdmin, (req: Request, res: Response) => {
+router.post('/sources', requireAdmin, async (req: Request, res: Response) => {
   const parsed = LinkCommitBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.apiError(400, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request');
@@ -882,7 +926,7 @@ router.post('/sources', requireAdmin, (req: Request, res: Response) => {
       map.set(o.dirPath, o.action === 'ignore' ? { action: 'ignore' } : { action: 'assign', objectId: normalizeCatalogId(o.objectId) });
     }
     const { importSubFrames, importFits } = parsed.data;
-    res.apiSuccess(commitSource(rootPath, linkSettings(parsed.data), {
+    res.apiSuccess(await commitSource(rootPath, linkSettings(parsed.data), {
       label,
       overrides: map,
       importOptions: { importSubFrames, importFits },
@@ -912,14 +956,14 @@ router.patch('/sources/:id', requireAdmin, (req: Request, res: Response) => {
   }
 });
 
-router.post('/sources/:id/rescan', requireAdmin, (req: Request, res: Response) => {
+router.post('/sources/:id/rescan', requireAdmin, async (req: Request, res: Response) => {
   const release = acquireLibraryLock('linked-scan');
   if (release === null) {
     sendImportBusy(res, 'An import is running. Wait for it to finish, then rescan.');
     return;
   }
   try {
-    res.apiSuccess(rescanSource(String(req.params.id), getSettingsData()));
+    res.apiSuccess(await rescanSource(String(req.params.id), getSettingsData()));
   } catch (err) {
     sendLinkError(res, err, 'RESCAN_FAILED');
   } finally {
@@ -1181,6 +1225,21 @@ function extractVariantLabel(objectId: string): string | null {
   return VARIANT_LABELS[key] ?? (m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase());
 }
 
+/** Same key groupByVariants folds objects under, from the two columns that decide it. */
+function variantGroupKey(id: string, catalogId: string): string {
+  return cometKey(catalogId) ?? cometKey(id) ?? resolveCanonicalId(catalogId);
+}
+
+/** Only the objects in `objectId`'s variant family, built without touching the rest of the library. */
+function getLocalObjectFamily(objectId: string, userId: string): ReturnType<typeof getLocalObjects> {
+  const rows = listObjectGroupingRows();
+  const self = rows.find(r => r.id === objectId);
+  if (!self) return [];
+  const key = variantGroupKey(self.id, self.catalogId);
+  const ids = new Set(rows.filter(r => variantGroupKey(r.id, r.catalogId) === key).map(r => r.id));
+  return getLocalObjects(userId, '', { onlyIds: ids });
+}
+
 function groupByVariants(objects: ReturnType<typeof getLocalObjects>) {
   const groups = new Map<string, typeof objects>();
   for (const obj of objects) {
@@ -1190,7 +1249,7 @@ function groupByVariants(objects: ReturnType<typeof getLocalObjects>) {
     // separate "NGC224" card.
     // A comet is keyed by its designation instead: telescopes name the same comet differently
     // ("C-2023A3" and "C2023A3(Tsuchinshan-ATLAS)"), and no catalog alias table covers them.
-    const key = cometKey(obj.catalogId) ?? cometKey(obj.id) ?? resolveCanonicalId(obj.catalogId);
+    const key = variantGroupKey(obj.id, obj.catalogId);
     const group = groups.get(key);
     if (group) group.push(obj);
     else groups.set(key, [obj]);
@@ -1246,8 +1305,7 @@ function groupByVariants(objects: ReturnType<typeof getLocalObjects>) {
  *  `?includeVariants=true` route so "combine subs" / "download all" / session
  *  listing agree on which ids make up one target. */
 function resolveVariantIds(objectId: string, userId: string): string[] {
-  const all = getLocalObjects(userId);
-  const grouped = groupByVariants(all);
+  const grouped = groupByVariants(getLocalObjectFamily(objectId, userId));
   const family = grouped.find(g => g.id === objectId || g.variants.some(v => v.objectId === objectId));
   return family ? [family.id, ...family.variants.map(v => v.objectId)] : [objectId];
 }
@@ -1556,7 +1614,7 @@ router.get('/calibrations/download/:id', strictRateLimiter, async (req: Request,
 
     const archive = archiver('zip', { zlib: { level: 1 } });
     archive.on('error', (err: Error) => {
-      if (!res.headersSent) res.status(500).send(err.message);
+      if (!res.headersSent) res.status(500).type('text/plain').send(err.message);
     });
     archive.pipe(res);
 
@@ -1569,7 +1627,7 @@ router.get('/calibrations/download/:id', strictRateLimiter, async (req: Request,
     await archive.finalize();
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Bundle download failed';
-    if (!res.headersSent) res.status(500).send(message);
+    if (!res.headersSent) res.status(500).type('text/plain').send(message);
   }
 });
 
@@ -1618,8 +1676,8 @@ router.get('/objects/deleted-sessions', requireAdmin, (_req: Request, res: Respo
 router.get('/objects/:objectId', (req: Request, res: Response) => {
   try {
     const requestedId = String(req.params.objectId);
-    const all = getLocalObjects(req.userId ?? '');
-    const grouped = groupByVariants(all);
+    // Only this object's variant family: the detail view used to build every object in the library to return one.
+    const grouped = groupByVariants(getLocalObjectFamily(requestedId, req.userId ?? ''));
     const match = grouped.find(o =>
       o.id === requestedId
       || o.variants.some(v => v.objectId === requestedId),
@@ -1680,11 +1738,15 @@ router.get('/objects/:objectId/thumbnail', async (req: Request, res: Response) =
         // Capped so a dashboard/calendar fan-out of cold thumbnails can't
         // saturate the threadpool and time out sibling requests.
         await runRender(async () => {
+          await assertSafeRaster(srcPath);
           let pipeline = sharp(srcPath);
           if (crop) {
             const meta = await sharp(srcPath).metadata();
             if (meta.width && meta.height) pipeline = pipeline.extract(cropRegion(crop, meta.width, meta.height));
           }
+          // Phone photos carry their upright-ness in EXIF; sharp drops metadata on output, so bake it in.
+          // Skipped for crops, whose region is computed from the unrotated pixel dimensions.
+          if (!crop) pipeline = pipeline.rotate();
           await pipeline
             .resize(w, h, { fit: 'inside', withoutEnlargement: true })
             .jpeg({ quality: 80, progressive: true })
@@ -1756,8 +1818,7 @@ router.get('/objects/:objectId/sessions', (req: Request, res: Response) => {
     // Discover variants: same logic the library-objects endpoint uses to group
     // M31 + M31_Mosaic + M31_Ha into one card. We re-run it here scoped to the
     // requested object's variant family rather than the whole library.
-    const all = getLocalObjects(req.userId ?? '');
-    const grouped = groupByVariants(all);
+    const grouped = groupByVariants(getLocalObjectFamily(objectId, req.userId ?? ''));
     const family = grouped.find(g => g.id === objectId || g.variants.some(v => v.objectId === objectId));
     const ids = family
       ? [family.id, ...family.variants.map(v => v.objectId)]
@@ -1851,10 +1912,7 @@ router.get('/objects/:objectId/linked-files', requireAdmin, (req: Request, res: 
 });
 
 router.delete('/objects/:objectId', requireAdmin, (req: Request, res: Response) => {
-  if (getImportStatus().running) {
-    res.apiError(409, 'IMPORT_RUNNING', 'An import is running. Wait for it to finish, then delete.');
-    return;
-  }
+  if (refuseWhileLibraryBusy(res, 'delete')) return;
   const objectId = String(req.params.objectId);
   try {
     // Off by default: deleting an object drops it from Nebulis and leaves the
@@ -1874,10 +1932,7 @@ router.delete('/objects/:objectId', requireAdmin, (req: Request, res: Response) 
 });
 
 router.delete('/objects/:objectId/sessions/:date', requireAdmin, (req: Request, res: Response) => {
-  if (getImportStatus().running) {
-    res.apiError(409, 'IMPORT_RUNNING', 'An import is running. Wait for it to finish, then delete.');
-    return;
-  }
+  if (refuseWhileLibraryBusy(res, 'delete')) return;
   const objectId = String(req.params.objectId);
   const date = String(req.params.date);
   try {
@@ -1957,10 +2012,7 @@ router.delete('/objects/:objectId/sessions/:date/subframes', requireAdmin, (req:
 // ─── Move observation ────────────────────────────────────────────────────────
 
 router.post('/objects/:objectId/sessions/:date/move', requireAdmin, (req: Request, res: Response) => {
-  if (getImportStatus().running) {
-    res.apiError(409, 'IMPORT_RUNNING', 'An import is running. Wait for it to finish, then move.');
-    return;
-  }
+  if (refuseWhileLibraryBusy(res, 'move')) return;
   const fromObjectId = String(req.params.objectId);
   const date = String(req.params.date);
   const bodyParsed = MoveObservationBodySchema.safeParse(req.body);
@@ -2043,8 +2095,10 @@ router.get('/objects/:objectId/sessions/:date/files', async (req: Request, res: 
   const date = String(req.params.date);
   try {
     if (!(await requireLibraryReachable(res))) return;
+    // Favorites are per user and stored by library path, so the session viewer can show its star without another call.
+    const favorites = new Set(getImageFavorites(req.userId ?? ''));
     const files = getLocalFiles(objectId, date);
-    res.apiSuccess(files);
+    res.apiSuccess(files.map(f => ({ ...f, isFavorite: favorites.has(f.path) })));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to list files';
     res.apiError(500, 'LIST_FAILED', message);
@@ -2255,13 +2309,7 @@ router.get('/file', async (req: Request, res: Response) => {
   }
   if (!(await requireLibraryReachable(res))) return;
 
-  let result;
-  try {
-    result = await getLocalFile(filePath);
-  } catch (err) {
-    respondFsGuardError(res, err);
-    return;
-  }
+  const result = resolveLocalFileForServe(filePath);
   if (!result) {
     res.status(404).send('Not found');
     return;
@@ -2270,15 +2318,9 @@ router.get('/file', async (req: Request, res: Response) => {
   const mimeType = mimeTypeForExtension(result.name);
   const isInline = mimeType.startsWith('image/');
 
-  res.set('Content-Type', mimeType);
-  res.set('Cache-Control', 'public, max-age=3600');
-  if (!isInline) {
-    res.set('Content-Disposition', contentDispositionHeader('attachment', result.name));
-  }
-  // Streamed from disk rather than read into memory: this route needs no credential.
-  res.sendFile(result.abs, { dotfiles: 'allow' }, (err) => {
-    if (!err || res.headersSent) return;
-    res.status(errnoCode(err) === 'ENOENT' ? 404 : 500).type('text/plain').send('Could not read file');
+  await sendLibraryFile(res, result.abs, {
+    contentType: mimeType,
+    contentDisposition: isInline ? undefined : contentDispositionHeader('attachment', result.name),
   });
 });
 
@@ -2333,7 +2375,9 @@ router.get('/video', async (req: Request, res: Response) => {
   res.set('Content-Disposition', contentDispositionHeader('inline', path.basename(absPath)));
   res.set('Cache-Control', 'public, max-age=3600');
 
-  res.sendFile(absPath, { acceptRanges: true, dotfiles: 'deny' }, (err) => {
+  // 'allow': absPath is already contained and vetted above, and 'deny' would 404 every video for a library that
+  // lives under a dot-directory (~/.nebulis), same as serveFile.ts.
+  res.sendFile(absPath, { acceptRanges: true, dotfiles: 'allow' }, (err) => {
     if (!err) return;
     // A dropped connection mid-stream surfaces here as ECONNABORTED / write
     // after end — not an error worth logging or responding to.
@@ -2371,7 +2415,9 @@ async function renderThumbnailOnce(
     // a half-written JPEG (sendFile does not coordinate with this write).
     const tmpPath = `${cachePath}.${process.pid}.tmp`;
     try {
+      await assertSafeRaster(absPath);
       await sharp(absPath)
+        .rotate()
         .resize(w, h, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 80, progressive: true })
         .toFile(tmpPath);
@@ -2494,20 +2540,25 @@ router.get('/fits-thumbnail', async (req: Request, res: Response) => {
 
   if (!(await requireLibraryReachable(res))) return;
 
+  let sourceStat: fs.Stats;
   try {
-    await statLibraryFileForServe(absPath);
+    sourceStat = await statLibraryFileForServe(absPath);
   } catch (err) {
     respondFsGuardError(res, err);
     return;
   }
 
-  const thumbPath = fitsThumbnailPath(absPath, tier);
+  // A linked file's preview is kept in our own cache, never beside the user's file.
+  const linkedThumbPath = resolved.sourceId
+    ? linkedThumbnailPath(absPath, sourceStat, path.basename(fitsThumbnailPath(absPath, tier)))
+    : undefined;
+  const thumbPath = linkedThumbPath ?? fitsThumbnailPath(absPath, tier);
   try {
     // No-ops if it already exists; otherwise parses + renders + writes. The
     // cache-hit check stays outside the render cap so a warm burst never
     // queues; only an actual render takes a slot.
     if (!fs.existsSync(thumbPath)) {
-      await runRender(() => generateFitsThumbnail(absPath, tier));
+      await runRender(() => generateFitsThumbnail(absPath, tier, linkedThumbPath));
     }
     // Read + send the buffer rather than res.sendFile: the thumbnail lives in a
     // `.thumbs/` directory, and Express's sendFile (via `send`) defaults to
@@ -2556,17 +2607,22 @@ router.get('/tiff-thumbnail', async (req: Request, res: Response) => {
 
   if (!(await requireLibraryReachable(res))) return;
 
+  let sourceStat: fs.Stats;
   try {
-    await statLibraryFileForServe(absPath);
+    sourceStat = await statLibraryFileForServe(absPath);
   } catch (err) {
     respondFsGuardError(res, err);
     return;
   }
 
-  const thumbPath = tiffThumbnailPath(absPath, tier);
+  // A linked file's preview is kept in our own cache, never beside the user's file.
+  const linkedThumbPath = resolved.sourceId
+    ? linkedThumbnailPath(absPath, sourceStat, path.basename(tiffThumbnailPath(absPath, tier)))
+    : undefined;
+  const thumbPath = linkedThumbPath ?? tiffThumbnailPath(absPath, tier);
   try {
     if (!fs.existsSync(thumbPath)) {
-      await runRender(() => generateTiffThumbnail(absPath, tier));
+      await runRender(() => generateTiffThumbnail(absPath, tier, linkedThumbPath));
     }
     // Read + send the buffer rather than res.sendFile: the thumbnail lives in
     // a `.thumbs/` directory, and Express's sendFile (via `send`) defaults to
@@ -2651,7 +2707,7 @@ router.get('/objects/:objectId/integration/filters', async (req: Request, res: R
   const objectId = String(req.params.objectId);
   try {
     if (!(await requireLibraryReachable(res))) return;
-    res.apiSuccess(getIntegrationBreakdown(objectId));
+    res.apiSuccess(await getIntegrationBreakdownAsync(objectId));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to compute integration per filter';
     res.apiError(500, 'STATS_FAILED', message);
@@ -2846,7 +2902,7 @@ router.get('/download/objects/:objectId', strictRateLimiter, async (req: Request
 
     const archive = archiver('zip', { zlib: { level: 1 } });
     archive.on('error', (err: Error) => {
-      if (!res.headersSent) res.status(500).send(err.message);
+      if (!res.headersSent) res.status(500).type('text/plain').send(err.message);
     });
     archive.pipe(res);
 
@@ -2866,7 +2922,7 @@ router.get('/download/objects/:objectId', strictRateLimiter, async (req: Request
     await archive.finalize();
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Download failed';
-    if (!res.headersSent) res.status(500).send(message);
+    if (!res.headersSent) res.status(500).type('text/plain').send(message);
   }
 });
 
@@ -2961,9 +3017,15 @@ setInterval(() => {
     if (now > meta.expiresAt) deleteTempDownload(token);
   }
   for (const [id, job] of archiveJobs) {
-    if (now > job.expiresAt) archiveJobs.delete(id);
+    if (now > job.expiresAt) dropArchiveJob(id);
   }
 }, 10 * 60 * 1000).unref?.();
+
+/** Forget a job, stopping it first if it is still running so it does not keep compressing for nobody. */
+function dropArchiveJob(id: string): void {
+  archiveJobs.get(id)?.abort?.();
+  archiveJobs.delete(id);
+}
 
 /** One ZIP entry: a file on disk, or inline text (a README, a manifest). */
 interface ZipJobEntry {
@@ -2990,7 +3052,7 @@ function startZipJob(filename: string, entries: ZipJobEntry[]): { jobId: string;
   };
   if (archiveJobs.size >= MAX_ARCHIVE_JOBS) {
     const oldest = archiveJobs.keys().next();
-    if (!oldest.done) archiveJobs.delete(oldest.value);
+    if (!oldest.done) dropArchiveJob(oldest.value);
   }
   archiveJobs.set(jobId, job);
 
@@ -3011,7 +3073,9 @@ function startZipJob(filename: string, entries: ZipJobEntry[]): { jobId: string;
   archive.on('entry', () => { job.filesDone++; });
 
   output.on('close', () => {
+    // 'close' also follows an 'error', and the file is gone by then: only a job still running finished cleanly.
     if (job.status === 'cancelled') { fs.unlink(tmpPath, () => {}); return; }
+    if (job.status !== 'running') return;
     const token = randomUUID();
     if (tempDownloads.size >= MAX_TEMP_DOWNLOADS) {
       // Evict AND delete: dropping only the map entry leaked the ZIP (the
@@ -3032,13 +3096,23 @@ function startZipJob(filename: string, entries: ZipJobEntry[]): { jobId: string;
     job.error = err.message;
   });
 
+  // A Writable with no 'error' listener turns a full or unwritable temp volume into an uncaught exception, which
+  // ends the whole server. Fail only this job instead.
+  output.on('error', () => {
+    try { archive.abort(); } catch { /* best effort */ }
+    fs.unlink(tmpPath, () => {});
+    if (job.status !== 'running') return;
+    job.status = 'error';
+    job.error = 'Could not write the archive to the temp folder.';
+  });
+
   archive.pipe(output);
 
   for (const entry of entries) {
     if (entry.content !== undefined) archive.append(entry.content, { name: entry.name });
     else if (entry.abs) archive.file(entry.abs, { name: entry.name });
   }
-  void archive.finalize();
+  archive.finalize().catch(() => { /* surfaced through the archive 'error' handler above */ });
   return { jobId, filesTotal: entries.length };
 }
 
@@ -3122,9 +3196,13 @@ router.post('/download/objects/:objectId/subframes', strictRateLimiter, (req: Re
     return;
   }
 
-  const nowDate = new Date();
-  const datePart = nowDate.toISOString().slice(0, 10).replace(/-/g, '');
-  const timePart = nowDate.toTimeString().slice(0, 8).replace(/:/g, '');
+  // Date and time both in the site's zone: this used to join the UTC date to
+  // the server's local time, so an evening download in the US was stamped
+  // with tomorrow's date and tonight's clock.
+  const now = localParts(new Date(), activeSiteTimeZone());
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const datePart = `${now.year}${pad2(now.month)}${pad2(now.day)}`;
+  const timePart = `${pad2(now.hour)}${pad2(now.minute)}${pad2(now.second)}`;
   const filename = `${objectId}-${datePart}${timePart}.zip`;
   // libPath is folderName-relative (may include a session subfolder for a
   // nested object); by default keep that structure in the zip entry name too,
@@ -3219,6 +3297,7 @@ router.get('/download/tmp/:token', (req: Request, res: Response) => {
 // ─── Delete local file ────────────────────────────────────────────────────────
 
 router.delete('/file', requireAdmin, (req: Request, res: Response) => {
+  if (refuseWhileLibraryBusy(res, 'delete')) return;
   const filePath = queryString(req.query.path);
   if (!filePath) {
     res.apiError(400, 'MISSING_PATH', 'Query parameter "path" is required');
@@ -3349,7 +3428,7 @@ router.get('/objects/:objectId/gallery-image', async (req: Request, res: Respons
   // telescope, keep the auto-set telescope image so the detail header matches
   // the library card (which also respects galleryImageSource).
   if (galleryImage && !row.userSet && !preferTelescope && hasCachedCatalogImage(catalogId)) {
-    setGalleryImage(objectId, null);
+    clearAutoGalleryImage(objectId);
     galleryImage = null;
   }
 
@@ -3363,7 +3442,7 @@ router.get('/objects/:objectId/gallery-image', async (req: Request, res: Respons
     if (!galleryImage) {
       const fallback = findFallbackObservationImage(objectId);
       if (fallback) {
-        setGalleryImage(objectId, fallback);
+        setAutoGalleryImage(objectId, fallback);
         galleryImage = fallback;
       }
     }
@@ -3392,7 +3471,8 @@ router.get('/objects/:objectId/gallery-image', async (req: Request, res: Respons
 });
 
 /** Set the gallery image for an object (from an existing library file path).
- *  Pass imagePath=null to reset to the default sky survey image. */
+ *  Pass imagePath=null to reset to the default sky survey image, or
+ *  auto=true to clear the user's choice and follow the gallery source setting. */
 router.put('/objects/:objectId/gallery-image', requireAdmin, (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const bodyParsed = GalleryImageBodySchema.safeParse(req.body ?? {});
@@ -3400,7 +3480,20 @@ router.put('/objects/:objectId/gallery-image', requireAdmin, (req: Request, res:
     res.apiError(400, 'INVALID_PATH', bodyParsed.error.issues[0]?.message ?? 'imagePath must be a string or null');
     return;
   }
-  const { imagePath } = bodyParsed.data;
+  const { imagePath, auto } = bodyParsed.data;
+  // `auto` is the "Automatic" choice: drop the user's pick and any crop, then
+  // leave the object to the gallery source setting. It wins over `imagePath` so
+  // a stale client pick cannot re-pin a picture, and it must not reach the null
+  // branch below, which would pin the cached sky image as a user choice.
+  if (auto === true) {
+    try {
+      setGalleryImage(objectId, null);
+      res.apiSuccess({ objectId, galleryImage: null });
+    } catch (err) {
+      res.apiError(500, 'SET_FAILED', err instanceof Error ? err.message : 'Failed');
+    }
+    return;
+  }
   if (imagePath !== null && imagePath !== undefined && !imagePath.trim()) {
     res.apiError(400, 'INVALID_PATH', 'imagePath must be a non-empty string or null');
     return;
@@ -3609,7 +3702,8 @@ const editedImageUpload = multer({
 router.get('/objects/:objectId/sessions/:date/processed-images', (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const date = String(req.params.date);
-  res.apiSuccess(getProcessedImages(objectId, date));
+  const favorites = new Set(getImageFavorites(req.userId ?? ''));
+  res.apiSuccess(getProcessedImages(objectId, date).map(p => ({ ...p, isFavorite: favorites.has(p.path) })));
 });
 
 router.post('/objects/:objectId/sessions/:date/processed-images', requireAdmin, processedUpload.single('image'), (req: Request, res: Response) => {
@@ -3961,21 +4055,27 @@ router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, edi
     if (!objDir.startsWith(LIBRARY_DIR + path.sep)) {
       throw new Error('Object id resolves outside the library');
     }
-    if (!fs.existsSync(objDir)) fs.mkdirSync(objDir, { recursive: true });
 
     // `overwritePath` (optional): the image editor's "Save", which replaces one
     // exact existing file rather than adding an "…E.jpg" variant ("Save as new
     // version"). Must be a library-relative path resolving to an existing JPEG
-    // *inside this object's folder* — anything else is rejected so the route
-    // can never be steered to clobber another object's data or escape the tree.
+    // inside ONE object folder of the library. That folder is the object's own,
+    // or the variant object (Mosaic, Hα) that owns the picture: an object page
+    // opens its variants' pictures under the page's own id, so the path's
+    // folder, not `objectId`, says who owns the file. Anything that escapes the
+    // library, or is not a file inside a top-level folder, is rejected.
     const overwriteRaw = typeof req.body?.overwritePath === 'string' ? req.body.overwritePath.trim() : '';
     let filename: string;
     let destPath: string;
+    let ownerDir = objDir;
     if (overwriteRaw) {
       const resolved = path.resolve(LIBRARY_DIR, overwriteRaw);
-      if (!resolved.startsWith(objDir + path.sep)) {
-        throw new Error('overwritePath is outside this object folder');
+      const relToLibrary = path.relative(LIBRARY_DIR, resolved);
+      const relParts = relToLibrary.split(path.sep);
+      if (relToLibrary.startsWith('..') || path.isAbsolute(relToLibrary) || relParts.length < 2 || !relParts[0]) {
+        throw new Error('overwritePath is outside the library');
       }
+      ownerDir = path.resolve(LIBRARY_DIR, relParts[0]);
       if (!/\.jpe?g$/i.test(resolved) || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
         throw new Error('overwritePath does not name an existing JPEG in this object');
       }
@@ -3993,20 +4093,21 @@ router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, edi
       // time — the embedded time-of-day is clamped into the rollover-safe zone
       // (see clampToNightSafeTime) so an edit made at, say, 2am doesn't get
       // rolled back a day by sessionNightFor the next time it's read.
-      const now = new Date();
+      const now = localParts(new Date(), activeSiteTimeZone());
       const datePart = date.replace(/-/g, ''); // YYYYMMDD from session date
-      const rawTimePart = now.toTimeString().slice(0, 8).replace(/:/g, ''); // HHMMSS
+      const rawTimePart = [now.hour, now.minute, now.second].map(n => String(n).padStart(2, '0')).join(''); // HHMMSS
       const timePart = clampToNightSafeTime(rawTimePart);
       // The extension also comes from a client-supplied filename, so strip
       // anything that is not a plain alphanumeric extension token.
       const ext = (file.originalname.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
       filename = `${objectId}_${datePart}-${timePart}E.${ext}`;
       destPath = path.join(objDir, filename);
+      if (!fs.existsSync(objDir)) fs.mkdirSync(objDir, { recursive: true });
     }
     // Belt and braces: whatever the halves produced, the write must land
-    // strictly inside this object's folder.
+    // strictly inside the owning object's folder.
     const destResolved = path.resolve(destPath);
-    if (!destResolved.startsWith(objDir + path.sep)) {
+    if (!destResolved.startsWith(ownerDir + path.sep)) {
       throw new Error('Resolved destination is outside this object folder');
     }
     try {
@@ -4116,9 +4217,7 @@ router.get('/processed-images/:id', async (req: Request, res: Response) => {
     res.status(404).send('Not found');
     return;
   }
-  res.set('Content-Type', file.mimeType || 'image/jpeg');
-  res.set('Cache-Control', 'public, max-age=3600');
-  res.send(file.data);
+  await sendLibraryFile(res, file.abs, { contentType: file.mimeType || 'image/jpeg' });
 });
 
 /** Object-scoped upload, no session date — for a processed image the user
@@ -4152,7 +4251,8 @@ router.post('/objects/:objectId/processed-images', requireAdmin, processedUpload
 router.get('/objects/:objectId/processed-images', (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   try {
-    res.apiSuccess(getAllProcessedImagesForObject(objectId));
+    const favorites = new Set(getImageFavorites(req.userId ?? ''));
+    res.apiSuccess(getAllProcessedImagesForObject(objectId).map(p => ({ ...p, isFavorite: favorites.has(p.path) })));
   } catch (err) {
     res.apiError(500, 'LIST_FAILED', err instanceof Error ? err.message : 'Failed');
   }

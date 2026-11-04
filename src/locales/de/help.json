@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Hilfe",
-    "subtitle": "Alles, was Sie für die Nutzung von Nebulis brauchen, von der Erstinstallation bis zum Alltag.",
+    "subtitle": "Einrichtungsanleitungen, eine Tour durch jede Seite und Antworten auf häufige Probleme.",
     "startTour": "Geführte Tour starten",
     "guidesHeading": "Anleitungen"
   },
@@ -70,7 +70,17 @@
     },
     "objectFilters": {
       "q": "Was gehört in welchen Objektfilter?",
-      "a": "Filter gruppieren Objekte nach ihrem Katalogtyp und prüfen dabei den Typtext selbst. Diese Typnamen stammen aus dem Katalog und bleiben unabhängig von deiner Sprache englisch, wichtig sind also die Wörter \"galaxy\", \"nebula\" und \"cluster\". Jeder Typ mit \"galaxy\" landet im Galaxienfilter: Spiral-, Balkenspiral-, irreguläre, linsenförmige und Starburst-Galaxien sowie Galaxiengruppen, -paare und -tripel. \"nebula\" umfasst Emissions-, Reflexions-, Dunkel- und planetarische Nebel, und Supernovaüberreste zählen ebenfalls als Nebel. \"cluster\" umfasst offene und Kugelsternhaufen. Ein Objekt kann unter mehreren Filtern erscheinen: ein planetarischer Nebel ist sowohl Nebel als auch planetarischer Nebel, ein Supernovaüberrest ist sowohl Nebel als auch Supernovaüberrest, und Cluster + Nebula ist sowohl Haufen als auch Nebel. Wo eine Zählung sich für eine Familie entscheiden muss, zählt Cluster + Nebula als Nebel, weil die Nebelanteile das sind, wofür das Objekt fotografiert wird. Die Bibliothek ergänzt feinere Filter: Sonnensystem-Objekte, Kometen, Sterne, planetarische Nebel, Supernovaüberreste und Unbekannt, worunter Objekte mit ungeklärtem Typ fallen."
+      "intro": "Filter gruppieren Objekte nach ihrem Katalogtyp. Die Typnamen stammen aus dem Katalog und bleiben unabhängig von deiner Sprache englisch, wichtig sind also die Wörter \"galaxy\", \"nebula\" und \"cluster\".",
+      "galaxyTerm": "galaxy",
+      "galaxyDef": "Jeder Typ mit \"galaxy\": Spiral-, Balkenspiral-, irreguläre, linsenförmige und Starburst-Galaxien sowie Galaxiengruppen, -paare und -tripel.",
+      "nebulaTerm": "nebula",
+      "nebulaDef": "Emissions-, Reflexions-, Dunkel- und planetarische Nebel. Supernovaüberreste zählen ebenfalls als Nebel.",
+      "clusterTerm": "cluster",
+      "clusterDef": "Offene und Kugelsternhaufen.",
+      "overlapTerm": "Mehrere Filter",
+      "overlapDef": "Ein planetarischer Nebel ist sowohl Nebel als auch planetarischer Nebel, ein Supernovaüberrest ist sowohl Nebel als auch Supernovaüberrest, und Cluster + Nebula ist sowohl Haufen als auch Nebel. Wo eine Zählung sich für eine Familie entscheiden muss, zählt Cluster + Nebula als Nebel, weil die Nebelanteile das sind, wofür das Objekt fotografiert wird.",
+      "libraryTerm": "Nur in der Bibliothek",
+      "libraryDef": "Sonnensystem-Objekte, Kometen, Sterne, planetarische Nebel, Supernovaüberreste und Unbekannt, worunter Objekte mit ungeklärtem Typ fallen."
     },
     "findTarget": {
       "q": "Wie finde ich etwas zum Fotografieren?",
@@ -90,7 +100,7 @@
     },
     "locationSharing": {
       "q": "Sendet Nebulis meinen Standort irgendwohin?",
-      "a": "Nur um Bedingungen für deinen Himmel abzurufen. Die Koordinaten deines Beobachtungsstandorts gehen an Open-Meteo und 7Timer für die Vorhersage und an DarkSkySites für deine Lichtverschmutzungsklasse. Das sind die Koordinaten des Standorts, den du in den Einstellungen angelegt hast, nicht der Standort deines Geräts, und sonst wird nichts übermittelt. Alle Dienste, die Nebulis nutzt, sind unter Einstellungen, Datenquellen aufgeführt."
+      "a": "Nur um Bedingungen für deinen Himmel abzurufen. Die Koordinaten deines Beobachtungsstandorts gehen an Open-Meteo und 7Timer für die Vorhersage, an DarkSkySites für deine Lichtverschmutzungsklasse und an OpenStreetMap Nominatim für den Ortsnamen. Das sind die Koordinaten des Standorts, den du in den Einstellungen angelegt hast, nicht der Standort deines Geräts, und sonst wird nichts übermittelt. Alle Dienste, die Nebulis nutzt, sind unter Einstellungen, Datenquellen aufgeführt."
     }
   },
   "gettingStarted": {
@@ -279,7 +289,7 @@
     "step2Alt": "Eine Kategorieseite mit Objektkarten, jeweils markiert, ob heute Nacht sichtbar, und mit einem Hinweis, wie es ins Bildfeld passt",
     "step2Caption": "Entdecken → Kategorie",
     "step3Title": "Auf die Wunschliste setzen oder einplanen",
-    "step3Body": "Setzen Sie ein Objekt auf Ihre Wunschliste, planen Sie es für heute Nacht ein, oder öffnen Sie „Nacht planen“, um aus den nächsten 30 Nächten zu wählen. Die Schaltfläche „Ziel hinzufügen“ der Wunschliste öffnet Entdecken, und Karten in Entdecken und in der Wunschliste verweisen zurück auf den Planer. Wenn Sie Entdecken nicht nutzen, blenden Sie den Tab unter Einstellungen → Allgemein → Navigationsleiste aus.",
+    "step3Body": "Setzen Sie ein Objekt auf Ihre Wunschliste, planen Sie es für heute Nacht ein, oder öffnen Sie „Nacht planen“, um aus den nächsten 30 Nächten zu wählen. Ihre Wunschliste ist der zweite Tab in Entdecken, und die Karten in Entdecken verweisen zurück auf den Planer. Wenn Sie Entdecken nicht nutzen, blenden Sie es unter Einstellungen → Allgemein → Navigationsleiste aus.",
     "step3Alt": "Eine Karte in Entdecken mit den Schaltflächen für Wunschliste, „Heute Nacht planen“ und „Nacht planen“",
     "step3Caption": "Entdecken → Hinzufügen oder planen",
     "note": "Entdecken beurteilt die Sichtbarkeit anhand des Beobachtungsorts im Banner und den Bildausschnitt anhand des Gesichtsfelds Ihres Teleskops. Richten Sie beides zuerst unter Einstellungen → Himmel und Einstellungen → Teleskope ein. Wenn Sie mehrere Orte haben, wechseln Sie im Banner zwischen ihnen."
@@ -317,7 +327,7 @@
     "title": "Einstellungen",
     "lead": "Konfigurieren Sie Ihre App, verwalten Sie Speicher, verbinden Sie Geräte und steuern Sie Ihr Nebulis-Erlebnis.",
     "step1Title": "Sich zurechtfinden",
-    "step1Body": "Das Suchfeld oben findet jede Einstellung anhand ihres Namens und springt dorthin. Drücken Sie /, um es zu fokussieren. Die Seitenleiste ist in Ausrüstung, System und Erweitert gegliedert, und nur die Seite, auf der Sie sind, bleibt geöffnet. Einstellungen → Allgemein umfasst das Aussehen der App: das Design Hell, Dunkel, Weltraum oder Nacht, welche Menüeinträge in der oberen Leiste erscheinen (Entdecken, Wunschliste, Kalibrierungen und andere lassen sich ausblenden), Maßeinheiten und „Kompakte Seitenbanner“, wodurch jede Seite mit eingeklapptem Banner startet.",
+    "step1Body": "Das Suchfeld oben findet jede Einstellung anhand ihres Namens und springt dorthin. Drücken Sie /, um es zu fokussieren. Die Seitenleiste ist in Ausrüstung, System und Erweitert gegliedert, und nur die Seite, auf der Sie sind, bleibt geöffnet. Einstellungen → Allgemein umfasst das Aussehen der App: das Design Hell, Dunkel, Weltraum oder Nacht, welche Menüeinträge in der oberen Leiste erscheinen (Entdecken, Kalibrierungen und andere lassen sich ausblenden), Maßeinheiten und „Kompakte Seitenbanner“, wodurch jede Seite mit eingeklapptem Banner startet.",
     "step1Alt": "Einstellungen mit dem Suchfeld oben, der gegliederten Seitenleiste und dem Bereich „Allgemein“ mit Designs und Schaltern für die Navigationsleiste",
     "step1Caption": "Einstellungen → Allgemein",
     "step2Title": "Ihr Konto und verbundene Geräte verwalten",
@@ -358,11 +368,11 @@
     "title": "Frame-Qualität und Stacking",
     "lead": "Sehen Sie, welche Rohframes sich zu behalten lohnen, und übergeben Sie die besten samt passenden Kalibrierungsframes an PixInsight oder Siril.",
     "step1Title": "Die Subframe-Liste einer Nacht öffnen",
-    "step1Body": "Öffnen Sie eine Beobachtungsseite und sehen Sie sich ihre Subframe-Liste an. Beim Öffnen einer Nacht wird diese im Hintergrund gemessen, und die Ergebnisse bleiben gespeichert. Jeder Frame erhält eine Bewertung von 0 bis 100 und eine Note „Gut“, „Mittel“ oder „Schlecht“ im Vergleich zum Rest seiner Nacht, mit Markierungen für Wolken, Sternspuren, unscharfe Sterne, Satelliten- oder Flugzeugspuren, keine Sterne und Rauschen. Damit neue Nächte direkt nach dem Import gemessen werden, aktivieren Sie unter Einstellungen → Bibliothek „Frames nach dem Import analysieren“.",
+    "step1Body": "Öffnen Sie eine Beobachtungsseite und sehen Sie sich ihre Subframe-Liste an. Beim Öffnen einer Nacht wird diese im Hintergrund gemessen, und die Ergebnisse bleiben gespeichert. Jeder Frame erhält eine Bewertung von 0 bis 100 und eine Note „Gut“, „Mittel“ oder „Schlecht“: 100 entspricht dem besten Frame der Nacht oder, wenn sie ebenfalls gemessen sind, den besseren Nächten des Objekts mit gleichem Filter, gleicher Belichtung und gleichem Teleskop. Markierungen gibt es für Wolken, schwache Frames, gestreckte Sterne, unscharfe Sterne, Satelliten- oder Flugzeugspuren, Schatten auf dem Sensor, keine Sterne und Rauschen. Damit neue Nächte direkt nach dem Import gemessen werden, aktivieren Sie unter Einstellungen → Bibliothek „Frames nach dem Import analysieren“.",
     "step1Alt": "Die Subframe-Liste einer Nacht mit Bewertung, Note und Markierungen für jeden Rohframe",
     "step1Caption": "Beobachtung → Subframes",
     "step2Title": "Sortieren, überblicken und Vorschau ansehen",
-    "step2Body": "Sortieren Sie nach einer beliebigen Spalte. Der Streifen über der Liste zeigt die ganze Nacht und nennt die längste Lücke. Mit „Nur markierte“ blenden Sie die guten Frames aus, und wenn Sie auf einer Zeile verweilen, erscheint eine größere Vorschau mit allen Gründen in Worten.",
+    "step2Body": "Sortieren Sie nach einer beliebigen Spalte. Breite ist die FWHM der Sterne in Pixeln, Dehnung, wie viel länger als breit sie sind (1,00 ist rund), Signal, wie weit die hellsten Sterne über das Rauschen steigen, und Objekt, wie deutlich sich das fotografierte Objekt zeigt: sein hellerer Teil gegenüber dem Himmel ringsum, in Einheiten des Himmelsrauschens. Unter 1 ist das Objekt in einem einzelnen Frame nicht zu sehen, bei 1–3 kaum, bei 3–10 deutlich, über 10 sehr deutlich; N gestapelte Frames vervielfachen den Wert etwa mit √N. Der Streifen über der Liste zeigt die ganze Nacht und nennt die längste Lücke. Mit „Nur markierte“ blenden Sie die guten Frames aus, und wenn Sie auf einer Zeile verweilen, erscheint eine größere Vorschau mit allen Gründen in Worten.",
     "step2Alt": "Der Nachtstreifen über der Subframe-Liste mit geöffneter Vorschau eines markierten Frames",
     "step2Caption": "Subframes → Streifen und Vorschau",
     "step3Title": "Behalten, verwerfen oder löschen",
@@ -414,7 +424,7 @@
     "step3Body": "Sind die Ringe sichtbar, fragen „Herunterladen“ und „Teilen“, ob Sie das Original behalten oder ein JPEG mit eingezeichneten Ringen speichern möchten.",
     "step3Alt": "Der Download-Dialog mit der Frage, ob das Original behalten oder ein JPEG mit den Ringen gespeichert werden soll",
     "step3Caption": "Betrachter → Herunterladen",
-    "note": "Annotieren gibt es jetzt in der Web-App. In den Apps für iPhone, iPad und Android kommt es mit der Version 2.1.0."
+    "note": "Annotieren gibt es jetzt in der Web-App. Aktualisieren Sie die Apps für iPhone, iPad und Android, um es auch dort zu nutzen."
   },
   "alerts": {
     "title": "Benachrichtigungen",
@@ -428,7 +438,7 @@
     "step2Alt": "Die Ereignisschalter eines Kanals und die Uhrzeit für klare Nächte",
     "step2Caption": "Benachrichtigungen → Ereignisse",
     "step3Title": "Push an iPhones",
-    "step3Body": "Push auf dem iPhone benötigt die iPhone-App in Version 2.1.0, die bald erscheint. Er läuft über ein kleines Nebulis-Relay, das nichts speichert. Schalten Sie Benachrichtigungen auf diesem Server ein und wählen Sie dann unter Einstellungen → Benachrichtigungen → iPhones, was jedes Handy erhält. Jedes iPhone kann seiner Benachrichtigung eine Zeile „Plan für heute Nacht“ oder eine Taurisiko-Warnung hinzufügen.",
+    "step3Body": "Push auf dem iPhone benötigt die neueste iPhone-App. Er läuft über ein kleines Nebulis-Relay, das nichts speichert. Schalten Sie Benachrichtigungen auf diesem Server ein und wählen Sie dann unter Einstellungen → Benachrichtigungen → iPhones, was jedes Handy erhält. Jedes iPhone kann seiner Benachrichtigung eine Zeile „Plan für heute Nacht“ oder eine Taurisiko-Warnung hinzufügen.",
     "step3Alt": "Die Liste der iPhones unter Einstellungen → Benachrichtigungen mit den zusätzlichen Zeilen, die jedes Handy hinzufügen kann",
     "step3Caption": "Benachrichtigungen → iPhones"
   },
@@ -656,7 +666,7 @@
     "step4Body": "Jedes von Ihnen verknüpfte Telefon, Tablet und TV erscheint unter Einstellungen → Konto → Geräte. Jedes trägt sein eigenes Anmeldetoken, sodass das Widerrufen eines Geräts hier dessen Zugriff sofort beendet, ohne das eines anderen zu berühren.",
     "step4Alt": "Einstellungen → Konto → Geräte, mit einer Schaltfläche „Gerät verbinden“ und einer leeren Geräteliste",
     "step4Caption": "Einstellungen → Konto → Geräte",
-    "note": "Annotieren, Push-Benachrichtigungen auf dem iPhone und Fotos Ihrer Beobachtungsorte kommen mit Version 2.1.0 der iPhone- und iPad-App, Annotieren auch in der Android-App."
+    "note": "Annotieren, Push-Benachrichtigungen auf dem iPhone und Fotos Ihrer Beobachtungsorte sind in der neuesten iPhone- und iPad-App enthalten, Annotieren auch in der neuesten Android-App."
   },
   "pixinsight": {
     "title": "PixInsight-Integration",
@@ -766,6 +776,8 @@
     "done": "Fertig",
     "screenshotSuffix": "Screenshot",
     "viewFullSize": "In voller Größe ansehen: {{title}}",
+    "previous": "Vorheriger Screenshot",
+    "next": "Nächster Screenshot",
     "explore": {
       "title": "Entdecken",
       "lead": "Finden Sie Ihr nächstes Ziel.",
@@ -789,7 +801,9 @@
     "myMedia": {
       "title": "Kombinierte Objektseite",
       "lead": "Alle Bilder eines Objekts auf einer Seite.",
-      "description": "Bilder, Sub-Frames, Nächte und Projektdateien auf einer Seite, in Tabs, ohne Umweg über die Beobachtungen."
+      "description": "Bilder, Sub-Frames, Nächte und Projektdateien auf einer Seite, in Tabs, ohne Umweg über die Beobachtungen.",
+      "shotObject": "Objektseite",
+      "shotObservation": "Beobachtungsseite"
     },
     "integration": {
       "title": "Integration pro Filter",

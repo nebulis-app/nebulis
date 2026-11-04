@@ -6,10 +6,10 @@ import {
   mergeHours,
   nightWindow,
   recordNightConditions,
+  scoreObservingNight,
   summarizeNight,
 } from '../../server/lib/nightConditions';
 import {
-  rateNightConditions,
   snapshotNightConditions,
   forecastSiteKey,
   type ForecastHour,
@@ -40,7 +40,7 @@ function wholeNight(over: (i: number) => Partial<ForecastHour> = () => ({})): Fo
 }
 
 const record = (hourly: ForecastHour[], now: string) =>
-  recordNightConditions({ siteKey: KEY, lat: LAT, lon: LON, timezone: TZ, hourly, rate: rateNightConditions, now: new Date(now) });
+  recordNightConditions({ siteKey: KEY, lat: LAT, lon: LON, timezone: TZ, hourly, now: new Date(now) });
 
 describe('nightConditions', () => {
   beforeEach(() => {
@@ -102,7 +102,7 @@ describe('nightConditions', () => {
       record(wholeNight(), at(8, 22));
       const nextDay = [hour(at(9, 19)), hour(at(9, 20)), hour(at(9, 21)), hour(at(9, 22))];
       const row = recordNightConditions({
-        siteKey: KEY, lat: LAT, lon: LON, timezone: TZ, hourly: nextDay, rate: rateNightConditions, now: new Date(at(9, 10)),
+        siteKey: KEY, lat: LAT, lon: LON, timezone: TZ, hourly: nextDay, now: new Date(at(9, 10)),
       });
       expect(row!.night).toBe('2026-10-09');
       expect(listNightConditions(KEY, '2026-10-01', '2026-10-31').map((r) => r.night)).toEqual([NIGHT, '2026-10-09']);
@@ -115,7 +115,7 @@ describe('nightConditions', () => {
 
     it('records nothing and does not throw where there is no sunset', () => {
       const row = recordNightConditions({
-        siteKey: 'polar', lat: 80, lon: 0, timezone: 'UTC', hourly: [hour('2026-06-21T22:00:00.000Z')], rate: rateNightConditions,
+        siteKey: 'polar', lat: 80, lon: 0, timezone: 'UTC', hourly: [hour('2026-06-21T22:00:00.000Z')],
         now: new Date('2026-06-21T22:00:00Z'),
       });
       expect(row).toBeNull();
@@ -142,6 +142,28 @@ describe('nightConditions', () => {
     });
   });
 
+  describe('scoreObservingNight', () => {
+    it('scores the hours inside the dark window', () => {
+      const score = scoreObservingNight(wholeNight(), NIGHT, LAT, LON, TZ);
+      expect(score).not.toBeNull();
+      expect(score!.rating).toBe(score!.score >= 85 ? 'Ideal' : score!.score >= 70 ? 'Great' : 'Good');
+    });
+
+    it('needs at least two hours in the night', () => {
+      expect(scoreObservingNight([hour(at(8, 23))], NIGHT, LAT, LON, TZ)).toBeNull();
+      expect(scoreObservingNight([], NIGHT, LAT, LON, TZ)).toBeNull();
+    });
+
+    it('still scores a night where the sun never sets, over the 20:00-06:00 local band', () => {
+      // Tromso on midsummer night: no sunset, so no dark window to measure against.
+      expect(nightWindow('2026-06-21', 69.65, 18.96, 'Europe/Oslo')).toBeNull();
+      const tromso = Array.from({ length: 12 }, (_, i) => hour(new Date(Date.UTC(2026, 5, 21, 18 + i)).toISOString(), { cloudCover: 20 }));
+      const score = scoreObservingNight(tromso, '2026-06-21', 69.65, 18.96, 'Europe/Oslo');
+      expect(score).not.toBeNull();
+      expect(score!.avgCloudCover).toBe(20);
+    });
+  });
+
   describe('mergeHours and summarizeNight', () => {
     it('lets the newer hour win but keeps the seeing it lacks', () => {
       const t = at(8, 22);
@@ -158,13 +180,13 @@ describe('nightConditions', () => {
 
     it('leaves seeing out when no hour has any', () => {
       const w = nightWindow(NIGHT, LAT, LON, TZ)!;
-      const s = summarizeNight([hour(at(8, 22), { seeing: null })], w, rateNightConditions);
+      const s = summarizeNight([hour(at(8, 22), { seeing: null })], w, TZ);
       expect(s!.medianSeeing).toBeNull();
     });
 
     it('returns nothing for no hours', () => {
       const w = nightWindow(NIGHT, LAT, LON, TZ)!;
-      expect(summarizeNight([], w, rateNightConditions)).toBeNull();
+      expect(summarizeNight([], w, TZ)).toBeNull();
     });
   });
 });

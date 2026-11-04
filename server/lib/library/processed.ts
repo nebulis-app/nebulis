@@ -367,13 +367,16 @@ export function hasRestackedImage(objectId: string, originalName: string): boole
   return !!stmts.getRestackedImageByName.get(objectId, originalName);
 }
 
-/** Get the file data for a processed image (null if not found). */
-export function getProcessedImageFile(id: string): { data: Buffer; name: string; mimeType: string } | null {
+/**
+ * Where a processed image lives on disk (null if there is no such record).
+ * Returns the path rather than the bytes so the route can stream it; a file
+ * missing from disk is reported by the streaming helper as a 404.
+ */
+export function getProcessedImageFile(id: string): { abs: string; name: string; mimeType: string } | null {
   const row = stmts.getProcessedImage.get(id);
   if (!row) return null;
-  const filePath = resolveContainedObjectDir(row.objectId, 'processed', row.filename);
-  if (!fs.existsSync(filePath)) return null;
-  return { data: fs.readFileSync(filePath), name: row.originalName, mimeType: row.mimeType };
+  const abs = resolveContainedObjectDir(row.objectId, 'processed', row.filename);
+  return { abs, name: row.originalName, mimeType: row.mimeType };
 }
 
 /**

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { SHARPLESS_CATALOG } from '../../server/lib/sharplessCatalog';
 import { resolveCanonicalId } from '../../server/lib/catalogAliases';
-import { getCatalogEntry } from '../../server/data/catalog';
+import { getBaseCatalogEntry } from '../../server/data/catalog';
 import { raToHours, decToDegs } from '../../server/lib/astroCalc';
 import { LISTED_ROWS as openNgc } from '../../server/lib/dsoCatalogData';
 
@@ -46,12 +46,12 @@ describe('Sharpless cross-references', () => {
     expect(resolveCanonicalId('SH2-1')).toBe('SH2-1');
     expect(resolveCanonicalId('IC1470')).toBe('IC1470');
     // Sh2-1's own position (Scorpius/Ophiuchus, about 16 h), not Cepheus.
-    expect(raToHours(getCatalogEntry('SH2-1')!.ra!)).toBeCloseTo(239.71337 / 15, 3);
+    expect(raToHours(getBaseCatalogEntry('SH2-1')!.ra!)).toBeCloseTo(239.71337 / 15, 3);
   });
 
   it('keeps Sh2-86 and its NGC6820 reference at the same place', () => {
     const sh86 = SHARPLESS_CATALOG.find(e => e.id === 'Sh2-86')!;
-    const ngc = getCatalogEntry('NGC6820')!;
+    const ngc = getBaseCatalogEntry('NGC6820')!;
     expect(ngc).toBeDefined();
     expect(sepDeg({ raDeg: sh86.raDeg, decDeg: sh86.decDeg }, { raDeg: raToHours(ngc.ra!) * 15, decDeg: decToDegs(ngc.dec!) })).toBeLessThan(MAX_SEP_DEG);
   });

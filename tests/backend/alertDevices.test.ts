@@ -11,6 +11,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
   _fs.mkdirSync(_root, { recursive: true });
   const dir = _fs.mkdtempSync(_path.join(_root, 'nebulis-alertdevices-test-'));
   process.env.DATA_DIR = dir;
+  process.env.NEBULIS_PHONE_ALERTS = "1";
   return dir;
 });
 
@@ -443,6 +444,46 @@ describe('the relay address', () => {
       expect(pushRelayUrl()).toBe('https://push.nebulis.app');
     } finally {
       process.env.NEBULIS_PUSH_RELAY_URL = original;
+    }
+  });
+});
+
+describe('phone alerts before the apps ship', () => {
+  it('hides stored phones, refuses registration and sends nothing until NEBULIS_PHONE_ALERTS is on', async () => {
+    const created = await register();
+    expect(created.status).toBe(201);
+    const id = json(created).id;
+
+    delete process.env.NEBULIS_PHONE_ALERTS;
+    try {
+      expect(listAlertDevices()).toEqual([]);
+      expect(getAlertDevice(id)).toBeNull();
+      expect((await register()).status).toBe(404);
+      expect((await call('GET', '/push-info')).status).toBe(404);
+      expect((await call('POST', '/clear-night/send-to-phones')).status).toBe(404);
+      expect(json(await call('GET', '/')).devices).toEqual([]);
+    } finally {
+      process.env.NEBULIS_PHONE_ALERTS = '1';
+    }
+    // Nothing was deleted: switching it on brings the phone back.
+    expect(getAlertDevice(id)).not.toBeNull();
+  });
+});
+
+describe('the app a paired device runs', () => {
+  it('is stored when the device is seen and kept when a later request sends no header', async () => {
+    const { default: db } = await import('../../server/lib/db');
+    const { touchDevice } = await import('../../server/lib/devicePairing');
+    db.prepare("INSERT INTO connectedDevices (id, userId, name, createdAt, lastSeenAt) VALUES ('dev-v', 'u', 'iPhone', 1, 1)").run();
+    const row = () => db.prepare("SELECT clientPlatform, clientVersion FROM connectedDevices WHERE id = 'dev-v'").get();
+    try {
+      expect(row()).toEqual({ clientPlatform: null, clientVersion: null });
+      touchDevice('dev-v', { platform: 'Nebulis-iOS', version: '2.1.2' });
+      expect(row()).toEqual({ clientPlatform: 'Nebulis-iOS', clientVersion: '2.1.2' });
+      touchDevice('dev-v', null);
+      expect(row()).toMatchObject({ clientPlatform: 'Nebulis-iOS', clientVersion: '2.1.2' });
+    } finally {
+      db.prepare("DELETE FROM connectedDevices WHERE id = 'dev-v'").run();
     }
   });
 });

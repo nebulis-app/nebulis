@@ -10,12 +10,12 @@
  * destructive admin actions).
  *
  * Mounted after `apiEnvelope` (so `res.apiError` exists) and before the route
- * handlers in both the `/api/v1` and legacy `/api` routers — see index.ts.
+ * handlers, once, on the router that index.ts mounts at both `/api/v1` and `/api`.
  */
 import rateLimit from 'express-rate-limit';
 import type { Request, Response } from 'express';
 
-function tooManyRequests(req: Request, res: Response): void {
+function tooManyRequests(_req: Request, res: Response): void {
   res.apiError(429, 'RATE_LIMITED', 'Too many requests. Slow down and try again shortly.');
 }
 

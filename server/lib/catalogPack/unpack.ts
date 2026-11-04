@@ -15,7 +15,6 @@
  * into sky-cache/ only after all verifications pass (atomic install).
  */
 
-import fs from 'node:fs';
 import path from 'node:path';
 import { extract } from 'tar';
 

@@ -70,7 +70,7 @@ export function fovProfileIdForKind(kind: TelescopeKind | null | undefined): str
   return FOV_PROFILES.some(p => p.id === kind) ? kind : DEFAULT_FOV_PROFILE_ID;
 }
 
-export function fovProfileById(id: string): FovProfile | undefined {
+function fovProfileById(id: string): FovProfile | undefined {
   return FOV_PROFILES.find(p => p.id === id);
 }
 

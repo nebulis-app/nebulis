@@ -9,10 +9,12 @@ import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import db from '../db.js';
-import { getCatalogEntry } from '../../data/catalog.js';
-import { resolveCatalogMeta, enrichObjectData, stmts as objectStmts } from './objects.js';
+import { getCatalogEntry } from '../catalogLookup.js';
+import { resolveCatalogMeta, stmts as objectStmts } from './objects.js';
+import { runPostImport } from './postImport.js';
 import { recordLinkedLibraryFiles, markLinkedFilesMissing, countLibraryFilesForObject, roleForFile, getLibraryFilesForObject, getLibraryFileRow, deleteLibraryFileRow, sessionDateForRow, type LibraryFileRow, type RecordLinkedFileInput } from './libraryFiles.js';
-import { walkSource } from './sourceWalk.js';
+import { walkSource, createYielder } from './sourceWalk.js';
+import { withDeadline } from '../deadline.js';
 import { resolveLibraryFile } from './fileResolver.js';
 import { attributeFiles, type AttributionOverride } from './treeAttribution.js';
 import { getDesignationRedirect } from './designationRedirects.js';
@@ -22,6 +24,7 @@ import { STARTRAILS_FOLDER } from '../walkers/dwarfWalker.js';
 import { deriveFileDate, confidenceForSource, type DateSource } from './dateDerivation.js';
 import { countSkip, summarizeSkips, type ImportSkipSummary, type SkipTally } from './importFilter.js';
 import { observingNightDate } from '../telescopeFiles.js';
+import { activeSiteTimeZone } from '../siteTimeZone.js';
 import { LINKED_SOURCE_DIR_NAME } from './archiveFolders.js';
 import { nicknamesFromFolderNames, mergeNicknames } from './nicknames.js';
 import { getAliasesForCanonical } from '../catalogAliases.js';
@@ -121,7 +124,7 @@ export function getLibrarySource(id: string): LibrarySourceRow | null {
   return row ? toRow(row) : null;
 }
 
-export function listLibrarySources(): LibrarySourceRow[] {
+function listLibrarySources(): LibrarySourceRow[] {
   return listSourcesStmt.all().map(toRow);
 }
 
@@ -140,9 +143,8 @@ function buildLinkedInput(
   walkedFile: { absPath: string; size: number; mtimeMs: number },
   settings: Record<string, unknown>,
 ): RecordLinkedFileInput | null {
-  let stat: fs.Stats;
-  try { stat = fs.statSync(walkedFile.absPath); } catch { return null; }
-  const derived = deriveFileDate(walkedFile.absPath, relPath, stat, { useMtimeFallback: settings.importMtimeFallback !== false });
+  // The walk already read the mtime; statting every file again here was a synchronous call per file on the event loop.
+  const derived = deriveFileDate(walkedFile.absPath, relPath, { mtime: new Date(walkedFile.mtimeMs) }, { useMtimeFallback: settings.importMtimeFallback !== false, timeZone: activeSiteTimeZone() });
   const night = derived.date ? observingNightDate(derived.date, derived.time) : null;
   const fileName = relPath.slice(relPath.lastIndexOf('/') + 1);
   return {
@@ -198,9 +200,8 @@ function upsertLinkedObject(objectId: string, displayName?: string): void {
   // Star Trails is not a sky object: it gets its own curated name, type and description, and there is
   // nothing to look up for it.
   if (objectId === getStartrailsObjectId()) { patchStartrailsObjectMeta(objectId); return; }
-  // Fire-and-forget, matching import.ts's own pattern for a freshly created
-  // object: best-effort network enrichment, never blocking the link.
-  enrichObjectData(objectId).catch(() => { /* best-effort */ });
+  // Catalog enrichment (and everything else that follows a link) is the shared
+  // post-import pipeline's job: see postImport.ts. commitSource / rescanSource run it.
 }
 
 /**
@@ -298,7 +299,7 @@ function pruneEmptySessions(pairs: Iterable<{ objectId: string; captureDate: str
 
 /**
  * Soft-delete each object that no longer has a single `libraryFiles` row of
- * any kind and carries no user data (notes, favourites) — what is left after
+ * any kind and carries no user data (notes, object note, favourites) — what is left after
  * a source's files are unlinked, per contract Open Question 1. An object that
  * still has any file, managed or from another source, is untouched.
  */
@@ -308,7 +309,8 @@ function retireEmptyObjects(objectIds: Iterable<string>): string[] {
     if (countLibraryFilesForObject(objectId) > 0) continue;
     const hasNotes = db.prepare<[string], { n: number }>('SELECT COUNT(*) AS n FROM notes WHERE objectId = ?').get(objectId)?.n ?? 0;
     const hasFavs = db.prepare<[string], { n: number }>('SELECT COUNT(*) AS n FROM favorites WHERE objectId = ?').get(objectId)?.n ?? 0;
-    if (hasNotes > 0 || hasFavs > 0) continue;
+    const hasObjectNote = db.prepare<[string], { n: number }>('SELECT COUNT(*) AS n FROM objectNotes WHERE objectId = ?').get(objectId)?.n ?? 0;
+    if (hasNotes > 0 || hasFavs > 0 || hasObjectNote > 0) continue;
     objectStmts.markObjectDeleted.run(new Date().toISOString(), objectId);
     retired.push(objectId);
   }
@@ -343,13 +345,24 @@ export function getLinkedFileRows(objectId: string, date?: string): LibraryFileR
  */
 export function deleteLinkedFilesFromDisk(rows: LibraryFileRow[]): { deleted: number } {
   const removed: LibraryFileRow[] = [];
+  const unavailable = () => new LinkedDeleteError('LINKED_SOURCE_UNAVAILABLE', 'The linked folder cannot be reached right now, so nothing was deleted. Reconnect the drive or share and try again.');
+  // Sources already confirmed to be the disk that was linked, so the check runs once per source per call.
+  const verifiedSources = new Set<string>();
   try {
     for (const row of rows) {
       if (row.sourceId === null) continue;
       const resolved = resolveLibraryFile(row.relPath);
-      const source = db.prepare<[string], { rootPath: string }>('SELECT rootPath FROM librarySources WHERE id = ?').get(row.sourceId);
-      if (!resolved || !source || !fs.existsSync(source.rootPath)) {
-        throw new LinkedDeleteError('LINKED_SOURCE_UNAVAILABLE', 'The linked folder cannot be reached right now, so nothing was deleted. Reconnect the drive or share and try again.');
+      const source = db.prepare<[string], { rootPath: string; fingerprint: string | null }>('SELECT rootPath, fingerprint FROM librarySources WHERE id = ?').get(row.sourceId);
+      if (!resolved || !source || !fs.existsSync(source.rootPath)) throw unavailable();
+      if (!verifiedSources.has(row.sourceId)) {
+        // An empty mount point, or a different disk mounted at the same path, exists and is readable, so "it exists"
+        // is not enough: every unlink would fail ENOENT, read as "already gone", and the rows would be dropped
+        // while the originals sit on the real disk. The fingerprint taken at link time tells the two apart.
+        if (!fingerprintMatches(source.fingerprint, source.rootPath)) throw unavailable();
+        verifiedSources.add(row.sourceId);
+      }
+      if (!directoryStaysInsideRoot(resolved.abs, source.rootPath)) {
+        throw new LinkedDeleteError('LINKED_DELETE_FAILED', `Did not delete "${row.fileName}": it is reached through a link that leaves ${source.rootPath}, so the file is not inside the linked folder.`);
       }
       try {
         fs.unlinkSync(resolved.abs);
@@ -368,6 +381,26 @@ export function deleteLinkedFilesFromDisk(rows: LibraryFileRow[]): { deleted: nu
     retireEmptyObjects(new Set(removed.map(r => r.objectId)));
   }
   return { deleted: removed.length };
+}
+
+/**
+ * Whether the folder holding `absFile` really sits inside the linked root once symlinks are followed. The
+ * containment check in fileResolver is lexical, and the scan follows symlinked folders on purpose, so a file under
+ * a link to another disk passes it, and unlinking it would remove the real file out there. A symlinked *file* is
+ * fine: unlinking it removes only the link. A folder that no longer exists means the file is gone, which the caller
+ * already treats as deleted.
+ */
+function directoryStaysInsideRoot(absFile: string, rootPath: string): boolean {
+  let realDir: string;
+  let realRoot: string;
+  try {
+    realRoot = fs.realpathSync(rootPath);
+    realDir = fs.realpathSync(path.dirname(absFile));
+  } catch {
+    return true;
+  }
+  const rel = path.relative(realRoot, realDir);
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
 /** What deleting an object or night would take from linked folders: file count, bytes, and folder labels. */
@@ -534,8 +567,8 @@ function dirAndAncestors(dir: string): string[] {
  * settings `folderScan.ts`'s copy-import scan uses, so the two agree on what
  * "real data" means.
  */
-export function scanSource(rootPath: string, settings: Record<string, unknown>): ScanSourceResult {
-  const walked = walkSource(rootPath, settings);
+export async function scanSource(rootPath: string, settings: Record<string, unknown>): Promise<ScanSourceResult> {
+  const walked = await walkSource(rootPath, settings);
   const attribution = attributeFiles(walked.files.map(f => f.relPath));
   const byRelPath = new Map(walked.files.map(f => [f.relPath, f]));
 
@@ -559,7 +592,9 @@ export function scanSource(rootPath: string, settings: Record<string, unknown>):
   const unresolvedByDir = new Map<string, { fileCount: number; bytes: number }>();
   const disagreements: ScanSourceResult['disagreements'] = [];
 
+  const yielder = createYielder();
   for (const file of attribution.files) {
+    await yielder.tick();
     const walkedFile = byRelPath.get(file.relPath);
     if (!walkedFile || file.excluded) continue;
 
@@ -585,9 +620,7 @@ export function scanSource(rootPath: string, settings: Record<string, unknown>):
     obj.files++; obj.bytes += walkedFile.size;
     obj.dirs.add(fileDir);
 
-    let stat: fs.Stats;
-    try { stat = fs.statSync(walkedFile.absPath); } catch { obj.unsorted++; continue; }
-    const derived = deriveFileDate(walkedFile.absPath, file.relPath, stat, { useMtimeFallback: settings.importMtimeFallback !== false });
+    const derived = deriveFileDate(walkedFile.absPath, file.relPath, { mtime: new Date(walkedFile.mtimeMs) }, { useMtimeFallback: settings.importMtimeFallback !== false, timeZone: activeSiteTimeZone() });
     if (!derived.date) { obj.unsorted++; continue; }
     const night = observingNightDate(derived.date, derived.time);
     const existing = obj.sessions.get(night);
@@ -685,17 +718,19 @@ export interface CommitSourceResult {
  * than trusting a client-supplied file list, the same reasoning
  * `commitFolderImport` documents for the copy wizard.
  */
-export function commitSource(rootPath: string, settings: Record<string, unknown>, options: CommitSourceOptions): CommitSourceResult {
+export async function commitSource(rootPath: string, settings: Record<string, unknown>, options: CommitSourceOptions): Promise<CommitSourceResult> {
   assertLinkableRoot(rootPath);
   const sourceId = `src_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
-  const walked = walkSource(rootPath, settings);
+  const walked = await walkSource(rootPath, settings);
   const attribution = attributeFiles(walked.files.map(f => f.relPath), { overrides: options.overrides });
   applyDesignationRedirects(attribution);
   const byRelPath = new Map(walked.files.map(f => [f.relPath, f]));
 
   const inputsByObject = new Map<string, RecordLinkedFileInput[]>();
   let alreadyInLibrary = 0;
+  const yielder = createYielder();
   for (const file of attribution.files) {
+    await yielder.tick();
     if (file.excluded || !file.objectId) continue;
     const walkedFile = byRelPath.get(file.relPath);
     if (!walkedFile) continue;
@@ -741,6 +776,7 @@ export function commitSource(rootPath: string, settings: Record<string, unknown>
   );
 
   log.info({ sourceId, rootPath, objects: inputsByObject.size, files: filesLinked }, '[library-sources] linked');
+  runPostImport({ reason: 'linked-folder', touched: inputsByObject.keys() });
 
   return { sourceId, objectsLinked: inputsByObject.size, filesLinked, filesAlreadyInLibrary: alreadyInLibrary };
 }
@@ -777,7 +813,7 @@ function isSameOrInside(inner: string, outer: string): boolean {
     ? (v: string) => v.toLowerCase()
     : (v: string) => v;
   const rel = path.relative(fold(outer), fold(inner));
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
 /**
@@ -951,7 +987,7 @@ interface StoredLinkedRow {
  * itself is unreadable the source is reported offline and no row is touched.
  * Nothing on the user's disk is ever written.
  */
-export function rescanSource(id: string, baseSettings: Record<string, unknown>): RescanSourceResult {
+export async function rescanSource(id: string, baseSettings: Record<string, unknown>): Promise<RescanSourceResult> {
   const source = getLibrarySource(id);
   if (!source) throw new LinkSourceError('SOURCE_NOT_FOUND', 'That linked folder no longer exists.');
   // Read the tree with the options the link used, not whatever the app-wide
@@ -973,10 +1009,10 @@ export function rescanSource(id: string, baseSettings: Record<string, unknown>):
   };
 
   let rootIsDir = false;
-  try { rootIsDir = fs.statSync(source.rootPath).isDirectory(); } catch { /* offline */ }
+  try { rootIsDir = (await withDeadline(fs.promises.stat(source.rootPath), 15_000, 'stat')).isDirectory(); } catch { /* offline, or a mount that stopped answering */ }
   if (!rootIsDir) return goOffline();
 
-  const walked = walkSource(source.rootPath, settings);
+  const walked = await walkSource(source.rootPath, settings);
   result.truncated = walked.truncated;
   result.depthLimited = walked.depthLimited;
 
@@ -1003,7 +1039,9 @@ export function rescanSource(id: string, baseSettings: Record<string, unknown>):
   const touchedObjects = new Set<string>();
   const reassigned: Array<{ objectId: string; captureDate: string | null }> = [];
 
+  const yielder = createYielder();
   for (const file of attribution.files) {
+    await yielder.tick();
     if (file.excluded || !file.objectId) continue;
     const walkedFile = byRelPath.get(file.relPath);
     if (!walkedFile) continue;
@@ -1080,6 +1118,9 @@ export function rescanSource(id: string, baseSettings: Record<string, unknown>):
   );
 
   log.info({ ...result }, '[library-sources] rescanned');
+  // Only the objects whose files changed: a clean rescan (the common case on
+  // the refresh schedule) runs nothing.
+  if (touchedObjects.size > 0) runPostImport({ reason: 'linked-rescan', touched: touchedObjects });
   return result;
 }
 

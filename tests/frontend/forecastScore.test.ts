@@ -7,7 +7,6 @@ import {
   scoreTextColor,
   scoreLabel,
   scoreBgColor,
-  translateScoreRating,
   localHour,
   formatTime,
   formatTemp,
@@ -138,11 +137,6 @@ describe('score band helpers', () => {
     expect(scoreBgColor(90, false)).toBe('bg-emerald-50 border-emerald-200');
     expect(scoreBgColor(10, true)).toBe('bg-red-500/5 border-red-500/20');
     expect(scoreBgColor(10, false, true)).toBe('bg-[#661a1a]/5 border-[#661a1a]/20');
-  });
-
-  it('translateScoreRating maps known server ratings and passes unknown text through', () => {
-    expect(translateScoreRating(t, 'Excellent')).toBe('scoreBand.excellent');
-    expect(translateScoreRating(t, 'Mystery')).toBe('Mystery');
   });
 });
 

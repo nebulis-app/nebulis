@@ -36,6 +36,7 @@ import { refreshObjectFileCount } from '../library/observations.js';
 import { resolveContainedArchivePath } from './archivePath.js';
 import { ensureArchiveDestinationReady } from './archiveDestination.js';
 import { readArchiveManifest } from './archiveManifest.js';
+import { ensureObjectForArchivedFolder } from './archiveRestoreObjects.js';
 import { copyFileVerified, sweepStaleParts, verifyArchivedCopy } from './archiveCopy.js';
 import type { ArchiveConfig } from './archiveConfig.js';
 
@@ -60,6 +61,12 @@ export interface RestoreResult {
   /** Files left alone because they differ locally and overwriting was not confirmed. */
   conflicts: string[];
   failures: string[];
+  /** Objects the library did not have, created from the archive's record of them. */
+  createdObjects: number;
+  /** Objects brought back from the trash. */
+  revivedObjects: number;
+  /** Objects that received at least one file: what the post-import pipeline should visit. */
+  writtenObjects: string[];
 }
 
 const siblingTelescopeStmt = db.prepare<[string, number, string], { telescopeId: string }>(
@@ -124,6 +131,9 @@ export async function restoreArchivedFiles(
     bytesRestored: 0,
     conflicts: [],
     failures: [],
+    createdObjects: 0,
+    revivedObjects: 0,
+    writtenObjects: [],
   };
 
   const readiness = await ensureArchiveDestinationReady(config);
@@ -133,6 +143,24 @@ export async function restoreArchivedFiles(
   const manifest = readArchiveManifest(root, config.archiveId);
   const objectIdByFolder = new Map<string, string>();
   for (const object of getLibraryObjectNames()) objectIdByFolder.set(object.folderName, object.objectId);
+
+  // An object the library no longer has is brought back (from the trash) or created,
+  // once per folder, so the loop below finds somewhere to put its files.
+  const failures: string[] = [];
+  let createdObjects = 0;
+  let revivedObjects = 0;
+  const refusedFolders = new Map<string, string>();
+  for (const folderName of new Set(requests.map(r => r.folderName))) {
+    if (objectIdByFolder.has(folderName)) continue;
+    const outcome = ensureObjectForArchivedFolder(folderName, manifest.objects[folderName]);
+    if (outcome.kind === 'created' || outcome.kind === 'revived') {
+      objectIdByFolder.set(folderName, outcome.objectId);
+      if (outcome.kind === 'created') createdObjects++;
+      else revivedObjects++;
+    } else if (outcome.kind === 'refused') {
+      refusedFolders.set(folderName, outcome.reason);
+    }
+  }
 
   // Abandoned `.part` files from an earlier interrupted restore, next to the files this
   // call is about to write. Resolved the same way the loop below resolves them.
@@ -148,7 +176,7 @@ export async function restoreArchivedFiles(
   await sweepStaleParts(targets);
 
   const conflicts: string[] = [];
-  const failures: string[] = [];
+  const writtenObjects = new Set<string>();
   const touchedObjects = new Set<string>();
   let restored = 0;
   let skipped = 0;
@@ -173,9 +201,8 @@ export async function restoreArchivedFiles(
     // with an empty object id. It restores to the same place in the library, but has no rows to keep in step.
     const isRootFolder = objectId === undefined && manifest.objects[request.folderName]?.objectId === '';
     if (objectId === undefined && !isRootFolder) {
-      // Restoring an object the library no longer has would mean creating one,
-      // which is the import pipeline's job, not a restore's. Out of scope in v1.
-      failures.push(`${label}: that object is not in the local library.`);
+        const reason = refusedFolders.get(request.folderName);
+      failures.push(`${label}: ${reason ?? 'that object is not in the local library.'}`);
       continue;
     }
 
@@ -249,6 +276,7 @@ export async function restoreArchivedFiles(
 
     restored++;
     bytesRestored += archivedStat.size;
+    if (objectId !== undefined) writtenObjects.add(objectId);
 
     // Only record a file the library does not already know about.
     //
@@ -296,5 +324,8 @@ export async function restoreArchivedFiles(
 
   for (const objectId of touchedObjects) refreshObjectFileCount(objectId);
 
-  return { ran: true, restored, skipped, bytesRestored, conflicts, failures };
+  return {
+    ran: true, restored, skipped, bytesRestored, conflicts, failures,
+    createdObjects, revivedObjects, writtenObjects: [...writtenObjects],
+  };
 }

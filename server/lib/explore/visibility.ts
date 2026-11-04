@@ -14,6 +14,8 @@ import { getPlannerCatalog, type DsoEntry } from '../dsoCatalog.js';
 import { maxPossibleAltitude, visibilityWindow } from '../astroCalc.js';
 import { computeBestImagingWindow } from '../bestImagingWindow.js';
 import { computeBestTonightScore } from '../bestTonightScore.js';
+import { buildMoonTrack, moonPenaltyFor } from '../tonightMoon.js';
+import SunCalc from 'suncalc';
 
 export interface ExploreSiteContext {
   /** Cache identity: the site id, or the transient coordinate id. */
@@ -54,6 +56,9 @@ export function getTonightIndex(ctx: ExploreSiteContext, start: Date, end: Date)
   if (hit) return hit;
 
   const byId = new Map<string, TonightEntry>();
+  // Same Moon term as GET /planner/tonight, sampled at the night's midpoint like its illumination.
+  const illumination = Math.round(SunCalc.getMoonIllumination(new Date((start.getTime() + end.getTime()) / 2)).fraction * 100);
+  const moonTrack = buildMoonTrack(ctx.lat, ctx.lon, start, end, illumination);
   for (const entry of getPlannerCatalog()) {
     if (maxPossibleAltitude(ctx.lat, entry.dec) < ctx.minAlt) continue;
     const w = visibilityWindow(entry.ra, entry.dec, ctx.lat, ctx.lon, start, end, ctx.minAlt, ctx.horizonProfile);
@@ -65,6 +70,7 @@ export function getTonightIndex(ctx: ExploreSiteContext, start: Date, end: Date)
       magnitude: entry.magnitude,
       maxAltTime: w.maxAltTime?.toISOString() ?? null,
       majorAxisArcmin: entry.majorAxisArcmin,
+      moonPenalty: moonPenaltyFor(moonTrack, entry, w.rises, w.sets),
     }, start, end).total;
     byId.set(entry.id, { maxAlt: Math.round(w.maxAlt * 10) / 10, score });
   }
@@ -101,7 +107,9 @@ const windowCache = new Map<string, ReturnType<typeof computeBestImagingWindow>>
 const WINDOW_CACHE_MAX = 4000;
 
 function bestWindow(entry: DsoEntry, ctx: ExploreSiteContext, now: Date) {
-  const key = `${entry.id}:${ctx.lat}:${ctx.lon}:${ctx.minAlt}:${now.getFullYear()}-${now.getMonth()}`;
+  // Keyed by the hour, not by the server's month: the window's months are the
+  // site's, which turn over at the site's midnight, not the server's.
+  const key = `${entry.id}:${ctx.lat}:${ctx.lon}:${ctx.minAlt}:${Math.floor(now.getTime() / 3_600_000)}`;
   const hit = windowCache.get(key);
   if (hit) return hit;
   const w = computeBestImagingWindow(entry.ra, entry.dec, ctx.lat, ctx.lon, ctx.minAlt, now);

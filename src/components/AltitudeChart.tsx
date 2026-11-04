@@ -69,6 +69,13 @@ interface AltitudeChartProps {
   /** Colour of the shading: green for time the frames prove was imaged,
    *  amber for a span only inferred from first and last timestamps. */
   highlightTone?: 'amber' | 'green';
+  /**
+   * Draw straight onto the surface behind it instead of in its own card, for a
+   * hero that is dark in every theme: no box or border, the curve in the
+   * accent colour with a soft glow beneath it, faint gridlines, and the ends
+   * of the plot fading out. Off by default, where the chart is a card of its own.
+   */
+  bare?: boolean;
 }
 
 /**
@@ -79,7 +86,7 @@ interface AltitudeChartProps {
  * with fixed 4-hour tick labels (12, 16, 20, 00, 04, 08, 12) and a marker
  * showing the object's current position.
  */
-export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, timeZone, isDark, onScrub, fill = false, viewWidth = 560, viewHeight = 160, at, focusAt, highlights, highlightTone = 'amber' }: AltitudeChartProps) {
+export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, timeZone, isDark, onScrub, fill = false, viewWidth = 560, viewHeight = 160, at, focusAt, highlights, highlightTone = 'amber', bare = false }: AltitudeChartProps) {
   const { t } = useTranslation('common');
   const { isNight } = useTheme();
   const atMs = at?.getTime();
@@ -225,11 +232,16 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
   const xToPx = (x: number) => padL + x * plotW;
   const yToPx = (y: number) => padT + (1 - y) * plotH;
 
-  const gridColor = isNight ? 'rgba(153,42,42,0.10)' : isDark ? 'rgba(148,163,184,0.10)' : 'rgba(100,116,139,0.14)';
-  const axisLabelColor = isNight ? '#661a1a' : isDark ? '#64748b' : '#94a3b8';
-  const curveColor = isNight ? '#cc3333' : isDark ? '#e2e8f0' : '#475569';
+  // Bare: the accent token, so night (red) and space (violet) follow the theme.
+  const gridColor = bare ? 'rgba(255,255,255,0.06)' : isNight ? 'rgba(153,42,42,0.10)' : isDark ? 'rgba(148,163,184,0.10)' : 'rgba(100,116,139,0.14)';
+  const axisLabelColor = bare ? 'rgba(255,255,255,0.34)' : isNight ? '#661a1a' : isDark ? '#64748b' : '#94a3b8';
+  const curveColor = bare ? 'var(--color-accent-400)' : isNight ? '#cc3333' : isDark ? '#e2e8f0' : '#475569';
   const dotFill = isNight ? '#cc3333' : isDark ? '#ffffff' : '#0f172a';
-  const dotStroke = isNight ? '#000000' : isDark ? '#0f172a' : '#ffffff';
+  const dotStroke = bare ? 'rgba(15,23,42,0.9)' : isNight ? '#000000' : isDark ? '#0f172a' : '#ffffff';
+  const glowId = `${clipId}-glow`;
+  const bandId = `${clipId}-band`;
+  const skyClipId = `${clipId}-sky`;
+  const bandRgb = isNight ? '204,51,51' : highlightTone === 'green' ? '52,211,153' : '251,191,36';
 
   // Hour labels on the even (or, for a long night, every third) hour of the
   // observer's clock. The window starts at sunset and ends at sunrise, so the
@@ -339,29 +351,29 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
 
   return (
     <div
-      className={`rounded-xl border max-w-xl ${
+      className={`max-w-xl ${
         fill ? 'flex min-h-fit flex-1 flex-col' : ''
       } ${
-        isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-50/80 border-slate-200'
+        bare ? '' : `rounded-xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-50/80 border-slate-200'}`
       }`}
     >
       {/* Header — shows hovered point when scrubbing, otherwise live "now".
           The reading and its caption share one line: a second line of label
           cost vertical space the plot can use, and the number reads the same
           either way ("47°  04:42" while scrubbing). */}
-      <div className="flex items-baseline justify-between gap-2 px-4 pt-2.5 pb-1.5">
+      <div className={`flex items-baseline justify-between gap-2 ${bare ? 'pb-1' : 'px-4 pt-2.5 pb-1.5'}`}>
         <div className="flex min-w-0 items-baseline gap-2">
-          <span className={`text-2xl font-bold leading-none tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>
+          <span className={`text-2xl font-bold leading-none tabular-nums ${bare || isDark ? 'text-white' : 'text-slate-900'}`}>
             {headerAlt}°
           </span>
           {headerLabel && (
-            <span className={`truncate text-[0.6875rem] tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            <span className={`truncate text-[0.6875rem] tabular-nums ${bare ? 'text-white/45' : isDark ? 'text-slate-500' : 'text-slate-400'}`}>
               {headerLabel}
             </span>
           )}
         </div>
         {headerDir && (
-          <div className={`shrink-0 text-sm font-semibold tracking-wide ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+          <div className={`shrink-0 text-sm font-semibold tracking-wide ${bare ? 'text-white/60' : isDark ? 'text-slate-300' : 'text-slate-600'}`}>
             {headerDir}
           </div>
         )}
@@ -376,7 +388,16 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="xMidYMid meet"
         className={`w-full cursor-crosshair touch-none overflow-hidden ${fill ? 'shrink-0 grow' : ''}`}
-        style={{ display: 'block', ...(fill ? { aspectRatio: `${W} / ${naturalH}` } : {}) }}
+        style={{
+          display: 'block',
+          ...(fill ? { aspectRatio: `${W} / ${naturalH}` } : {}),
+          // The ends dissolve into the hero. The right edge fades late so the
+          // degree labels stay readable.
+          ...(bare ? (() => {
+            const fade = 'linear-gradient(to right, transparent, #000 6%, #000 95%, transparent)';
+            return { maskImage: fade, WebkitMaskImage: fade };
+          })() : {}),
+        }}
         onPointerMove={handlePointer}
         onPointerDown={handlePointer}
         onPointerLeave={handleLeave}
@@ -462,7 +483,7 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
             x2={W - padR}
             y1={yToPx(minAlt / 90)}
             y2={yToPx(minAlt / 90)}
-            stroke={isNight ? 'rgba(204,51,51,0.45)' : isDark ? 'rgba(251,146,60,0.4)' : 'rgba(251,146,60,0.55)'}
+            stroke={bare ? 'rgba(251,191,36,0.22)' : isNight ? 'rgba(204,51,51,0.45)' : isDark ? 'rgba(251,146,60,0.4)' : 'rgba(251,146,60,0.55)'}
             strokeWidth={1}
             strokeDasharray="4 4"
           />
@@ -475,9 +496,11 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
           const x0 = Math.max(0, Math.min(1, (span.start.getTime() - start.getTime()) / spanMs));
           const x1 = Math.max(0, Math.min(1, (span.end.getTime() - start.getTime()) / spanMs));
           if (x1 <= x0) return null;
-          const fill = highlightTone === 'green'
-            ? (isNight ? 'rgba(204,51,51,0.28)' : 'rgba(52,211,153,0.28)')
-            : (isNight ? 'rgba(204,51,51,0.18)' : 'rgba(251,191,36,0.16)');
+          const fill = bare
+            ? `url(#${bandId})`
+            : highlightTone === 'green'
+              ? (isNight ? 'rgba(204,51,51,0.28)' : 'rgba(52,211,153,0.28)')
+              : (isNight ? 'rgba(204,51,51,0.18)' : 'rgba(251,191,36,0.16)');
           return (
             <rect
               key={i}
@@ -511,12 +534,39 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
           <clipPath id={clipId}>
             <rect x={0} y={0} width={W} height={H - padB + 1} />
           </clipPath>
+          {bare && (
+            <>
+              {/* Only the sky above the horizon glows, not the stretch the
+                  spline carries below it. */}
+              <clipPath id={skyClipId}>
+                <rect x={0} y={padT} width={W} height={yToPx(0) - padT} />
+              </clipPath>
+              <linearGradient id={glowId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="var(--color-accent-400)" stopOpacity="0.30" />
+                <stop offset="1" stopColor="var(--color-accent-400)" stopOpacity="0" />
+              </linearGradient>
+              {/* The imaged stretch rises from the horizon and fades upward,
+                  with no hard top edge. */}
+              <linearGradient id={bandId} x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0" stopColor={`rgb(${bandRgb})`} stopOpacity={highlightTone === 'green' ? 0.24 : 0.12} />
+                <stop offset="1" stopColor={`rgb(${bandRgb})`} stopOpacity="0" />
+              </linearGradient>
+            </>
+          )}
         </defs>
+        {bare && (
+          <path
+            clipPath={`url(#${skyClipId})`}
+            d={`${transformPath(pathD, xToPx, yToPx)} L ${xToPx(1).toFixed(1)} ${yToPx(0).toFixed(1)} L ${xToPx(0).toFixed(1)} ${yToPx(0).toFixed(1)} Z`}
+            fill={`url(#${glowId})`}
+          />
+        )}
         <path
           clipPath={`url(#${clipId})`}
           d={transformPath(pathD, xToPx, yToPx)}
           fill="none"
-          stroke={curveColor}
+          style={bare ? { stroke: curveColor } : undefined}
+          stroke={bare ? undefined : curveColor}
           strokeWidth={1.75}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -540,7 +590,7 @@ export function AltitudeChart({ ra, dec, lat, lon, minAlt, moonIllumination, tim
               x2={xToPx(activePoint.x)}
               y1={padT}
               y2={H - padB}
-              stroke={isNight ? 'rgba(153,42,42,0.35)' : isDark ? 'rgba(226,232,240,0.35)' : 'rgba(71,85,105,0.35)'}
+              stroke={bare ? 'rgba(255,255,255,0.22)' : isNight ? 'rgba(153,42,42,0.35)' : isDark ? 'rgba(226,232,240,0.35)' : 'rgba(71,85,105,0.35)'}
               strokeWidth={1}
             />
             <circle

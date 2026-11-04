@@ -24,6 +24,25 @@ function loadExpected(): Expected {
   return parsed as Expected;
 }
 
+/**
+ * Deep equality where numbers match to a relative 1e-9. The recorded values were written on another machine, and
+ * the last digit of a float from atan2 or exp is not the same on every CPU and Node build.
+ */
+function expectClose(actual: unknown, expected: unknown, where: string): void {
+  if (typeof expected === 'number' && typeof actual === 'number') {
+    const tolerance = 1e-9 * Math.max(1, Math.abs(expected));
+    expect(Math.abs(actual - expected), `${where}: ${actual} vs ${expected}`).toBeLessThanOrEqual(tolerance);
+  } else if (Array.isArray(expected) && Array.isArray(actual)) {
+    expect(actual.length, `${where} length`).toBe(expected.length);
+    expected.forEach((e, i) => expectClose(actual[i], e, `${where}[${i}]`));
+  } else if (expected !== null && typeof expected === 'object' && actual !== null && typeof actual === 'object') {
+    expect(Object.keys(actual).sort(), `${where} keys`).toEqual(Object.keys(expected).sort());
+    for (const [k, e] of Object.entries(expected)) expectClose((actual as Record<string, unknown>)[k], e, `${where}.${k}`);
+  } else {
+    expect(actual, where).toEqual(expected);
+  }
+}
+
 describe('shared frame-analysis fixtures', () => {
   const expected = loadExpected();
 
@@ -39,7 +58,7 @@ describe('shared frame-analysis fixtures', () => {
 
     it(`${name} measures as recorded`, () => {
       const m = measureFrame(fs.readFileSync(path.join(DIR, name)));
-      expect(m).toEqual(entry.metrics);
+      expectClose(m, entry.metrics, name);
     });
   }
 

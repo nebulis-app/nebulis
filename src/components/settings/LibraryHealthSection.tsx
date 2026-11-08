@@ -7,6 +7,8 @@ import {
   repairLibrary,
   getRenestStatus,
   startRenest,
+  getDuplicateFiles,
+  type DuplicateListing,
   type LibraryAnalysis,
   type RepairCategory,
 } from '../../lib/api/storage';
@@ -24,13 +26,22 @@ export function LibraryHealthSection({ isDark }: { isDark: boolean }) {
   const [result, setResult] = useState<LibraryAnalysis | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dupes, setDupes] = useState<DuplicateListing | null>(null);
 
   const fail = (err: unknown) => setError(err instanceof Error ? err.message : t('libraryHealth.failed'));
 
   const scan = useMutation({
     mutationFn: analyzeLibrary,
-    onMutate: () => { setError(null); setNotice(null); },
+    onMutate: () => { setError(null); setNotice(null); setDupes(null); },
     onSuccess: setResult,
+    onError: fail,
+  });
+
+  // Fetching the list also writes it to the server log, so it can be sent along with a bug report.
+  const listDupes = useMutation({
+    mutationFn: getDuplicateFiles,
+    onMutate: () => setError(null),
+    onSuccess: setDupes,
     onError: fail,
   });
 
@@ -43,6 +54,7 @@ export function LibraryHealthSection({ isDark }: { isDark: boolean }) {
       for (const key of ['library-cleanup', 'library-objects', 'storage', 'all-library-images']) {
         queryClient.invalidateQueries({ queryKey: [key] });
       }
+      setDupes(null);
       scan.mutate();
     },
     onError: fail,
@@ -69,7 +81,7 @@ export function LibraryHealthSection({ isDark }: { isDark: boolean }) {
     isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
   }`;
 
-  const row = (key: string, title: string, detail: string, count: number, action?: { label: string; run: () => void; disabled?: boolean }) => (
+  const row = (key: string, title: string, detail: string, count: number, action?: { label: string; run: () => void; disabled?: boolean }, extra?: { label: string; run: () => void; disabled?: boolean }) => (
     <li key={key} className="flex items-center gap-3 px-3.5 py-3">
       {count === 0
         ? <CheckCircle2 className={`w-4 h-4 shrink-0 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
@@ -80,6 +92,9 @@ export function LibraryHealthSection({ isDark }: { isDark: boolean }) {
         </div>
         <div className={`text-[0.7188rem] ${subtle}`}>{detail}</div>
       </div>
+      {count > 0 && extra && (
+        <button onClick={extra.run} disabled={busy || extra.disabled} className={btn}>{extra.label}</button>
+      )}
       {count > 0 && action && (
         <button onClick={action.run} disabled={busy || action.disabled} className={btn}>{action.label}</button>
       )}
@@ -127,7 +142,25 @@ export function LibraryHealthSection({ isDark }: { isDark: boolean }) {
               {row('duplicates', t('libraryHealth.duplicates.title'),
                 t('libraryHealth.duplicates.detail', { objects: result.duplicateFiles.objects }),
                 result.duplicateFiles.count,
-                { label: t('libraryHealth.duplicates.fix'), run: () => repair.mutate('duplicateFiles') })}
+                { label: t('libraryHealth.duplicates.fix'), run: () => repair.mutate('duplicateFiles') },
+                { label: listDupes.isPending ? t('libraryHealth.duplicates.loading') : t('libraryHealth.duplicates.view'), run: () => listDupes.mutate(), disabled: listDupes.isPending })}
+              {dupes && (
+                <li key="duplicate-list" className="px-3.5 py-3 space-y-2">
+                  <div className={`text-[11.5px] ${subtle}`}>
+                    {t('libraryHealth.duplicates.listIntro', { count: dupes.count })}
+                    {dupes.truncated && ` ${t('libraryHealth.duplicates.truncated', { shown: dupes.pairs.length })}`}
+                  </div>
+                  <ul className="max-h-72 overflow-auto space-y-2 text-[11.5px] font-mono">
+                    {dupes.pairs.map(p => (
+                      <li key={p.remove} className={isDark ? 'text-slate-300' : 'text-slate-700'}>
+                        <div className="break-all"><span className="text-red-500">{t('libraryHealth.duplicates.remove')}</span> {p.remove}</div>
+                        <div className="break-all"><span className="text-emerald-500">{t('libraryHealth.duplicates.keep')}</span> {p.keep}</div>
+                      </li>
+                    ))}
+                  </ul>
+                  <button onClick={() => setDupes(null)} className={btn}>{t('libraryHealth.duplicates.hide')}</button>
+                </li>
+              )}
               {row('flat', t('libraryHealth.flat.title'),
                 renestRunning && renest
                   ? t('libraryHealth.flat.progress', { done: renest.renest.objectsDone, total: renest.renest.objectsTotal })

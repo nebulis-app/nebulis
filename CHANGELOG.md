@@ -1,4 +1,22 @@
 # Changelog
+## 2.2.1 (308) - November 8th, 2026
+### New
+- **Three more observing catalogs:** the Catalogs page now includes the RASC Finest NGC list, the Abell planetary nebulae and the Berkeley open clusters, each with its own progress board, "My Catalog" wall, reference images, descriptions, distances and constellation data. A filter in the Catalogs banner lets you hide the programs you do not follow, and the hub cards are more compact to make room for all seven.
+- **Observable filter:** the catalog boards and the My Catalog wall have an Observable switch that hides objects that never rise above your minimum altitude from your site. It is off until you turn it on, it is remembered, and it needs a site location.
+- **Plan My Night, narrowband option:** a new checkbox, "I shoot through a dual-band or narrowband filter", sits under the cloud setting. Check it when your telescope has a built-in dual-band filter, such as a SeeStar's, and the plan uses the narrowband Moon limit for emission nebulae, so more of them are offered on moonlit nights. It is remembered, and a narrowband filter in Gear still counts without it.
+- **Two weeks ahead:** the Forecast page has a new card under the nights, with one bar for each of the next 15 nights. A bar shows the chance of a usable night, worked out from about 100 runs of three weather models (the share that give at least 3 dark hours with clouds at 30% or less). Nights past the first week are shown faded as a trend. Hover or tab to a bar for the cloud range, each model's own odds and the Moon. It follows each site's imaging window and needs the server to reach the internet. ([@jjmartres](https://github.com/jjmartres))
+- **Imaging window:** choose what counts as tonight for each site, under **Settings -> Sky -> Sites -> Edit**. Start from astronomical or nautical night, which often suits narrowband filters, and move either end by a number of minutes. The Forecast, night score, Planner, Explore, "Up tonight" and the clear-night alert all use it, so they agree. ([@jjmartres](https://github.com/jjmartres))
+
+
+### Updated
+- **Planner refinements:** the page now fits your window, with the targets and the schedule scrolling inside themselves, and the banner starts collapsed (open it with the arrow). In the collapsed banner the Moon and the cloud sit beside tonight's rating, and on wide windows the next nights sit there too, with Tonight first. The open banner is shorter, the chart under the schedule is shorter and names each target inside it, and the Visible sky button has moved to each site under **Settings -> Sky -> Sites**.
+- **Sky Forecast says which night it is:** the rating reads *Tonight · Wed, Nov 4 → Thu, Nov 5* (with *in progress* before the 7 AM rollover), Sunset and Sunrise name their weekday, and the night ribbon labels each day with a divider at midnight.
+- **Dwarf mosaic FITS:** mosaic captures now import each panel's `.fits` stack (and its lights, when subframes are on) as one mosaic object and session, instead of only the parent preview. The session card shows the combined mosaic.
+
+### Fixed
+- **Large pictures no longer crash the image editor:** a 24 MP stack could use enough memory to make Safari close the tab with a white screen when you saved. The editor now shows a screen-sized copy and the server applies the rotate, flip, crop and color changes to the original, so any size saves, on an iPhone or iPad too. Saving over a picture also keeps its first original on the server.
+- **Annotate keeps its rings after you edit a picture:** rotating, flipping or cropping an image used to throw away its plate solution, and a stitched mosaic could not be solved again, so the object names were gone. The solution now moves with the edit, and a color-only change keeps it too.
+
 ## 2.2.0 (306) - November 1st, 2026
 ### New
 - **Combined object page:** a new object page with every picture of the object in one place, in tabs for Images, Subframes, Nights and Projects, with your processed images shown large at the top. It is now the default. Switch to the Classic page, a grid of observations, with the small toggle at the top right of any object page, or pick the default under **Settings -> Library -> Object pages**. Classic may be removed in a future version.
@@ -111,7 +129,7 @@
 
 * Note - Satellite identification will be removed in v2.3. It was more of a novelty when Nebulis was first released and serves no real-world purpose
 
-## 2.1.2 (292) - October 5th, 2026
+## 2.1.2 (295) - October 5th, 2026
 ### New
 - Catalog: an object that sat inside the frame of something you imaged now counts as imaged too (example: Imaging M42 also counts M43, and imaging M51 also counts NGC 5195). These tiles show "In M42", the object popup says which object it was imaged with and opens it. How many objects count depends on your telescope's field of view, so a wider scope picks up more. Turn it off under Settings -> Library -> Credit objects in the same frame (on by default).
 - Add Telescope: a new Find device button looks for SeeStar, ASIAIR and Dwarf devices on your network. Pick one and Nebulis fills in its address and telescope type.

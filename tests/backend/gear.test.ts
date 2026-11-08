@@ -3,6 +3,11 @@ import http from 'http';
 import type { AddressInfo } from 'net';
 import express from 'express';
 import db from '../../server/lib/db';
+
+// Ticks older than the 30-day retention window are pruned on write, so test nights must be recent, not hardcoded.
+const nightDaysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+const TICK_NIGHT = nightDaysAgo(2);
+const OTHER_NIGHT = nightDaysAgo(3);
 import { apiEnvelope } from '../../server/middleware/apiEnvelope';
 import { gearRouter } from '../../server/routes/gear';
 import {
@@ -122,12 +127,12 @@ describe('kits and packing checks', () => {
 
   it('keeps tick state per kit and night, and clears it with the kit', () => {
     const kit = createKit({ name: 'Backyard', itemIds: ['a'], extraItems: ['red torch'] });
-    expect(setCheck(kit.id, '2026-10-08', 'a', true)).toEqual(['a']);
-    expect(setCheck(kit.id, '2026-10-08', 'extra:red torch', true)).toEqual(['a', 'extra:red torch']);
-    expect(getChecks(kit.id, '2026-10-09')).toEqual([]);
-    expect(setCheck(kit.id, '2026-10-08', 'a', false)).toEqual(['extra:red torch']);
+    expect(setCheck(kit.id, TICK_NIGHT, 'a', true)).toEqual(['a']);
+    expect(setCheck(kit.id, TICK_NIGHT, 'extra:red torch', true)).toEqual(['a', 'extra:red torch']);
+    expect(getChecks(kit.id, OTHER_NIGHT)).toEqual([]);
+    expect(setCheck(kit.id, TICK_NIGHT, 'a', false)).toEqual(['extra:red torch']);
     expect(deleteKit(kit.id)).toBe(true);
-    expect(getChecks(kit.id, '2026-10-08')).toEqual([]);
+    expect(getChecks(kit.id, TICK_NIGHT)).toEqual([]);
   });
 
   it('refuses a bad night or an unknown kit', () => {
@@ -201,12 +206,12 @@ describe('/gear', () => {
   it('runs a packing list for a night', async () => {
     const gear = (await call('POST', '', { kind: 'power', name: 'Bank' })).body.data;
     const kit = (await call('POST', '/kits', { name: 'Backyard', itemIds: [gear.id], extraItems: ['red torch'] })).body.data;
-    expect((await call('PUT', `/kits/${kit.id}/checks?night=2026-10-08`, { itemKey: gear.id, checked: true })).body.data)
-      .toEqual({ night: '2026-10-08', checked: [gear.id] });
-    expect((await call('GET', `/kits/${kit.id}/checks?night=2026-10-08`)).body.data.checked).toEqual([gear.id]);
-    expect((await call('DELETE', `/kits/${kit.id}/checks?night=2026-10-08`)).body.data.checked).toEqual([]);
+    expect((await call('PUT', `/kits/${kit.id}/checks?night=${TICK_NIGHT}`, { itemKey: gear.id, checked: true })).body.data)
+      .toEqual({ night: TICK_NIGHT, checked: [gear.id] });
+    expect((await call('GET', `/kits/${kit.id}/checks?night=${TICK_NIGHT}`)).body.data.checked).toEqual([gear.id]);
+    expect((await call('DELETE', `/kits/${kit.id}/checks?night=${TICK_NIGHT}`)).body.data.checked).toEqual([]);
     expect((await call('DELETE', `/kits/${kit.id}`)).body.data).toEqual({ deleted: true });
-    expect((await call('GET', `/kits/${kit.id}/checks?night=2026-10-08`)).status).toBe(404);
+    expect((await call('GET', `/kits/${kit.id}/checks?night=${TICK_NIGHT}`)).status).toBe(404);
   });
 
   it('says what is wrong', async () => {

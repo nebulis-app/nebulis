@@ -36,12 +36,15 @@ interface AltitudeBandChartProps {
 // Default / minimum chart height. The rendered height is measured at runtime
 // (see DEFAULT_HEIGHT usage) so the chart grows on tall screens; this value is
 // the floor and the pre-measurement fallback.
-const DEFAULT_HEIGHT = 160;
+const DEFAULT_HEIGHT = 102;
 const PAD_LEFT = 36;
 const PAD_RIGHT = 12;
 const PAD_TOP = 12;
 const PAD_BOTTOM = 28;     // room for hour ticks
-const LABEL_BAND_HEIGHT = 18; // strip below the plot for object names
+// Approximate width of one label character at the 11px label size, in SVG
+// units, used to trim a name to the block it sits in.
+const LABEL_CHAR_WIDTH = 6.4;
+const LABEL_PAD = 8;
 
 // Auto-range altitude: cover the full plotted set, but never tighter than
 // a 30° window so single-target plots don't look distorted. Always extends
@@ -143,7 +146,7 @@ export function AltitudeBandChart({
   const plotLeft = PAD_LEFT;
   const plotRight = SVG_WIDTH - PAD_RIGHT;
   const plotTop = PAD_TOP;
-  const plotBottom = height - PAD_BOTTOM - LABEL_BAND_HEIGHT;
+  const plotBottom = height - PAD_BOTTOM;
   const plotWidth = plotRight - plotLeft;
   const plotHeight = plotBottom - plotTop;
 
@@ -224,7 +227,7 @@ export function AltitudeBandChart({
   // `background` carries the same twilight gradient as the timeline above, so
   // both branches below (empty and populated) paint it rather than falling
   // through to the parent panel's flat bg-slate-950.
-  const wrapperStyle = { height: `clamp(${DEFAULT_HEIGHT}px, 22vh, 380px)`, background };
+  const wrapperStyle = { height: `clamp(${DEFAULT_HEIGHT}px, 12.5vh, 182px)`, background };
 
   if (sessions.length === 0) {
     // Same axis frame as the populated chart below, just with no curves to
@@ -289,7 +292,7 @@ export function AltitudeBandChart({
             strokeWidth={1}
           />
         </svg>
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-4" style={{ paddingBottom: PAD_BOTTOM + LABEL_BAND_HEIGHT }}>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-4" style={{ paddingBottom: PAD_BOTTOM }}>
           <span className="rounded-full bg-slate-950/70 px-3 py-1.5 text-xs text-white/50 ring-1 ring-inset ring-white/10">
             {t('altitudeBandChart.emptyHint')}
           </span>
@@ -420,17 +423,31 @@ export function AltitudeBandChart({
                 strokeLinejoin="round"
                 strokeLinecap="round"
               />
-              {/* Object name centered under the band */}
-              <text
-                x={(xStart + xEnd) / 2}
-                y={height - 8}
-                textAnchor="middle"
-                fontSize={11}
-                fontWeight={500}
-                fill={textColor}
-              >
-                {session.objectName}
-              </text>
+              {/* Object name inside its own band, low where the curves rarely go and
+                  trimmed to the band's width. A dark halo keeps it readable if a
+                  curve does cross it. */}
+              {(() => {
+                const maxChars = Math.floor((xEnd - xStart - LABEL_PAD * 2) / LABEL_CHAR_WIDTH);
+                if (maxChars < 3) return null;
+                const name = session.objectName;
+                const label = name.length > maxChars ? `${name.slice(0, maxChars - 1).trimEnd()}…` : name;
+                return (
+                  <text
+                    x={(xStart + xEnd) / 2}
+                    y={plotBottom - 14}
+                    textAnchor="middle"
+                    fontSize={11}
+                    fontWeight={500}
+                    fill={textColor}
+                    stroke={isNight ? 'rgb(0 0 0 / 0.6)' : 'rgb(2 6 23 / 0.7)'}
+                    strokeWidth={3}
+                    paintOrder="stroke"
+                    strokeLinejoin="round"
+                  >
+                    {label}
+                  </text>
+                );
+              })()}
             </g>
           );
         })}

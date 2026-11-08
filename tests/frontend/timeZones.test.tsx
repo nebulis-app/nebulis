@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { dateFromKey, localDateKeyOfTimestamp, nightWindowFor, plannerToday, localDateKey } from '../../src/lib/nightWindow';
 import { isUpTonight as clientIsUpTonight } from '../../src/lib/bestImagingWindow';
 import { isUpTonight as serverIsUpTonight } from '../../server/lib/bestImagingWindow';
+import { DEFAULT_WINDOW_PREFS } from '../../src/lib/imagingWindow';
 import { useLocalToday } from '../../src/hooks/useLocalToday';
 
 /**
@@ -63,7 +64,7 @@ describe('dark window for a night', () => {
   // from a browser in Tokyo or London must give the same window as from Iowa.
   it('is the same whatever zone the browser runs in', () => {
     const windows = ['America/Chicago', 'UTC', 'Asia/Tokyo', 'Pacific/Auckland'].map(tz => inZone(tz, () => {
-      const w = nightWindowFor(dateFromKey('2026-10-26'), CEDAR_RAPIDS.lat, CEDAR_RAPIDS.lon);
+      const w = nightWindowFor(dateFromKey('2026-10-26'), CEDAR_RAPIDS.lat, CEDAR_RAPIDS.lon, DEFAULT_WINDOW_PREFS);
       return w && { start: w.start.toISOString(), end: w.end.toISOString() };
     }));
     expect(windows[0]).not.toBeNull();
@@ -90,7 +91,7 @@ describe('isUpTonight: browser and server agree in the site zone', () => {
     for (const now of instants) {
       for (const { ra, dec } of targets) {
         const client = inZone('Europe/London', () =>
-          clientIsUpTonight(ra, dec, CEDAR_RAPIDS.lat, CEDAR_RAPIDS.lon, 20, now, 'America/Chicago'));
+          clientIsUpTonight(ra, dec, CEDAR_RAPIDS.lat, CEDAR_RAPIDS.lon, 20, now, 'America/Chicago', DEFAULT_WINDOW_PREFS));
         const server = inZone('UTC', () =>
           serverIsUpTonight(ra, dec, CEDAR_RAPIDS.lat, CEDAR_RAPIDS.lon, 20, now));
         expect({ now: now.toISOString(), ra, server }).toEqual({ now: now.toISOString(), ra, server: client });

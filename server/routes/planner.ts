@@ -26,6 +26,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { resolveSite, getActiveSite } from '../lib/observingSites.js';
+import { windowPrefsKey, windowPrefsOf, type ImagingWindowPrefs } from '../lib/imagingWindow.js';
 import { getAll as getWishlistAll } from '../lib/wishlist.js';
 import { getLocalObjects } from '../lib/localLibrary.js';
 import { getPlannerCatalog, searchFiltered as searchDso, filterCatalog, getById, plannerSearchFields, type DsoSort } from '../lib/dsoCatalog.js';
@@ -124,24 +125,23 @@ const plannerCache = new Map<string, PlannerCache>();
 function plannerCacheKey(
   lat: number, lon: number, observerTimezone: string, dateParam: string | undefined,
   minAlt: number, typeFilter: string | undefined, horizonProfile: number[] | undefined,
+  window: ImagingWindowPrefs,
 ): string {
   const hp = horizonProfile ? horizonProfile.join(',') : '';
-  return `${lat}:${lon}:${observerTimezone}:${dateParam ?? 'today'}:${minAlt}:${typeFilter ?? ''}:${hp}`;
+  return `${lat}:${lon}:${observerTimezone}:${dateParam ?? 'today'}:${minAlt}:${typeFilter ?? ''}:${hp}:${windowPrefsKey(window)}`;
 }
 
-function resolvePlannerDarkWindow(night: ReturnType<typeof getNightWindow>): { nightStart: Date; nightEnd: Date } | null {
-  const start = night.nightStart ?? night.nauticalDusk;
-  const end = night.nightEnd ?? night.nauticalDawn;
-  if (!start || !end || end.getTime() <= start.getTime()) return null;
-  return { nightStart: start, nightEnd: end };
+/** The site's imaging window for the night (what "dark" means in the Planner), null when the site's settings leave none. */
+function resolvePlannerDarkWindow(night: ReturnType<typeof getNightWindow>): { start: Date; end: Date } | null {
+  return night.imaging ? { start: night.imaging.start, end: night.imaging.end } : null;
 }
 
 function resolvePlannerTimelineWindow(night: ReturnType<typeof getNightWindow>): { start: Date; end: Date } | null {
   // Always use sunset→sunrise for the droppable timeline so users can schedule
   // twilight sessions. The dark window is shown as markers inside this wider
   // range but does not constrain where blocks can be placed.
-  const start = night.sunset ?? night.dusk ?? resolvePlannerDarkWindow(night)?.nightStart;
-  const end = night.sunrise ?? night.dawn ?? resolvePlannerDarkWindow(night)?.nightEnd;
+  const start = night.sunset ?? night.dusk ?? resolvePlannerDarkWindow(night)?.start;
+  const end = night.sunrise ?? night.dawn ?? resolvePlannerDarkWindow(night)?.end;
   if (!start || !end || end.getTime() <= start.getTime()) return null;
   return { start, end };
 }
@@ -205,7 +205,8 @@ router.get('/tonight', async (req: Request, res: Response) => {
   const anchor = dateParam
     ? parseLocalNoon(dateParam, observerTimezone)
     : defaultNightAnchor(now, observerTimezone);
-  const night = getNightWindow(anchor, lat, lon);
+  const windowPrefs = windowPrefsOf(site);
+  const night = getNightWindow(anchor, lat, lon, windowPrefs);
 
   const darkWindow = resolvePlannerDarkWindow(night);
   const timelineWindow = resolvePlannerTimelineWindow(night);
@@ -232,10 +233,10 @@ router.get('/tonight', async (req: Request, res: Response) => {
     res.apiSuccess(payload);
     return;
   }
-  const nightStart = darkWindow?.nightStart ?? null;
-  const nightEnd = darkWindow?.nightEnd ?? null;
-  const planningStart = darkWindow?.nightStart ?? timelineWindow.start;
-  const planningEnd = darkWindow?.nightEnd ?? timelineWindow.end;
+  const nightStart = darkWindow?.start ?? null;
+  const nightEnd = darkWindow?.end ?? null;
+  const planningStart = darkWindow?.start ?? timelineWindow.start;
+  const planningEnd = darkWindow?.end ?? timelineWindow.end;
 
   // Sample moon at the chosen night's midpoint, not "now," so future/past
   // dates get the right illumination + phase.
@@ -262,7 +263,7 @@ router.get('/tonight', async (req: Request, res: Response) => {
   // Keyed on the resolved (lat, lon, horizonProfile) tuple, which already
   // fully captures which site was used — a distinct site sharing coordinates
   // with another still differs on horizonProfile/minAlt and so gets its own key.
-  const cacheKey = plannerCacheKey(lat, lon, observerTimezone, dateParam, minAlt, typeFilter, horizonProfile);
+  const cacheKey = plannerCacheKey(lat, lon, observerTimezone, dateParam, minAlt, typeFilter, horizonProfile, windowPrefs);
   const cached = plannerCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     res.apiSuccess(cached.payload);
@@ -323,8 +324,8 @@ router.get('/tonight', async (req: Request, res: Response) => {
   // additive to every target so clients can offer a "Best Tonight" sort
   // without a second round trip. nightStart/nightEnd fall back to the wider
   // sunset-sunrise timeline on nights with no true dark window.
-  const scoreWindowStart = darkWindow?.nightStart ?? timelineWindow.start;
-  const scoreWindowEnd = darkWindow?.nightEnd ?? timelineWindow.end;
+  const scoreWindowStart = darkWindow?.start ?? timelineWindow.start;
+  const scoreWindowEnd = darkWindow?.end ?? timelineWindow.end;
   // The Moon counts against an object by how close it sits while the object is up, judged for the filter the
   // object is shot through (same thresholds as the per-block check), so a bright Moon no longer ranks the
   // Pleiades beside it above a nebula across the sky.

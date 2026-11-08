@@ -5,14 +5,20 @@
     "noneImaged": "Je hebt nog geen van deze objecten gefotografeerd.",
     "allImaged": "Elk object in deze selectie is gefotografeerd.",
     "nothingToShow": "Geen objecten om weer te geven met de huidige filters.",
-    "clearFilters": "Filters wissen"
+    "clearFilters": "Filters wissen",
+    "noneObservable": "Geen objecten in deze catalogus zijn vanaf uw locatie zichtbaar bij de huidige minimumhoogte."
   },
   "catalogsHero": {
     "percentImagedAriaLabel": "{{percent}}% van catalogusobjecten gefotografeerd",
     "imaged": "Gefotografeerd",
     "catalogObjects": "Catalogusobjecten",
     "title": "Catalogi",
-    "subtitle": "Houd bij welke objecten uit klassieke waarneemprogramma's je hebt gefotografeerd."
+    "subtitle": "Houd bij welke objecten uit klassieke waarneemprogramma's je hebt gefotografeerd.",
+    "filterLabel": "Catalogi tonen",
+    "filterEmpty": "Geen catalogi geselecteerd. Kies er minstens één om de voortgang te zien.",
+    "filterShowAll": "Alles tonen",
+    "filterAll": "Alle catalogi",
+    "filterCount": "{{selected}} van {{total}} catalogi"
   },
   "catalogMeta": {
     "messier": {
@@ -34,6 +40,21 @@
       "label": "Sharpless",
       "tagline": "313 wolken van oplichtende waterstof: de emissienevels achter veel bekende hemelobjecten.",
       "blurb": "Stewart Sharpless catalogiseerde 313 H II-gebieden op de fotografische platen van de National Geographic-hemelkartering. Dit zijn de nevels die in waterstof-alfa oplichten en geliefd zijn bij smalbandfotografen: groot, zwak en vol structuur. Sommige hebben bekende namen, zoals de Grotnevel, de Tovenaarsnevel en de Pacmannevel. Andere zijn naamloze gebieden die een lange belichting waard zijn."
+    },
+    "rasc": {
+      "label": "RASC Finest NGC",
+      "tagline": "110 NGC-schatten gekozen door de Royal Astronomical Society of Canada, zonder overlap met Messier.",
+      "blurb": "De RASC Finest NGC-lijst is het Canadese antwoord op Messier: 110 van de mooiste NGC-objecten buiten Messier, van de Dubbele Cluster tot het Beeldhouwer-sterrenstelsel. Het is in de eerste plaats een visuele lijst, maar elk object is ook een mooi fotodoel; een telescoop van 200 mm is de klassieke aanbeveling."
+    },
+    "abell": {
+      "label": "Abell planetaire nevels",
+      "tagline": "80 zwakke, oude planetaire nevels uit George Abells Palomar-survey.",
+      "blurb": "George Abell vond deze 80 planetaire nevels op Palomar Sky Survey-platen; ze zijn vaak groot en zeer zwak. Ze belonen OIII-filters, een donkere hemel en lange belichtingen; de Medusa, Abell 31 en Abell 39 zijn de pronkstukken."
+    },
+    "berkeley": {
+      "label": "Berkeley open clusters",
+      "tagline": "89 oude, losse open clusters uit de Berkeley-catalogus.",
+      "blurb": "De Berkeley-catalogus verzamelt oude open clusters die op Palomar-platen zijn gevonden, vaak los en zwak. Het zijn subtiele visuele doelen en ongewone fotoprojecten; Berkeley 17 is een van de oudste bekende open clusters."
     }
   },
   "objectClass": {
@@ -43,8 +64,10 @@
     "other": "Overig"
   },
   "catalogHero": {
-    "allCatalogs": "Alle catalogi",
+    "catalogs": "Catalogi",
+    "breadcrumb": "Cataloguspad",
     "imaged": "gefotografeerd",
+    "toGo": "te gaan",
     "programComplete": "Waarneemprogramma voltooid",
     "stillToImage_one": "{{count}} nog te fotograferen",
     "stillToImage_other": "{{count}} nog te fotograferen",
@@ -66,7 +89,8 @@
     "openBoard": "Overzicht openen",
     "myCatalog": "Mijn {{label}}",
     "myCatalogAria_one": "Mijn {{label}}-catalogus, {{count}} afbeelding",
-    "myCatalogAria_other": "Mijn {{label}}-catalogus, {{count}} afbeeldingen"
+    "myCatalogAria_other": "Mijn {{label}}-catalogus, {{count}} afbeeldingen",
+    "myCatalogShort": "Mijn catalogus"
   },
   "catalogTile": {
     "imagedAriaLabel": "{{id}}, {{name}}, gefotografeerd",
@@ -97,7 +121,11 @@
     "searchPlaceholder": "Zoek op naam, ID of sterrenbeeld",
     "searchAriaLabel": "Zoek in deze catalogus",
     "clearSearch": "Zoekopdracht wissen",
-    "sortObjects": "Sorteer objecten"
+    "sortObjects": "Sorteer objecten",
+    "observableOnly": "Zichtbaar",
+    "observableOnlyHelp": "Verberg objecten die vanaf uw locatie nooit boven {{deg}}° komen",
+    "observableOnlyNoLocation": "Stel een locatie in om op zichtbaarheid te filteren",
+    "filters": "Filters"
   },
   "catalogObjectModal": {
     "maxAltitudeHeading": "Maximale hoogte tijdens duisternis – komende 12 maanden",

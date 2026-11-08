@@ -168,7 +168,7 @@ const OFFSCREEN_TOOLTIP_STYLE: CSSProperties = { position: 'fixed', top: -9999, 
  *  so it can compute position before ever rendering; this one's height
  *  depends on the description's own length, so it renders once off-screen
  *  first to measure, then a layout effect repositions it before paint). */
-function InfoTooltip({ text, isDark }: { text: string; isDark: boolean }) {
+export function InfoTooltip({ text, isDark }: { text: string; isDark: boolean }) {
   const { t } = useTranslation('settings');
   const [hovering, setHovering] = useState(false);
   const [pinned, setPinned] = useState(false);

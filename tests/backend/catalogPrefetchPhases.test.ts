@@ -60,17 +60,17 @@ describe('prefetch phase machine', () => {
     expect(running.running).toBe(true);
 
     const done = await until(s => s.phase === 'done', 'done');
-    expect(done).toMatchObject({ running: false, errors: 0, processed: 4, total: 4, lastError: '' });
+    expect(done).toMatchObject({ running: false, errors: 0, processed: 6, total: 6, lastError: '' });
     expect(done.finishedAt).toBeGreaterThanOrEqual(done.startedAt ?? 0);
     expect(done.packCompletedAt).not.toBeNull();
-    expect(install.fn.mock.calls.map(c => (c[0] as string[])[0])).toEqual(['messier', 'caldwell', 'popular', 'sharpless']);
+    expect(install.fn.mock.calls.map(c => (c[0] as string[])[0])).toEqual(['messier', 'caldwell', 'popular', 'sharpless', 'abell', 'berkeley']);
   });
 
   it('the full scope also installs the extended tier', async () => {
     install.fn.mockImplementation(async (tiers: string[]) => installed(tiers[0]));
     startPrefetch({ packsOnly: true, scope: 'full' });
     await until(s => s.phase === 'done', 'done');
-    expect(install.fn.mock.calls.map(c => (c[0] as string[])[0])).toEqual(['messier', 'caldwell', 'popular', 'extended', 'sharpless']);
+    expect(install.fn.mock.calls.map(c => (c[0] as string[])[0])).toEqual(['messier', 'caldwell', 'popular', 'extended', 'sharpless', 'abell', 'berkeley']);
   });
 
   it('counts tiers that failed to install, but still finishes done (the live phases fill the gaps)', async () => {
@@ -90,7 +90,7 @@ describe('prefetch phase machine', () => {
     install.fn.mockRejectedValue(new Error('boom'));
     startPrefetch({ packsOnly: true });
     const done = await until(s => s.phase === 'done', 'done');
-    expect(done.errors).toBe(4);
+    expect(done.errors).toBe(6);
   });
 
   it('refuses to start a second job while one runs', async () => {

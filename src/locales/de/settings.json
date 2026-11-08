@@ -585,7 +585,9 @@
         "caldwell": "Caldwell",
         "popular": "Beliebte DSOs",
         "extended": "Erweitert",
-        "sharpless": "Sharpless"
+        "sharpless": "Sharpless",
+        "abell": "Abell",
+        "berkeley": "Berkeley"
       }
     }
   },
@@ -1083,12 +1085,14 @@
     "photosCaptionPlaceholder": "Beschriftung hinzufügen",
     "photosUploadFailed": "{{name}} konnte nicht hochgeladen werden: {{reason}}",
     "imagingWindowLabel": "Aufnahmefenster",
-    "darknessLabel": "Beginnt mit",
-    "darknessAstronomical": "Astronomische Nacht (Sonne −18°)",
-    "darknessNautical": "Nautische Nacht (Sonne −12°)",
+    "darknessLabel": "Beginnt ab",
+    "darknessAstronomical": "Astronomische Nacht (Sonne bei -18°)",
+    "darknessNautical": "Nautische Nacht (Sonne bei -12°)",
     "startOffsetLabel": "Beginn, Minuten nach der Dämmerung",
     "endOffsetLabel": "Ende, Minuten vor der Morgendämmerung",
-    "imagingWindowHelp": "Die Stunden, die die Wetterseite, ihre Wertung und die Klare-Nacht-Benachrichtigung als heute Nacht zählen. Schmalbandfilter schneiden den größten Teil des Dämmerungslichts ab, daher reicht oft die nautische Nacht, die etwa 35 Minuten früher beginnt. Mit den Minuten beginnen Sie später oder hören vor der Morgendämmerung auf; ein negativer Wert verschiebt dieses Ende in die andere Richtung."
+    "imagingWindowHelp": "Zählt als diese Nacht in der Vorhersage, im Nachtwert, im Planer und in der Alarmmeldung für klare Nächte. Positiv: beginnt später oder endet früher; negativ: umgekehrt. Schmalbandfilter schneiden Dämmerungslicht ab, daher funktioniert der Start ab der nautischen Nacht oft.",
+    "windowPreview": "Heute Nacht: {{start}} bis {{end}} ({{hours}} Std.)",
+    "windowPreviewNone": "Mit diesen Einstellungen bleibt heute Nacht kein Aufnahmefenster."
   },
   "enterCodeModal": {
     "title": "Apple TV verknüpfen",
@@ -1532,7 +1536,14 @@
     "duplicates": {
       "title": "Doppelte Dateien",
       "detail": "Dieselbe Aufnahme liegt in zwei Ordnern eines Objekts, in {{objects}} Objekten. Beim Bereinigen bleibt die vom Teleskop benannte Kopie erhalten; die andere wird gelöscht, sobald die Bytes nachweislich identisch sind.",
-      "fix": "Duplikate entfernen"
+      "fix": "Duplikate entfernen",
+      "view": "Duplikate anzeigen",
+      "loading": "Lädt…",
+      "hide": "Liste ausblenden",
+      "listIntro": "{{count}} Datei(en) würden entfernt. Dieselbe Liste steht im Server-Protokoll.",
+      "truncated": "Angezeigt werden die ersten {{shown}}.",
+      "remove": "Entfernen",
+      "keep": "Behalten"
     },
     "flat": {
       "title": "Objekte mit flachem Layout",

@@ -19,12 +19,6 @@ export function ok<T>(data: T) {
 // ─── Forecast fixture ─────────────────────────────────────────────────────────
 
 /**
- * A full `ForecastData` payload anchored to the machine's current date, so the
- * page's "tonight" filtering always finds hours to draw. Cloud cover is given a
- * deliberate shape (a clear middle of the night between two cloudy ends) so the
- * night ribbon has something to render rather than a flat line.
- */
-/**
  * Fifteen nights of the ensemble outlook (GET /forecast/outlook), from
  * tonight, with a clear spell on nights 2 to 4 and a cloudy one on night 6.
  */
@@ -65,6 +59,12 @@ function buildOutlookMock() {
   };
 }
 
+/**
+ * A full `ForecastData` payload anchored to the machine's current date, so the
+ * page's "tonight" filtering always finds hours to draw. Cloud cover is given a
+ * deliberate shape (a clear middle of the night between two cloudy ends) so the
+ * night ribbon has something to render rather than a flat line.
+ */
 function buildForecastMock() {
   const midnightLocal = new Date();
   midnightLocal.setHours(0, 0, 0, 0);

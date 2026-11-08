@@ -34,7 +34,15 @@ function parseCuratedJson(data: unknown): CatalogEntry[] {
 }
 
 const catalog: CatalogEntry[] = parseCuratedJson(CURATED_ROWS);
-const curatedMap = new Map(catalog.map(e => [e.id.toUpperCase(), e]));
+const curatedMap = new Map<string, CatalogEntry>();
+for (const entry of catalog) {
+  curatedMap.set(entry.id.toUpperCase(), entry);
+  // Display ids with a space ("Abell 1", "Berkeley 1") must also resolve from
+  // their compact lookup form ("ABELL1", "BERK1"), the same key the catalog
+  // boards and the native apps use.
+  const compact = entry.id.toUpperCase().replace(/\s+/g, '').replace(/^BERKELEY(?=\d)/, 'BERK');
+  if (!curatedMap.has(compact)) curatedMap.set(compact, entry);
+}
 
 // ─── Listed rows: the browse catalog ─────────────────────────────────
 // Originally OpenNGC (https://github.com/mattiaverga/OpenNGC, CC BY-SA 4.0)
@@ -399,10 +407,14 @@ export function getAlsoKnownAs(id: string): string[] {
     .sort((a, b) => designationRank(a) - designationRank(b));
   const surveyRank = designationRank('LDN1');
   const display = record.name.toLowerCase();
+  // A designation can be the object's display name ("Abell 31" on the SH2-290
+  // record). It is the same name, not an alias, so it must not repeat below
+  // the title.
+  const notTheDisplayName = (d: string) => displayDesignation(d).toLowerCase() !== display;
   const names = record.names.filter(n => n.toLowerCase() !== display);
   return [
-    ...others.filter(d => designationRank(d) < surveyRank).map(displayDesignation),
+    ...others.filter(d => notTheDisplayName(d) && designationRank(d) < surveyRank).map(displayDesignation),
     ...names,
-    ...others.filter(d => designationRank(d) >= surveyRank).map(displayDesignation),
+    ...others.filter(d => notTheDisplayName(d) && designationRank(d) >= surveyRank).map(displayDesignation),
   ];
 }

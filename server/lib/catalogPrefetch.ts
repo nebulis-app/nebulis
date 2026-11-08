@@ -936,7 +936,7 @@ async function runJob(
   if (!singlePhase) {
     // 'curated' deliberately skips 'extended' — a smaller, hand-picked scope.
     const tiersForScope: CatalogTier[] = scope === 'curated'
-      ? ['messier', 'caldwell', 'popular', 'sharpless']
+      ? ['messier', 'caldwell', 'popular', 'sharpless', 'abell', 'berkeley']
       : [...CATALOG_TIERS];
 
     saveStatus({ ...getPrefetchStatus(), phase: 'pack', processed: 0, total: tiersForScope.length, errors: 0 });

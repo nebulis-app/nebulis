@@ -1016,7 +1016,10 @@
       "footerOverwriteTelescope": "Save replaces this file. New version keeps the original and adds an edited copy.",
       "footerOverwriteProcessed": "Save replaces this image. New version keeps the original in Processed Images.",
       "footerNewTelescope": "Saves alongside the original telescope images",
-      "footerNewProcessed": "Saves to Processed Images"
+      "footerNewProcessed": "Saves to Processed Images",
+      "linkedConfirmBody": "This picture is in a linked folder, so Nebulis did not make it. Replace it in place? Nebulis keeps a copy of the first original.",
+      "linkedConfirmYes": "Replace the file",
+      "linkedConfirmNo": "Cancel"
     }
   },
   "fitsViewer": {

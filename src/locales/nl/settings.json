@@ -585,7 +585,9 @@
         "caldwell": "Caldwell",
         "popular": "Populaire DSO's",
         "extended": "Uitgebreid",
-        "sharpless": "Sharpless"
+        "sharpless": "Sharpless",
+        "abell": "Abell",
+        "berkeley": "Berkeley"
       }
     }
   },
@@ -1083,12 +1085,14 @@
     "photosCaptionPlaceholder": "Voeg een bijschrift toe",
     "photosUploadFailed": "{{name}} kon niet worden geüpload: {{reason}}",
     "imagingWindowLabel": "Opnamevenster",
-    "darknessLabel": "Begint bij",
-    "darknessAstronomical": "Astronomische nacht (zon −18°)",
-    "darknessNautical": "Nautische nacht (zon −12°)",
+    "darknessLabel": "Begint vanaf",
+    "darknessAstronomical": "Astronomische nacht (zon op -18°)",
+    "darknessNautical": "Nautische nacht (zon op -12°)",
     "startOffsetLabel": "Begin, minuten na de schemering",
     "endOffsetLabel": "Einde, minuten voor de dageraad",
-    "imagingWindowHelp": "De uren die de weerpagina, haar score en de melding voor een heldere nacht als vannacht tellen. Smalbandfilters snijden het meeste schemerlicht weg, dus de nautische nacht volstaat vaak en begint zo'n 35 minuten eerder. Met de minuten begin je later of stop je voor de dageraad; een negatieve waarde verschuift dat einde de andere kant op."
+    "imagingWindowHelp": "Telt als vannacht in de Voorspelling, de nachtscore, de Planner en de melding voor een heldere nacht. Positief: begint later of stopt eerder; negatief: andersom. Smalbandfilters houden schemerlicht tegen, dus beginnen vanaf de nautische nacht werkt vaak.",
+    "windowPreview": "Vannacht: {{start}} tot {{end}} ({{hours}} u)",
+    "windowPreviewNone": "Met deze instellingen blijft er vannacht geen opnamevenster over."
   },
   "enterCodeModal": {
     "title": "Apple TV koppelen",
@@ -1532,7 +1536,14 @@
     "duplicates": {
       "title": "Dubbele bestanden",
       "detail": "Dezelfde opname staat in twee mappen van één object, bij {{objects}} objecten. Opruimen behoudt de door de telescoop benoemde kopie en verwijdert de andere zodra de bytes aantoonbaar identiek zijn.",
-      "fix": "Dubbelen verwijderen"
+      "fix": "Dubbelen verwijderen",
+      "view": "Dubbelen bekijken",
+      "loading": "Laden…",
+      "hide": "Lijst verbergen",
+      "listIntro": "{{count}} bestand(en) zouden worden verwijderd. Dezelfde lijst staat in het serverlogboek.",
+      "truncated": "De eerste {{shown}} worden getoond.",
+      "remove": "Verwijderen",
+      "keep": "Behouden"
     },
     "flat": {
       "title": "Objecten zonder indeling per nacht",

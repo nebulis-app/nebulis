@@ -44,6 +44,8 @@ import {
   extractTargetFromSessionFolder,
   extractTimestampFromSessionFolder,
   isDwarfSessionFolder,
+  isDwarfMosaicFolder,
+  isDwarfMosaicPanelFolder,
   discoverGenericObjects,
   listGenericObjectFiles,
   buildGenericFilePath,
@@ -2417,9 +2419,12 @@ export async function syncSessionSubFrames(
       const mapped: Array<SubFrameCandidate | null> = subFiles
         .filter(e => /\.f(?:it|its|ts)$/i.test(e.name))
         .map(e => {
-          const slash = e.name.indexOf('/');
-          const sessionFolder = slash >= 0 ? e.name.slice(0, slash) : '';
-          const basename = slash >= 0 ? e.name.slice(slash + 1) : e.name;
+          // Tagged as `<sessionFolder>/<basename>`, or
+          // `<sessionFolder>/<panel>/<basename>` for a mosaic panel.
+          const parts = e.name.split('/');
+          const sessionFolder = parts[0] ?? '';
+          const subPath = sanitizeDwarfSubPath(parts.slice(1, -1));
+          const basename = parts[parts.length - 1];
 
           if (objectLayout === 'nested') {
             // Mirror runImport's nested-Dwarf branch (import.ts, toImportFile
@@ -2429,7 +2434,7 @@ export async function syncSessionSubFrames(
             // save a second, differently-named copy of the same frame at the
             // object root instead of inside the session folder the rest of
             // this object's files already live in.
-            if (!isSafeRemoteFileName(basename)) return null;
+            if (!isSafeRemoteFileName(basename) || subPath === null) return null;
             // No per-file date re-derivation here, matching runImport's own
             // nested-Dwarf branch: the renamed, parse-friendly name that
             // would let sessionNightFor look at the file's own embedded time
@@ -2437,13 +2442,14 @@ export async function syncSessionSubFrames(
             const night = dwarfFolderNightDate(sessionFolder);
             if (night !== targetDate) return null;
             const sessionDir = sessionFolderFor(sessionFolder || null, night, null);
-            if (!sessionDir) return null;
+            const dir = sessionDir && subPath ? `${sessionDir}/${subPath}` : sessionDir;
+            if (!dir) return null;
             return {
               remotePath: buildDwarfFilePath(e.name, obj._dwarfSessionBase),
               localName: basename,
               originalName: basename,
               size: e.size,
-              sessionFolder: sessionDir,
+              sessionFolder: dir,
             };
           }
 
@@ -3621,6 +3627,19 @@ export async function commitFolderImport(plan: CommitPlan): Promise<void> {
         if (objectLayout !== 'nested') return '';
         const srcDir = path.dirname(file.relPath);
         const base = srcDir === '.' ? null : path.basename(srcDir);
+        // A mosaic's panel folders are session folders too, but they belong
+        // inside the capture's own session folder rather than beside it:
+        // `<mosaic parent>/<panel>/<file>`. Keeping the panel as a sub-directory
+        // is what lets one session hold several panels without their identical
+        // `shotsInfo.json` / `stacked.jpg` names colliding.
+        if (base && isDwarfMosaicPanelFolder(base)) {
+          const parentName = path.basename(path.dirname(srcDir));
+          if (isDwarfMosaicFolder(parentName)) {
+            const parent = sanitizeSessionFolder(parentName);
+            const panel = sanitizeSessionFolder(base);
+            if (parent && panel) return `${parent}/${panel}`;
+          }
+        }
         const source = base && isDwarfSessionFolder(base) ? base : null;
         return sessionFolderFor(source, night, null) ?? night;
       };

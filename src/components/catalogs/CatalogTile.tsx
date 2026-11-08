@@ -8,6 +8,7 @@
  */
 import { memo } from 'react';
 import { getCatalogStaticThumbnailUrl, getCatalogThumbnailUrl } from '../../lib/catalogImage';
+import { catalogDisplayId } from '../../lib/catalogMeta';
 import type { CatalogProgressObject } from '../../lib/api/catalogs';
 import { Check, Layers, Star } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -52,7 +53,8 @@ export const CatalogTile = memo(function CatalogTile({ object, isDark, accent, f
   const fitStrings = fit ? fitDisplayStrings(fit, t) : null;
 
   // Secondary line: prefer the common name, fall back to the object type.
-  const subtitle = object.name !== object.id ? object.name : object.type;
+  const displayId = catalogDisplayId(object.id);
+  const subtitle = object.name !== object.id && object.name !== displayId ? object.name : object.type;
 
   return (
     <button
@@ -64,10 +66,10 @@ export const CatalogTile = memo(function CatalogTile({ object, isDark, accent, f
         focus-visible:ring-accent-500/40`}
       style={{ boxShadow: imaged ? `0 14px 30px -18px ${accent}b3` : '0 10px 24px -20px rgba(0,0,0,0.9)' }}
       aria-label={inFrameHost
-        ? t('catalogTile.inFrameAriaLabel', { id: object.id, name: object.name, host: inFrameHost })
+        ? t('catalogTile.inFrameAriaLabel', { id: displayId, name: object.name, host: inFrameHost })
         : imaged
-        ? t('catalogTile.imagedAriaLabel', { id: object.id, name: object.name })
-        : t('catalogTile.notImagedAriaLabel', { id: object.id, name: object.name })}
+        ? t('catalogTile.imagedAriaLabel', { id: displayId, name: object.name })
+        : t('catalogTile.notImagedAriaLabel', { id: displayId, name: object.name })}
     >
       <img
         src={staticUrl}
@@ -159,7 +161,7 @@ export const CatalogTile = memo(function CatalogTile({ object, isDark, accent, f
             className="font-display text-[0.8125rem] font-bold leading-none tracking-wide"
             style={{ color: imaged ? accent : 'rgba(255,255,255,0.92)' }}
           >
-            {object.id}
+            {displayId}
           </span>
           {object.constellation && (
             <span className="ml-auto truncate text-[0.625rem] uppercase tracking-wider text-white/45">

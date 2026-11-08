@@ -12,7 +12,7 @@
  * stays theme-driven while this stays night-side.
  */
 import type { ReactNode } from 'react';
-import { ChevronDown, ChevronRight, ChevronUp, CloudSun, Crosshair, Droplets, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, CloudSun, Droplets, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatTime, scoreHex, scoreLabel } from '../../lib/forecastScore';
 import type { NightConditions } from '../../lib/plannerNight';
@@ -24,7 +24,6 @@ import { translateMoonPhase } from '../../lib/moonPhaseLabel';
 import type { NightFilterAdvice } from '../../lib/nightFilterAdvice';
 import { formatDate } from '../../lib/formatLocale';
 import { useTheme } from '../../hooks/useTheme';
-import { useCollapsedHero } from '../../hooks/useCollapsedHero';
 
 interface Props {
   date: Date;
@@ -52,6 +51,14 @@ interface Props {
    *  visibility condition (only known lat/lon), so it is passed in already
    *  decided rather than gated here. */
   siteControl?: ReactNode;
+  /** Owned by the page, which also needs it to know whether the night picker
+   *  has moved up into this banner. */
+  collapsed: boolean;
+  onCollapsedChange: (next: boolean) => void;
+  /** The night picker in its slim form, given the verdict block to show as the
+   *  selected night. Shown in the collapsed banner from 1440px up, where the
+   *  verdict stops standing alone; the page keeps its own row everywhere else. */
+  nightPicker?: (verdict: ReactNode) => ReactNode;
 }
 
 export function NightHero({
@@ -70,14 +77,17 @@ export function NightHero({
   onOpenWeather,
   status,
   siteControl,
+  collapsed,
+  onCollapsedChange: setCollapsed,
+  nightPicker,
 }: Props) {
   const { t } = useTranslation('planner');
   const { isNight } = useTheme();
-  const [collapsed, setCollapsed] = useCollapsedHero('planner');
   const hex = conditions ? scoreHex(conditions.score, isNight) : (isNight ? '#661a1a' : '#64748b');
   const fmt = (d: Date | null) => (d ? formatTime(d.toISOString(), timeZone) : null);
 
   const dateLabel = formatDate(date, { weekday: 'long', month: 'long', day: 'numeric' });
+  const dateLabelShort = formatDate(date, { month: 'short', day: 'numeric' });
   const moonTimes = [
     fmt(moonRise) && t('nightHero.rises', { time: fmt(moonRise) }),
     fmt(moonSet) && t('nightHero.sets', { time: fmt(moonSet) }),
@@ -100,11 +110,71 @@ export function NightHero({
     </button>
   );
 
+  // The night's verdict with the Moon and cloud beside it. On a wide screen it
+  // becomes the selected chip inside the night picker instead of standing alone.
+  const verdictBlock = (
+      <div
+        role={onOpenWeather ? 'button' : undefined}
+        tabIndex={onOpenWeather ? 0 : undefined}
+        onClick={onOpenWeather}
+        onKeyDown={onOpenWeather
+          ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenWeather(); } }
+          : undefined}
+        title={onOpenWeather ? t('nightHero.openForecastTitle') : undefined}
+        aria-label={onOpenWeather ? t('nightHero.openForecastTitle') : undefined}
+        className={`flex min-w-0 items-center gap-2.5 rounded-lg ${
+          onOpenWeather ? 'cursor-pointer outline-none transition hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:ring-white/30' : ''
+        }`}
+      >
+        {conditions ? (
+          <ScoreDial score={conditions.score} size={36} showLabel={false} />
+        ) : (
+          <CloudSun className="h-5 w-5 text-white/25" />
+        )}
+        <div className="min-w-0 leading-tight">
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span
+              className="text-sm font-bold"
+              style={conditions ? { color: hex } : { color: isNight ? '#882222' : '#e2e8f0' }}
+            >
+              {conditions ? scoreLabel(conditions.score, t) : t('nightHero.noForecastYet')}
+            </span>
+            <span className="flex items-center gap-1.5 text-[0.6875rem] text-white/45">
+              {isToday ? t('nightHero.tonight') : t('nightHero.planning')}
+              <span className="text-white/30">{dateLabelShort}</span>
+              {status}
+            </span>
+          </div>
+          {/* The Moon and the sky's cloud ride along with the verdict: they are
+              the two facts that decide how good the night is. */}
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[0.6875rem] text-white/55">
+            {/* The picture shows the phase, so the name is left to the tooltip. */}
+            <span className="inline-flex items-center gap-1.5" title={translateMoonPhase(t, moonPhase)}>
+              <MoonDisk illumination={moonIllumination} phase={moonPhase} size={18} />
+              {t('nightHero.litPercent', { percent: Math.round(moonIllumination) })}
+            </span>
+            {conditions && (
+              <span>{t('nightHero.cloudPercent', { percent: Math.round(conditions.cloudCover) })}</span>
+            )}
+            {conditions?.dewRisk && (
+              <span className="inline-flex items-center gap-1 text-amber-300/90">
+                <Droplets className="h-3 w-3" />
+                {t('nightHero.dewRisk')}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+  );
+
   if (collapsed) {
-    // One slim row: the same two facts and the one action, so the schedule below gets the room.
+    // One slim row: the verdict with the Moon and cloud beside it, and the one action, so the schedule below gets the room.
     return (
-      <section className="relative overflow-hidden rounded-2xl bg-slate-950 hero-panel">
-        <HeroBackdrop image={PAGE_HERO.planner} intensity={0.2} rounded="rounded-2xl" />
+      <section className="relative rounded-2xl bg-slate-950 hero-panel">
+        {/* The backdrop clips itself, not the banner: the night picker's key opens a popover that has to hang below it. */}
+        <div className="absolute inset-0 overflow-hidden rounded-2xl">
+          <HeroBackdrop image={PAGE_HERO.planner} intensity={0.2} rounded="rounded-2xl" />
+        </div>
         <div
           className="pointer-events-none absolute inset-0 rounded-2xl"
           style={{ boxShadow: `inset 0 0 0 1px ${isNight ? 'rgba(204,51,51,0.10)' : 'rgba(255,255,255,0.10)'}` }}
@@ -112,49 +182,9 @@ export function NightHero({
         <div className="relative flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5 sm:px-5">
           {/* The nav already says Planner; keep the heading for screen readers only. */}
           <h1 className="sr-only">{t('nightHero.title')}</h1>
-          <div
-            role={onOpenWeather ? 'button' : undefined}
-            tabIndex={onOpenWeather ? 0 : undefined}
-            onClick={onOpenWeather}
-            onKeyDown={onOpenWeather
-              ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenWeather(); } }
-              : undefined}
-            title={onOpenWeather ? t('nightHero.openForecastTitle') : undefined}
-            aria-label={onOpenWeather ? t('nightHero.openForecastTitle') : undefined}
-            className={`flex min-w-0 items-center gap-2.5 rounded-lg ${
-              onOpenWeather ? 'cursor-pointer outline-none transition hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:ring-white/30' : ''
-            }`}
-          >
-            {conditions ? (
-              <ScoreDial score={conditions.score} size={36} showLabel={false} />
-            ) : (
-              <CloudSun className="h-5 w-5 text-white/25" />
-            )}
-            <div className="min-w-0 leading-tight">
-              <div
-                className="text-sm font-bold"
-                style={conditions ? { color: hex } : { color: isNight ? '#882222' : '#e2e8f0' }}
-              >
-                {conditions ? scoreLabel(conditions.score, t) : t('nightHero.noForecastYet')}
-              </div>
-              <div className="flex items-center gap-1.5 text-[0.6875rem] text-white/45">
-                {isToday ? t('nightHero.tonight') : t('nightHero.planning')}
-                <span className="text-white/30">{dateLabel}</span>
-                {status}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <MoonDisk illumination={moonIllumination} phase={moonPhase} size={28} />
-            <div className="leading-tight">
-              <div className="text-xs font-semibold text-white">{translateMoonPhase(t, moonPhase)}</div>
-              <div className="text-[0.6875rem] text-white/45 tabular-nums">
-                {t('nightHero.litPercent', { percent: Math.round(moonIllumination) })}
-              </div>
-            </div>
-          </div>
-          {conditions?.dewRisk && (
-            <StatChip icon={Droplets} tone="warn">{t('nightHero.dewRisk')}</StatChip>
+          <div className={nightPicker ? 'min-w-0 min-[1440px]:hidden' : 'min-w-0'}>{verdictBlock}</div>
+          {nightPicker && (
+            <div className="hidden min-w-0 flex-1 min-[1440px]:flex">{nightPicker(verdictBlock)}</div>
           )}
           <div className="ml-auto flex items-center gap-2">
             {siteControl}
@@ -197,24 +227,20 @@ export function NightHero({
         style={{ boxShadow: `inset 0 0 0 1px ${isNight ? 'rgba(204,51,51,0.10)' : 'rgba(255,255,255,0.10)'}` }}
       />
 
-      {/* One padded panel, title and content together, rather than two
-          stacked boxes with a hard rule between them — matching how the
-          Observations hero reads as a single card. */}
-      <div className="relative flex flex-col gap-5 p-5 sm:p-7">
-        <div className="flex items-center justify-between gap-4">
-          <h1 className="font-display flex items-center gap-2.5 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            <Crosshair className="h-6 w-6 sm:h-7 sm:w-7" style={{ color: accent }} />
-            {t('nightHero.title')}
-          </h1>
-          <div className="flex items-center gap-2">
+      {/* One padded panel. There is no big page title: the nav already says
+          Planner, the collapsed banner hides it, and dropping it gives the
+          targets and the schedule that row back. The site picker and the
+          collapse toggle ride on the verdict row instead. */}
+      <div className="relative p-4 sm:p-5">
+        <h1 className="sr-only">{t('nightHero.title')}</h1>
+        {/* Column on a phone: at that width the parts cannot share a row without
+            the verdict collapsing into the Moon. The site picker and toggle lead
+            there, and end the row from sm up. */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6">
+          <div className="order-first ml-auto flex items-center gap-2 sm:order-last">
             {siteControl}
             {toggleButton}
           </div>
-        </div>
-
-        {/* Column on a phone: at that width the three parts cannot share a row
-            without the verdict collapsing into the Moon. */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6">
           {/* Rating. The whole block opens the night's full forecast: the number
               invites the question "why", and this is the answer. */}
           <div
@@ -235,9 +261,9 @@ export function NightHero({
             }`}
           >
             {conditions ? (
-              <ScoreDial score={conditions.score} size={78} showLabel={false} />
+              <ScoreDial score={conditions.score} size={64} showLabel={false} />
             ) : (
-              <div className="flex h-[78px] w-[78px] shrink-0 items-center justify-center rounded-full ring-1 ring-inset ring-white/10">
+              <div className="flex h-[64px] w-[64px] shrink-0 items-center justify-center rounded-full ring-1 ring-inset ring-white/10">
                 <CloudSun className="h-6 w-6 text-white/25" />
               </div>
             )}

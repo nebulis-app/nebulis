@@ -119,14 +119,14 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes,
   return (
     <Link
       to={`/object/${encodeURIComponent(object.id)}`}
-      className={`group card-hover block rounded-2xl overflow-hidden border transition-all ${
+      className={`group card-hover flex flex-col h-full rounded-2xl overflow-hidden border transition-all ${
         isDark
           ? 'bg-slate-900 border-slate-800 hover:border-accent-400'
           : 'bg-white border-slate-200 hover:border-accent-400 shadow-sm hover:shadow-md'
       }`}
     >
       {/* Preview area with sky image */}
-      <div className={`relative overflow-hidden ${compact ? 'h-28 sm:h-auto sm:aspect-[4/3]' : 'h-28 sm:h-48'} ${
+      <div className={`relative overflow-hidden shrink-0 ${compact ? 'h-28 sm:h-auto sm:aspect-[4/3]' : 'h-28 sm:h-48'} ${
         isDark
           ? 'bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800'
           : 'bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100'
@@ -239,7 +239,7 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes,
       </div>
 
       {/* Content */}
-      <div className={compact ? 'p-2 sm:p-2.5' : 'p-3 sm:p-5'}>
+      <div className={`flex flex-col flex-1 ${compact ? 'p-2 sm:p-2.5' : 'p-3 sm:p-4'}`}>
         <h3 className={`font-display font-semibold text-sm ${compact ? 'sm:text-xs' : 'sm:text-lg'} mb-0.5 sm:mb-1 truncate ${
           isDark ? 'text-slate-100' : 'text-slate-900'
         }`}>
@@ -251,15 +251,25 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes,
           </p>
         )}
 
-        <div className={`${compact ? 'hidden' : 'flex'} flex-wrap items-center gap-1.5 sm:gap-2 mt-2 sm:mt-3 -ml-1.5 sm:-ml-2.5`}>
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[0.6875rem] sm:text-xs font-medium truncate max-w-full ${
+        {/* Footer pinned to the bottom so cards in a row line up. Campaign
+            progress ("4h left · D2", nothing when no goals) sits above the
+            type chip and count; both are hidden on the compact grid. */}
+        <div className={`${compact ? 'hidden' : 'block'} mt-auto pt-2 sm:pt-3`}>
+        {!compact && (
+          <div className="mb-2 flex flex-wrap items-center gap-1 empty:hidden">
+            <LibraryIntegrationRemainingChips libraryObjectId={object.id} isDark={isDark} />
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-2 -ml-1.5 sm:-ml-2.5">
+          <span title={object.type} className={`inline-flex items-center gap-1 min-w-0 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[0.6875rem] sm:text-xs font-medium ${
             getTypeColor(object.type, isDark)
           }`}>
-            {object.type}
+            <span className="truncate">
+            {object.type}</span>
           </span>
 
 {((object.sessionCount ?? 0) > 0 || (object.projectArchiveCount ?? 0) > 0) && (
-            <span className="ml-auto flex flex-col items-end gap-0.5">
+            <span className="ml-auto shrink-0 whitespace-nowrap flex flex-col items-end gap-0.5">
               {object.sessionCount !== undefined && object.sessionCount > 0 && (
                 <span className={`inline-flex items-center gap-1 text-xs ${
                   isDark ? 'text-slate-500' : 'text-slate-400'
@@ -283,14 +293,7 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes,
           )}
         </div>
 
-        {/* Campaign progress ("4h left · D2") for objects with integration
-            goals; renders nothing otherwise. Hidden on the compact grid,
-            like the metadata row above. */}
-        {!compact && (
-          <div className="mt-2 flex flex-wrap items-center gap-1 empty:hidden">
-            <LibraryIntegrationRemainingChips libraryObjectId={object.id} isDark={isDark} />
-          </div>
-        )}
+        </div>
 
       </div>
     </Link>

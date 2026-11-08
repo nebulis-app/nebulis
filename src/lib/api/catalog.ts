@@ -96,7 +96,7 @@ interface CatalogCacheStats {
   wikiNotFound: number;
 }
 export interface PackStateRow {
-  tier: 'messier' | 'caldwell' | 'popular' | 'extended' | 'sharpless';
+  tier: 'messier' | 'caldwell' | 'popular' | 'extended' | 'sharpless' | 'abell' | 'berkeley';
   version: string;
   installedAt: number;
   objectCount: number;

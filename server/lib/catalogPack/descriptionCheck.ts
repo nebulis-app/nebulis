@@ -23,6 +23,8 @@ function numberPatterns(designation: string): RegExp[] {
     case 'C': return [new RegExp(`\\bC(?:aldwell)?[\\s\\u00a0]?${tail}${b}`)];
     case 'MEL': return [new RegExp(`\\bMel(?:otte)?[\\s\\u00a0]?${tail}${b}`, 'i')];
     case 'CR': return [new RegExp(`\\bCollinder[\\s\\u00a0]?${tail}${b}`, 'i')];
+    case 'ABELL': return [new RegExp(`\\bAbell[\\s\\u00a0]?${tail}${b}`, 'i')];
+    case 'BERK': return [new RegExp(`\\b(?:Berkeley|Berk)[\\s\\u00a0]?${tail}${b}`, 'i')];
     default: return [new RegExp(`\\b${prefix}[\\s\\u00a0]?${tail}${b}`)];
   }
 }

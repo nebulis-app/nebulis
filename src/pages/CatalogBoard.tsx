@@ -1,5 +1,5 @@
 /**
- * Progress board for a named observing catalog (Messier, Caldwell, Herschel 400).
+ * Progress board for a named observing catalog.
  * Route: /catalogs/:catalog
  *
  * The hub presents each program as a tall poster; a board opens with the same
@@ -7,7 +7,7 @@
  * and the type breakdown live in the banner, so the only thing that stays
  * pinned while scrolling is a slim bar of controls.
  */
-import { useCallback, useState, useMemo, useDeferredValue } from 'react';
+import { useCallback, useEffect, useState, useMemo, useDeferredValue } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { SearchX, Telescope } from 'lucide-react';
@@ -20,6 +20,7 @@ import { useResolvedFov } from '../hooks/useResolvedFov';
 import { useWishlist } from '../hooks/useWishlist';
 import { classifyFit, objectExtentArcmin, type FitAssessment } from '../lib/telescopeFov';
 import { compareBy } from '../lib/catalogSort';
+import { maxAltitudeForDec } from '../lib/catalogVisibility';
 import { CatalogHero } from '../components/catalogs/CatalogHero';
 import { CatalogToolbar, type SortKey, type StatusFilter } from '../components/catalogs/CatalogToolbar';
 import { CatalogTile } from '../components/catalogs/CatalogTile';
@@ -45,6 +46,12 @@ export function CatalogBoard() {
   const [typeFilter, setTypeFilter] = useState<ObjectClass | null>(null);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('catalog');
+  const [observableOnly, setObservableOnly] = useState<boolean>(() => {
+    try { return localStorage.getItem('catalogs.observableOnly') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('catalogs.observableOnly', observableOnly ? '1' : '0'); } catch { /* storage unavailable */ }
+  }, [observableOnly]);
   // Tracked by catalog id rather than grid index: an index would go stale
   // the moment a filter/sort/search change reshuffles the array underneath
   // an open modal, either pointing at the wrong object or needing an effect
@@ -69,8 +76,10 @@ export function CatalogBoard() {
 
   const progress = progressQuery.data;
   const settings = settingsQuery.data;
-  const observerLat = settings?.latitude ?? null;
-  const observerLon = settings?.longitude ?? null;
+  const hasSiteCoords = settings?.latitude != null && settings?.longitude != null
+    && (settings.latitude !== 0 || settings.longitude !== 0);
+  const observerLat = hasSiteCoords ? settings.latitude : null;
+  const observerLon = hasSiteCoords ? settings.longitude : null;
   const minAlt = settings?.minAlt ?? 20;
   const meta = getCatalogMeta(catalog);
 
@@ -82,6 +91,22 @@ export function CatalogBoard() {
   // The FOV currently in effect (Settings → Telescopes, or the Framing
   // modal's saved pick) — used to badge every tile with "does this fit my
   // frame" and to drive the "Best frame fit" sort.
+  // Maximum altitude an object can ever reach from this latitude. A southern
+  // target in the northern hemisphere has a small or negative value, which is
+  // exactly the "never observable from my site" case the board filter hides.
+  const maxAltById = useMemo(() => {
+    const map = new Map<string, number | null>();
+    if (observerLat == null) return map;
+    for (const o of progress?.objects ?? []) {
+      map.set(o.id, o.dec == null ? null : maxAltitudeForDec(o.dec, observerLat));
+    }
+    return map;
+  }, [progress, observerLat]);
+  const isObservable = useCallback((o: CatalogProgressObject): boolean => {
+    const maxAlt = maxAltById.get(o.id);
+    return maxAlt == null || maxAlt >= minAlt;
+  }, [maxAltById, minAlt]);
+
   const fov = useResolvedFov();
   const fitById = useMemo(() => {
     const map = new Map<string, FitAssessment | null>();
@@ -120,12 +145,13 @@ export function CatalogBoard() {
       if (filter === 'imaged' && !o.isImaged) return false;
       if (filter === 'remaining' && o.isImaged) return false;
       if (typeFilter && o.typeClass !== typeFilter) return false;
+      if (observableOnly && !isObservable(o)) return false;
       if (needle && !matchesSearch(o, needle)) return false;
       return true;
     });
     // 'catalog' keeps the server's ordering, which is already catalog order.
     return sort === 'catalog' ? result : [...result].sort(compareBy(sort, fitById));
-  }, [progress, filter, typeFilter, deferredSearch, sort, fitById]);
+  }, [progress, filter, typeFilter, observableOnly, isObservable, deferredSearch, sort, fitById]);
 
   const statusCounts = useMemo(() => {
     // Counts on the status pills reflect the type and search filters, so the
@@ -133,11 +159,13 @@ export function CatalogBoard() {
     const objects = progress?.objects ?? [];
     const needle = deferredSearch.trim().toLowerCase();
     const scoped = objects.filter(o =>
-      (!typeFilter || o.typeClass === typeFilter) && (!needle || matchesSearch(o, needle))
+      (!typeFilter || o.typeClass === typeFilter)
+      && (!observableOnly || isObservable(o))
+      && (!needle || matchesSearch(o, needle))
     );
     const imaged = scoped.filter(o => o.isImaged).length;
     return { all: scoped.length, imaged, remaining: scoped.length - imaged };
-  }, [progress, typeFilter, deferredSearch]);
+  }, [progress, typeFilter, observableOnly, isObservable, deferredSearch]);
 
   const selectedIndex = selectedId ? filteredObjects.findIndex(o => o.id === selectedId) : -1;
   // A filter/sort/search change that scrolls the selected object out of the
@@ -145,7 +173,10 @@ export function CatalogBoard() {
   // prev/next controls for.
   const selected = selectedIndex >= 0 ? filteredObjects[selectedIndex] : null;
 
-  if (progressQuery.isLoading) {
+  // Wait for the observer's site too. The "observable" filter hides objects that never rise at that latitude, and it
+  // cannot tell until the site arrives, so a board drawn first lists every object and then drops the southern ones a
+  // moment later, and every tile below the gap jumps. Settings are cached across pages, so this is rarely a wait.
+  if (progressQuery.isLoading || settingsQuery.isLoading) {
     return <BoardSkeleton isDark={isDark} />;
   }
 
@@ -159,6 +190,7 @@ export function CatalogBoard() {
     );
   }
 
+  const observableCount = progress.objects.filter(isObservable).length;
   const canPlan =
     observerLat != null && observerLon != null && progress.objects.some(o => !o.isImaged);
 
@@ -189,6 +221,11 @@ export function CatalogBoard() {
           onSortChange={setSort}
           shownCount={filteredObjects.length}
           isDark={isDark}
+          observableOnly={observableOnly}
+          onObservableOnlyChange={setObservableOnly}
+          observableCount={observableCount}
+          hasLocation={observerLat != null}
+          minAlt={minAlt}
         />
       </div>
 
@@ -198,7 +235,8 @@ export function CatalogBoard() {
             isDark={isDark}
             searching={search.trim().length > 0}
             filter={filter}
-            onReset={() => { setSearch(''); setFilter('all'); setTypeFilter(null); }}
+            observableOnly={observableOnly}
+            onReset={() => { setSearch(''); setFilter('all'); setTypeFilter(null); setObservableOnly(false); }}
           />
         ) : (
           <div
@@ -260,11 +298,12 @@ export function CatalogBoard() {
 }
 
 function EmptyState({
-  isDark, searching, filter, onReset,
+  isDark, searching, filter, observableOnly, onReset,
 }: {
   isDark: boolean;
   searching: boolean;
   filter: StatusFilter;
+  observableOnly: boolean;
   onReset: () => void;
 }) {
   const { t } = useTranslation('catalogs');
@@ -275,7 +314,9 @@ function EmptyState({
       ? t('catalogBoard.noneImaged')
       : filter === 'remaining'
         ? t('catalogBoard.allImaged')
-        : t('catalogBoard.nothingToShow');
+        : observableOnly
+          ? t('catalogBoard.noneObservable')
+          : t('catalogBoard.nothingToShow');
 
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-24">

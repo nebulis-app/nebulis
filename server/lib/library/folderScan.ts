@@ -31,7 +31,12 @@ import {
 import { planObjectFolder, groupByTarget, targetFromFileName, isNonObjectFolder, isDeviceModelFolder } from './objectDiscovery.js';
 import { deriveFileDate, confidenceForSource, type DerivedDate, type DateSource } from './dateDerivation.js';
 import { isStartrailsFolder, STARTRAILS_TARGET_NAME } from './dwarfStartrails.js';
-import { isDwarfSessionFolder, extractTargetFromSessionFolder, getWalkerConfig } from '../walkers/index.js';
+import {
+  isDwarfSessionFolder,
+  isDwarfMosaicFolder,
+  extractTargetFromSessionFolder,
+  getWalkerConfig,
+} from '../walkers/index.js';
 import type { TelescopeKind } from '../telescopes.js';
 import { log } from '../logger.js';
 
@@ -481,6 +486,24 @@ function collectLevel(
   relPrefix: string,
   depth: number,
 ): { sources: ObjectSource[]; excludedFolders: string[] } {
+  // A Dwarf mosaic capture is one observation, not one object per panel. When
+  // the wizard is pointed at the mosaic parent itself, its direct children are
+  // the panel folders; without this they each became a separate
+  // "IC 1805(1)" / "IC 1805(2)" source, and the parent's own loose preview was
+  // a third object that could be imported on its own with no panel data.
+  const selfName = path.basename(rootPath);
+  if (depth === 0 && isDwarfMosaicFolder(selfName)) {
+    const target = extractTargetFromSessionFolder(selfName) ?? selfName;
+    const excluded = entries
+      .filter(e => e.isDirectory() && isNonObjectFolder(e.name))
+      .map(e => relPrefix + e.name)
+      .sort();
+    return {
+      sources: [{ folderName: target, sourceDirs: [rootPath], topLevelOnly: false }],
+      excludedFolders: excluded,
+    };
+  }
+
   const allDirs = entries.filter(e => e.isDirectory());
   const candidateDirs = allDirs.filter(e => !isNonObjectFolder(e.name));
   // Hand-organised trees group objects under category folders ("1. Caldwell

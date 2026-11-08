@@ -19,6 +19,7 @@ import { formatDuration } from '../../lib/plannerNight';
 import { StatCell } from '../ui/StatCell';
 import { BestImagingChart } from '../ui/BestImagingChart';
 import { computeBestImagingWindow } from '../../lib/bestImagingWindow';
+import { useActiveWindowPrefs } from '../../hooks/useActiveWindowPrefs';
 import { WISHLIST_PRIORITIES, type WishlistItem, type WishlistPriority } from '../../lib/api/wishlist';
 import { searchDsoCatalog, type PlannerTarget } from '../../lib/api/planner';
 
@@ -118,11 +119,12 @@ export const WishlistCard = memo(function WishlistCard({
   // Cheap either way: 12 monthly night windows at 15-minute sampling measures
   // at under a millisecond.
   const hasLocation = observerLat != null && observerLon != null;
+  const windowPrefs = useActiveWindowPrefs();
   const bestWindow = useMemo(
     () => (!target && hasLocation && ra != null && dec != null
-      ? computeBestImagingWindow(ra, dec, observerLat, observerLon, minAlt, observerTimezone)
+      ? computeBestImagingWindow(ra, dec, observerLat, observerLon, minAlt, observerTimezone, windowPrefs)
       : null),
-    [target, hasLocation, ra, dec, observerLat, observerLon, minAlt, observerTimezone],
+    [target, hasLocation, ra, dec, observerLat, observerLon, minAlt, observerTimezone, windowPrefs],
   );
 
   return (

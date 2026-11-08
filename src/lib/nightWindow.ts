@@ -7,6 +7,7 @@
  * since that's when DSO imaging actually pays off.
  */
 import SunCalc from 'suncalc';
+import { resolveWindow, type ImagingWindowPrefs } from './imagingWindow';
 
 /**
  * The hour (local time) the observing-night calendar date rolls over. 07:00
@@ -55,28 +56,23 @@ export function observerNoonAnchor(date: Date, lon: number, dayOffset: number): 
   return new Date(utcNoon - (lon / 15) * 3_600_000);
 }
 
-export function nightWindowFor(date: Date, lat: number, lon: number): { start: Date; end: Date } | null {
+/**
+ * The site's imaging window for the night that begins on `date`'s evening (src/lib/imagingWindow.ts): the astronomical
+ * night by default, nautical where it never gets that dark, moved as the site's settings say. `prefs` is required so
+ * a caller cannot forget the site and quietly get the default. Null when there is no window.
+ *
+ * SunCalc returns Invalid Date when an event doesn't occur (astronomical twilight never reaches at high summer
+ * latitudes), which `validDate` turns into null so the resolver can fall back.
+ */
+export function nightWindowFor(date: Date, lat: number, lon: number, prefs: ImagingWindowPrefs): { start: Date; end: Date } | null {
   const evening = SunCalc.getTimes(observerNoonAnchor(date, lon, 0), lat, lon);
   const morning = SunCalc.getTimes(observerNoonAnchor(date, lon, 1), lat, lon);
-
-  const start = evening.night;
-  const end = morning.nightEnd;
-
-  // SunCalc returns Invalid Date when an event doesn't occur (e.g. astronomical
-  // twilight never reaches at high summer latitudes). Fall back to nautical
-  // twilight. If even that does not occur, report no dark window.
-  const validStart = start instanceof Date && !isNaN(start.getTime());
-  const validEnd = end instanceof Date && !isNaN(end.getTime());
-  if (validStart && validEnd) return { start, end };
-
-  const eveningFallback = evening.nauticalDusk;
-  const morningFallback = morning.nauticalDawn;
-  if (eveningFallback instanceof Date && !isNaN(eveningFallback.getTime()) &&
-      morningFallback instanceof Date && !isNaN(morningFallback.getTime())) {
-    return { start: eveningFallback, end: morningFallback };
-  }
-
-  return null;
+  const validDate = (d: Date): Date | null => (d instanceof Date && !isNaN(d.getTime()) ? d : null);
+  const w = resolveWindow({
+    astronomicalDusk: validDate(evening.night), astronomicalDawn: validDate(morning.nightEnd),
+    nauticalDusk: validDate(evening.nauticalDusk), nauticalDawn: validDate(morning.nauticalDawn),
+  }, prefs);
+  return w ? { start: w.start, end: w.end } : null;
 }
 
 /**

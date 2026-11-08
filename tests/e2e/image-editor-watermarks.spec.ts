@@ -64,9 +64,11 @@ test.describe('Image editor: saved watermarks', () => {
       .jpeg().toBuffer();
     await page.route('**/api/library/file?path=**', r =>
       r.fulfill({ status: 200, contentType: 'image/jpeg', body: grey }));
+    await page.route('**/api/library/image-edit/preview**', r =>
+      r.fulfill({ status: 200, contentType: 'image/jpeg', body: grey }));
     await page.route('**/api/library/objects/*/media**', r => r.fulfill(json(ok(media))));
-    await page.route('**/api/library/objects/*/sessions/*/library-files', r =>
-      r.fulfill(json(ok({ objectId: 'M42', date: '2024-03-15', filename: 'Stacked_M42.jpg' }))));
+    await page.route('**/api/library/image-edit', r =>
+      r.fulfill(json(ok({ kind: 'telescope', path: 'M42/Stacked_M42.jpg', bytes: 1 }))));
     await page.route('**/preferences/watermarks', r => {
       if (r.request().method() === 'PUT') {
         saved = r.request().postDataJSON() as Preset[];

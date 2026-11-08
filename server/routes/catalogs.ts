@@ -15,8 +15,13 @@ import { prewarmThumbnails, findCachedMaster, startPrefetch, getPrefetchStatus }
 import { resolveCanonicalId } from '../lib/catalogAliases.js';
 import { HERSCHEL400_IDS } from '../lib/herschel400Catalog.js';
 import { SHARPLESS_CATALOG } from '../lib/sharplessCatalog.js';
+import { RASC_FINEST_IDS } from '../lib/rascCatalog.js';
+import { ABELL_IDS } from '../lib/abellCatalog.js';
+import { BERKELEY_IDS } from '../lib/berkeleyCatalog.js';
 import { raToHours, decToDegs } from '../lib/astroCalc.js';
 import { computeBestImagingWindow, isUpTonight } from '../lib/bestImagingWindow.js';
+import { resolveSite } from '../lib/observingSites.js';
+import { windowPrefsOf } from '../lib/imagingWindow.js';
 import { classOfType } from '../lib/objectCategories.js';
 import { hostsOf } from '../lib/companions.js';
 import { companionKey, frameRadiusDeg } from '../lib/companionGeometry.js';
@@ -64,6 +69,24 @@ const CATALOG_CONFIGS: Record<string, CatalogDef> = {
     buildIds(): string[] {
       // Sharpless catalog order is the Sh2-N numbering itself.
       return SHARPLESS_CATALOG.map(e => e.id);
+    },
+  },
+  rasc: {
+    label: 'RASC Finest NGC',
+    buildIds(): string[] {
+      return [...RASC_FINEST_IDS];
+    },
+  },
+  abell: {
+    label: 'Abell Planetary Nebulae',
+    buildIds(): string[] {
+      return [...ABELL_IDS];
+    },
+  },
+  berkeley: {
+    label: 'Berkeley Open Clusters',
+    buildIds(): string[] {
+      return [...BERKELEY_IDS];
     },
   },
 };
@@ -152,8 +175,11 @@ router.get('/best-window', (req: Request, res: Response) => {
     return;
   }
 
-  const window = computeBestImagingWindow(ra, dec, lat, lon, minAlt);
-  const upTonight = isUpTonight(ra, dec, lat, lon);
+  // The site's imaging window, like every other "tonight": the site named by siteId, else the active one.
+  const siteId = typeof req.query.siteId === 'string' ? req.query.siteId : undefined;
+  const prefs = windowPrefsOf(resolveSite({ siteId }));
+  const window = computeBestImagingWindow(ra, dec, lat, lon, minAlt, undefined, prefs);
+  const upTonight = isUpTonight(ra, dec, lat, lon, undefined, undefined, undefined, prefs);
 
   res.apiSuccess({ ...window, upTonight });
 });
@@ -193,7 +219,7 @@ function computeCatalogProgress(catalogKey: string, def: CatalogDef) {
 
     // Parse the catalog number from the ID string (M-number for Messier,
     // C-number for Caldwell, Sh2-N for Sharpless).
-    const numMatch = rawId.match(/^(?:M|C|SH2-)(\d+)$/i);
+    const numMatch = rawId.match(/^(?:M|C|SH2-|ABELL|BERK)(\d+)$/i);
     const catalogNum = numMatch ? parseInt(numMatch[1], 10) : null;
 
     const type = entry?.type ?? 'Unknown';
@@ -291,6 +317,8 @@ export interface WallTile {
   name: string;
   typeClass: ObjectClass;
   majorAxisArcmin: number | null;
+  /** Declination in degrees, for the "observable from my site" filter. */
+  dec: number | null;
   /** The library object whose photo this tile shows (the host, for an in-frame credit). */
   libraryObjectId: string | null;
   /** True when the tile shows the user's own picture. False renders a number cell. */
@@ -360,6 +388,7 @@ router.get('/:catalog/wall', async (req: Request, res: Response) => {
           name: o.name,
           typeClass: o.typeClass,
           majorAxisArcmin: sizeArcmin,
+          dec: o.dec,
           libraryObjectId: libId,
           imaged: image != null,
           inFrame: o.imagedVia != null,

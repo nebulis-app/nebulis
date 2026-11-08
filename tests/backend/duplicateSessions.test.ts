@@ -13,7 +13,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
   return dir;
 });
 
-import { findDuplicateSessionFiles, fixDuplicateSessionFiles } from '../../server/lib/library/duplicateSessions';
+import { findDuplicateSessionFiles, fixDuplicateSessionFiles, listAndLogDuplicates } from '../../server/lib/library/duplicateSessions';
 import { recordLibraryFile, getLibraryFileRow } from '../../server/lib/library/libraryFiles';
 import { setObjectLayout } from '../../server/lib/library/libraryLayout';
 import { stmts } from '../../server/lib/library/objects';
@@ -27,7 +27,7 @@ const NIGHT_DIR = '2026-09-15';
 const DEVICE_DIR = 'DWARF_RAW_TELE_C 6_EXP_15_GAIN_60_2026-09-15-20-51-09-353';
 const NAME = 'C 6_15s60_Duo-Band_20260915-205109160_29C.fits';
 
-function seed(sessionDir: string, fileName: string, bytes: string, importedAt: string): string {
+function seed(sessionDir: string, fileName: string, bytes: string | Buffer, importedAt: string): string {
   const dir = path.join(LIBRARY_DIR, FOLDER, sessionDir);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, fileName), bytes);
@@ -63,7 +63,7 @@ describe('duplicate session files', () => {
     const night = seed(NIGHT_DIR, NAME, 'same-bytes', '2026-09-25T14:26:00Z');
     const device = seed(DEVICE_DIR, NAME, 'same-bytes', '2026-09-25T14:43:00Z');
 
-    const scan = findDuplicateSessionFiles();
+    const scan = await findDuplicateSessionFiles();
     expect(scan.count).toBe(1);
     expect(scan.pairs[0]).toMatchObject({ keep: device, remove: night });
 
@@ -74,7 +74,7 @@ describe('duplicate session files', () => {
     expect(fs.existsSync(path.join(LIBRARY_DIR, device))).toBe(true);
     expect(getLibraryFileRow(night)).toBeUndefined();
     expect(getLibraryFileRow(device)).toBeDefined();
-    expect(findDuplicateSessionFiles().count).toBe(0);
+    expect((await findDuplicateSessionFiles()).count).toBe(0);
   });
 
   it('repoints a session hero image at the surviving copy', async () => {
@@ -92,13 +92,26 @@ describe('duplicate session files', () => {
     expect(row?.sessionImage).toBe(device);
   });
 
-  it('never deletes when the bytes differ, even though name and size match', async () => {
+  it('does not list a same-named, same-sized file whose content differs', async () => {
     const night = seed(NIGHT_DIR, NAME, 'aaaaaaaaaa', '2026-09-25T14:26:00Z');
     const device = seed(DEVICE_DIR, NAME, 'bbbbbbbbbb', '2026-09-25T14:43:00Z');
 
-    const result = await fixDuplicateSessionFiles();
+    expect((await findDuplicateSessionFiles()).count).toBe(0);
+    expect(await fixDuplicateSessionFiles()).toEqual({ removed: 0, freedBytes: 0, skipped: 0 });
+    expect(fs.existsSync(path.join(LIBRARY_DIR, night))).toBe(true);
+    expect(fs.existsSync(path.join(LIBRARY_DIR, device))).toBe(true);
+  });
 
-    expect(result).toMatchObject({ removed: 0, skipped: 1 });
+  it('still refuses to delete when the files differ only where the sample check does not look', async () => {
+    // 300 KB; the samples cover [0,64K), the middle 64K, and the last 64K. Offset 80K is in none of them.
+    const a = Buffer.alloc(300 * 1024, 1);
+    const b = Buffer.from(a);
+    b[80 * 1024] = 2;
+    const night = seed(NIGHT_DIR, NAME, a, '2026-09-25T14:26:00Z');
+    const device = seed(DEVICE_DIR, NAME, b, '2026-09-25T14:43:00Z');
+
+    expect((await findDuplicateSessionFiles()).count).toBe(1);
+    expect(await fixDuplicateSessionFiles()).toMatchObject({ removed: 0, skipped: 1 });
     expect(fs.existsSync(path.join(LIBRARY_DIR, night))).toBe(true);
     expect(fs.existsSync(path.join(LIBRARY_DIR, device))).toBe(true);
   });
@@ -113,14 +126,13 @@ describe('duplicate session files', () => {
       captureDate: '2026-09-15', captureTime: '205109', bytes: 10,
     });
 
-    const result = await fixDuplicateSessionFiles();
-
-    expect(result).toMatchObject({ removed: 0, skipped: 1 });
+    expect((await findDuplicateSessionFiles()).count).toBe(0);
+    expect(await fixDuplicateSessionFiles()).toMatchObject({ removed: 0 });
     expect(fs.existsSync(path.join(LIBRARY_DIR, night))).toBe(true);
     expect(fs.existsSync(path.join(deviceDir, NAME))).toBe(true);
   });
 
-  it('does not treat the same file name on two different nights as a duplicate', () => {
+  it('does not treat the same file name on two different nights as a duplicate', async () => {
     seed(NIGHT_DIR, 'shotsInfo.json', 'same-bytes', '2026-09-25T14:26:00Z');
     const other = path.join(LIBRARY_DIR, FOLDER, '2026-10-02');
     fs.mkdirSync(other, { recursive: true });
@@ -130,7 +142,32 @@ describe('duplicate session files', () => {
       originalName: 'shotsInfo.json', captureDate: '2026-10-02', captureTime: '210000', bytes: 10,
     });
 
-    expect(findDuplicateSessionFiles().count).toBe(0);
+    expect((await findDuplicateSessionFiles()).count).toBe(0);
+  });
+
+  it('lists the pairs it would remove without touching any file', async () => {
+    const night = seed(NIGHT_DIR, NAME, 'same-bytes', '2026-09-25T14:26:00Z');
+    const device = seed(DEVICE_DIR, NAME, 'same-bytes', '2026-09-25T14:43:00Z');
+
+    const listing = await listAndLogDuplicates();
+
+    expect(listing).toMatchObject({ count: 1, objects: 1, truncated: false });
+    expect(listing.pairs).toEqual([{ objectId: OBJECT_ID, keep: device, remove: night, bytes: 10 }]);
+    expect(fs.existsSync(path.join(LIBRARY_DIR, night))).toBe(true);
+    expect(getLibraryFileRow(night)).toBeDefined();
+  });
+
+  it('does not pair two device-named sessions on the same night', async () => {
+    const a = 'DWARF_RAW_TELE_C 5_EXP_60_GAIN_60_2026-02-26-21-54-49-673';
+    const b = 'DWARF_RAW_TELE_C 5_EXP_120_GAIN_40_2026-02-26-23-11-44-030';
+    for (const dir of [a, b]) {
+      seed(dir, 'img_stacked_all.tif', 'same-size-1', '2026-09-25T14:26:00Z');
+      db.prepare("UPDATE libraryFiles SET captureDate = '2026-02-26', captureTime = '215449' WHERE relPath LIKE ?")
+        .run(`${FOLDER}/${dir}/%`);
+    }
+
+    expect((await findDuplicateSessionFiles()).count).toBe(0);
+    expect(await fixDuplicateSessionFiles()).toEqual({ removed: 0, freedBytes: 0, skipped: 0 });
   });
 
   it('is a no-op when there is nothing duplicated', async () => {

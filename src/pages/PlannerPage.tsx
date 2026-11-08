@@ -32,7 +32,8 @@ import { CalendarRange, CalendarPlus, Check, Copy, ListTree, Frame, Moon, Share2
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../hooks/useTheme';
 import { getPlannerTargets, getForecastForSite, getBlockVerdicts, type ForecastHour, type PlannerTarget } from '../lib/api/planner';
-import { getSites, getActiveSite, setActiveSite, updateSite, type ObservingSite } from '../lib/api/sites';
+import { getSites, getActiveSite, setActiveSite, type ObservingSite } from '../lib/api/sites';
+import { windowPrefsOf } from '../lib/imagingWindow';
 import { SitePicker } from '../components/SitePicker';
 import { listPlannedSessions, createPlannedSession, updatePlannedSession, deletePlannedSession, type PlannedSession, type PlannedSessionCreate } from '../lib/api/plannedSessions';
 import { getCatalogObjectInfo } from '../lib/api/catalog';
@@ -45,12 +46,13 @@ import { SkyChart } from '../components/planner/SkyChart';
 import { computeAltitudeCurve, buildObservingWindow } from '../lib/altaz';
 import { LibraryPanel } from '../components/planner/LibraryPanel';
 import { ScheduleTimeline } from '../components/planner/ScheduleTimeline';
-import { VisibleSkyEditor } from '../components/ui/VisibleSkyEditor';
 import { AltitudeBandChart } from '../components/planner/AltitudeBandChart';
 import { PlanCalendar } from '../components/planner/PlanCalendar';
 import { NightHero } from '../components/planner/NightHero';
 import { NightStrip, type StripNight } from '../components/planner/NightStrip';
-import { PlannerActions, VisibleSkyButton } from '../components/planner/PlannerActions';
+import { NightStripCompact } from '../components/planner/NightStripCompact';
+import { useCollapsedHero } from '../hooks/useCollapsedHero';
+import { PlannerActions } from '../components/planner/PlannerActions';
 import { WishlistPanel } from '../components/planner/WishlistPanel';
 import { useWishlist } from '../hooks/useWishlist';
 import type { WishlistItem } from '../lib/api/wishlist';
@@ -133,6 +135,7 @@ export function PlannerPage() {
   const accent = isNight ? '#f87171' : isSpace ? '#a78bfa' : '#fbbf24';
   const queryClient = useQueryClient();
   const wishlist = useWishlist();
+  const [heroCollapsed, setHeroCollapsed] = useCollapsedHero('planner', true);
   const location = useLocation();
   const navigate = useNavigate();
   // Router state is untyped; each field is read with its own check.
@@ -158,6 +161,11 @@ export function PlannerPage() {
   const effectiveSiteId = pickedSiteId ?? activeSiteQuery.data?.id ?? null;
   const currentSite: ObservingSite | null =
     sites.find(s => s.id === effectiveSiteId) ?? activeSiteQuery.data ?? null;
+  // The viewed site's imaging window: what "dark" means on this page (src/lib/imagingWindow.ts).
+  const windowPrefs = useMemo(
+    () => windowPrefsOf(currentSite),
+    [currentSite?.darkness, currentSite?.windowStartOffsetMin, currentSite?.windowEndOffsetMin], // eslint-disable-line react-hooks/exhaustive-deps -- `currentSite` changes identity on every refetch
+  );
 
   const setActiveSiteMut = useMutation({
     mutationFn: (siteId: string) => setActiveSite(siteId),
@@ -230,8 +238,8 @@ export function PlannerPage() {
       ? { start: new Date(darkStartIso), end: new Date(darkEndIso) }
       : observerLat == null || observerLon == null
         ? null
-        : nightWindowFor(selectedDate, observerLat, observerLon)
-  ), [darkStartIso, darkEndIso, observerLat, observerLon, selectedDate]);
+        : nightWindowFor(selectedDate, observerLat, observerLon, windowPrefs)
+  ), [darkStartIso, darkEndIso, observerLat, observerLon, selectedDate, windowPrefs]);
   const nightStart = nightWindow?.start ?? null;
   const nightEnd = nightWindow?.end ?? null;
 
@@ -359,7 +367,7 @@ export function PlannerPage() {
       const date = new Date(stripStart.getFullYear(), stripStart.getMonth(), stripStart.getDate() + i, 12, 0, 0);
       const key = localDateKey(date);
       const window = observerLat != null && observerLon != null
-        ? nightWindowFor(date, observerLat, observerLon)
+        ? nightWindowFor(date, observerLat, observerLon, windowPrefs)
         : null;
       const midpoint = window
         ? new Date((window.start.getTime() + window.end.getTime()) / 2)
@@ -388,7 +396,7 @@ export function PlannerPage() {
       });
     }
     return out;
-  }, [stripStart, stripNightCount, observerLat, observerLon, forecastHourly, observerTimezone, settingsToday, stripSessionsQuery.data, t]);
+  }, [stripStart, stripNightCount, observerLat, observerLon, forecastHourly, observerTimezone, settingsToday, stripSessionsQuery.data, t, windowPrefs]);
 
   // ── Mutations ──────────────────────────────────────────────────────────
   const createMut = useMutation({
@@ -478,20 +486,6 @@ export function PlannerPage() {
   const createMutate = createMut.mutate;
   const updateMutate = updateMut.mutate;
   const deleteMutate = deleteMut.mutate;
-  const [skyMapSaveError, setSkyMapSaveError] = useState<string | null>(null);
-  const saveSkyMapMut = useMutation({
-    mutationFn: (map: VisibleSkyMap) => {
-      if (!effectiveSiteId) return Promise.reject(new Error(t('plannerPage.noObservingSiteSelected')));
-      return updateSite(effectiveSiteId, { visibleSkyMap: map });
-    },
-    onSuccess: () => {
-      setSkyMapSaveError(null);
-      queryClient.invalidateQueries({ queryKey: ['sites'] });
-      queryClient.invalidateQueries({ queryKey: ['active-site'] });
-      queryClient.invalidateQueries({ queryKey: ['settings'] });
-    },
-    onError: (err: Error) => setSkyMapSaveError(err.message ?? t('plannerPage.failedToSaveSkyMap')),
-  });
 
   // ── Drag state ─────────────────────────────────────────────────────────
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -520,7 +514,6 @@ export function PlannerPage() {
   // nothing happened at all, with no way to tell that from the tap simply not
   // registering. This surfaces exactly which of those checks failed.
   const [quickAddNotice, setQuickAddNotice] = useState<string | null>(null);
-  const [skyEditorOpen, setSkyEditorOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [autoPlanOpen, setAutoPlanOpen] = useState(false);
   const [autoPlanRange, setAutoPlanRange] = useState<{ start: Date; end: Date; clearFirst: boolean } | null>(null);
@@ -1200,9 +1193,6 @@ export function PlannerPage() {
     );
   }
 
-  const visibleCellCount = visibleSkyMap ? visibleSkyMap.filter(Boolean).length : SKY_MAP_CELLS;
-  const skyConfigured = Boolean(visibleSkyMap);
-
   // Auto-plan scheduling window. The button is offered whenever there's a real
   // dark window to fill for the selected location and date. The actual start
   // ("now" rounded up when we're already into tonight, else dusk) is captured
@@ -1348,9 +1338,13 @@ export function PlannerPage() {
     </div>
   );
 
+  // From lg up the page is one screen tall (the nav is 4rem plus a 1px border,
+  // and the layout pads 2rem above and below) and the two panes take whatever
+  // the banner and the night row leave, scrolling inside themselves. Below lg
+  // the panes are tabs with a height of their own and the page scrolls.
   return (
-    <div className="space-y-4">
-      <TourAnchor id="planner" className="block">
+    <div className="flex flex-col gap-4 lg:h-[calc(100dvh-8rem-1px)] lg:min-h-[40rem]">
+      <TourAnchor id="planner" className="block shrink-0">
       <NightHero
         date={selectedDate}
         isToday={isToday}
@@ -1365,35 +1359,43 @@ export function PlannerPage() {
         canAutoPlan={canAutoPlan}
         onAutoPlan={openAutoPlan}
         onOpenWeather={canOpenWeather ? () => openWeather() : undefined}
+        collapsed={heroCollapsed}
+        onCollapsedChange={setHeroCollapsed}
+        nightPicker={(verdict) => (
+          <NightStripCompact
+            nights={nights}
+            selectedKey={selectedDateKey}
+            onSelect={pickDate}
+            onStep={stepDate}
+            onOpenCalendar={() => setCalendarOpen(true)}
+            verdict={verdict}
+            accent={accent}
+          />
+        )}
         status={
           <SaveIndicator
             isPending={createMut.isPending || updateMut.isPending || deleteMut.isPending}
           />
         }
         siteControl={observerLat != null && observerLon != null && (
-          <div className="flex items-center gap-2">
-            <VisibleSkyButton
-              onClick={() => setSkyEditorOpen(true)}
-              skyLabel={skyConfigured ? `${visibleCellCount} / ${SKY_MAP_CELLS}` : t('plannerPage.skyNotSet')}
-              isSet={skyConfigured}
-            />
-            <SitePicker
-              isDark={isDark}
-              accentText={accentText}
-              sites={sites}
-              currentSite={currentSite}
-              fallbackLabel={`${observerLat.toFixed(2)}, ${observerLon.toFixed(2)}`}
-              onSelect={(id) => setActiveSiteMut.mutate(id)}
-              isSwitching={setActiveSiteMut.isPending}
-            />
-          </div>
+          <SitePicker
+            isDark={isDark}
+            accentText={accentText}
+            sites={sites}
+            currentSite={currentSite}
+            fallbackLabel={`${observerLat.toFixed(2)}, ${observerLon.toFixed(2)}`}
+            onSelect={(id) => setActiveSiteMut.mutate(id)}
+            isSwitching={setActiveSiteMut.isPending}
+          />
         )}
       />
       </TourAnchor>
 
       {/* Pick a night, then read that night. The night picker only needs a
           week of width, so the plan-level actions share its row. */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Hidden from 1440px up while the banner is collapsed: the slim picker is
+          in the banner then, which gives the targets and the schedule the row. */}
+      <div className={`flex shrink-0 flex-wrap items-center justify-between gap-3 ${heroCollapsed ? 'min-[1440px]:hidden' : ''}`}>
         <NightStrip
           nights={nights}
           selectedKey={selectedDateKey}
@@ -1408,20 +1410,14 @@ export function PlannerPage() {
         />
       </div>
 
-      {skyMapSaveError && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/15 px-3 py-2 text-xs text-red-400">
-          {t('plannerPage.skyMapSaveFailed', { error: skyMapSaveError })}
-        </div>
-      )}
-
       {copyPrevNightError && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/15 px-3 py-2 text-xs text-red-400">
+        <div className="shrink-0 rounded-xl border border-red-500/30 bg-red-500/15 px-3 py-2 text-xs text-red-400">
           {copyPrevNightError}
         </div>
       )}
 
       {quickAddNotice && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/15 px-3 py-2 text-xs text-amber-400">
+        <div className="shrink-0 rounded-xl border border-amber-500/30 bg-amber-500/15 px-3 py-2 text-xs text-amber-400">
           {quickAddNotice}
         </div>
       )}
@@ -1447,7 +1443,7 @@ export function PlannerPage() {
 
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd}>
         <div
-          className={`grid h-[clamp(30rem,76vh,90rem)] min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(19rem,32%)_1fr] transition-opacity duration-200 ${
+          className={`grid h-[clamp(30rem,76vh,90rem)] min-h-0 grid-cols-1 gap-4 lg:h-auto lg:min-h-[22rem] lg:flex-1 lg:grid-cols-[minmax(19rem,32%)_1fr] transition-opacity duration-200 ${
             plannerQuery.isFetching ? 'opacity-60' : ''
           }`}
         >
@@ -1470,16 +1466,6 @@ export function PlannerPage() {
           )}
         </DragOverlay>
       </DndContext>
-
-      <VisibleSkyEditor
-        open={skyEditorOpen}
-        initialMap={visibleSkyMap}
-        onSave={(map) => {
-          saveSkyMapMut.mutate(map);
-          setSkyEditorOpen(false);
-        }}
-        onClose={() => setSkyEditorOpen(false)}
-      />
 
       {autoPlanOpen && autoPlanRange && observerLat != null && observerLon != null && (
         <AutoPlanModal

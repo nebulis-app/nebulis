@@ -585,7 +585,9 @@
         "caldwell": "Caldwell",
         "popular": "Popular DSOs",
         "extended": "Extended",
-        "sharpless": "Sharpless"
+        "sharpless": "Sharpless",
+        "abell": "Abell",
+        "berkeley": "Berkeley"
       }
     }
   },
@@ -1084,11 +1086,13 @@
     "photosUploadFailed": "Could not upload {{name}}: {{reason}}",
     "imagingWindowLabel": "Imaging window",
     "darknessLabel": "Starts from",
-    "darknessAstronomical": "Astronomical night (Sun −18°)",
-    "darknessNautical": "Nautical night (Sun −12°)",
+    "darknessAstronomical": "Astronomical night (Sun at -18°)",
+    "darknessNautical": "Nautical night (Sun at -12°)",
     "startOffsetLabel": "Start, minutes after dusk",
     "endOffsetLabel": "End, minutes before dawn",
-    "imagingWindowHelp": "The hours the forecast page, its score and the clear-night alert count as tonight. Narrowband filters cut most twilight glow, so nautical night often works and starts about 35 minutes earlier. Use the minutes to start later or stop before dawn; a negative value moves that end the other way."
+    "imagingWindowHelp": "Counts as tonight on the Forecast, the night score, the Planner and the clear-night alert. Positive starts later or stops earlier; negative goes the other way. Narrowband filters cut twilight glow, so starting from nautical night often works.",
+    "windowPreview": "Tonight: {{start}} to {{end}} ({{hours}} h)",
+    "windowPreviewNone": "These settings leave no imaging window tonight."
   },
   "enterCodeModal": {
     "title": "Link an Apple TV",
@@ -1532,7 +1536,14 @@
     "duplicates": {
       "title": "Duplicate files",
       "detail": "The same capture stored in two folders of one object, across {{objects}} objects. Cleaning up keeps the telescope-named copy and deletes the other once the bytes are verified identical.",
-      "fix": "Remove duplicates"
+      "fix": "Remove duplicates",
+      "view": "View duplicates",
+      "loading": "Loading…",
+      "hide": "Hide list",
+      "listIntro": "{{count}} file(s) would be removed. The same list is written to the server log.",
+      "truncated": "Showing the first {{shown}}.",
+      "remove": "Remove",
+      "keep": "Keep"
     },
     "flat": {
       "title": "Flat-layout objects",

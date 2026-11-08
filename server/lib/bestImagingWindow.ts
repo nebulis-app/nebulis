@@ -12,6 +12,7 @@
  * one window.
  */
 import { altAz, getNightWindow } from './astroCalc.js';
+import { DEFAULT_WINDOW_PREFS, type ImagingWindowPrefs } from './imagingWindow.js';
 import { lookupTimeZoneForCoordinates } from './observerTimezone.js';
 import { observingNightAnchor } from './telescopeFiles.js';
 import { localParts } from './timezone.js';
@@ -35,12 +36,10 @@ export interface BestImagingWindow {
 
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** Astronomical night window for `date`'s evening, nautical-twilight fallback. */
-function nightWindowFor(date: Date, lat: number, lon: number): { start: Date; end: Date } | null {
-  const w = getNightWindow(date, lat, lon);
-  if (w.nightStart && w.nightEnd) return { start: w.nightStart, end: w.nightEnd };
-  if (w.nauticalDusk && w.nauticalDawn) return { start: w.nauticalDusk, end: w.nauticalDawn };
-  return null;
+/** The site's imaging window for `date`'s evening (astronomical, nautical fallback, unless the site says otherwise). */
+function nightWindowFor(date: Date, lat: number, lon: number, prefs: ImagingWindowPrefs): { start: Date; end: Date } | null {
+  const w = getNightWindow(date, lat, lon, prefs).imaging;
+  return w ? { start: w.start, end: w.end } : null;
 }
 
 export function computeBestImagingWindow(
@@ -50,6 +49,7 @@ export function computeBestImagingWindow(
   lon: number,
   minAlt = 20,
   now: Date = new Date(),
+  prefs: ImagingWindowPrefs = DEFAULT_WINDOW_PREFS,
 ): BestImagingWindow {
   const months: MonthlyAltSample[] = [];
   // The month is the site's, and each sample is anchored at mean solar noon at
@@ -63,7 +63,7 @@ export function computeBestImagingWindow(
     const anchor = new Date(utcNoon - (lon / 15) * 3_600_000);
     const label = MONTH_ABBR[new Date(utcNoon).getUTCMonth()];
 
-    const night = nightWindowFor(anchor, lat, lon);
+    const night = nightWindowFor(anchor, lat, lon, prefs);
     if (!night) {
       months.push({ label, maxAlt: -1, aboveMinAlt: false });
       continue;
@@ -138,6 +138,7 @@ export function isUpTonight(
   minAlt = 0,
   now: Date = new Date(),
   timeZone: string | null = lookupTimeZoneForCoordinates(lat, lon),
+  prefs: ImagingWindowPrefs = DEFAULT_WINDOW_PREFS,
 ): boolean | null {
   // "Astronomer's today": before 07:00 at the site the relevant window is
   // still the one that began last evening, like plannerToday() in the client.
@@ -145,7 +146,7 @@ export function isUpTonight(
   // coordinates: the server's clock is UTC in Docker, which put the rollover
   // at 01:00 or 02:00 in the US and asked about the wrong night until dawn.
   const anchor = observingNightAnchor(now, timeZone);
-  const night = nightWindowFor(anchor, lat, lon);
+  const night = nightWindowFor(anchor, lat, lon, prefs);
   if (!night) return null;
   const stepMs = 10 * 60 * 1000;
   for (let t = night.start.getTime(); t <= night.end.getTime(); t += stepMs) {

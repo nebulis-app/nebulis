@@ -23,6 +23,8 @@ export {
   VIDEOS_FOLDER,
   VIDEOS_TARGET_NAME,
   isDwarfSessionFolder,
+  isDwarfMosaicFolder,
+  isDwarfMosaicPanelFolder,
   extractTargetFromSessionFolder,
   extractDateFromSessionFolder,
   extractTimestampFromSessionFolder,

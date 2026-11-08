@@ -1016,7 +1016,10 @@
       "footerOverwriteTelescope": "Opslaan vervangt dit bestand. Nieuwe versie behoudt het origineel en voegt een bewerkte kopie toe.",
       "footerOverwriteProcessed": "Opslaan vervangt deze afbeelding. Nieuwe versie behoudt het origineel bij Bewerkte afbeeldingen.",
       "footerNewTelescope": "Wordt naast de oorspronkelijke telescoopbeelden opgeslagen",
-      "footerNewProcessed": "Wordt bij Bewerkte afbeeldingen opgeslagen"
+      "footerNewProcessed": "Wordt bij Bewerkte afbeeldingen opgeslagen",
+      "linkedConfirmBody": "Deze afbeelding staat in een gekoppelde map en is niet door Nebulis gemaakt. Ter plekke vervangen? Nebulis bewaart een kopie van het eerste origineel.",
+      "linkedConfirmYes": "Bestand vervangen",
+      "linkedConfirmNo": "Annuleren"
     }
   },
   "fitsViewer": {

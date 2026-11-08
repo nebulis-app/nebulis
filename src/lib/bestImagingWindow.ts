@@ -8,6 +8,7 @@
  */
 import { altAz } from './altaz';
 import { nightWindowFor, plannerToday } from './nightWindow';
+import type { ImagingWindowPrefs } from './imagingWindow';
 import { localDateKey } from './forecastNights';
 import { monthLabels } from './formatLocale';
 
@@ -44,8 +45,9 @@ export function computeBestImagingWindow(
   dec: number,
   lat: number,
   lon: number,
-  minAlt = 20,
-  timeZone?: string,
+  minAlt: number,
+  timeZone: string | undefined,
+  prefs: ImagingWindowPrefs,
 ): BestImagingWindow {
   const now = new Date();
   const months: MonthlyAltSample[] = [];
@@ -58,7 +60,7 @@ export function computeBestImagingWindow(
     const anchor = new Date(year, month - 1 + i, 15, 12, 0, 0);
     const label = monthAbbr[anchor.getMonth()];
 
-    const night = nightWindowFor(anchor, lat, lon);
+    const night = nightWindowFor(anchor, lat, lon, prefs);
     if (!night) {
       months.push({ date: anchor, label, maxAlt: -1, aboveMinAlt: false });
       continue;
@@ -144,12 +146,13 @@ export function isUpTonight(
   dec: number | null | undefined,
   lat: number | null | undefined,
   lon: number | null | undefined,
-  minAlt = 0,
-  now: Date = new Date(),
-  timeZone?: string,
+  minAlt: number,
+  now: Date,
+  timeZone: string | undefined,
+  prefs: ImagingWindowPrefs,
 ): boolean | null {
   if (ra == null || dec == null || lat == null || lon == null) return null;
-  const night = nightWindowFor(plannerToday(now, timeZone), lat, lon);
+  const night = nightWindowFor(plannerToday(now, timeZone), lat, lon, prefs);
   if (!night) return null;
   const stepMs = 10 * 60 * 1000;
   for (let t = night.start.getTime(); t <= night.end.getTime(); t += stepMs) {

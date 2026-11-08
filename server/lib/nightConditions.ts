@@ -18,6 +18,7 @@ import { addDaysToDateKey, timeZoneOrLocal, zonedDateTimeToUtc } from './timezon
 import { observingNightDateKey } from './telescopeFiles.js';
 import type { ForecastHour } from './forecastCache.js';
 import { scoreNightHours, type NightScore } from './nightScore.js';
+import { DEFAULT_WINDOW_PREFS, resolveWindow, type ImagingWindowPrefs } from './imagingWindow.js';
 
 export type NightConditionsSource = 'forecast' | 'archive';
 
@@ -44,7 +45,7 @@ const PAD_MS = 45 * 60 * 1000;
 interface NightWindow {
   sunset: Date;
   sunrise: Date;
-  /** Astronomical dark, else nautical, else sunset to sunrise. */
+  /** The site's imaging window (lib/imagingWindow.ts), else sunset to sunrise where it leaves none. */
   coreStart: Date;
   coreEnd: Date;
   /** Which of those `core*` is. `none` means the sun never gets 12 degrees down (high-latitude summer). */
@@ -57,8 +58,8 @@ function valid(d: Date | undefined): Date | null {
   return d && !Number.isNaN(d.getTime()) ? d : null;
 }
 
-/** Sunset to sunrise of the night that begins on `night` (yyyy-MM-dd) at this place. */
-export function nightWindow(night: string, lat: number, lon: number, timeZone: string): NightWindow | null {
+/** Sunset to sunrise of the night that begins on `night` (yyyy-MM-dd) at this place, with the site's imaging window inside it. */
+export function nightWindow(night: string, lat: number, lon: number, timeZone: string, prefs: ImagingWindowPrefs = DEFAULT_WINDOW_PREFS): NightWindow | null {
   const tz = timeZoneOrLocal(timeZone);
   const today = SunCalc.getTimes(zonedDateTimeToUtc(night, { hour: 12 }, tz), lat, lon);
   const next = SunCalc.getTimes(zonedDateTimeToUtc(addDaysToDateKey(night, 1), { hour: 12 }, tz), lat, lon);
@@ -66,17 +67,16 @@ export function nightWindow(night: string, lat: number, lon: number, timeZone: s
   const sunrise = valid(next.sunrise);
   if (!sunset || !sunrise || sunrise <= sunset) return null;
 
-  const astroStart = valid(today.night), astroEnd = valid(next.nightEnd);
-  const hasAstro = astroStart !== null && astroEnd !== null && astroEnd > astroStart;
-  const nauticalStart = valid(today.nauticalDusk), nauticalEnd = valid(next.nauticalDawn);
-  const hasNautical = nauticalStart !== null && nauticalEnd !== null && nauticalEnd > nauticalStart;
+  const imaging = resolveWindow({
+    astronomicalDusk: valid(today.night), astronomicalDawn: valid(next.nightEnd),
+    nauticalDusk: valid(today.nauticalDusk), nauticalDawn: valid(next.nauticalDawn),
+  }, prefs);
   let coreStart = sunset, coreEnd = sunrise, darkHours = 0;
   let darkKind: NightWindow['darkKind'] = 'none';
-  if (hasAstro) {
-    coreStart = astroStart; coreEnd = astroEnd; darkKind = 'astronomical';
-    darkHours = (astroEnd.getTime() - astroStart.getTime()) / 3600000;
-  } else if (hasNautical) {
-    coreStart = nauticalStart; coreEnd = nauticalEnd; darkKind = 'nautical';
+  if (imaging) {
+    coreStart = imaging.start; coreEnd = imaging.end; darkKind = imaging.darkness;
+    // Hours of astronomical dark only, as before: a nautical window reports 0.
+    if (imaging.darkness === 'astronomical') darkHours = (imaging.end.getTime() - imaging.start.getTime()) / 3600000;
   }
   return {
     sunset, sunrise, coreStart, coreEnd, darkKind,
@@ -117,9 +117,10 @@ export function scoreObservingNight(
   lat: number,
   lon: number,
   timeZone: string,
+  prefs: ImagingWindowPrefs = DEFAULT_WINDOW_PREFS,
 ): NightScore | null {
   const tz = timeZoneOrLocal(timeZone);
-  const w = nightWindow(night, lat, lon, tz);
+  const w = nightWindow(night, lat, lon, tz, prefs);
   if (w) {
     const start = w.coreStart.getTime(), end = w.coreEnd.getTime();
     const inNight = hours.filter((h) => {
@@ -233,6 +234,8 @@ export interface RecordInput {
   timezone: string;
   hourly: ForecastHour[];
   now?: Date;
+  /** The site's imaging window; the astronomical night when absent. */
+  window?: ImagingWindowPrefs;
 }
 
 /**
@@ -252,7 +255,7 @@ export function recordNightConditions(input: RecordInput): NightConditions | nul
     const now = input.now ?? new Date();
     const tz = timeZoneOrLocal(input.timezone);
     const night = observingNightDateKey(now, tz);
-    const w = nightWindow(night, input.lat, input.lon, tz);
+    const w = nightWindow(night, input.lat, input.lon, tz, input.window);
     if (!w) return null;
 
     const lo = w.sunset.getTime() - PAD_MS, hi = w.sunrise.getTime() + PAD_MS;

@@ -19,13 +19,23 @@ import { normalizeDesignation, resolveCanonicalId, getAliasesFor } from './catal
 import { SHARPLESS_CATALOG } from './sharplessCatalog.js';
 import { HERSCHEL400_IDS } from './herschel400Catalog.js';
 import { CALDWELL_TO_NGC, ngcToCaldwell } from './caldwellCatalog.js';
+import { RASC_FINEST_IDS } from './rascCatalog.js';
+import { ABELL_IDS } from './abellCatalog.js';
+import { BERKELEY_IDS } from './berkeleyCatalog.js';
 
 // ─── The record ─────────────────────────────────────────────────────────────
 
 /** An observing program an object belongs to. Membership only — the ordered
  *  program sequences (Herschel 400's order, the Sharpless numbering) stay in
  *  their own modules, since order is data, not membership. */
-export type CatalogProgram = 'messier' | 'caldwell' | 'herschel400' | 'sharpless';
+export type CatalogProgram =
+  | 'messier'
+  | 'caldwell'
+  | 'herschel400'
+  | 'sharpless'
+  | 'rasc'
+  | 'abell'
+  | 'berkeley';
 
 /** One curated object, carrying its own designations so the alias index is
  *  derived from the record set instead of hand-maintained alongside it. */
@@ -122,7 +132,7 @@ function parseCuratedFileEntry(value: unknown): CuratedFileEntry | null {
 }
 
 const norm = (id: string): string => normalizeDesignation(id).toUpperCase().replace(/\s+/g, '');
-const DESIGNATION_SHAPE = /^(SH2-|NGC|IC|CED|VDB|LBN|LDN|UGC|PGC|ARP|MEL|STOCK|HCG|M|C|B)\d/;
+const DESIGNATION_SHAPE = /^(SH2-|ABELL|BERK|NGC|IC|CED|VDB|LBN|LDN|UGC|PGC|ARP|MEL|STOCK|HCG|M|C|B)\d/;
 
 // ─── OpenNGC cross-references + skeleton fallback ────────────────────────────
 
@@ -199,13 +209,17 @@ const programsByCanonical = (() => {
   for (const n of Object.keys(CALDWELL_TO_NGC)) add(`C${n}`, 'caldwell');
   for (const id of HERSCHEL400_IDS) add(id, 'herschel400');
   for (const e of SHARPLESS_CATALOG) add(e.id, 'sharpless');
+  for (const id of RASC_FINEST_IDS) add(id, 'rasc');
+  for (const id of ABELL_IDS) add(id, 'abell');
+  for (const id of BERKELEY_IDS) add(id, 'berkeley');
   return map;
 })();
 
 function programsFor(canonicalId: string): CatalogProgram[] {
   const set = programsByCanonical.get(norm(canonicalId));
   if (!set) return [];
-  return (['messier', 'caldwell', 'herschel400', 'sharpless'] as const).filter(p => set.has(p));
+  return (['messier', 'caldwell', 'herschel400', 'sharpless', 'rasc', 'abell', 'berkeley'] as const)
+    .filter(p => set.has(p));
 }
 
 // ─── Designation derivation ─────────────────────────────────────────────────

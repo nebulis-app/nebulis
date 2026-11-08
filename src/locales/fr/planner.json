@@ -403,6 +403,7 @@
     "goalsComplete": "Objectifs atteints, laissés de côté : {{names}}",
     "goalFilterTitle": "Filtre {{filter}} : {{duration}} restantes avant ce bloc",
     "avoidClouds": "Éviter les heures nuageuses (prévision)",
+    "narrowbandCapable": "Je photographie avec un filtre double bande ou à bande étroite",
     "cloudThresholdLabel": "Limite de couverture nuageuse",
     "cloudThreshold": "au-delà de {{pct}} % de nuages",
     "forecastUnavailable": "Aucune prévision disponible pour cette nuit : le plan ne tient pas compte de la météo.",

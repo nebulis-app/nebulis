@@ -33,7 +33,7 @@ import { isTelescopeKind, type TelescopeKind } from '../types/telescopeKind.js';
 import { log } from '../logger.js';
 import { annotateFrame, type FrameAnnotation } from './catalogQuery.js';
 import { getSolverStatus, solve as runSolve, SolveFailedError, type SolveHint, type SolverStatus } from './astap.js';
-import { approximateWcs, parseWcs, scaleWcs, wcsFromFitsSolution, type Wcs } from './wcs.js';
+import { approximateWcs, parseWcs, scaleWcs, transformWcs, wcsFromFitsSolution, type GeometryEdit, type Wcs } from './wcs.js';
 
 export type AnnotateQuality = 'solved' | 'header' | 'approximate' | 'unavailable';
 
@@ -411,6 +411,32 @@ export async function startSolve(relPath: string): Promise<SolveJobState> {
   return { state: 'running', message: null };
 }
 
+/**
+ * The solution a picture has right now, on its own pixel grid, to carry through an edit that is about to replace it:
+ * a stored solve, else the FITS twin's header while the frame is still the captured one. Null when it has none.
+ * Call before the file is written, because the answer is keyed to the file's current mtime.
+ */
+export async function solutionBeforeEdit(relPath: string): Promise<Wcs | null> {
+  let ctx: FrameContext;
+  try {
+    ctx = await buildContext(relPath);
+  } catch {
+    return null;
+  }
+  let base = cachedWcs(relPath, ctx.mtimeMs);
+  if (!base && ctx.twinValues && !isGeometryEdited(relPath, ctx.mtimeMs)) base = wcsFromFitsHeader(ctx.twinValues);
+  return base ? scaleWcs(base, ctx.previewW, ctx.previewH) : null;
+}
+
+/** Stores `base`, moved by `edit`, as the solution of the file now on disk, so the edit does not cost it. */
+export function carrySolutionThroughEdit(relPath: string, base: Wcs, edit: GeometryEdit): void {
+  const resolved = resolveLibraryFile(relPath);
+  if (!resolved) return;
+  const mtimeMs = fs.statSync(resolved.abs).mtimeMs;
+  stmts.putWcs.run(relPath, mtimeMs, 'carried', JSON.stringify(transformWcs(base, edit)), new Date().toISOString());
+  stmts.clearFailure.run(relPath);
+}
+
 /** True when this file already has an answer for its current bytes: a solution, or a solve that found nothing. */
 export function hasSolveOutcome(relPath: string, mtimeMs: number): boolean {
   return cachedWcs(relPath, mtimeMs) !== null || stmts.getFailure.get(relPath)?.mtimeMs === mtimeMs;
@@ -452,6 +478,7 @@ async function solveFrame(ctx: FrameContext): Promise<{ wcs: Wcs; source: 'astap
         const wcs = wcsFromFitsSolution(raw);
         // Only trust it if it describes this picture's shape.
         if (scaleWcs(wcs, ctx.previewW, ctx.previewH)) return { wcs, source: 'astap-fits' };
+        log.info(`[annotate] FITS solution does not fit the picture for ${path.basename(ctx.abs)} (${w}x${h} vs ${ctx.previewW}x${ctx.previewH}), trying the image`);
       } catch (err) {
         if (!(err instanceof SolveFailedError) || err.reason === 'not-installed') throw err;
         log.info(`[annotate] FITS solve failed for ${path.basename(ctx.twinAbs)}, trying the image`);

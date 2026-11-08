@@ -1,29 +1,60 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { MapPin, Search, Loader2, X, CheckCircle2, AlertCircle } from 'lucide-react';
 import { createSite, updateSite, type ObservingSite, type ObservingSiteInput } from '../../lib/api/sites';
 import { fetchLocationInfo, searchLocations, type GeocodeSearchResult } from '../../lib/api/catalog';
 import { useClickOutside } from '../../hooks/useClickOutside';
-import { getInputClass, getLabelClass, getHelperClass } from './SettingsUI';
+import { getInputClass, getLabelClass, getHelperClass, InfoTooltip } from './SettingsUI';
 import { Modal } from '../ui/Modal';
 import { SitePhotosSection } from './SitePhotosSection';
+import { clampOffset, windowPrefsOf, WINDOW_OFFSET_MAX, WINDOW_OFFSET_MIN } from '../../lib/imagingWindow';
+import { nightWindowFor, plannerToday } from '../../lib/nightWindow';
+import { formatTime } from '../../lib/forecastScore';
+import { formatNumber } from '../../lib/formatLocale';
+
+/**
+ * A whole-number minutes field that lets you finish typing. The number is only settled (held to the allowed range,
+ * an empty box read as 0) when you leave the box, so you can clear it, type a minus sign first, or pass through
+ * values that are not valid yet.
+ */
+function MinutesInput({ value, onChange, className }: { value: number; onChange: (minutes: number) => void; className: string }) {
+  const [draft, setDraft] = useState(String(value));
+  return (
+    <input
+      type="number" inputMode="numeric" step={15} min={WINDOW_OFFSET_MIN} max={WINDOW_OFFSET_MAX}
+      className={className}
+      value={draft}
+      onChange={e => {
+        setDraft(e.target.value);
+        const n = Number(e.target.value);
+        if (e.target.value.trim() !== '' && Number.isFinite(n)) onChange(clampOffset(n));
+      }}
+      onBlur={() => {
+        const n = draft.trim() === '' ? 0 : clampOffset(Number(draft));
+        onChange(n);
+        setDraft(String(n));
+      }}
+    />
+  );
+}
+
+/** Queries whose answer depends on a site's imaging window (src/lib/imagingWindow.ts). */
+const WINDOW_DEPENDENT_QUERIES = [
+  'forecast', 'active-site', 'planner-targets', 'planner-tonight', 'catalog-night-plan', 'plan-nights',
+  'explore-best-tonight', 'explore-browse', 'explore-categories', 'explore-next-nights', 'explore-search',
+];
 
 /**
  * Create/edit modal for a single observing site: name, coordinates
- * (searchable by place name or detected from the browser), timezone, and
- * minimum altitude. Pass `existing` to edit; omit to create.
+ * (searchable by place name or detected from the browser), timezone,
+ * minimum altitude, and the imaging window (which twilight tonight starts
+ * from, and how far to move either end). Pass `existing` to edit; omit to create.
  *
  * Horizon profile and the visible-sky mask are not edited here — the mask
  * editor already lives in the Planner (Set Visible Sky) and now targets
  * whichever site is active there, so this modal doesn't duplicate it.
  */
-/** Minutes from an input, rounded and held to what the server accepts (-180 to 360). */
-function clampOffset(raw: string): number {
-  const n = Math.round(Number(raw));
-  return Number.isFinite(n) ? Math.min(360, Math.max(-180, n)) : 0;
-}
-
 export function SiteEditorModal({
   isDark,
   existing,
@@ -53,6 +84,21 @@ export function SiteEditorModal({
   const [detectError, setDetectError] = useState('');
 
   const hasLocation = latitude != null && longitude != null;
+
+  // Tonight's window with these settings, worked out here from the site's coordinates so the numbers can be checked
+  // before saving. Null without a location.
+  const windowPreview = useMemo(() => {
+    if (latitude == null || longitude == null) return null;
+    const prefs = windowPrefsOf({ darkness, windowStartOffsetMin: startOffset, windowEndOffsetMin: endOffset });
+    const zone = timezone || undefined;
+    const win = nightWindowFor(plannerToday(new Date(), zone), latitude, longitude, prefs);
+    if (!win) return { start: '', end: '', hours: '' };
+    return {
+      start: formatTime(win.start.toISOString(), zone),
+      end: formatTime(win.end.toISOString(), zone),
+      hours: formatNumber((win.end.getTime() - win.start.getTime()) / 3_600_000, { maximumFractionDigits: 1 }),
+    };
+  }, [latitude, longitude, timezone, darkness, startOffset, endOffset]);
 
   function clearLocation() {
     setLatitude(null);
@@ -111,8 +157,14 @@ export function SiteEditorModal({
     onSuccess: (saved) => {
       queryClient.invalidateQueries({ queryKey: ['sites'] });
       queryClient.invalidateQueries({ queryKey: ['settings'] });
-      // The forecast carries tonight's imaging window, which these settings shape.
-      queryClient.invalidateQueries({ queryKey: ['forecast'] });
+      // Tonight's imaging window shapes the forecast, its scores, the Planner and Explore, so a change to it refreshes them.
+      const windowChanged = !existing
+        || (existing.darkness ?? 'astronomical') !== darkness
+        || (existing.windowStartOffsetMin ?? 0) !== startOffset
+        || (existing.windowEndOffsetMin ?? 0) !== endOffset;
+      if (windowChanged) {
+        for (const key of WINDOW_DEPENDENT_QUERIES) queryClient.invalidateQueries({ queryKey: [key] });
+      }
       onClose(saved.id);
     },
     retry: false,
@@ -123,7 +175,7 @@ export function SiteEditorModal({
       isOpen
       onClose={() => { if (!mutation.isPending) onClose(); }}
       title={isEdit ? t('siteEditorModal.dialogTitleEdit') : t('siteEditorModal.dialogTitleAdd')}
-      // Held to the screen's height with the fields scrolling between a fixed header and buttons, so Save stays in reach on a short screen.
+      // Held to the screen's height with the fields scrolling between a fixed header and the buttons, so Save stays in reach on a short screen.
       className={`flex w-full max-w-md max-h-[calc(100dvh-2rem)] flex-col rounded-2xl border shadow-2xl ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
     >
         <div className={`flex items-center justify-between p-5 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
@@ -255,7 +307,12 @@ export function SiteEditorModal({
           </div>
 
           <fieldset>
-            <legend className={labelClass}>{t('siteEditorModal.imagingWindowLabel')}</legend>
+            <legend className={labelClass}>
+              <span className="inline-flex items-center gap-1.5">
+                {t('siteEditorModal.imagingWindowLabel')}
+                <InfoTooltip text={t('siteEditorModal.imagingWindowHelp')} isDark={isDark} />
+              </span>
+            </legend>
             <div className="mt-1 grid grid-cols-2 gap-3">
               <label className="col-span-2 block">
                 <span className={helperClass}>{t('siteEditorModal.darknessLabel')}</span>
@@ -270,24 +327,20 @@ export function SiteEditorModal({
               </label>
               <label className="block">
                 <span className={helperClass}>{t('siteEditorModal.startOffsetLabel')}</span>
-                <input
-                  type="number" inputMode="numeric" step={15} min={-180} max={360}
-                  value={startOffset}
-                  onChange={e => setStartOffset(clampOffset(e.target.value))}
-                  className={inputClass}
-                />
+                <MinutesInput value={startOffset} onChange={setStartOffset} className={inputClass} />
               </label>
               <label className="block">
                 <span className={helperClass}>{t('siteEditorModal.endOffsetLabel')}</span>
-                <input
-                  type="number" inputMode="numeric" step={15} min={-180} max={360}
-                  value={endOffset}
-                  onChange={e => setEndOffset(clampOffset(e.target.value))}
-                  className={inputClass}
-                />
+                <MinutesInput value={endOffset} onChange={setEndOffset} className={inputClass} />
               </label>
             </div>
-            <p className={helperClass}>{t('siteEditorModal.imagingWindowHelp')}</p>
+            {windowPreview && (
+              <p className={`mt-2 text-sm font-medium tabular-nums ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                {windowPreview.start
+                  ? t('siteEditorModal.windowPreview', { start: windowPreview.start, end: windowPreview.end, hours: windowPreview.hours })
+                  : t('siteEditorModal.windowPreviewNone')}
+              </p>
+            )}
           </fieldset>
 
           <SitePhotosSection isDark={isDark} siteId={existing?.id} />

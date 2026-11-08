@@ -171,7 +171,7 @@ export async function analyzeLibrary(): Promise<LibraryAnalysis> {
     missingObjectCount: missing.length,
     layoutDrift: findLayoutDrift().length,
     flatObjects: countFlatObjects(),
-    duplicateFiles: (({ count, objects, bytes }) => ({ count, objects, bytes }))(findDuplicateSessionFiles()),
+    duplicateFiles: (({ count, objects, bytes }) => ({ count, objects, bytes }))(await findDuplicateSessionFiles()),
     missingProcessed: {
       count: processedResult.missing.length,
       objects: new Set(processedResult.missing.map(r => r.objectId)).size,

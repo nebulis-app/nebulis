@@ -4,7 +4,7 @@
  * One bar per night: the share of model runs (ECMWF, GEM and GFS ensembles,
  * about a hundred) that give at least a few clear dark hours. A probability
  * is a magnitude, so every bar wears the same hue and its height carries the
- * value; colour-coding nights good/bad would read as a verdict the data
+ * value; color-coding nights good/bad would read as a verdict the data
  * cannot give two weeks out. Past a week the bars fade, because the models
  * still agree or disagree there, but that agreement means less.
  *
@@ -198,8 +198,8 @@ export function EnsembleOutlook({ siteId, isDark, accent }: Props) {
               {nights.map(n => (
                 <tr key={n.date}>
                   <th scope="row">{dayLabel(n.date, { weekday: 'long', day: 'numeric', month: 'long' })}</th>
-                  <td>{n.clearProbability === null ? '—' : pct(n.clearProbability)}</td>
-                  <td>{n.cloudMedian === null ? '—' : `${n.cloudMedian}%`}</td>
+                  <td>{n.clearProbability === null ? t('outlook.none') : pct(n.clearProbability)}</td>
+                  <td>{n.cloudMedian === null ? t('outlook.none') : `${n.cloudMedian}%`}</td>
                   <td>{`${n.moonIllumination}%`}</td>
                 </tr>
               ))}

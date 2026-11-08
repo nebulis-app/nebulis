@@ -9,6 +9,8 @@ import {
   JournalEntryResponseSchema, JournalAttachmentResponseSchema,
 } from '../lib/journalSchemas.js';
 import { ImportBodySchema } from '../lib/library/importSchemas.js';
+import { geometryEditSchema } from '../lib/annotate/geometryEditSchema.js';
+import { imageEditRequestSchema } from '../lib/library/imageEditSchema.js';
 import { UPDATE_CHANNELS } from '../lib/appUpdate/manifest.js';
 import {
   GALLERY_IMAGE_SOURCES,
@@ -2889,6 +2891,18 @@ export const spec = {
           nauticalTwilightStart:     { type: 'string', format: 'date-time' },
           darkHours:               { type: 'number' },
           nauticalDarkHours:       { type: 'number' },
+          imagingWindow: nullable({
+            type: 'object',
+            description: "Tonight's imaging window for the requested site: the twilight and offsets from the site's settings applied to the twilight times above. Null when those settings leave no window tonight. Absent on older servers, which means the astronomical night (else nautical).",
+            required: ['start', 'end', 'darkness', 'startOffsetMin', 'endOffsetMin'],
+            properties: {
+              start:          { type: 'string', format: 'date-time' },
+              end:            { type: 'string', format: 'date-time' },
+              darkness:       { type: 'string', enum: ['astronomical', 'nautical'], description: 'The twilight actually used; astronomical falls back to nautical where the Sun never gets 18 degrees down' },
+              startOffsetMin: { type: 'integer', description: 'Minutes after dusk the window opens, as set on the site' },
+              endOffsetMin:   { type: 'integer', description: 'Minutes before dawn the window closes, as set on the site' },
+            },
+          }),
         },
       },
       ForecastNightRating: {
@@ -2934,6 +2948,59 @@ export const spec = {
               seeing:  nullable({ type: 'string', enum: ['7timer'] }),
             },
           },
+        },
+      },
+      ForecastOutlookModel: {
+        type: 'object',
+        required: ['model', 'label', 'members', 'clearMembers', 'clearProbability'],
+        properties: {
+          model: { type: 'string' },
+          label: { type: 'string' },
+          members: { type: 'integer', minimum: 0 },
+          clearMembers: { type: 'integer', minimum: 0 },
+          clearProbability: nullable({ type: 'number', minimum: 0, maximum: 1 }),
+        },
+      },
+      ForecastOutlookNight: {
+        type: 'object',
+        required: ['date', 'darkStart', 'darkEnd', 'darkHours', 'members', 'clearMembers', 'clearProbability', 'cloudMedian', 'cloudP25', 'cloudP75', 'moonIllumination', 'moonUpAtMidnight', 'models'],
+        properties: {
+          date: { type: 'string', description: 'Observing night, YYYY-MM-DD (the date of the evening)' },
+          darkStart: { type: 'string', format: 'date-time' },
+          darkEnd: { type: 'string', format: 'date-time' },
+          darkHours: { type: 'number' },
+          members: { type: 'integer', minimum: 0, description: 'Model runs that cover the night, all models together' },
+          clearMembers: { type: 'integer', minimum: 0 },
+          clearProbability: nullable({ type: 'number', minimum: 0, maximum: 1 }),
+          cloudMedian: nullable({ type: 'number', description: 'Mean cloud cover over the window, median across runs (%)' }),
+          cloudP25: nullable({ type: 'number' }),
+          cloudP75: nullable({ type: 'number' }),
+          moonIllumination: { type: 'number', minimum: 0, maximum: 100 },
+          moonUpAtMidnight: { type: 'boolean' },
+          models: { type: 'array', items: { $ref: '#/components/schemas/ForecastOutlookModel' } },
+        },
+      },
+      ForecastOutlook: {
+        type: 'object',
+        required: ['nights', 'thresholds', 'timeZone', 'models', 'source', 'fetchedAt'],
+        properties: {
+          nights: { type: 'array', items: { $ref: '#/components/schemas/ForecastOutlookNight' } },
+          thresholds: {
+            type: 'object',
+            required: ['maxCloudCover', 'minClearHours'],
+            properties: { maxCloudCover: { type: 'number' }, minClearHours: { type: 'number' } },
+          },
+          timeZone: { type: 'string' },
+          models: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['model', 'label', 'members'],
+              properties: { model: { type: 'string' }, label: { type: 'string' }, members: { type: 'integer', minimum: 0 } },
+            },
+          },
+          source: { type: 'string', enum: ['open-meteo-ensemble'] },
+          fetchedAt: { type: 'string', format: 'date-time' },
         },
       },
       // Gear and journal, generated from the same Zod schemas the routes validate with.
@@ -4424,6 +4491,28 @@ export const spec = {
           200: jsonResponse('The forecast', 'ForecastResponse'),
           400: { description: 'INVALID_COORDS' },
           500: { description: 'FORECAST_FAILED' },
+        },
+      },
+    },
+    '/forecast/outlook': {
+      get: {
+        summary: 'Two-week outlook from weather-model ensembles',
+        tags: ['Forecast'],
+        description: [
+          'For each of the next 15 observing nights, the share of ensemble model runs (ECMWF, GEM and GFS, about 100 runs) that give at least `minClearHours` hours of the site\u2019s imaging window at or under `maxCloudCover`, with the spread of cloud cover, the odds per model and the Moon.',
+          'Fetched from Open-Meteo\u2019s ensemble API and cached per site for 3 hours; a stale entry is served when a refresh fails. `siteId` wins over `lat`/`lon`, which win over the active site.',
+        ].join('\n'),
+        parameters: [
+          { name: 'siteId', in: 'query', schema: { type: 'string' } },
+          { name: 'lat', in: 'query', schema: { type: 'number' }, description: 'Use with lon instead of a site' },
+          { name: 'lon', in: 'query', schema: { type: 'number' } },
+          { name: 'maxCloudCover', in: 'query', schema: { type: 'number', minimum: 0, maximum: 100, default: 30 }, description: 'A usable hour has cloud cover at or under this (%)' },
+          { name: 'minClearHours', in: 'query', schema: { type: 'number', minimum: 0.5, maximum: 12, default: 3 }, description: 'A usable night has at least this many such hours' },
+        ],
+        responses: {
+          200: jsonResponse('The outlook', 'ForecastOutlook'),
+          400: { description: 'INVALID_COORDS' },
+          502: { description: 'OUTLOOK_UNAVAILABLE' },
         },
       },
     },
@@ -6233,6 +6322,44 @@ export const spec = {
         },
       },
     },
+    '/library/image-edit': {
+      post: {
+        summary: 'Edit a picture on the server (image editor Save)',
+        tags: ['Library (Local)'],
+        description: 'Admin only. The picture never leaves the server: the body says which library file or processed image to edit, what to do to it (crop, flip, turn, brightness, contrast, saturation) and where the result goes. EXIF orientation is applied first, then crop, flip and clockwise turn, then color, then the text overlay. Overwriting a library picture keeps its first original (restore it with `/library/file/restore-original`) and moves its plate solution with the edit. A PNG stays a PNG when overwritten; a new version is a JPEG.',
+        requestBody: {
+          required: true,
+          content: { 'multipart/form-data': { schema: { type: 'object', required: ['request'], properties: {
+            request: { type: 'string', description: 'JSON text of an ImageEditRequest.', contentMediaType: 'application/json', contentSchema: jsonSchemaOf(imageEditRequestSchema, 'input') },
+            overlay: { type: 'string', format: 'binary', description: 'Optional transparent PNG of the text layers, any size with the result\'s aspect ratio. Scaled to the result.' },
+          } } } },
+        },
+        responses: {
+          200: { description: 'What was written: `telescope` (overwritten library file), `telescopeNew` (new edited variant) or `processed` (processed image id).', content: { 'application/json': { schema: { type: 'object', required: ['kind'], properties: { kind: { type: 'string', enum: ['telescope', 'telescopeNew', 'processed'] }, path: { type: 'string' }, bytes: { type: 'integer' }, objectId: { type: 'string' }, date: { type: 'string' }, filename: { type: 'string' }, id: { type: 'string' } } } } } },
+          400: { description: 'INVALID_REQUEST' },
+          403: { description: 'FORBIDDEN. Admin only.' },
+          404: { description: 'FILE_NOT_FOUND or NOT_FOUND' },
+          409: { description: 'LINKED_REPLACE_UNCONFIRMED. Send `save.confirmLinked` to rewrite a file in a linked folder.' },
+          415: { description: 'UNSUPPORTED_FORMAT, or FORMAT_MISMATCH' },
+        },
+      },
+    },
+    '/library/image-edit/preview': {
+      get: {
+        summary: 'Screen-sized copy of a picture for the image editor',
+        tags: ['Library (Local)'],
+        description: 'A JPEG no larger than 2048 px on its long edge with EXIF orientation applied, so the browser never decodes the full file. Requires a login.',
+        parameters: [
+          { name: 'kind', in: 'query', required: true, schema: { type: 'string', enum: ['telescope', 'processed'] } },
+          { name: 'key', in: 'query', required: true, schema: { type: 'string' }, description: 'The library-relative path (`telescope`) or the processed image id (`processed`).' },
+        ],
+        responses: {
+          200: { description: 'JPEG', content: { 'image/jpeg': { schema: { type: 'string', format: 'binary' } } } },
+          400: { description: 'INVALID_REQUEST' },
+          404: { description: 'NOT_FOUND' },
+        },
+      },
+    },
     '/library/file/restore-original': {
       post: {
         summary: 'Restore a picture\u2019s original',
@@ -6654,15 +6781,19 @@ export const spec = {
       post: {
         summary: 'Save an edited picture beside the telescope files',
         tags: ['Library (Local)'],
-        description: 'Admin only. multipart/form-data with the picture in `image`. It lands in the object folder so it shows under Telescope Images, not Processed.',
+        description: 'Admin only. multipart/form-data with the picture in `image`. It lands in the object folder so it shows under Telescope Images, not Processed. With `overwritePath` it replaces that file instead. `edit` tells the server what the editor did to the frame, so the picture keeps its plate solution (Annotate) instead of being solved again.',
         parameters: [subIdParam('objectId'), subIdParam('date')],
         requestBody: {
           required: true,
-          content: { 'multipart/form-data': { schema: { type: 'object', required: ['image'], properties: { image: { type: 'string', format: 'binary' } } } } },
+          content: { 'multipart/form-data': { schema: { type: 'object', required: ['image'], properties: {
+            image: { type: 'string', format: 'binary' },
+            overwritePath: { type: 'string', description: 'Library-relative path of the existing JPEG to replace.' },
+            edit: { type: 'string', description: 'JSON text of a GeometryEdit, used with `overwritePath`.', contentMediaType: 'application/json', contentSchema: jsonSchemaOf(geometryEditSchema, 'input') },
+          } } } },
         },
         responses: {
           200: { description: 'The stored filename', content: { 'application/json': { schema: { type: 'object', required: ['objectId', 'date', 'filename'], properties: { objectId: { type: 'string' }, date: { type: 'string' }, filename: { type: 'string' } } } } } },
-          400: { description: 'NO_IMAGE, or an invalid object id or session date' },
+          400: { description: 'NO_IMAGE, or an invalid object id, session date or `edit`' },
           403: { description: 'FORBIDDEN. Admin only.' },
         },
       },
@@ -7953,6 +8084,19 @@ export const spec = {
           200: jsonResponse('What the scan found', 'StorageAnalysis'),
           403: { description: 'FORBIDDEN. Admin only.' },
           500: { description: 'ANALYZE_FAILED' },
+          503: { description: 'LIBRARY_UNAVAILABLE' },
+        },
+      },
+    },
+    '/storage/analyze/duplicates': {
+      get: {
+        summary: 'List the duplicate session files a repair would remove',
+        tags: ['Storage'],
+        description: 'Admin only. Read-only. Returns each duplicate pair (the copy kept and the copy removed, with its size) after confirming the two files agree on sampled blocks, and writes the same list to the server log. The list is capped, with `truncated` set when it is.',
+        responses: {
+          200: { description: 'count, objects, bytes, pairs[] ({ objectId, keep, remove, bytes }) and truncated' },
+          403: { description: 'FORBIDDEN. Admin only.' },
+          500: { description: 'DUPLICATES_FAILED' },
           503: { description: 'LIBRARY_UNAVAILABLE' },
         },
       },

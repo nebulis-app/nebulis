@@ -585,7 +585,9 @@
         "caldwell": "Caldwell",
         "popular": "DSO populares",
         "extended": "Extendido",
-        "sharpless": "Sharpless"
+        "sharpless": "Sharpless",
+        "abell": "Abell",
+        "berkeley": "Berkeley"
       }
     }
   },
@@ -1083,12 +1085,14 @@
     "photosCaptionPlaceholder": "Añadir un pie de foto",
     "photosUploadFailed": "No se pudo subir {{name}}: {{reason}}",
     "imagingWindowLabel": "Ventana de captura",
-    "darknessLabel": "Empieza con",
-    "darknessAstronomical": "Noche astronómica (Sol a −18°)",
-    "darknessNautical": "Noche náutica (Sol a −12°)",
-    "startOffsetLabel": "Inicio, minutos tras el anochecer",
+    "darknessLabel": "Empieza desde",
+    "darknessAstronomical": "Noche astronómica (Sol a -18°)",
+    "darknessNautical": "Noche náutica (Sol a -12°)",
+    "startOffsetLabel": "Inicio, minutos después del anochecer",
     "endOffsetLabel": "Fin, minutos antes del amanecer",
-    "imagingWindowHelp": "Las horas que la página del tiempo, su puntuación y el aviso de noche despejada cuentan como esta noche. Los filtros de banda estrecha cortan casi todo el brillo del crepúsculo, así que la noche náutica suele bastar y empieza unos 35 minutos antes. Usa los minutos para empezar más tarde o parar antes del amanecer; un valor negativo mueve ese extremo en sentido contrario."
+    "imagingWindowHelp": "Cuenta como esta noche en el Pronóstico, la puntuación de la noche, el Planificador y la alerta de noche despejada. Positivo: empieza más tarde o termina antes; negativo: al revés. Los filtros de banda estrecha cortan el brillo del crepúsculo, así que empezar desde la noche náutica suele servir.",
+    "windowPreview": "Esta noche: de {{start}} a {{end}} ({{hours}} h)",
+    "windowPreviewNone": "Con estos ajustes no queda ventana de captura esta noche."
   },
   "enterCodeModal": {
     "title": "Vincular un Apple TV",
@@ -1532,7 +1536,14 @@
     "duplicates": {
       "title": "Archivos duplicados",
       "detail": "La misma captura guardada en dos carpetas de un objeto, en {{objects}} objetos. Al limpiar se conserva la copia con el nombre del telescopio y se elimina la otra una vez verificado que los bytes son idénticos.",
-      "fix": "Eliminar duplicados"
+      "fix": "Eliminar duplicados",
+      "view": "Ver duplicados",
+      "loading": "Cargando…",
+      "hide": "Ocultar lista",
+      "listIntro": "Se eliminarían {{count}} archivo(s). La misma lista se escribe en el registro del servidor.",
+      "truncated": "Se muestran los primeros {{shown}}.",
+      "remove": "Eliminar",
+      "keep": "Conservar"
     },
     "flat": {
       "title": "Objetos con estructura plana",

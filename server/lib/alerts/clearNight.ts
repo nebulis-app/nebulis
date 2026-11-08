@@ -9,7 +9,7 @@
  */
 import SunCalc from 'suncalc';
 import { getNightWindow } from '../astroCalc.js';
-import { DEFAULT_WINDOW_PREFS, resolveWindow, windowPrefsOf, type ImagingWindowPrefs } from '../imagingWindow.js';
+import { DEFAULT_WINDOW_PREFS, windowPrefsOf, type ImagingWindowPrefs } from '../imagingWindow.js';
 import {
   buildForecast,
   CACHE_TTL_MS,
@@ -90,7 +90,7 @@ export function summarizePlan(sessions: { objectName: string; startTime: string;
  *  where the sky never gets astronomically dark (high-latitude summer). Null when there is none. */
 export function darkWindow(night: string, lat: number, lon: number, timeZone: string, prefs: ImagingWindowPrefs = DEFAULT_WINDOW_PREFS): { start: Date; end: Date } | null {
   const anchor = zonedDateTimeToUtc(night, { hour: 12 }, timeZone);
-  const w = resolveWindow(getNightWindow(anchor, lat, lon), prefs);
+  const w = getNightWindow(anchor, lat, lon, prefs).imaging;
   return w ? { start: w.start, end: w.end } : null;
 }
 

@@ -8,8 +8,8 @@
  */
 import { z } from 'zod';
 import { SKY_MAP_CELLS } from './skyMapConfig.js';
-import { DARKNESS_LEVELS, WINDOW_OFFSET_MAX, WINDOW_OFFSET_MIN } from './imagingWindow.js';
 import { SITE_PHOTO_LIMITS } from './sitePhotoLimits.js';
+import { DARKNESS_LEVELS, WINDOW_OFFSET_MAX, WINDOW_OFFSET_MIN } from './imagingWindow.js';
 import type { ObservingSite } from './observingSites.js';
 import type { SitePhoto } from './sitePhotos.js';
 
@@ -25,11 +25,11 @@ export const SiteBodySchema = z.object({
     .describe('32 azimuth slices by 8 elevation bands; true where the sky is visible. Omit to keep the stored mask'),
   bortleClass: z.number().int().min(1).max(9).nullable().optional(),
   darkness: z.enum(DARKNESS_LEVELS).optional()
-    .describe('Twilight the imaging window starts from: astronomical (Sun at -18 degrees) or nautical (-12)'),
+    .describe('Imaging window: the twilight it starts from. Astronomical falls back to nautical where the sky never gets that dark'),
   windowStartOffsetMin: z.number().int().min(WINDOW_OFFSET_MIN).max(WINDOW_OFFSET_MAX).optional()
-    .describe('Minutes after that dusk the imaging window opens; negative opens it before'),
+    .describe('Imaging window: minutes after that dusk the window opens; negative opens it earlier'),
   windowEndOffsetMin: z.number().int().min(WINDOW_OFFSET_MIN).max(WINDOW_OFFSET_MAX).optional()
-    .describe('Minutes before that dawn the imaging window closes; negative closes it after'),
+    .describe('Imaging window: minutes before that dawn the window closes; negative closes it later'),
   isDefault: z.boolean().optional(),
 });
 
@@ -54,9 +54,9 @@ export const ObservingSiteSchema = z.object({
   horizonProfile: z.array(z.number()).length(36),
   visibleSkyMap: z.array(z.boolean()).describe('Empty when no mask has been drawn, which means the whole sky is visible'),
   bortleClass: z.number().int().nullable(),
-  darkness: z.enum(DARKNESS_LEVELS),
-  windowStartOffsetMin: z.number().int(),
-  windowEndOffsetMin: z.number().int(),
+  darkness: z.enum(DARKNESS_LEVELS).describe('Imaging window: the twilight it starts from'),
+  windowStartOffsetMin: z.number().int().describe('Imaging window: minutes after dusk the window opens'),
+  windowEndOffsetMin: z.number().int().describe('Imaging window: minutes before dawn the window closes'),
   isDefault: z.boolean(),
   sortOrder: z.number().int(),
   createdAt: z.string(),

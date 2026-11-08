@@ -2,12 +2,16 @@
  * The imaging window of a night, as the site's owner wants it.
  *
  * By default it is the astronomical night (the Sun 18° below the horizon), or the nautical night (12°) where it
- * never gets that dark. A site can instead start from the nautical night, which narrowband imaging often does
- * (the filters cut most of the twilight glow), and can move either end by a number of minutes: start later than
- * dark, stop before dawn, or the other way round.
+ * never gets that dark. A site can instead start from the nautical night, which narrowband imaging often does (the
+ * filters cut most of the twilight glow), and can move either end by a number of minutes: start later than dark,
+ * stop before dawn, or the other way round.
  *
- * The forecast page, the clear-night alert and the long-range outlook all read the window from here, so they agree
- * on what "tonight" means for a site.
+ * This is the ONE place that turns twilight times into "tonight" for a site. Twilight times themselves stay physical
+ * (`NightWindow.astronomicalDusk` and friends); everything that scores, plans, ranks or alerts reads `NightWindow.imaging`,
+ * which `getNightWindow` fills from here. `tests/backend/imagingWindowGuard.test.ts` fails when another module
+ * reads the raw astronomical times to build a window of its own.
+ *
+ * Leaf module: it imports nothing, so `astroCalc.ts` can use it.
  */
 
 export const DARKNESS_LEVELS = ['astronomical', 'nautical'] as const;
@@ -37,6 +41,16 @@ export function isDarknessLevel(v: unknown): v is DarknessLevel {
   return typeof v === 'string' && (DARKNESS_LEVELS as readonly string[]).includes(v);
 }
 
+/** True when the prefs give the window every site had before the setting existed. */
+export function isDefaultWindow(p: ImagingWindowPrefs): boolean {
+  return p.darkness === 'astronomical' && p.startOffsetMin === 0 && p.endOffsetMin === 0;
+}
+
+/** A short stable string for cache keys: two sites share a cached answer only when this is equal. */
+export function windowPrefsKey(p: ImagingWindowPrefs): string {
+  return `${p.darkness[0]}${p.startOffsetMin}:${p.endOffsetMin}`;
+}
+
 export interface TwilightDates {
   astronomicalDusk: Date | null;
   astronomicalDawn: Date | null;
@@ -59,7 +73,7 @@ export function resolveWindow(t: TwilightDates, prefs: ImagingWindowPrefs = DEFA
   let darkness: DarknessLevel = prefs.darkness;
   let dusk = darkness === 'astronomical' ? t.astronomicalDusk : t.nauticalDusk;
   let dawn = darkness === 'astronomical' ? t.astronomicalDawn : t.nauticalDawn;
-  if ((!dusk || !dawn) && darkness === 'astronomical') {
+  if ((!dusk || !dawn || dawn <= dusk) && darkness === 'astronomical') {
     darkness = 'nautical';
     dusk = t.nauticalDusk;
     dawn = t.nauticalDawn;

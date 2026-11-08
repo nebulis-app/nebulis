@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { computeBestImagingWindow } from '../../src/lib/bestImagingWindow';
+import { DEFAULT_WINDOW_PREFS } from '../../src/lib/imagingWindow';
 
 // M42 (Orion Nebula): RA 5.59h, Dec -5.39°
 // From 40°N, it peaks at ~44° altitude and is best visible Oct–Feb.
@@ -22,12 +23,12 @@ afterEach(() => {
 
 describe('computeBestImagingWindow', () => {
   it('returns exactly 12 monthly samples', () => {
-    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON);
+    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON, 20, undefined, DEFAULT_WINDOW_PREFS);
     expect(w.months).toHaveLength(12);
   });
 
   it('month labels cycle through Jan–Dec from the starting month', () => {
-    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON);
+    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON, 20, undefined, DEFAULT_WINDOW_PREFS);
     const labels = w.months.map(m => m.label);
     // Starting from January 2025
     expect(labels[0]).toBe('Jan');
@@ -35,12 +36,12 @@ describe('computeBestImagingWindow', () => {
   });
 
   it('M42 is above 20° minAlt during at least some months', () => {
-    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON);
+    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON, 20, undefined, DEFAULT_WINDOW_PREFS);
     expect(w.everVisible).toBe(true);
   });
 
   it('peakMonth has the highest maxAlt', () => {
-    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON);
+    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON, 20, undefined, DEFAULT_WINDOW_PREFS);
     expect(w.peakMonth).not.toBeNull();
     for (const m of w.months) {
       expect(w.peakMonth!.maxAlt).toBeGreaterThanOrEqual(m.maxAlt);
@@ -50,7 +51,7 @@ describe('computeBestImagingWindow', () => {
   it('reports M42\'s season as Sep through Mar from 40°N', () => {
     // M42 clears the default 20° floor Jan–Mar and Sep–Dec (Apr–Aug it is a
     // daytime object), so the wrapped window is Sep → Mar.
-    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON);
+    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON, 20, undefined, DEFAULT_WINDOW_PREFS);
     expect(w.windowStart).toBe('Sep');
     expect(w.windowEnd).toBe('Mar');
     expect(w.months.filter(m => m.aboveMinAlt).map(m => m.label))
@@ -59,7 +60,7 @@ describe('computeBestImagingWindow', () => {
 
   it('an object at the south pole is never visible from 40°N', () => {
     // Dec -90° never rises above 0° from any northern latitude
-    const w = computeBestImagingWindow(0, -90, LAT, LON, 20);
+    const w = computeBestImagingWindow(0, -90, LAT, LON, 20, undefined, DEFAULT_WINDOW_PREFS);
     expect(w.everVisible).toBe(false);
     expect(w.windowStart).toBeNull();
   });
@@ -69,7 +70,7 @@ describe('computeBestImagingWindow', () => {
     // straddles the array boundary (Jan/Feb at the front, Oct–Dec at the back).
     // The reported window must span the whole season, not be truncated to the
     // longer half.
-    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON, 20);
+    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON, 20, undefined, DEFAULT_WINDOW_PREFS);
     const visibleLabels = w.months.filter(m => m.aboveMinAlt).map(m => m.label);
     // The contiguous window must cover every visible month.
     const labels = w.months.map(m => m.label);
@@ -87,7 +88,7 @@ describe('computeBestImagingWindow', () => {
   });
 
   it('all maxAlt values are numbers', () => {
-    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON);
+    const w = computeBestImagingWindow(M42_RA, M42_DEC, LAT, LON, 20, undefined, DEFAULT_WINDOW_PREFS);
     for (const m of w.months) {
       expect(typeof m.maxAlt).toBe('number');
       expect(isNaN(m.maxAlt)).toBe(false);

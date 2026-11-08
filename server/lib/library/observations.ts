@@ -522,6 +522,21 @@ export function exposureSeconds(token: string | undefined): number | null {
   return m[2]!.toLowerCase() === 'ms' ? value / 1000 : value;
 }
 
+/** True when `relPath` is a file sitting directly in its session folder,
+ *  rather than nested inside one of its sub-directories (a Dwarf mosaic panel,
+ *  or an archived `Thumbnail/`). */
+function isSessionRootFile(relPath: string, fileName: string, sessionFolder: string | null): boolean {
+  return sessionFolder ? relPath === `${sessionFolder}/${fileName}` : relPath === fileName;
+}
+
+/** The combined preview a Dwarf writes at the root of a mosaic capture
+ *  (`<mosaic session>/stacked.jpg`). It is the only file that shows the whole
+ *  mosaic, so it must not be discarded as a redundant device preview just
+ *  because the panel stacks also exist. */
+function isMosaicSessionPreview(objectId: string, fileName: string, isRoot: boolean): boolean {
+  return isRoot && /_mosaic$/i.test(objectId) && isDwarfDeviceStackPreview(fileName);
+}
+
 export function getLocalSessions(objectId: string) {
   const LIBRARY_DIR = getLibraryDir();
   // Contained resolution rather than a hand-rolled prefix test: the local copy
@@ -549,6 +564,9 @@ export function getLocalSessions(objectId: string) {
     thumbnailFile: string | null;   // _thn.jpg
     stackedImageFile: string | null; // Stacked_*.jpg (non-thumbnail)
     anyImageFile: string | null;     // any other .jpg/.png fallback
+    /** A mosaic capture's combined `stacked.jpg`, which outranks the per-panel
+     *  stacks for the session card (it is the only image showing every panel). */
+    mosaicPreviewFile: string | null;
     /** Whether the chosen file is a JPEG (servable as-is). Lets a JPEG found
      *  later replace a costly earlier pick without a second pass. */
     stackedImageIsCheap: boolean;
@@ -695,7 +713,7 @@ export function getLocalSessions(objectId: string) {
   for (const r of sessionRows) {
     if (r.date === 'unknown') continue; // stale rows from old imports — skip
     if (!deletedSessions.has(r.date) && !sessionMap.has(r.date)) {
-      sessionMap.set(r.date, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, videoCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false, filters: new Set(), exposures: new Set() });
+      sessionMap.set(r.date, { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, videoCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, mosaicPreviewFile: null, stackedImageIsCheap: false, anyImageIsCheap: false, filters: new Set(), exposures: new Set() });
     }
     if (r.temperature != null) {
       weatherMap.set(r.date, {
@@ -759,10 +777,13 @@ export function getLocalSessions(objectId: string) {
     // line above inserted is really there.
     let s = sessionMap.get(sessionKey);
     if (!s) {
-      s = { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, videoCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false, filters: new Set(), exposures: new Set() };
+      s = { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, videoCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, mosaicPreviewFile: null, stackedImageIsCheap: false, anyImageIsCheap: false, filters: new Set(), exposures: new Set() };
       sessionMap.set(sessionKey, s);
     }
     s.fileCount++;
+    const isRoot = isSessionRootFile(entry.relPath, fname, entry.sessionFolder);
+    const mosaicPreview = isMosaicSessionPreview(objectId, fname, isRoot);
+    if (mosaicPreview && !s.mosaicPreviewFile) s.mosaicPreviewFile = entry.relPath;
     // Keyed on the object-relative path: in a nested object every session has
     // its own `stacked.jpg`, so a basename key would merge distinct stacks.
     if (parsed.type === 'stacked') s.stackedKeys.add(entry.relPath.slice(0, entry.relPath.length - path.extname(fname).length));
@@ -774,8 +795,10 @@ export function getLocalSessions(objectId: string) {
       && !isDwarfInternalArtifact(fname)
       // Dwarf's own on-device stack preview: skip it as a pick only where a
       // better, science-quality stack exists in the same session — otherwise
-      // it is that session's only deliverable image.
-      && !(isDwarfDeviceStackPreview(fname) && sessionsWithSuperiorStack.has(sessionKey));
+      // it is that session's only deliverable image. A mosaic's combined
+      // preview is the exception: it is the only image of the whole capture,
+      // so the panel stacks must not displace it.
+      && !(isDwarfDeviceStackPreview(fname) && !mosaicPreview && sessionsWithSuperiorStack.has(sessionKey));
     // A JPEG can be served straight to the client; anything else has to be
     // converted by sharp on the way out. That matters for the pick, not just the
     // URL: featuring a Dwarf's ~100 MB float `img_stacked_all.tif` means a 100 MB
@@ -821,7 +844,7 @@ export function getLocalSessions(objectId: string) {
 
     let s = sessionMap.get(sessionKey);
     if (!s) {
-      s = { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, videoCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, stackedImageIsCheap: false, anyImageIsCheap: false, filters: new Set(), exposures: new Set() };
+      s = { fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, imageCount: 0, videoCount: 0, thumbnailFile: null, stackedImageFile: null, anyImageFile: null, mosaicPreviewFile: null, stackedImageIsCheap: false, anyImageIsCheap: false, filters: new Set(), exposures: new Set() };
       sessionMap.set(sessionKey, s);
     }
     const parsed = parseFilename(row.fileName);
@@ -830,6 +853,16 @@ export function getLocalSessions(objectId: string) {
     const isThumbnail = row.role === 'thumbnail' || parsed.isThumbnail;
 
     s.fileCount++;
+    // A linked file has no managed session folder to compare against, so use
+    // its source-relative path: the file directly inside a `..._MOSAIC_...`
+    // directory is the combined preview, while a panel's own `stacked.jpg` sits
+    // one level deeper.
+    const sourcePath = row.sourcePath ?? '';
+    const sourceParent = sourcePath.split('/').slice(-2, -1)[0] ?? '';
+    const isRoot = /_MOSAIC[_-]/i.test(sourceParent) || !sourcePath.includes('/');
+    if (isMosaicSessionPreview(objectId, row.fileName, isRoot) && !s.mosaicPreviewFile) {
+      s.mosaicPreviewFile = row.relPath;
+    }
     if (effectiveType === 'stacked') {
       s.stackedKeys.add(row.relPath.slice(0, row.relPath.length - path.extname(row.fileName).length));
     }
@@ -910,7 +943,9 @@ export function getLocalSessions(objectId: string) {
         // device-generated preview or an unprocessed stack.
         const processedThumb = processedThumbByDate.get(date);
         if (processedThumb) return fileUrlFor(processedThumb);
-        const best = stats.thumbnailFile ?? stats.stackedImageFile ?? stats.anyImageFile;
+        // A mosaic's combined preview wins over its panel thumbnails/stacks:
+        // it is the only image that shows every panel of the capture.
+        const best = stats.mosaicPreviewFile ?? stats.thumbnailFile ?? stats.stackedImageFile ?? stats.anyImageFile;
         if (!best) return `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/thumbnail`;
         // A managed file's `best` is object-relative (needs the folder prefix);
         // a linked file's is already the full '@src/<id>/...' relPath (the loop
@@ -968,8 +1003,12 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
       !isDwarfInternalArtifact(e.fileName)
       // Dwarf's own on-device stack preview: hidden only where a better,
       // science-quality stack exists in the same session (see above) —
-      // otherwise it is that session's only deliverable image.
-      && !(isDwarfDeviceStackPreview(e.fileName) && sessionsWithSuperiorStack.has(identity.session(e.relPath) ?? '')))
+      // otherwise it is that session's only deliverable image. A mosaic's
+      // combined preview is exempt: it shows the whole capture, not a
+      // redundant copy of one panel.
+      && !(isDwarfDeviceStackPreview(e.fileName)
+        && !isMosaicSessionPreview(objectId, e.fileName, isSessionRootFile(e.relPath, e.fileName, e.sessionFolder))
+        && sessionsWithSuperiorStack.has(identity.session(e.relPath) ?? '')))
     .filter(entry => {
       if (!sessionDate) return true;
       return identity.session(entry.relPath) === sessionDate;
@@ -1263,6 +1302,8 @@ export function getLocalObservations() {
       fitsCount: number;
       subFrameCount: number;
       stackedImageFile: string | null;
+      /** A mosaic's combined `stacked.jpg`, preferred over a panel stack. */
+      mosaicPreviewFile: string | null;
       /** True when stackedImageFile is a JPEG, so a later JPEG can displace a
        *  costly earlier pick. See getLocalSessions for the reasoning. */
       stackedImageIsCheap: boolean;
@@ -1272,7 +1313,7 @@ export function getLocalObservations() {
     for (const d of sessions) {
       if (d === 'unknown') continue;
       if (!sessionMap.has(d)) {
-        sessionMap.set(d, { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null, stackedImageIsCheap: false });
+        sessionMap.set(d, { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null, mosaicPreviewFile: null, stackedImageIsCheap: false });
       }
     }
 
@@ -1286,10 +1327,14 @@ export function getLocalObservations() {
       // instead of being re-fetched and asserted non-null.
       let s = sessionMap.get(date);
       if (!s) {
-        s = { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null, stackedImageIsCheap: false };
+        s = { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null, mosaicPreviewFile: null, stackedImageIsCheap: false };
         sessionMap.set(date, s);
       }
       s.fileCount++;
+      const isRoot = isSessionRootFile(entry.relPath, fname, entry.sessionFolder);
+      if (isMosaicSessionPreview(objectId, fname, isRoot) && !s.mosaicPreviewFile) {
+        s.mosaicPreviewFile = entry.relPath;
+      }
       if (parsed.timestamp) s.timestamps.push(parsed.timestamp);
       // Keyed on the object-relative path: every nested session has its own
       // `stacked.jpg`, which a basename key would merge into one stack.
@@ -1353,6 +1398,11 @@ export function getLocalObservations() {
           // object page and the observation page for the same session.
           const processedThumb = processedThumbByKey.get(`${objectId}|${date}`);
           if (processedThumb) return cardUrlFor(processedThumb);
+          // The combined mosaic preview beats a panel stack: it is the only
+          // image that shows every panel of the capture.
+          if (session.mosaicPreviewFile) {
+            return cardUrlFor(folderName + '/' + session.mosaicPreviewFile);
+          }
           if (session.stackedImageFile) {
             return cardUrlFor(folderName + '/' + session.stackedImageFile);
           }

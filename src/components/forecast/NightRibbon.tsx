@@ -32,7 +32,9 @@ import {
   scoreHex,
   type DarkWindow,
 } from '../../lib/forecastScore';
-import { activeLocale } from '../../lib/formatLocale';
+import { activeLocale, formatDate } from '../../lib/formatLocale';
+import { localDateKey } from '../../lib/forecastNights';
+import { dateFromKey } from '../../lib/nightWindow';
 import { useTheme } from '../../hooks/useTheme';
 
 interface TonightInfo {
@@ -600,6 +602,35 @@ export function NightRibbon({
                 </g>
               );
             })}
+
+            {/* ── Days: which date each stretch of the night belongs to, with a faint divider at midnight ── */}
+            {(() => {
+              let prev = '';
+              return scored.map((s, i) => {
+                const key = localDateKey(s.ms, timeZone);
+                if (key === prev) return null;
+                prev = key;
+                const x = xOf(s.ms);
+                const flip = x > width - 96;
+                return (
+                  <g key={`day-${key}`} pointerEvents="none">
+                    {i > 0 && (
+                      <line
+                        x1={x} y1={SKY_TOP} x2={x} y2={RAIL_Y}
+                        stroke={isNight ? 'rgba(204,51,51,0.28)' : 'rgba(255,255,255,0.28)'} strokeWidth="1" strokeDasharray="2 4"
+                      />
+                    )}
+                    <text
+                      x={flip ? x - 6 : x + 6} y={SKY_TOP + 15}
+                      textAnchor={flip ? 'end' : 'start'} fontSize="10.5" fontWeight="600" letterSpacing="0.06em"
+                      fill={isNight ? 'rgba(204,51,51,0.8)' : 'rgba(255,255,255,0.7)'}
+                    >
+                      {formatDate(dateFromKey(key), { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}
+                    </text>
+                  </g>
+                );
+              });
+            })()}
 
             {/* ── Hour rail ── */}
             {scored.map((s, i) => {

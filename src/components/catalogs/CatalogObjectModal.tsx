@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import type { CatalogProgressObject } from '../../lib/api/catalogs';
 import { getCatalogObjectInfo } from '../../lib/api/catalog';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
+import { catalogDisplayId } from '../../lib/catalogMeta';
 import { computeBestImagingWindow, isUpTonight } from '../../lib/bestImagingWindow';
 import { filterRecommendations } from '../../lib/filterRecommendations';
 import type { FitAssessment } from '../../lib/telescopeFov';
@@ -14,6 +15,7 @@ import { FitBadge } from '../FitBadge';
 import { FramingModal, FRAMING_MOSAIC_ENABLED } from './FramingModal';
 import { FilterRecommendationPanel } from '../ui/FilterRecommendationPanel';
 import { BestImagingChart } from '../ui/BestImagingChart';
+import { useActiveWindowPrefs } from '../../hooks/useActiveWindowPrefs';
 
 interface Props {
   object: CatalogProgressObject;
@@ -105,6 +107,7 @@ export function CatalogObjectModal({
   const imgUrl = getCatalogThumbnailUrl(object.id, object.majorAxisArcmin);
   const lightboxImgUrl = getCatalogThumbnailUrl(object.id, object.majorAxisArcmin, 800, 800);
 
+  const windowPrefs = useActiveWindowPrefs();
   const bestWindow = useMemo(() => {
     if (!hasLocation || object.ra == null || object.dec == null) return null;
     return computeBestImagingWindow(
@@ -114,15 +117,16 @@ export function CatalogObjectModal({
       observerLon,
       minAlt,
       observerTimezone,
+      windowPrefs,
     );
-  }, [object.ra, object.dec, observerLat, observerLon, minAlt, hasLocation, observerTimezone]);
+  }, [object.ra, object.dec, observerLat, observerLon, minAlt, hasLocation, observerTimezone, windowPrefs]);
 
   // Does the object ever clear the horizon during tonight's dark window from
   // this location? null = can't tell (no location / no coords / no dark window),
   // in which case we don't warn or disable anything.
   const upTonight = useMemo(
-    () => isUpTonight(object.ra, object.dec, observerLat, observerLon, 0, new Date(), observerTimezone),
-    [object.ra, object.dec, observerLat, observerLon, observerTimezone],
+    () => isUpTonight(object.ra, object.dec, observerLat, observerLon, 0, new Date(), observerTimezone, windowPrefs),
+    [object.ra, object.dec, observerLat, observerLon, observerTimezone, windowPrefs],
   );
   const notVisibleTonight = upTonight === false;
 
@@ -194,9 +198,9 @@ export function CatalogObjectModal({
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-xl font-display font-bold tracking-tight">
-                {object.id}
+                {catalogDisplayId(object.id)}
               </h2>
-              {object.name !== object.id && (
+              {object.name !== object.id && object.name !== catalogDisplayId(object.id) && (
                 <span className={`text-base font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                   {object.name}
                 </span>

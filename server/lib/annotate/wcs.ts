@@ -216,3 +216,78 @@ export function approximateWcs(opts: {
     height,
   };
 }
+
+export type EditRotation = 0 | 90 | 180 | 270;
+
+/**
+ * What the image editor did to a picture, in the order it does it: crop the source, flip the cropped part, then turn
+ * it clockwise. `crop` is a rectangle of the SOURCE picture, 0 to 1 on each axis.
+ */
+export interface GeometryEdit {
+  crop?: { x1: number; y1: number; x2: number; y2: number };
+  flipH?: boolean;
+  flipV?: boolean;
+  rotation?: EditRotation;
+}
+
+/**
+ * Re-express a solution for the picture an edit produced, so a rotate, flip or crop keeps its plate solution instead
+ * of dropping it. The maths is exact: every step is a pixel move, so the sky position of each pixel is unchanged.
+ * Works on the solution's own pixel grid; `scaleWcs` then fits it to the saved file's size. The result is always
+ * top-down (`yDown`), whatever the input was.
+ */
+export function transformWcs(wcs: Wcs, edit: GeometryEdit): Wcs {
+  const { width: W, height: H } = wcs;
+  const crop = edit.crop ?? { x1: 0, y1: 0, x2: 1, y2: 1 };
+  const cx = crop.x1 * W;
+  const cy = crop.y1 * H;
+  const cw = (crop.x2 - crop.x1) * W;
+  const ch = (crop.y2 - crop.y1) * H;
+  const rotation = edit.rotation ?? 0;
+  const quarter = rotation === 90 || rotation === 270;
+
+  // Continuous top-down pixel coordinates, old picture to new.
+  const move = (px: number, py: number): ImagePoint => {
+    let x = px - cx;
+    let y = py - cy;
+    if (edit.flipH) x = cw - x;
+    if (edit.flipV) y = ch - y;
+    if (rotation === 90) return { x: ch - y, y: x };
+    if (rotation === 180) return { x: cw - x, y: ch - y };
+    if (rotation === 270) return { x: y, y: cw - x };
+    return { x, y };
+  };
+  const origin = move(0, 0);
+  const ex = move(1, 0);
+  const ey = move(0, 1);
+  const a = ex.x - origin.x, c = ex.y - origin.y; // image of the x axis
+  const b = ey.x - origin.x, d = ey.y - origin.y; // image of the y axis
+  const det = a * d - b * c; // 1 or -1
+
+  // Sky step per top-down pixel step in the old picture: the CD matrix, with the y column flipped for a bottom-up one.
+  const s = wcs.yDown ? 1 : -1;
+  const m11 = wcs.cd.cd11, m12 = wcs.cd.cd12 * s;
+  const m21 = wcs.cd.cd21, m22 = wcs.cd.cd22 * s;
+  // Per step in the new picture: M * inverse(A).
+  const i11 = d / det, i12 = -b / det, i21 = -c / det, i22 = a / det;
+
+  const refX = wcs.crpix1 - 0.5;
+  const refY = wcs.yDown ? wcs.crpix2 - 0.5 : H - (wcs.crpix2 - 0.5);
+  const ref = move(refX, refY);
+
+  return {
+    crval1: wcs.crval1,
+    crval2: wcs.crval2,
+    crpix1: ref.x + 0.5,
+    crpix2: ref.y + 0.5,
+    cd: {
+      cd11: m11 * i11 + m12 * i21,
+      cd12: m11 * i12 + m12 * i22,
+      cd21: m21 * i11 + m22 * i21,
+      cd22: m21 * i12 + m22 * i22,
+    },
+    width: quarter ? ch : cw,
+    height: quarter ? cw : ch,
+    yDown: true,
+  };
+}

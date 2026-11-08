@@ -58,6 +58,12 @@ type SplitMode = 'perObject' | 'count';
  *  server default. */
 const CLOUD_THRESHOLDS = [30, 45, 60, 75] as const;
 
+const NARROWBAND_KEY = 'planner.narrowbandCapable';
+
+function readNarrowband(): boolean {
+  try { return localStorage.getItem(NARROWBAND_KEY) === '1'; } catch { return false; }
+}
+
 /** 7Timer seeing 1-5 → label key. */
 function seeingKey(seeing: number): string {
   if (seeing <= 1.5) return 'autoPlanModal.seeingExcellent';
@@ -131,6 +137,7 @@ export function AutoPlanModal({
   const [unimagedOnly, setUnimagedOnly] = useState(false);
   const [avoidClouds, setAvoidClouds] = useState(true);
   const [maxCloudCover, setMaxCloudCover] = useState<number>(60);
+  const [narrowband, setNarrowband] = useState(readNarrowband);
   const [weather, setWeather] = useState<PlanWeatherSummary | null>(null);
   const [favorGoals, setFavorGoals] = useState(true);
   const [goalsSummary, setGoalsSummary] = useState<PlanGoalsSummary | null>(null);
@@ -192,9 +199,11 @@ export function AutoPlanModal({
         useForecast: avoidClouds,
         maxCloudCover,
         favorGoals: anyGoals && favorGoals,
+        // Unchecked leaves it out, so a narrowband filter in Gear still counts.
+        narrowbandCapable: narrowband ? true : undefined,
       });
     },
-    [startMs, endMs, splitMode, minutesPerObject, objectCount, focus, unimagedOnly, avoidClouds, maxCloudCover, targets, targetsWithGoals, anyGoals, favorGoals, observerLat, observerLon, minAlt, moonIllumination, visibleSkyMap],
+    [startMs, endMs, splitMode, minutesPerObject, objectCount, focus, unimagedOnly, avoidClouds, maxCloudCover, narrowband, targets, targetsWithGoals, anyGoals, favorGoals, observerLat, observerLon, minAlt, moonIllumination, visibleSkyMap],
   );
 
   /** Every object any take of this plan has shown, so a shuffle can move on from them. */
@@ -492,6 +501,18 @@ export function AutoPlanModal({
                   </select>
                 )}
               </div>
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={narrowband}
+                  onChange={(e) => {
+                    setNarrowband(e.target.checked);
+                    try { localStorage.setItem(NARROWBAND_KEY, e.target.checked ? '1' : '0'); } catch { /* private mode: the choice just won't persist */ }
+                  }}
+                  className="accent-amber-500"
+                />
+                <span>{t('autoPlanModal.narrowbandCapable')}</span>
+              </label>
               {buildError && <p className="text-xs text-red-500">{buildError}</p>}
             </>
           ) : (

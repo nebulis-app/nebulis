@@ -41,6 +41,7 @@ test.describe('Image editor: adjust sliders', () => {
     await mockAllRoutes(page);
     const grey = await sharp({ create: { width: 400, height: 600, channels: 3, background: { r: 100, g: 100, b: 100 } } }).jpeg().toBuffer();
     await page.route('**/api/library/file?path=**', r => r.fulfill({ status: 200, contentType: 'image/jpeg', body: grey }));
+    await page.route('**/api/library/image-edit/preview**', r => r.fulfill({ status: 200, contentType: 'image/jpeg', body: grey }));
     await page.route('**/api/library/objects/*/media**', r => r.fulfill(json(ok(media))));
     await page.goto('/object/M42?view=media');
     await page.getByRole('button', { name: 'Telescope image, Mar 15, 2024' }).click();

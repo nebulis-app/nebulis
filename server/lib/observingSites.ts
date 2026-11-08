@@ -45,7 +45,7 @@ export interface ObservingSite {
   visibleSkyMap: boolean[];
   bortleClass: number | null;
   /** Imaging window (lib/imagingWindow.ts): the twilight it starts from, and minutes after that dusk it opens and
-   *  before that dawn it closes. */
+   *  before that dawn it closes. Defaults to the astronomical night. */
   darkness: DarknessLevel;
   windowStartOffsetMin: number;
   windowEndOffsetMin: number;
@@ -142,6 +142,9 @@ export function parseVisibleSkyMap(raw: string): boolean[] {
 }
 
 function rowToSite(row: ObservingSiteRow): ObservingSite {
+  const window = windowPrefsOf({
+    darkness: row.darkness, windowStartOffsetMin: row.windowStartOffsetMin, windowEndOffsetMin: row.windowEndOffsetMin,
+  });
   return {
     id: row.id,
     name: row.name,
@@ -152,10 +155,9 @@ function rowToSite(row: ObservingSiteRow): ObservingSite {
     horizonProfile: parseHorizonProfile(row.horizonProfile),
     visibleSkyMap: parseVisibleSkyMap(row.visibleSkyMap),
     bortleClass: row.bortleClass,
-    ...(() => {
-      const w = windowPrefsOf({ darkness: row.darkness, windowStartOffsetMin: row.windowStartOffsetMin, windowEndOffsetMin: row.windowEndOffsetMin });
-      return { darkness: w.darkness, windowStartOffsetMin: w.startOffsetMin, windowEndOffsetMin: w.endOffsetMin };
-    })(),
+    darkness: window.darkness,
+    windowStartOffsetMin: window.startOffsetMin,
+    windowEndOffsetMin: window.endOffsetMin,
     isDefault: row.isDefault === 1,
     sortOrder: row.sortOrder,
     createdAt: row.createdAt,

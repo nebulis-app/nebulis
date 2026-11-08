@@ -26,6 +26,7 @@ import {
 } from '../../lib/forecastScore';
 import { scoreNight } from '../../lib/plannerNight';
 import { dateFromKey } from '../../lib/nightWindow';
+import { localDateKey, nextDateKey } from '../../lib/forecastNights';
 import { formatDate } from '../../lib/formatLocale';
 import { MoonDisk } from '../ui/MoonDisk';
 import { NightRibbon } from './NightRibbon';
@@ -257,6 +258,21 @@ function TonightPanel({
   const { isNight } = useTheme();
   const fmt = (iso: string | null) => (iso ? formatTime(iso, timeZone) : null);
 
+  // Which night this is. The forecast's "tonight" is the night that begins on the evening of the sunset shown and ends
+  // the next morning, so before the 7 AM rollover it is the night that started yesterday evening. Say so in dates.
+  const eveningKey = tonight.sunset ? localDateKey(new Date(tonight.sunset).getTime(), timeZone) : null;
+  const morningKey = eveningKey ? nextDateKey(eveningKey) : null;
+  const dayOf = (key: string | null, weekdayOnly = false) =>
+    key ? formatDate(dateFromKey(key), weekdayOnly ? { weekday: 'short' } : { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+  // Kept in state (refreshed each minute) so rendering stays pure.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const inProgress = morningKey != null && !!tonight.sunrise
+    && localDateKey(nowMs, timeZone) === morningKey && nowMs < new Date(tonight.sunrise).getTime();
+
   const scored = hours.map(h => ({
     hour: h,
     vis: calculateVisibilityScore(h, tonight.moonIllumination, timeZone, darkWindow, t, isNight),
@@ -298,7 +314,10 @@ function TonightPanel({
             <ScoreDial score={nightScore} size={132} showLabel={false} />
             <div className="min-w-0">
               <div className="text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-white/45">
-                {t('tonightHero.tonight')}
+                {eveningKey && morningKey
+                  ? `${t('tonightHero.tonight')} · ${dayOf(eveningKey)} → ${dayOf(morningKey)}`
+                  : t('tonightHero.tonight')}
+                {inProgress && <span className="ml-2 normal-case tracking-normal text-white/35">{t('tonightHero.inProgress')}</span>}
               </div>
               <h2
                 className="font-display text-4xl font-bold leading-none tracking-tight sm:text-5xl"
@@ -359,13 +378,13 @@ function TonightPanel({
           />
           <StatPill
             icon={<Sunset className="h-3.5 w-3.5" />}
-            label={t('tonightHero.sunset')}
+            label={`${t('tonightHero.sunset')}${eveningKey ? ` · ${dayOf(eveningKey, true)}` : ''}`}
             value={formatTime(tonight.sunset, timeZone)}
             sub={astroDusk ? t('tonightHero.darkBy', { time: astroDusk }) : t('tonightHero.noDarkWindow')}
           />
           <StatPill
             icon={<Sunrise className="h-3.5 w-3.5" />}
-            label={t('tonightHero.sunrise')}
+            label={`${t('tonightHero.sunrise')}${morningKey ? ` · ${dayOf(morningKey, true)}` : ''}`}
             value={formatTime(tonight.sunrise, timeZone)}
             sub={astroDawn ? t('tonightHero.dawnFrom', { time: astroDawn }) : t('tonightHero.noDarkWindow')}
           />

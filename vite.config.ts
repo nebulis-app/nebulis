@@ -1,4 +1,6 @@
-import { defineConfig, type ProxyOptions } from 'vite'
+import { defineConfig, type Plugin, type ProxyOptions } from 'vite'
+import { rmSync } from 'node:fs'
+import path from 'node:path'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -45,8 +47,28 @@ function apiProxy(): ProxyOptions {
   };
 }
 
+/**
+ * `public/stellarium/` is a gitignored local download of Stellarium Web (~50 MB) used only by the telescope
+ * control center on feat/v2.3.0-alpaca. Vite copies all of `public/` into the build, ignored or not, so a copy
+ * left on disk shipped in the 2.2.1 Mac app (and its host-named folders broke codesign). Nothing on this branch
+ * uses it, so drop it from every build's output. Remove this plugin when the control center's sky view ships.
+ */
+function excludeStellarium(): Plugin {
+  let outDir = ''
+  return {
+    name: 'exclude-stellarium',
+    apply: 'build',
+    configResolved(config) {
+      outDir = path.resolve(config.root, config.build.outDir)
+    },
+    closeBundle() {
+      rmSync(path.join(outDir, 'stellarium'), { recursive: true, force: true })
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), excludeStellarium()],
   build: {
     outDir: 'releases/web',
   },

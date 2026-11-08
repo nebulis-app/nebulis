@@ -11,13 +11,14 @@
  * and styles its own text white instead of branching on isDark.
  */
 import { Link } from 'react-router-dom';
-import { ChevronLeft, Images, Sparkles } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, Images, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ByTypeStats, ObjectClass } from '../../lib/api/catalogs';
 import type { CatalogMeta } from '../../lib/catalogMeta';
 import { CatalogHeroImage } from './CatalogHeroImage';
 import { useTheme } from '../../hooks/useTheme';
 import { everyMember } from '../unionList';
+import { CollapsibleHero, HeroSummary } from '../ui/CollapsibleHero';
 
 interface Props {
   /** Undefined for a catalog slug we carry no editorial copy for. */
@@ -101,10 +102,8 @@ export function CatalogHero({
   const ringOffset = RING_CIRCUMFERENCE - (pct / 100) * RING_CIRCUMFERENCE;
   const visibleTypes = TYPE_ORDER.filter(cls => (byType[cls]?.total ?? 0) > 0);
 
-  return (
-    <section
-      className="relative overflow-hidden rounded-3xl bg-slate-950 hero-panel"
-    >
+  const backdrop = (
+    <>
       {/* Sky imagery */}
       <div className="absolute inset-0 overflow-hidden">
         <CatalogHeroImage
@@ -124,30 +123,146 @@ export function CatalogHero({
         className="absolute inset-y-0 right-0 w-2/3 opacity-50"
         style={{ background: `radial-gradient(60% 90% at 78% 40%, ${accent}2e 0%, transparent 70%)` }}
       />
+    </>
+  );
 
-      {/* Hairline border */}
-      <div
-        className="absolute inset-0 rounded-3xl pointer-events-none"
-        style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10)' }}
-      />
+  const typeStrip = (
+      <div className={`grid grid-cols-2 ${SM_COLS[visibleTypes.length] ?? 'sm:grid-cols-4'} border-t border-white/10`}>
+      {visibleTypes.map((cls, idx) => {
+        const stats = byType[cls];
+        const { labelKey: typeLabelKey, dot: dotColorLight } = TYPE_META[cls];
+        const dot = isNight ? NIGHT_TYPE_DOT[cls] : dotColorLight;
+        const typeLabel = t(typeLabelKey);
+        const barPct = stats.total > 0 ? (stats.imaged / stats.total) * 100 : 0;
+        const active = typeFilter === cls;
 
-      <div className="relative flex flex-col gap-8 p-6 sm:p-8 lg:flex-row lg:items-end lg:justify-between lg:gap-12">
+        return (
+          <button
+            key={cls}
+            onClick={() => onTypeFilterChange(active ? null : cls)}
+            aria-pressed={active}
+            className={`group relative px-5 py-4 text-left transition-colors
+              border-white/10 ${cellBorders(idx, visibleTypes.length)}
+              ${active ? 'bg-white/[0.09]' : 'hover:bg-white/[0.05]'}
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 shrink-0 rounded-full" style={{ background: dot }} />
+              <span className={`text-[0.6875rem] font-medium ${active ? 'text-white' : 'text-white/60'}`}>
+                {typeLabel}
+              </span>
+              <span className="ml-auto text-[0.6875rem] tabular-nums text-white/45">
+                {stats.imaged}/{stats.total}
+              </span>
+            </div>
+            <div className="mt-2.5 h-1 rounded-full bg-white/10 overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700 ease-out"
+                style={{ width: `${barPct}%`, background: dot, opacity: active ? 1 : 0.75 }}
+              />
+            </div>
+            {/* Active cell reads as a selected tab */}
+            <span
+              className={`absolute inset-x-0 bottom-0 h-0.5 transition-opacity duration-200 ${active ? 'opacity-100' : 'opacity-0'}`}
+              style={{ background: accent }}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const stats = [
+    { value: `${imagedCount} / ${total}`, label: t('catalogHero.imaged') },
+    ...(remaining > 0 ? [{ value: String(remaining), label: t('catalogHero.toGo') }] : []),
+  ];
+
+  const pill = `inline-flex items-center gap-1.5 rounded-full bg-white/[0.07] px-3 py-1.5 text-xs font-semibold text-white
+    ring-1 ring-inset ring-white/15 backdrop-blur-md transition-colors hover:bg-white/15
+    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60`;
+
+  const crumbLink = 'rounded font-medium transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60';
+  // Collapsed bar reads "Catalogs > Herschel 400"; the expanded banner has the title right below, so it is a plain back link.
+  const crumbCollapsed = (
+    <nav aria-label={t('catalogHero.breadcrumb')} className="flex items-center gap-1 text-xs text-white/60">
+      <Link to="/catalogs" className={crumbLink}>{t('catalogHero.catalogs')}</Link>
+      <ChevronRight className="h-3 w-3 shrink-0 text-white/40" aria-hidden />
+    </nav>
+  );
+  const crumbExpanded = (
+    <nav aria-label={t('catalogHero.breadcrumb')}>
+      <Link to="/catalogs" className={`inline-flex items-center gap-1 text-xs text-white/60 ${crumbLink}`}>
+        <ChevronLeft className="h-3 w-3" aria-hidden />
+        {t('catalogHero.catalogs')}
+      </Link>
+    </nav>
+  );
+
+  return (
+    <CollapsibleHero
+      page="catalog"
+      accent={accent}
+      icon={<BookOpen className="h-5 w-5" style={{ color: accent }} />}
+      title={label}
+      backdrop={backdrop}
+      breadcrumb={crumbCollapsed}
+      collapsedBody={
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+          <p className="hidden truncate text-[0.8125rem] tabular-nums sm:block">
+            <HeroSummary stats={stats} />
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {visibleTypes.map(cls => {
+              const active = typeFilter === cls;
+              const dot = isNight ? NIGHT_TYPE_DOT[cls] : TYPE_META[cls].dot;
+              return (
+                <button
+                  key={cls}
+                  type="button"
+                  onClick={() => onTypeFilterChange(active ? null : cls)}
+                  aria-pressed={active}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.6875rem] font-medium ring-1 ring-inset
+                    transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70
+                    ${active ? 'bg-white/15 text-white ring-white/25' : 'bg-white/[0.04] text-white/55 ring-white/10 hover:text-white'}`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} />
+                  {t(TYPE_META[cls].labelKey)}
+                  <span className="tabular-nums text-white/45">{byType[cls].imaged}/{byType[cls].total}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      }
+      actions={
+        <>
+          {catalogId && imagedCount > 0 && (
+            <Link to={`/catalogs/${catalogId}/mine`} className={pill} title={t('catalogHero.myCatalog', { label })}>
+              <Images className="h-3.5 w-3.5" style={{ color: accent }} />
+              <span className="sr-only">{t('catalogHero.myCatalog', { label })}</span>
+            </Link>
+          )}
+          {onPlan && (
+            <button type="button" onClick={onPlan} className={pill} title={t('catalogHero.planTonightTitle', { label })}>
+              <Sparkles className="h-3.5 w-3.5" style={{ color: accent }} />
+              <span className="hidden lg:inline">{t('catalogHero.planTonight')}</span>
+              <span className="sr-only lg:hidden">{t('catalogHero.planTonight')}</span>
+            </button>
+          )}
+        </>
+      }
+      contentClassName="flex flex-col gap-8 p-6 sm:p-8 lg:flex-row lg:items-end lg:justify-between lg:gap-12"
+      contentPaddingClassName=""
+      toggleClassName="right-4 top-5 sm:right-6 sm:top-7"
+      footer={typeStrip}
+    >
 
         {/* Story */}
         <div className="min-w-0 max-w-2xl">
-          <Link
-            to="/catalogs"
-            className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.07] py-1 pl-1.5 pr-3
-              text-[0.6875rem] font-medium text-white/70 ring-1 ring-inset ring-white/15 backdrop-blur-md
-              transition-colors hover:bg-white/15 hover:text-white
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-          >
-            <ChevronLeft className="w-3.5 h-3.5" />
-            {t('catalogHero.allCatalogs')}
-          </Link>
+          {crumbExpanded}
 
           {meta && (
-            <div className="mt-4 text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-white/55">
+            <div className="mt-3 text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-white/55">
               {meta.credit}
             </div>
           )}
@@ -159,6 +274,33 @@ export function CatalogHero({
               {t(meta.taglineKey)}
             </p>
           )}
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            {catalogId && imagedCount > 0 && (
+              <Link
+                to={`/catalogs/${catalogId}/mine`}
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-white/[0.07] px-4 py-2
+                  text-[0.8125rem] font-semibold text-white ring-1 ring-inset ring-white/15 backdrop-blur-md
+                  transition-colors hover:bg-white/15
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              >
+                <Images className="w-4 h-4" style={{ color: accent }} />
+                {t('catalogHero.myCatalog', { label })}
+              </Link>
+            )}
+            {onPlan && (
+              <button
+                onClick={onPlan}
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-white/[0.07] px-4 py-2
+                  text-[0.8125rem] font-semibold text-white ring-1 ring-inset ring-white/15 backdrop-blur-md
+                  transition-colors hover:bg-white/15
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                title={t('catalogHero.planTonightTitle', { label })}
+              >
+                <Sparkles className="w-4 h-4" style={{ color: accent }} />
+                {t('catalogHero.planTonight')}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Progress */}
@@ -207,82 +349,8 @@ export function CatalogHero({
                 {t('catalogHero.inFrameNote', { count: imagedInFrameCount })}
               </div>
             )}
-
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-            {catalogId && imagedCount > 0 && (
-              <Link
-                to={`/catalogs/${catalogId}/mine`}
-                className="inline-flex items-center gap-2 rounded-full bg-white/[0.07] px-4 py-2
-                  text-[0.8125rem] font-semibold text-white ring-1 ring-inset ring-white/15 backdrop-blur-md
-                  transition-colors hover:bg-white/15
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-              >
-                <Images className="w-4 h-4" style={{ color: accent }} />
-                {t('catalogHero.myCatalog', { label })}
-              </Link>
-            )}
-            {onPlan && (
-              <button
-                onClick={onPlan}
-                className="inline-flex items-center gap-2 rounded-full bg-white/[0.07] px-4 py-2
-                  text-[0.8125rem] font-semibold text-white ring-1 ring-inset ring-white/15 backdrop-blur-md
-                  transition-colors hover:bg-white/15
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-                title={t('catalogHero.planTonightTitle', { label })}
-              >
-                <Sparkles className="w-4 h-4" style={{ color: accent }} />
-                {t('catalogHero.planTonight')}
-              </button>
-            )}
-            </div>
           </div>
         </div>
-      </div>
-
-      {/* Type strip. Each cell is also the filter for that object class. */}
-      <div className={`relative grid grid-cols-2 ${SM_COLS[visibleTypes.length] ?? 'sm:grid-cols-4'} border-t border-white/10`}>
-        {visibleTypes.map((cls, idx) => {
-          const stats = byType[cls];
-          const { labelKey: typeLabelKey, dot: dotColorLight } = TYPE_META[cls];
-          const dot = isNight ? NIGHT_TYPE_DOT[cls] : dotColorLight;
-          const typeLabel = t(typeLabelKey);
-          const barPct = stats.total > 0 ? (stats.imaged / stats.total) * 100 : 0;
-          const active = typeFilter === cls;
-
-          return (
-            <button
-              key={cls}
-              onClick={() => onTypeFilterChange(active ? null : cls)}
-              aria-pressed={active}
-              className={`group relative px-5 py-4 text-left transition-colors
-                border-white/10 ${cellBorders(idx, visibleTypes.length)}
-                ${active ? 'bg-white/[0.09]' : 'hover:bg-white/[0.05]'}
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50`}
-            >
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 shrink-0 rounded-full" style={{ background: dot }} />
-                <span className={`text-[0.6875rem] font-medium ${active ? 'text-white' : 'text-white/60'}`}>
-                  {typeLabel}
-                </span>
-                <span className="ml-auto text-[0.6875rem] tabular-nums text-white/45">
-                  {stats.imaged}/{stats.total}
-                </span>
-              </div>
-              <div className="mt-2.5 h-1 rounded-full bg-white/10 overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-700 ease-out"
-                  style={{ width: `${barPct}%`, background: dot, opacity: active ? 1 : 0.75 }}
-                />
-              </div>
-              {/* Active cell reads as a selected tab */}
-              <span
-                className={`absolute inset-x-0 bottom-0 h-0.5 transition-opacity duration-200 ${active ? 'opacity-100' : 'opacity-0'}`}
-                style={{ background: accent }}
-              />
-            </button>
-          );
-        })}
-      </div>
-    </section>
+    </CollapsibleHero>
   );
 }

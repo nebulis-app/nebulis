@@ -49,17 +49,6 @@ interface Props {
   isDark: boolean;
 }
 
-/** How the site's settings move the window, in words: "starts 30 min later, ends 1 h earlier". */
-function offsetText(t: (k: string, o?: Record<string, unknown>) => string, startMin: number, endMin: number): string {
-  const span = (m: number) => (Math.abs(m) % 60 === 0 ? t('imagingWindow.hours', { count: Math.abs(m) / 60 }) : t('imagingWindow.minutes', { count: Math.abs(m) }));
-  const parts: string[] = [];
-  if (startMin > 0) parts.push(t('imagingWindow.startsLater', { span: span(startMin) }));
-  if (startMin < 0) parts.push(t('imagingWindow.startsEarlier', { span: span(startMin) }));
-  if (endMin > 0) parts.push(t('imagingWindow.endsEarlier', { span: span(endMin) }));
-  if (endMin < 0) parts.push(t('imagingWindow.endsLater', { span: span(endMin) }));
-  return parts.join(', ');
-}
-
 /** One cell in the header label row. */
 function ColLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -94,6 +83,17 @@ function CloudBar({ pct, isDark }: { pct: number; isDark: boolean }) {
       <span className="tabular-nums text-[0.6875rem] w-7 text-right">{pct}%</span>
     </div>
   );
+}
+
+/** How the site's settings move the window, in words: "starts 30 min after dusk, ends 1 h before dawn". */
+function offsetText(t: (k: string, o?: Record<string, unknown>) => string, startMin: number, endMin: number): string {
+  const span = (m: number) => (Math.abs(m) % 60 === 0 ? t('imagingWindow.hours', { count: Math.abs(m) / 60 }) : t('imagingWindow.minutes', { count: Math.abs(m) }));
+  const parts: string[] = [];
+  if (startMin > 0) parts.push(t('imagingWindow.startsLater', { span: span(startMin) }));
+  if (startMin < 0) parts.push(t('imagingWindow.startsEarlier', { span: span(startMin) }));
+  if (endMin > 0) parts.push(t('imagingWindow.endsEarlier', { span: span(endMin) }));
+  if (endMin < 0) parts.push(t('imagingWindow.endsLater', { span: span(endMin) }));
+  return parts.join(', ');
 }
 
 export function ImagingWindow({
@@ -146,7 +146,7 @@ export function ImagingWindow({
         isDark ? 'border-slate-800' : 'border-slate-100'
       }`}>
         <div className="flex items-center gap-2.5">
-          <Camera className={`h-4 w-4 shrink-0 ${isDark ? 'text-violet-400' : 'text-violet-500'}`} />
+          <Camera className={`h-4 w-4 shrink-0 ${isDark ? 'text-accent-400' : 'text-accent-600'}`} />
           <div>
             <h2 className={`font-display font-semibold leading-tight ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>
               {t('imagingWindow.title')}
@@ -161,13 +161,13 @@ export function ImagingWindow({
         {/* Window start to end, with how many hours it covers. */}
         <div className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium tabular-nums ${
           isDark
-            ? 'bg-violet-500/10 text-violet-300 ring-1 ring-inset ring-violet-500/20'
-            : 'bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200'
+            ? 'bg-accent-500/10 text-accent-300 ring-1 ring-inset ring-accent-500/20'
+            : 'bg-accent-50 text-accent-700 ring-1 ring-inset ring-accent-500/30'
         }`}>
           <span>{formatTime(win.startIso, timeZone)}</span>
           <span className="opacity-50">→</span>
           <span>{formatTime(win.endIso, timeZone)}</span>
-          <span className={`ml-1 text-[0.6875rem] font-normal ${isDark ? 'text-violet-400/60' : 'text-violet-500/70'}`}>
+          <span className={`ml-1 text-[0.6875rem] font-normal ${isDark ? 'text-accent-400/60' : 'text-accent-600/70'}`}>
             {t('imagingWindow.durationHours', { hours: formatNumber((win.endMs - win.startMs) / 3_600_000, { maximumFractionDigits: 1 }) })}
           </span>
         </div>

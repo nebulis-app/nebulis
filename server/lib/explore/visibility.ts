@@ -13,6 +13,7 @@
 import { getPlannerCatalog, type DsoEntry } from '../dsoCatalog.js';
 import { maxPossibleAltitude, visibilityWindow } from '../astroCalc.js';
 import { computeBestImagingWindow } from '../bestImagingWindow.js';
+import { DEFAULT_WINDOW_PREFS, windowPrefsKey, type ImagingWindowPrefs } from '../imagingWindow.js';
 import { computeBestTonightScore } from '../bestTonightScore.js';
 import { buildMoonTrack, moonPenaltyFor } from '../tonightMoon.js';
 import SunCalc from 'suncalc';
@@ -24,6 +25,8 @@ export interface ExploreSiteContext {
   lon: number;
   minAlt: number;
   horizonProfile?: number[];
+  /** The site's imaging window; the astronomical night when absent. */
+  window?: ImagingWindowPrefs;
 }
 
 export interface TonightEntry {
@@ -42,16 +45,16 @@ export interface TonightIndex {
 const TONIGHT_CACHE_MAX = 8;
 const tonightCache = new Map<string, TonightIndex>();
 
-function tonightKey(ctx: ExploreSiteContext, start: Date): string {
+function tonightKey(ctx: ExploreSiteContext, start: Date, end: Date): string {
   const hp = ctx.horizonProfile ? ctx.horizonProfile.join(',') : '';
-  return `${ctx.lat}:${ctx.lon}:${ctx.minAlt}:${hp}:${start.toISOString()}`;
+  return `${ctx.lat}:${ctx.lon}:${ctx.minAlt}:${hp}:${start.toISOString()}:${end.toISOString()}`;
 }
 
 /** Everything that clears the site's floor during [start, end], with its
  *  planner score. Mirrors the loop in GET /planner/tonight so Explore and the
  *  Planner agree about what is up. */
 export function getTonightIndex(ctx: ExploreSiteContext, start: Date, end: Date): TonightIndex {
-  const key = tonightKey(ctx, start);
+  const key = tonightKey(ctx, start, end);
   const hit = tonightCache.get(key);
   if (hit) return hit;
 
@@ -109,10 +112,10 @@ const WINDOW_CACHE_MAX = 4000;
 function bestWindow(entry: DsoEntry, ctx: ExploreSiteContext, now: Date) {
   // Keyed by the hour, not by the server's month: the window's months are the
   // site's, which turn over at the site's midnight, not the server's.
-  const key = `${entry.id}:${ctx.lat}:${ctx.lon}:${ctx.minAlt}:${Math.floor(now.getTime() / 3_600_000)}`;
+  const key = `${entry.id}:${ctx.lat}:${ctx.lon}:${ctx.minAlt}:${windowPrefsKey(ctx.window ?? DEFAULT_WINDOW_PREFS)}:${Math.floor(now.getTime() / 3_600_000)}`;
   const hit = windowCache.get(key);
   if (hit) return hit;
-  const w = computeBestImagingWindow(entry.ra, entry.dec, ctx.lat, ctx.lon, ctx.minAlt, now);
+  const w = computeBestImagingWindow(entry.ra, entry.dec, ctx.lat, ctx.lon, ctx.minAlt, now, ctx.window);
   if (windowCache.size >= WINDOW_CACHE_MAX) windowCache.clear();
   windowCache.set(key, w);
   return w;

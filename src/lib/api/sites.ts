@@ -24,8 +24,9 @@ export interface ObservingSite {
    *  treated as visible). */
   visibleSkyMap: boolean[];
   bortleClass: number | null;
-  /** The imaging window: the twilight it starts from, and minutes after that dusk it opens and before that dawn it
-   *  closes (negative moves it the other way). Absent from an older server, which means astronomical, 0 and 0. */
+  /** The imaging window (src/lib/imagingWindow.ts): the twilight it starts from, and minutes after that dusk it
+   *  opens and before that dawn it closes (negative moves it the other way). Absent from an older server, which
+   *  means astronomical, 0 and 0. */
   darkness?: 'astronomical' | 'nautical';
   windowStartOffsetMin?: number;
   windowEndOffsetMin?: number;
@@ -40,12 +41,12 @@ export interface ObservingSiteInput {
   longitude?: number | null;
   timezone?: string;
   minAlt?: number;
-  darkness?: 'astronomical' | 'nautical';
-  windowStartOffsetMin?: number;
-  windowEndOffsetMin?: number;
   horizonProfile?: number[];
   visibleSkyMap?: boolean[];
   bortleClass?: number | null;
+  darkness?: 'astronomical' | 'nautical';
+  windowStartOffsetMin?: number;
+  windowEndOffsetMin?: number;
   isDefault?: boolean;
 }
 

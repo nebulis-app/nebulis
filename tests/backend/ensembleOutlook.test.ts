@@ -122,6 +122,23 @@ describe('computeOutlook', () => {
     expect(nights[10]!.models.find(m => m.model === 'gem_global_ensemble')).toMatchObject({ members: 0, clearProbability: null });
   });
 
+  it('scores the site\'s imaging window, not the whole astronomical night', () => {
+    // Clear only in the first three hours after astronomical dusk, cloudy after.
+    const dusk = computeOutlook({ times, members: [] }, SITE, NOW)[0]!.darkStart;
+    const clearUntil = Date.parse(dusk) + 3 * 3_600_000;
+    const data: EnsembleData = {
+      times,
+      members: [{ model: 'ncep_gefs_seamless', member: 0, values: times.map(t => (t < clearUntil ? 0 : 100)) }],
+    };
+    const whole = computeOutlook(data, SITE, NOW)[0]!;
+    // Starting 3 h after dusk leaves only the cloudy part: not a usable night.
+    const trimmed = computeOutlook(data, { ...SITE, window: { darkness: 'astronomical', startOffsetMin: 180, endOffsetMin: 0 } }, NOW)[0]!;
+    expect(whole.clearProbability).toBe(1);
+    expect(trimmed.clearProbability).toBe(0);
+    expect(trimmed.darkHours).toBeCloseTo(whole.darkHours - 3, 1);
+    expect(Date.parse(trimmed.darkStart)).toBe(Date.parse(whole.darkStart) + 3 * 3_600_000);
+  });
+
   it('says nothing about a night no run covers', () => {
     const data: EnsembleData = { times: times.slice(0, 48), members: [{ model: 'ncep_gefs_seamless', member: 0, values: Array(48).fill(0) }] };
     const nights = computeOutlook(data, SITE, NOW);

@@ -5,14 +5,20 @@
     "noneImaged": "Sie haben noch keines dieser Objekte aufgenommen.",
     "allImaged": "Jedes Objekt in dieser Auswahl wurde aufgenommen.",
     "nothingToShow": "Für die aktuellen Filter gibt es nichts anzuzeigen.",
-    "clearFilters": "Filter zurücksetzen"
+    "clearFilters": "Filter zurücksetzen",
+    "noneObservable": "Keine Objekte in diesem Katalog sind von Ihrem Standort bei der aktuellen Mindesthöhe sichtbar."
   },
   "catalogsHero": {
     "percentImagedAriaLabel": "{{percent}}% der Katalogobjekte aufgenommen",
     "imaged": "Aufgenommen",
     "catalogObjects": "Katalogobjekte",
     "title": "Kataloge",
-    "subtitle": "Verfolgen Sie Ihren Aufnahmefortschritt durch klassische Beobachtungsprogramme."
+    "subtitle": "Verfolgen Sie Ihren Aufnahmefortschritt durch klassische Beobachtungsprogramme.",
+    "filterLabel": "Kataloge anzeigen",
+    "filterEmpty": "Keine Kataloge ausgewählt. Wählen Sie mindestens einen aus, um den Fortschritt zu sehen.",
+    "filterShowAll": "Alle anzeigen",
+    "filterAll": "Alle Kataloge",
+    "filterCount": "{{selected}} von {{total}} Katalogen"
   },
   "catalogMeta": {
     "messier": {
@@ -34,6 +40,21 @@
       "label": "Sharpless",
       "tagline": "313 Wolken aus leuchtendem Wasserstoff, die Emissionsnebel hinter vielen bekannten Namen am Himmel.",
       "blurb": "Stewart Sharpless katalogisierte 313 HII-Regionen anhand von Aufnahmen der National-Geographic-Himmelsdurchmusterung. Dies sind die H-Alpha-Wolken, denen Schmalband-Astrofotografen nachjagen: groß, schwach und voller Struktur. Manche tragen bekannte Namen wie den Höhlennebel, den Zauberernebel und den Pacman-Nebel, doch viele sind unbenannte Felder, die auf eine lange Belichtung warten."
+    },
+    "rasc": {
+      "label": "RASC Finest NGC",
+      "tagline": "110 NGC-Schätze der Royal Astronomical Society of Canada, ohne Überschneidung mit Messier.",
+      "blurb": "Die RASC-Finest-NGC-Liste ist die Antwort der kanadischen Gesellschaft auf Messier: 110 der besten NGC-Objekte außerhalb des Messier-Katalogs, vom Doppelsternhaufen bis zur Sculptor-Galaxie. Sie ist zuerst eine visuelle Liste, aber jedes Objekt ist auch ein lohnendes Bildziel; traditionell empfiehlt man ein 200-mm-Teleskop."
+    },
+    "abell": {
+      "label": "Abell-Planetarische Nebel",
+      "tagline": "80 schwache, alte planetarische Nebel aus George Abells Palomar-Durchmusterung.",
+      "blurb": "George Abell fand diese 80 planetarischen Nebel auf den Palomar-Sky-Survey-Platten; die meisten sind groß und sehr schwach. Sie belohnen OIII-Filter, dunklen Himmel und lange Belichtungen; die Medusa, Abell 31 und Abell 39 sind die Paradestücke."
+    },
+    "berkeley": {
+      "label": "Berkeley-Sternhaufen",
+      "tagline": "89 alte, lockere offene Sternhaufen aus dem Berkeley-Katalog.",
+      "blurb": "Der Berkeley-Katalog sammelt alte offene Sternhaufen, die auf Palomar-Platten gefunden wurden; oft sind sie locker und schwach. Sie sind subtile visuelle Ziele und ungewöhnliche Bildprojekte, wobei Berkeley 17 zu den ältesten bekannten offenen Sternhaufen zählt."
     }
   },
   "objectClass": {
@@ -43,8 +64,10 @@
     "other": "Andere"
   },
   "catalogHero": {
-    "allCatalogs": "Alle Kataloge",
+    "catalogs": "Kataloge",
+    "breadcrumb": "Katalognavigation",
     "imaged": "aufgenommen",
+    "toGo": "offen",
     "programComplete": "Programm abgeschlossen",
     "stillToImage_one": "noch {{count}} aufzunehmen",
     "stillToImage_other": "noch {{count}} aufzunehmen",
@@ -66,7 +89,8 @@
     "openBoard": "Board öffnen",
     "myCatalog": "Mein {{label}}",
     "myCatalogAria_one": "Mein {{label}}-Katalog, {{count}} Bild",
-    "myCatalogAria_other": "Mein {{label}}-Katalog, {{count}} Bilder"
+    "myCatalogAria_other": "Mein {{label}}-Katalog, {{count}} Bilder",
+    "myCatalogShort": "Mein Katalog"
   },
   "catalogTile": {
     "imagedAriaLabel": "{{id}}, {{name}}, aufgenommen",
@@ -97,7 +121,11 @@
     "searchPlaceholder": "Name, ID, Sternbild suchen",
     "searchAriaLabel": "Diesen Katalog durchsuchen",
     "clearSearch": "Suche löschen",
-    "sortObjects": "Objekte sortieren"
+    "sortObjects": "Objekte sortieren",
+    "observableOnly": "Sichtbar",
+    "observableOnlyHelp": "Objekte ausblenden, die von Ihrem Standort nie über {{deg}}° steigen",
+    "observableOnlyNoLocation": "Legen Sie einen Standort fest, um nach Sichtbarkeit zu filtern",
+    "filters": "Filter"
   },
   "catalogObjectModal": {
     "maxAltitudeHeading": "Maximale Höhe während der Dunkelheit, nächste 12 Monate",

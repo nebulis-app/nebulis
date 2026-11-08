@@ -54,7 +54,8 @@
       "7": "Übergang vorstädtisch zu städtisch",
       "8": "Stadthimmel",
       "9": "Innenstadthimmel"
-    }
+    },
+    "inProgress": "läuft"
   },
   "hourDetail": {
     "conditionsAt": "Bedingungen um {{time}}",
@@ -131,5 +132,23 @@
     "minutes_other": "{{count}} Min.",
     "hours_one": "{{count}} Std.",
     "hours_other": "{{count}} Std."
+  },
+  "outlook": {
+    "title": "Die nächsten zwei Wochen",
+    "basis": "{{runs}} Modellläufe · {{models}}",
+    "explain": "Chance auf eine nutzbare Nacht: Anteil der Ensemble-Läufe mit mindestens {{hours}} h Dunkelheit bei Bewölkung bis {{cloud}} %. Ab einer Woche als Trend lesen.",
+    "unavailable": "Die Langfristprognose ist gerade nicht verfügbar.",
+    "noData": "noch kein Modell deckt diese Nacht ab",
+    "runsClear": "{{pct}} der Läufe klar ({{clear}}/{{runs}}, ≥ {{hours}} h)",
+    "clouds": "Wolken ~{{median}} % ({{low}}–{{high}} %)",
+    "moonUp": "Mond {{pct}} %, um Mitternacht über dem Horizont",
+    "moonDown": "Mond {{pct}} %, um Mitternacht untergegangen",
+    "firstWeek": "Nächste 7 Nächte",
+    "trend": "Trend",
+    "colNight": "Nacht",
+    "colChance": "Chance auf eine nutzbare Nacht",
+    "colClouds": "Mittlere Bewölkung",
+    "colMoon": "Mond",
+    "none": "k. A."
   }
 }

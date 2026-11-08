@@ -579,6 +579,18 @@ export interface LibraryAnalysis {
   ranAt: string;
 }
 
+export interface DuplicatePair { objectId: string; keep: string; remove: string; bytes: number }
+export interface DuplicateListing {
+  count: number;
+  objects: number;
+  bytes: number;
+  pairs: DuplicatePair[];
+  truncated: boolean;
+}
+
+/** The files "Remove duplicates" would delete, with the copy kept for each. Also written to the server log. */
+export const getDuplicateFiles = () => fetchJSON<DuplicateListing>('/storage/analyze/duplicates');
+
 export type RepairCategory = 'staleRecords' | 'missingObjects' | 'layoutDrift' | 'missingProcessed' | 'duplicateFiles';
 
 export const analyzeLibrary = () => fetchJSON<LibraryAnalysis>('/storage/analyze');

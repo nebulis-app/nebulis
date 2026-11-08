@@ -5,6 +5,13 @@
  * SeeStar image library, and provides endpoints to trigger imports.
  */
 import { markGeometryEdited } from '../lib/annotate/geometryEdits.js';
+import { geometryEditSchema } from '../lib/annotate/geometryEditSchema.js';
+import { editedVariantTarget } from '../lib/library/editedVariant.js';
+import { EDITOR_PREVIEW_MAX_PX, renderEditorPreview } from '../lib/library/imageEdit.js';
+import { imageEditRequestSchema } from '../lib/library/imageEditSchema.js';
+import { ImageEditError, runImageEdit } from '../lib/library/imageEditService.js';
+import { carrySolutionThroughEdit, solutionBeforeEdit } from '../lib/annotate/annotateService.js';
+import type { GeometryEdit } from '../lib/annotate/wcs.js';
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { ImportBodySchema } from '../lib/library/importSchemas.js';
@@ -53,7 +60,7 @@ import { buildSessionReport, measureLibraryFile, setFrameReview, FrameFileError,
 import { enqueueFrames, queueStateFor } from '../lib/frameAnalysis/queue.js';
 import { buildStackingPlan, buildExportEntries, exportFileName } from '../lib/library/stackingExport.js';
 import { generateTiffThumbnail, tiffThumbnailPath, type TiffThumbnailTier } from '../lib/tiffThumbnail.js';
-import { normalizeCatalogId, clampToNightSafeTime, mimeTypeForExtension } from '../lib/telescopeFiles.js';
+import { normalizeCatalogId, mimeTypeForExtension } from '../lib/telescopeFiles.js';
 import {
   runImport,
   runAllTelescopesImport,
@@ -4019,7 +4026,7 @@ router.get('/project-archives/:id', async (req: Request, res: Response) => {
 // ─── Save edited telescope image back into the library folder ─────────────────
 // Writes the canvas export alongside the original telescope files so it
 // appears in the Telescope Images section instead of Processed Images.
-router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, editedImageUpload.single('image'), (req: Request, res: Response) => {
+router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, editedImageUpload.single('image'), async (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const date = String(req.params.date);
   const file = req.file;
@@ -4042,6 +4049,19 @@ router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, edi
   if (!objectId || objectId === '.' || objectId === '..' || /[\\/]/.test(objectId)) {
     rejectUpload('Invalid object id');
     return;
+  }
+
+  // What the editor did to the frame, so its plate solution can follow. Absent for a plain overwrite.
+  let geometryEdit: GeometryEdit | null = null;
+  if (typeof req.body?.edit === 'string') {
+    try {
+      const parsed = geometryEditSchema.safeParse(JSON.parse(req.body.edit));
+      if (!parsed.success) { rejectUpload('Invalid edit'); return; }
+      geometryEdit = parsed.data;
+    } catch {
+      rejectUpload('Invalid edit');
+      return;
+    }
   }
 
   try {
@@ -4082,27 +4102,11 @@ router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, edi
       destPath = resolved;
       filename = path.basename(resolved);
     } else {
-      // Build a filename that parseFilename can associate with the correct
-      // session date: <objectId>_YYYYMMDD-HHMMSSE.jpg — the trailing `E` marks
-      // this as an edited variant and lands in the simpleMatch suffix slot
-      // (`[A-Z]?`). Adding free-form text like ` (edited)` here breaks the
-      // regex, so the file would be saved on disk but invisible to
-      // getLocalFiles().
-      //
-      // `date` is the session the user is editing, not this file's own capture
-      // time — the embedded time-of-day is clamped into the rollover-safe zone
-      // (see clampToNightSafeTime) so an edit made at, say, 2am doesn't get
-      // rolled back a day by sessionNightFor the next time it's read.
-      const now = localParts(new Date(), activeSiteTimeZone());
-      const datePart = date.replace(/-/g, ''); // YYYYMMDD from session date
-      const rawTimePart = [now.hour, now.minute, now.second].map(n => String(n).padStart(2, '0')).join(''); // HHMMSS
-      const timePart = clampToNightSafeTime(rawTimePart);
-      // The extension also comes from a client-supplied filename, so strip
-      // anything that is not a plain alphanumeric extension token.
-      const ext = (file.originalname.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      filename = `${objectId}_${datePart}-${timePart}E.${ext}`;
-      destPath = path.join(objDir, filename);
-      if (!fs.existsSync(objDir)) fs.mkdirSync(objDir, { recursive: true });
+      // See editedVariantTarget for the naming rules.
+      const ext = file.originalname.split('.').pop() ?? 'jpg';
+      const target = editedVariantTarget(objectId, date, ext);
+      filename = target.filename;
+      destPath = target.destPath;
     }
     // Belt and braces: whatever the halves produced, the write must land
     // strictly inside the owning object's folder.
@@ -4110,6 +4114,8 @@ router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, edi
     if (!destResolved.startsWith(ownerDir + path.sep)) {
       throw new Error('Resolved destination is outside this object folder');
     }
+    // The solution is keyed to the file's current mtime, so read it before the write replaces the file.
+    const carriedBase = overwriteRaw && geometryEdit ? await solutionBeforeEdit(overwriteRaw) : null;
     try {
       fs.renameSync(file.path, destPath);
     } catch (renameErr) {
@@ -4122,7 +4128,8 @@ router.post('/objects/:objectId/sessions/:date/library-files', requireAdmin, edi
     }
 
     // Only an overwrite can leave an old picture with a frame that no longer matches its FITS header.
-    if (overwriteRaw && req.body?.geometryChanged === '1') markGeometryEdited(overwriteRaw);
+    if (overwriteRaw && (geometryEdit || req.body?.geometryChanged === '1')) markGeometryEdited(overwriteRaw);
+    if (overwriteRaw && geometryEdit && carriedBase) carrySolutionThroughEdit(overwriteRaw, carriedBase, geometryEdit);
     invalidateAllImagesCache();
     res.apiSuccess({ objectId, date, filename });
   } catch (err) {
@@ -4150,6 +4157,58 @@ router.post('/file/replace', requireAdmin, editedImageUpload.single('image'), (r
     res.apiError(500, 'REPLACE_FAILED', err instanceof Error ? err.message : 'Replace failed');
   } finally {
     cleanup();
+  }
+});
+
+// ─── Image editor: render on the server ───────────────────────────────────────
+// The editor sends what to do (crop, flip, turn, color, name, destination) and the server does it to the picture on
+// disk, so a 24 MP stack never has to fit in the browser. Text layers arrive as a small transparent PNG in `overlay`.
+const imageEditOverlayUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024, fieldSize: 1 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => cb(null, file.mimetype === 'image/png'),
+});
+
+router.post('/image-edit', requireAdmin, imageEditOverlayUpload.single('overlay'), async (req: Request, res: Response) => {
+  let json: unknown;
+  try {
+    json = JSON.parse(typeof req.body?.request === 'string' ? req.body.request : '');
+  } catch {
+    res.apiError(400, 'INVALID_REQUEST', 'Field "request" must be JSON');
+    return;
+  }
+  const parsed = imageEditRequestSchema.safeParse(json);
+  if (!parsed.success) {
+    res.apiError(400, 'INVALID_REQUEST', parsed.error.issues[0]?.message ?? 'Invalid request');
+    return;
+  }
+  if (!(await requireLibraryReachable(res))) return;
+  try {
+    const result = await runImageEdit(parsed.data, req.file?.buffer);
+    invalidateAllImagesCache();
+    res.apiSuccess(result);
+  } catch (err) {
+    if (err instanceof ImageEditError) { res.apiError(err.status, err.code, err.message); return; }
+    res.apiError(500, 'EDIT_FAILED', err instanceof Error ? err.message : 'Edit failed');
+  }
+});
+
+// A screen-sized copy of the picture the editor is about to work on, so the browser never decodes the full file.
+router.get('/image-edit/preview', async (req: Request, res: Response) => {
+  const kind = queryString(req.query.kind);
+  const key = queryString(req.query.key);
+  if ((kind !== 'telescope' && kind !== 'processed') || !key) {
+    res.apiError(400, 'INVALID_REQUEST', 'Query parameters "kind" (telescope or processed) and "key" are required');
+    return;
+  }
+  if (!(await requireLibraryReachable(res))) return;
+  try {
+    const abs = kind === 'telescope' ? resolveLibraryFile(key)?.abs : getProcessedImageFile(key)?.abs;
+    if (!abs || !fs.existsSync(abs)) { res.apiError(404, 'NOT_FOUND', 'Picture not found'); return; }
+    res.set('Cache-Control', 'no-store');
+    res.type('image/jpeg').send(await renderEditorPreview(abs, EDITOR_PREVIEW_MAX_PX));
+  } catch (err) {
+    res.apiError(500, 'PREVIEW_FAILED', err instanceof Error ? err.message : 'Preview failed');
   }
 });
 

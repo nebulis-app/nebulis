@@ -21,6 +21,8 @@ import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { generateNightPlan } from '../../lib/api/planner';
 import type { PlanCandidate, PlanBlock } from '../../lib/planTypes';
 import { nightWindowFor, formatPlannerDate, plannerToday, localDateKey } from '../../lib/nightWindow';
+import type { ImagingWindowPrefs } from '../../lib/imagingWindow';
+import { useActiveWindowPrefs } from '../../hooks/useActiveWindowPrefs';
 import { formatHm } from '../../lib/timeFormat';
 import { createPlannedSession, deletePlannedSession, listPlannedSessions, type PlannedSession } from '../../lib/api/plannedSessions';
 import type { CatalogProgressObject } from '../../lib/api/catalogs';
@@ -42,14 +44,14 @@ interface CatalogPlanModalProps {
  *  before the 07:00 rollover that's still the dark window in progress that began
  *  the previous evening, not the coming one. Roll forward only once that window
  *  has actually ended. */
-function upcomingNight(lat: number, lon: number, timeZone?: string): { start: Date; end: Date } | null {
+function upcomingNight(lat: number, lon: number, timeZone: string | undefined, prefs: ImagingWindowPrefs): { start: Date; end: Date } | null {
   const now = new Date();
   const anchor = plannerToday(now, timeZone);
-  const current = nightWindowFor(anchor, lat, lon);
+  const current = nightWindowFor(anchor, lat, lon, prefs);
   if (current && current.end.getTime() > now.getTime()) return current;
   const next = new Date(anchor);
   next.setDate(next.getDate() + 1);
-  return nightWindowFor(next, lat, lon);
+  return nightWindowFor(next, lat, lon, prefs);
 }
 
 export function CatalogPlanModal({
@@ -65,6 +67,7 @@ export function CatalogPlanModal({
   const { t } = useTranslation('catalogs');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const windowPrefs = useActiveWindowPrefs();
   const [count, setCount] = useState(5);
   const [creating, setCreating] = useState(false);
   // Set to the night's existing blocks when "Create plan" finds a plan already
@@ -92,8 +95,8 @@ export function CatalogPlanModal({
   );
 
   const night = useMemo(
-    () => upcomingNight(observerLat, observerLon, observerTimezone),
-    [observerLat, observerLon, observerTimezone],
+    () => upcomingNight(observerLat, observerLon, observerTimezone, windowPrefs),
+    [observerLat, observerLon, observerTimezone, windowPrefs],
   );
 
   // Start at dusk, or "now" (rounded up to 5 min) when we're already into the

@@ -60,7 +60,7 @@ const ALIASES: Map<string, string> = (() => {
  * an underscore, a word) means it is not a bare designation.
  */
 const DESIGNATION_RE =
-  /^(?:SH2-\d+|(?:NGC|IC|CED|VDB|LBN|LDN|UGC|PGC|ARP|MEL|CR|STOCK|HCG|M|C|B)\d+[A-Z]?)$/;
+  /^(?:SH2-\d+|ABELL\d+|BERK\d+|(?:NGC|IC|CED|VDB|LBN|LDN|UGC|PGC|ARP|MEL|CR|STOCK|HCG|M|C|B)\d+[A-Z]?)$/;
 
 /**
  * Fold a catalog designation into one canonical spelling: uppercase, no

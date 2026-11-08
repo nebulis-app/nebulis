@@ -15,6 +15,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { resolveSite } from '../lib/observingSites.js';
+import { windowPrefsOf } from '../lib/imagingWindow.js';
 import { getAll as getWishlistAll } from '../lib/wishlist.js';
 import { getLocalObjects } from '../lib/localLibrary.js';
 import { getPlannerCatalog, getById, searchScored, designationsFor, type DsoEntry } from '../lib/dsoCatalog.js';
@@ -105,11 +106,12 @@ async function buildContext(query: unknown): Promise<ExploreContext> {
     lon,
     minAlt: resolved.minAlt,
     horizonProfile: resolved.horizonProfile.length === 36 ? resolved.horizonProfile : undefined,
+    window: windowPrefsOf(resolved),
   };
   const anchor = q.date ? parseLocalNoon(q.date, timezone) : defaultNightAnchor(new Date(), timezone);
-  const night = getNightWindow(anchor, lat, lon);
+  const night = getNightWindow(anchor, lat, lon, site.window);
   const dark = resolvePlannerDarkWindow(night);
-  const tonight = dark ? getTonightIndex(site, dark.nightStart, dark.nightEnd) : null;
+  const tonight = dark ? getTonightIndex(site, dark.start, dark.end) : null;
   return { ...base, locationSet: true, timezone, site, tonight };
 }
 
@@ -328,7 +330,7 @@ router.get('/next-good-nights/:objectId', async (req: Request, res: Response) =>
     res.apiSuccess({ locationSet: false, nights: [] });
     return;
   }
-  const { lat, lon, minAlt, horizonProfile } = ctx.site;
+  const { lat, lon, minAlt, horizonProfile, window } = ctx.site;
   const tz = ctx.timezone;
 
   const now = new Date();
@@ -345,8 +347,8 @@ router.get('/next-good-nights/:objectId', async (req: Request, res: Response) =>
     { lat, lon, minAlt, horizonProfile, timezone: tz },
     dates,
     date => {
-      const dark = resolvePlannerDarkWindow(getNightWindow(parseLocalNoon(date, tz), lat, lon));
-      return dark ? { start: dark.nightStart, end: dark.nightEnd } : null;
+      const dark = resolvePlannerDarkWindow(getNightWindow(parseLocalNoon(date, tz), lat, lon, window));
+      return dark ? { start: dark.start, end: dark.end } : null;
     },
   );
 

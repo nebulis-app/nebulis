@@ -48,7 +48,7 @@ export interface IdentifiedObject {
  * prefix of a longer number so "M421" is not read as "M42".
  */
 const DESIGNATION_TOKEN_RE =
-  /(?:^|[^A-Za-z0-9])((?:SH2|SHARPLESS)[\s-]?\d+|(?:NGC|IC|M|C|B|UGC|PGC|ARP|MEL|STOCK|HCG|CED|VDB|LBN|LDN)[\s-]?\d+[A-Za-z]?)(?![0-9])/gi;
+  /(?:^|[^A-Za-z0-9])((?:SH2|SHARPLESS|ABELL|BERKELEY|BERK)[\s-]?\d+|(?:NGC|IC|M|C|B|UGC|PGC|ARP|MEL|STOCK|HCG|CED|VDB|LBN|LDN)[\s-]?\d+[A-Za-z]?)(?![0-9])/gi;
 
 function fromEntry(objectId: string, entry: CatalogEntry): IdentifiedObject {
   return {

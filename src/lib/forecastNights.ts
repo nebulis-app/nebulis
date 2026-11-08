@@ -69,7 +69,8 @@ export interface TwilightTimes {
   astronomicalTwilightStart?: string | null;
   nauticalTwilightEnd?: string | null;
   nauticalTwilightStart?: string | null;
-  /** The window as the site's settings make it, from the server. Null: those settings leave none tonight. */
+  /** The window as the site's settings make it, from the server. Null: those settings leave none tonight. Absent
+   *  from an older server, which means the plain twilight. */
   imagingWindow?: ImagingWindowInfo | null;
 }
 
@@ -112,6 +113,7 @@ export function resolveImagingWindow(twilight: TwilightTimes): ImagingWindow | n
       startOffsetMin: w.startOffsetMin, endOffsetMin: w.endOffsetMin,
     };
   }
+
   const startIso = twilight.astronomicalTwilightEnd || twilight.nauticalTwilightEnd;
   const endIso = twilight.astronomicalTwilightStart || twilight.nauticalTwilightStart;
   if (!startIso || !endIso) return null;
@@ -126,8 +128,7 @@ export function resolveImagingWindow(twilight: TwilightTimes): ImagingWindow | n
 
 /**
  * The forecast hours of the window, both bounds included. A window that opens between two hours also takes the hour
- * it opens in, so one opening at 19:02 starts on the 19:00 row rather than an hour later; one closing at 05:38 ends
- * on the 05:00 row.
+ * it opens in, so one opening at 19:02 starts on the 19:00 row rather than an hour later.
  */
 export function hoursInWindow(hours: ForecastHour[], win: ImagingWindow): ForecastHour[] {
   return hours.filter(h => {

@@ -1016,7 +1016,10 @@
       "footerOverwriteTelescope": "Speichern ersetzt diese Datei. Neue Version behält das Original und fügt eine bearbeitete Kopie hinzu.",
       "footerOverwriteProcessed": "Speichern ersetzt dieses Bild. Neue Version behält das Original in den bearbeiteten Bildern.",
       "footerNewTelescope": "Wird zusammen mit den ursprünglichen Teleskopbildern gespeichert",
-      "footerNewProcessed": "Wird in den bearbeiteten Bildern gespeichert"
+      "footerNewProcessed": "Wird in den bearbeiteten Bildern gespeichert",
+      "linkedConfirmBody": "Dieses Bild liegt in einem verknüpften Ordner und stammt nicht von Nebulis. An Ort und Stelle ersetzen? Nebulis behält eine Kopie des ersten Originals.",
+      "linkedConfirmYes": "Datei ersetzen",
+      "linkedConfirmNo": "Abbrechen"
     }
   },
   "fitsViewer": {

@@ -25,6 +25,9 @@ export async function buildCatalogData() {
   const astro = await import('../astroCalc.js');
   const herschel = await import('../herschel400Catalog.js');
   const sharpless = await import('../sharplessCatalog.js');
+  const rasc = await import('../rascCatalog.js');
+  const abell = await import('../abellCatalog.js');
+  const berkeley = await import('../berkeleyCatalog.js');
   const solar = await import('../../data/solar-system-catalog.js');
   const dso = await import('../dsoCatalog.js');
   const dsoData = await import('../dsoCatalogData.js');
@@ -72,6 +75,9 @@ export async function buildCatalogData() {
   for (let n = 1; n <= 110; n++) add(`M${n}`);
   for (let n = 1; n <= 109; n++) add(`C${n}`);
   for (const id of herschel.HERSCHEL400_IDS) add(id);
+  for (const id of rasc.RASC_FINEST_IDS) add(id);
+  for (const id of abell.ABELL_IDS) add(id);
+  for (const id of berkeley.BERKELEY_IDS) add(id);
   for (const k of solar.SOLAR_SYSTEM_MAP.keys()) add(k);
   for (const k of solar.SOLAR_SYSTEM_LOOKUP_KEYS) add(k);
   for (const k of ['LUNAR', 'SOLAR', 'MOON', 'SUN', 'C9', 'M102', 'NGC1909', 'IC2118']) add(k);
@@ -138,6 +144,9 @@ export async function buildCatalogData() {
     caldwell: { label: 'Caldwell', ids: Array.from({ length: 109 }, (_, i) => `C${i + 1}`) },
     herschel400: { label: 'Herschel 400', ids: [...herschel.HERSCHEL400_IDS] },
     sharpless: { label: 'Sharpless', ids: sharpless.SHARPLESS_CATALOG.map(e => e.id) },
+    rasc: { label: 'RASC Finest NGC', ids: [...rasc.RASC_FINEST_IDS] },
+    abell: { label: 'Abell Planetary Nebulae', ids: [...abell.ABELL_IDS] },
+    berkeley: { label: 'Berkeley Open Clusters', ids: [...berkeley.BERKELEY_IDS] },
   };
   const classify = (t: string | undefined) => cats.classOfType(t) ?? 'other';
   const programRows: Record<string, { label: string; rows: PoolRecord[] }> = {};
@@ -149,7 +158,7 @@ export async function buildCatalogData() {
         const canonKey = aliases.resolveCanonicalId(key);
         let entry = cat.getBaseCatalogEntry(key);
         if (name === 'sharpless' && canonKey !== key) entry = cat.getBaseCatalogEntry(canonKey) ?? entry;
-        const m = rawId.match(/^(?:M|C|SH2-)(\d+)$/i);
+        const m = rawId.match(/^(?:M|C|SH2-|ABELL|BERK)(\d+)$/i);
         const type = entry?.type ?? 'Unknown';
         return strip({
           number: m ? parseInt(m[1], 10) : undefined, id: rawId, ngcName: canonKey !== key ? canonKey : undefined,

@@ -1,6 +1,7 @@
 /**
- * Extended DSO catalog — 354 objects from the Herschel 400 list that are
- * NOT already covered by Messier, Caldwell, or the popular tier.
+ * Extended DSO catalog — 362 objects from the Herschel 400 list that are
+ * NOT already covered by Messier, Caldwell, or the popular tier, plus the
+ * eight RASC Finest NGC objects no other tier carries (2026-11-07).
  *
  * Selection criteria:
  *   - From the H400 (William Herschel's observing challenge list)
@@ -395,4 +396,16 @@ export const EXTENDED_DSO_IDS: ReadonlySet<string> = new Set([
   'NGC6826',  // Blinking Planetary — Cygnus (mag 9.44)
   'NGC7009',  // Saturn Nebula, planetary — Aquarius (mag 8.0)
   'NGC7662',  // Copeland's Blue Snowball, planetary — Andromeda (mag 8.3)
+
+  // — added 2026-11-07 (8) — RASC Finest NGC objects no other tier carries.
+  // RASC is a program over objects the packs already ship, so it has no pack of
+  // its own; these eight live here so the catalog is not image-less on mobile.
+  'IC289',    // planetary — Cassiopeia (mag 13.2)
+  'NGC1514',  // Crystal Ball Nebula, planetary — Taurus (mag 10.19)
+  'NGC4157',  // galaxy — Ursa Major (mag 11.29)
+  'NGC4605',  // galaxy — Ursa Major (mag 10.26)
+  'NGC3003',  // galaxy — Leo Minor (mag 11.78)
+  'NGC4388',  // galaxy — Virgo (mag 11.02)
+  'NGC6503',  // galaxy — Draco (mag 10.12)
+  'NGC6819',  // Foxhead Cluster, open cluster — Cygnus (mag 7.3)
 ]);

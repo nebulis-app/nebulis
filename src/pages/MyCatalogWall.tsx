@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Check, ChevronLeft, Heart, LayoutGrid, Pencil, Rows3, Share2, Sparkles, Undo2, X } from 'lucide-react';
+import { Check, ChevronLeft, Eye, Heart, LayoutGrid, Pencil, Rows3, Share2, Sparkles, Undo2, X } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useWishlist } from '../hooks/useWishlist';
 import { useAuth } from '../contexts/AuthContext';
@@ -17,6 +17,8 @@ import {
   getCatalogProgress, getCatalogWall, resetWallOverrides, saveWallOverrides,
   type WallSpan, type WallTile,
 } from '../lib/api/catalogs';
+import { getSettings } from '../lib/api/settings';
+import { isObservableFromSite, wallObservableCounts } from '../lib/catalogVisibility';
 import { getCatalogMeta } from '../lib/catalogMeta';
 import { WallGrid } from '../components/catalogs/wall/WallGrid';
 import { tileLabel } from '../lib/catalogWallTile';
@@ -38,6 +40,12 @@ export function MyCatalogWall() {
 
   const [kind, setKind] = useState<KindFilter>('all');
   const [uniform, setUniform] = useState(false);
+  const [observableOnly, setObservableOnly] = useState<boolean>(() => {
+    try { return localStorage.getItem('catalogs.wallObservableOnly') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('catalogs.wallObservableOnly', observableOnly ? '1' : '0'); } catch { /* storage unavailable */ }
+  }, [observableOnly]);
   const [popover, setPopover] = useState<{ tile: WallTile; x: number; y: number } | null>(null);
 
   // Edit mode works on a draft; nothing is saved until Done.
@@ -61,24 +69,41 @@ export function MyCatalogWall() {
     queryFn: () => getCatalogProgress(catalog),
     staleTime: 60_000,
   });
+  // The site's latitude and minimum altitude drive the "observable only" filter.
+  const settingsQuery = useQuery({
+    queryKey: ['settings'],
+    queryFn: getSettings,
+    staleTime: 5 * 60_000,
+  });
   const wishlist = useWishlist();
+
+  const settings = settingsQuery.data;
+  const hasSiteCoords = settings?.latitude != null && settings?.longitude != null
+    && (settings.latitude !== 0 || settings.longitude !== 0);
+  const observerLat = hasSiteCoords ? settings.latitude : null;
+  const minAlt = settings?.minAlt ?? 20;
 
   const wall = wallQuery.data;
   const savedOverrides = wall?.overrides ?? NO_OVERRIDES;
   const overrides = draft ?? savedOverrides;
   const tiles = useMemo(() => {
     if (!wall) return [];
-    if (editing || kind === 'all') return wall.tiles;
-    return wall.tiles.filter(tile => tile.imaged && tile.image?.kind === kind);
-  }, [wall, kind, editing]);
+    // Editing works on the whole wall: hiding tiles would move every tile after them.
+    if (editing) return wall.tiles;
+    const visible = observableOnly
+      ? wall.tiles.filter(tile => isObservableFromSite(tile.dec, observerLat, minAlt))
+      : wall.tiles;
+    if (kind === 'all') return visible;
+    return visible.filter(tile => tile.imaged && tile.image?.kind === kind);
+  }, [wall, kind, editing, observableOnly, observerLat, minAlt]);
 
   const counts = useMemo(() => {
-    const all = wall?.tiles ?? [];
+    const all = (wall?.tiles ?? []).filter(tile => !observableOnly || isObservableFromSite(tile.dec, observerLat, minAlt));
     return {
       processed: all.filter(x => x.imaged && x.image?.kind === 'processed').length,
       telescope: all.filter(x => x.imaged && x.image?.kind === 'telescope').length,
     };
-  }, [wall]);
+  }, [wall, observableOnly, observerLat, minAlt]);
 
   const openPopover = (tile: WallTile, anchor: HTMLElement) => {
     const r = anchor.getBoundingClientRect();
@@ -102,7 +127,15 @@ export function MyCatalogWall() {
   const label = wall?.label ?? (meta ? t(meta.labelKey) : catalog);
   const imaged = wall?.imagedCount ?? 0;
   const total = wall?.total ?? meta?.total ?? 0;
-  const pct = total > 0 ? Math.round((imaged / total) * 100) : 0;
+  // The observable subset, counted the way the server counts the wall: a tile
+  // plus the objects folded into its frame.
+  const observable = useMemo(
+    () => wallObservableCounts(wall?.tiles ?? [], observerLat, minAlt),
+    [wall, observerLat, minAlt],
+  );
+  const shownImaged = observableOnly ? observable.imaged : imaged;
+  const shownTotal = observableOnly ? observable.total : total;
+  const pct = shownTotal > 0 ? Math.round((shownImaged / shownTotal) * 100) : 0;
 
   const toggleWishlist = (tile: WallTile) => {
     const obj = progressQuery.data?.objects.find(o => o.id === tile.id);
@@ -209,7 +242,7 @@ export function MyCatalogWall() {
             </h1>
             <div className="mt-3 flex items-center gap-3">
               <span className="font-display text-lg font-bold tabular-nums text-white">
-                {imaged}<span className="font-medium text-white/40"> / {total}</span>
+                {shownImaged}<span className="font-medium text-white/40"> / {shownTotal}</span>
               </span>
               <div className="h-1.5 w-40 overflow-hidden rounded-full bg-white/10 sm:w-56">
                 <div
@@ -272,6 +305,24 @@ export function MyCatalogWall() {
             </div>
             <button
               type="button"
+              aria-pressed={observableOnly}
+              disabled={!hasSiteCoords}
+              onClick={() => setObservableOnly(v => !v)}
+              title={hasSiteCoords
+                ? t('catalogToolbar.observableOnlyHelp', { deg: minAlt })
+                : t('catalogToolbar.observableOnlyNoLocation')}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset backdrop-blur-md transition-colors disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
+                observableOnly
+                  ? 'bg-white/15 text-white ring-white/25'
+                  : 'bg-white/[0.07] text-white/75 ring-white/15 hover:bg-white/15 hover:text-white'
+              }`}
+            >
+              <Eye className="h-3.5 w-3.5" />
+              {t('catalogToolbar.observableOnly')}
+              <span className={`tabular-nums ${observableOnly ? 'text-white/70' : 'text-white/40'}`}>{observable.total}</span>
+            </button>
+            <button
+              type="button"
               aria-pressed={uniform}
               onClick={() => setUniform(u => !u)}
               title={uniform ? t('wall.layoutMosaic') : t('wall.layoutUniform')}
@@ -327,8 +378,8 @@ export function MyCatalogWall() {
         <WallGrid
           tiles={tiles}
           overrides={overrides}
-          imagedCount={imaged}
-          total={total}
+          imagedCount={shownImaged}
+          total={shownTotal}
           accent={accent}
           uniform={uniform}
           editing={editing}

@@ -47,6 +47,9 @@ test.describe('Combined object page: editing a picture', () => {
       r.fulfill({ status: 200, contentType: 'image/jpeg', body: grey }));
     await page.route('**/api/library/file/thumbnail**', r =>
       r.fulfill({ status: 200, contentType: 'image/jpeg', body: grey }));
+    // The editor works on a screen-sized preview and the server does the edit, so no picture is uploaded.
+    await page.route('**/api/library/image-edit/preview**', r =>
+      r.fulfill({ status: 200, contentType: 'image/jpeg', body: grey }));
     let mediaRequests = 0;
     let latestPreviewUrl = '';
     await page.route('**/api/library/objects/*/media**', r => {
@@ -66,8 +69,11 @@ test.describe('Combined object page: editing a picture', () => {
         }],
       })));
     });
-    await page.route('**/api/library/objects/*/sessions/*/library-files', r =>
-      r.fulfill(json(ok({ objectId: 'M42', date: '2024-03-15', filename: 'Stacked_M42.jpg' }))));
+    let saveBody = '';
+    await page.route('**/api/library/image-edit', r => {
+      saveBody = r.request().postData() ?? '';
+      return r.fulfill(json(ok({ kind: 'telescope', path: 'M42/Stacked_M42.jpg', bytes: 1 })));
+    });
 
     await page.getByRole('button', { name: 'Telescope image, Mar 15, 2024' }).click();
     await page.getByRole('button', { name: 'Edit image' }).click();
@@ -75,11 +81,58 @@ test.describe('Combined object page: editing a picture', () => {
 
     await page.getByRole('button', { name: 'Save', exact: true }).click();
 
+    // Parameters only: no picture travels with the save.
+    await expect.poll(() => saveBody.length).toBeGreaterThan(0);
+    expect(saveBody).toContain('"mode":"overwrite"');
+    expect(saveBody.length).toBeLessThan(4000);
+
     await expect(page.getByText('Edit Image', { exact: true })).toBeHidden();
     // Still on the picture: the viewer's own Edit button, not the object page's grid.
     await expect(page.getByRole('button', { name: 'Edit image' })).toBeVisible();
     // The refetched item's new URL is what the viewer is showing, not the snapshot it opened with.
     await expect.poll(() => mediaRequests).toBeGreaterThan(1);
     await expect(page.locator('img[src*="w=2048"]').first()).toHaveAttribute('src', latestPreviewUrl);
+  });
+
+  /**
+   * A file in a linked folder is not one Nebulis made, so the server refuses to rewrite it until told it may. The
+   * editor asks, and only a yes sends the save again with the confirmation.
+   */
+  test('asks before replacing a file in a linked folder, and cancelling saves nothing', async ({ page }) => {
+    const grey = await sharp({ create: { width: 400, height: 600, channels: 3, background: { r: 100, g: 100, b: 100 } } })
+      .jpeg().toBuffer();
+    await page.route('**/api/library/file?path=**', r => r.fulfill({ status: 200, contentType: 'image/jpeg', body: grey }));
+    await page.route('**/api/library/file/thumbnail**', r => r.fulfill({ status: 200, contentType: 'image/jpeg', body: grey }));
+    await page.route('**/api/library/image-edit/preview**', r => r.fulfill({ status: 200, contentType: 'image/jpeg', body: grey }));
+    const bodies: string[] = [];
+    await page.route('**/api/library/image-edit', r => {
+      const body = r.request().postData() ?? '';
+      bodies.push(body);
+      if (!body.includes('"confirmLinked":true')) {
+        return r.fulfill({
+          status: 409, contentType: 'application/json',
+          body: JSON.stringify({ ok: false, data: null, error: { code: 'LINKED_REPLACE_UNCONFIRMED', message: 'This file is in a linked folder.' } }),
+        });
+      }
+      return r.fulfill(json(ok({ kind: 'telescope', path: 'M42/Stacked_M42.jpg', bytes: 1 })));
+    });
+
+    await page.getByRole('button', { name: 'Telescope image, Mar 15, 2024' }).click();
+    await page.getByRole('button', { name: 'Edit image' }).click();
+    await expect(page.getByText('Edit Image', { exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    const question = page.getByRole('alertdialog');
+    await expect(question).toContainText('linked folder');
+
+    await question.getByRole('button', { name: 'Cancel' }).click();
+    await expect(question).toBeHidden();
+    expect(bodies).toHaveLength(1);
+
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Replace the file' }).click();
+    await expect(page.getByText('Edit Image', { exact: true })).toBeHidden();
+    expect(bodies).toHaveLength(3);
+    expect(bodies[2]).toContain('"confirmLinked":true');
   });
 });

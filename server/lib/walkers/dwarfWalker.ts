@@ -63,41 +63,96 @@ const VIDEO_EXTENSIONS = /\.(mp4|mov|avi)$/i;
 /** Folder-name prefixes that identify a Dwarf session folder (subframes inside). */
 const SESSION_PREFIXES = ['DWARF3_RAW_', 'DWARF_RAW_'];
 
+/** A Dwarf mosaic capture's parent folder carries a `MOSAIC_` marker between
+ *  the optical-mode token and the target:
+ *
+ *    DWARF_RAW_TELE_MOSAIC_IC 1805_EXP_10_GAIN_200_2026-11-05-20-40-32-316
+ *
+ *  Each panel is a child folder of that parent, named for the same target with
+ *  a `(N)` suffix. Both shapes are recognised here so the target and the
+ *  object id stay identical for every panel. */
+const MOSAIC_MARKER = /^MOSAIC[_-]/i;
+const MOSAIC_PANEL_SUFFIX = /\s*\((\d+)\)$/;
+
+/** The part of a session-folder name after the device prefix and optical-mode
+ *  token, or null when the name is not a Dwarf session folder. */
+function sessionFolderBody(folderName: string): string | null {
+  for (const prefix of SESSION_PREFIXES) {
+    if (!folderName.startsWith(prefix)) continue;
+    // Strip optical-mode segment inserted by Dwarf II USB exports between the
+    // session prefix and the target name (TELE_ = telephoto, WIDE_ = wide-angle).
+    return folderName.slice(prefix.length).replace(/^(TELE|WIDE)_/i, '');
+  }
+  return null;
+}
+
+/** True for the parent folder of a Dwarf mosaic capture. */
+export function isDwarfMosaicFolder(folderName: string): boolean {
+  const rest = sessionFolderBody(folderName);
+  return rest !== null && MOSAIC_MARKER.test(rest);
+}
+
+/** True for a per-panel folder inside a Dwarf mosaic capture
+ *  (`DWARF_RAW_TELE_IC 1805(1)_EXP_...`). */
+export function isDwarfMosaicPanelFolder(folderName: string): boolean {
+  const rest = sessionFolderBody(folderName);
+  if (rest === null) return false;
+  return /\(\d+\)_EXP_\d/i.test(rest) || /\(\d+\)_\d{4}-?\d{2}-?\d{2}/.test(rest);
+}
+
+/** A mosaic is its own imaging variant, matching the `_mosaic` suffix every
+ *  other capture path uses (SeeStar's `M31_mosaic`, the folder wizard's
+ *  variant handling, and annotateService's mosaic check). */
+function mosaicTarget(target: string): string {
+  const panel = target.match(MOSAIC_PANEL_SUFFIX);
+  const base = panel ? target.slice(0, panel.index).trim() : target;
+  return `${base}_mosaic`;
+}
+
 /** Pulls the target name out of a session-folder name.
  *
  *  DWARF3_RAW_M42_EXP_30_GAIN_80_2024-10-15_21-05-30-345  → "M42"
  *  DWARF_RAW_NGC7000_2024-10-15_21-05-30-345              → "NGC7000"
  *  DWARF3_RAW_NGC 7000_EXP_30_GAIN_80_...                 → "NGC 7000" (spaces preserved)
  *
+ *  Mosaic parent and panel folders resolve to the same variant target, so all
+ *  panels land in one library object instead of becoming "IC 1805(1)" and
+ *  "IC 1805(2)":
+ *
+ *  DWARF_RAW_TELE_MOSAIC_IC 1805_EXP_...   → "IC 1805_mosaic"
+ *  DWARF_RAW_TELE_IC 1805(1)_EXP_...       → "IC 1805_mosaic"
+ *
  *  Returns null when the folder name doesn't match either pattern.
  */
 export function extractTargetFromSessionFolder(folderName: string): string | null {
-  for (const prefix of SESSION_PREFIXES) {
-    if (!folderName.startsWith(prefix)) continue;
-    // Strip optical-mode segment inserted by Dwarf II USB exports between the
-    // session prefix and the target name (TELE_ = telephoto, WIDE_ = wide-angle).
-    const rest = folderName.slice(prefix.length).replace(/^(TELE|WIDE)_/i, '');
+  const rest = sessionFolderBody(folderName);
+  if (rest === null) return null;
 
-    // Dwarf 3: target is followed by "_EXP_<n>_GAIN_<n>_<timestamp>".
-    // We anchor on "_EXP_" because targets themselves can contain underscores
-    // (e.g. NGC_7000, IC_1318) and we don't want to split on every underscore.
-    const expIdx = rest.search(/_EXP_\d/);
-    if (expIdx > 0) return rest.slice(0, expIdx).replace(/_/g, ' ').trim();
+  const isMosaic = MOSAIC_MARKER.test(rest);
+  const body = isMosaic ? rest.replace(MOSAIC_MARKER, '') : rest;
 
-    // Dwarf II: target is followed by "_<timestamp>" where timestamp looks
-    // like _YYYY-MM-DD_ or _YYYYMMDD_. Match the first date-like token.
-    const tsMatch = rest.match(/_(\d{4}-?\d{2}-?\d{2})/);
-    if (tsMatch && tsMatch.index !== undefined) {
-      return rest.slice(0, tsMatch.index).replace(/_/g, ' ').trim();
-    }
-
-    // No EXP marker and no timestamp pattern matched. Returning a guess from
-    // the last underscore corrupts targets that legitimately end in a token
-    // like "_part2" or "_v3", causing two real sessions on the same target to
-    // group apart. Better to fail closed — the caller will skip the file
-    // rather than write it into a misnamed library object.
-    return null;
+  // Dwarf 3: target is followed by "_EXP_<n>_GAIN_<n>_<timestamp>".
+  // We anchor on "_EXP_" because targets themselves can contain underscores
+  // (e.g. NGC_7000, IC_1318) and we don't want to split on every underscore.
+  const expIdx = body.search(/_EXP_\d/);
+  if (expIdx > 0) {
+    const target = body.slice(0, expIdx).replace(/_/g, ' ').trim();
+    return isMosaic || MOSAIC_PANEL_SUFFIX.test(target) ? mosaicTarget(target) : target;
   }
+
+  // Dwarf II: target is followed by "_<timestamp>" where timestamp looks
+  // like _YYYY-MM-DD_ or _YYYYMMDD_. Match the first date-like token.
+  const tsMatch = body.match(/_(\d{4}-?\d{2}-?\d{2})/);
+  if (tsMatch && tsMatch.index !== undefined) {
+    const target = body.slice(0, tsMatch.index).replace(/_/g, ' ').trim();
+    return isMosaic || MOSAIC_PANEL_SUFFIX.test(target) ? mosaicTarget(target) : target;
+  }
+
+  // No EXP marker and no timestamp pattern matched. Returning a guess from
+  // the last underscore corrupts targets that legitimately end in a token
+  // like "_part2" or "_v3", causing two real sessions on the same target to
+  // group apart. Better to fail closed — the caller will skip the file
+  // rather than write it into a misnamed library object.
   return null;
 }
 
@@ -159,6 +214,16 @@ export async function discoverDwarfObjects(profile: TelescopeProfile): Promise<D
     const folders = byTarget.get(target);
     if (folders) folders.push(folder.name);
     else byTarget.set(target, [folder.name]);
+  }
+  // A mosaic's panel folders resolve to the same target as the mosaic parent.
+  // On the normal layout the panels are nested inside the parent and never
+  // appear here; if a firmware variant also exposes them at the top level,
+  // walking the parent already reaches them, so keep only the parent to avoid
+  // importing every panel twice under two different paths.
+  for (const [target, folders] of byTarget) {
+    if (!folders.some(f => isDwarfMosaicFolder(f))) continue;
+    const filtered = folders.filter(f => !isDwarfMosaicPanelFolder(f));
+    if (filtered.length > 0) byTarget.set(target, filtered);
   }
   if (skipped.length > 0) debugLog('walker:dwarf', `${skipped.length} folder(s) skipped (could not extract target): ${skipped.join(', ')}`);
 
@@ -252,7 +317,13 @@ export async function listDwarfObjectFiles(
     }
     const fileEntries = entries.filter(e => e.type === 'file');
     let stackCount = 0; let subCount = 0; let otherCount = 0;
-    for (const e of fileEntries) {
+
+    /** Classify one file and tag its name with the path relative to the
+     *  session base. The tag is how the import pipeline reconstructs both the
+     *  remote path and the destination sub-directory; SmbEntry has no field
+     *  for either, so it rides on the name (buildDwarfFilePath strips it back
+     *  off). */
+    const collectFile = (e: SmbEntry, tagPrefix: string): void => {
       const lower = e.name.toLowerCase();
       // Heuristic: numbered subframes ("0001_M42_...fits", "001-...fits") go
       // into subFiles; rolling stacks and previews go into files.
@@ -263,23 +334,61 @@ export async function listDwarfObjectFiles(
         /^\d{3,4}[_-]/.test(e.name) ||
         lower.startsWith('frame') ||
         ((lower.endsWith('.fit') || lower.endsWith('.fits')) && !isStack);
-      // Annotate the entry name with its source folder so the import pipeline
-      // can reconstruct the absolute path. We can't change SmbEntry's shape
-      // without a much bigger refactor, so prefix the folder name into the
-      // file's name field — buildDwarfFilePath below strips it back off.
-      const tagged: SmbEntry = { ...e, name: `${folder}/${e.name}` };
+      const tagged: SmbEntry = { ...e, name: `${tagPrefix}${e.name}` };
       if (isStack) { files.push(tagged); stackCount++; }
       else if (isSub) { subFiles.push(tagged); subCount++; }
       else { files.push(tagged); otherCount++; } // previews, metadata, anything else
+    };
+
+    for (const e of fileEntries) collectFile(e, `${folder}/`);
+
+    // A mosaic capture keeps its lights and per-panel stacks in child folders
+    // (`<mosaic>/<target>(1)/`, `<mosaic>/<target>(2)/`), not beside the
+    // parent's `stacked.jpg`. Listing only the parent used to import the
+    // preview and nothing else — no panel stacks, no lights. Walk the panels
+    // here and tag them with their panel folder so the import mirrors the
+    // capture as `<mosaic-session>/<panel>/...` under one object and session.
+    //
+    // The `stacked-16_...` bundle in the parent is deliberately not unpacked:
+    // it is byte-for-byte the same per-panel FITS already sitting in each
+    // panel folder (verified against a real Dwarf Mini mosaic export), and
+    // the panel folders also carry the JPG/PNG previews the zip lacks.
+    const handledSubDirs = new Set<string>();
+    if (isDwarfMosaicFolder(folder)) {
+      const panelDirs = entries.filter(e =>
+        e.type === 'dir' && !e.name.startsWith('.') && !/^thumbnails?$/i.test(e.name),
+      );
+      for (const panel of panelDirs) {
+        const panelPath = path.posix.join(folderPath, panel.name);
+        let panelEntries: SmbEntry[] = [];
+        try {
+          panelEntries = await smbListDir(panelPath, profile);
+        } catch (err) {
+          debugLog('walker:dwarf', `Failed to list mosaic panel ${panelPath} — skipping`);
+          log.warn({ err: err instanceof Error ? err.message : String(err), panelPath }, '[dwarf-walker] mosaic panel listing failed; skipping');
+          continue;
+        }
+        handledSubDirs.add(panel.name);
+        for (const e of panelEntries.filter(e => e.type === 'file')) {
+          collectFile(e, `${folder}/${panel.name}/`);
+        }
+        debugLog('walker:dwarf', `  ${folder}/${panel.name}: ${panelEntries.filter(e => e.type === 'file').length} file(s) (mosaic panel)`);
+      }
+      if (panelDirs.length > 0) {
+        debugLog('walker:dwarf', `  ${folder}: ${panelDirs.length} mosaic panel(s) walked`);
+      }
     }
     debugLog('walker:dwarf', `  ${folder}: ${stackCount} stack(s), ${subCount} sub-frame(s), ${otherCount} other(s)`);
 
     // Sub-directories inside a session (a Dwarf keeps per-frame previews in
     // `Thumbnail/`) are only listed when the caller wants a complete copy.
     // Listing them unconditionally would add an FTP round trip per session to
-    // every routine import for files the app does not use.
+    // every routine import for files the app does not use. Panel folders were
+    // already walked above, so they are not listed twice.
     if (opts.includeSubDirs) {
-      for (const sub of entries.filter(e => e.type === 'dir' && !e.name.startsWith('.'))) {
+      for (const sub of entries.filter(e =>
+        e.type === 'dir' && !e.name.startsWith('.') && !handledSubDirs.has(e.name),
+      )) {
         const subPath = path.posix.join(folderPath, sub.name);
         let subEntries: SmbEntry[] = [];
         try {

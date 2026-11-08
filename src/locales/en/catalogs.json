@@ -5,14 +5,20 @@
     "noneImaged": "You haven't imaged any of these objects yet.",
     "allImaged": "Every object in this selection has been imaged.",
     "nothingToShow": "Nothing to show for the current filters.",
-    "clearFilters": "Clear filters"
+    "clearFilters": "Clear filters",
+    "noneObservable": "No objects in this catalog are observable from your site at the current minimum altitude."
   },
   "catalogsHero": {
     "percentImagedAriaLabel": "{{percent}}% of catalog objects imaged",
     "imaged": "Imaged",
     "catalogObjects": "Catalog objects",
     "title": "Catalogs",
-    "subtitle": "Track your imaging progress through classic observing programs."
+    "subtitle": "Track your imaging progress through classic observing programs.",
+    "filterLabel": "Show catalogs",
+    "filterEmpty": "No catalogs selected. Choose at least one to see its progress.",
+    "filterShowAll": "Show all",
+    "filterAll": "All catalogs",
+    "filterCount": "{{selected}} of {{total}} catalogs"
   },
   "catalogMeta": {
     "messier": {
@@ -34,6 +40,21 @@
       "label": "Sharpless",
       "tagline": "313 clouds of glowing hydrogen, the emission nebulae behind many of the sky's familiar names.",
       "blurb": "Stewart Sharpless cataloged 313 HII regions from the National Geographic sky survey plates. These are the hydrogen-alpha clouds narrowband imagers chase: large, faint, and full of structure. Some carry familiar names like the Cave, the Wizard, and the Pacman, but plenty are unnamed fields waiting for a long exposure."
+    },
+    "rasc": {
+      "label": "RASC Finest NGC",
+      "tagline": "110 NGC treasures chosen by the Royal Astronomical Society of Canada, with no overlap with Messier.",
+      "blurb": "The RASC Finest NGC list is the Canadian society's answer to Messier: 110 of the best non-Messier NGC objects, from the Double Cluster to the Sculptor Galaxy. It is a visual list first, but every object is also a fine imaging target, and a 200 mm scope is the traditional recommendation."
+    },
+    "abell": {
+      "label": "Abell Planetary Nebulae",
+      "tagline": "80 faint, ancient planetary nebulae from George Abell's Palomar survey.",
+      "blurb": "George Abell found these 80 planetaries on Palomar Sky Survey plates, mostly large and very faint. They reward OIII filters, dark skies and long exposures; the Medusa, Abell 31 and Abell 39 are the showpieces."
+    },
+    "berkeley": {
+      "label": "Berkeley Open Clusters",
+      "tagline": "89 old, sparse open clusters from the Berkeley catalog.",
+      "blurb": "The Berkeley catalog collects old open clusters found on Palomar plates, often loose and faint. They are subtle visual targets and unusual imaging projects, with Berkeley 17 among the oldest known open clusters."
     }
   },
   "objectClass": {
@@ -43,8 +64,10 @@
     "other": "Other"
   },
   "catalogHero": {
-    "allCatalogs": "All catalogs",
+    "catalogs": "Catalogs",
+    "breadcrumb": "Catalog navigation",
     "imaged": "imaged",
+    "toGo": "to go",
     "programComplete": "Program complete",
     "stillToImage_one": "{{count}} still to image",
     "stillToImage_other": "{{count}} still to image",
@@ -66,7 +89,8 @@
     "openBoard": "Open board",
     "myCatalog": "My {{label}}",
     "myCatalogAria_one": "My {{label}} catalog, {{count}} image",
-    "myCatalogAria_other": "My {{label}} catalog, {{count}} images"
+    "myCatalogAria_other": "My {{label}} catalog, {{count}} images",
+    "myCatalogShort": "My catalog"
   },
   "catalogTile": {
     "imagedAriaLabel": "{{id}}, {{name}}, imaged",
@@ -97,7 +121,11 @@
     "searchPlaceholder": "Search name, id, constellation",
     "searchAriaLabel": "Search this catalog",
     "clearSearch": "Clear search",
-    "sortObjects": "Sort objects"
+    "sortObjects": "Sort objects",
+    "observableOnly": "Observable",
+    "observableOnlyHelp": "Hide objects that never rise above {{deg}}° from your site",
+    "observableOnlyNoLocation": "Set a site location to filter by visibility",
+    "filters": "Filters"
   },
   "catalogObjectModal": {
     "maxAltitudeHeading": "Max altitude during darkness, next 12 months",

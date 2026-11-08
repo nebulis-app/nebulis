@@ -17,17 +17,21 @@ const COMPACT_KEY = 'nebulis-compact-banners';
 const PREF_EVENT = 'nebulis-hero-pref';
 
 /** The Settings -> General switch: banners start folded on every page that has
- *  no choice of its own. */
-function readCompact(): boolean {
-  try { return localStorage.getItem(COMPACT_KEY) === '1'; } catch { return false; }
+ *  no choice of its own. Null when it was never set, so a page's own default
+ *  can apply; an explicit "off" still means every banner starts open. */
+function readCompact(): boolean | null {
+  try {
+    const v = localStorage.getItem(COMPACT_KEY);
+    return v === null ? null : v === '1';
+  } catch { return null; }
 }
 
-function read(page: string): boolean {
+function read(page: string, startsCollapsed: boolean): boolean {
   try {
     const own = localStorage.getItem(storageKey(page));
     if (own !== null) return own === '1';
   } catch { /* fall through to the default */ }
-  return readCompact();
+  return readCompact() ?? startsCollapsed;
 }
 
 /** Turn "compact banners" on or off for every page. Per-page choices are
@@ -43,22 +47,22 @@ export function setCompactBanners(on: boolean): void {
 }
 
 export function useCompactBanners(): [boolean, (on: boolean) => void] {
-  const [compact, setCompact] = useState(readCompact);
+  const [compact, setCompact] = useState(() => readCompact() ?? false);
   useEffect(() => {
-    const sync = () => setCompact(readCompact());
+    const sync = () => setCompact(readCompact() ?? false);
     window.addEventListener(PREF_EVENT, sync);
     return () => window.removeEventListener(PREF_EVENT, sync);
   }, []);
   return [compact, setCompactBanners];
 }
 
-export function useCollapsedHero(page: string): [boolean, (next: boolean) => void] {
-  const [collapsed, setCollapsedState] = useState(() => read(page));
+export function useCollapsedHero(page: string, startsCollapsed = false): [boolean, (next: boolean) => void] {
+  const [collapsed, setCollapsedState] = useState(() => read(page, startsCollapsed));
   useEffect(() => {
-    const sync = () => setCollapsedState(read(page));
+    const sync = () => setCollapsedState(read(page, startsCollapsed));
     window.addEventListener(PREF_EVENT, sync);
     return () => window.removeEventListener(PREF_EVENT, sync);
-  }, [page]);
+  }, [page, startsCollapsed]);
   const setCollapsed = useCallback((next: boolean) => {
     setCollapsedState(next);
     try { localStorage.setItem(storageKey(page), next ? '1' : '0'); } catch { /* the choice just won't persist */ }

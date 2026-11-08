@@ -16,6 +16,7 @@ import { buildForecast, type ForecastHour } from '../../server/lib/forecastCache
 import { calculateVisibilityScore, scoreLabel as clientScoreLabel, type TFunc } from '../../src/lib/forecastScore';
 import { hoursInWindow, scoreNight } from '../../src/lib/plannerNight';
 import { nightWindowFor } from '../../src/lib/nightWindow';
+import { DEFAULT_WINDOW_PREFS } from '../../src/lib/imagingWindow';
 import type { ForecastHour as ClientHour } from '../../src/lib/api/planner';
 
 const t: TFunc = (key) => key;
@@ -134,7 +135,7 @@ describe('the Forecast outlook cards match the Planner strip, night for night', 
     for (const card of data.nightRatings) {
       // The Planner strip, step for step: dark window, hours inside it, moon at its middle.
       const [y, m, d] = card.date.split('-').map(Number);
-      const win = nightWindowFor(new Date(y, m - 1, d, 12), LAT, LON)!;
+      const win = nightWindowFor(new Date(y, m - 1, d, 12), LAT, LON, DEFAULT_WINDOW_PREFS)!;
       const hours = hoursInWindow(data.hourly, win.start, win.end, 0);
       const illum = Math.round(SunCalc.getMoonIllumination(new Date((win.start.getTime() + win.end.getTime()) / 2)).fraction * 100);
       const planner = scoreNight(hours, illum, TZ, { start: win.start.getTime(), end: win.end.getTime() }, t)!;

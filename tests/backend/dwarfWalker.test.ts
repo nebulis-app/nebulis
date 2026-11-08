@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   isDwarfSessionFolder,
+  isDwarfMosaicFolder,
+  isDwarfMosaicPanelFolder,
   extractTargetFromSessionFolder,
   extractDateFromSessionFolder,
   extractTimestampFromSessionFolder,
@@ -60,6 +62,39 @@ describe('extractTargetFromSessionFolder', () => {
   it('returns null for an unrecognized folder name', () => {
     expect(extractTargetFromSessionFolder('Astronomy')).toBeNull();
     expect(extractTargetFromSessionFolder('DCIM')).toBeNull();
+  });
+
+  it('marks a mosaic parent as the _mosaic variant', () => {
+    expect(extractTargetFromSessionFolder(
+      'DWARF_RAW_TELE_MOSAIC_IC 1805_EXP_10_GAIN_200_2026-11-05-20-40-32-316',
+    )).toBe('IC 1805_mosaic');
+  });
+
+  it('resolves every mosaic panel to the same _mosaic target as its parent', () => {
+    expect(extractTargetFromSessionFolder(
+      'DWARF_RAW_TELE_IC 1805(1)_EXP_10_GAIN_200_2026-11-05-20-40-32-347',
+    )).toBe('IC 1805_mosaic');
+    expect(extractTargetFromSessionFolder(
+      'DWARF_RAW_TELE_IC 1805(2)_EXP_10_GAIN_200_2026-11-05-20-40-32-357',
+    )).toBe('IC 1805_mosaic');
+  });
+});
+
+describe('mosaic folder detection', () => {
+  const parent = 'DWARF_RAW_TELE_MOSAIC_IC 1805_EXP_10_GAIN_200_2026-11-05-20-40-32-316';
+  const panel = 'DWARF_RAW_TELE_IC 1805(1)_EXP_10_GAIN_200_2026-11-05-20-40-32-347';
+  const ordinary = 'DWARF_RAW_TELE_IC 1396_EXP_60_GAIN_60_2026-07-05-23-25-49-658';
+
+  it('recognises only the parent as a mosaic capture', () => {
+    expect(isDwarfMosaicFolder(parent)).toBe(true);
+    expect(isDwarfMosaicFolder(panel)).toBe(false);
+    expect(isDwarfMosaicFolder(ordinary)).toBe(false);
+  });
+
+  it('recognises only the panel folders as mosaic panels', () => {
+    expect(isDwarfMosaicPanelFolder(panel)).toBe(true);
+    expect(isDwarfMosaicPanelFolder(parent)).toBe(false);
+    expect(isDwarfMosaicPanelFolder(ordinary)).toBe(false);
   });
 });
 

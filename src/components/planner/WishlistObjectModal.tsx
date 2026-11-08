@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { getCatalogObjectInfo } from '../../lib/api/catalog';
 import { computeBestImagingWindow, isUpTonight } from '../../lib/bestImagingWindow';
+import { useActiveWindowPrefs } from '../../hooks/useActiveWindowPrefs';
 import { filterRecommendations } from '../../lib/filterRecommendations';
 import { FilterRecommendationPanel } from '../ui/FilterRecommendationPanel';
 import { BestImagingChart } from '../ui/BestImagingChart';
@@ -190,14 +191,15 @@ export function WishlistObjectModal({
   const ra = target?.ra ?? resolvedEntry?.ra ?? null;
   const dec = target?.dec ?? resolvedEntry?.dec ?? null;
 
+  const windowPrefs = useActiveWindowPrefs();
   const bestWindow = useMemo(() => {
     if (!hasLocation || ra == null || dec == null) return null;
-    return computeBestImagingWindow(ra, dec, observerLat, observerLon, minAlt, observerTimezone);
-  }, [ra, dec, observerLat, observerLon, minAlt, hasLocation, observerTimezone]);
+    return computeBestImagingWindow(ra, dec, observerLat, observerLon, minAlt, observerTimezone, windowPrefs);
+  }, [ra, dec, observerLat, observerLon, minAlt, hasLocation, observerTimezone, windowPrefs]);
 
   const upTonight = useMemo(
-    () => (ra != null && dec != null ? isUpTonight(ra, dec, observerLat, observerLon, 0, new Date(), observerTimezone) : null),
-    [ra, dec, observerLat, observerLon, observerTimezone],
+    () => (ra != null && dec != null ? isUpTonight(ra, dec, observerLat, observerLon, 0, new Date(), observerTimezone, windowPrefs) : null),
+    [ra, dec, observerLat, observerLon, observerTimezone, windowPrefs],
   );
   const notVisibleTonight = upTonight === false;
   // Drives the hoverable tonight-only altitude curve, next to the filter

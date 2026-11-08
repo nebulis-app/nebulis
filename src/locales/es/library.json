@@ -1016,7 +1016,10 @@
       "footerOverwriteTelescope": "Guardar reemplaza este archivo. Nueva versión conserva el original y añade una copia editada.",
       "footerOverwriteProcessed": "Guardar reemplaza esta imagen. Nueva versión conserva el original en Imágenes procesadas.",
       "footerNewTelescope": "Se guarda junto a las imágenes originales del telescopio",
-      "footerNewProcessed": "Se guarda en Imágenes procesadas"
+      "footerNewProcessed": "Se guarda en Imágenes procesadas",
+      "linkedConfirmBody": "Esta imagen está en una carpeta vinculada, así que Nebulis no la creó. ¿Reemplazarla en su lugar? Nebulis guarda una copia del primer original.",
+      "linkedConfirmYes": "Reemplazar el archivo",
+      "linkedConfirmNo": "Cancelar"
     }
   },
   "fitsViewer": {

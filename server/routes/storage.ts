@@ -41,6 +41,7 @@ import { pickDefaultTarget } from '../lib/telescopes.js';
 import { logEvent } from '../lib/systemLog.js';
 import { isRecord } from '../lib/typeGuards.js';
 import { createManualDatabaseBackup } from '../lib/db.js';
+import { listAndLogDuplicates } from '../lib/library/duplicateSessions.js';
 import { analyzeLibrary, fixStaleRecords, fixMissingObjects, fixLayoutDrift, fixMissingProcessed, fixDuplicateFiles, LibraryUnreadableError } from '../lib/library/analyze.js';
 import { getSubframeUsage, purgeAllSubframes } from '../lib/library/cleanup.js';
 import { runPostImport } from '../lib/library/postImport.js';
@@ -1005,6 +1006,19 @@ router.get('/analyze', requireAdmin, async (_req: Request, res: Response) => {
     res.apiSuccess(await analyzeLibrary());
   } catch (err) {
     res.apiError(500, 'ANALYZE_FAILED', err instanceof Error ? err.message : 'Analysis failed');
+  }
+});
+
+// GET /api/v1/storage/analyze/duplicates — the pairs "Remove duplicates" would act on; also logged.
+router.get('/analyze/duplicates', requireAdmin, async (_req: Request, res: Response) => {
+  if (!(await isLibraryAvailable())) {
+    res.apiError(503, 'LIBRARY_UNAVAILABLE', 'The library location is not reachable.');
+    return;
+  }
+  try {
+    res.apiSuccess(await listAndLogDuplicates());
+  } catch (err) {
+    res.apiError(500, 'DUPLICATES_FAILED', err instanceof Error ? err.message : 'Could not list duplicates');
   }
 });
 

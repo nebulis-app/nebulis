@@ -84,8 +84,9 @@ export function ForecastPage() {
 
   const tz = forecast?.timezone || currentSite?.timezone || undefined;
 
-  // Tonight's imaging window, as the site's settings make it (astronomical night by default, nautical where it never
-  // gets that dark), for the moon penalty and the hourly scoring. May be null at high latitudes in summer.
+  // Tonight's imaging window as the site's settings make it (astronomical night by default, nautical where it never
+  // gets that dark), for the moon penalty and the hourly scoring. The server decides it, so this page, the Planner
+  // and the alert never disagree. May be null at high latitudes in summer.
   // Memoised because it is a dependency of the ribbon's per-hour scoring.
   const darkWindow: DarkWindow | null = useMemo(() => {
     if (!forecast) return null;

@@ -23,7 +23,15 @@ import type { HeroImage } from '../../lib/heroImagery';
 interface Props {
   /** Short page name, the key the collapsed state is remembered under. */
   page: string;
-  image: HeroImage;
+  /** Stock artwork. Omit when passing `backdrop`. */
+  image?: HeroImage;
+  /** Page-specific artwork (a catalog's own sky field) in place of `image`. It
+   *  is clipped to the banner and dimmed when collapsed. */
+  backdrop?: ReactNode;
+  /** A full-width strip under the expanded content (the catalog type filter).
+   *  Hidden when collapsed; the caller puts anything that must stay reachable
+   *  in `collapsedBody`. */
+  footer?: ReactNode;
   /** Artwork strength when expanded; the collapsed bar always runs lower. */
   intensity?: number;
   accent: string;
@@ -38,6 +46,8 @@ interface Props {
   /** The banner's own action(s). Rendered by the caller inside the expanded
    *  layout as well, so this is only the copy that rides in the slim bar. */
   actions?: ReactNode;
+  /** Small trail shown before the title when collapsed (the expanded banner places its own). */
+  breadcrumb?: ReactNode;
   /** Layout classes for the expanded content box (flex direction, gaps...). The
    *  shell adds the padding that keeps content clear of the chevron. */
   contentClassName: string;
@@ -46,14 +56,21 @@ interface Props {
   bloom?: string;
   /** The second bloom, bottom-right. Banners with content over that corner omit it. */
   bottomBloom?: boolean;
+  /** Right padding that keeps expanded content clear of the chevron. A banner
+   *  whose content already leaves that corner empty can pass '' so its right
+   *  edge matches its left. */
+  contentPaddingClassName?: string;
+  /** Where the expanded chevron sits, when the default corner doesn't line up
+   *  with the banner's own content. */
+  toggleClassName?: string;
   className?: string;
   /** Expanded content. */
   children: ReactNode;
 }
 
 export function CollapsibleHero({
-  page, image, intensity, accent, bloom, icon, title, summary, collapsedBody, actions,
-  contentClassName, bottomBloom = true, className = '', children,
+  page, image, backdrop, footer, intensity, accent, bloom, icon, title, summary, collapsedBody, actions, breadcrumb,
+  contentClassName, contentPaddingClassName = 'pr-12 sm:pr-14', toggleClassName = 'right-3 top-3', bottomBloom = true, className = '', children,
 }: Props) {
   const { t } = useTranslation('common');
   const [collapsed, setCollapsed] = useCollapsedHero(page);
@@ -77,11 +94,15 @@ export function CollapsibleHero({
   return (
     <section className={`relative ${rounded} bg-slate-950 hero-panel ${className}`}>
       <div className={`absolute inset-0 overflow-hidden ${rounded}`}>
-        <HeroBackdrop
-          image={image}
-          intensity={collapsed ? Math.min(intensity ?? 0.75, 0.2) : intensity}
-          rounded={rounded}
-        />
+        {backdrop ? (
+          <div className={`absolute inset-0 transition-opacity ${collapsed ? 'opacity-25' : ''}`}>{backdrop}</div>
+        ) : image && (
+          <HeroBackdrop
+            image={image}
+            intensity={collapsed ? Math.min(intensity ?? 0.75, 0.2) : intensity}
+            rounded={rounded}
+          />
+        )}
         <div
           className="pointer-events-none absolute inset-0 opacity-70"
           style={{ background: `radial-gradient(90% 140% at 8% 0%, ${bloom ?? accent}1f 0%, transparent 60%)` }}
@@ -100,6 +121,7 @@ export function CollapsibleHero({
 
       {collapsed ? (
         <div className="relative flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5 sm:px-5">
+          {breadcrumb}
           <h1 className="font-display flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight text-white [&>svg]:h-4 [&>svg]:w-4">
             {icon}
             {title}
@@ -116,8 +138,9 @@ export function CollapsibleHero({
         </div>
       ) : (
         <>
-          <div className={`relative ${contentClassName} pr-12 sm:pr-14`}>{children}</div>
-          <div className="absolute right-3 top-3 z-10">{toggle}</div>
+          <div className={`relative ${contentClassName} ${contentPaddingClassName}`}>{children}</div>
+          {footer && <div className="relative overflow-hidden rounded-b-3xl">{footer}</div>}
+          <div className={`absolute z-10 ${toggleClassName}`}>{toggle}</div>
         </>
       )}
     </section>

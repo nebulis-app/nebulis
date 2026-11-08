@@ -8,7 +8,10 @@ import {
   FlipHorizontal2, FlipVertical2, Plus, Wand2, Eye,
 } from 'lucide-react';
 import { computeAutoAdjust } from '../lib/autoAdjust';
-import { uploadProcessedImage, uploadObjectProcessedImage, uploadLibraryFile, overwriteProcessedImage } from '../lib/api/library';
+import { uploadProcessedImage, uploadObjectProcessedImage, uploadLibraryFile, overwriteProcessedImage, editImageOnServer, fetchEditorPreview, type GeometryEdit } from '../lib/api/library';
+import { applyPixelAdjustments, type Adjustments } from '../lib/imageAdjust';
+import { editSourceFromUrl, type EditSource } from '../lib/imageEditSource';
+import { ApiRequestError } from '../lib/api/client';
 import { getWatermarkPresets, saveWatermarkPresets, type WatermarkPreset } from '../lib/api/auth';
 import {
   layerToPreset, presetToTextBlock, findPresetByName, normalizePresetName, presetNameKey,
@@ -40,12 +43,6 @@ interface CropRect {
 }
 
 type CropHandle = 'new' | 'move' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
-
-interface Adjustments {
-  brightness: number; // –100…+100
-  contrast: number;
-  saturation: number;
-}
 
 /** Clockwise rotation applied to the image, in degrees. */
 const ROTATIONS = [0, 90, 180, 270] as const;
@@ -148,40 +145,6 @@ function applyImageTransform(
 /** Rows of the export canvas adjusted at a time, so a huge stack never needs a whole-frame pixel copy. */
 const EXPORT_STRIP_ROWS = 256;
 
-function applyPixelAdjustments(
-  data: Uint8ClampedArray,
-  brightness: number,
-  contrast: number,
-  saturation: number,
-) {
-  if (brightness === 0 && contrast === 0 && saturation === 0) return;
-  const br  = brightness / 100;
-  const con = (contrast + 100) / 100;   // 0–2
-  const sat = (saturation + 100) / 100; // 0–2
-
-  for (let i = 0; i < data.length; i += 4) {
-    let r = data[i]     / 255;
-    let g = data[i + 1] / 255;
-    let b = data[i + 2] / 255;
-
-    // brightness
-    r += br; g += br; b += br;
-    // saturation
-    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-    r = gray + sat * (r - gray);
-    g = gray + sat * (g - gray);
-    b = gray + sat * (b - gray);
-    // contrast (pivot at 0.5)
-    r = (r - 0.5) * con + 0.5;
-    g = (g - 0.5) * con + 0.5;
-    b = (b - 0.5) * con + 0.5;
-
-    data[i]     = Math.max(0, Math.min(255, r * 255));
-    data[i + 1] = Math.max(0, Math.min(255, g * 255));
-    data[i + 2] = Math.max(0, Math.min(255, b * 255));
-  }
-}
-
 // Pixel coords from a mouse event relative to the canvas element
 function eventToCanvasPx(
   canvas: HTMLCanvasElement, e: { clientX: number; clientY: number },
@@ -238,6 +201,38 @@ function AdjustSlider({ label, value, onCommit, isDark }: {
     </div>
   );
 }
+
+/** Draws the text layers at export size. Layer sizes are in pixels at the display canvas, so they scale with the output. */
+function drawTextLayersForExport(
+  ctx: CanvasRenderingContext2D, layers: TextLayer[], outW: number, outH: number, displayW: number, displayH: number,
+): void {
+  const scale = Math.min(outW / displayW, outH / displayH);
+  layers.forEach(layer => {
+    const lines      = layer.text.split('\n');
+    const fontPx     = layer.fontSize * scale;
+    const lineHeight = fontPx * LINE_HEIGHT_RATIO;
+
+    ctx.save();
+    ctx.globalAlpha  = layer.opacity / 100;
+    ctx.font         = `${layer.italic ? 'italic ' : ''}${layer.bold ? 'bold ' : ''}${fontPx}px ${layer.fontFamily}`;
+    ctx.fillStyle    = layer.color;
+    ctx.textAlign    = layer.align;
+    ctx.textBaseline = 'alphabetic';
+    ctx.shadowColor  = 'rgba(0,0,0,0.85)';
+    ctx.shadowBlur   = 6 * scale;
+    ctx.shadowOffsetX = scale;
+    ctx.shadowOffsetY = scale;
+
+    ctx.translate(layer.x * outW, layer.y * outH);
+    ctx.rotate(layer.angle * Math.PI / 180);
+    lines.forEach((line, i) => ctx.fillText(line, 0, i * lineHeight));
+    ctx.restore();
+  });
+}
+
+/** Longest side and total pixels of the text overlay sent to the server, which scales it to the picture. */
+const OVERLAY_MAX_SIDE = 4096;
+const OVERLAY_MAX_PIXELS = 4_000_000;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -302,6 +297,8 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
   const defaultSaveTitle = `${imageName.replace(/\.[^.]+$/, '')} ${t('imageEditorModal.save.editedSuffix')}`;
   const [saveTitle, setSaveTitle] = useState(defaultSaveTitle);
   const [saveError, setSaveError] = useState('');
+  /** The server said the file is in a linked folder, which Nebulis did not make: ask before replacing it in place. */
+  const [askLinkedReplace, setAskLinkedReplace] = useState(false);
   // Reset the (user-editable) save title if the image being edited changes.
   // Render-phase adjustment instead of an effect, so no extra render.
   const [titleSeed, setTitleSeed] = useState(imageName);
@@ -346,14 +343,36 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
 
   // ── Init ─────────────────────────────────────────────────────────────────
 
+  // The picture the server can edit for us: the explicit overwrite target, else whatever the URL points at. Null for
+  // anything else (an external image), which is edited in the browser as before.
+  const editSource: EditSource | null = overwriteTarget ?? editSourceFromUrl(imageUrl);
+
+  // With a server source the browser only ever holds a screen-sized preview, never the full file.
+  const editSourceKey = editSource ? (editSource.kind === 'telescope' ? `t:${editSource.path}` : `p:${editSource.id}`) : '';
   useEffect(() => {
     let cancelled = false;
+    let objectUrl: string | null = null;
     const img = new Image();
     img.onload  = () => { if (!cancelled) { imgRef.current = img; setImgLoaded(true); } };
     img.onerror = () => { if (!cancelled) setImgError(true); };
-    img.src = imageUrl;
-    return () => { cancelled = true; img.onload = null; img.onerror = null; };
-  }, [imageUrl]);
+    if (editSource) {
+      fetchEditorPreview(editSource).then(blob => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        img.src = objectUrl;
+      }).catch(() => { if (!cancelled) setImgError(true); });
+    } else {
+      img.src = imageUrl;
+    }
+    return () => {
+      cancelled = true;
+      img.onload = null;
+      img.onerror = null;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+    // editSource is rebuilt on every render; its key is what identifies the picture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageUrl, editSourceKey]);
 
 
   // ── Canvas sizing ─────────────────────────────────────────────────────────
@@ -1060,7 +1079,52 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
 
   // ── Save ──────────────────────────────────────────────────────────────────
 
-  const handleSave = async (mode: 'new' | 'overwrite') => {
+  /** What was done to the picture's frame, in the order the server applies it: crop the source, flip, then turn. */
+  const geometryEdit = (): GeometryEdit => ({
+    ...(appliedCrop ? { crop: cropToSourceRect(appliedCrop, rotation) } : {}),
+    flipH, flipV, rotation,
+  });
+
+  /** The text layers as a transparent PNG with the result's shape, capped at about 4 MP; the server scales it up. */
+  const renderTextOverlay = async (display: HTMLCanvasElement): Promise<Blob | undefined> => {
+    if (textLayers.length === 0) return undefined;
+    const k = Math.min(
+      OVERLAY_MAX_SIDE / Math.max(display.width, display.height),
+      Math.sqrt(OVERLAY_MAX_PIXELS / (display.width * display.height)),
+    );
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(display.width * k));
+    canvas.height = Math.max(1, Math.round(display.height * k));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error(t('imageEditorModal.save.exportFailed'));
+    drawTextLayersForExport(ctx, textLayers, canvas.width, canvas.height, display.width, display.height);
+    const blob = await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error(t('imageEditorModal.save.exportFailed'))), 'image/png'),
+    );
+    canvas.width = 0;
+    canvas.height = 0;
+    return blob;
+  };
+
+  /** Save by telling the server what to do. The full-size picture never enters the browser. */
+  const saveOnServer = async (source: EditSource, mode: 'new' | 'overwrite', display: HTMLCanvasElement, confirmLinked: boolean) => {
+    const title = saveTitle.trim() || `${imageName.replace(/\.[^.]+$/, '')} ${t('imageEditorModal.save.editedSuffix')}`;
+    if (mode === 'overwrite' && !(overwriteTarget && (overwriteTarget.kind === 'processed' || date))) {
+      // An original can only be replaced inside its own night; callers do not offer this without one.
+      throw new Error(t('imageEditorModal.save.saveFailed'));
+    }
+    await editImageOnServer({
+      source,
+      edit: geometryEdit(),
+      adjust: adj,
+      title,
+      save: mode === 'overwrite'
+        ? { mode: 'overwrite', ...(confirmLinked ? { confirmLinked: true } : {}) }
+        : { mode: 'new', target: date && sourceKind === 'telescope' ? 'library' : 'processed', objectId, date },
+    }, await renderTextOverlay(display));
+  };
+
+  const handleSave = async (mode: 'new' | 'overwrite', confirmLinked = false) => {
     const img     = imgRef.current;
     const display = canvasRef.current;
     if (!img || !display) return;
@@ -1068,7 +1132,14 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
 
     setSavingMode(mode);
     setSaveError('');
+    setAskLinkedReplace(false);
     try {
+      if (editSource) {
+        await saveOnServer(editSource, mode, display, confirmLinked);
+        onSaved();
+        onClose();
+        return;
+      }
       const offscreen = document.createElement('canvas');
       const src = appliedCrop
         ? cropToSourceRect(appliedCrop, rotation)
@@ -1106,31 +1177,7 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
       }
 
       // Text layers at full resolution
-      const scaleX = offscreen.width  / display.width;
-      const scaleY = offscreen.height / display.height;
-      const scale  = Math.min(scaleX, scaleY);
-
-      textLayers.forEach(layer => {
-        const lines      = layer.text.split('\n');
-        const fs         = layer.fontSize * scale;
-        const lineHeight = fs * LINE_HEIGHT_RATIO;
-
-        ctx.save();
-        ctx.globalAlpha  = layer.opacity / 100;
-        ctx.font         = `${layer.italic ? 'italic ' : ''}${layer.bold ? 'bold ' : ''}${fs}px ${layer.fontFamily}`;
-        ctx.fillStyle    = layer.color;
-        ctx.textAlign    = layer.align;
-        ctx.textBaseline = 'alphabetic';
-        ctx.shadowColor  = 'rgba(0,0,0,0.85)';
-        ctx.shadowBlur   = 6 * scale;
-        ctx.shadowOffsetX = scale;
-        ctx.shadowOffsetY = scale;
-
-        ctx.translate(layer.x * offscreen.width, layer.y * offscreen.height);
-        ctx.rotate(layer.angle * Math.PI / 180);
-        lines.forEach((line, i) => ctx.fillText(line, 0, i * lineHeight));
-        ctx.restore();
-      });
+      drawTextLayersForExport(ctx, textLayers, offscreen.width, offscreen.height, display.width, display.height);
 
       const blob = await new Promise<Blob>((resolve, reject) =>
         offscreen.toBlob(b => b ? resolve(b) : reject(new Error(t('imageEditorModal.save.exportFailed'))), 'image/jpeg', 0.93),
@@ -1146,7 +1193,10 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
         if (overwriteTarget.kind === 'processed') {
           await overwriteProcessedImage(objectId, overwriteTarget.id, file);
         } else if (date) {
-          await uploadLibraryFile(objectId, date, file, overwriteTarget.path, !!appliedCrop || rotation !== 0 || flipH || flipV);
+          await uploadLibraryFile(
+            objectId, date, file, overwriteTarget.path,
+            appliedCrop || rotation !== 0 || flipH || flipV ? geometryEdit() : undefined,
+          );
         } else {
           // An original can only be replaced inside its own night; callers do not offer this without one.
           throw new Error(t('imageEditorModal.save.saveFailed'));
@@ -1162,7 +1212,11 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
       onSaved();
       onClose();
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : t('imageEditorModal.save.saveFailed'));
+      if (err instanceof ApiRequestError && err.code === 'LINKED_REPLACE_UNCONFIRMED') {
+        setAskLinkedReplace(true);
+      } else {
+        setSaveError(err instanceof Error ? err.message : t('imageEditorModal.save.saveFailed'));
+      }
     } finally {
       setSavingMode(null);
     }
@@ -1780,6 +1834,23 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
               )}
 
               {saveError && <p className="text-xs text-red-400">{saveError}</p>}
+
+              {askLinkedReplace && (
+                <div role="alertdialog" aria-label={t('imageEditorModal.save.linkedConfirmBody')}
+                  className={`rounded-lg border px-3 py-2.5 space-y-2 ${isDark ? 'border-amber-500/40 bg-amber-500/10' : 'border-amber-600/40 bg-amber-50'}`}>
+                  <p className={`text-xs ${isDark ? 'text-amber-200' : 'text-amber-900'}`}>{t('imageEditorModal.save.linkedConfirmBody')}</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleSave('overwrite', true)} disabled={saving}
+                      className="flex-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50 transition">
+                      {t('imageEditorModal.save.linkedConfirmYes')}
+                    </button>
+                    <button onClick={() => setAskLinkedReplace(false)} disabled={saving}
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50 ${isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                      {t('imageEditorModal.save.linkedConfirmNo')}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {overwriteTarget && (
                 <button onClick={() => handleSave('overwrite')} disabled={saving || !imgLoaded}

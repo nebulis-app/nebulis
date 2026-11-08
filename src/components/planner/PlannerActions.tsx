@@ -2,8 +2,7 @@
  * The planner's page-level actions, sharing the night-picker's row.
  *
  * Only the wishlist is left here, since it is not about any one night. The
- * visible-sky mask belongs to the observing site, so its button
- * (`VisibleSkyButton`) sits beside the site picker in the page header. Copying
+ * visible-sky mask is edited per observing site in Settings, Sites. Copying
  * the last night and sharing the plan act on the schedule, so they sit in the
  * schedule's own header and empty state. "Plan my night" is the one action
  * that belongs to the night itself, and it stays on the hero.
@@ -13,7 +12,7 @@
  * on the button at every width.
  */
 import type { ReactNode } from 'react';
-import { Compass, Star } from 'lucide-react';
+import { Star } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
@@ -35,33 +34,6 @@ export function PlannerActions({ isDark, wishlistCount, onOpenWishlist }: Props)
         hint={wishlistCount > 0 ? String(wishlistCount) : undefined}
       />
     </div>
-  );
-}
-
-/**
- * The visible-sky mask belongs to the observing site, so this sits next to the
- * site picker on the page header. That panel is dark in every theme, so the
- * button is styled for the dark side. "Not set" is tinted, because until it is
- * set every target counts as visible.
- */
-export function VisibleSkyButton({ onClick, skyLabel, isSet }: { onClick: () => void; skyLabel: string; isSet: boolean }) {
-  const { t } = useTranslation('planner');
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={t('plannerActions.visibleSky')}
-      title={t('plannerActions.visibleSkyTitle', { skyLabel })}
-      className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-medium ring-1 ring-inset transition ${
-        isSet
-          ? 'bg-white/[0.06] text-white/70 ring-white/10 hover:bg-white/10 hover:text-white'
-          : 'bg-amber-500/10 text-amber-300 ring-amber-400/25 hover:bg-amber-500/20'
-      }`}
-    >
-      <Compass className="h-3.5 w-3.5" />
-      <span className="hidden md:inline">{t('plannerActions.visibleSky')}</span>
-      <span className="hidden tabular-nums opacity-70 xl:inline">{skyLabel}</span>
-    </button>
   );
 }
 

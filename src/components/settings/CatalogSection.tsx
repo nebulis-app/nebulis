@@ -249,6 +249,8 @@ function PackStatesRow({ isDark, packStates, activePhase, processed, total }: {
     popular: t('offlineCatalog.packStates.tiers.popular'),
     extended: t('offlineCatalog.packStates.tiers.extended'),
     sharpless: t('offlineCatalog.packStates.tiers.sharpless'),
+    abell: t('offlineCatalog.packStates.tiers.abell'),
+    berkeley: t('offlineCatalog.packStates.tiers.berkeley'),
   };
 
   return (

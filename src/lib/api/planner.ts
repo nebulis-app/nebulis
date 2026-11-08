@@ -53,8 +53,8 @@ interface ForecastData {
     nauticalTwilightStart: string;
     darkHours: number;
     nauticalDarkHours: number;
-    /** Tonight's imaging window as the site's settings make it (twilight level and offsets). Null when those
-     *  settings leave no window tonight; absent from an older server, which then means the astronomical night. */
+    /** Tonight's imaging window as the requested site's settings make it (twilight level and offsets). Null when
+     *  those settings leave no window tonight. Absent from an older server, which means the astronomical night. */
     imagingWindow?: ImagingWindowInfo | null;
   };
   nightRatings: NightRating[];
@@ -227,6 +227,8 @@ export interface AutoPlanRequest {
   /** Favour objects with time left toward their goals (candidates' `goals`)
    *  and leave out finished ones. */
   favorGoals?: boolean;
+  /** Judge emission nebulae against the narrowband Moon limit. Omit to let a narrowband filter in Gear decide. */
+  narrowbandCapable?: boolean;
 }
 
 interface WirePlanBlock {

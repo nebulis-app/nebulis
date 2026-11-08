@@ -559,6 +559,17 @@ export function fileThumbnailDiskCacheKey(
   return createHash('sha256').update(`${relPath}:${width}x${height}:${mtimeMs}`).digest('base64url');
 }
 
+/** Absolute path of a picture this library already holds for the object: its stored gallery image, else the best
+ *  observation image. Null when it has none on disk. */
+function ownObservationImagePath(objectId: string, galleryImage: string | null | undefined): string | null {
+  for (const rel of [galleryImage, findFallbackObservationImage(objectId)]) {
+    if (!rel) continue;
+    const abs = safeGalleryImagePath(rel);
+    if (abs && fs.existsSync(abs)) return abs;
+  }
+  return null;
+}
+
 /**
  * Resolve the authoritative source image path for an object.
  * Priority: user-set override > galleryImageSource setting > best local catalog
@@ -622,14 +633,27 @@ export async function resolveObjectImagePath(
   const cached = findCachedMaster(resolvedId);
   if (cached) return cached.path;
 
-  try {
+  const fetchSky = () => {
     const dsoEntry = getDsoById(resolvedId);
-    const fov = fovForEntry(dsoEntry?.majorAxisArcmin ?? null);
-    const fetched = await prefetchSkyImage(resolvedId, {
-      fov,
+    return prefetchSkyImage(resolvedId, {
+      fov: fovForEntry(dsoEntry?.majorAxisArcmin ?? null),
       ra: dsoEntry?.ra != null ? dsoEntry.ra * 15 : undefined,
       dec: dsoEntry?.dec,
     });
+  };
+
+  // The object's own picture is already on disk, so answer with it now and fetch the sky picture in the background.
+  // Waiting for the download first held every card blank for as long as the sky service took to answer or time out
+  // (a minute or more when it is down), for a picture the user already had. The sky picture is cached for the next
+  // request, which then takes the branch above.
+  const ownPicture = ownObservationImagePath(objectId, row.galleryImage);
+  if (ownPicture) {
+    try { fetchSky().catch(() => { /* external service unavailable; the next request tries again */ }); } catch { /* ditto */ }
+    return ownPicture;
+  }
+
+  try {
+    const fetched = await fetchSky();
     if (fetched) return fetched;
   } catch { /* external service unavailable */ }
 

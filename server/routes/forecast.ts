@@ -12,7 +12,7 @@ import {
 } from '../lib/forecastCache.js';
 import { getNightConditions } from '../lib/nightConditions.js';
 import { resolveSite, type ObservingSite } from '../lib/observingSites.js';
-import { resolveWindowFromIso, windowPrefsOf } from '../lib/imagingWindow.js';
+import { forecastForSite } from '../lib/forecastForSite.js';
 import { burstyRateLimiter } from '../middleware/rateLimit.js';
 import {
   computeOutlook,
@@ -20,44 +20,17 @@ import {
   DEFAULT_OUTLOOK_THRESHOLDS,
   ENSEMBLE_MODELS,
 } from '../lib/ensembleOutlook.js';
+import { windowPrefsOf } from '../lib/imagingWindow.js';
 import { timeZoneOrLocal } from '../lib/timezone.js';
 
 const router = Router();
 
 // ─── Combined forecast endpoint ─────────────────────────────────
 
-/**
- * The forecast with tonight's imaging window for the site added: the site's chosen twilight and offsets applied to
- * tonight's twilight times. Added per request rather than cached, since the forecast is cached per grid cell and
- * two sites on one cell can want different windows. Null when the settings leave no window tonight.
- */
-function withImagingWindow<T>(data: T, site: ObservingSite): T {
-  if (!data || typeof data !== 'object' || !('tonight' in data)) return data;
-  const tonight = (data as { tonight?: Record<string, unknown> | null }).tonight;
-  if (!tonight || typeof tonight !== 'object') return data;
-  const prefs = windowPrefsOf(site);
-  const str = (k: string) => (typeof tonight[k] === 'string' ? (tonight[k] as string) : null);
-  const win = resolveWindowFromIso({
-    astronomicalTwilightEnd: str('astronomicalTwilightEnd'),
-    astronomicalTwilightStart: str('astronomicalTwilightStart'),
-    nauticalTwilightEnd: str('nauticalTwilightEnd'),
-    nauticalTwilightStart: str('nauticalTwilightStart'),
-  }, prefs);
-  return {
-    ...data,
-    tonight: {
-      ...tonight,
-      imagingWindow: win
-        ? { start: win.start.toISOString(), end: win.end.toISOString(), darkness: win.darkness, startOffsetMin: prefs.startOffsetMin, endOffsetMin: prefs.endOffsetMin }
-        : null,
-    },
-  };
-}
-
 router.get('/', burstyRateLimiter, async (req: Request, res: Response) => {
   let resolvedLat: number | null = null;
-  let site: ObservingSite | null = null;
   let resolvedLon: number | null = null;
+  let site: ObservingSite | null = null;
   try {
     // siteId wins; otherwise explicit lat/lon (existing clients that read
     // settings.latitude/longitude directly); otherwise the active/default
@@ -109,7 +82,7 @@ router.get('/', burstyRateLimiter, async (req: Request, res: Response) => {
     // cached empty forecast is never served: re-fetch instead so a bad entry
     // recovers on the next request rather than sticking for the full TTL.
     if (!forceRefresh && cached && cacheAge < CACHE_TTL_MS && cachedUsable) {
-      res.apiSuccess(withImagingWindow(cached.data, site!));
+      res.apiSuccess(forecastForSite(cached.data, site));
       return;
     }
 
@@ -118,7 +91,7 @@ router.get('/', burstyRateLimiter, async (req: Request, res: Response) => {
     if (isUsableForecast(data)) {
       setForecastCacheEntry({ data, fetchedAt: now, lat: resolvedLat, lon: resolvedLon, lastRequestedAt: now });
       snapshotNightConditions(data, resolvedLat, resolvedLon);
-      res.apiSuccess(withImagingWindow(data, site!));
+      res.apiSuccess(forecastForSite(data, site));
       return;
     }
 
@@ -127,17 +100,17 @@ router.get('/', burstyRateLimiter, async (req: Request, res: Response) => {
     // stale; otherwise hand the empty payload back for the client to show its
     // own retryable "forecast unavailable" state.
     if (cached && cachedUsable) {
-      res.apiSuccess(withImagingWindow(cached.data, site!));
+      res.apiSuccess(forecastForSite(cached.data, site));
       return;
     }
-    res.apiSuccess(withImagingWindow(data, site!));
+    res.apiSuccess(data);
   } catch (err: unknown) {
     // On error, serve a stale entry for this site if we have one.
     const stale = resolvedLat !== null && resolvedLon !== null
       ? getForecastCacheEntry(resolvedLat, resolvedLon)
       : null;
     if (stale) {
-      res.apiSuccess(site ? withImagingWindow(stale.data, site) : stale.data);
+      res.apiSuccess(site ? forecastForSite(stale.data, site) : stale.data);
       return;
     }
     const message = err instanceof Error ? err.message : 'Forecast fetch failed';
@@ -150,10 +123,27 @@ router.get('/', burstyRateLimiter, async (req: Request, res: Response) => {
 // The hourly conditions kept for that night at that forecast grid cell (see lib/nightConditions.ts): the forecast snapshot,
 // which alone has seeing, else an archive row. `conditions` is null when nothing was kept; clients then fall back to their
 // own archive lookup.
+router.get('/recorded', (req: Request, res: Response) => {
+  const night = String(req.query.night ?? '');
+  const lat = Number(req.query.lat), lon = Number(req.query.lon);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(night)) {
+    res.apiError(400, 'VALIDATION_ERROR', 'Nights look like 2026-10-08');
+    return;
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    res.apiError(400, 'INVALID_COORDS', 'Valid latitude (-90 to 90) and longitude (-180 to 180) required');
+    return;
+  }
+  const key = forecastSiteKey(lat, lon);
+  res.apiSuccess({ conditions: getNightConditions(key, night, 'forecast') ?? getNightConditions(key, night, 'archive') });
+});
+
+// ─── 15-night outlook from weather-model ensembles ─────────────
 /**
- * GET /forecast/outlook — 15-night outlook from weather-model ensembles
+ * GET /forecast/outlook: 15-night outlook from weather-model ensembles
  * (see lib/ensembleOutlook.ts): for each night, the share of model runs
- * giving at least `minClearHours` dark hours at or under `maxCloudCover`.
+ * giving at least `minClearHours` hours of the site's imaging window at or under
+ * `maxCloudCover`.
  * Site resolution as for GET /forecast (siteId, lat/lon, else active site).
  */
 router.get('/outlook', burstyRateLimiter, async (req: Request, res: Response) => {
@@ -183,7 +173,7 @@ router.get('/outlook', burstyRateLimiter, async (req: Request, res: Response) =>
     const { data, fetchedAt } = await getEnsemble(site.latitude, site.longitude);
     const timeZone = timeZoneOrLocal(site.timezone);
     res.apiSuccess({
-      nights: computeOutlook(data, { lat: site.latitude, lon: site.longitude, timeZone }, new Date(), thresholds),
+      nights: computeOutlook(data, { lat: site.latitude, lon: site.longitude, timeZone, window: windowPrefsOf(site) }, new Date(), thresholds),
       thresholds,
       timeZone,
       models: ENSEMBLE_MODELS.map(m => ({
@@ -197,21 +187,6 @@ router.get('/outlook', burstyRateLimiter, async (req: Request, res: Response) =>
   } catch (err: unknown) {
     res.apiError(502, 'OUTLOOK_UNAVAILABLE', err instanceof Error ? err.message : 'Ensemble forecast unavailable');
   }
-});
-
-router.get('/recorded', (req: Request, res: Response) => {
-  const night = String(req.query.night ?? '');
-  const lat = Number(req.query.lat), lon = Number(req.query.lon);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(night)) {
-    res.apiError(400, 'VALIDATION_ERROR', 'Nights look like 2026-10-08');
-    return;
-  }
-  if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-    res.apiError(400, 'INVALID_COORDS', 'Valid latitude (-90 to 90) and longitude (-180 to 180) required');
-    return;
-  }
-  const key = forecastSiteKey(lat, lon);
-  res.apiSuccess({ conditions: getNightConditions(key, night, 'forecast') ?? getNightConditions(key, night, 'archive') });
 });
 
 export { router as forecastRouter };

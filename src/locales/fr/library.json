@@ -1016,7 +1016,10 @@
       "footerOverwriteTelescope": "Enregistrer remplace ce fichier. Nouvelle version conserve l'original et ajoute une copie modifiée.",
       "footerOverwriteProcessed": "Enregistrer remplace cette image. Nouvelle version conserve l'original dans les images traitées.",
       "footerNewTelescope": "Enregistre avec les images d'origine du télescope",
-      "footerNewProcessed": "Enregistre dans les images traitées"
+      "footerNewProcessed": "Enregistre dans les images traitées",
+      "linkedConfirmBody": "Cette image se trouve dans un dossier lié, Nebulis ne l'a donc pas créée. La remplacer sur place ? Nebulis garde une copie du premier original.",
+      "linkedConfirmYes": "Remplacer le fichier",
+      "linkedConfirmNo": "Annuler"
     }
   },
   "fitsViewer": {

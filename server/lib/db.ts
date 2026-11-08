@@ -935,6 +935,20 @@ db.exec(`
   }
 }
 {
+  // A site's imaging window (see lib/imagingWindow.ts): the twilight it starts from and how many minutes either end
+  // is moved. The defaults are the window every site had before: astronomical dusk to dawn.
+  const siteCols = db.prepare<[], { name: string }>('PRAGMA table_info(observingSites)').all();
+  if (!siteCols.some(c => c.name === 'darkness')) {
+    db.prepare("ALTER TABLE observingSites ADD COLUMN darkness TEXT NOT NULL DEFAULT 'astronomical'").run();
+  }
+  if (!siteCols.some(c => c.name === 'windowStartOffsetMin')) {
+    db.prepare('ALTER TABLE observingSites ADD COLUMN windowStartOffsetMin INTEGER NOT NULL DEFAULT 0').run();
+  }
+  if (!siteCols.some(c => c.name === 'windowEndOffsetMin')) {
+    db.prepare('ALTER TABLE observingSites ADD COLUMN windowEndOffsetMin INTEGER NOT NULL DEFAULT 0').run();
+  }
+}
+{
   // Linked library sources (see librarySources above). sourceId NULL on every
   // existing row is exactly right: it means "the managed library", which is
   // every row that existed before this column did. mtimeMs/missingSince are
@@ -1335,19 +1349,6 @@ db.exec(`
     db.prepare('ALTER TABLE librarySessions ADD COLUMN siteId TEXT').run();
   }
   db.prepare('CREATE INDEX IF NOT EXISTS idx_librarySessions_site ON librarySessions(siteId)').run();
-
-  // A site's imaging window (see lib/imagingWindow.ts): the twilight it starts from and how many minutes either end
-  // is moved. The defaults are the window every site had before: astronomical dusk to dawn.
-  const siteCols = db.prepare<[], { name: string }>('PRAGMA table_info(observingSites)').all();
-  if (!siteCols.some(c => c.name === 'darkness')) {
-    db.prepare("ALTER TABLE observingSites ADD COLUMN darkness TEXT NOT NULL DEFAULT 'astronomical'").run();
-  }
-  if (!siteCols.some(c => c.name === 'windowStartOffsetMin')) {
-    db.prepare('ALTER TABLE observingSites ADD COLUMN windowStartOffsetMin INTEGER NOT NULL DEFAULT 0').run();
-  }
-  if (!siteCols.some(c => c.name === 'windowEndOffsetMin')) {
-    db.prepare('ALTER TABLE observingSites ADD COLUMN windowEndOffsetMin INTEGER NOT NULL DEFAULT 0').run();
-  }
 
   // Which optical train shot the session (see library/sessionOptics.ts).
   // `opticalConfigId` is the user's explicit choice, NULL meaning "let the

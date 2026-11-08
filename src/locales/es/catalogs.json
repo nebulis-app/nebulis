@@ -5,14 +5,20 @@
     "noneImaged": "Todavía no has fotografiado ninguno de estos objetos.",
     "allImaged": "Se ha fotografiado cada objeto de esta selección.",
     "nothingToShow": "No hay nada que mostrar con los filtros actuales.",
-    "clearFilters": "Borrar filtros"
+    "clearFilters": "Borrar filtros",
+    "noneObservable": "Ningún objeto de este catálogo es visible desde tu sitio con la altitud mínima actual."
   },
   "catalogsHero": {
     "percentImagedAriaLabel": "{{percent}}% de los objetos del catálogo fotografiados",
     "imaged": "Fotografiados",
     "catalogObjects": "Objetos del catálogo",
     "title": "Catálogos",
-    "subtitle": "Sigue tu progreso fotográfico a través de programas de observación clásicos."
+    "subtitle": "Sigue tu progreso fotográfico a través de programas de observación clásicos.",
+    "filterLabel": "Mostrar catálogos",
+    "filterEmpty": "No hay catálogos seleccionados. Elige al menos uno para ver su progreso.",
+    "filterShowAll": "Mostrar todos",
+    "filterAll": "Todos los catálogos",
+    "filterCount": "{{selected}} de {{total}} catálogos"
   },
   "catalogMeta": {
     "messier": {
@@ -34,6 +40,21 @@
       "label": "Sharpless",
       "tagline": "313 nubes de hidrógeno incandescente, las nebulosas de emisión detrás de muchos de los nombres familiares del cielo.",
       "blurb": "Stewart Sharpless catalogó 313 regiones HII a partir de las placas del relevamiento celeste del National Geographic. Son las nubes de hidrógeno alfa que persiguen los astrofotógrafos de banda estrecha: grandes, tenues y llenas de estructura. Algunas llevan nombres familiares como la Cueva, el Mago y el Comecocos, pero muchas son campos sin nombre que esperan una larga exposición."
+    },
+    "rasc": {
+      "label": "RASC Finest NGC",
+      "tagline": "110 tesoros NGC elegidos por la Real Sociedad Astronómica de Canadá, sin solaparse con Messier.",
+      "blurb": "La lista RASC Finest NGC es la respuesta canadiense a Messier: 110 de los mejores objetos NGC fuera de Messier, desde el Doble Cúmulo hasta la galaxia del Escultor. Es ante todo una lista visual, pero cada objeto también es un buen objetivo de imagen; se recomienda un telescopio de 200 mm."
+    },
+    "abell": {
+      "label": "Nebulosas planetarias Abell",
+      "tagline": "80 nebulosas planetarias débiles y antiguas del relevamiento Palomar de George Abell.",
+      "blurb": "George Abell encontró estas 80 nebulosas planetarias en las placas del Palomar Sky Survey; muchas son grandes y muy débiles. Recompensan los filtros OIII, cielos oscuros y exposiciones largas; la Medusa, Abell 31 y Abell 39 son las más vistosas."
+    },
+    "berkeley": {
+      "label": "Cúmulos abiertos Berkeley",
+      "tagline": "89 cúmulos abiertos antiguos y dispersos del catálogo Berkeley.",
+      "blurb": "El catálogo Berkeley reúne cúmulos abiertos antiguos encontrados en placas Palomar, a menudo dispersos y débiles. Son objetivos visuales sutiles y proyectos de imagen poco habituales; Berkeley 17 es uno de los cúmulos abiertos más antiguos conocidos."
     }
   },
   "objectClass": {
@@ -43,8 +64,10 @@
     "other": "Otros"
   },
   "catalogHero": {
-    "allCatalogs": "Todos los catálogos",
+    "catalogs": "Catálogos",
+    "breadcrumb": "Navegación de catálogos",
     "imaged": "fotografiados",
+    "toGo": "por hacer",
     "programComplete": "Programa completo",
     "stillToImage_one": "{{count}} pendiente de fotografiar",
     "stillToImage_other": "{{count}} pendientes de fotografiar",
@@ -66,7 +89,8 @@
     "openBoard": "Abrir tablero",
     "myCatalog": "Mi {{label}}",
     "myCatalogAria_one": "Mi catálogo {{label}}, {{count}} imagen",
-    "myCatalogAria_other": "Mi catálogo {{label}}, {{count}} imágenes"
+    "myCatalogAria_other": "Mi catálogo {{label}}, {{count}} imágenes",
+    "myCatalogShort": "Mi catálogo"
   },
   "catalogTile": {
     "imagedAriaLabel": "{{id}}, {{name}}, fotografiado",
@@ -97,7 +121,11 @@
     "searchPlaceholder": "Buscar nombre, id, constelación",
     "searchAriaLabel": "Buscar en este catálogo",
     "clearSearch": "Borrar búsqueda",
-    "sortObjects": "Ordenar objetos"
+    "sortObjects": "Ordenar objetos",
+    "observableOnly": "Visible",
+    "observableOnlyHelp": "Oculta los objetos que nunca superan los {{deg}}° desde tu sitio",
+    "observableOnlyNoLocation": "Configura un sitio para filtrar por visibilidad",
+    "filters": "Filtros"
   },
   "catalogObjectModal": {
     "maxAltitudeHeading": "Altitud máxima durante la oscuridad: próximos 12 meses",

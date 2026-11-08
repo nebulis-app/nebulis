@@ -48,6 +48,8 @@ import {
 } from '../../server/lib/plannerNightlyPrefetch';
 
 const NIGHT = { nightStart: new Date('2026-10-08T20:00:00Z'), nightEnd: new Date('2026-10-09T04:00:00Z') };
+// What getNightWindow hands back: the physical times, plus the site's imaging window (the one the prefetch reads).
+const NIGHT_WINDOW = { ...NIGHT, imaging: { start: NIGHT.nightStart, end: NIGHT.nightEnd, darkness: 'astronomical' } };
 const SITE = { latitude: 40, longitude: -75, minAlt: 20, horizonProfile: null, timezone: 'UTC' };
 
 beforeEach(() => {
@@ -57,7 +59,7 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   m.getActiveSite.mockReturnValue(SITE);
   m.observingNightAnchor.mockReturnValue(new Date('2026-10-08T12:00:00Z'));
-  m.getNightWindow.mockReturnValue(NIGHT);
+  m.getNightWindow.mockReturnValue(NIGHT_WINDOW);
   m.getPlannerCatalog.mockReturnValue([]);
   m.prewarmThumbnails.mockResolvedValue(undefined);
 });
@@ -79,7 +81,7 @@ describe('runPlannerNightlyPrefetch', () => {
   });
 
   it('stamps last-run but warms nothing when there is no dark window', async () => {
-    m.getNightWindow.mockReturnValue({ nightStart: null, nightEnd: null, nauticalDusk: null, nauticalDawn: null });
+    m.getNightWindow.mockReturnValue({ nightStart: null, nightEnd: null, imaging: null });
 
     await runPlannerNightlyPrefetch();
 
@@ -87,14 +89,15 @@ describe('runPlannerNightlyPrefetch', () => {
     expect(m.updateSettingsData).toHaveBeenCalledWith({ plannerPrefetchLastRun: expect.any(Number) });
   });
 
-  it('falls back to the nautical window when there is no astronomical night', async () => {
-    m.getNightWindow.mockReturnValue({ nightStart: null, nightEnd: null, nauticalDusk: NIGHT.nightStart, nauticalDawn: NIGHT.nightEnd });
+  it("warms for the site's imaging window, not the astronomical night", async () => {
+    const start = new Date('2026-10-08T19:30:00Z'), end = new Date('2026-10-09T03:00:00Z');
+    m.getNightWindow.mockReturnValue({ ...NIGHT, imaging: { start, end, darkness: 'nautical' } });
     m.getPlannerCatalog.mockReturnValue([{ id: 'M31', ra: 0.7, dec: 41 }]);
     m.visibilityWindow.mockReturnValue({ maxAlt: 80, rises: true });
 
     await runPlannerNightlyPrefetch();
 
-    expect(m.visibilityWindow).toHaveBeenCalledWith(0.7, 41, 40, -75, NIGHT.nightStart, NIGHT.nightEnd, 20, null);
+    expect(m.visibilityWindow).toHaveBeenCalledWith(0.7, 41, 40, -75, start, end, 20, null);
   });
 
   it('warms only objects that rise above the site minimum altitude', async () => {

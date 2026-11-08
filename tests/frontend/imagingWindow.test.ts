@@ -36,15 +36,6 @@ describe('resolveImagingWindow', () => {
     });
   });
 
-  it('uses the site\'s own window when the server sends one, and none when it sends null', () => {
-    const w = resolveImagingWindow({
-      ...FULL_TWILIGHT,
-      imagingWindow: { start: at('20:30'), end: at('04:00', '15'), darkness: 'nautical', startOffsetMin: 30, endOffsetMin: 60 },
-    });
-    expect(w).toMatchObject({ startMs: Date.parse(at('20:30')), endMs: Date.parse(at('04:00', '15')), astronomical: false, startOffsetMin: 30, endOffsetMin: 60 });
-    expect(resolveImagingWindow({ ...FULL_TWILIGHT, imagingWindow: null })).toBeNull();
-  });
-
   it('falls back to nautical twilight, flagged as not astronomical', () => {
     // A high-latitude summer night: the Sun never reaches -18°, so the server
     // sends no astronomical darkness at all.
@@ -110,12 +101,6 @@ describe('hoursInWindow', () => {
     ]);
   });
 
-  it('takes the hour a window opens in when it opens between two hours', () => {
-    const late = { ...win, startMs: Date.parse(at('20:02')), endMs: Date.parse(at('22:38')) };
-    const hours = [hour(at('19:00')), hour(at('20:00')), hour(at('21:00')), hour(at('22:00')), hour(at('23:00'))];
-    expect(hoursInWindow(hours, late).map(h => h.time)).toEqual([at('20:00'), at('21:00'), at('22:00')]);
-  });
-
   it('returns an empty list when no hour falls inside', () => {
     expect(hoursInWindow([hour(at('12:00')), hour(at('13:00'))], win)).toEqual([]);
   });
@@ -166,5 +151,38 @@ describe('moonUpSpans', () => {
   it('clips to the window edge when only the rise or only the set is known', () => {
     expect(moonUpSpans(t0, t1, at('23:00'), null)).toEqual([[Date.parse(at('23:00')), t1]]);
     expect(moonUpSpans(t0, t1, null, at('22:00'))).toEqual([[t0, Date.parse(at('22:00'))]]);
+  });
+});
+
+describe('the site’s own window from the server', () => {
+  const site = (over: Partial<NonNullable<Parameters<typeof resolveImagingWindow>[0]['imagingWindow']>> = {}) => ({
+    ...FULL_TWILIGHT,
+    imagingWindow: { start: at('19:30'), end: at('04:00', '15'), darkness: 'nautical' as const, startOffsetMin: 30, endOffsetMin: 60, ...over },
+  });
+
+  it('is used instead of the twilight pair, with the offsets it was made with', () => {
+    const w = resolveImagingWindow(site())!;
+    expect(w.startIso).toBe(at('19:30'));
+    expect(w.endIso).toBe(at('04:00', '15'));
+    expect(w.astronomical).toBe(false);
+    expect([w.startOffsetMin, w.endOffsetMin]).toEqual([30, 60]);
+  });
+
+  it('means no window when the server says null, even though twilight times exist', () => {
+    expect(resolveImagingWindow({ ...FULL_TWILIGHT, imagingWindow: null })).toBeNull();
+  });
+
+  it('falls back to the plain twilight for an older server that sends none', () => {
+    const w = resolveImagingWindow(FULL_TWILIGHT)!;
+    expect(w.startIso).toBe(at('20:00'));
+    expect([w.startOffsetMin, w.endOffsetMin]).toEqual([0, 0]);
+  });
+});
+
+describe('hoursInWindow with a window that opens between two hours', () => {
+  it('takes the hour the window opens in, so 19:02 starts on the 19:00 row', () => {
+    const win = resolveImagingWindow({ astronomicalTwilightEnd: at('19:02'), astronomicalTwilightStart: at('23:00') })!;
+    const hours = [hour(at('18:00')), hour(at('19:00')), hour(at('20:00')), hour(at('23:00'))];
+    expect(hoursInWindow(hours, win).map(h => h.time)).toEqual([at('19:00'), at('20:00'), at('23:00')]);
   });
 });

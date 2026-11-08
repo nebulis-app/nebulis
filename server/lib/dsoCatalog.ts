@@ -9,7 +9,7 @@
  * Cygni there, B33 is a dark nebula), so without this fallback searching those
  * ids returns nothing even though the rest of the app knows them.
  */
-import { LISTED_ROWS } from './dsoCatalogData.js';
+import { LISTED_ROWS, recordFor } from './dsoCatalogData.js';
 import { expandSearchAliases, resolveCanonicalId, normalizeDesignation, getAliasesFor } from './catalogAliases.js';
 import { getAllCuratedRecords } from './catalogStore.js';
 import { SHARPLESS_CATALOG } from './sharplessCatalog.js';
@@ -290,6 +290,27 @@ export function getById(id: string): DsoEntry | undefined {
   // plain equality against the normalized id is enough (no zero-padding).
   const curated = loadCuratedExtras().find(e => e.id === normalized);
   if (curated) return curated;
+
+  // Lookup-only records (the fainter NGC/IC objects, plus the Abell and
+  // Berkeley catalog rows). They are not browsed, but the catalog boards and
+  // the on-demand DSS2 route still need their position and type.
+  const record = recordFor(normalized);
+  if (record && record.ra != null && record.dec != null) {
+    return {
+      id: record.id,
+      ngcName: record.id,
+      name: record.name,
+      type: record.type,
+      typeCode: record.typeCode ?? '',
+      constellation: record.constellation,
+      ra: record.ra,
+      dec: record.dec,
+      magnitude: record.magnitude,
+      majorAxisArcmin: record.sizeArcmin,
+      commonNames: record.names,
+      messier: null,
+    };
+  }
 
   // Duplicate-observation NGC/IC number: the historical NGC catalog recorded
   // some physical objects twice under two numbers (e.g. NGC2527 is the same

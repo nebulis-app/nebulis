@@ -69,7 +69,7 @@ export interface DsoRecord {
 // ─── Designation spelling ───────────────────────────────────────────────────
 
 const DESIGNATION_RE =
-  /^(?:SH2-\d+|(?:NGC|IC|CED|VDB|LBN|LDN|UGC|PGC|ARP|MEL|CR|STOCK|HCG|M|C|B)\d+[A-Z]?)$/;
+  /^(?:SH2-\d+|ABELL\d+|BERK\d+|(?:NGC|IC|CED|VDB|LBN|LDN|UGC|PGC|ARP|MEL|CR|STOCK|HCG|M|C|B)\d+[A-Z]?)$/;
 
 /**
  * One spelling per catalog number: uppercase, no spaces, the Sharpless form
@@ -85,7 +85,10 @@ export function normalizeCatalogNumber(raw: string): string | null {
     .replace(/^MESSIER-?(\d)/, 'M$1')
     .replace(/^BARNARD-?(\d)/, 'B$1')
     .replace(/^MELOTTE-?(\d)/, 'MEL$1')
-    .replace(/^COLLINDER-?(\d)/, 'CR$1');
+    .replace(/^COLLINDER-?(\d)/, 'CR$1')
+    .replace(/^ABELL[\s-]?(\d)/, 'ABELL$1')
+    .replace(/^BERKELEY[\s-]?(\d)/, 'BERK$1')
+    .replace(/^BERK[\s-]?(\d)/, 'BERK$1');
   s = s.replace(/^(SH2-)0+(\d)/, '$1$2').replace(/^([A-Z]+)0+(\d)/, '$1$2');
   return DESIGNATION_RE.test(s) ? s : null;
 }
@@ -93,6 +96,7 @@ export function normalizeCatalogNumber(raw: string): string | null {
 const DISPLAY_PREFIX: ReadonlyArray<readonly [RegExp, string]> = [
   [/^SH2-/, 'Sh2-'], [/^MEL(?=\d)/, 'Mel'], [/^CR(?=\d)/, 'Cr'], [/^STOCK(?=\d)/, 'Stock'],
   [/^VDB(?=\d)/, 'vdB'], [/^CED(?=\d)/, 'Ced'], [/^ARP(?=\d)/, 'Arp'],
+  [/^ABELL(?=\d)/, 'Abell '], [/^BERK(?=\d)/, 'Berkeley '],
 ];
 
 /** The way a catalog number is written for people: "Sh2-190", "Mel22", "vdB141". */
@@ -104,7 +108,7 @@ export function displayDesignation(designation: string): string {
 /** Sort rank of a designation in an "also known as" list: the catalogs people
  *  name objects by first, survey numbers last. */
 export function designationRank(designation: string): number {
-  const order = ['M', 'NGC', 'IC', 'C', 'SH2-', 'MEL', 'CR', 'B', 'STOCK', 'CED', 'VDB', 'ARP', 'HCG', 'LDN', 'LBN', 'UGC', 'PGC'];
+  const order = ['M', 'NGC', 'IC', 'C', 'SH2-', 'ABELL', 'BERK', 'MEL', 'CR', 'B', 'STOCK', 'CED', 'VDB', 'ARP', 'HCG', 'LDN', 'LBN', 'UGC', 'PGC'];
   const i = order.findIndex(p => new RegExp(`^${p.replace('-', '\\-')}\\d`).test(designation));
   return i < 0 ? order.length : i;
 }

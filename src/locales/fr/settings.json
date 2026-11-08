@@ -585,7 +585,9 @@
         "caldwell": "Caldwell",
         "popular": "DSO populaires",
         "extended": "Étendu",
-        "sharpless": "Sharpless"
+        "sharpless": "Sharpless",
+        "abell": "Abell",
+        "berkeley": "Berkeley"
       }
     }
   },
@@ -1083,12 +1085,14 @@
     "photosCaptionPlaceholder": "Ajouter une légende",
     "photosUploadFailed": "Impossible d'envoyer {{name}} : {{reason}}",
     "imagingWindowLabel": "Fenêtre d'imagerie",
-    "darknessLabel": "À partir de",
-    "darknessAstronomical": "Nuit astronomique (Soleil à −18°)",
-    "darknessNautical": "Nuit nautique (Soleil à −12°)",
-    "startOffsetLabel": "Début, minutes après la nuit",
+    "darknessLabel": "Commence à partir de",
+    "darknessAstronomical": "Nuit astronomique (Soleil à -18°)",
+    "darknessNautical": "Nuit nautique (Soleil à -12°)",
+    "startOffsetLabel": "Début, minutes après le crépuscule",
     "endOffsetLabel": "Fin, minutes avant l'aube",
-    "imagingWindowHelp": "Les heures que la page météo, sa note et l'alerte de nuit claire comptent comme « cette nuit ». Les filtres à bande étroite coupent l'essentiel de la lueur du crépuscule : la nuit nautique suffit souvent et commence environ 35 minutes plus tôt. Les minutes permettent de commencer plus tard ou de s'arrêter avant l'aube ; une valeur négative déplace cette borne dans l'autre sens."
+    "imagingWindowHelp": "Compte comme cette nuit dans les Prévisions, le score de la nuit, le Planificateur et l'alerte de nuit dégagée. Positif : commence plus tard ou s'arrête plus tôt ; négatif : l'inverse. Les filtres à bande étroite coupent la lueur crépusculaire : partir de la nuit nautique convient souvent.",
+    "windowPreview": "Cette nuit : de {{start}} à {{end}} ({{hours}} h)",
+    "windowPreviewNone": "Ces réglages ne laissent aucune fenêtre d'imagerie cette nuit."
   },
   "enterCodeModal": {
     "title": "Lier un Apple TV",
@@ -1532,7 +1536,14 @@
     "duplicates": {
       "title": "Fichiers en double",
       "detail": "La même capture est stockée dans deux dossiers d'un objet, sur {{objects}} objets. Le nettoyage conserve la copie nommée par le télescope et supprime l'autre une fois les octets vérifiés identiques.",
-      "fix": "Supprimer les doublons"
+      "fix": "Supprimer les doublons",
+      "view": "Voir les doublons",
+      "loading": "Chargement…",
+      "hide": "Masquer la liste",
+      "listIntro": "{{count}} fichier(s) seraient supprimés. La même liste est écrite dans le journal du serveur.",
+      "truncated": "Affichage des {{shown}} premiers.",
+      "remove": "Supprimer",
+      "keep": "Conserver"
     },
     "flat": {
       "title": "Objets à structure plate",

@@ -53,6 +53,8 @@ export interface WallTile {
   name: string;
   typeClass: ObjectClass;
   majorAxisArcmin: number | null;
+  /** Declination in degrees, for the "observable from my site" filter. */
+  dec: number | null;
   libraryObjectId: string | null;
   /** True when the tile shows the user's own picture; false renders a number cell. */
   imaged: boolean;

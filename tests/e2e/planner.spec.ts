@@ -130,15 +130,20 @@ test.describe('Planner Page', () => {
     expect(Math.abs(scrubbed!.y - rest!.y)).toBeLessThan(1);
   });
 
-  test('shows the moon summary and sky-map control', async ({ page }) => {
-    // The illumination no longer repeats the word "Moon": the block is already
-    // labelled, and the line has to leave room for the rise/set times, which
-    // were being truncated mid-number when everything shared one line.
+  test('shows the moon summary, and no visible-sky button on the page', async ({ page }) => {
+    // The banner starts collapsed, where the Moon is a small picture with its
+    // illumination beside the verdict.
+    // (The wide-screen night picker holds a second copy, hidden at this width.)
+    await expect(page.getByText(/42% lit/i).locator('visible=true')).toBeVisible();
+    // Expanded, the Moon has a block of its own. The illumination no longer
+    // repeats the word "Moon": the block is already labelled, and the line has
+    // to leave room for the rise/set times.
+    await page.getByRole('button', { name: 'Expand header', exact: true }).click();
     await expect(page.getByText('Moon', { exact: true })).toBeVisible();
     await expect(page.getByText(/42% lit/i)).toBeVisible();
-    // The visible-sky editor sits with the night picker, not on the night
-    // panel: it is a property of the observing site, not of tonight.
-    await expect(page.getByRole('button', { name: /visible sky/i })).toBeVisible();
+    // The visible-sky mask is a property of the observing site, so it is edited
+    // in Settings, Sites, and not from the planner.
+    await expect(page.getByRole('button', { name: /visible sky/i })).toHaveCount(0);
   });
 
   // The planner reads the same forecast the Sky Forecast page does, and shows
@@ -197,17 +202,20 @@ test.describe('Planner Page', () => {
     });
   });
 
-  test('the hero collapses to one row and stays collapsed after a reload', async ({ page }) => {
-    await page.getByRole('button', { name: 'Collapse header', exact: true }).click();
+  test('the hero starts collapsed to one row, and keeps the choice after a reload', async ({ page }) => {
+    // Collapsed is the working layout, so it is where the page starts.
     await expect(page.getByRole('button', { name: 'Expand header', exact: true })).toBeVisible();
-    // The title and the verdict survive the collapse; only the long form goes.
-    await expect(page.getByRole('heading', { name: 'Planner', level: 1 })).toBeVisible();
-
-    await page.reload();
-    await expect(page.getByRole('button', { name: 'Expand header', exact: true })).toBeVisible();
+    // The title stays for screen readers and the verdict is on the row.
+    await expect(page.getByRole('heading', { name: 'Planner', level: 1 })).toBeAttached();
 
     await page.getByRole('button', { name: 'Expand header', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Collapse header', exact: true })).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Collapse header', exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Collapse header', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Expand header', exact: true })).toBeVisible();
   });
 
   test('an empty night has no start-up row, and sharing waits for a plan', async ({ page }) => {

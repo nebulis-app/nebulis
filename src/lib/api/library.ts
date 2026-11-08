@@ -1,6 +1,6 @@
 import type { AstroObject, Session, ProcessedImage, ProjectArchive, SessionCaptureSummary, ProcessingStatus, GalleryCrop, SessionFile } from '../../types';
 export type { ProcessedImage, ProjectArchive, ProcessingStatus };
-import { fetchJSON, authHeaders, BASE } from './client';
+import { fetchJSON, authHeaders, BASE, ApiRequestError } from './client';
 import type { ConnectionType as TransportKind } from './telescopes';
 import { currentThemeId } from '../catalogImage';
 
@@ -1247,6 +1247,51 @@ export interface LibraryClusterItem {
 /** Feeds the Library's Mosaic view: sizes tiles by how much each object has been worked on. */
 export const getLibraryCluster = () => fetchJSON<LibraryClusterItem[]>('/library/cluster');
 
+/** What the image editor did to a picture's frame, in its order: crop the source, flip that part, turn it clockwise.
+ *  `crop` is a rectangle of the SOURCE picture, 0 to 1 on each axis. */
+export interface GeometryEdit {
+  crop?: { x1: number; y1: number; x2: number; y2: number };
+  flipH?: boolean;
+  flipV?: boolean;
+  rotation?: 0 | 90 | 180 | 270;
+}
+
+/** The image editor's save. The picture stays on the server: this says which one and what to do to it. */
+export interface ImageEditRequest {
+  source: { kind: 'telescope'; path: string } | { kind: 'processed'; id: string };
+  edit: GeometryEdit;
+  adjust: { brightness: number; contrast: number; saturation: number };
+  title: string;
+  save:
+    | { mode: 'overwrite'; confirmLinked?: boolean }
+    | { mode: 'new'; target: 'library' | 'processed'; objectId: string; date: string | null };
+}
+
+/** Edits a picture on the server and saves the result. `overlay` is a transparent PNG of the text layers. */
+export async function editImageOnServer(request: ImageEditRequest, overlay?: Blob): Promise<void> {
+  const formData = new FormData();
+  formData.append('request', JSON.stringify(request));
+  if (overlay) formData.append('overlay', overlay, 'overlay.png');
+  const res = await fetch(`${BASE}/library/image-edit`, { method: 'POST', headers: authHeaders(), body: formData });
+  if (!res.ok) {
+    // Keep the server's error code: the editor asks the user before rewriting a file in a linked folder.
+    const body: unknown = await res.json().catch(() => ({}));
+    const code = asRecord(asRecord(body)?.error)?.code;
+    throw new ApiRequestError(uploadErrorText(body, res.statusText), res.status, typeof code === 'string' ? code : null);
+  }
+}
+
+/** A screen-sized JPEG of the picture to edit. Fetched with the login, since an <img> cannot send it. */
+export async function fetchEditorPreview(source: ImageEditRequest['source']): Promise<Blob> {
+  const key = source.kind === 'telescope' ? source.path : source.id;
+  const res = await fetch(
+    `${BASE}/library/image-edit/preview?kind=${source.kind}&key=${encodeURIComponent(key)}`,
+    { headers: authHeaders() },
+  );
+  if (!res.ok) throw new Error(res.statusText || 'Could not load the picture');
+  return res.blob();
+}
+
 export async function uploadLibraryFile(
   objectId: string,
   date: string,
@@ -1255,13 +1300,14 @@ export async function uploadLibraryFile(
    *  "Save") instead of writing a new "…E.jpg" variant ("Save as new
    *  version"). */
   overwritePath?: string,
-  /** The edit cropped, rotated or flipped the frame, so the picture no longer matches its FITS header. */
-  geometryChanged = false,
+  /** How the edit cropped, rotated or flipped the frame, so the server can move the picture's plate solution with it.
+   *  Leave unset when the frame is unchanged. */
+  geometryEdit?: GeometryEdit,
 ): Promise<{ objectId: string; date: string; filename: string }> {
   const formData = new FormData();
   formData.append('image', file, file.name);
   if (overwritePath) formData.append('overwritePath', overwritePath);
-  if (overwritePath && geometryChanged) formData.append('geometryChanged', '1');
+  if (overwritePath && geometryEdit) formData.append('edit', JSON.stringify(geometryEdit));
   const res = await fetch(
     `${BASE}/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/library-files`,
     { method: 'POST', headers: authHeaders(), body: formData }

@@ -12,11 +12,27 @@ import { CATALOG_TIERS, type CatalogTier } from './manifest.js';
 import { resolveCanonicalId } from '../catalogAliases.js';
 import { POPULAR_DSO_IDS } from '../popularDsoCatalog.js';
 import { EXTENDED_DSO_IDS } from '../extendedDsoCatalog.js';
+import { ABELL_IDS } from '../abellCatalog.js';
+import { BERKELEY_IDS } from '../berkeleyCatalog.js';
 import { SOLAR_SYSTEM_CATALOG } from '../../data/solar-system-catalog.js';
 import { DSO_RECORDS } from '../dsoCatalogData.js';
 
 const MESSIER_TOTAL = 110;
 const CALDWELL_TOTAL = 109;
+
+/**
+ * Packs that ship every object they list, even when an earlier tier already
+ * carries it.
+ *
+ * A pack named after a catalog is installed on its own, so it has to be
+ * self-contained: Abell 21 (Sh2-274) and Berkeley 59 (NGC 7822) are cross-listed
+ * objects that an earlier tier owns, and without them the pack would be missing
+ * the showpieces of the very catalog it is named for. The duplicate is the same
+ * canonical id, so the builder fetches one master and writes identical bytes
+ * into both archives, and ownership — and the catalog display — stays with the
+ * first tier.
+ */
+export const SELF_CONTAINED_TIERS: ReadonlySet<CatalogTier> = new Set(['abell', 'berkeley']);
 
 /** Every object a tier is meant to carry, as canonical ids, in a stable order. */
 export function listTierMembers(): Record<CatalogTier, string[]> {
@@ -28,6 +44,8 @@ export function listTierMembers(): Record<CatalogTier, string[]> {
     popular: canon([...POPULAR_DSO_IDS, ...solar]),
     extended: canon([...EXTENDED_DSO_IDS, ...solar]),
     sharpless: canon(DSO_RECORDS.flatMap(r => r.designations.filter(d => /^SH2-\d+$/.test(d)))),
+    abell: canon(ABELL_IDS),
+    berkeley: canon(BERKELEY_IDS),
   };
 }
 
@@ -44,8 +62,10 @@ export function ownerTier(canonicalId: string): CatalogTier | null {
   return owners.get(canonicalId) ?? null;
 }
 
-/** The objects a tier owns: its members minus anything an earlier tier carries. */
+/** The objects a tier owns: its members minus anything an earlier tier carries.
+ *  A self-contained pack keeps everything it lists; see SELF_CONTAINED_TIERS. */
 export function ownedMembers(tier: CatalogTier): string[] {
   const all = listTierMembers()[tier];
+  if (SELF_CONTAINED_TIERS.has(tier)) return all;
   return all.filter(id => ownerTier(id) === tier);
 }

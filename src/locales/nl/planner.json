@@ -403,6 +403,7 @@
     "goalsComplete": "Doelen bereikt, weggelaten: {{names}}",
     "goalFilterTitle": "Filter {{filter}}: nog {{duration}} vóór dit blok",
     "avoidClouds": "Bewolkte uren overslaan (verwachting)",
+    "narrowbandCapable": "Ik fotografeer met een dual-band- of smalbandfilter",
     "cloudThresholdLabel": "Grens voor bewolking",
     "cloudThreshold": "boven {{pct}}% bewolking",
     "forecastUnavailable": "Geen weersverwachting voor deze nacht, dus het plan houdt geen rekening met het weer.",

@@ -8,7 +8,7 @@
 import { z } from 'zod';
 import { CATALOG_DESCRIPTION_STATUSES } from '../types/catalog.js';
 
-export const CATALOG_TIERS = ['messier', 'caldwell', 'popular', 'extended', 'sharpless'] as const;
+export const CATALOG_TIERS = ['messier', 'caldwell', 'popular', 'extended', 'sharpless', 'abell', 'berkeley'] as const;
 export type CatalogTier = (typeof CATALOG_TIERS)[number];
 export function isCatalogTier(value: string): value is CatalogTier {
   return CATALOG_TIERS.some((entry) => entry === value);

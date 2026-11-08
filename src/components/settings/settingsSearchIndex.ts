@@ -44,7 +44,7 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   // Equipment
   { group: 'hardware', labelKey: 'connectionSection.title', keywords: 'seestar dwarf connect add telescope import' },
   { group: 'hardware', labelKey: 'librarySection.calibration.expiryDays.label', keywords: 'darks bias flats calibration frames expire' },
-  { group: 'sky', section: 'sites', labelKey: 'sitesSection.title', keywords: 'location latitude longitude bortle horizon' },
+  { group: 'sky', section: 'sites', labelKey: 'sitesSection.title', keywords: 'location latitude longitude bortle horizon imaging window narrowband nautical astronomical twilight dusk dawn' },
   { group: 'sky', section: 'catalogs', labelKey: 'offlineCatalog.title', keywords: 'download ngc offline' },
   { group: 'sky', section: 'catalogs', labelKey: 'tleCatalog.title', keywords: 'satellite tle iss celestrak' },
   { group: 'integrations', labelKey: 'featuresSection.pixinsight.label', keywords: 'pixinsight plugin xisf' },

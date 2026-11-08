@@ -11,10 +11,12 @@
  * ── What counts as a duplicate ──────────────────────────────────────────────
  *
  * Two managed rows of one object that share a file name and byte size, sit in
- * DIFFERENT session folders, and resolve to the same observing night. The night
- * requirement stops two genuinely separate sessions that happen to produce an
- * identically named, identically sized file (`shotsInfo.json`) from being
- * merged. The scan only reads the database; it never opens a file.
+ * DIFFERENT session folders, and resolve to the same observing night, where at
+ * least one of the folders is a generated date-style one. The night requirement
+ * stops sessions on different nights that produce an identically named file
+ * (`shotsInfo.json`) from being merged; the generated-folder requirement stops
+ * two device-named sessions on one night (a 60 s and a 120 s run of the same
+ * target, both writing a same-size `img_stacked_all.tif`) from pairing up. The scan only reads the database; it never opens a file.
  *
  * ── What the repair does ────────────────────────────────────────────────────
  *
@@ -78,11 +80,14 @@ function sessionFolderOf(relPath: string): string {
   return slash >= 0 ? rel.slice(0, slash) : '';
 }
 
+/** A folder the migration or importer named from a date, as opposed to one that mirrors a device folder. */
+function isGeneratedFolder(folder: string): boolean {
+  return !folder || folder === UNSORTED || DATE_FOLDER_RE.test(folder);
+}
+
 /** Lower is better: a device-named folder beats a date-named one, then the older import wins. */
 function keeperRank(row: LibraryFileRow): [number, string] {
-  const folder = sessionFolderOf(row.relPath);
-  const generated = !folder || folder === UNSORTED || DATE_FOLDER_RE.test(folder);
-  return [generated ? 1 : 0, row.importedAt];
+  return [isGeneratedFolder(sessionFolderOf(row.relPath)) ? 1 : 0, row.importedAt];
 }
 
 function compareRank(a: LibraryFileRow, b: LibraryFileRow): number {
@@ -91,7 +96,8 @@ function compareRank(a: LibraryFileRow, b: LibraryFileRow): number {
   return ag - bg || (ai < bi ? -1 : ai > bi ? 1 : 0);
 }
 
-export function findDuplicateSessionFiles(): DuplicateScan {
+/** Database-only candidates: same night, name and size in different folders. Not yet checked against the bytes. */
+function findDuplicateCandidates(): DuplicateScan {
   const rows = db.prepare<[], LibraryFileRow>(
     'SELECT * FROM libraryFiles WHERE sourceId IS NULL AND bytes > 0',
   ).all();
@@ -114,7 +120,11 @@ export function findDuplicateSessionFiles(): DuplicateScan {
     const keeper = list[0];
     const keeperFolder = sessionFolderOf(keeper.relPath);
     for (const dupe of list.slice(1)) {
-      if (sessionFolderOf(dupe.relPath) === keeperFolder) continue;
+      const dupeFolder = sessionFolderOf(dupe.relPath);
+      if (dupeFolder === keeperFolder) continue;
+      // Two device-named folders are two real sessions, even on one night. Same-size files (an uncompressed
+      // stacked TIFF from one sensor) would otherwise pair up: a 60 s and a 120 s run both write img_stacked_all.tif.
+      if (!isGeneratedFolder(keeperFolder) && !isGeneratedFolder(dupeFolder)) continue;
       pairs.push({ objectId: dupe.objectId, keep: keeper.relPath, remove: dupe.relPath, bytes: dupe.bytes });
     }
   }
@@ -124,6 +134,66 @@ export function findDuplicateSessionFiles(): DuplicateScan {
     objects: new Set(pairs.map(p => p.objectId)).size,
     bytes: pairs.reduce((sum, p) => sum + p.bytes, 0),
     pairs,
+  };
+}
+
+const SAMPLE_BYTES = 64 * 1024;
+const VERIFY_CONCURRENCY = 8;
+
+/** Compare the start, middle and end of two files of equal size. A cheap stand-in for reading both whole:
+ *  same-sized files that really differ (two sessions' stacked TIFFs) almost always differ in one of these,
+ *  because FITS headers carry timestamps and pixel data is noisy. The repair still compares every byte. */
+async function samplesMatch(aPath: string, bPath: string, size: number): Promise<boolean> {
+  const offsets = [0, Math.max(0, Math.floor(size / 2) - SAMPLE_BYTES / 2), Math.max(0, size - SAMPLE_BYTES)];
+  const a = await fs.promises.open(aPath, 'r');
+  try {
+    const b = await fs.promises.open(bPath, 'r');
+    try {
+      const bufA = Buffer.allocUnsafe(SAMPLE_BYTES);
+      const bufB = Buffer.allocUnsafe(SAMPLE_BYTES);
+      for (const offset of offsets) {
+        const want = Math.min(SAMPLE_BYTES, size - offset);
+        if (want <= 0) continue;
+        const [ra, rb] = await Promise.all([a.read(bufA, 0, want, offset), b.read(bufB, 0, want, offset)]);
+        if (ra.bytesRead !== rb.bytesRead || !bufA.subarray(0, ra.bytesRead).equals(bufB.subarray(0, rb.bytesRead))) return false;
+      }
+      return true;
+    } finally { await b.close(); }
+  } finally { await a.close(); }
+}
+
+/** True when both files exist, are separate files of the stated size, and agree on every sample. A pair that
+ *  cannot be read is left out: the page must only offer what the repair could act on. */
+async function looksIdentical(pair: DuplicatePair, libraryDir: string): Promise<boolean> {
+  try {
+    const keepAbs = path.join(libraryDir, pair.keep);
+    const removeAbs = path.join(libraryDir, pair.remove);
+    const [k, r] = await Promise.all([fs.promises.stat(keepAbs), fs.promises.stat(removeAbs)]);
+    if (k.size !== r.size || (k.dev === r.dev && k.ino === r.ino)) return false;
+    return await samplesMatch(keepAbs, removeAbs, k.size);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Candidates from the database, then confirmed against the files so the list shows real duplicates and
+ * not merely same-named, same-sized neighbours. Reads at most three small samples per file.
+ */
+export async function findDuplicateSessionFiles(): Promise<DuplicateScan> {
+  const candidates = findDuplicateCandidates();
+  const libraryDir = getLibraryDir();
+  const kept: DuplicatePair[] = [];
+  for (let i = 0; i < candidates.pairs.length; i += VERIFY_CONCURRENCY) {
+    const batch = candidates.pairs.slice(i, i + VERIFY_CONCURRENCY);
+    const ok = await Promise.all(batch.map(pair => looksIdentical(pair, libraryDir)));
+    batch.forEach((pair, j) => { if (ok[j]) kept.push(pair); });
+  }
+  return {
+    count: kept.length,
+    objects: new Set(kept.map(p => p.objectId)).size,
+    bytes: kept.reduce((sum, p) => sum + p.bytes, 0),
+    pairs: kept,
   };
 }
 
@@ -137,8 +207,36 @@ function pruneSessionFolder(objectDir: string, sessionFolder: string): void {
   } catch { /* gone already, or not ours to remove */ }
 }
 
+/** Most pairs returned to the page and written to the log in one listing. */
+export const DUPLICATE_LIST_CAP = 500;
+
+export interface DuplicateListing extends Omit<DuplicateScan, 'pairs'> {
+  pairs: DuplicatePair[];
+  /** True when `count` exceeds what `pairs` carries. */
+  truncated: boolean;
+}
+
+/**
+ * The pairs a repair would act on, for the Library health page, and the same list
+ * written to the server log so a user can send it in. One summary line, then one
+ * line per pair, capped at DUPLICATE_LIST_CAP. Read-only: nothing is touched.
+ */
+export async function listAndLogDuplicates(): Promise<DuplicateListing> {
+  const scan = await findDuplicateSessionFiles();
+  const pairs = scan.pairs.slice(0, DUPLICATE_LIST_CAP);
+  const truncated = scan.count > pairs.length;
+  log.info(
+    { count: scan.count, objects: scan.objects, bytes: scan.bytes, listed: pairs.length, truncated },
+    '[duplicates] listing duplicate files',
+  );
+  for (const pair of pairs) {
+    log.info({ objectId: pair.objectId, keep: pair.keep, remove: pair.remove, bytes: pair.bytes }, '[duplicates] pair');
+  }
+  return { count: scan.count, objects: scan.objects, bytes: scan.bytes, pairs, truncated };
+}
+
 export async function fixDuplicateSessionFiles(): Promise<DuplicateRepair> {
-  const { pairs } = findDuplicateSessionFiles();
+  const { pairs } = await findDuplicateSessionFiles();
   const libraryDir = getLibraryDir();
   const result: DuplicateRepair = { removed: 0, freedBytes: 0, skipped: 0 };
   const touchedObjects = new Map<string, string>();

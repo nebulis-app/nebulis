@@ -15,6 +15,7 @@ import { getPlannerCatalog } from './dsoCatalog.js';
 import { getNightWindow, visibilityWindow } from './astroCalc.js';
 import { getSettingsData, updateSettingsData } from './telescopes.js';
 import { getActiveSite } from './observingSites.js';
+import { windowPrefsOf } from './imagingWindow.js';
 import { findCachedMaster, fovForEntry, prewarmThumbnails } from './catalogPrefetch.js';
 import { prefetchSkyImage } from './skyImage.js';
 import { purgeJunkFiles, purgeStaleImportTmp, pruneImportLog } from './library/housekeeping.js';
@@ -192,11 +193,11 @@ export async function runPlannerNightlyPrefetch(): Promise<void> {
 
   const now = new Date();
   const anchor = observingNightAnchor(now, tz);
-  const night = getNightWindow(anchor, lat, lon);
-  const nightStart = night.nightStart ?? night.nauticalDusk;
-  const nightEnd = night.nightEnd ?? night.nauticalDawn;
-  if (!nightStart || !nightEnd || nightEnd.getTime() <= nightStart.getTime()) {
-    console.log('[planner-prefetch] Skipping, no astronomical or nautical dark window tonight');
+  const imaging = getNightWindow(anchor, lat, lon, windowPrefsOf(site)).imaging;
+  const nightStart = imaging?.start;
+  const nightEnd = imaging?.end;
+  if (!nightStart || !nightEnd) {
+    console.log('[planner-prefetch] Skipping, no imaging window tonight');
     updateSettingsData({ plannerPrefetchLastRun: Date.now() });
     return;
   }

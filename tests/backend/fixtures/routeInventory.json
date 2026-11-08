@@ -966,6 +966,22 @@
     ]
   },
   {
+    "method": "POST",
+    "path": "/library/image-edit",
+    "guards": [
+      "requireAdmin",
+      "multerMiddleware",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/library/image-edit/preview",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
     "method": "GET",
     "path": "/library/image-favorites",
     "guards": [
@@ -2246,6 +2262,14 @@
   {
     "method": "GET",
     "path": "/storage/analyze",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/storage/analyze/duplicates",
     "guards": [
       "requireAdmin",
       "<anonymous>"

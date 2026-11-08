@@ -8,6 +8,7 @@ import {
   isUpTonight as serverIsUpTonight,
 } from '../../server/lib/bestImagingWindow';
 import { lookupTimeZoneForCoordinates } from '../../server/lib/observerTimezone';
+import { DEFAULT_WINDOW_PREFS } from '../../src/lib/imagingWindow';
 
 /**
  * Cross-implementation parity test.
@@ -48,7 +49,7 @@ describe('computeBestImagingWindow client port matches server implementation', (
     for (const { ra, dec, lat, lon, minAlt } of cases) {
       vi.useFakeTimers();
       vi.setSystemTime(REFERENCE_DATE);
-      const client = clientCompute(ra, dec, lat, lon, minAlt, lookupTimeZoneForCoordinates(lat, lon) ?? undefined);
+      const client = clientCompute(ra, dec, lat, lon, minAlt, lookupTimeZoneForCoordinates(lat, lon) ?? undefined, DEFAULT_WINDOW_PREFS);
       vi.useRealTimers();
 
       const server = serverCompute(ra, dec, lat, lon, minAlt, REFERENCE_DATE);
@@ -66,7 +67,7 @@ describe('computeBestImagingWindow client port matches server implementation', (
 
     vi.useFakeTimers();
     vi.setSystemTime(other);
-    const client = clientCompute(ra, dec, lat, lon, minAlt, lookupTimeZoneForCoordinates(lat, lon) ?? undefined);
+    const client = clientCompute(ra, dec, lat, lon, minAlt, lookupTimeZoneForCoordinates(lat, lon) ?? undefined, DEFAULT_WINDOW_PREFS);
     vi.useRealTimers();
 
     const server = serverCompute(ra, dec, lat, lon, minAlt, other);
@@ -90,7 +91,7 @@ describe('isUpTonight client port matches server implementation', () => {
   // happening to agree either way.
   const RA = 10.6, DEC = 15, LAT = 40.7128, LON = -74.006, MIN_ALT = 60;
   const NYC = 'America/New_York';
-  const client = (now: Date) => clientIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, now, NYC);
+  const client = (now: Date) => clientIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, now, NYC, DEFAULT_WINDOW_PREFS);
   const server = (now: Date) => serverIsUpTonight(RA, DEC, LAT, LON, MIN_ALT, now);
 
   it('agrees for a call in the early hours, still inside the previous evening\'s window', () => {

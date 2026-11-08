@@ -16,8 +16,10 @@
  *   - NCEP GEFS (ncep_gefs_seamless)           31 members, 0.25° to 10 days
  *                                              then 0.5° to 35 days
  *
- * For each observing night of the site, every member is scored on the dark
- * window (astronomical twilight, nautical where it never gets that dark):
+ * For each observing night of the site, every member is scored on the site's
+ * imaging window (lib/imagingWindow.ts: astronomical night by default,
+ * nautical where it never gets that dark, moved by the site's offsets), the
+ * same window the Forecast page and the night score use:
  * a member gives a usable night when at least `minClearHours` of its dark
  * hours are at or under `maxCloudCover`. The night's probability is the
  * share of members that do. Members without data for most of the window
@@ -29,6 +31,7 @@
  */
 import SunCalc from 'suncalc';
 import { getNightWindow } from './astroCalc.js';
+import { DEFAULT_WINDOW_PREFS, type ImagingWindowPrefs } from './imagingWindow.js';
 import { forecastSiteKey } from './forecastCache.js';
 import { addDaysToDateKey, zonedDateTimeToUtc } from './timezone.js';
 import { observingNightDateKey } from './telescopeFiles.js';
@@ -157,12 +160,11 @@ function quantile(sorted: number[], q: number): number | null {
   return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (pos - lo);
 }
 
-function darkWindowFor(night: string, lat: number, lon: number, timeZone: string): { start: number; end: number } | null {
-  const w = getNightWindow(zonedDateTimeToUtc(night, { hour: 12 }, timeZone), lat, lon);
-  const start = w.astronomicalDusk ?? w.nauticalDusk;
-  const end = w.astronomicalDawn ?? w.nauticalDawn;
-  if (!start || !end || end <= start) return null;
-  return { start: start.getTime(), end: end.getTime() };
+function darkWindowFor(
+  night: string, lat: number, lon: number, timeZone: string, prefs: ImagingWindowPrefs,
+): { start: number; end: number } | null {
+  const w = getNightWindow(zonedDateTimeToUtc(night, { hour: 12 }, timeZone), lat, lon, prefs).imaging;
+  return w ? { start: w.start.getTime(), end: w.end.getTime() } : null;
 }
 
 /**
@@ -171,7 +173,7 @@ function darkWindowFor(night: string, lat: number, lon: number, timeZone: string
  */
 export function computeOutlook(
   data: EnsembleData,
-  site: { lat: number; lon: number; timeZone: string },
+  site: { lat: number; lon: number; timeZone: string; window?: ImagingWindowPrefs },
   now: Date,
   thresholds: OutlookThresholds = DEFAULT_OUTLOOK_THRESHOLDS,
   nights = OUTLOOK_NIGHTS,
@@ -180,7 +182,7 @@ export function computeOutlook(
   const out: OutlookNight[] = [];
   for (let d = 0; d < nights; d++) {
     const date = addDaysToDateKey(first, d);
-    const win = darkWindowFor(date, site.lat, site.lon, site.timeZone);
+    const win = darkWindowFor(date, site.lat, site.lon, site.timeZone, site.window ?? DEFAULT_WINDOW_PREFS);
     if (!win) continue;
     // Hours whose start falls in the dark window (hourly data).
     const idx: number[] = [];

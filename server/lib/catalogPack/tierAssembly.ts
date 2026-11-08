@@ -90,8 +90,8 @@ async function problemsOf(
 /**
  * The pictures to ship for one tier. `candidates` come from the scrapers,
  * keyed by canonical id; `owned` is the objects this tier carries. A candidate
- * for an object the tier does not own is ignored, so an object appears in one
- * tier only.
+ * for an object the tier does not carry is ignored, so only the packs that list
+ * an object ship it (a self-contained pack lists cross-listed objects too).
  */
 export async function assembleImages(
   candidates: readonly Candidate[],

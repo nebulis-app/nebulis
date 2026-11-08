@@ -403,6 +403,7 @@
     "goalsComplete": "Ziele erreicht, ausgelassen: {{names}}",
     "goalFilterTitle": "Filter {{filter}}: noch {{duration}} vor diesem Block",
     "avoidClouds": "Bewölkte Stunden auslassen (Vorhersage)",
+    "narrowbandCapable": "Ich fotografiere mit Dual-Band- oder Schmalbandfilter",
     "cloudThresholdLabel": "Grenze für Bewölkung",
     "cloudThreshold": "über {{pct}} % Wolken",
     "forecastUnavailable": "Für diese Nacht gibt es keine Vorhersage, der Plan berücksichtigt das Wetter daher nicht.",

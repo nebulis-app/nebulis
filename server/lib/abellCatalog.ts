@@ -1,0 +1,19 @@
+/**
+ * Abell Catalog of Planetary Nebulae — the 80 confirmed or possible planetaries from Abell's 86-entry 1966 list. The six rejected or non-existent entries (11, 17, 32, 64, 76, 85) are omitted.
+ */
+export const ABELL_IDS: readonly string[] = [
+  'ABELL1', 'ABELL2', 'ABELL3', 'ABELL4', 'ABELL5', 'ABELL6',
+  'ABELL7', 'ABELL8', 'ABELL9', 'ABELL10', 'ABELL12', 'ABELL13',
+  'ABELL14', 'ABELL15', 'ABELL16', 'ABELL18', 'ABELL19', 'ABELL20',
+  'ABELL21', 'ABELL22', 'ABELL23', 'ABELL24', 'ABELL25', 'ABELL26',
+  'ABELL27', 'ABELL28', 'ABELL29', 'ABELL30', 'ABELL31', 'ABELL33',
+  'ABELL34', 'ABELL35', 'ABELL36', 'ABELL37', 'ABELL38', 'ABELL39',
+  'ABELL40', 'ABELL41', 'ABELL42', 'ABELL43', 'ABELL44', 'ABELL45',
+  'ABELL46', 'ABELL47', 'ABELL48', 'ABELL49', 'ABELL50', 'ABELL51',
+  'ABELL52', 'ABELL53', 'ABELL54', 'ABELL55', 'ABELL56', 'ABELL57',
+  'ABELL58', 'ABELL59', 'ABELL60', 'ABELL61', 'ABELL62', 'ABELL63',
+  'ABELL65', 'ABELL66', 'ABELL67', 'ABELL68', 'ABELL69', 'ABELL70',
+  'ABELL71', 'ABELL72', 'ABELL73', 'ABELL74', 'ABELL75', 'ABELL77',
+  'ABELL78', 'ABELL79', 'ABELL80', 'ABELL81', 'ABELL82', 'ABELL83',
+  'ABELL84', 'ABELL86',
+];

@@ -31,6 +31,14 @@ test.describe('Forecast Page', () => {
     await expect(page.getByText('Best window')).toBeVisible();
   });
 
+  test('says which night it is, in dates', async ({ page }) => {
+    // "TONIGHT · Tue Nov 3 → Wed Nov 4": the evening it begins and the morning it ends.
+    await expect(page.getByText(/Tonight · \w{3},? \w{3} \d+ → \w{3},? \w{3} \d+/i).first()).toBeVisible();
+    // The sunrise and sunset cards name their weekday too.
+    await expect(page.getByText(/^Sunset · \w{3}/i)).toBeVisible();
+    await expect(page.getByText(/^Sunrise · \w{3}/i)).toBeVisible();
+  });
+
   test('shows moon phase and illumination', async ({ page }) => {
     await expect(page.getByText(MOCK.forecast.tonight.moonPhase)).toBeVisible();
     // Exact: the page also renders a summary line ("Moon 50% illuminated. Up
@@ -131,8 +139,12 @@ test.describe('Forecast Page', () => {
         .or(page.locator('a[href="/planner"]'))
     ).toBeVisible();
   });
+});
 
+test.describe('Forecast Page: two-week outlook', () => {
   test('shows the two-week outlook from ensembles', async ({ page }) => {
+    await mockAllRoutes(page);
+    await page.goto('/forecast');
     const outlook = page.getByRole('region', { name: /two weeks ahead/i });
     await expect(outlook).toBeVisible();
     await expect(outlook.getByText(/103 model runs/)).toBeVisible();
@@ -142,9 +154,7 @@ test.describe('Forecast Page', () => {
     await outlook.getByRole('button').nth(2).hover();
     await expect(outlook.getByText(/92% of runs clear \(95\/103/)).toBeVisible();
   });
-});
 
-test.describe('Forecast Page — outlook unavailable', () => {
   test('a broken outlook leaves the rest of the page standing', async ({ page }) => {
     await mockAllRoutes(page);
     await page.route('**/api/forecast/outlook**', r => r.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ ok: false, error: { code: 'OUTLOOK_UNAVAILABLE', message: 'down' } }) }));
@@ -153,4 +163,3 @@ test.describe('Forecast Page — outlook unavailable', () => {
     await expect(page.getByText(/long-range outlook is not available/i)).toBeVisible();
   });
 });
-

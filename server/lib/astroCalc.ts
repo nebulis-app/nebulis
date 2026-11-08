@@ -4,6 +4,7 @@
  * No external library needed — pure spherical trig.
  */
 import SunCalc from 'suncalc';
+import { DEFAULT_WINDOW_PREFS, resolveWindow, type ImagingWindowPrefs, type ResolvedWindow } from './imagingWindow.js';
 
 const DEG = Math.PI / 180;
 const RAD = 180 / Math.PI;
@@ -93,12 +94,16 @@ export interface NightWindow {
   astronomicalDawn: Date | null;
   nauticalDusk: Date | null;
   astronomicalDusk: Date | null;
-  nightStart: Date | null;   // astronomical dusk
-  nightEnd: Date | null;     // astronomical dawn
+  nightStart: Date | null;   // astronomical dusk (physical; build no window from it, read `imaging`)
+  nightEnd: Date | null;     // astronomical dawn (physical; build no window from it, read `imaging`)
   dusk: Date | null;
   dawn: Date | null;
   sunset: Date | null;
   sunrise: Date | null;
+  /** The site's imaging window for this night (lib/imagingWindow.ts): what "tonight" means for scoring, planning,
+   *  ranking and alerts. Null when the settings leave no window. Equals the astronomical night, else the nautical
+   *  one, for a site on the default settings. */
+  imaging: ResolvedWindow | null;
 }
 
 /**
@@ -109,7 +114,7 @@ export interface NightWindow {
  * Tonight's dusk is the EVENING of `date`, and tonight's dawn is the MORNING of `date+1`.
  * So we query the next day for the correct dawn.
  */
-export function getNightWindow(date: Date, lat: number, lon: number): NightWindow {
+export function getNightWindow(date: Date, lat: number, lon: number, prefs: ImagingWindowPrefs = DEFAULT_WINDOW_PREFS): NightWindow {
   const times = SunCalc.getTimes(date, lat, lon);
   const nextDay = new Date(date.getTime() + 86400000);
   const nextTimes = SunCalc.getTimes(nextDay, lat, lon);
@@ -118,17 +123,21 @@ export function getNightWindow(date: Date, lat: number, lon: number): NightWindo
     return d instanceof Date && !isNaN(d.getTime()) ? d : null;
   }
 
-  return {
+  const physical = {
     nauticalDawn: validDate(nextTimes.nauticalDawn),
     astronomicalDawn: validDate(nextTimes.nightEnd),
     nauticalDusk: validDate(times.nauticalDusk),
     astronomicalDusk: validDate(times.night),
+  };
+  return {
+    ...physical,
     nightStart: validDate(times.night),
     nightEnd: validDate(nextTimes.nightEnd),
     dusk: validDate(times.dusk),
     dawn: validDate(nextTimes.dawn),
     sunset: validDate(times.sunset),
     sunrise: validDate(nextTimes.sunrise),
+    imaging: resolveWindow(physical, prefs),
   };
 }
 

@@ -1,17 +1,34 @@
 import { describe, it, expect } from 'vitest';
-import { listTierMembers, ownedMembers, ownerTier } from '../../server/lib/catalogPack/tierMembership';
+import { listTierMembers, ownedMembers, ownerTier, SELF_CONTAINED_TIERS } from '../../server/lib/catalogPack/tierMembership';
 import { CATALOG_TIERS } from '../../server/lib/catalogPack/manifest';
 import { resolveCanonicalId } from '../../server/lib/catalogAliases';
 
 describe('pack tier membership', () => {
-  it('gives every object to exactly one tier', () => {
+  it('gives every object exactly one owning tier, apart from the self-contained packs', () => {
     const seen = new Map<string, string>();
     const clash: string[] = [];
-    for (const tier of CATALOG_TIERS) for (const id of ownedMembers(tier)) {
-      if (seen.has(id)) clash.push(`${id}: ${seen.get(id)} and ${tier}`);
-      seen.set(id, tier);
+    for (const tier of CATALOG_TIERS) {
+      if (SELF_CONTAINED_TIERS.has(tier)) continue;
+      for (const id of ownedMembers(tier)) {
+        if (seen.has(id)) clash.push(`${id}: ${seen.get(id)} and ${tier}`);
+        seen.set(id, tier);
+      }
     }
     expect(clash).toEqual([]);
+  });
+
+  it('lets a self-contained pack carry a cross-listed object without taking ownership', () => {
+    expect(ownedMembers('abell')).toContain('SH2-274'); // Abell 21, the Medusa Nebula
+    expect(ownerTier('SH2-274')).toBe('sharpless');
+    expect(ownedMembers('berkeley')).toContain('NGC7822'); // Berkeley 59
+    expect(ownerTier('NGC7822')).toBe('popular');
+  });
+
+  it('makes the catalog packs self-contained', () => {
+    expect(ownedMembers('abell').length).toBe(listTierMembers().abell.length);
+    expect(ownedMembers('berkeley').length).toBe(listTierMembers().berkeley.length);
+    expect(listTierMembers().abell.length).toBe(80);
+    expect(listTierMembers().berkeley.length).toBe(89);
   });
 
   it('lists only canonical ids', () => {

@@ -16,8 +16,8 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 
 import { prefetchSkyImage } from '../../server/lib/skyImage';
 import {
-  CDS_COOLDOWN_MS, CDS_FAILURE_THRESHOLD, cdsIsSkipped, fetchFallbackSkyImage, recordCdsFailure, recordCdsSuccess,
-  resetCdsBreaker,
+  CDS_COOLDOWN_MS, CDS_FAILURE_THRESHOLD, cdsIsSkipped, fallbackSourceOf, fetchFallbackSkyImage, markFallbackImage,
+  recordCdsFailure, recordCdsSuccess, resetCdsBreaker, skyViewTiming,
 } from '../../server/lib/skyImageFallback';
 
 afterAll(() => {
@@ -29,6 +29,9 @@ beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   resetCdsBreaker();
+  // The same retry path without the real backoff waits.
+  skyViewTiming.gapMs = 0;
+  skyViewTiming.retryDelays = [0];
 });
 
 /** A picture with enough variation to count as sky, and a flat one, which a footprint miss returns. */
@@ -41,21 +44,52 @@ async function flat(width: number, height: number): Promise<Buffer> {
   return sharp({ create: { width, height, channels: 3, background: { r: 32, g: 32, b: 32 } } }).jpeg().toBuffer();
 }
 
+/** A picture with the right half replaced by solid black, as an SDSS cutout over the edge of a survey stripe. */
+async function withBlackBlock(picture: Buffer): Promise<Buffer> {
+  const { data, info } = await sharp(picture).raw().toBuffer({ resolveWithObject: true });
+  for (let y = 0; y < info.height; y++) {
+    for (let x = Math.floor(info.width / 2); x < info.width; x++) {
+      const i = (y * info.width + x) * info.channels;
+      data[i] = 0; data[i + 1] = 0; data[i + 2] = 0;
+    }
+  }
+  return sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } }).jpeg({ quality: 100 }).toBuffer();
+}
+
 const REQUEST = { ra: 184.8, dec: 10.8, fovDeg: 1, width: 192, height: 128 };
 const COORDS = { ra: 184.8, dec: 10.8 };
 
-type Answer = Buffer | number | 'unreachable';
+type Answer = Buffer | number | 'unreachable' | 'html';
 
-/** Stubs fetch by service: each of cds, sdss and legacy answers with a picture, an HTTP status, or a network error. */
-function stubServices(answers: { cds: Answer; sdss: Answer; legacy: Answer }) {
+const PS1_TABLE = 'projcell subcell ra dec filter mjd type filename shortname badflag\n'
+  + ['g', 'r', 'z'].map(f => `1213 34 184.8 10.8 ${f} 0.0 stack /rings.v3.skycell/1213/034/x.stk.${f}.unconv.fits x.${f}.fits 0`).join('\n');
+
+/** Stubs fetch by service: each of cds, sdss, legacy and skyview answers with a picture, an HTTP status, or a network error. */
+function stubServices(answers: { cds: Answer; sdss: Answer; legacy: Answer; skyview?: Answer; panstarrs?: Answer | Buffer[] }) {
   const calls: string[] = [];
   const fn = vi.fn(async (url: string) => {
-    const service = url.includes('skyserver.sdss.org') ? 'sdss' : url.includes('legacysurvey.org') ? 'legacy' : 'cds';
+    const service = url.includes('skyserver.sdss.org') ? 'sdss'
+      : url.includes('legacysurvey.org') ? 'legacy'
+      : url.includes('skyview.gsfc.nasa.gov') ? 'skyview'
+      : url.includes('ps1images.stsci.edu') ? 'panstarrs'
+      : 'cds';
     calls.push(service);
-    const answer = answers[service];
+    if (service === 'panstarrs') {
+      // The skycell table first, then one cutout per call; a list answers its cutouts in turn.
+      const ps1 = answers.panstarrs ?? 404;
+      if (url.includes('ps1filenames')) {
+        return ps1 === 404 || typeof ps1 === 'number' ? new Response('no', { status: 404 }) : new Response(PS1_TABLE, { status: 200 });
+      }
+      const cutouts = Array.isArray(ps1) ? ps1 : [ps1];
+      const pick = cutouts[Math.min(calls.filter(c => c === 'panstarrs').length - 2, cutouts.length - 1)];
+      if (typeof pick === 'number') return new Response('no', { status: pick });
+      return new Response(pick as Buffer, { status: 200, headers: { 'content-type': 'image/jpeg' } });
+    }
+    const answer = (answers[service as 'cds' | 'sdss' | 'legacy' | 'skyview'] as Answer | undefined) ?? 404;
     if (answer === 'unreachable') throw new TypeError('fetch failed');
+    if (answer === 'html') return new Response('<html>Too Many Processes</html>', { status: 200, headers: { 'content-type': 'text/html' } });
     if (typeof answer === 'number') return new Response('no', { status: answer });
-    return new Response(answer, { status: 200 });
+    return new Response(answer, { status: 200, headers: { 'content-type': 'image/jpeg' } });
   });
   vi.stubGlobal('fetch', fn);
   return { calls, count: (service: string) => calls.filter(c => c === service).length };
@@ -106,6 +140,68 @@ describe('fetchFallbackSkyImage', () => {
     expect([meta.width, meta.height]).toEqual([192, 128]);
   });
 
+  it('does not accept an SDSS cutout that is half black, and asks SkyView instead', async () => {
+    const holed = await withBlackBlock(await sky(192, 128));
+    const bands = await sky(192, 128);
+    const { count } = stubServices({ cds: 'unreachable', sdss: holed, legacy: 404, skyview: bands });
+    const got = await fetchFallbackSkyImage(REQUEST);
+    expect(got?.source).toBe('skyview');
+    expect(count('sdss')).toBe(1);
+  });
+
+  it('still returns the partial picture when no other source has anything', async () => {
+    const holed = await withBlackBlock(await sky(192, 128));
+    stubServices({ cds: 'unreachable', sdss: holed, legacy: 404, skyview: 404 });
+    const got = await fetchFallbackSkyImage(REQUEST);
+    expect(got?.source).toBe('sdss');
+  });
+
+  it('uses Pan-STARRS when SkyView cannot make a picture, cutting its square to the size asked for', async () => {
+    const { calls } = stubServices({ cds: 'unreachable', sdss: 404, legacy: 404, skyview: 'html', panstarrs: await sky(256, 256) });
+    const got = await fetchFallbackSkyImage(REQUEST);
+    expect(got?.source).toBe('panstarrs');
+    expect(calls).toContain('panstarrs');
+    const meta = await sharp(got!.buffer).metadata();
+    expect([meta.width, meta.height]).toEqual([192, 128]);
+  });
+
+  it('asks Pan-STARRS again for a tighter field when the first one runs off a survey tile', async () => {
+    const edge = await withBlackBlock(await sky(256, 256));
+    const whole = await sky(256, 256);
+    const { count } = stubServices({ cds: 'unreachable', sdss: 404, legacy: 404, skyview: 'html', panstarrs: [edge, whole] });
+    const got = await fetchFallbackSkyImage(REQUEST);
+    expect(got?.source).toBe('panstarrs');
+    expect(count('panstarrs')).toBe(3); // the skycell table, the cutout with the hole, the tighter one
+  });
+
+  it('goes to a very tight Pan-STARRS field for a small object whose tile corner leaves nothing wider', async () => {
+    const edge = await withBlackBlock(await sky(256, 256));
+    const whole = await sky(256, 256);
+    const { count } = stubServices({ cds: 'unreachable', sdss: 404, legacy: 404, skyview: 'html', panstarrs: [edge, edge, edge, whole] });
+    const got = await fetchFallbackSkyImage({ ...REQUEST, fovDeg: 0.3 });
+    expect(got?.source).toBe('panstarrs');
+    expect(count('panstarrs')).toBe(5);
+  });
+
+  it('does not crop a large object with the tightest Pan-STARRS field', async () => {
+    const edge = await withBlackBlock(await sky(256, 256));
+    const { count } = stubServices({ cds: 'unreachable', sdss: 404, legacy: 404, skyview: 'html', panstarrs: [edge] });
+    expect(await fetchFallbackSkyImage({ ...REQUEST, fovDeg: 1.5 })).toBeNull();
+    expect(count('panstarrs')).toBe(4); // the table and three cutouts, never the fourth
+  });
+
+  it('does not ask Pan-STARRS about the sky south of -30 degrees', async () => {
+    const { count } = stubServices({ cds: 'unreachable', sdss: 404, legacy: 404, skyview: 'html', panstarrs: await sky(256, 256) });
+    expect(await fetchFallbackSkyImage({ ...REQUEST, dec: -45 })).toBeNull();
+    expect(count('panstarrs')).toBe(0);
+  });
+
+  it('leaves SkyView first, so Pan-STARRS is not asked when SkyView has the picture', async () => {
+    const { count } = stubServices({ cds: 'unreachable', sdss: 404, legacy: 404, skyview: await sky(192, 128), panstarrs: await sky(256, 256) });
+    expect((await fetchFallbackSkyImage(REQUEST))?.source).toBe('skyview');
+    expect(count('panstarrs')).toBe(0);
+  });
+
   it('treats a flat Legacy Survey tile as no data', async () => {
     stubServices({ cds: 500, sdss: 404, legacy: await flat(192, 192) });
     expect(await fetchFallbackSkyImage(REQUEST)).toBeNull();
@@ -126,6 +222,33 @@ describe('fetchFallbackSkyImage', () => {
 
   it('gives null, not an error, when both services are unreachable', async () => {
     stubServices({ cds: 500, sdss: 'unreachable', legacy: 'unreachable' });
+    expect(await fetchFallbackSkyImage(REQUEST)).toBeNull();
+  });
+
+  it("falls back to SkyView's DSS2 bands when neither survey covers the position", async () => {
+    const f = stubServices({ cds: 500, sdss: 404, legacy: 404, skyview: await sky(192, 128) });
+    const r = await fetchFallbackSkyImage(REQUEST);
+    expect(r?.source).toBe('skyview');
+    const meta = await sharp(r!.buffer).metadata();
+    expect([meta.width, meta.height]).toEqual([192, 128]);
+    expect(f.count('skyview')).toBe(3);
+
+    const skyViewCall = vi.mocked(fetch).mock.calls
+      .map(call => String(call[0]))
+      .find(url => url.includes('skyview.gsfc.nasa.gov'));
+    const url = new URL(String(skyViewCall));
+    expect(url.searchParams.get('Survey')).toBe('DSS2 IR');
+    expect(url.searchParams.get('Pixels')).toBe('192,128');
+    expect(Number(url.searchParams.get('size'))).toBe(1);
+  });
+
+  it('treats a flat SkyView band as no data', async () => {
+    stubServices({ cds: 500, sdss: 404, legacy: 404, skyview: await flat(192, 128) });
+    expect(await fetchFallbackSkyImage(REQUEST)).toBeNull();
+  });
+
+  it("does not treat SkyView's 200 HTML rate-limit page as a picture", async () => {
+    stubServices({ cds: 500, sdss: 404, legacy: 404, skyview: 'html' });
     expect(await fetchFallbackSkyImage(REQUEST)).toBeNull();
   });
 });
@@ -198,5 +321,17 @@ describe('prefetchSkyImage while CDS is down', () => {
     const f = stubServices({ cds: 400, sdss: await sky(1920, 1280), legacy: 404 });
     expect(await prefetchSkyImage('BadRequest', COORDS)).toBeNull();
     expect(f.count('sdss')).toBe(0);
+  });
+});
+
+describe('the backup marker', () => {
+  it('names the source that made the picture, and is null for a picture that is not a backup', () => {
+    const file = path.join(TEST_DATA_DIR, 'marker-test.jpg');
+    fs.writeFileSync(file, 'x');
+    expect(fallbackSourceOf(file)).toBeNull();
+    markFallbackImage(file, 'panstarrs');
+    expect(fallbackSourceOf(file)).toBe('panstarrs');
+    fs.writeFileSync(`${file}.fallback`, 'something-unknown');
+    expect(fallbackSourceOf(file)).toBeNull();
   });
 });

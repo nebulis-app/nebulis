@@ -23,6 +23,7 @@ import { Fact, FactGrid, PanelEmpty, SessionPanel } from '../ui/Panel';
 import { computeAltitudeCurve } from '../../lib/altaz';
 import { computeBestImagingWindow } from '../../lib/bestImagingWindow';
 import { nightWindowFor, plannerToday } from '../../lib/nightWindow';
+import { windowPrefsOf } from '../../lib/imagingWindow';
 import { useTheme } from '../../hooks/useTheme';
 import { getSites, type ObservingSite } from '../../lib/api/sites';
 import { formatHm } from '../../lib/timeFormat';
@@ -98,6 +99,11 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite, variant = 
     setPreviewSiteId(null);
   }
   const site = (previewSiteId && sites.find(s => s.id === previewSiteId)) || activeSite;
+  // The window follows the site being shown, preview included.
+  const windowPrefs = useMemo(
+    () => windowPrefsOf(site),
+    [site?.darkness, site?.windowStartOffsetMin, site?.windowEndOffsetMin], // eslint-disable-line react-hooks/exhaustive-deps -- `site` changes identity on every refetch
+  );
 
   const lat = site?.latitude ?? null;
   const lon = site?.longitude ?? null;
@@ -112,7 +118,7 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite, variant = 
    */
   const tonight = useMemo(() => {
     if (!hasEverything) return null;
-    const night = nightWindowFor(plannerToday(new Date(), siteTimezone), lat, lon);
+    const night = nightWindowFor(plannerToday(new Date(), siteTimezone), lat, lon, windowPrefs);
     if (!night) return { night: null, peakAlt: null, peakAt: null, minutesAbove: 0 };
 
     const samples = computeAltitudeCurve(raHours, decDegrees, lat, lon, night.start, night.end, 5);
@@ -124,12 +130,12 @@ export function TonightPanel({ raHours, decDegrees, site: activeSite, variant = 
       if (s.alt >= minAlt) above += 5;
     }
     return { night, peakAlt, peakAt, minutesAbove: above };
-  }, [hasEverything, raHours, decDegrees, lat, lon, minAlt, siteTimezone]);
+  }, [hasEverything, raHours, decDegrees, lat, lon, minAlt, siteTimezone, windowPrefs]);
 
   const season = useMemo(() => {
     if (!hasEverything) return null;
-    return computeBestImagingWindow(raHours, decDegrees, lat, lon, minAlt, siteTimezone);
-  }, [hasEverything, raHours, decDegrees, lat, lon, minAlt, siteTimezone]);
+    return computeBestImagingWindow(raHours, decDegrees, lat, lon, minAlt, siteTimezone, windowPrefs);
+  }, [hasEverything, raHours, decDegrees, lat, lon, minAlt, siteTimezone, windowPrefs]);
 
   if (raHours == null || decDegrees == null) {
     return (

@@ -403,6 +403,7 @@
     "goalsComplete": "Goals reached, left out: {{names}}",
     "goalFilterTitle": "Shot through {{filter}}: {{duration}} left before this block",
     "avoidClouds": "Skip cloudy hours (forecast)",
+    "narrowbandCapable": "I shoot through a dual-band or narrowband filter",
     "cloudThresholdLabel": "Cloud cover limit",
     "cloudThreshold": "above {{pct}}% clouds",
     "forecastUnavailable": "No forecast available for this night, so the plan ignores the weather.",

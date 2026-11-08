@@ -163,7 +163,7 @@ test.describe('Settings Page', () => {
     await expect(page.getByPlaceholder(/74\.0060/)).toHaveValue('-122.42');
   });
 
-  test('sets a site\'s imaging window and sends it on save', async ({ page }) => {
+  test("sets a site's imaging window and sends it on save", async ({ page }) => {
     let putBody: Record<string, unknown> | null = null;
     await page.route('**/api/sites/*', async (route) => {
       if (route.request().method() !== 'PUT') return route.fallback();
@@ -177,10 +177,35 @@ test.describe('Settings Page', () => {
     await dialog.getByLabel('Starts from').selectOption('nautical');
     await dialog.getByLabel('Start, minutes after dusk').fill('30');
     await dialog.getByLabel('End, minutes before dawn').fill('60');
-    await dialog.screenshot({ path: 'test-results/site-imaging-window.png' });
     await dialog.getByRole('button', { name: /save changes/i }).click();
     await expect.poll(() => putBody).not.toBeNull();
     expect(putBody).toMatchObject({ darkness: 'nautical', windowStartOffsetMin: 30, windowEndOffsetMin: 60 });
+  });
+
+  test('the minutes boxes can be cleared and take a minus sign, and the preview follows them', async ({ page }) => {
+    await page.getByRole('button', { name: 'Sky', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit' }).click();
+    const dialog = page.getByRole('dialog');
+    const start = dialog.getByLabel('Start, minutes after dusk');
+    await start.fill('45');
+    await expect(start).toHaveValue('45');
+    await start.fill('');
+    await expect(start).toHaveValue('');
+    await start.pressSequentially('-30');
+    await expect(start).toHaveValue('-30');
+    await expect(dialog.getByText(/^Tonight: .+ to .+ \(.+ h\)$/)).toBeVisible();
+    await start.fill('');
+    await start.blur();
+    await expect(start).toHaveValue('0');
+  });
+
+  test('the imaging window explains itself in an info tooltip, not a paragraph', async ({ page }) => {
+    await page.getByRole('button', { name: 'Sky', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText(/Counts as tonight/)).toHaveCount(0);
+    await dialog.getByRole('button', { name: /Counts as tonight/ }).hover();
+    await expect(page.getByRole('tooltip')).toContainText('Counts as tonight on the Forecast');
   });
 
   // ─── API key management ───────────────────────────────────────────────────

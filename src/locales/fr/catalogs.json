@@ -5,14 +5,20 @@
     "noneImaged": "Vous n'avez encore photographié aucun de ces objets.",
     "allImaged": "Chaque objet de cette sélection a été photographié.",
     "nothingToShow": "Rien à afficher avec les filtres actuels.",
-    "clearFilters": "Effacer les filtres"
+    "clearFilters": "Effacer les filtres",
+    "noneObservable": "Aucun objet de ce catalogue n’est visible depuis votre site à l’altitude minimale actuelle."
   },
   "catalogsHero": {
     "percentImagedAriaLabel": "{{percent}}% des objets du catalogue photographiés",
     "imaged": "Photographiés",
     "catalogObjects": "Objets du catalogue",
     "title": "Catalogues",
-    "subtitle": "Suivez votre progression photographique à travers des programmes d'observation classiques."
+    "subtitle": "Suivez votre progression photographique à travers des programmes d'observation classiques.",
+    "filterLabel": "Afficher les catalogues",
+    "filterEmpty": "Aucun catalogue sélectionné. Choisissez-en au moins un pour voir sa progression.",
+    "filterShowAll": "Tout afficher",
+    "filterAll": "Tous les catalogues",
+    "filterCount": "{{selected}} sur {{total}} catalogues"
   },
   "catalogMeta": {
     "messier": {
@@ -34,6 +40,21 @@
       "label": "Sharpless",
       "tagline": "313 nuages d'hydrogène incandescent, les nébuleuses en émission derrière beaucoup de noms familiers du ciel.",
       "blurb": "Stewart Sharpless a recensé 313 régions HII à partir des plaques du relevé céleste du National Geographic. Ce sont les nuages d'hydrogène alpha que traquent les astrophotographes en bande étroite : grands, faibles et riches en structure. Certains portent des noms familiers comme la Grotte, le Sorcier et Pac-Man, mais beaucoup sont des champs sans nom qui attendent une longue pose."
+    },
+    "rasc": {
+      "label": "RASC Finest NGC",
+      "tagline": "110 trésors NGC choisis par la Société royale d'astronomie du Canada, sans recoupement avec Messier.",
+      "blurb": "La liste RASC Finest NGC est la réponse canadienne à Messier : 110 des meilleurs objets NGC hors Messier, du Double Amas à la galaxie du Sculpteur. C'est d'abord une liste visuelle, mais chaque objet est aussi une belle cible photo ; un télescope de 200 mm est la recommandation classique."
+    },
+    "abell": {
+      "label": "Nébuleuses planétaires Abell",
+      "tagline": "80 nébuleuses planétaires faibles et anciennes du relevé Palomar de George Abell.",
+      "blurb": "George Abell a trouvé ces 80 nébuleuses planétaires sur les plaques du Palomar Sky Survey ; elles sont souvent grandes et très faibles. Elles récompensent les filtres OIII, un ciel sombre et de longues poses ; la Méduse, Abell 31 et Abell 39 sont les vedettes."
+    },
+    "berkeley": {
+      "label": "Amas ouverts Berkeley",
+      "tagline": "89 amas ouverts anciens et dispersés du catalogue Berkeley.",
+      "blurb": "Le catalogue Berkeley rassemble des amas ouverts anciens repérés sur les plaques Palomar, souvent dispersés et faibles. Ce sont des cibles visuelles subtiles et des projets photo originaux ; Berkeley 17 est l'un des amas ouverts les plus anciens connus."
     }
   },
   "objectClass": {
@@ -43,8 +64,10 @@
     "other": "Autres"
   },
   "catalogHero": {
-    "allCatalogs": "Tous les catalogues",
+    "catalogs": "Catalogues",
+    "breadcrumb": "Navigation des catalogues",
     "imaged": "photographiés",
+    "toGo": "restants",
     "programComplete": "Programme complet",
     "stillToImage_one": "{{count}} restant à photographier",
     "stillToImage_other": "{{count}} restants à photographier",
@@ -66,7 +89,8 @@
     "openBoard": "Ouvrir le tableau",
     "myCatalog": "Mon {{label}}",
     "myCatalogAria_one": "Mon catalogue {{label}}, {{count}} image",
-    "myCatalogAria_other": "Mon catalogue {{label}}, {{count}} images"
+    "myCatalogAria_other": "Mon catalogue {{label}}, {{count}} images",
+    "myCatalogShort": "Mon catalogue"
   },
   "catalogTile": {
     "imagedAriaLabel": "{{id}}, {{name}}, photographié",
@@ -97,7 +121,11 @@
     "searchPlaceholder": "Rechercher nom, id, constellation",
     "searchAriaLabel": "Rechercher dans ce catalogue",
     "clearSearch": "Effacer la recherche",
-    "sortObjects": "Trier les objets"
+    "sortObjects": "Trier les objets",
+    "observableOnly": "Visible",
+    "observableOnlyHelp": "Masquer les objets qui ne dépassent jamais {{deg}}° depuis votre site",
+    "observableOnlyNoLocation": "Définissez un site pour filtrer par visibilité",
+    "filters": "Filtres"
   },
   "catalogObjectModal": {
     "maxAltitudeHeading": "Altitude maximale pendant l'obscurité : 12 prochains mois",

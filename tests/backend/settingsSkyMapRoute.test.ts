@@ -17,6 +17,7 @@ import fs from 'fs';
 import { apiEnvelope } from '../../server/middleware/apiEnvelope';
 import { settingsRouter } from '../../server/routes/settings';
 import { SKY_MAP_CELLS } from '../../server/lib/skyMapConfig';
+import { getDefaultSite, updateSite } from '../../server/lib/observingSites';
 
 // A wrong-length visibleSkyMap used to be accepted with a 200 and stored as []
 // ("whole sky visible"), silently erasing the user's mask.
@@ -57,6 +58,11 @@ describe('PUT /settings visibleSkyMap', () => {
     expect(res.status).toBe(422);
   });
 
+  it('accepts [] (no mask set), which the Settings page echoes back on every save', async () => {
+    const res = await put({ visibleSkyMap: [], minAlt: 20 });
+    expect(res.status).toBe(200);
+  });
+
   it('stores a full-length map and returns it unchanged', async () => {
     const map = Array.from({ length: SKY_MAP_CELLS }, (_, i) => i % 3 === 0);
     const res = await put({ visibleSkyMap: map });
@@ -65,3 +71,23 @@ describe('PUT /settings visibleSkyMap', () => {
     expect(got.data.visibleSkyMap).toEqual(map);
   });
 });
+
+// Serge's report: after "Save sky map" on his site, Settings still failed with "expected array to have exactly 288 items".
+// The settings were cached, and a site saved straight into the settings row never cleared the cache, so the Settings page
+// kept loading the old empty map and sending it back.
+describe('a sky map saved on the default site', () => {
+  it('reaches the settings the page loads, with no restart, and the page can then save', async () => {
+    // Start where a new install is: no map set (the earlier tests in this file left one).
+    expect((await put({ visibleSkyMap: [] })).status).toBe(200);
+    const before = await (await fetch(`${baseUrl}/`)).json();
+    expect(before.data.visibleSkyMap).toEqual([]);
+
+    updateSite(getDefaultSite().id, { visibleSkyMap: Array.from({ length: SKY_MAP_CELLS }, () => true) });
+
+    const after = await (await fetch(`${baseUrl}/`)).json();
+    expect(after.data.visibleSkyMap).toHaveLength(SKY_MAP_CELLS);
+    // What the Settings page does: send everything it loaded, with one change.
+    expect((await put({ ...after.data, minAlt: 30 })).status).toBe(200);
+  });
+});
+

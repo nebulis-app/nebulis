@@ -833,6 +833,13 @@ export function bulkReassignTelescope(fromId: string, toId: string): BulkReassig
 // invalidate there instead of re-deriving it on every read.
 let settingsCache: Record<string, unknown> | null = null;
 
+/** Drop the cached settings. Anything that writes the appSettings row without going through saveSettingsRow or
+ *  setApiKey must call this, or GET /settings keeps answering with the old values until the server restarts: a sky map
+ *  saved on a site was never seen by the Settings page, which then sent the old empty one back and was refused. */
+export function invalidateSettingsCache(): void {
+  settingsCache = null;
+}
+
 export function getSettingsData(): Record<string, unknown> {
   if (settingsCache) return settingsCache;
   const row = appSettingsStmts.get.get();

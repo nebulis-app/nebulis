@@ -28,6 +28,7 @@
 import { randomUUID } from 'crypto';
 import db from './db.js';
 import { SKY_MAP_CELLS } from './skyMapConfig.js';
+import { invalidateSettingsCache } from './telescopes.js';
 import { deleteSitePhotosFor } from './sitePhotos.js';
 import { clampOffset, isDarknessLevel, windowPrefsOf, type DarknessLevel } from './imagingWindow.js';
 
@@ -426,4 +427,6 @@ export function syncDefaultSiteToAppSettings(): void {
     JSON.stringify(site.horizonProfile),
     JSON.stringify(site.visibleSkyMap),
   );
+  // The projection was written straight to the row, so the cached copy of the settings is now stale.
+  invalidateSettingsCache();
 }

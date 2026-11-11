@@ -1,12 +1,15 @@
 # Changelog
-## 2.2.1 (310) - November 8th, 2026
+## 2.2.2 (311) - November 11th, 2026
+### Fixed
+- **Settings would not save:** saving any setting failed with "Too small: expected array to have exactly 288 items" on a new install, where no visible-sky map is set. Settings now save. A sky map, location or minimum altitude you change on an observing site also reaches Settings and the phone apps straight away; before, they kept showing the old values until Nebulis restarted.
+
+## 2.2.1 (309) - November 8th, 2026
 ### New
 - **Three more observing catalogs:** the Catalogs page now includes the RASC Finest NGC list, the Abell planetary nebulae and the Berkeley open clusters, each with its own progress board, "My Catalog" wall, reference images, descriptions, distances and constellation data. A filter in the Catalogs banner lets you hide the programs you do not follow, and the hub cards are more compact to make room for all seven.
 - **Observable filter:** the catalog boards and the My Catalog wall have an Observable switch that hides objects that never rise above your minimum altitude from your site. It is off until you turn it on, it is remembered, and it needs a site location.
 - **Plan My Night, narrowband option:** a new checkbox, "I shoot through a dual-band or narrowband filter", sits under the cloud setting. Check it when your telescope has a built-in dual-band filter, such as a SeeStar's, and the plan uses the narrowband Moon limit for emission nebulae, so more of them are offered on moonlit nights. It is remembered, and a narrowband filter in Gear still counts without it.
 - **Two weeks ahead:** the Forecast page has a new card under the nights, with one bar for each of the next 15 nights. A bar shows the chance of a usable night, worked out from about 100 runs of three weather models (the share that give at least 3 dark hours with clouds at 30% or less). Nights past the first week are shown faded as a trend. Hover or tab to a bar for the cloud range, each model's own odds and the Moon. It follows each site's imaging window and needs the server to reach the internet. ([@jjmartres](https://github.com/jjmartres))
 - **Imaging window:** choose what counts as tonight for each site, under **Settings -> Sky -> Sites -> Edit**. Start from astronomical or nautical night, which often suits narrowband filters, and move either end by a number of minutes. The Forecast, night score, Planner, Explore, "Up tonight" and the clear-night alert all use it, so they agree. ([@jjmartres](https://github.com/jjmartres))
-
 
 ### Updated
 - **Planner refinements:** the page now fits your window, with the targets and the schedule scrolling inside themselves, and the banner starts collapsed (open it with the arrow). In the collapsed banner the Moon and the cloud sit beside tonight's rating, and on wide windows the next nights sit there too, with Tonight first. The open banner is shorter, the chart under the schedule is shorter and names each target inside it, and the Visible sky button has moved to each site under **Settings -> Sky -> Sites**.

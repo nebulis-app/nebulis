@@ -57,7 +57,9 @@ const SettingsUpdateBodySchema = z.object({
   horizonProfile: z.array(z.number()).length(36).optional(),
   // A wrong-length map would be stored as [] ("whole sky visible"), so reject it
   // here instead of answering 200 and silently erasing the user's mask.
-  visibleSkyMap: z.array(z.boolean()).length(SKY_MAP_CELLS).optional(),
+  // [] is the one other legal value: "no mask set", which GET returns for a site
+  // without one and the Settings page echoes back on every save.
+  visibleSkyMap: z.union([z.array(z.boolean()).length(SKY_MAP_CELLS), z.array(z.boolean()).length(0)]).optional(),
   syncEnabled: z.boolean().optional(),
   syncJpg: z.boolean().optional(),
   syncFits: z.boolean().optional(),

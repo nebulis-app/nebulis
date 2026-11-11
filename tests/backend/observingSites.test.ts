@@ -14,6 +14,7 @@ import {
   syncDefaultSiteToAppSettings,
 } from '../../server/lib/observingSites';
 import { SKY_MAP_CELLS } from '../../server/lib/skyMapConfig';
+import { getSettingsData } from '../../server/lib/telescopes';
 
 /** Read the legacy appSettings location columns the native clients consume. */
 function readMirror() {
@@ -440,5 +441,16 @@ describe('observingSites', () => {
       createSite({ name: 'C' });
       expect(listSites().map(s => s.name)).toEqual(['A', 'B', 'C']);
     });
+  });
+  it('the cached settings follow the default site: a saved sky map or horizon is read back at once', () => {
+    seedDefaultObservingSite();
+    // Prime the cache, as the first GET /settings does.
+    expect(getSettingsData().visibleSkyMap).toEqual([]);
+    const site = getDefaultSite();
+    updateSite(site.id, { visibleSkyMap: Array.from({ length: SKY_MAP_CELLS }, () => true), minAlt: 35 });
+    expect(getSettingsData().visibleSkyMap).toHaveLength(SKY_MAP_CELLS);
+    expect(getSettingsData().minAlt).toBe(35);
+    updateSite(site.id, { visibleSkyMap: [] });
+    expect(getSettingsData().visibleSkyMap).toEqual([]);
   });
 });

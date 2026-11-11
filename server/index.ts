@@ -275,7 +275,7 @@ app.use(express.json({ limit: '5mb' }));
 //     tile CDN (*.basemaps.cartocdn.com) now needs a paid API key. Keep this in
 //     sync with the tile URLs in src/components/ObservationMap.tsx and
 //     ObservationsWorldMap.tsx.
-//   - data: URIs for local file-upload previews (img-src)
+//   - data: and blob: URLs for local file-upload previews and the image editor's preview (img-src)
 // HSTS is intentionally omitted — this app runs over HTTP on local networks.
 app.use(helmet({
   strictTransportSecurity: false,
@@ -288,7 +288,8 @@ app.use(helmet({
       workerSrc: ["'self'", 'blob:'],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-      imgSrc: ["'self'", 'data:', 'https://services.arcgisonline.com'],
+      // blob: is the image editor's screen-sized preview (URL.createObjectURL) and local upload previews.
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://services.arcgisonline.com'],
       connectSrc: ["'self'"],
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],

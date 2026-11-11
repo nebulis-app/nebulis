@@ -1,7 +1,8 @@
 # Changelog
-## 2.2.2 (311) - November 11th, 2026
+## 2.2.2 (312) - November 11th, 2026
 ### Fixed
 - **Settings would not save:** saving any setting failed with "Too small: expected array to have exactly 288 items" on a new install, where no visible-sky map is set. Settings now save. A sky map, location or minimum altitude you change on an observing site also reaches Settings and the phone apps straight away; before, they kept showing the old values until Nebulis restarted.
+- **Image editor showed "Failed to load image":** opening a picture in the editor on a server install (Docker, Windows, macOS) left the preview blank, because the server's security policy blocked the editor's preview image. The editor opens again.
 
 ## 2.2.1 (309) - November 8th, 2026
 ### New

@@ -568,7 +568,7 @@
     "offlineTerm": "Offline folders",
     "offlineDesc": "If the drive or share can't be reached, the folder is marked as unreachable and nothing changes. Reconnect it and rescan.",
     "missingTerm": "Missing files",
-    "missingDesc": "A file that has gone missing stays in the index until a second scan confirms it is gone, so a scan taken while a folder is half-mounted doesn't empty your library.",
+    "missingDesc": "A file that has gone missing stays in the index for 24 hours. If a later scan still can't find it, it is removed. The wait keeps a scan taken while a folder is half-mounted from emptying your library.",
     "settingsAlt": "Settings, Storage, Linked folders, listing two linked folders with Rescan, Edit, and Unlink buttons",
     "settingsCaption": "Settings → Storage → Linked folders",
     "note": "Linked files are not included when you archive to an external disk. Archiving copies only the files in the Nebulis library itself."

@@ -568,7 +568,7 @@
     "offlineTerm": "Offline mappen",
     "offlineDesc": "Als de schijf of netwerkshare niet bereikbaar is, krijgt de map die status en wordt niets gewijzigd. Verbind de schijf of share opnieuw en scan nogmaals.",
     "missingTerm": "Ontbrekende bestanden",
-    "missingDesc": "Een ontbrekend bestand blijft in de index totdat een tweede scan bevestigt dat het echt weg is. Zo maakt een scan tijdens het verbinden van een map je bibliotheek niet leeg.",
+    "missingDesc": "Een ontbrekend bestand blijft 24 uur in de index. Vindt een latere scan het nog steeds niet, dan wordt het verwijderd. Die wachttijd voorkomt dat een scan tijdens het verbinden van een map je bibliotheek leegmaakt.",
     "settingsAlt": "Instellingen, Opslag, Gekoppelde mappen, met twee gekoppelde mappen met de knoppen Opnieuw scannen, Bewerken en Ontkoppelen",
     "settingsCaption": "Instellingen → Opslag → Gekoppelde mappen",
     "note": "Gekoppelde bestanden worden niet meegenomen in het externe archief. Archiveren kopieert alleen bestanden die in de Nebulis-bibliotheek zelf zijn opgeslagen."

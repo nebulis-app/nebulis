@@ -23,6 +23,8 @@ import { MediaGroupSection } from './MediaGroup';
 import { FeaturedProcessed } from './FeaturedProcessed';
 import { SubframeNights } from './SubframeNights';
 import { NightsList } from './NightsList';
+import { isSunObject } from '../../lib/solarObject';
+import { SolarObjectContext } from './solarObjectContext';
 import { ObjectProjectArchivesSection } from '../objectDetail/ObjectProjectArchivesSection';
 import { MediaFilterChips, MediaTabs, MediaToolbar } from './MediaToolbar';
 import { TILE_DEFAULT, opensInViewer, parseTileSize, type TileSize } from './tileSizing';
@@ -71,6 +73,7 @@ export function ObjectMediaView({ objectId, objectName, isAdmin, onAddObservatio
   const { isDark } = useTheme();
   const queryClient = useQueryClient();
   const media = useObjectMedia(objectId);
+  const solar = isSunObject(objectId);
   const { state, groups } = media;
   // All is the pictures and videos: processed ones, the telescope's own and its stacked files. Sub-frames and project
   // archives each have a tab of their own, so they are left out here.
@@ -289,6 +292,7 @@ export function ObjectMediaView({ objectId, objectName, isAdmin, onAddObservatio
   const muted = 'text-slate-500';
 
   return (
+    <SolarObjectContext.Provider value={solar}>
     <section
       aria-label={t('objectMedia.heading', { name: objectName })}
       className="space-y-4"
@@ -306,6 +310,7 @@ export function ObjectMediaView({ objectId, objectName, isAdmin, onAddObservatio
         update={media.update}
         counts={tabCounts}
         isAdmin={isAdmin}
+        solar={solar}
         // Projects are zip archives with their own drop zone: sorting, filtering and Add image do not apply.
         trailing={state.tab !== 'project' ? (
           <MediaToolbar
@@ -460,7 +465,7 @@ export function ObjectMediaView({ objectId, objectName, isAdmin, onAddObservatio
               }`}
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              {t('objectMedia.subNights.back')}
+              {t(solar ? 'objectMedia.subNights.backDays' : 'objectMedia.subNights.back')}
             </button>
           )}
 
@@ -469,7 +474,7 @@ export function ObjectMediaView({ objectId, objectName, isAdmin, onAddObservatio
           )}
 
           {state.tab === 'nights' && (
-            <NightsList objectId={objectId} nights={groups.filter(g => g.date)} items={items} />
+            <NightsList objectId={objectId} observations={groups.filter(g => g.date)} items={items} solar={solar} />
           )}
 
           {state.tab === 'project' && (
@@ -590,5 +595,6 @@ export function ObjectMediaView({ objectId, objectName, isAdmin, onAddObservatio
           back to the grid to find it again. */}
       <ObjectImageEditor request={editRequest} onClose={() => setEditRequest(null)} onSaved={refresh} />
     </section>
+    </SolarObjectContext.Provider>
   );
 }

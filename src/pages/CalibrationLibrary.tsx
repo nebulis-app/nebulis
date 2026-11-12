@@ -199,7 +199,8 @@ function SettingsGroupTable({
             const isDeleting = deletingKey === key;
             const rowType = resolveRowType(group, set);
             const rowAttachable = isAttachableType(rowType);
-            const rowDeletable = isDeletableType(rowType);
+            // Frames read from a linked folder are the user's own files: never offered for deletion.
+            const rowDeletable = isDeletableType(rowType) && !group.linked;
             return (
               <Fragment key={key}>
                 <tr
@@ -421,8 +422,16 @@ export function CalibrationLibrary() {
     }, { replace: true });
   }
 
+  // A linked folder's calibration frames are scoped to the folder, named by the label it was linked with.
+  const linkedNames = useMemo(
+    () => new Map(groups.flatMap(g => (g.linked && g.scope ? [[g.scope, g.scopeLabel] as const] : []))),
+    [groups],
+  );
+
   function scopeName(scope: string | null): string {
     if (scope === null) return t('calibrations.scope.unassigned');
+    const linkedName = linkedNames.get(scope);
+    if (linkedName !== undefined) return t('calibrations.scope.linked', { name: linkedName });
     return telescopeNames.get(scope) ?? t('calibrations.scope.deleted');
   }
 
@@ -514,8 +523,8 @@ export function CalibrationLibrary() {
     [groups],
   );
   const scopeOptions = useMemo(
-    () => buildScopeOptions(groups, telescopeNames, t),
-    [groups, telescopeNames, t],
+    () => buildScopeOptions(groups, telescopeNames, t, linkedNames),
+    [groups, telescopeNames, t, linkedNames],
   );
 
   const totalFiles = visibleGroups.reduce((sum, g) => sum + g.fileCount, 0);
@@ -616,6 +625,9 @@ export function CalibrationLibrary() {
                             </>
                           )}
                         </div>
+                      )}
+                      {group.linked && (
+                        <p className={`px-4 py-2 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('calibrations.linkedNote')}</p>
                       )}
                       <SettingsGroupTable
                         group={group}

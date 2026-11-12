@@ -430,7 +430,7 @@ const HIPS_HOSTS = ['alaskybis.cds.unistra.fr', 'alasky.cds.unistra.fr', 'alasky
 
 /** GET a hips2fits URL (built from `query`) across the mirrors. A 2xx or 4xx
  *  answer from any host is final (a 4xx means this request is bad, not the
- *  host); timeouts, network errors and 5xx move on to the next host. Throws the
+ *  host, unless it is an HTML error page from the web server); timeouts, network errors and 5xx move on to the next host. Throws the
  *  last error only when no host answered at all. */
 async function fetchHips2fits(query: string, totalTimeoutMs: number): Promise<Response> {
   const perHostMs = Math.max(4000, Math.ceil(totalTimeoutMs / HIPS_HOSTS.length));
@@ -439,7 +439,10 @@ async function fetchHips2fits(query: string, totalTimeoutMs: number): Promise<Re
   for (const host of [...HIPS_HOSTS]) {
     try {
       const resp = await fetch(`https://${host}/hips-image-services/hips2fits${query}`, { signal: AbortSignal.timeout(perHostMs) });
-      if (resp.ok || (resp.status >= 400 && resp.status < 500)) {
+      // hips2fits answers a bad request with a plain-text error. An HTML error page is the web server itself saying the
+      // service is not there (an outage or a moved endpoint), which says nothing about this request, so try the next host.
+      const serverErrorPage = resp.status >= 400 && (resp.headers.get('content-type') ?? '').includes('text/html');
+      if (resp.ok || (resp.status >= 400 && resp.status < 500 && !serverErrorPage)) {
         const i = HIPS_HOSTS.indexOf(host);
         if (i > 0) { HIPS_HOSTS.splice(i, 1); HIPS_HOSTS.unshift(host); }
         recordCdsSuccess();
@@ -523,7 +526,8 @@ export async function fetchSkyCutout(opts: {
     const resp = await fetchHips2fits(query, opts.timeoutMs ?? 15000);
     if (!resp.ok) {
       console.warn('[skyImage] cutout fetch failed for %s: HTTP %s (fov=%s)', opts.id, resp.status, fov);
-      return cdsIsSkipped() ? backupCutout() : null;
+      // A picture from a backup source beats none while CDS is down; it is kept apart, so CDS wins again once it answers.
+      return backupCutout();
     }
     const buffer = Buffer.from(await resp.arrayBuffer());
     fs.mkdirSync(CUTOUT_DIR, { recursive: true });
@@ -531,6 +535,6 @@ export async function fetchSkyCutout(opts: {
     return cachePath;
   } catch (err) {
     console.warn('[skyImage] cutout fetch error for %s:', opts.id, err instanceof Error ? err.message : err);
-    return cdsIsSkipped() ? backupCutout() : null;
+    return backupCutout();
   }
 }

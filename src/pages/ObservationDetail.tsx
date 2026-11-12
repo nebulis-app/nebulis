@@ -1,4 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
+import { isSunObject } from '../lib/solarObject';
+import { SolarObjectContext, useSunWording } from '../components/objectMedia/solarObjectContext';
 import { useQuery, useQueryClient, useMutation, useMutationState } from '@tanstack/react-query';
 import { isImageFavoriteVars, type ImageFavoriteVars } from '../lib/favoriteMutations';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -95,7 +97,18 @@ function formatClock(timestamp: string): string {
 // useMemo dependency below without needing its own memo layer.
 const EMPTY_FILES: SessionFile[] = [];
 
+/** The Sun is imaged by day, so wording that says "night" for other objects says "day" for it. */
 export function ObservationDetail() {
+  const { objectId = '' } = useParams<{ objectId: string }>();
+  return (
+    <SolarObjectContext.Provider value={isSunObject(objectId)}>
+      <ObservationDetailPage />
+    </SolarObjectContext.Provider>
+  );
+}
+
+function ObservationDetailPage() {
+  const sun = useSunWording();
   const { objectId = '', date = '' } = useParams<{ objectId: string; date: string }>();
   const { t } = useTranslation('observations');
   const { isDark, isNight, isSpace } = useTheme();
@@ -1094,7 +1107,7 @@ if (isLoading) {
       {confirmUnmarkId && (
         <ConfirmModal
           title={t('observationDetail.page.unmarkProcessedTitle')}
-          message={t('observationDetail.page.unmarkProcessedMessage')}
+          message={t('observationDetail.page.unmarkProcessedMessage', sun)}
           confirmLabel={t('observationDetail.page.unmarkProcessedConfirm')}
           onCancel={() => setConfirmUnmarkId(null)}
           onConfirm={() => {

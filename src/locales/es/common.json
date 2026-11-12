@@ -29,12 +29,12 @@
   },
   "auth": {
     "title": "Iniciar sesión en Nebulis",
-    "subtitle": "Inicia sesión con tu cuenta de este servidor. Tu biblioteca se queda en este equipo.",
     "username": "Nombre de usuario",
     "usernamePlaceholder": "Tu usuario",
     "password": "Contraseña",
     "signIn": "Iniciar sesión",
     "signingIn": "Iniciando sesión…",
+    "forgotPassword": "¿Olvidaste tu contraseña?",
     "loginFailed": "El usuario y la contraseña no coinciden. Inténtalo de nuevo."
   },
   "onboarding": {

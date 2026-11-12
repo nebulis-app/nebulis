@@ -150,9 +150,41 @@ describe('buildObjectMedia', () => {
   });
 
   it('keeps projects in their own group whatever the grouping', () => {
-    for (const group of ['night', 'telescope', 'filter', 'type', 'none'] as const) {
+    for (const group of ['night', 'observation', 'telescope', 'filter', 'type', 'none'] as const) {
       const r = buildObjectMedia(sample(), q({ group }));
       expect(r.items.find(i => i.kind === 'project')?.groupKey).toBe('_projects');
     }
+  });
+
+  describe('observations (a night at one exposure setting)', () => {
+    // Tomas Mansilla's library: one night, 15 s and 30 s sub-frames, plus a processed picture.
+    function twoSettings(): MediaItem[] {
+      const sub = (exposure: string) => item({ kind: 'sub', format: 'FITS', isImage: false, isFits: true, exposure, frameCount: 1, date: '2026-10-03' });
+      return [
+        sub('30.0s'), sub('30.0s'), sub('30.0s'), sub('15.0s'), sub('15.0s'),
+        item({ kind: 'processed', date: '2026-10-03', telescope: null, exposure: null }),
+        item({ kind: 'sub', format: 'FITS', isImage: false, isFits: true, exposure: '30.0s', frameCount: 1, date: '2026-10-04' }),
+      ];
+    }
+
+    it('splits one night into one group per exposure and keeps the night as the group date', () => {
+      const r = buildObjectMedia(twoSettings(), q({ group: 'observation' }));
+      const keys = r.groups.map(g => g.key);
+      expect(keys).toEqual(expect.arrayContaining(['2026-10-03|30.0s', '2026-10-03|15.0s', '2026-10-04|30.0s', '2026-10-03|']));
+      const thirty = r.groups.find(g => g.key === '2026-10-03|30.0s')!;
+      expect(thirty).toMatchObject({ date: '2026-10-03', subCount: 3, frames: 3, exposure: '30.0s', integrationSec: 90 });
+      expect(r.groups.find(g => g.key === '2026-10-03|15.0s')).toMatchObject({ subCount: 2, integrationSec: 30 });
+    });
+
+    it('still reports one night per date', () => {
+      expect(buildObjectMedia(twoSettings(), q()).nightCount).toBe(2);
+    });
+
+    it('tags every item with its observation key', () => {
+      const r = buildObjectMedia(twoSettings(), q({ group: 'observation' }));
+      expect(new Set(r.items.filter(i => i.kind === 'sub').map(i => i.groupKey))).toEqual(
+        new Set(['2026-10-03|30.0s', '2026-10-03|15.0s', '2026-10-04|30.0s']),
+      );
+    });
   });
 });

@@ -29,6 +29,7 @@ describe('post-import pipeline guard', () => {
     { call: 'prewarmSessionThumbnails(', allowed: ['lib/library/postImport.ts', 'lib/library/sessionThumbnailPrewarm.ts'] },
     { call: 'warmSubFrameHeaders(', allowed: ['lib/library/postImport.ts', 'lib/library/integration.ts'] },
     { call: 'enqueueSessionWeatherBackfill(', allowed: ['lib/library/postImport.ts', 'lib/library/observations.ts'] },
+    { call: 'measureLinkedFramesNightly(', allowed: ['lib/library/postImport.ts', 'lib/frameAnalysis/autoMeasure.ts'] },
   ];
   for (const { call, allowed } of stages) {
     it(`${call} is only called from the pipeline`, () => {

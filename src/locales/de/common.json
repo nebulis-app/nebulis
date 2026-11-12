@@ -29,12 +29,12 @@
   },
   "auth": {
     "title": "Bei Nebulis anmelden",
-    "subtitle": "Melde dich mit deinem Konto für diesen Server an. Deine Bibliothek bleibt auf diesem Rechner.",
     "username": "Benutzername",
     "usernamePlaceholder": "Dein Benutzername",
     "password": "Passwort",
     "signIn": "Anmelden",
     "signingIn": "Anmeldung läuft…",
+    "forgotPassword": "Passwort vergessen?",
     "loginFailed": "Benutzername und Passwort passen nicht zusammen. Versuche es erneut."
   },
   "onboarding": {

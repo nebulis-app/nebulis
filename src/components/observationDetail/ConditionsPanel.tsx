@@ -10,6 +10,7 @@
  * everything else follows as ordinary facts.
  */
 import { useTranslation } from 'react-i18next';
+import { useSunWording } from '../objectMedia/solarObjectContext';
 import { Cloud, Moon } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { MoonDisk } from '../ui/MoonDisk';
@@ -30,6 +31,7 @@ export function ConditionsPanel({ weather, sky, tempUnit }: {
   sky?: SkyConditions | null;
   tempUnit: 'celsius' | 'fahrenheit';
 }) {
+  const sun = useSunWording();
   const { isDark, isNight } = useTheme();
   const { t } = useTranslation('observations');
 
@@ -63,7 +65,7 @@ export function ConditionsPanel({ weather, sky, tempUnit }: {
     <SessionPanel title={t('observationDetail.conditionsPanel.title')} icon={Cloud}>
       {!weather && !hasSky && (
         <PanelEmpty>
-          {t('observationDetail.conditionsPanel.empty')}
+          {t('observationDetail.conditionsPanel.empty', sun)}
         </PanelEmpty>
       )}
 

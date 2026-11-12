@@ -32,6 +32,7 @@ import { isHiddenOrSystemFile } from '../telescopeFiles.js';
 import type { CalibrationAttachmentSummary } from './calibrationAttachmentTypes.js';
 import { getAllProfiles, getSettingsData } from '../telescopes.js';
 import { ASIAIR_MODE_FOLDERS } from '../walkers/asiairWalker.js';
+import { isLinkedScope, linkedScopeFor, listLinkedCalibrationFolders } from './linkedCalibration.js';
 
 /** Same bound archiveFolders.ts's own tree walk uses, so a pathological
  *  subfolder depth can't hang a request. Calibration trees are shallow in
@@ -160,6 +161,9 @@ export interface CalibrationGroup {
    *  bucket (archiveFolders.ts's ARCHIVE_UNSCOPED_DIR). */
   scope: string | null;
   scopeLabel: string;
+  /** Read in place from a linked folder. Such a group can be browsed, downloaded and used for stacking, but never
+   *  deleted from here: the files are the user's own, outside Nebulis. */
+  linked: boolean;
   fileCount: number;
   bytes: number;
   modifiedAt: string | null;
@@ -590,6 +594,7 @@ function buildGroup(
     folderName,
     scope,
     scopeLabel: scopeLabelValue,
+    linked: isLinkedScope(scope),
     fileCount,
     bytes,
     modifiedAt: isoOrNull(modifiedMs),
@@ -657,6 +662,15 @@ export function listCalibrationLibrary(): CalibrationGroup[] {
         }
       }
     }
+  }
+
+  // Calibration folders of linked folders, read where they are. The scan of each link recorded where they sit.
+  for (const folder of listLinkedCalibrationFolders()) {
+    const name = path.posix.basename(folder.relDir);
+    const type = calibrationTypeForFolderName(name);
+    if (type === null) continue;
+    const group = buildGroup(linkedScopeFor(folder.sourceId), folder.sourceLabel, folder.relDir, type, folder.absDir, name);
+    if (group) groups.push(group);
   }
 
   return groups.sort((a, b) => {
@@ -746,6 +760,8 @@ export function deleteCalibrationBundle(
   folderName: string,
   key: string,
 ): DeleteBundleResult | null {
+  // Never delete from a linked folder: those files belong to the user and live outside Nebulis.
+  if (isLinkedScope(scope)) return null;
   const found = findCalibrationBundle(scope, folderName, key);
   if (!found) return null;
 

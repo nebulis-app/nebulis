@@ -78,6 +78,20 @@ export interface LinkedSource {
   offline: boolean;
   /** Minutes between automatic rescans. Null is a one-time link, rescanned only by hand. */
   refreshIntervalMin: number | null;
+  /** The link's own options, as the JSON the server stores. Read with `linkOptionsOf`. */
+  importOptions: string | null;
+}
+
+/** What a linked folder was linked with: whether sub-frames are indexed, and whether they are measured at night. */
+export function linkOptionsOf(source: Pick<LinkedSource, 'importOptions'>): { importSubFrames?: boolean; analyzeFrames: boolean } {
+  try {
+    const raw: unknown = source.importOptions ? JSON.parse(source.importOptions) : {};
+    const rec = typeof raw === 'object' && raw !== null ? raw : {};
+    const sub = 'importSubFrames' in rec && typeof rec.importSubFrames === 'boolean' ? rec.importSubFrames : undefined;
+    return { importSubFrames: sub, analyzeFrames: 'analyzeFrames' in rec && rec.analyzeFrames === true };
+  } catch {
+    return { analyzeFrames: false };
+  }
 }
 
 export interface RescanResult {
@@ -101,6 +115,8 @@ interface LinkOptions {
 interface CommitOptions extends LinkOptions {
   /** Minutes between automatic rescans; omit for a one-time link. */
   refreshIntervalMin?: number | null;
+  /** Measure the folder's sub-frames during the nightly maintenance. */
+  analyzeFrames?: boolean;
 }
 
 /** Dry run: what would linking this folder index? Reads only. */
@@ -121,14 +137,18 @@ export const getLinkedSources = () =>
   fetchJSON<{ sources: LinkedSource[] }>('/library/sources').then(r => r.sources);
 
 /** Change a linked folder's name and/or refresh schedule in one call. `refreshIntervalMin: null` is one-time. */
-export const updateLinkedSource = (id: string, update: { label?: string; refreshIntervalMin?: number | null }) =>
+export const updateLinkedSource = (id: string, update: { label?: string; refreshIntervalMin?: number | null; analyzeFrames?: boolean }) =>
   fetchJSON<{ id: string; label: string; refreshIntervalMin: number | null }>(`/library/sources/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     body: JSON.stringify(update),
   });
 
-export const rescanLinkedSource = (id: string) =>
-  fetchJSON<RescanResult>(`/library/sources/${encodeURIComponent(id)}/rescan`, { method: 'POST' });
+/** `removeMissing` drops files the scan cannot find from the index now, skipping the 24 hour wait. */
+export const rescanLinkedSource = (id: string, options: { removeMissing?: boolean } = {}) =>
+  fetchJSON<RescanResult>(
+    `/library/sources/${encodeURIComponent(id)}/rescan${options.removeMissing ? '?removeMissing=true' : ''}`,
+    { method: 'POST' },
+  );
 
 export const unlinkSource = (id: string) =>
   fetchJSON<{ filesUnlinked: number; objectsRetired: string[] }>(`/library/sources/${encodeURIComponent(id)}`, {

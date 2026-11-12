@@ -178,6 +178,7 @@
       "opticsAutoNone": "no detectado",
       "opticsSource": {
         "manual": "Elegido para esta noche",
+        "manual_sun": "Elegido para este día",
         "fits": "Deducido de la focal indicada en los FITS",
         "only": "Única configuración del telescopio"
       }
@@ -199,6 +200,7 @@
     "conditionsPanel": {
       "title": "Condiciones",
       "empty": "No se registraron condiciones para esta noche. El clima se obtiene para la ubicación de la sesión cuando se importa.",
+      "empty_sun": "No se registraron condiciones para este día. El clima se obtiene para la ubicación de la sesión cuando se importa.",
       "cloudClear": "Despejado",
       "cloudMostlyClear": "Mayormente despejado",
       "cloudBroken": "Nubosidad dispersa",
@@ -267,11 +269,13 @@
       "setAsGalleryImage": "Establecer como imagen de galería",
       "delete": "Eliminar",
       "combinesNights": "Combina {{count}} noches: {{list}}",
+      "combinesNights_sun": "Combina {{count}} días: {{list}}",
       "addMore": "Añadir más",
       "moveToImages": "Marcar como no procesada"
     },
     "nightPanel": {
       "title": "Esa noche",
+      "title_sun": "Ese día",
       "imaged": "Capturado {{range}}",
       "cloud": "{{label}} · {{percent}}% de nubes",
       "moon": "Luna {{percent}}%"
@@ -329,6 +333,7 @@
       "markProcessedConfirm": "Marcar como procesada",
       "unmarkProcessedTitle": "¿Marcar como no procesada?",
       "unmarkProcessedMessage": "La imagen pasa de Procesadas a las Imágenes de esta noche. No se elimina nada.",
+      "unmarkProcessedMessage_sun": "La imagen pasa de Procesadas a las Imágenes de este día. No se elimina nada.",
       "unmarkProcessedConfirm": "Marcar como no procesada"
     },
     "fitsHeaderModal": {
@@ -381,7 +386,9 @@
       "notesLabel": "Notas",
       "notesPlaceholder": "Notas de procesado, software usado, tiempo de integración…",
       "combineMultipleNights": "Combinar varias noches",
+      "combineMultipleNights_sun": "Combinar varios días",
       "whichNightsQuestion": "¿Qué noches combina este stack?",
+      "whichNightsQuestion_sun": "¿Qué días combina este stack?",
       "softwarePlaceholder": "Software usado (opcional)",
       "uploadFailed": "Error al subir",
       "uploading": "Subiendo…",

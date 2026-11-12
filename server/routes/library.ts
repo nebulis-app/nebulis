@@ -867,6 +867,8 @@ const LinkScanBodySchema = z.object({
 
 const LinkCommitBodySchema = LinkScanBodySchema.extend({
   label: z.string().trim().min(1).max(120),
+  /** Measure the folder's sub-frames during the nightly maintenance. */
+  analyzeFrames: z.boolean().optional(),
   /** Minutes between automatic rescans; omitted or null is a one-time link. */
   refreshIntervalMin: z.number().int().refine(isValidRefreshInterval, 'Pick one of the listed refresh intervals').nullable().optional(),
   /** Review-screen decisions for this one commit, keyed by directory relative
@@ -932,11 +934,11 @@ router.post('/sources', requireAdmin, async (req: Request, res: Response) => {
     for (const o of overrides ?? []) {
       map.set(o.dirPath, o.action === 'ignore' ? { action: 'ignore' } : { action: 'assign', objectId: normalizeCatalogId(o.objectId) });
     }
-    const { importSubFrames, importFits } = parsed.data;
+    const { importSubFrames, importFits, analyzeFrames } = parsed.data;
     res.apiSuccess(await commitSource(rootPath, linkSettings(parsed.data), {
       label,
       overrides: map,
-      importOptions: { importSubFrames, importFits },
+      importOptions: { importSubFrames, importFits, analyzeFrames },
       refreshIntervalMin: parsed.data.refreshIntervalMin ?? null,
     }));
   } catch (err) {
@@ -950,7 +952,9 @@ router.patch('/sources/:id', requireAdmin, (req: Request, res: Response) => {
   const parsed = z.object({
     label: z.string().optional(),
     refreshIntervalMin: z.number().int().nullable().optional(),
-  }).refine(b => b.label !== undefined || b.refreshIntervalMin !== undefined, 'label or refreshIntervalMin is required')
+    analyzeFrames: z.boolean().optional(),
+  }).refine(b => b.label !== undefined || b.refreshIntervalMin !== undefined || b.analyzeFrames !== undefined,
+    'label, refreshIntervalMin or analyzeFrames is required')
     .safeParse(req.body);
   if (!parsed.success) {
     res.apiError(400, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request');
@@ -970,7 +974,7 @@ router.post('/sources/:id/rescan', requireAdmin, async (req: Request, res: Respo
     return;
   }
   try {
-    res.apiSuccess(await rescanSource(String(req.params.id), getSettingsData()));
+    res.apiSuccess(await rescanSource(String(req.params.id), getSettingsData(), { removeMissingNow: req.query.removeMissing === 'true' }));
   } catch (err) {
     sendLinkError(res, err, 'RESCAN_FAILED');
   } finally {
@@ -1516,6 +1520,14 @@ router.delete('/calibrations/bundle', requireAdmin, (req: Request, res: Response
   const found = findCalibrationBundle(scope, folderName, key);
   if (!found) {
     res.apiError(404, 'BUNDLE_NOT_FOUND', 'No matching calibration bundle — the archive may have changed since this page loaded');
+    return;
+  }
+  if (found.group.linked) {
+    res.apiError(
+      400,
+      'LINKED_NOT_DELETABLE',
+      'These frames are read from a linked folder, so Nebulis cannot delete them. Remove them from that folder yourself, then rescan it.',
+    );
     return;
   }
   const effectiveType = resolveFrameType(found.group.type, found.set.frameType);

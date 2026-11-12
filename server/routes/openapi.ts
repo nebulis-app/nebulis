@@ -1764,6 +1764,7 @@ export const spec = {
         properties: {
           label:              { type: 'string', minLength: 1, maxLength: 120 },
           refreshIntervalMin: nullable({ type: 'integer' }),
+          analyzeFrames:      { type: 'boolean', description: 'Measure the folder\'s sub-frames during the nightly maintenance.' },
           overrides: {
             type: 'array',
             maxItems: 5000,
@@ -1788,10 +1789,11 @@ export const spec = {
       },
       LibrarySourceUpdateInput: {
         type: 'object',
-        description: 'At least one of label or refreshIntervalMin is required.',
+        description: 'At least one of label, refreshIntervalMin or analyzeFrames is required.',
         properties: {
           label:              { type: 'string' },
           refreshIntervalMin: nullable({ type: 'integer' }),
+          analyzeFrames:      { type: 'boolean', description: 'Measure the folder\'s sub-frames during the nightly maintenance.' },
         },
       },
       LibrarySourceDeleted: {
@@ -1892,13 +1894,14 @@ export const spec = {
       },
       LibraryCalibrationGroup: {
         type: 'object',
-        required: ['type', 'typeLabel', 'folderName', 'scope', 'scopeLabel', 'fileCount', 'bytes', 'modifiedAt', 'subfolders', 'settingsGroups'],
+        required: ['type', 'typeLabel', 'folderName', 'scope', 'scopeLabel', 'linked', 'fileCount', 'bytes', 'modifiedAt', 'subfolders', 'settingsGroups'],
         properties: {
           type:         { type: 'string', description: 'bias, dark, flat, flatDark, or mixed' },
           typeLabel:    { type: 'string' },
           folderName:   { type: 'string' },
-          scope:        nullable({ type: 'string' }),
+          scope:        nullable({ type: 'string', description: 'A telescope id, null for the shared bucket, or @src/<sourceId> for a linked folder.' }),
           scopeLabel:   { type: 'string' },
+          linked:       { type: 'boolean', description: 'Read in place from a linked folder. It can be browsed, downloaded and used for stacking, but not deleted from Nebulis.' },
           fileCount:    { type: 'integer' },
           bytes:        { type: 'integer' },
           modifiedAt:   nullable({ type: 'string' }),
@@ -5412,7 +5415,7 @@ export const spec = {
       patch: {
         summary: 'Change a linked folder',
         tags: ['Library (Local)'],
-        description: 'Admin only. At least one of label or refreshIntervalMin is required.',
+        description: 'Admin only. At least one of label, refreshIntervalMin or analyzeFrames is required.',
         parameters: [idParam],
         requestBody: jsonBody('LibrarySourceUpdateInput'),
         responses: {
@@ -5438,8 +5441,8 @@ export const spec = {
       post: {
         summary: 'Rescan a linked folder',
         tags: ['Library (Local)'],
-        description: 'Admin only. Adds new files, updates changed ones and marks missing ones; an offline folder is reported without touching anything.',
-        parameters: [idParam],
+        description: 'Admin only. Adds new files, updates changed ones and marks missing ones; an offline folder is reported without touching anything. A file that stays missing is removed from the index on a scan 24 hours or more after it was first flagged, or at once with removeMissing=true.',
+        parameters: [idParam, { name: 'removeMissing', in: 'query', schema: { type: 'boolean', default: false }, description: 'Drop files this scan cannot find from the index now, without the 24 hour wait. Never deletes anything on disk.' }],
         responses: {
           200: jsonResponse('What the scan found', 'LibrarySourceRescanResult'),
           403: { description: 'FORBIDDEN. Admin only.' },

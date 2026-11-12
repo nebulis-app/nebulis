@@ -8,6 +8,12 @@
  * smart telescope we know) are fetched from the project's SourceForge page into
  * `<DATA_DIR>/astap/`.
  *
+ * The binary is downloaded into `<DATA_DIR>/astap/` so it survives a rebuilt container, but it is never run from
+ * there. A Docker data directory is often a bind mount from the host (macOS file sharing, an exFAT or network drive),
+ * and Linux cannot exec a file on some of those: `execve` answers ENOENT for a file that exists. `solverCommand()`
+ * keeps a copy of the executable in the machine's own temp directory and runs that. The star database is only read,
+ * so it stays on the data directory.
+ *
  * Trust: SourceForge publishes no checksums for these files, so the download is
  * integrity-checked only by size and by running the binary once. That is the
  * same trust a user places in installing ASTAP by hand.
@@ -47,6 +53,49 @@ export const ASTAP_DIR = path.join(DATA_DIR, 'astap');
 const DB_DIR = path.join(ASTAP_DIR, 'db');
 const BIN_NAME = process.platform === 'win32' ? 'astap_cli.exe' : 'astap_cli';
 const BIN_PATH = path.join(ASTAP_DIR, BIN_NAME);
+/** Where the executable is run from: local to this machine, never the (possibly bind-mounted) data directory. */
+const RUN_DIR = path.join(os.tmpdir(), 'nebulis-astap');
+
+/**
+ * Make sure `destDir` holds a runnable copy of every file in `srcDir` (the executable, plus the DLLs a Windows build
+ * ships beside it; the `db` folder is not copied) and return the path of the executable inside it.
+ *
+ * A file is copied only when it is missing or differs from the source in size or modification time, so a normal solve
+ * pays for a `stat`, not a copy. The copy keeps the source's modification time, which is what makes that comparison
+ * hold. Each file is written under a temporary name and renamed into place, so a solve running at that moment never
+ * sees half a binary. Throws when the executable is not in `srcDir`.
+ */
+export function ensureLocalCopy(srcDir: string, destDir: string, binName: string): string {
+  if (!fs.existsSync(path.join(srcDir, binName))) throw new Error(`The ASTAP solver is not installed (${binName} is missing)`);
+  fs.mkdirSync(destDir, { recursive: true });
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const src = path.join(srcDir, entry.name);
+    const dest = path.join(destDir, entry.name);
+    const from = fs.statSync(src);
+    let current: fs.Stats | null = null;
+    try { current = fs.statSync(dest); } catch { /* not copied yet */ }
+    // The copy's time is set to the source's, but a file system may round it, so allow a millisecond of difference.
+    if (current && current.size === from.size && Math.abs(current.mtimeMs - from.mtimeMs) < 2) continue;
+    const staging = `${dest}.${process.pid}.tmp`;
+    fs.copyFileSync(src, staging);
+    if (process.platform !== 'win32') fs.chmodSync(staging, 0o755);
+    fs.utimesSync(staging, from.atimeMs / 1000, from.mtimeMs / 1000);
+    fs.renameSync(staging, dest);
+  }
+  return path.join(destDir, binName);
+}
+
+/** The executable to run: the local copy of the installed solver. */
+function solverCommand(): string {
+  return ensureLocalCopy(ASTAP_DIR, RUN_DIR, BIN_NAME);
+}
+
+/** True for a failure to start the process at all (ENOENT, EACCES, ...), as opposed to the program running and failing. */
+function isSpawnFailure(err: unknown): err is NodeJS.ErrnoException {
+  const e = err as NodeJS.ErrnoException | null;
+  return !!e && typeof e.code === 'string' && typeof e.syscall === 'string' && e.syscall.startsWith('spawn');
+}
 
 /** The CLI zip for this machine, or null when ASTAP publishes none. */
 export function binaryUrlForPlatform(platform = process.platform, arch = process.arch): string | null {
@@ -244,8 +293,19 @@ async function installBinary(workDir: string, setProgress: (f: number) => void):
   }
   if (process.platform !== 'win32') fs.chmodSync(BIN_PATH, 0o755);
   // Prove it runs before calling it installed.
-  const { stdout, stderr } = await run(BIN_PATH, ['-h'], 20_000).catch(e => ({ stdout: String(e.stdout ?? ''), stderr: String(e.stderr ?? '') }));
-  if (!/ASTAP/i.test(stdout + stderr)) {
+  let output: { stdout: string; stderr: string };
+  try {
+    output = await run(solverCommand(), ['-h'], 20_000).catch(e => {
+      // Printing its help and exiting non-zero is still a solver that runs. Failing to start is not.
+      if (isSpawnFailure(e)) throw e;
+      return { stdout: String(e.stdout ?? ''), stderr: String(e.stderr ?? '') };
+    });
+  } catch (err) {
+    fs.rmSync(BIN_PATH, { force: true });
+    const code = isSpawnFailure(err) ? ` (${err.code})` : '';
+    throw new Error(`The downloaded solver could not be started on this computer${code}`);
+  }
+  if (!/ASTAP/i.test(output.stdout + output.stderr)) {
     fs.rmSync(BIN_PATH, { force: true });
     throw new Error('The downloaded solver did not start on this computer');
   }
@@ -396,14 +456,27 @@ async function solveNow(input: SolveInput, hint: SolveHint): Promise<Wcs> {
     }
     attempts.push(['-fov', '0']);
 
+    let command: string;
+    try {
+      command = solverCommand();
+    } catch (err) {
+      log.error(`[astap] could not prepare the solver: ${err instanceof Error ? err.message : String(err)}`);
+      throw new SolveFailedError('The plate solver could not be prepared on this computer.', 'error');
+    }
+
     let wcs: Wcs | null = null;
     let stdout = '';
     for (const [i, fov] of attempts.entries()) {
       const iniPath = path.join(work, 'out.ini');
       fs.rmSync(iniPath, { force: true });
       try {
-        ({ stdout } = await run(BIN_PATH, [...base, ...position, ...fov], i < attempts.length - 1 ? HINTED_TIMEOUT_MS : SOLVE_TIMEOUT_MS));
+        ({ stdout } = await run(command, [...base, ...position, ...fov], i < attempts.length - 1 ? HINTED_TIMEOUT_MS : SOLVE_TIMEOUT_MS));
       } catch (err) {
+        // A solver that cannot be started is a broken install, not "no solution": say so.
+        if (isSpawnFailure(err)) {
+          log.error(`[astap] could not start the solver: ${err.message}`);
+          throw new SolveFailedError('The plate solver could not be started on this computer.', 'error');
+        }
         // ASTAP exits non-zero when it finds no solution; the .ini still tells us.
         stdout = childProcessOutput(err, 'stdout') ?? '';
       }

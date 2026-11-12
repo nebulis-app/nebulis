@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useSunWording } from './solarObjectContext';
 import { ArrowRight, ChevronDown, ChevronRight } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { nightSafeColor } from '../../lib/nightSafeColor';
@@ -49,6 +50,7 @@ export const MediaGroupSection = memo(function MediaGroupSection({
   group, items, groupBy, tab, size, showHeader, onOpen, onToggleFavorite, onMarkProcessed, onMarkUnprocessed, fitsHidden = false, onToggleFits, onShowAllSubs, list,
 }: Props) {
   const { t } = useTranslation('library');
+  const sun = useSunWording();
   const { isDark, isNight } = useTheme();
 
   const { pictures, fitsFiles, subs, projects, telescopes } = useMemo(() => {
@@ -65,7 +67,7 @@ export const MediaGroupSection = memo(function MediaGroupSection({
     };
   }, [items, tab]);
 
-  const title = groupTitle(group, groupBy, t);
+  const title = groupTitle(group, groupBy, (key, opts) => t(key, { ...opts, ...sun }));
   // The night page that owns this group's files. A group can span variants, so
   // use the object a file in it really lives under.
   const nightObjectId = items.find(i => i.kind !== 'processed' && i.kind !== 'project')?.objectId ?? items[0]?.objectId;
@@ -108,7 +110,7 @@ export const MediaGroupSection = memo(function MediaGroupSection({
                   : 'text-accent-600 ring-accent-500/40 hover:bg-accent-500/10'
               }`}
             >
-              {t('objectMedia.group.openNight')}
+              {t('objectMedia.group.openNight', sun)}
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           )}

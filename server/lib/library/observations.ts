@@ -1268,16 +1268,21 @@ export function getLocalObservations() {
   for (const obj of objects) {
     const objectId = obj.objectId;
     const objDir = path.join(LIBRARY_DIR, obj.folderName || objectId);
-    if (!fs.existsSync(objDir)) continue;
+    // A linked-only object has no managed folder at all: its files are `libraryFiles` rows pointing at the user's own
+    // drive. Skipping the object here left every night of a linked folder off the calendar until something (a
+    // processed image) happened to create the folder. Skip only the disk walk, as getLocalSessions does.
+    const hasManagedDir = fs.existsSync(objDir);
 
     // Layout-aware: a nested object keeps its files inside per-session
     // directories, so an object-level readdir would report it as having no
     // files at all and it would show up empty on the calendar.
-    const entries = listObjectFiles(objDir, getObjectLayout(objectId));
+    const entries = hasManagedDir ? listObjectFiles(objDir, getObjectLayout(objectId)) : [];
     const identity = resolverFor(objectId);
-    // reconcileStaleSessionDates parses bare filenames, so it takes basenames.
-    try { reconcileStaleSessionDates(objectId, entries.map(e => e.fileName)); } catch { /* best-effort */ }
-    try { reconcileSessionTelescopesFromFiles(objectId); } catch { /* best-effort */ }
+    if (hasManagedDir) {
+      // reconcileStaleSessionDates parses bare filenames, so it takes basenames.
+      try { reconcileStaleSessionDates(objectId, entries.map(e => e.fileName)); } catch { /* best-effort */ }
+      try { reconcileSessionTelescopesFromFiles(objectId); } catch { /* best-effort */ }
+    }
     const sessionRows = stmts.getSessions.all(objectId);
     const sessions = sessionRows.map(r => r.date);
     // User-crowned per-session preview wins over the object-level thumbnail.
@@ -1360,7 +1365,42 @@ export function getLocalObservations() {
       }
     }
 
+    // Linked (non-copied) files: a libraryFiles row is their only representation, so the walk above never saw them.
+    // Same rules as getLocalSessions: the row's role is the type, its date is already the observing night, and a
+    // night the user deleted stays off.
+    const deletedDates = new Set(stmts.getDeletedSessions.all(objectId).map(r => r.date));
+    for (const row of getLibraryFilesForObject(objectId)) {
+      if (!row.sourceId || row.missingSince) continue;
+      const date = sessionDateForRow(row);
+      if (!date || deletedDates.has(date)) continue;
+      const parsed = parseFilename(row.fileName);
+      const isThumbnail = row.role === 'thumbnail' || parsed.isThumbnail;
+      if (isThumbnail) continue;
+      let s = sessionMap.get(date);
+      if (!s) {
+        s = { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null, mosaicPreviewFile: null, stackedImageIsCheap: false };
+        sessionMap.set(date, s);
+      }
+      s.fileCount++;
+      const type = row.role === 'stacked' || row.role === 'sub' || row.role === 'video' ? row.role : parsed.type;
+      if (parsed.timestamp) s.timestamps.push(parsed.timestamp);
+      if (type === 'stacked') s.stackedKeys.add(row.relPath.slice(0, row.relPath.length - path.extname(row.fileName).length));
+      if (type === 'sub') s.subFrameCount++;
+      if (getFileCategory(row.fileName) === 'fits') s.fitsCount++;
+      const ext = parsed.extension?.toLowerCase();
+      const isViewableImage = (ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.tif' || ext === '.tiff')
+        && !isDwarfInternalArtifact(row.fileName);
+      const isCheapImage = ext === '.jpg' || ext === '.jpeg';
+      if (type === 'stacked' && isViewableImage && (!s.stackedImageFile || (isCheapImage && !s.stackedImageIsCheap))) {
+        // Already the full '@src/<id>/...' path, not object-relative.
+        s.stackedImageFile = row.relPath;
+        s.stackedImageIsCheap = isCheapImage;
+      }
+    }
+
     const folderName = obj.folderName || objectId;
+    // A managed file's path is object-relative and needs the folder in front; a linked file's is already complete.
+    const libPathOf = (file: string): string => (file.startsWith(`${LINKED_SOURCE_DIR_NAME}/`) ? file : `${folderName}/${file}`);
 
     const sessionRowByDate = new Map(sessionRows.map(r => [r.date, r]));
     for (const [date, session] of sessionMap) {
@@ -1401,10 +1441,10 @@ export function getLocalObservations() {
           // The combined mosaic preview beats a panel stack: it is the only
           // image that shows every panel of the capture.
           if (session.mosaicPreviewFile) {
-            return cardUrlFor(folderName + '/' + session.mosaicPreviewFile);
+            return cardUrlFor(libPathOf(session.mosaicPreviewFile));
           }
           if (session.stackedImageFile) {
-            return cardUrlFor(folderName + '/' + session.stackedImageFile);
+            return cardUrlFor(libPathOf(session.stackedImageFile));
           }
           return `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/thumbnail`;
         })(),

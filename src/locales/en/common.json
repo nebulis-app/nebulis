@@ -29,12 +29,12 @@
   },
   "auth": {
     "title": "Sign in to Nebulis",
-    "subtitle": "Sign in with your account for this server. Your library stays on this machine.",
     "username": "Username",
     "usernamePlaceholder": "Your username",
     "password": "Password",
     "signIn": "Sign in",
     "signingIn": "Signing in…",
+    "forgotPassword": "Forgot your password?",
     "loginFailed": "That username and password don't match. Try again."
   },
   "onboarding": {

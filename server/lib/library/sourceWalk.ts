@@ -14,6 +14,7 @@ import fs from 'fs';
 import path from 'path';
 import { withDeadline } from '../deadline.js';
 import { classifyImportFile, countSkip, summarizeSkips, type ImportSkipSummary, type SkipTally } from './importFilter.js';
+import { isCalibrationFolderName } from './calibrationFolders.js';
 
 // Matches folderScan.ts's existing per-object MAX_DEPTH (8) — a real
 // astrophotography library is well under this. This walk has no per-object
@@ -85,6 +86,9 @@ export interface SourceWalkResult {
    *  posix-relative to the root. Reported rather than silently swallowed, same
    *  reasoning as an unreadable object folder elsewhere in the importer. */
   unreadableDirs: string[];
+  /** Folders named like calibration data (Darks, Flats, Bias, CALI_FRAME, ...), posix-relative to the root. Only the
+   *  outermost of a nested pair is listed. The Calibration Library reads these in place. */
+  calibrationDirs: string[];
 }
 
 /** Walk `rootPath`, classifying every real file with `classifyImportFile` under
@@ -94,6 +98,7 @@ export async function walkSource(rootPath: string, settings: Record<string, unkn
   const files: WalkedSourceFile[] = [];
   const skipped: SkipTally = new Map();
   const unreadableDirs: string[] = [];
+  const calibrationDirs: string[] = [];
   let truncated = false;
   // Only the file-count cap stops the whole walk. A branch that is too deep is
   // skipped on its own, so one deep folder does not hide everything after it.
@@ -107,7 +112,7 @@ export async function walkSource(rootPath: string, settings: Record<string, unkn
 
   let sinceYield = 0;
 
-  const visit = async (absDir: string, relDir: string, depth: number): Promise<void> => {
+  const visit = async (absDir: string, relDir: string, depth: number, inCalibration: boolean): Promise<void> => {
     if (stopped) return;
 
     let real: fs.Stats;
@@ -157,7 +162,9 @@ export async function walkSource(rootPath: string, settings: Record<string, unkn
         // be linked once per frame.
         if (/^thumbnails?$/i.test(entry.name) && settings.archiveAllFiles !== true) continue;
         if (depth >= MAX_DEPTH) { truncated = true; depthLimited = true; continue; }
-        await visit(absPath, relPath, depth + 1);
+        const isCalibration = !inCalibration && isCalibrationFolderName(entry.name);
+        if (isCalibration) calibrationDirs.push(relPath);
+        await visit(absPath, relPath, depth + 1, inCalibration || isCalibration);
         continue;
       }
       if (!isFile) continue;
@@ -181,7 +188,7 @@ export async function walkSource(rootPath: string, settings: Record<string, unkn
     }
   };
 
-  await visit(rootPath, '', 0);
+  await visit(rootPath, '', 0, false);
 
-  return { files, truncated, depthLimited, skipped: summarizeSkips(skipped), unreadableDirs };
+  return { files, truncated, depthLimited, skipped: summarizeSkips(skipped), unreadableDirs, calibrationDirs };
 }

@@ -1,9 +1,11 @@
 {
   "calibrations": {
+    "linkedNote": "Rechtstreeks gelezen uit je gekoppelde map. Nebulis wijzigt of verwijdert deze bestanden nooit.",
     "pageTitle": "Kalibraties",
     "pageSubtitle": "Bias-, dark- en flatframes van je telescopen, gegroepeerd op belichtingstijd, binning, gain en temperatuur.",
     "scope": {
       "all": "Alle telescopen",
+      "linked": "{{name}} (gekoppelde map)",
       "unassigned": "Niet toegewezen",
       "deleted": "Verwijderde telescoop",
       "filterLabel": "Kalibratieframes filteren op telescoop",
@@ -1331,7 +1333,9 @@
     "refreshDaily": "Elke dag",
     "refreshWeekly": "Elke week",
     "refreshOfflineHint": "Als de schijf of netwerkshare niet bereikbaar is, wordt de controle overgeslagen en verandert er niets.",
-    "refreshChangeLater": "Je kunt dit op elk moment wijzigen via Instellingen → Opslag → Gekoppelde mappen."
+    "refreshChangeLater": "Je kunt dit op elk moment wijzigen via Instellingen → Opslag → Gekoppelde mappen.",
+    "analyzeFrames": "De sub-frames 's nachts meten",
+    "analyzeFramesHint": "Beoordeelt elk ruw frame op wolken, sterrensporen en zachte focus tijdens het nachtelijke onderhoud, zodat een nacht klaar is als je hem opent. Een grote map kan meerdere nachten nodig hebben."
   },
   "linkedFilesChoice": {
     "label_one": "Ook {{count}} oorspronkelijk bestand ({{size}}) van de schijf verwijderen",
@@ -1342,6 +1346,7 @@
     "nights": {
       "col": {
         "night": "Nacht",
+        "day": "Dag",
         "pictures": "Afbeeldingen",
         "frames": "Frames",
         "integration": "Integratie",
@@ -1349,11 +1354,15 @@
       },
       "pictures_one": "{{count}} afbeelding",
       "pictures_other": "{{count}} afbeeldingen",
-      "open": "Nacht openen"
+      "open": "Nacht openen",
+      "openDay": "Dag openen",
+      "showSettings": "{{count}} belichtingsinstellingen tonen",
+      "hideSettings": "Belichtingsinstellingen verbergen"
     },
     "subNights": {
       "open": "Frames openen",
       "back": "Alle nachten",
+      "backDays": "Alle dagen",
       "empty": "Nog geen subframes.",
       "emptyHint": "Gebruik “Synchroniseer alle subframes” in het …-menu bovenaan de pagina om ze van je telescoop te halen."
     },
@@ -1368,6 +1377,7 @@
       "processed": "Bewerkt",
       "telescope": "Telescoop",
       "nights": "Nachten",
+      "days": "Dagen",
       "sub": "Subframes",
       "project": "Projecten",
       "video": "Video's"
@@ -1381,6 +1391,7 @@
     },
     "groupBy": {
       "night": "Nacht",
+      "night_sun": "Dag",
       "telescope": "Telescoop",
       "filter": "Filter",
       "type": "Type",
@@ -1415,6 +1426,7 @@
       "lightFilter": "Filter",
       "format": "Formaat",
       "night": "Nacht",
+      "night_sun": "Dag",
       "favoritesOnly": "Alleen favorieten",
       "favorites": "Favorieten",
       "clear": "Filters wissen",
@@ -1427,12 +1439,15 @@
       "showFitsShort": "Tonen",
       "fitsFiles": "FITS-bestanden",
       "across": "Over meerdere nachten",
+      "across_sun": "Over meerdere dagen",
       "projects": "Projecten",
       "all": "Alle afbeeldingen",
       "noNight": "Geen nacht",
+      "noNight_sun": "Geen dag",
       "noTelescope": "Onbekende telescoop",
       "noFilter": "Geen filter",
       "openNight": "Nacht",
+      "openNight_sun": "Dag",
       "showAllSubs": "Alles tonen",
       "frames_one": "{{count}} frame",
       "frames_other": "{{count}} frames",

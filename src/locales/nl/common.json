@@ -29,12 +29,12 @@
   },
   "auth": {
     "title": "Inloggen bij Nebulis",
-    "subtitle": "Log in met je account voor deze server. Je bibliotheek blijft op deze computer.",
     "username": "Gebruikersnaam",
     "usernamePlaceholder": "Je gebruikersnaam",
     "password": "Wachtwoord",
     "signIn": "Inloggen",
     "signingIn": "Inloggen...",
+    "forgotPassword": "Wachtwoord vergeten?",
     "loginFailed": "Die gebruikersnaam en dit wachtwoord komen niet overeen. Probeer het opnieuw."
   },
   "onboarding": {

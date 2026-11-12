@@ -178,6 +178,7 @@
       "opticsAutoNone": "non détecté",
       "opticsSource": {
         "manual": "Choisi pour cette nuit",
+        "manual_sun": "Choisi pour ce jour",
         "fits": "Déduit de la focale inscrite dans les FITS",
         "only": "Seule configuration du télescope"
       }
@@ -199,6 +200,7 @@
     "conditionsPanel": {
       "title": "Conditions",
       "empty": "Aucune condition n'a été enregistrée pour cette nuit. La météo est récupérée pour la position de la session lors de son importation.",
+      "empty_sun": "Aucune condition n'a été enregistrée pour ce jour. La météo est récupérée pour la position de la session lors de son importation.",
       "cloudClear": "Dégagé",
       "cloudMostlyClear": "Plutôt dégagé",
       "cloudBroken": "Nuageux",
@@ -267,11 +269,13 @@
       "setAsGalleryImage": "Définir comme image de galerie",
       "delete": "Supprimer",
       "combinesNights": "Combine {{count}} nuits : {{list}}",
+      "combinesNights_sun": "Combine {{count}} jours : {{list}}",
       "addMore": "Ajouter d'autres",
       "moveToImages": "Marquer comme non traité"
     },
     "nightPanel": {
       "title": "Cette nuit-là",
+      "title_sun": "Ce jour-là",
       "imaged": "Capturé {{range}}",
       "cloud": "{{label}} · {{percent}}% de nuages",
       "moon": "Lune {{percent}}%"
@@ -329,6 +333,7 @@
       "markProcessedConfirm": "Marquer comme traité",
       "unmarkProcessedTitle": "Marquer comme non traité ?",
       "unmarkProcessedMessage": "L'image quitte Traités pour revenir dans les Images de cette nuit. Rien n'est supprimé.",
+      "unmarkProcessedMessage_sun": "L'image quitte Traités pour revenir dans les Images de ce jour. Rien n'est supprimé.",
       "unmarkProcessedConfirm": "Marquer comme non traité"
     },
     "fitsHeaderModal": {
@@ -381,7 +386,9 @@
       "notesLabel": "Notes",
       "notesPlaceholder": "Notes de traitement, logiciel utilisé, temps d'intégration…",
       "combineMultipleNights": "Combiner plusieurs nuits",
+      "combineMultipleNights_sun": "Combiner plusieurs jours",
       "whichNightsQuestion": "Quelles nuits ce stack combine-t-il ?",
+      "whichNightsQuestion_sun": "Quels jours ce stack combine-t-il ?",
       "softwarePlaceholder": "Logiciel utilisé (facultatif)",
       "uploadFailed": "Échec de l'envoi",
       "uploading": "Envoi en cours…",

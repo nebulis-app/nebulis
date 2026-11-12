@@ -569,6 +569,37 @@ test.describe('Linked folders', () => {
     await expect(page.getByText('No folders are linked yet.')).toBeVisible();
   });
 
+  test('settings: a folder linked with sub-frames can be measured at night, one without cannot', async ({ page }) => {
+    const withSubs = { ...SOURCE, id: 'src_1', importOptions: JSON.stringify({ importSubFrames: true, importFits: true }) };
+    const withoutSubs = { ...SOURCE, id: 'src_2', label: 'Stacks only', rootPath: '/data/Stacks', importOptions: JSON.stringify({ importSubFrames: false }) };
+    let patched: Record<string, unknown> | null = null;
+    await page.route('**/api/library/sources', r => r.fulfill(json(ok({ sources: [withSubs, withoutSubs] }))));
+    await page.route('**/api/library/sources/src_1', async r => {
+      if (r.request().method() === 'PATCH') {
+        patched = r.request().postDataJSON() as Record<string, unknown>;
+        await r.fulfill(json(ok({ id: 'src_1', ...patched })));
+      } else {
+        await r.fallback();
+      }
+    });
+
+    await page.goto('/settings?tab=storage&section=linked');
+    await dismissWhatsNew(page);
+
+    // The second folder has no sub-frames to measure, so its dialog does not offer it.
+    await page.getByRole('button', { name: 'Edit' }).last().click();
+    await expect(page.getByRole('textbox', { name: 'Name' })).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: /Measure its sub-frames at night/ })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Cancel' }).click();
+
+    await page.getByRole('button', { name: 'Edit' }).first().click();
+    const box = page.getByRole('checkbox', { name: /Measure its sub-frames at night/ });
+    await expect(box).not.toBeChecked();
+    await box.check();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect.poll(() => patched).toMatchObject({ analyzeFrames: true });
+  });
+
   test('settings: an unreachable folder is called out and nothing looks lost', async ({ page }) => {
     await page.route('**/api/library/sources', r => r.fulfill(json(ok({ sources: [{ ...SOURCE, offline: true }] }))));
     await page.goto('/settings?tab=storage&section=linked');

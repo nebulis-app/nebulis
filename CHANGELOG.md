@@ -1,4 +1,20 @@
 # Changelog
+## 2.2.3 (314) - November 12th, 2026
+### New
+- **Exposure settings within a night:** a night on the Nights tab shot at more than one exposure time, such as 30 s and 15 s, can be opened into one row per setting, each with its own frames and integration time. Nights shot at one setting look as before. Splitting by gain is not done yet.
+- **Days for the Sun:** on the Sun's object page the Nights tab, its column, its group headings and filters say Days. On its observation page the day panel, the "no conditions" message, the telescope setup note, and the combine-days wording say day too. Frame quality and Export for stacking still describe nights, because they are about the night sky.
+- **Measure sub-frames at night:** a linked folder with sub-frames can be set to have its raw frames scored (clouds, star trails, soft focus) during the nightly maintenance. Choose it on the last step of linking, or later in **Settings -> Storage -> Linked folders -> Edit**. It gives way to an import and carries on the next night, and a large folder can take several nights to finish.
+- **Calibration frames in a linked folder:** darks, flats, bias and `CALI_FRAME` folders inside a linked folder now show in the Calibration Library, read where they are, and can be downloaded and used by Export for stacking. Nothing is copied, and Nebulis never deletes them, so you no longer need to mount the telescope's storage just to read calibration data. A folder you linked earlier shows its frames after its next rescan.
+- **Linked folders, Remove now:** a folder that reports missing files has a Remove now link. It scans again and drops the index entries for files still missing, without waiting 24 hours. Your files on disk are never touched.
+
+### Updated
+- **Object page tab order:** All, Nights, Subframes, Processed, Projects, following the order things happen.
+- **Missing files in a linked folder:** the notice and Help now say a missing file stays in the index for 24 hours and is removed on a scan after that, instead of "until a second scan".
+
+### Fixed
+- **Annotate solver on a Docker data folder from your Mac:** when the data folder is shared from the host, such as an external exFAT drive, the plate solver downloaded but would not start, so Annotate never got exact positions and the install failed every time. Nebulis now runs the solver from a copy inside the container, keeping the download and the star database on your data folder, and says so plainly if the solver cannot be started. ([#42](https://github.com/nebulis-app/nebulis/issues/42), thanks to Brian French)
+- **Linked folders now show on the Observations calendar:** a folder you linked had its objects and observations in the library but none of its nights on the calendar, until you added a processed image to the object. Every night of a linked folder now appears, with its file counts and a picture.
+
 ## 2.2.2 (312) - November 11th, 2026
 ### Fixed
 - **Settings would not save:** saving any setting failed with "Too small: expected array to have exactly 288 items" on a new install, where no visible-sky map is set. Settings now save. A sky map, location or minimum altitude you change on an observing site also reaches Settings and the phone apps straight away; before, they kept showing the old values until Nebulis restarted.

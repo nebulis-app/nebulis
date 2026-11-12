@@ -1,9 +1,11 @@
 {
   "calibrations": {
+    "linkedNote": "Se lee directamente de tu carpeta vinculada. Nebulis nunca modifica ni elimina estos archivos.",
     "pageTitle": "Calibraciones",
     "pageSubtitle": "Tomas de bias, dark y flat de tus telescopios, agrupadas por exposición, binning, ganancia y temperatura.",
     "scope": {
       "all": "Todos los telescopios",
+      "linked": "{{name}} (carpeta vinculada)",
       "unassigned": "Sin asignar",
       "deleted": "Telescopio eliminado",
       "filterLabel": "Filtrar las tomas de calibración por telescopio",
@@ -1331,7 +1333,9 @@
     "refreshDaily": "Cada día",
     "refreshWeekly": "Cada semana",
     "refreshOfflineHint": "Si la unidad o el recurso compartido no está disponible, se omite esa comprobación y no cambia nada.",
-    "refreshChangeLater": "Puedes cambiarlo cuando quieras en Ajustes, en Almacenamiento y luego Carpetas vinculadas."
+    "refreshChangeLater": "Puedes cambiarlo cuando quieras en Ajustes, en Almacenamiento y luego Carpetas vinculadas.",
+    "analyzeFrames": "Medir sus subimágenes por la noche",
+    "analyzeFramesHint": "Puntúa cada imagen en bruto (nubes, trazos de estrellas, enfoque suave) durante el mantenimiento nocturno, para que una noche esté lista al abrirla. Una carpeta grande puede tardar varias noches."
   },
   "linkedFilesChoice": {
     "label_one": "Eliminar también {{count}} archivo original ({{size}}) del disco",
@@ -1342,6 +1346,7 @@
     "nights": {
       "col": {
         "night": "Noche",
+        "day": "Día",
         "pictures": "Imágenes",
         "frames": "Fotogramas",
         "integration": "Integración",
@@ -1349,11 +1354,15 @@
       },
       "pictures_one": "{{count}} imagen",
       "pictures_other": "{{count}} imágenes",
-      "open": "Abrir la noche"
+      "open": "Abrir la noche",
+      "openDay": "Abrir el día",
+      "showSettings": "Mostrar los {{count}} ajustes de exposición",
+      "hideSettings": "Ocultar los ajustes de exposición"
     },
     "subNights": {
       "open": "Abrir fotogramas",
       "back": "Todas las noches",
+      "backDays": "Todos los días",
       "empty": "Aún no hay subtomas.",
       "emptyHint": "Usa «Sincronizar todas las subtomas» en el menú … de la parte superior de la página para traerlas desde tu telescopio."
     },
@@ -1368,6 +1377,7 @@
       "processed": "Procesadas",
       "telescope": "Telescopio",
       "nights": "Noches",
+      "days": "Días",
       "sub": "Subtomas",
       "project": "Proyectos",
       "video": "Vídeos"
@@ -1381,6 +1391,7 @@
     },
     "groupBy": {
       "night": "Noche",
+      "night_sun": "Día",
       "telescope": "Telescopio",
       "filter": "Filtro",
       "type": "Tipo",
@@ -1415,6 +1426,7 @@
       "lightFilter": "Filtro",
       "format": "Formato",
       "night": "Noche",
+      "night_sun": "Día",
       "favoritesOnly": "Solo favoritas",
       "favorites": "Favoritas",
       "clear": "Quitar filtros",
@@ -1427,12 +1439,15 @@
       "showFitsShort": "Mostrar",
       "fitsFiles": "Archivos FITS",
       "across": "Varias noches",
+      "across_sun": "Varios días",
       "projects": "Proyectos",
       "all": "Todas las imágenes",
       "noNight": "Sin noche",
+      "noNight_sun": "Sin día",
       "noTelescope": "Telescopio desconocido",
       "noFilter": "Sin filtro",
       "openNight": "Noche",
+      "openNight_sun": "Día",
       "showAllSubs": "Mostrar todas",
       "frames_one": "{{count}} toma",
       "frames_other": "{{count}} tomas",

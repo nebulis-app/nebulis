@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { useSunWording } from '../objectMedia/solarObjectContext';
 import { Upload, ImagePlus, Crown, Download, Star, Trash2, Loader2, FileDown, Layers, FolderOutput } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { isRenderableProcessed, processedFormatLabel } from '../../lib/processedFormats';
@@ -52,6 +53,7 @@ export function ProcessedImagesGrid({
 }) {
   const { isDark } = useTheme();
   const { t } = useTranslation('observations');
+  const sun = useSunWording();
 
   return (
     <div className={`rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
@@ -289,7 +291,7 @@ export function ProcessedImagesGrid({
                     </p>
                     {img.runDates && img.runDates.length > 1 && (
                       <span
-                        title={t('observationDetail.processedImagesGrid.combinesNights', { count: img.runDates.length, list: img.runDates.join(', ') })}
+                        title={t('observationDetail.processedImagesGrid.combinesNights', { count: img.runDates.length, list: img.runDates.join(', '), ...sun })}
                         className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[0.5625rem] font-medium ${
                           isDark ? 'bg-accent-500/10 text-accent-400' : 'bg-accent-50 text-accent-600'
                         }`}

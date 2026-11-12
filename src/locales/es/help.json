@@ -568,7 +568,7 @@
     "offlineTerm": "Carpetas sin conexión",
     "offlineDesc": "Si no se puede acceder a la unidad o al recurso compartido, la carpeta se marca como inaccesible y no cambia nada. Vuelve a conectarla y analiza de nuevo.",
     "missingTerm": "Archivos que faltan",
-    "missingDesc": "Un archivo que falta permanece en el índice hasta que un segundo análisis confirma que ya no está, de modo que un análisis con la carpeta a medio montar no vacía tu biblioteca.",
+    "missingDesc": "Un archivo que falta permanece en el índice durante 24 horas. Si un análisis posterior sigue sin encontrarlo, se elimina. La espera evita que un análisis con la carpeta a medio montar vacíe tu biblioteca.",
     "settingsAlt": "Ajustes, Almacenamiento, Carpetas vinculadas, con dos carpetas vinculadas y los botones Volver a analizar, Editar y Desvincular",
     "settingsCaption": "Ajustes → Almacenamiento → Carpetas vinculadas",
     "note": "Los archivos vinculados no se incluyen al archivar en un disco externo. El archivo solo copia los archivos de la propia biblioteca de Nebulis."

@@ -178,6 +178,7 @@
       "opticsAutoNone": "niet gevonden",
       "opticsSource": {
         "manual": "Gekozen voor deze nacht",
+        "manual_sun": "Gekozen voor deze dag",
         "fits": "Afgeleid uit de brandpuntsafstand in de FITS",
         "only": "Enige configuratie van de telescoop"
       }
@@ -199,6 +200,7 @@
     "conditionsPanel": {
       "title": "Omstandigheden",
       "empty": "Voor deze nacht zijn geen omstandigheden vastgelegd. Bij het importeren van de sessie worden weergegevens voor de waarneemlocatie opgehaald.",
+      "empty_sun": "Voor deze dag zijn geen omstandigheden vastgelegd. Bij het importeren van de sessie worden weergegevens voor de waarneemlocatie opgehaald.",
       "cloudClear": "Vrijwel onbewolkt",
       "cloudMostlyClear": "Licht bewolkt",
       "cloudBroken": "Gedeeltelijk bewolkt",
@@ -267,11 +269,13 @@
       "setAsGalleryImage": "Instellen als galerijafbeelding",
       "delete": "Verwijderen",
       "combinesNights": "Combineert {{count}} nachten: {{list}}",
+      "combinesNights_sun": "Combineert {{count}} dagen: {{list}}",
       "addMore": "Meer toevoegen",
       "moveToImages": "Markeren als onbewerkt"
     },
     "nightPanel": {
       "title": "Die nacht",
+      "title_sun": "Die dag",
       "imaged": "Opgenomen {{range}}",
       "cloud": "{{label}} · {{percent}}% bewolking",
       "moon": "Maan {{percent}}%"
@@ -329,6 +333,7 @@
       "markProcessedConfirm": "Markeren als bewerkt",
       "unmarkProcessedTitle": "Markeren als onbewerkt?",
       "unmarkProcessedMessage": "Hiermee wordt de afbeelding van Bewerkt terug naar Afbeeldingen van deze nacht verplaatst. Er wordt niets verwijderd.",
+      "unmarkProcessedMessage_sun": "Hiermee wordt de afbeelding van Bewerkt terug naar Afbeeldingen van deze dag verplaatst. Er wordt niets verwijderd.",
       "unmarkProcessedConfirm": "Markeren als onbewerkt"
     },
     "fitsHeaderModal": {
@@ -381,7 +386,9 @@
       "notesLabel": "Notities",
       "notesPlaceholder": "Notities over de bewerking, gebruikte software, totale belichtingstijd…",
       "combineMultipleNights": "Meerdere nachten combineren",
+      "combineMultipleNights_sun": "Meerdere dagen combineren",
       "whichNightsQuestion": "Van welke nachten zijn opnamen in deze stack gecombineerd?",
+      "whichNightsQuestion_sun": "Van welke dagen zijn opnamen in deze stack gecombineerd?",
       "softwarePlaceholder": "Gebruikte software (optioneel)",
       "uploadFailed": "Uploaden mislukt",
       "uploading": "Uploaden…",

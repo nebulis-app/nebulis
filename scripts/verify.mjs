@@ -8,8 +8,11 @@
  *   npm run verify -- --all     everything above, plus the Mac app's USB/drive-identity XCTests on a Mac (npm run test:mac)
  *   npm run verify -- --mac     only that Mac stage, in addition to the default gate
  *   npm run verify -- --lab     also run the Import Lab's Docker lifecycle: lab:up,
- *                                tier 2 (real browser/server) and tier 3 (real
- *                                Docker SMB/FTP), then lab:down. Needs Docker.
+ *                                tier 2 (real browser/server), tier 3 (real
+ *                                Docker SMB/FTP) and the Docker browser tier (the
+ *                                real image driven through its own UI: linked
+ *                                folders, calibration data), then lab:down.
+ *                                Needs Docker.
  *   npm run test:all             alias for `--all --lab` — every suite this repo has.
  *   npm run verify -- --json    machine-readable report on stdout only
  *   npm run verify -- --only=lint
@@ -114,7 +117,7 @@ function summarize(name, output) {
   if (name === 'mac:usb') {
     return (/test:mac (?:passed|skipped|FAILED)[^\n]*/.exec(output) ?? [''])[0];
   }
-  if (name === 'e2e' || name === 'lab:e2e-real') {
+  if (name === 'e2e' || name === 'lab:e2e-real' || name === 'lab:e2e-docker') {
     const passed = /(\d+) passed/.exec(output);
     const failed = /(\d+) failed/.exec(output);
     return [passed && `${passed[1]} passed`, failed && `${failed[1]} failed`].filter(Boolean).join(', ');
@@ -203,6 +206,12 @@ const STAGES = [
           description: 'Import Lab tier 3 — real Docker SMB/FTP',
           command: () => [npmCmd(), ['run', 'test:lab']],
           timeoutMs: 15 * 60 * 1000,
+        },
+        {
+          name: 'lab:e2e-docker',
+          description: 'Docker lab, browser tier: real browser, real Docker image (linked folders, calibration data)',
+          command: () => [npmCmd(), ['run', 'test:e2e:docker']],
+          timeoutMs: 10 * 60 * 1000,
         },
         {
           name: 'lab:down',

@@ -178,6 +178,7 @@
       "opticsAutoNone": "not detected",
       "opticsSource": {
         "manual": "Chosen for this night",
+        "manual_sun": "Chosen for this day",
         "fits": "Matched from the focal length in the FITS",
         "only": "The telescope's only configuration"
       }
@@ -199,6 +200,7 @@
     "conditionsPanel": {
       "title": "Conditions",
       "empty": "No conditions were recorded for this night. Weather is fetched for the session's location when it is imported.",
+      "empty_sun": "No conditions were recorded for this day. Weather is fetched for the session's location when it is imported.",
       "cloudClear": "Clear",
       "cloudMostlyClear": "Mostly clear",
       "cloudBroken": "Broken cloud",
@@ -267,11 +269,13 @@
       "setAsGalleryImage": "Set as gallery image",
       "delete": "Delete",
       "combinesNights": "Combines {{count}} nights: {{list}}",
+      "combinesNights_sun": "Combines {{count}} days: {{list}}",
       "addMore": "Add more",
       "moveToImages": "Mark as unprocessed"
     },
     "nightPanel": {
       "title": "That night",
+      "title_sun": "That day",
       "imaged": "Imaged {{range}}",
       "cloud": "{{label}} · {{percent}}% cloud",
       "moon": "Moon {{percent}}%"
@@ -329,6 +333,7 @@
       "markProcessedConfirm": "Mark as processed",
       "unmarkProcessedTitle": "Mark as unprocessed?",
       "unmarkProcessedMessage": "This moves the image out of Processed and back into this night's Images. Nothing is deleted.",
+      "unmarkProcessedMessage_sun": "This moves the image out of Processed and back into this day's Images. Nothing is deleted.",
       "unmarkProcessedConfirm": "Mark as unprocessed"
     },
     "fitsHeaderModal": {
@@ -381,7 +386,9 @@
       "notesLabel": "Notes",
       "notesPlaceholder": "Processing notes, software used, integration time…",
       "combineMultipleNights": "Combine multiple nights",
+      "combineMultipleNights_sun": "Combine multiple days",
       "whichNightsQuestion": "Which nights does this stack combine?",
+      "whichNightsQuestion_sun": "Which days does this stack combine?",
       "softwarePlaceholder": "Software used (optional)",
       "uploadFailed": "Upload failed",
       "uploading": "Uploading…",

@@ -9,12 +9,14 @@ import {
   unlinkSource,
   type LinkedSource,
   type RescanResult,
+  linkOptionsOf,
 } from '../../lib/api/librarySources';
 import { formatBytes } from '../../lib/utils';
 import { activeLocale } from '../../lib/formatLocale';
 import { REFRESH_CHOICES, DEFAULT_REFRESH_MINUTES } from '../../lib/linkRefresh';
 import { Modal } from '../ui/Modal';
 import { LinkRefreshChoice } from '../ui/LinkRefreshChoice';
+import { LinkAnalyzeChoice } from '../ui/LinkAnalyzeChoice';
 import { Sec, getInputClass } from './SettingsUI';
 
 /** The edit dialog's working copy of one source. */
@@ -24,6 +26,10 @@ interface EditDraft {
   label: string;
   ongoing: boolean;
   minutes: number;
+  /** Measure the folder's sub-frames during the nightly maintenance. */
+  analyzeFrames: boolean;
+  /** Offered only when the folder was linked with its sub-frames. */
+  canAnalyze: boolean;
   /** Set when the last save failed, shown inside the dialog. */
   error: string | null;
 }
@@ -46,6 +52,7 @@ export function LinkedFoldersSection({ isDark }: { isDark: boolean }) {
 
   const [draft, setDraft] = useState<EditDraft | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, RescanResult>>({});
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -57,15 +64,20 @@ export function LinkedFoldersSection({ isDark }: { isDark: boolean }) {
     setActionError(err instanceof Error ? err.message : t(fallbackKey));
 
   const rescan = useMutation({
-    mutationFn: (id: string) => rescanLinkedSource(id),
+    mutationFn: ({ id, removeMissing }: { id: string; removeMissing?: boolean }) => rescanLinkedSource(id, { removeMissing }),
     onMutate: () => setActionError(null),
-    onSuccess: (res) => { setResults(prev => ({ ...prev, [res.sourceId]: res })); refresh(); },
+    onSuccess: (res) => {
+      setResults(prev => ({ ...prev, [res.sourceId]: res }));
+      setConfirmingRemoveId(null);
+      refresh();
+    },
     onError: err => fail(err, 'linkedFolders.rescanFailed'),
   });
   const save = useMutation({
     mutationFn: (d: EditDraft) => updateLinkedSource(d.id, {
       label: d.label.trim(),
       refreshIntervalMin: d.ongoing ? d.minutes : null,
+      ...(d.canAnalyze ? { analyzeFrames: d.analyzeFrames } : {}),
     }),
     onSuccess: () => { setDraft(null); refresh(); },
     onError: (err, d) => setDraft(cur => (cur && cur.id === d.id
@@ -87,6 +99,8 @@ export function LinkedFoldersSection({ isDark }: { isDark: boolean }) {
       label: s.label,
       ongoing: s.refreshIntervalMin !== null,
       minutes: s.refreshIntervalMin ?? DEFAULT_REFRESH_MINUTES,
+      analyzeFrames: linkOptionsOf(s).analyzeFrames,
+      canAnalyze: linkOptionsOf(s).importSubFrames === true,
       error: null,
     });
   };
@@ -130,7 +144,7 @@ export function LinkedFoldersSection({ isDark }: { isDark: boolean }) {
         ) : (
           <ul className={`rounded-lg border divide-y ${isDark ? 'border-slate-800 divide-slate-800' : 'border-slate-200 divide-slate-100'}`}>
             {sources.map((s: LinkedSource) => {
-              const busy = (rescan.isPending && rescan.variables === s.id)
+              const busy = (rescan.isPending && rescan.variables?.id === s.id)
                 || (unlink.isPending && unlink.variables === s.id);
               const result = results[s.id];
               return (
@@ -162,18 +176,24 @@ export function LinkedFoldersSection({ isDark }: { isDark: boolean }) {
                       {s.missingCount > 0 && !s.offline && (
                         <p className={`mt-1 text-[0.75rem] ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>
                           {t('linkedFolders.missingFiles', { count: s.missingCount })}
+                          {' '}
+                          <button
+                            onClick={() => setConfirmingRemoveId(s.id)}
+                            disabled={busy}
+                            className="underline underline-offset-2 font-medium disabled:opacity-50"
+                          >{t('linkedFolders.removeMissing')}</button>
                         </p>
                       )}
                       {result && <p className={`mt-1 text-[0.75rem] ${subtle}`}>{summaryOf(result)}</p>}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
-                        onClick={() => rescan.mutate(s.id)}
+                        onClick={() => rescan.mutate({ id: s.id })}
                         disabled={busy}
                         title={t('linkedFolders.rescan')}
                         className={`${btn} ${neutral}`}
                       >
-                        <RotateCw className={`w-4 h-4 ${rescan.isPending && rescan.variables === s.id ? 'animate-spin' : ''}`} />
+                        <RotateCw className={`w-4 h-4 ${rescan.isPending && rescan.variables?.id === s.id ? 'animate-spin' : ''}`} />
                         <span className="hidden sm:inline">{t('linkedFolders.rescan')}</span>
                       </button>
                       <button
@@ -192,6 +212,22 @@ export function LinkedFoldersSection({ isDark }: { isDark: boolean }) {
                       ><Unlink className="w-4 h-4" /></button>
                     </div>
                   </div>
+
+                  {confirmingRemoveId === s.id && (
+                    <div className={`rounded-lg px-3.5 py-3 text-[0.75rem] leading-relaxed ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-50 text-slate-700'}`}>
+                      <p>{t('linkedFolders.removeMissingConfirm', { count: s.missingCount })}</p>
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          onClick={() => rescan.mutate({ id: s.id, removeMissing: true })}
+                          disabled={busy}
+                          className={`${btn} ${isDark ? 'bg-red-500/20 text-red-200 hover:bg-red-500/30' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                        >{t('linkedFolders.removeMissingConfirmButton')}</button>
+                        <button onClick={() => setConfirmingRemoveId(null)} className={`${btn} ${neutral}`}>
+                          {t('linkedFolders.removeMissingCancel')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {confirmingId === s.id && (
                     <div className={`rounded-lg px-3.5 py-3 text-[0.75rem] leading-relaxed ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-50 text-slate-700'}`}>
@@ -253,6 +289,14 @@ export function LinkedFoldersSection({ isDark }: { isDark: boolean }) {
               inputCls={getInputClass(isDark)}
               disabled={save.isPending}
             />
+            {draft.canAnalyze && (
+              <LinkAnalyzeChoice
+                checked={draft.analyzeFrames}
+                onChange={analyzeFrames => setDraft({ ...draft, analyzeFrames, error: null })}
+                isDark={isDark}
+                disabled={save.isPending}
+              />
+            )}
           </div>
 
           <div className={`flex items-center justify-between gap-3 px-6 py-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>

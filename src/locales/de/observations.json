@@ -178,6 +178,7 @@
       "opticsAutoNone": "nicht erkannt",
       "opticsSource": {
         "manual": "Für diese Nacht gewählt",
+        "manual_sun": "Für diesen Tag gewählt",
         "fits": "Aus der Brennweite in den FITS ermittelt",
         "only": "Einzige Konfiguration des Teleskops"
       }
@@ -199,6 +200,7 @@
     "conditionsPanel": {
       "title": "Bedingungen",
       "empty": "Für diese Nacht wurden keine Bedingungen erfasst. Wetterdaten werden beim Import für den Standort der Sitzung abgerufen.",
+      "empty_sun": "Für diesen Tag wurden keine Bedingungen erfasst. Wetterdaten werden beim Import für den Standort der Sitzung abgerufen.",
       "cloudClear": "Klar",
       "cloudMostlyClear": "Größtenteils klar",
       "cloudBroken": "Aufgelockerte Bewölkung",
@@ -267,11 +269,13 @@
       "setAsGalleryImage": "Als Galeriebild festlegen",
       "delete": "Löschen",
       "combinesNights": "Kombiniert {{count}} Nächte: {{list}}",
+      "combinesNights_sun": "Kombiniert {{count}} Tage: {{list}}",
       "addMore": "Weitere hinzufügen",
       "moveToImages": "Als unbearbeitet markieren"
     },
     "nightPanel": {
       "title": "Diese Nacht",
+      "title_sun": "Dieser Tag",
       "imaged": "Aufgenommen {{range}}",
       "cloud": "{{label}} · {{percent}}% Bewölkung",
       "moon": "Mond {{percent}}%"
@@ -329,6 +333,7 @@
       "markProcessedConfirm": "Als bearbeitet markieren",
       "unmarkProcessedTitle": "Als unbearbeitet markieren?",
       "unmarkProcessedMessage": "Das Bild wird aus Bearbeitet zurück in die Bilder dieser Nacht verschoben. Es wird nichts gelöscht.",
+      "unmarkProcessedMessage_sun": "Das Bild wird aus Bearbeitet zurück in die Bilder dieses Tages verschoben. Es wird nichts gelöscht.",
       "unmarkProcessedConfirm": "Als unbearbeitet markieren"
     },
     "fitsHeaderModal": {
@@ -381,7 +386,9 @@
       "notesLabel": "Notizen",
       "notesPlaceholder": "Bearbeitungsnotizen, verwendete Software, Belichtungszeit…",
       "combineMultipleNights": "Mehrere Nächte kombinieren",
+      "combineMultipleNights_sun": "Mehrere Tage kombinieren",
       "whichNightsQuestion": "Welche Nächte kombiniert dieser Stack?",
+      "whichNightsQuestion_sun": "Welche Tage kombiniert dieser Stack?",
       "softwarePlaceholder": "Verwendete Software (optional)",
       "uploadFailed": "Hochladen fehlgeschlagen",
       "uploading": "Wird hochgeladen…",

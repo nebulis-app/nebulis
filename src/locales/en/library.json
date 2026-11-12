@@ -1,9 +1,11 @@
 {
   "calibrations": {
+    "linkedNote": "Read from your linked folder where it is. Nebulis never changes or deletes these files.",
     "pageTitle": "Calibrations",
     "pageSubtitle": "Bias, dark and flat frames from your telescopes, grouped by exposure, binning, gain and temperature.",
     "scope": {
       "all": "All telescopes",
+      "linked": "{{name}} (linked folder)",
       "unassigned": "Unassigned",
       "deleted": "Deleted telescope",
       "filterLabel": "Filter calibration frames by telescope",
@@ -1331,7 +1333,9 @@
     "refreshDaily": "Every day",
     "refreshWeekly": "Every week",
     "refreshOfflineHint": "If the drive or share cannot be reached, that check is skipped and nothing changes.",
-    "refreshChangeLater": "Change this any time in Settings, under Storage, then Linked folders."
+    "refreshChangeLater": "Change this any time in Settings, under Storage, then Linked folders.",
+    "analyzeFrames": "Measure its sub-frames at night",
+    "analyzeFramesHint": "Scores each raw frame for clouds, star trails and soft focus during the nightly maintenance, so a night is ready when you open it. A large folder can take several nights to finish."
   },
   "linkedFilesChoice": {
     "label_one": "Also delete {{count}} original file ({{size}}) from disk",
@@ -1342,18 +1346,23 @@
     "nights": {
       "col": {
         "night": "Night",
-        "pictures": "Pictures",
+        "day": "Day",
+        "pictures": "Images",
         "frames": "Frames",
         "integration": "Integration",
         "quality": "Quality"
       },
-      "pictures_one": "{{count}} picture",
-      "pictures_other": "{{count}} pictures",
-      "open": "Open night"
+      "pictures_one": "{{count}} image",
+      "pictures_other": "{{count}} images",
+      "open": "Open night",
+      "openDay": "Open day",
+      "showSettings": "Show {{count}} exposure settings",
+      "hideSettings": "Hide exposure settings"
     },
     "subNights": {
       "open": "Open frames",
       "back": "All nights",
+      "backDays": "All days",
       "empty": "No sub-frames yet.",
       "emptyHint": "Use Sync all sub-frames in the … menu at the top of the page to pull them from your telescope."
     },
@@ -1368,6 +1377,7 @@
       "processed": "Processed",
       "telescope": "Telescope",
       "nights": "Nights",
+      "days": "Days",
       "sub": "Subframes",
       "project": "Projects",
       "video": "Videos"
@@ -1381,6 +1391,7 @@
     },
     "groupBy": {
       "night": "Night",
+      "night_sun": "Day",
       "telescope": "Telescope",
       "filter": "Filter",
       "type": "Type",
@@ -1415,6 +1426,7 @@
       "lightFilter": "Filter",
       "format": "Format",
       "night": "Night",
+      "night_sun": "Day",
       "favoritesOnly": "Favorites only",
       "favorites": "Favorites",
       "clear": "Clear filters",
@@ -1427,12 +1439,15 @@
       "showFitsShort": "Show",
       "fitsFiles": "FITS files",
       "across": "Across nights",
+      "across_sun": "Across days",
       "projects": "Projects",
       "all": "All images",
       "noNight": "No night",
+      "noNight_sun": "No day",
       "noTelescope": "Unknown telescope",
       "noFilter": "No filter",
       "openNight": "Night",
+      "openNight_sun": "Day",
       "showAllSubs": "Show all",
       "frames_one": "{{count}} frame",
       "frames_other": "{{count}} frames",

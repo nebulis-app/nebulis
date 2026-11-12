@@ -234,8 +234,11 @@ export interface CalibrationGroup {
   type: CalibrationFrameType;
   typeLabel: string;
   folderName: string;
+  /** A telescope id, null for the shared bucket, or `@src/<sourceId>` for a linked folder. */
   scope: string | null;
   scopeLabel: string;
+  /** Read in place from a linked folder: it can be browsed, downloaded and used for stacking, but not deleted here. */
+  linked: boolean;
   fileCount: number;
   bytes: number;
   modifiedAt: string | null;
@@ -1468,7 +1471,7 @@ export const toggleImageFavorite = (imagePath: string, isFavorite: boolean) =>
 
 export type MediaKind = 'processed' | 'telescope' | 'sub' | 'project' | 'video';
 export type MediaTabId = MediaKind | 'all';
-export type MediaGroupBy = 'night' | 'telescope' | 'filter' | 'type' | 'none';
+export type MediaGroupBy = 'night' | 'observation' | 'telescope' | 'filter' | 'type' | 'none';
 export type MediaSort = 'newest' | 'oldest' | 'time';
 
 export interface MediaTelescope { id: string; name: string; color: string }

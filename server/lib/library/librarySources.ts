@@ -73,6 +73,8 @@ function toRow(raw: RawSourceRow): LibrarySourceRow {
 export interface LinkImportOptions {
   importSubFrames?: boolean;
   importFits?: boolean;
+  /** Measure this folder's raw sub-frames during the nightly maintenance (frame quality scores). */
+  analyzeFrames?: boolean;
 }
 
 function parseImportOptions(raw: string | null): LinkImportOptions {
@@ -83,6 +85,7 @@ function parseImportOptions(raw: string | null): LinkImportOptions {
     const out: LinkImportOptions = {};
     if (typeof v.importSubFrames === 'boolean') out.importSubFrames = v.importSubFrames;
     if (typeof v.importFits === 'boolean') out.importFits = v.importFits;
+    if (typeof v.analyzeFrames === 'boolean') out.analyzeFrames = v.analyzeFrames;
     return out;
   } catch {
     return {};
@@ -771,7 +774,10 @@ export async function commitSource(rootPath: string, settings: Record<string, un
 
   db.prepare('UPDATE librarySources SET lastScanAt = ?, lastScanStats = ? WHERE id = ?').run(
     new Date().toISOString(),
-    JSON.stringify({ files: filesLinked, objects: inputsByObject.size, bytes: walked.files.reduce((s, f) => s + f.size, 0) }),
+    JSON.stringify({
+      files: filesLinked, objects: inputsByObject.size, bytes: walked.files.reduce((s, f) => s + f.size, 0),
+      calibrationDirs: walked.calibrationDirs,
+    }),
     sourceId,
   );
 
@@ -884,8 +890,21 @@ export function setRefreshInterval(id: string, minutes: number | null): LibraryS
   return row;
 }
 
+/** Switch the nightly frame analysis on or off for one linked folder, keeping its other link options. */
+export function setAnalyzeFrames(id: string, on: boolean): LibrarySourceRow {
+  const row = getLibrarySource(id);
+  if (!row) throw new LinkSourceError('SOURCE_NOT_FOUND', 'That linked folder no longer exists.');
+  const options: LinkImportOptions = { ...parseImportOptions(row.importOptions), analyzeFrames: on };
+  db.prepare('UPDATE librarySources SET importOptions = ? WHERE id = ?').run(JSON.stringify(options), id);
+  const updated = getLibrarySource(id);
+  if (!updated) throw new LinkSourceError('SOURCE_NOT_FOUND', 'That linked folder no longer exists.');
+  return updated;
+}
+
 export interface SourceUpdate {
   label?: string;
+  /** Measure the folder's sub-frames during the nightly maintenance. */
+  analyzeFrames?: boolean;
   /** Minutes between automatic rescans; null switches the source to one-time. */
   refreshIntervalMin?: number | null;
 }
@@ -897,6 +916,7 @@ export function updateSource(id: string, update: SourceUpdate): LibrarySourceRow
     if (!row) throw new LinkSourceError('SOURCE_NOT_FOUND', 'That linked folder no longer exists.');
     if (update.label !== undefined) row = renameSource(id, update.label);
     if (update.refreshIntervalMin !== undefined) row = setRefreshInterval(id, update.refreshIntervalMin);
+    if (update.analyzeFrames !== undefined) row = setAnalyzeFrames(id, update.analyzeFrames);
     return row;
   })();
 }
@@ -987,7 +1007,14 @@ interface StoredLinkedRow {
  * itself is unreadable the source is reported offline and no row is touched.
  * Nothing on the user's disk is ever written.
  */
-export async function rescanSource(id: string, baseSettings: Record<string, unknown>): Promise<RescanSourceResult> {
+export async function rescanSource(
+  id: string,
+  baseSettings: Record<string, unknown>,
+  /** removeMissingNow: the person confirmed "Remove now". Files this scan cannot find are dropped from the index
+   *  at once instead of after the grace period. The safety checks still apply: an offline, truncated or
+   *  unreadable-directory scan never counts a file as gone. */
+  options: { removeMissingNow?: boolean } = {},
+): Promise<RescanSourceResult> {
   const source = getLibrarySource(id);
   if (!source) throw new LinkSourceError('SOURCE_NOT_FOUND', 'That linked folder no longer exists.');
   // Read the tree with the options the link used, not whatever the app-wide
@@ -1099,8 +1126,11 @@ export async function rescanSource(id: string, baseSettings: Record<string, unkn
     // A file already flagged that is *still* gone, and has been for the grace
     // period, is the second strike; one that was flagged and has come back was
     // un-flagged by the upsert above.
-    const { markedMissing, deleted } = markLinkedFilesMissing(gone.map(r => r.relPath), LINKED_ROW_GRACE_MS);
-    result.missing = markedMissing.length;
+    const gonePaths = gone.map(r => r.relPath);
+    const { markedMissing, deleted } = markLinkedFilesMissing(gonePaths, LINKED_ROW_GRACE_MS);
+    // Every gone row is flagged now, so a zero grace deletes the rest.
+    if (options.removeMissingNow) deleted.push(...markLinkedFilesMissing(gonePaths, 0).deleted);
+    result.missing = options.removeMissingNow ? 0 : markedMissing.length;
     result.removed = deleted.length;
     const removedRows = gone.filter(r => deleted.includes(r.relPath));
     pruneEmptySessions(removedRows);
@@ -1114,7 +1144,13 @@ export async function rescanSource(id: string, baseSettings: Record<string, unkn
   // Refreshed on every clean scan, so a top level that is reorganised bit by bit
   // never drifts far enough from the sample to look like a different drive.
   db.prepare('UPDATE librarySources SET lastScanAt = ?, lastScanStats = ?, fingerprint = COALESCE(?, fingerprint) WHERE id = ?').run(
-    now, JSON.stringify({ ...totals, missing: result.missing }), computeRootFingerprint(source.rootPath), id,
+    now,
+    JSON.stringify({
+      ...totals, missing: result.missing,
+      // A scan that could not read everything keeps what the last full one found rather than forgetting it.
+      calibrationDirs: walked.truncated ? safeStats(source.lastScanStats).calibrationDirs ?? walked.calibrationDirs : walked.calibrationDirs,
+    }),
+    computeRootFingerprint(source.rootPath), id,
   );
 
   log.info({ ...result }, '[library-sources] rescanned');

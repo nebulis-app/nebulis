@@ -44,6 +44,7 @@ import {
   countLibraryFilesForObject,
   sessionDateForRow,
 } from './libraryFiles.js';
+import { dropImageFavorites } from './favorites.js';
 import { listObjectFiles, getObjectLayout, setObjectLayout } from './libraryLayout.js';
 import {
   fitsFocalForSession,
@@ -75,6 +76,20 @@ import { sessionLocation, type SessionLocation } from './sessionLocation.js';
 import type { SessionWeather } from '../types/session.js';
 import { isLibraryBusy } from '../libraryBusy.js';
 export type { SessionWeather };
+
+/**
+ * URL of a FITS file's server-rendered picture.
+ *
+ * `t` is the file's mtime. The route serves the JPEG with a day-long `Cache-Control`, and the render's
+ * own name carries no content stamp, so without this a client that had already loaded a frame would
+ * keep the picture it saw before the file was re-downloaded over itself. `v` only moves when the
+ * rendering pipeline changes, so it cannot cover a new frame arriving under the same name. The route
+ * ignores `t`; it is there to make the URL change when the pixels do.
+ */
+function fitsPreviewUrl(libPath: string, mtimeMs: number, size: 'thumb' | 'preview' = 'thumb'): string {
+  const tier = size === 'preview' ? '&size=preview' : '';
+  return `${LIBRARY_API_BASE}/fits-thumbnail?v=${FITS_THUMBNAIL_PIPELINE_VERSION}&t=${Math.round(mtimeMs)}${tier}&path=${encodeURIComponent(libPath)}`;
+}
 
 /**
  * Fetch historical weather for a date from Open-Meteo's archive API.
@@ -1092,7 +1107,7 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
         // rendered yet. `previewUrl` is a larger 1024px tier for full-screen
         // viewing.
         thumbUrl: knownType === 'fits'
-          ? `${LIBRARY_API_BASE}/fits-thumbnail?v=${FITS_THUMBNAIL_PIPELINE_VERSION}&path=${encodeURIComponent(libPath)}`
+          ? fitsPreviewUrl(libPath, stat.mtimeMs)
           : isTiff
             ? `${LIBRARY_API_BASE}/tiff-thumbnail?path=${encodeURIComponent(libPath)}`
             // PNG needs a server-side conversion (a 16-bit PNG from Dwarf
@@ -1102,7 +1117,7 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
               ? `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(libPath)}&v=${Math.round(stat.mtimeMs)}`
               : undefined,
         previewUrl: knownType === 'fits'
-          ? `${LIBRARY_API_BASE}/fits-thumbnail?v=${FITS_THUMBNAIL_PIPELINE_VERSION}&size=preview&path=${encodeURIComponent(libPath)}`
+          ? fitsPreviewUrl(libPath, stat.mtimeMs, 'preview')
           : isTiff
             ? `${LIBRARY_API_BASE}/tiff-thumbnail?size=preview&path=${encodeURIComponent(libPath)}`
             : hasRenderedTier
@@ -1168,14 +1183,14 @@ export function getLocalFiles(objectId: string, sessionDate?: string) {
           ? `${LIBRARY_API_BASE}/video?path=${encodeURIComponent(libPath)}&v=${Math.round(stat.mtimeMs)}`
           : undefined,
         thumbUrl: knownType === 'fits'
-          ? `${LIBRARY_API_BASE}/fits-thumbnail?v=${FITS_THUMBNAIL_PIPELINE_VERSION}&path=${encodeURIComponent(libPath)}`
+          ? fitsPreviewUrl(libPath, stat.mtimeMs)
           : isTiff
             ? `${LIBRARY_API_BASE}/tiff-thumbnail?path=${encodeURIComponent(libPath)}`
             : hasRenderedTier
               ? `${LIBRARY_API_BASE}/file/thumbnail?path=${encodeURIComponent(libPath)}&v=${Math.round(stat.mtimeMs)}`
               : undefined,
         previewUrl: knownType === 'fits'
-          ? `${LIBRARY_API_BASE}/fits-thumbnail?v=${FITS_THUMBNAIL_PIPELINE_VERSION}&size=preview&path=${encodeURIComponent(libPath)}`
+          ? fitsPreviewUrl(libPath, stat.mtimeMs, 'preview')
           : isTiff
             ? `${LIBRARY_API_BASE}/tiff-thumbnail?size=preview&path=${encodeURIComponent(libPath)}`
             : hasRenderedTier
@@ -1268,16 +1283,21 @@ export function getLocalObservations() {
   for (const obj of objects) {
     const objectId = obj.objectId;
     const objDir = path.join(LIBRARY_DIR, obj.folderName || objectId);
-    if (!fs.existsSync(objDir)) continue;
+    // A linked-only object has no managed folder at all: its files are `libraryFiles` rows pointing at the user's own
+    // drive. Skipping the object here left every night of a linked folder off the calendar until something (a
+    // processed image) happened to create the folder. Skip only the disk walk, as getLocalSessions does.
+    const hasManagedDir = fs.existsSync(objDir);
 
     // Layout-aware: a nested object keeps its files inside per-session
     // directories, so an object-level readdir would report it as having no
     // files at all and it would show up empty on the calendar.
-    const entries = listObjectFiles(objDir, getObjectLayout(objectId));
+    const entries = hasManagedDir ? listObjectFiles(objDir, getObjectLayout(objectId)) : [];
     const identity = resolverFor(objectId);
-    // reconcileStaleSessionDates parses bare filenames, so it takes basenames.
-    try { reconcileStaleSessionDates(objectId, entries.map(e => e.fileName)); } catch { /* best-effort */ }
-    try { reconcileSessionTelescopesFromFiles(objectId); } catch { /* best-effort */ }
+    if (hasManagedDir) {
+      // reconcileStaleSessionDates parses bare filenames, so it takes basenames.
+      try { reconcileStaleSessionDates(objectId, entries.map(e => e.fileName)); } catch { /* best-effort */ }
+      try { reconcileSessionTelescopesFromFiles(objectId); } catch { /* best-effort */ }
+    }
     const sessionRows = stmts.getSessions.all(objectId);
     const sessions = sessionRows.map(r => r.date);
     // User-crowned per-session preview wins over the object-level thumbnail.
@@ -1360,7 +1380,42 @@ export function getLocalObservations() {
       }
     }
 
+    // Linked (non-copied) files: a libraryFiles row is their only representation, so the walk above never saw them.
+    // Same rules as getLocalSessions: the row's role is the type, its date is already the observing night, and a
+    // night the user deleted stays off.
+    const deletedDates = new Set(stmts.getDeletedSessions.all(objectId).map(r => r.date));
+    for (const row of getLibraryFilesForObject(objectId)) {
+      if (!row.sourceId || row.missingSince) continue;
+      const date = sessionDateForRow(row);
+      if (!date || deletedDates.has(date)) continue;
+      const parsed = parseFilename(row.fileName);
+      const isThumbnail = row.role === 'thumbnail' || parsed.isThumbnail;
+      if (isThumbnail) continue;
+      let s = sessionMap.get(date);
+      if (!s) {
+        s = { timestamps: [], fileCount: 0, stackedKeys: new Set(), fitsCount: 0, subFrameCount: 0, stackedImageFile: null, mosaicPreviewFile: null, stackedImageIsCheap: false };
+        sessionMap.set(date, s);
+      }
+      s.fileCount++;
+      const type = row.role === 'stacked' || row.role === 'sub' || row.role === 'video' ? row.role : parsed.type;
+      if (parsed.timestamp) s.timestamps.push(parsed.timestamp);
+      if (type === 'stacked') s.stackedKeys.add(row.relPath.slice(0, row.relPath.length - path.extname(row.fileName).length));
+      if (type === 'sub') s.subFrameCount++;
+      if (getFileCategory(row.fileName) === 'fits') s.fitsCount++;
+      const ext = parsed.extension?.toLowerCase();
+      const isViewableImage = (ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.tif' || ext === '.tiff')
+        && !isDwarfInternalArtifact(row.fileName);
+      const isCheapImage = ext === '.jpg' || ext === '.jpeg';
+      if (type === 'stacked' && isViewableImage && (!s.stackedImageFile || (isCheapImage && !s.stackedImageIsCheap))) {
+        // Already the full '@src/<id>/...' path, not object-relative.
+        s.stackedImageFile = row.relPath;
+        s.stackedImageIsCheap = isCheapImage;
+      }
+    }
+
     const folderName = obj.folderName || objectId;
+    // A managed file's path is object-relative and needs the folder in front; a linked file's is already complete.
+    const libPathOf = (file: string): string => (file.startsWith(`${LINKED_SOURCE_DIR_NAME}/`) ? file : `${folderName}/${file}`);
 
     const sessionRowByDate = new Map(sessionRows.map(r => [r.date, r]));
     for (const [date, session] of sessionMap) {
@@ -1401,10 +1456,10 @@ export function getLocalObservations() {
           // The combined mosaic preview beats a panel stack: it is the only
           // image that shows every panel of the capture.
           if (session.mosaicPreviewFile) {
-            return cardUrlFor(folderName + '/' + session.mosaicPreviewFile);
+            return cardUrlFor(libPathOf(session.mosaicPreviewFile));
           }
           if (session.stackedImageFile) {
-            return cardUrlFor(folderName + '/' + session.stackedImageFile);
+            return cardUrlFor(libPathOf(session.stackedImageFile));
           }
           return `${LIBRARY_API_BASE}/objects/${encodeURIComponent(objectId)}/thumbnail`;
         })(),
@@ -1792,6 +1847,7 @@ export function deleteLocalFilesByRelPath(objectId: string, relPaths: string[]):
       fs.unlinkSync(abs);
       deleted++;
       deleteLibraryFileRow(`${folderName}/${relPath}`);
+      dropImageFavorites(`${folderName}/${relPath}`);
     } catch {
       // Already gone, or unreadable. Either way there is nothing more to record.
     }

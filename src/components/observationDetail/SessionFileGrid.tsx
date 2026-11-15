@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Columns, Crown, Download, Heart, ChevronLeft, ChevronRight, FileImage, FolderInput } from 'lucide-react';
+import { Columns, Crown, Download, Star, ChevronLeft, ChevronRight, FileImage, Sparkles } from 'lucide-react';
 import { FitsThumbnail } from '../FitsThumbnail';
 import { useTheme } from '../../hooks/useTheme';
 import type { SessionFile } from '../../types';
@@ -121,6 +121,9 @@ export function SessionFileGrid({
                 ? file.path === sessionImagePath
                 : file.path === stackedImagePath && !sessionImagePath;
               const isImageFile = file.type === 'image' && !file.isThumbnail;
+              // A stack or integration saved as FITS can be a finished picture too. Sub-frames never are: a night
+              // holds hundreds and would flood the Processed tab and the Gallery.
+              const canMarkProcessed = isImageFile || (file.type === 'fits' && file.fileType === 'stacked');
               const compareSlot = compareItems[0]?.key === file.path ? 1 : compareItems[1]?.key === file.path ? 2 : null;
               const isFitsInCompareMode = compareMode && file.type === 'fits';
               return (
@@ -129,7 +132,7 @@ export function SessionFileGrid({
                   // An admin can drag a finished image onto the Processed tab to
                   // mark it processed (see ObservationTabs). Not in compare mode,
                   // where a click selects instead.
-                  draggable={isAdmin && isImageFile && !compareMode}
+                  draggable={isAdmin && canMarkProcessed && !compareMode}
                   onDragStart={e => {
                     e.dataTransfer.setData(SESSION_FILE_DRAG_TYPE, file.path);
                     e.dataTransfer.effectAllowed = 'move';
@@ -181,7 +184,7 @@ export function SessionFileGrid({
 
                     {/* Session image crown badge */}
                     {isSessionImage && isImageFile && (
-                      <div className="absolute top-1 left-1 p-1.5 rounded-lg bg-amber-400/90 text-white pointer-events-none">
+                      <div className="absolute top-1.5 left-1.5 p-1.5 rounded-full bg-amber-400/90 text-white pointer-events-none">
                         <Crown className="w-3.5 h-3.5" />
                       </div>
                     )}
@@ -191,59 +194,60 @@ export function SessionFileGrid({
                       <button
                         onClick={e => { e.stopPropagation(); handleSetSessionImage(file.path); }}
                         disabled={settingSessionImage}
-                        className="absolute top-1 left-1 p-1.5 rounded-lg bg-black/50 text-white/70 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70 hover:text-amber-400"
+                        className="absolute top-1.5 left-1.5 p-1.5 rounded-full bg-black/45 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-black/70 hover:text-amber-400 focus-visible:ring-2 focus-visible:ring-accent-500"
                         title={t('observationDetail.sessionFileGrid.setAsSessionImage')}
                       >
                         <Crown className="w-3.5 h-3.5" />
                       </button>
                     )}
 
-                    {/* Mark as processed (admin, images only, on hover). Beside the crown
-                        so it reads as another per-image action; the drag onto the
-                        Processed tab is the shortcut for the same thing. */}
-                    {isImageFile && isAdmin && !compareMode && (
+                    {/* Mark as processed (admin, on hover). Same place and look as on the
+                        object's All view, left of the star; the drag onto the Processed
+                        tab is the shortcut for the same thing. */}
+                    {canMarkProcessed && isAdmin && !compareMode && (
                       <button
                         onClick={e => { e.stopPropagation(); onMarkProcessed(file.path); }}
-                        className="absolute top-1 left-9 p-1.5 rounded-lg bg-black/50 text-white/70 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-black/70 hover:text-accent-400"
+                        className="absolute top-1.5 right-9 p-1.5 rounded-full bg-black/45 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-accent-500"
                         title={t('observationDetail.sessionFileGrid.markAsProcessed')}
                         aria-label={t('observationDetail.sessionFileGrid.markAsProcessed')}
                       >
-                        <FolderInput className="w-3.5 h-3.5" />
+                        <Sparkles className="w-3.5 h-3.5" />
                       </button>
                     )}
 
-                    {/* Download button (images only, top-right on hover) */}
+                    {/* Download button (images only, on hover), left of the other top-right buttons */}
                     {file.type === 'image' && (
                       <a
                         href={file.downloadUrl}
                         download={file.name}
                         onClick={e => e.stopPropagation()}
-                        className="absolute top-1 right-1 p-1.5 rounded-lg bg-white/20 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/30"
+                        className={`absolute top-1.5 ${canMarkProcessed && isAdmin && !compareMode ? 'right-[66px]' : 'right-9'} p-1.5 rounded-full bg-black/45 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-accent-500`}
                         title={t('observationDetail.sessionFileGrid.download')}
                       >
                         <Download className="w-3.5 h-3.5" />
                       </a>
                     )}
 
-                    {/* Favorite button (images only, bottom-left) */}
+                    {/* Favorite button (images only), top right like the object's All view */}
                     {file.type === 'image' && !file.isThumbnail && (
                       <button
                         onClick={e => {
                           e.stopPropagation();
                           onToggleFavorite(file.path, !imageFavoriteSet.has(file.path));
                         }}
+                        aria-pressed={imageFavoriteSet.has(file.path)}
                         title={imageFavoriteSet.has(file.path) ? t('observationDetail.sessionFileGrid.removeFromFavorites') : t('observationDetail.sessionFileGrid.addToFavorites')}
-                        className={`absolute bottom-1 left-1 p-1.5 rounded-lg transition-all ${
-                          imageFavoriteSet.has(file.path)
-                            ? 'opacity-100 bg-rose-500/90 text-white hover:bg-rose-600'
-                            : 'bg-black/50 text-white/70 opacity-0 group-hover:opacity-100 hover:bg-black/70 hover:text-rose-400'
+                        className={`absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/45 transition-opacity focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-500 ${
+                          imageFavoriteSet.has(file.path) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                         }`}
                       >
-                        <Heart className={`w-3.5 h-3.5 ${imageFavoriteSet.has(file.path) ? 'fill-current' : ''}`} />
+                        <Star className={`w-3.5 h-3.5 ${imageFavoriteSet.has(file.path) ? 'fill-accent-400 text-accent-400' : 'text-white'}`} />
                       </button>
                     )}
 
-                    {/* File type badge (bottom-right, always visible) */}
+                    {/* File type, bottom left like the object's All view: FIT and TIFF are always labeled
+                        (they are not pictures a browser shows as they are), and every type shows a small
+                        dull label on hover. */}
                     {(() => {
                       const ext = file.name.split('.').pop()?.toUpperCase();
                       let label: string | null = null;
@@ -253,9 +257,17 @@ export function SessionFileGrid({
                       else if (ext === 'TIFF' || ext === 'TIF') label = 'TIFF';
                       if (!label) return null;
                       return (
-                        <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[0.5625rem] font-bold tracking-wide bg-black/60 text-white/80 pointer-events-none">
-                          {label}
-                        </div>
+                        <>
+                          {(label === 'FIT' || label === 'TIFF') && (
+                            <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-black/55 px-1.5 py-0.5 font-mono text-[0.5625rem] font-bold tracking-wide text-white/90 group-hover:opacity-0">
+                              {label}
+                            </span>
+                          )}
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/60 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+                          <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-white/10 px-1.5 py-0.5 font-mono text-[0.5625rem] font-medium tracking-wide text-white/50 opacity-0 transition-opacity group-hover:opacity-100">
+                            {label}
+                          </span>
+                        </>
                       );
                     })()}
 

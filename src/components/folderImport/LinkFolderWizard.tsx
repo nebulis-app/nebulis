@@ -17,6 +17,7 @@ import { SkippedNotice } from '../SkippedNotice';
 import { ImportStepIndicator } from '../ImportStepIndicator';
 import { CatalogPicker, ObjectReviewCard, type ObjectEdit } from './ObjectReviewCard';
 import { LinkRefreshChoice } from '../ui/LinkRefreshChoice';
+import { LinkAnalyzeChoice } from '../ui/LinkAnalyzeChoice';
 
 type Phase = 'scanning' | 'review' | 'schedule' | 'linking' | 'done';
 
@@ -80,6 +81,7 @@ export function LinkFolderWizard({
   const [linked, setLinked] = useState<{ objects: number; files: number } | null>(null);
   /** The last screen before linking: index once, or keep the folder up to date on a schedule. */
   const [ongoing, setOngoing] = useState(false);
+  const [analyzeFrames, setAnalyzeFrames] = useState(false);
   const [refreshMinutes, setRefreshMinutes] = useState<number>(DEFAULT_REFRESH_MINUTES);
 
   const card = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
@@ -120,6 +122,7 @@ export function LinkFolderWizard({
         importSubFrames: includeSubframes,
         importFits: includeFits,
         refreshIntervalMin: ongoing ? refreshMinutes : null,
+        analyzeFrames: includeSubframes && analyzeFrames,
       });
     },
     onMutate: () => setPhase('linking'),
@@ -311,6 +314,8 @@ export function LinkFolderWizard({
               isDark={isDark}
               inputCls={inputCls}
             />
+
+            {includeSubframes && <LinkAnalyzeChoice checked={analyzeFrames} onChange={setAnalyzeFrames} isDark={isDark} />}
 
             <p className={`text-xs ${mutedText}`}>{t('linkFolderWizard.refreshChangeLater')}</p>
           </div>

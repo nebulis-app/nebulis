@@ -28,7 +28,8 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
 
   // Library
   { group: 'library', section: 'display', labelKey: 'librarySection.display.cardPictures.label', keywords: 'reference image my telescope images catalog thumbnail hubble dss2 nasa captures object card' },
-  { group: 'library', section: 'display', labelKey: 'librarySection.display.galleryProcessedOnly.label' },
+  { group: 'library', section: 'gallery', labelKey: 'librarySection.display.galleryProcessedOnly.label', keywords: 'gallery processed finished images filter' },
+  { group: 'library', section: 'gallery', labelKey: 'librarySection.display.galleryFavorites.label', keywords: 'gallery favorites favourites starred stars filter' },
   { group: 'library', section: 'display', labelKey: 'librarySection.display.objectPages.label' },
   { group: 'library', section: 'slideshow', labelKey: 'librarySection.slideshow.title', keywords: 'slideshow planetarium screensaver play' },
   { group: 'library', section: 'slideshow', labelKey: 'librarySection.display.slideshowShowInfo.label', keywords: 'slideshow planetarium' },

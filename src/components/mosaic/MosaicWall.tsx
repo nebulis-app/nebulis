@@ -4,6 +4,7 @@ import { Focus, Maximize2, Minimize2, Minus, Plus, Share2, Type } from 'lucide-r
 import { layoutMosaic, type Placement } from '../../lib/mosaic/mosaicPacker';
 import { useTheme } from '../../hooks/useTheme';
 import { MosaicShareDialog } from './MosaicShareDialog';
+import { BodyScrollLock } from '../ui/BodyScrollLock';
 
 export interface MosaicTile {
   id: string;
@@ -372,6 +373,7 @@ export function MosaicWall({ tiles, onOpen, labelsStorageKey, ariaLabel, shareFi
 
   return (
     <div ref={rootRef} className={isFull ? 'fixed inset-0 z-[60] flex flex-col gap-2 p-4 bg-slate-950' : 'space-y-2'}>
+        {isFull && <BodyScrollLock />}
         <div className="flex items-center justify-end gap-1.5">
           <button type="button" className={`${btn} ${labels ? 'ring-accent-400 text-accent-300' : ''}`} onClick={toggleLabels}
             aria-pressed={labels} aria-label={t('mosaic.names')} title={t('mosaic.names')}>

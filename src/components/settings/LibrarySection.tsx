@@ -3,7 +3,7 @@ import type { Settings as SettingsType } from '../../types';
 import { Sec, Row, Toggle, Seg } from './SettingsUI';
 import { FilterAliasesSection } from './FilterAliasesSection';
 
-export type LibraryPane = 'display' | 'slideshow' | 'organization' | 'processing';
+export type LibraryPane = 'display' | 'gallery' | 'slideshow' | 'organization' | 'processing';
 
 export function LibrarySection({
   isDark,
@@ -18,6 +18,37 @@ export function LibrarySection({
 }) {
   const { t } = useTranslation('settings');
   const imageSource = form.galleryImageSource ?? 'sky-survey';
+
+  if (pane === 'gallery') {
+    return (
+      <Sec
+        title={t('librarySection.gallery.title')}
+        description={t('librarySection.gallery.description')}
+        isDark={isDark}
+      >
+        <Row
+          label={t('librarySection.display.galleryProcessedOnly.label')}
+          description={t('librarySection.display.galleryProcessedOnly.description')}
+          isDark={isDark}
+        >
+          <Toggle
+            checked={form.galleryProcessedOnlyDefault ?? false}
+            onChange={v => setForm(f => ({ ...f, galleryProcessedOnlyDefault: v }))}
+          />
+        </Row>
+        <Row
+          label={t('librarySection.display.galleryFavorites.label')}
+          description={t('librarySection.display.galleryFavorites.description')}
+          isDark={isDark}
+        >
+          <Toggle
+            checked={form.galleryFavoritesDefault ?? false}
+            onChange={v => setForm(f => ({ ...f, galleryFavoritesDefault: v }))}
+          />
+        </Row>
+      </Sec>
+    );
+  }
 
   if (pane === 'organization') {
     return (
@@ -161,16 +192,6 @@ export function LibrarySection({
               { id: 'telescope', label: t('librarySection.display.cardPictures.telescope') },
             ]}
             onChange={v => setForm(f => ({ ...f, galleryImageSource: v }))}
-          />
-        </Row>
-        <Row
-          label={t('librarySection.display.galleryProcessedOnly.label')}
-          description={t('librarySection.display.galleryProcessedOnly.description')}
-          isDark={isDark}
-        >
-          <Toggle
-            checked={form.galleryProcessedOnlyDefault ?? false}
-            onChange={v => setForm(f => ({ ...f, galleryProcessedOnlyDefault: v }))}
           />
         </Row>
         <Row

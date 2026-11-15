@@ -96,7 +96,7 @@ export function NightStripCompact({
               >
                 {night.isToday ? t('nightStrip.tonight') : label}
               </span>
-              <span className="font-display text-sm font-semibold leading-none tabular-nums text-white/90">
+              <span className="font-display text-base font-semibold leading-none tabular-nums text-white/90">
                 {night.date.getDate()}
               </span>
               <span className="mt-1 h-[3px] w-6 overflow-hidden rounded-full bg-white/10">

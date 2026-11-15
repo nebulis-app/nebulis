@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Satellite, ScanSearch, Download, Trash2 } from 'lucide-react';
+import { Satellite, ScanSearch, Download, RotateCw, Trash2 } from 'lucide-react';
 import { NightFrameList } from '../frameAnalysis/NightFrameList';
 import { useTheme } from '../../hooks/useTheme';
 import type { SessionFile } from '../../types';
@@ -16,6 +16,7 @@ export function SubframesPanel({
   archiveState,
   onDownloadToComputer,
   onOpenSync,
+  onForceSync,
   onScanTrails,
   onAnalyzeFrames,
   onDeleteAllSubframes,
@@ -30,6 +31,8 @@ export function SubframesPanel({
   archiveState: { done: number; total: number } | 'idle' | 'error';
   onDownloadToComputer: () => void;
   onOpenSync: () => void;
+  /** Download the night's frames again, replacing the copies already on disk. */
+  onForceSync: () => void;
   onScanTrails: () => void;
   onAnalyzeFrames: () => void;
   onDeleteAllSubframes: () => void;
@@ -96,6 +99,25 @@ export function SubframesPanel({
                 {t('observationDetail.subframesPanel.syncSubs')}
               </button>
             </span>
+          )}
+          {isAdmin && hasSubFrames && (
+            <button
+              onClick={onForceSync}
+              disabled={!telescopeOnline}
+              title={telescopeOnline
+                ? t('observationDetail.subframesPanel.forceSyncTitle')
+                : t('observationDetail.subframesPanel.telescopeOfflineTitle')}
+              aria-label={t('observationDetail.subframesPanel.forceSyncTitle')}
+              className={`p-1.5 rounded-lg border transition ${
+                !telescopeOnline
+                  ? 'border-transparent text-slate-600 cursor-not-allowed'
+                  : isDark
+                    ? 'border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    : 'border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+            </button>
           )}
           {hasSubFrames && (
             <button

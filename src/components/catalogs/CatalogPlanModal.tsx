@@ -27,6 +27,7 @@ import { formatHm } from '../../lib/timeFormat';
 import { createPlannedSession, deletePlannedSession, listPlannedSessions, type PlannedSession } from '../../lib/api/plannedSessions';
 import type { CatalogProgressObject } from '../../lib/api/catalogs';
 import { PlanConflictDialog } from '../ui/PlanConflictDialog';
+import { BodyScrollLock } from '../ui/BodyScrollLock';
 
 interface CatalogPlanModalProps {
   catalogLabel: string;
@@ -220,6 +221,7 @@ export function CatalogPlanModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={onClose}
     >
+      <BodyScrollLock />
       <div
         className={`relative rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden flex flex-col ${surface}`}
         onClick={(e) => e.stopPropagation()}

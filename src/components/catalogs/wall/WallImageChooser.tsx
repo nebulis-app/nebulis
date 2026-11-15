@@ -15,6 +15,7 @@ import { tileLabel } from '../../../lib/catalogWallTile';
 import { wallCropStyle } from '../../../lib/catalogWallCrop';
 import { ImageFramer } from '../../ImageFramer';
 import type { GalleryCrop } from '../../../types';
+import { BodyScrollLock } from '../../ui/BodyScrollLock';
 
 interface Props {
   tile: WallTile;
@@ -67,6 +68,7 @@ export function WallImageChooser({ tile, span, value, accent, onChange, onClose 
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label={t('wall.edit.chooseImage')}>
+      <BodyScrollLock />
       <div className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl bg-slate-950 ring-1 ring-white/15 sm:rounded-3xl">
         <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
           <div className="min-w-0">

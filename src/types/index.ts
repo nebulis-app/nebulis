@@ -47,6 +47,9 @@ export interface Settings {
   /** Initial state of the "Processed only" filter on the Image Gallery page
    *  when it loads. The page's own toggle can still be changed per visit. */
   galleryProcessedOnlyDefault: boolean;
+  /** Initial state of the Gallery's "Favorites" filter. With "Processed" also on, the Gallery shows images that
+   *  are either; with both off, every image. */
+  galleryFavoritesDefault: boolean;
   /** Initial state of the "Processed only" filter when Planetarium mode
    *  launches. Its in-slideshow toggle can still be changed per session. */
   planetariumProcessedOnlyDefault: boolean;

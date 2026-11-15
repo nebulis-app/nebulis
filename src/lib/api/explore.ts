@@ -24,6 +24,10 @@ export type ExploreCategoryId =
   | 'dark-reflection'
   | 'clusters';
 
+/** A designation family. An object is in a catalog when any of its designations is, so M31 is in both `messier` and `ngc`. */
+export type ExploreCatalogId = 'messier' | 'ngc' | 'ic' | 'caldwell' | 'sharpless';
+export const EXPLORE_CATALOG_IDS: readonly ExploreCatalogId[] = ['messier', 'ngc', 'ic', 'caldwell', 'sharpless'];
+
 export type ExploreVisibilityKind = 'tonight' | 'season' | 'low' | 'never';
 
 export interface ExploreVisibility {
@@ -69,7 +73,7 @@ export interface ExploreCategory {
   goodTonight: number;
 }
 
-export type ExploreSort = 'best' | 'tonight' | 'bright' | 'large' | 'name';
+export type ExploreSort = 'best' | 'tonight' | 'bright' | 'large' | 'number' | 'name';
 export type ExploreVisibilityFilter = 'all' | 'here' | 'tonight';
 
 export interface ExploreSearchResult {
@@ -112,13 +116,21 @@ function qs(params: Record<string, string | number | boolean | null | undefined>
 export const exploreSearch = (q: string, opts: { siteId?: string | null; limit?: number; fov?: FovParam | null; night?: string | null } = {}) =>
   fetchJSON<ExploreSearchResult>(`/explore/search${qs({ q, limit: opts.limit, siteId: opts.siteId, date: opts.night, ...fovParams(opts.fov) })}`);
 
+export interface ExploreCatalogStats {
+  id: ExploreCatalogId;
+  total: number;
+  visibleHere: number;
+  goodTonight: number;
+}
+
 export const getExploreCategories = (siteId?: string | null, night?: string | null) =>
-  fetchJSON<{ locationSet: boolean; siteId: string | null; siteName: string; categories: ExploreCategory[] }>(
+  fetchJSON<{ locationSet: boolean; siteId: string | null; siteName: string; categories: ExploreCategory[]; catalogs: ExploreCatalogStats[] }>(
     `/explore/categories${qs({ siteId, date: night })}`,
   );
 
 export const exploreBrowse = (opts: {
   category?: ExploreCategoryId | 'all';
+  catalog?: ExploreCatalogId;
   q?: string;
   constellation?: string;
   sort?: ExploreSort;

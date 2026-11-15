@@ -61,6 +61,9 @@ function placeholder(value: unknown): string {
   return String(value);
 }
 
+/** Mirrors SOLAR_SYSTEM_OBJECT_TYPES in server/lib/library/objectFilters.ts. */
+const SOLAR_SYSTEM_TYPE_SUGGESTIONS = ['Sun', 'Planet', 'Natural Satellite', 'Dwarf Planet', 'Asteroid', 'Comet'];
+
 export function EditObjectModal({ objectId, current, onClose }: EditObjectModalProps) {
   const { t } = useTranslation('library');
   const { isDark } = useTheme();
@@ -88,6 +91,9 @@ export function EditObjectModal({ objectId, current, onClose }: EditObjectModalP
   });
   const typeSuggestions = useMemo(() => {
     const seen = new Map<string, string>();
+    // The Library's Solar System chip matches on these exact types, so they are always offered. Without them a
+    // library with no planets or comets had no way to learn that "Sun" or "Planet" is what files an object there.
+    for (const label of SOLAR_SYSTEM_TYPE_SUGGESTIONS) seen.set(label.toLowerCase(), label);
     for (const o of libraryObjects ?? []) {
       const label = o.type?.trim();
       if (!label || label.toLowerCase() === 'unknown') continue;

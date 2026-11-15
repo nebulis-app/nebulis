@@ -1764,6 +1764,7 @@ export const spec = {
         properties: {
           label:              { type: 'string', minLength: 1, maxLength: 120 },
           refreshIntervalMin: nullable({ type: 'integer' }),
+          analyzeFrames:      { type: 'boolean', description: 'Measure the folder\'s sub-frames during the nightly maintenance.' },
           overrides: {
             type: 'array',
             maxItems: 5000,
@@ -1788,10 +1789,11 @@ export const spec = {
       },
       LibrarySourceUpdateInput: {
         type: 'object',
-        description: 'At least one of label or refreshIntervalMin is required.',
+        description: 'At least one of label, refreshIntervalMin or analyzeFrames is required.',
         properties: {
           label:              { type: 'string' },
           refreshIntervalMin: nullable({ type: 'integer' }),
+          analyzeFrames:      { type: 'boolean', description: 'Measure the folder\'s sub-frames during the nightly maintenance.' },
         },
       },
       LibrarySourceDeleted: {
@@ -1892,13 +1894,14 @@ export const spec = {
       },
       LibraryCalibrationGroup: {
         type: 'object',
-        required: ['type', 'typeLabel', 'folderName', 'scope', 'scopeLabel', 'fileCount', 'bytes', 'modifiedAt', 'subfolders', 'settingsGroups'],
+        required: ['type', 'typeLabel', 'folderName', 'scope', 'scopeLabel', 'linked', 'fileCount', 'bytes', 'modifiedAt', 'subfolders', 'settingsGroups'],
         properties: {
           type:         { type: 'string', description: 'bias, dark, flat, flatDark, or mixed' },
           typeLabel:    { type: 'string' },
           folderName:   { type: 'string' },
-          scope:        nullable({ type: 'string' }),
+          scope:        nullable({ type: 'string', description: 'A telescope id, null for the shared bucket, or @src/<sourceId> for a linked folder.' }),
           scopeLabel:   { type: 'string' },
+          linked:       { type: 'boolean', description: 'Read in place from a linked folder. It can be browsed, downloaded and used for stacking, but not deleted from Nebulis.' },
           fileCount:    { type: 'integer' },
           bytes:        { type: 'integer' },
           modifiedAt:   nullable({ type: 'string' }),
@@ -3777,7 +3780,8 @@ export const spec = {
           importSubFrames:  { type: 'boolean', description: 'Legacy global default; superseded by TelescopeProfile.importSubFrames for newer installs' },
           importVideos:     { type: 'boolean', description: 'Legacy global default; superseded by TelescopeProfile.importVideos for newer installs' },
           archiveAllFiles:  { type: 'boolean', description: 'Legacy global default; superseded by TelescopeProfile.archiveAllFiles for newer installs' },
-          galleryProcessedOnlyDefault: { type: 'boolean', description: 'Gallery opens with the processed-only filter on' },
+          galleryProcessedOnlyDefault: { type: 'boolean', description: 'Gallery opens showing processed images. With galleryFavoritesDefault also on, it shows images that are either; with both off, every image' },
+          galleryFavoritesDefault: { type: 'boolean', description: 'Gallery opens showing favorite images. With galleryProcessedOnlyDefault also on, it shows images that are either' },
           planetariumProcessedOnlyDefault: { type: 'boolean', description: 'Planetarium opens with the processed-only filter on' },
           annotateAutoSolve: { type: 'boolean', default: true, description: 'Plate-solve new stacked images in the background while the library is idle, so Annotate has results ready' },
           autoMeasureFrames: { type: 'boolean', default: false, description: 'Analyze new raw sub-frames in the background after an import, once the library is idle, so the Subframes list is already scored when opened' },
@@ -5412,7 +5416,7 @@ export const spec = {
       patch: {
         summary: 'Change a linked folder',
         tags: ['Library (Local)'],
-        description: 'Admin only. At least one of label or refreshIntervalMin is required.',
+        description: 'Admin only. At least one of label, refreshIntervalMin or analyzeFrames is required.',
         parameters: [idParam],
         requestBody: jsonBody('LibrarySourceUpdateInput'),
         responses: {
@@ -5438,8 +5442,8 @@ export const spec = {
       post: {
         summary: 'Rescan a linked folder',
         tags: ['Library (Local)'],
-        description: 'Admin only. Adds new files, updates changed ones and marks missing ones; an offline folder is reported without touching anything.',
-        parameters: [idParam],
+        description: 'Admin only. Adds new files, updates changed ones and marks missing ones; an offline folder is reported without touching anything. A file that stays missing is removed from the index on a scan 24 hours or more after it was first flagged, or at once with removeMissing=true.',
+        parameters: [idParam, { name: 'removeMissing', in: 'query', schema: { type: 'boolean', default: false }, description: 'Drop files this scan cannot find from the index now, without the 24 hour wait. Never deletes anything on disk.' }],
         responses: {
           200: jsonResponse('What the scan found', 'LibrarySourceRescanResult'),
           403: { description: 'FORBIDDEN. Admin only.' },
@@ -5809,8 +5813,12 @@ export const spec = {
       post: {
         summary: 'Sync one session\u2019s sub-frames',
         tags: ['Library (Local)'],
-        description: 'Admin only. Fetches only the raw sub-frames matching that night.',
-        parameters: [subIdParam('objectId'), subIdParam('date')],
+        description: 'Admin only. Fetches only the raw sub-frames matching that night. `force` fetches every frame again, even one already on disk, which is the only way to replace a copy whose bytes are wrong.',
+        parameters: [
+          subIdParam('objectId'),
+          subIdParam('date'),
+          { name: 'force', in: 'query', schema: { type: 'boolean' }, description: 'Download every frame again instead of skipping the ones already present.' },
+        ],
         responses: {
           200: jsonResponse('Sync started', 'LibrarySyncStarted'),
           403: { description: 'FORBIDDEN. Admin only.' },
@@ -5822,8 +5830,11 @@ export const spec = {
       post: {
         summary: "Sync every night's sub-frames for an object",
         tags: ['Library (Local)'],
-        description: 'Admin only. Runs the per-session sync once per night, each against its own telescope.',
-        parameters: [subIdParam('objectId')],
+        description: 'Admin only. Runs the per-session sync once per night, each against its own telescope. `force` fetches every frame again, even one already on disk.',
+        parameters: [
+          subIdParam('objectId'),
+          { name: 'force', in: 'query', schema: { type: 'boolean' }, description: 'Download every frame again instead of skipping the ones already present.' },
+        ],
         responses: {
           200: jsonResponse('Sync started', 'LibrarySyncStarted'),
           403: { description: 'FORBIDDEN. Admin only.' },
@@ -5938,10 +5949,12 @@ export const spec = {
       get: {
         summary: 'Server-rendered preview of a FITS file',
         tags: ['Library (Local)'],
-        description: 'A colorized, autostretched JPEG so clients never decode the raw FITS just to show it. `size=preview` asks for the larger tier.',
+        description: 'A colorized, autostretched JPEG so clients never decode the raw FITS just to show it. `size=preview` asks for the larger tier. A managed render is redrawn when the FITS is newer than it, so a frame downloaded over an older copy shows its own pixels.',
         parameters: [
           { name: 'path', in: 'query', required: true, schema: { type: 'string' } },
           { name: 'size', in: 'query', schema: { type: 'string', enum: ['preview'] } },
+          { name: 'v', in: 'query', schema: { type: 'string' }, description: 'Rendering pipeline version. Ignored; present so a pipeline change reaches clients that cached the old JPEG.' },
+          { name: 't', in: 'query', schema: { type: 'string' }, description: 'The source file\u2019s mtime. Ignored; present so a client asks for the new render when the file itself changes.' },
         ],
         responses: {
           200: { description: 'The JPEG', content: { 'image/jpeg': { schema: { type: 'string', format: 'binary' } } } },
@@ -6850,9 +6863,9 @@ export const spec = {
       get: {
         summary: 'Browse tiles with counts for this site',
         tags: ['Explore'],
-        description: 'Per category: total objects, how many ever clear the site minimum altitude, and how many are up tonight.',
+        description: 'Per category: total objects, how many ever clear the site minimum altitude, and how many are up tonight. `catalogs` has the same three counts for each of messier, ngc, ic, caldwell and sharpless.',
         parameters: [{ name: 'siteId', in: 'query', schema: { type: 'string' } }],
-        responses: { 200: { description: 'categories[] of {id,total,visibleHere,goodTonight}' } },
+        responses: { 200: { description: 'categories[] and catalogs[], each of {id,total,visibleHere,goodTonight}' } },
       },
     },
     '/explore/browse': {
@@ -6862,9 +6875,10 @@ export const spec = {
         description: 'Default order is the showpiece score. `category` is `all` or one of the ids from /explore/categories.',
         parameters: [
           { name: 'category', in: 'query', schema: { type: 'string', default: 'all' } },
+          { name: 'catalog', in: 'query', description: 'Only objects with a designation in this catalog, so M31 is also in `ngc` and IC405 is also in `caldwell`.', schema: { type: 'string', enum: ['messier', 'ngc', 'ic', 'caldwell', 'sharpless'] } },
           { name: 'q', in: 'query', schema: { type: 'string' } },
           { name: 'constellation', in: 'query', schema: { type: 'string' } },
-          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['best', 'tonight', 'bright', 'large', 'name'], default: 'best' } },
+          { name: 'sort', in: 'query', description: '`number` orders by the catalog number within `catalog` (M1, M2, ...), or by the number in the object id when no catalog is given.', schema: { type: 'string', enum: ['best', 'tonight', 'bright', 'large', 'number', 'name'], default: 'best' } },
           { name: 'visibility', in: 'query', schema: { type: 'string', enum: ['all', 'here', 'tonight'], default: 'here' } },
           { name: 'notImaged', in: 'query', schema: { type: 'boolean' } },
           { $ref: '#/components/parameters/limit' },

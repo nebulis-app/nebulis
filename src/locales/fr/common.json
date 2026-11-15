@@ -29,12 +29,12 @@
   },
   "auth": {
     "title": "Connexion à Nebulis",
-    "subtitle": "Connectez-vous avec votre compte pour ce serveur. Votre bibliothèque reste sur cette machine.",
     "username": "Nom d'utilisateur",
     "usernamePlaceholder": "Votre nom d'utilisateur",
     "password": "Mot de passe",
     "signIn": "Se connecter",
     "signingIn": "Connexion en cours…",
+    "forgotPassword": "Mot de passe oublié ?",
     "loginFailed": "Ce nom d'utilisateur et ce mot de passe ne correspondent pas. Réessayez."
   },
   "onboarding": {

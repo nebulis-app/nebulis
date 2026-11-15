@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useSunWording } from './objectMedia/solarObjectContext';
 import { Sparkles, X, ImagePlus, AlertTriangle, Loader2, Layers, CheckSquare, Square } from 'lucide-react';
 import { uploadProcessedImage, createProcessingRun, getLibrarySessions } from '../lib/api/library';
 import { consumeCombinedSessions } from '../lib/lastCombinedSessions';
@@ -19,6 +20,7 @@ interface Props {
 export function UploadProcessedModal({ isOpen, onClose, objectId, date, initialFile }: Props) {
   const { isDark, isNight, isSpace } = useTheme();
   const { t } = useTranslation('observations');
+  const sun = useSunWording();
   const queryClient = useQueryClient();
 
   const [uploadTitle, setUploadTitle] = useState('');
@@ -265,12 +267,12 @@ export function UploadProcessedModal({ isOpen, onClose, objectId, date, initialF
                 ? <CheckSquare className={`w-4 h-4 shrink-0 ${accentText}`} />
                 : <Square className={`w-4 h-4 shrink-0 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />}
               <Layers className="w-3.5 h-3.5 shrink-0 opacity-60" />
-              <span className="flex-1 text-left">{t('observationDetail.uploadProcessedModal.combineMultipleNights')}</span>
+              <span className="flex-1 text-left">{t('observationDetail.uploadProcessedModal.combineMultipleNights', sun)}</span>
             </button>
             {combineMultiple && (
               <div className={`px-3 pb-3 space-y-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
                 <p className={`text-xs pt-2.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                  {t('observationDetail.uploadProcessedModal.whichNightsQuestion')}
+                  {t('observationDetail.uploadProcessedModal.whichNightsQuestion', sun)}
                 </p>
                 <div className="max-h-32 overflow-y-auto space-y-1">
                   {sessions.map(s => {

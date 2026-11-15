@@ -20,6 +20,9 @@ const TICK_BUDGET_MS = 10 * 60_000;
 /** How long a frame that could not be read is left alone before it is tried again. */
 const UNREADABLE_RETRY_MS = 6 * 60 * 60_000;
 
+/** The nightly pass stops after this long and carries on the next night, so it never holds the library all morning. */
+const NIGHTLY_BUDGET_MS = 3 * 60 * 60_000;
+
 const unreadable = new Map<string, number>();
 
 const stmts = {
@@ -32,6 +35,62 @@ const stmts = {
      ORDER BY f.importedAt DESC, f.id DESC LIMIT ?`,
   ),
 };
+
+/** Raw frames of linked folders switched to "analyze at night" that still have no current measurement. */
+const pendingLinkedStmt = db.prepare<[number, string, number], { relPath: string }>(
+  `SELECT f.relPath FROM libraryFiles f
+   JOIN librarySources s ON s.id = f.sourceId
+   WHERE s.enabled = 1 AND json_extract(s.importOptions, '$.analyzeFrames') = 1
+     AND f.role = 'sub' AND f.missingSince IS NULL
+     AND (lower(f.fileName) LIKE '%.fit' OR lower(f.fileName) LIKE '%.fits' OR lower(f.fileName) LIKE '%.fts')
+     AND NOT EXISTS (SELECT 1 FROM frameMetrics m WHERE m.relPath = f.relPath AND m.version = ?)
+     AND f.relPath NOT IN (SELECT value FROM json_each(?))
+   ORDER BY f.importedAt DESC, f.id DESC LIMIT ?`,
+);
+
+export function pendingLinkedFrames(limit: number): string[] {
+  return pendingLinkedStmt.all(FRAME_METRICS_VERSION, JSON.stringify([...unreadable.keys()]), limit).map(r => r.relPath);
+}
+
+export interface NightlyMeasureResult {
+  measured: number;
+  failed: number;
+  /** Why the pass ended: nothing left, an import needed the library, the time budget, or another pass was running. */
+  stoppedFor: 'done' | 'library-busy' | 'time-budget' | 'already-running';
+}
+
+/**
+ * The nightly maintenance's share of frame analysis: measure the raw frames of every linked folder whose owner switched
+ * on "Analyze sub-frames at night". Unlike the background tick this is not tied to the global setting. It yields to an
+ * import as soon as one starts and picks the rest up the next night.
+ */
+export async function measureLinkedFramesNightly(budgetMs: number = NIGHTLY_BUDGET_MS): Promise<NightlyMeasureResult> {
+  const result: NightlyMeasureResult = { measured: 0, failed: 0, stoppedFor: 'done' };
+  if (running) return { ...result, stoppedFor: 'already-running' };
+  running = true;
+  const startedAt = Date.now();
+  try {
+    for (;;) {
+      const batch = pendingLinkedFrames(MAX_PER_TICK);
+      if (batch.length === 0) break;
+      for (const relPath of batch) {
+        if (currentLibraryWork() !== null) return { ...result, stoppedFor: 'library-busy' };
+        if (Date.now() - startedAt > budgetMs) return { ...result, stoppedFor: 'time-budget' };
+        try {
+          await measureLibraryFile(relPath);
+          result.measured++;
+        } catch {
+          unreadable.set(relPath, Date.now());
+          result.failed++;
+        }
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
+    }
+  } finally {
+    running = false;
+  }
+  return result;
+}
 
 export interface AutoMeasureTick {
   measured: number;

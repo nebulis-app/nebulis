@@ -6,8 +6,10 @@
  *   2. Objects in local catalog → CDS HiPS DSS2 color survey
  *   3. Any astronomical name → CDS Sesame resolver → CDS HiPS
  *
- * When CDS fails several times in a row it is skipped for a while and the SDSS and Legacy Survey cutout services
- * stand in (see skyImageFallback.ts). A picture from one of those is marked, and the CDS one replaces it later.
+ * When CDS fails several times in a row it is skipped for a while. Cutouts then come first from our own rendering
+ * of the same survey over partner HiPS tile pyramids (`hips/`), and if that cannot be built they fall back to the
+ * SDSS, Legacy, SkyView and Pan-STARRS cutout services (see skyImageFallback.ts). A picture from one of those is
+ * marked, and the CDS one replaces it later.
  *
  * Extracted from server/routes/catalog.ts to break the upward lib→route dependency
  * that existed when catalogPrefetch.ts imported prefetchSkyImage from a route file.
@@ -24,6 +26,7 @@ import {
   cdsIsSkipped, recordCdsFailure, recordCdsSuccess, fetchFallbackSkyImage,
   markFallbackImage, isFallbackImage, clearFallbackMark,
 } from './skyImageFallback.js';
+import { renderHipsCutout } from './hips/cutout.js';
 
 // Local constants — kept self-contained to avoid a circular dependency with
 // catalogPrefetch.ts (which imports this module). catalogPrefetch exports the
@@ -79,33 +82,62 @@ function saveSesameCache() {
   fs.writeFile(SESAME_CACHE_FILE, JSON.stringify(obj), () => {});
 }
 
-async function resolveObjectCoords(name: string): Promise<{ ra: number; dec: number } | null> {
+/**
+ * Sesame resolves a name to coordinates. CDS runs it, and publishes mirrors for the times its own site is
+ * degraded: IDIA in South Africa and CfA Harvard. Tried in that order, because CDS is the reference and the
+ * mirrors can lag its catalogue by weeks.
+ */
+const SESAME_HOSTS = [
+  'https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame',
+  'https://vizier.idia.ac.za/viz-bin/nph-sesame',
+  'https://vizier.cfa.harvard.edu/viz-bin/nph-sesame',
+] as const;
+
+/**
+ * Coordinates for a name, from the first Sesame mirror that knows it. Exported for the mirror tests.
+ *
+ * A name is remembered as unknown only when every host answered and none had it: a host that is merely
+ * unreachable says nothing about whether the name exists, and caching that would hide the object until the cache
+ * file is deleted.
+ */
+export async function resolveObjectCoords(name: string): Promise<{ ra: number; dec: number } | null> {
   const key = name.toUpperCase().replace(/\s+/g, '');
   const cachedCoords = sesameCache.get(key);
   if (cachedCoords !== undefined) return cachedCoords;
 
-  try {
-    const url = `https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-ox/SNV?${encodeURIComponent(name)}`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
-    if (!resp.ok) { sesameCache.set(key, null); return null; }
+  const query = `/-ox/SNV?${encodeURIComponent(name)}`;
+  let hostsAnswered = 0;
+  for (const host of SESAME_HOSTS) {
+    let xml: string;
+    try {
+      const resp = await fetch(host + query, { signal: AbortSignal.timeout(3000) });
+      if (resp.status >= 400 && resp.status < 500) {
+        // The resolver understood the name and does not have it. That is an answer, so a mirror is still worth a try.
+        hostsAnswered++;
+        continue;
+      }
+      if (!resp.ok) continue;
+      xml = await resp.text();
+    } catch {
+      continue;
+    }
 
-    const xml = await resp.text();
+    hostsAnswered++;
     const raMatch = xml.match(/<jradeg>([\d.+-]+)<\/jradeg>/);
     const decMatch = xml.match(/<jdedeg>([\d.+-]+)<\/jdedeg>/);
-
     if (raMatch && decMatch) {
       const coords = { ra: parseFloat(raMatch[1]), dec: parseFloat(decMatch[1]) };
       sesameCache.set(key, coords);
       saveSesameCache();
       return coords;
     }
+  }
 
+  if (hostsAnswered === SESAME_HOSTS.length) {
     sesameCache.set(key, null);
     saveSesameCache();
-    return null;
-  } catch {
-    return null;
   }
+  return null;
 }
 
 // ─── Solar system / AstroBackyard + NASA Image Library ──────────────
@@ -430,16 +462,24 @@ const HIPS_HOSTS = ['alaskybis.cds.unistra.fr', 'alasky.cds.unistra.fr', 'alasky
 
 /** GET a hips2fits URL (built from `query`) across the mirrors. A 2xx or 4xx
  *  answer from any host is final (a 4xx means this request is bad, not the
- *  host); timeouts, network errors and 5xx move on to the next host. Throws the
+ *  host, unless it is an HTML error page from the web server); timeouts, network errors and 5xx move on to the next host. Throws the
  *  last error only when no host answered at all. */
-async function fetchHips2fits(query: string, totalTimeoutMs: number): Promise<Response> {
-  const perHostMs = Math.max(4000, Math.ceil(totalTimeoutMs / HIPS_HOSTS.length));
+export async function fetchHips2fits(query: string, totalTimeoutMs: number): Promise<Response> {
+  // A host gets an even share of the budget, but never less than half a second and never more than four. The whole
+  // loop also runs against one deadline, so the caller's timeout bounds the request even when it is short.
+  const perHostMs = Math.max(500, Math.min(4000, Math.ceil(totalTimeoutMs / HIPS_HOSTS.length)));
+  const deadline = Date.now() + totalTimeoutMs;
   let lastResp: Response | null = null;
   let lastErr: unknown = new Error('no hips2fits host answered');
   for (const host of [...HIPS_HOSTS]) {
+    const left = deadline - Date.now();
+    if (left <= 0) break;
     try {
-      const resp = await fetch(`https://${host}/hips-image-services/hips2fits${query}`, { signal: AbortSignal.timeout(perHostMs) });
-      if (resp.ok || (resp.status >= 400 && resp.status < 500)) {
+      const resp = await fetch(`https://${host}/hips-image-services/hips2fits${query}`, { signal: AbortSignal.timeout(Math.min(perHostMs, left)) });
+      // hips2fits answers a bad request with a plain-text error. An HTML error page is the web server itself saying the
+      // service is not there (an outage or a moved endpoint), which says nothing about this request, so try the next host.
+      const serverErrorPage = resp.status >= 400 && (resp.headers.get('content-type') ?? '').includes('text/html');
+      if (resp.ok || (resp.status >= 400 && resp.status < 500 && !serverErrorPage)) {
         const i = HIPS_HOSTS.indexOf(host);
         if (i > 0) { HIPS_HOSTS.splice(i, 1); HIPS_HOSTS.unshift(host); }
         recordCdsSuccess();
@@ -474,14 +514,32 @@ export function bucketCutoutFov(fovDeg: number): number {
  * fixed field), this caches per object + FOV bucket, so the sky can be shown at
  * any zoom. Returns the cached file path, or null on failure.
  */
-export async function fetchSkyCutout(opts: {
+type SkyCutoutOpts = {
   id: string;
   ra: number; // decimal degrees
   dec: number; // decimal degrees
   fovDeg: number;
   sizePx?: number;
   timeoutMs?: number;
-}): Promise<string | null> {
+};
+
+/** Cutouts being fetched or rendered, keyed like their cache files. A render decodes up to 64 tiles, so two people
+ *  opening the same object on a small container must share one. */
+const cutoutInFlight = new Map<string, Promise<string | null>>();
+
+export function fetchSkyCutout(opts: SkyCutoutOpts): Promise<string | null> {
+  const size = Math.min(1200, Math.max(256, Math.round(opts.sizePx ?? 800)));
+  const key = `${opts.id.replace(/\s+/g, '').toUpperCase()}_${bucketCutoutFov(opts.fovDeg)}_${size}`.replace(/[^a-zA-Z0-9_.-]/g, '_');
+  const running = cutoutInFlight.get(key);
+  if (running) return running;
+  const started = fetchSkyCutoutUncoalesced(opts).finally(() => {
+    if (cutoutInFlight.get(key) === started) cutoutInFlight.delete(key);
+  });
+  cutoutInFlight.set(key, started);
+  return started;
+}
+
+async function fetchSkyCutoutUncoalesced(opts: SkyCutoutOpts): Promise<string | null> {
   const size = Math.min(1200, Math.max(256, Math.round(opts.sizePx ?? 800)));
   const fov = bucketCutoutFov(opts.fovDeg);
   const key = `${opts.id.replace(/\s+/g, '').toUpperCase()}_${fov}_${size}`.replace(/[^a-zA-Z0-9_.-]/g, '_');
@@ -510,7 +568,32 @@ export async function fetchSkyCutout(opts: {
     return backupPath;
   };
 
-  if (cdsIsSkipped()) return backupCutout();
+  // Our own rendering of the same survey, from the tile pyramids the partner archives serve. It keeps the DSS2
+  // look and exact geometry that CDS gives, where the fallback chain below substitutes a different product. Its
+  // own file, so it never shadows a CDS cutout and CDS takes over again as soon as it answers.
+  const renderedPath = path.join(CUTOUT_DIR, `${key}.hips.jpg`);
+  const renderCutout = async (): Promise<string | null> => {
+    try {
+      const stat = fs.statSync(renderedPath);
+      if (stat.size > 0) return renderedPath;
+    } catch { /* not rendered yet */ }
+    try {
+      const rendered = await renderHipsCutout({ raDeg: opts.ra, decDeg: opts.dec, fovDeg: fov, sizePx: size });
+      if (!rendered) return null;
+      fs.mkdirSync(CUTOUT_DIR, { recursive: true });
+      fs.writeFileSync(renderedPath, rendered.buffer);
+      fs.writeFileSync(`${renderedPath}.source`, rendered.source, 'utf8');
+      return renderedPath;
+    } catch (err) {
+      console.warn('[skyImage] hips render failed for %s:', opts.id, err instanceof Error ? err.message : err);
+      return null;
+    }
+  };
+
+  /** What to answer when CDS cannot: our own render first, then the survey substitutes it has always used. */
+  const withoutCds = async (): Promise<string | null> => (await renderCutout()) ?? backupCutout();
+
+  if (cdsIsSkipped()) return withoutCds();
 
   const query = `?hips=CDS/P/DSS2/color`
     + `&width=${size}&height=${size}`
@@ -523,7 +606,7 @@ export async function fetchSkyCutout(opts: {
     const resp = await fetchHips2fits(query, opts.timeoutMs ?? 15000);
     if (!resp.ok) {
       console.warn('[skyImage] cutout fetch failed for %s: HTTP %s (fov=%s)', opts.id, resp.status, fov);
-      return cdsIsSkipped() ? backupCutout() : null;
+      return withoutCds();
     }
     const buffer = Buffer.from(await resp.arrayBuffer());
     fs.mkdirSync(CUTOUT_DIR, { recursive: true });
@@ -531,6 +614,6 @@ export async function fetchSkyCutout(opts: {
     return cachePath;
   } catch (err) {
     console.warn('[skyImage] cutout fetch error for %s:', opts.id, err instanceof Error ? err.message : err);
-    return cdsIsSkipped() ? backupCutout() : null;
+    return withoutCds();
   }
 }

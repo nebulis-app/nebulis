@@ -17,7 +17,7 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 import fs from 'fs';
 import { apiEnvelope } from '../../server/middleware/apiEnvelope';
 import { exploreRouter } from '../../server/routes/explore';
-import { getPlannerCatalog, getById } from '../../server/lib/dsoCatalog';
+import { getPlannerCatalog, getById, designationsFor } from '../../server/lib/dsoCatalog';
 import { categoryOf, EXPLORE_CATEGORY_IDS } from '../../server/lib/explore/categories';
 import { showpieceScore, SHOWPIECE_BOOSTS, isShowpiece } from '../../server/lib/explore/showpiece';
 import { everVisible } from '../../server/lib/explore/visibility';
@@ -170,6 +170,66 @@ describe('GET /categories', () => {
   });
 });
 
+describe('GET /browse sort=number', () => {
+  const numbers = async (catalog: string, re: RegExp) => {
+    const out: number[] = [];
+    for (let offset = 0; offset < 400; offset += 100) {
+      const { data } = await get(`/browse?catalog=${catalog}&sort=number&visibility=all&limit=100&offset=${offset}`);
+      for (const r of data.results) {
+        const entry = getById(r.id)!;
+        const hit = [entry.id, ...designationsFor(entry)].map(d => re.exec(d)).find(Boolean);
+        out.push(hit ? Number(hit[1]) : Infinity);
+      }
+      if (data.results.length < 100) break;
+    }
+    return out;
+  };
+
+  it('lists a catalog in its own numbering, not by name', async () => {
+    const m = await numbers('messier', /^M(\d+)$/i);
+    expect(m).toHaveLength(110);
+    expect(m).toEqual(Array.from({ length: 110 }, (_, i) => i + 1));
+    const c = await numbers('caldwell', /^C(\d+)$/i);
+    expect(c).toEqual(Array.from({ length: 109 }, (_, i) => i + 1));
+  });
+
+  it('numbers IC objects by their IC number, even where another catalog owns the id', async () => {
+    // A letter suffix (IC 5250A, IC 5250B) belongs to the same number, so it sorts right after it.
+    const ic = await numbers('ic', /^IC(\d+)[A-Z]?$/i);
+    expect(ic.length).toBeGreaterThan(100);
+    expect([...ic].sort((a, b) => a - b)).toEqual(ic);
+    expect(ic.every(Number.isFinite)).toBe(true);
+  });
+
+  it('is not the same order as sort=name', async () => {
+    const byNumber = (await get('/browse?catalog=messier&sort=number&visibility=all&limit=4')).data.results.map(r => r.id);
+    const byName = (await get('/browse?catalog=messier&sort=name&visibility=all&limit=4')).data.results.map(r => r.id);
+    expect(byNumber).toEqual(['M1', 'M2', 'M3', 'M4']);
+    expect(byName).not.toEqual(byNumber);
+  });
+
+  it('still answers without a catalog, in the order of the ids\' own numbers', async () => {
+    const { status, data } = await get('/browse?sort=number&visibility=all&limit=5');
+    expect(status).toBe(200);
+    expect(data.results.length).toBe(5);
+  });
+});
+
+describe('GET /categories catalogs', () => {
+  it('counts each catalog the same way the catalog filter lists it', async () => {
+    const raw = await (await fetch(`${baseUrl}/categories?${NORTH}`)).json() as { data: { catalogs: Array<{ id: string; total: number; visibleHere: number; goodTonight: number }> } };
+    const catalogs = raw.data.catalogs;
+    expect(catalogs.map(c => c.id)).toEqual(['messier', 'ngc', 'ic', 'caldwell', 'sharpless']);
+    for (const c of catalogs) {
+      expect(c.visibleHere).toBeLessThanOrEqual(c.total);
+      expect(c.goodTonight).toBeLessThanOrEqual(c.visibleHere);
+      const listed = (await get(`/browse?catalog=${c.id}&visibility=all&limit=1`)).data.total;
+      expect(c.total, c.id).toBe(listed);
+    }
+    expect(catalogs.find(c => c.id === 'messier')!.total).toBe(110);
+  });
+});
+
 describe('GET /browse', () => {
   it('lists the best galaxies first and only ones visible from here', async () => {
     const { data } = await get(`/browse?category=galaxies&limit=20&${NORTH}`);
@@ -223,6 +283,57 @@ describe('GET /browse', () => {
       for (const row of data.results) expect(row.visibility).toBeNull();
     }
     expect(data.results.length).toBe(5);
+  });
+});
+
+describe('GET /browse?catalog=', () => {
+  const ids = async (query: string) => (await get(`/browse?visibility=all&limit=100&${query}`)).data.results.map((r) => r.id);
+
+  it('lists only IC objects for catalog=ic, and IC405 is one of them', async () => {
+    const { data } = await get('/browse?catalog=ic&visibility=all&limit=100&sort=bright');
+    expect(data.total).toBeGreaterThan(100);
+    expect(data.results.length).toBeGreaterThan(0);
+    // By designation, not storage id: M24 is stored as M24 and is also IC 4715, so it belongs here too.
+    for (const row of data.results) {
+      const entry = getById(row.id)!;
+      expect([entry.id, ...designationsFor(entry)].some(d => /^IC\d/i.test(d)), row.id).toBe(true);
+    }
+    const flaming = await ids('catalog=ic&q=flaming+star');
+    expect(flaming).toContain('IC405');
+  });
+
+  it('matches any designation, not just the storage id', async () => {
+    // IC405 is stored under an IC id yet is Caldwell 31 and Sharpless 229; M31 is stored as M31 yet is NGC 224.
+    expect(await ids('catalog=caldwell&q=IC405')).toContain('IC405');
+    expect(await ids('catalog=sharpless&q=IC405')).toContain('IC405');
+    expect(await ids('catalog=ngc&q=M31')).toContain('M31');
+    expect(await ids('catalog=messier&q=M31')).toContain('M31');
+  });
+
+  it('keeps an object out of a catalog it is not in', async () => {
+    expect(await ids('catalog=ic&q=M31')).not.toContain('M31');
+    expect(await ids('catalog=messier&q=IC405')).not.toContain('IC405');
+  });
+
+  it('counts every Messier and Caldwell object', async () => {
+    expect((await get('/browse?catalog=messier&visibility=all&limit=1')).data.total).toBe(110);
+    expect((await get('/browse?catalog=caldwell&visibility=all&limit=1')).data.total).toBe(109);
+  });
+
+  it('combines with the other filters', async () => {
+    const all = (await get(`/browse?catalog=ic&visibility=all&limit=1&${NORTH}`)).data.total;
+    const here = (await get(`/browse?catalog=ic&visibility=here&limit=1&${NORTH}`)).data.total;
+    expect(here).toBeLessThanOrEqual(all);
+    const nebulae = (await get('/browse?catalog=ic&category=emission-nebulae&visibility=all&limit=1')).data.total;
+    expect(nebulae).toBeGreaterThan(0);
+    expect(nebulae).toBeLessThan((await get('/browse?catalog=ic&visibility=all&limit=1')).data.total);
+  });
+
+  it('changes nothing when no catalog is asked for, and rejects an unknown one', async () => {
+    const plain = (await get('/browse?visibility=all&limit=1')).data.total;
+    const star = (await get('/browse?catalog=ngc&visibility=all&limit=1')).data.total;
+    expect(star).toBeLessThan(plain);
+    expect((await get('/browse?catalog=nope')).status).toBe(422);
   });
 });
 

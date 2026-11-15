@@ -1014,6 +1014,9 @@ db.exec(`
   if (!cols.some(c => c.name === 'galleryProcessedOnlyDefault')) {
     db.prepare('ALTER TABLE appSettings ADD COLUMN galleryProcessedOnlyDefault INTEGER NOT NULL DEFAULT 0').run();
   }
+  if (!cols.some(c => c.name === 'galleryFavoritesDefault')) {
+    db.prepare('ALTER TABLE appSettings ADD COLUMN galleryFavoritesDefault INTEGER NOT NULL DEFAULT 0').run();
+  }
   if (!cols.some(c => c.name === 'planetariumProcessedOnlyDefault')) {
     db.prepare('ALTER TABLE appSettings ADD COLUMN planetariumProcessedOnlyDefault INTEGER NOT NULL DEFAULT 0').run();
   }

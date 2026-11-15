@@ -179,6 +179,7 @@ const appSettingsStmts = {
     galleryImageSource = ?,
     slideshowRotateCCW = ?,
     galleryProcessedOnlyDefault = ?,
+    galleryFavoritesDefault = ?,
     planetariumProcessedOnlyDefault = ?,
     preferredCatalog = ?,
     groupObservingNights = ?,
@@ -314,6 +315,7 @@ interface AppSettingsRow {
   galleryImageSource: string;
   slideshowRotateCCW: number;
   galleryProcessedOnlyDefault: number;
+  galleryFavoritesDefault: number;
   planetariumProcessedOnlyDefault: number;
   preferredCatalog: string; // 'default' | 'caldwell'
   groupObservingNights: number;
@@ -382,6 +384,7 @@ function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
     galleryImageSource: row.galleryImageSource || 'sky-survey',
     slideshowRotateCCW: Boolean(row.slideshowRotateCCW),
     galleryProcessedOnlyDefault: Boolean(row.galleryProcessedOnlyDefault),
+    galleryFavoritesDefault: Boolean(row.galleryFavoritesDefault),
     planetariumProcessedOnlyDefault: Boolean(row.planetariumProcessedOnlyDefault),
     preferredCatalog: isPreferredCatalog(row.preferredCatalog) ? row.preferredCatalog : 'default',
     // See server/lib/telescopeFiles.ts for what this gates.
@@ -440,6 +443,7 @@ function saveSettingsRow(data: Record<string, unknown>): void {
     str(data.galleryImageSource, 'sky-survey'),
     boolToInt(data.slideshowRotateCCW, 0),
     boolToInt(data.galleryProcessedOnlyDefault, 0),
+    boolToInt(data.galleryFavoritesDefault, 0),
     boolToInt(data.planetariumProcessedOnlyDefault, 0),
     isPreferredCatalog(data.preferredCatalog) ? data.preferredCatalog : 'default',
     boolToInt(data.groupObservingNights, 1),

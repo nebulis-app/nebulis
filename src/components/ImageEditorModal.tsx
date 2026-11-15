@@ -13,6 +13,7 @@ import { applyPixelAdjustments, type Adjustments } from '../lib/imageAdjust';
 import { editSourceFromUrl, type EditSource } from '../lib/imageEditSource';
 import { ApiRequestError } from '../lib/api/client';
 import { getWatermarkPresets, saveWatermarkPresets, type WatermarkPreset } from '../lib/api/auth';
+import { BodyScrollLock } from './ui/BodyScrollLock';
 import {
   layerToPreset, presetToTextBlock, findPresetByName, normalizePresetName, presetNameKey,
   MAX_WATERMARK_PRESETS, MAX_WATERMARK_NAME,
@@ -1326,6 +1327,7 @@ export function ImageEditorModal({ imageUrl, imageName, objectId, date, isDark, 
       tabIndex={-1}
       className="image-editor-fade-in fixed inset-0 z-[95] bg-black/90 flex items-center justify-center outline-none"
     >
+      <BodyScrollLock />
       <div className={`relative w-full max-w-[1400px] h-[96vh] mx-4 flex flex-col rounded-2xl overflow-hidden shadow-2xl ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
 
         {/* Header */}

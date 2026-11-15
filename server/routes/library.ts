@@ -55,7 +55,7 @@ import { plantSampleObject, purgeSampleObject } from '../lib/library/sampleLibra
 import sharp from '../lib/sharp-optional.js';
 import { assertSafeRaster } from '../lib/imageSniff.js';
 import { linkedThumbnailPath } from '../lib/linkedDerivatives.js';
-import { generateFitsThumbnail, fitsThumbnailPath, type FitsThumbnailTier } from '../lib/fitsThumbnail.js';
+import { generateFitsThumbnail, fitsThumbnailIsStale, fitsThumbnailPath, type FitsThumbnailTier } from '../lib/fitsThumbnail.js';
 import { buildSessionReport, measureLibraryFile, setFrameReview, FrameFileError, type FrameAnalysisRow } from '../lib/frameAnalysis/service.js';
 import { enqueueFrames, queueStateFor } from '../lib/frameAnalysis/queue.js';
 import { buildStackingPlan, buildExportEntries, exportFileName } from '../lib/library/stackingExport.js';
@@ -100,6 +100,7 @@ import {
   setFavorite,
   getImageFavorites,
   setImageFavorite,
+  moveImageFavorites,
   getAllLibraryImages,
   invalidateAllImagesCache,
   createManualObservation,
@@ -132,6 +133,7 @@ import {
   deleteProcessedImage,
   getProcessedImageFile,
   isRenderableProcessedName,
+  isFitsProcessedName,
   isStoredOnlyProcessedName,
   processedImageMimeType,
   createProcessingRun,
@@ -563,6 +565,16 @@ router.post('/objects/:objectId/sessions/:date/sync', requireAdmin, (req: Reques
 });
 
 /**
+ * `force` on a sub-frame sync asks for every frame again, even one already on disk, which is the only
+ * way to replace a copy whose bytes are wrong. The web app sends it as a JSON body; a script can add
+ * `?force=1`.
+ */
+function wantsForceRedownload(req: Request): boolean {
+  const flag = req.query.force;
+  return req.body?.force === true || flag === '1' || flag === 'true';
+}
+
+/**
  * Sync only raw sub-frame (.fit/.fits) files for a specific session.
  * Only downloads files from the _sub companion folder that match the session date.
  *
@@ -583,12 +595,21 @@ router.post('/objects/:objectId/sessions/:date/sync-subframes', requireAdmin, (r
 
   // Same reasoning as the FITS sync route above — pin to the originating scope.
   const telescopeId = getSessionTelescopeId(objectId, date) ?? undefined;
+  // A forced run fetches every frame again even when a file of the right size is already there. Two
+  // frames off the same sensor differ only in their pixels, so nothing that compares names and
+  // lengths can tell a wrong copy from a right one; only the user can say "these again". The
+  // sub-frame panel asks before setting it, and a failed transfer still leaves the old copy in place
+  // (see writeFileIntoLibrary's `.tmp` + rename), so it is never destructive.
+  const forceRedownload = wantsForceRedownload(req);
   log.info(
-    { objectId, date, telescopeId: telescopeId ?? null },
+    { objectId, date, telescopeId: telescopeId ?? null, forceRedownload },
     '[subframe-sync] Syncing sub-frames for %s session %s on telescope %s',
     objectId, date, telescopeId ?? 'unknown',
   );
-  syncSessionSubFrames(objectId, date, telescopeId ? { telescopeId } : undefined).catch(err => {
+  syncSessionSubFrames(objectId, date, {
+    ...(telescopeId ? { telescopeId } : {}),
+    ...(forceRedownload ? { forceRedownload } : {}),
+  }).catch(err => {
     console.error('Sub-frame sync error:', err.message);
   });
 
@@ -610,7 +631,8 @@ router.post('/objects/:objectId/sync-subframes', requireAdmin, (req: Request, re
   }
 
   log.info({ objectId }, '[subframe-sync] Syncing sub-frames for every night of %s', objectId);
-  syncObjectSubFrames(objectId).catch(err => {
+  const forceRedownload = wantsForceRedownload(req);
+  syncObjectSubFrames(objectId, forceRedownload ? { forceRedownload } : undefined).catch(err => {
     console.error('Object sub-frame sync error:', err.message);
   });
 
@@ -867,6 +889,8 @@ const LinkScanBodySchema = z.object({
 
 const LinkCommitBodySchema = LinkScanBodySchema.extend({
   label: z.string().trim().min(1).max(120),
+  /** Measure the folder's sub-frames during the nightly maintenance. */
+  analyzeFrames: z.boolean().optional(),
   /** Minutes between automatic rescans; omitted or null is a one-time link. */
   refreshIntervalMin: z.number().int().refine(isValidRefreshInterval, 'Pick one of the listed refresh intervals').nullable().optional(),
   /** Review-screen decisions for this one commit, keyed by directory relative
@@ -932,11 +956,11 @@ router.post('/sources', requireAdmin, async (req: Request, res: Response) => {
     for (const o of overrides ?? []) {
       map.set(o.dirPath, o.action === 'ignore' ? { action: 'ignore' } : { action: 'assign', objectId: normalizeCatalogId(o.objectId) });
     }
-    const { importSubFrames, importFits } = parsed.data;
+    const { importSubFrames, importFits, analyzeFrames } = parsed.data;
     res.apiSuccess(await commitSource(rootPath, linkSettings(parsed.data), {
       label,
       overrides: map,
-      importOptions: { importSubFrames, importFits },
+      importOptions: { importSubFrames, importFits, analyzeFrames },
       refreshIntervalMin: parsed.data.refreshIntervalMin ?? null,
     }));
   } catch (err) {
@@ -950,7 +974,9 @@ router.patch('/sources/:id', requireAdmin, (req: Request, res: Response) => {
   const parsed = z.object({
     label: z.string().optional(),
     refreshIntervalMin: z.number().int().nullable().optional(),
-  }).refine(b => b.label !== undefined || b.refreshIntervalMin !== undefined, 'label or refreshIntervalMin is required')
+    analyzeFrames: z.boolean().optional(),
+  }).refine(b => b.label !== undefined || b.refreshIntervalMin !== undefined || b.analyzeFrames !== undefined,
+    'label, refreshIntervalMin or analyzeFrames is required')
     .safeParse(req.body);
   if (!parsed.success) {
     res.apiError(400, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request');
@@ -970,7 +996,7 @@ router.post('/sources/:id/rescan', requireAdmin, async (req: Request, res: Respo
     return;
   }
   try {
-    res.apiSuccess(await rescanSource(String(req.params.id), getSettingsData()));
+    res.apiSuccess(await rescanSource(String(req.params.id), getSettingsData(), { removeMissingNow: req.query.removeMissing === 'true' }));
   } catch (err) {
     sendLinkError(res, err, 'RESCAN_FAILED');
   } finally {
@@ -1516,6 +1542,14 @@ router.delete('/calibrations/bundle', requireAdmin, (req: Request, res: Response
   const found = findCalibrationBundle(scope, folderName, key);
   if (!found) {
     res.apiError(404, 'BUNDLE_NOT_FOUND', 'No matching calibration bundle — the archive may have changed since this page loaded');
+    return;
+  }
+  if (found.group.linked) {
+    res.apiError(
+      400,
+      'LINKED_NOT_DELETABLE',
+      'These frames are read from a linked folder, so Nebulis cannot delete them. Remove them from that folder yourself, then rescan it.',
+    );
     return;
   }
   const effectiveType = resolveFrameType(found.group.type, found.set.frameType);
@@ -2561,10 +2595,13 @@ router.get('/fits-thumbnail', async (req: Request, res: Response) => {
     : undefined;
   const thumbPath = linkedThumbPath ?? fitsThumbnailPath(absPath, tier);
   try {
-    // No-ops if it already exists; otherwise parses + renders + writes. The
-    // cache-hit check stays outside the render cap so a warm burst never
-    // queues; only an actual render takes a slot.
-    if (!fs.existsSync(thumbPath)) {
+    // A cache hit costs one stat; only a missing or out-of-date render takes a slot, so a warm burst
+    // never queues. A managed render is out of date when the FITS is newer than it, which is what
+    // makes a re-downloaded frame show its own pixels instead of the ones it replaced.
+    const needsRender = linkedThumbPath
+      ? !fs.existsSync(linkedThumbPath)
+      : await fitsThumbnailIsStale(absPath, thumbPath);
+    if (needsRender) {
       await runRender(() => generateFitsThumbnail(absPath, tier, linkedThumbPath));
     }
     // Read + send the buffer rather than res.sendFile: the thumbnail lives in a
@@ -3794,6 +3831,8 @@ router.post('/objects/:objectId/sessions/:date/processed-images/from-file', requ
       try {
         deleteLocalFile(relPath);
         movedOriginal = true;
+        // The picture is the same one under a new path, so its favorite moves with it.
+        moveImageFavorites(relPath, record.path);
       } catch (err) {
         log.warn({ err, relPath }, '[processed] promoted copy saved but original could not be removed');
       }
@@ -3818,8 +3857,8 @@ router.post('/objects/:objectId/sessions/:date/processed-images/:id/unmark', req
     res.apiError(404, 'NOT_FOUND', 'Processed image not found');
     return;
   }
-  if (!isRenderableProcessedName(record.filename)) {
-    res.apiError(422, 'UNSUPPORTED_FORMAT', 'Only JPG, PNG and TIFF images can go back to Images');
+  if (!isRenderableProcessedName(record.filename) && !isFitsProcessedName(record.filename)) {
+    res.apiError(422, 'UNSUPPORTED_FORMAT', 'Only JPG, PNG, TIFF and FITS files can go back to Images');
     return;
   }
   try {

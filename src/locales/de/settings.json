@@ -22,6 +22,7 @@
     "apiKeys": "API-Schlüssel",
     "alerts": "Benachrichtigungen",
     "display": "Anzeige",
+    "gallery": "Galerie",
     "slideshow": "Diashow",
     "organization": "Organisation",
     "processing": "Verarbeitung",
@@ -263,6 +264,10 @@
     }
   },
   "librarySection": {
+    "gallery": {
+      "title": "Galerie",
+      "description": "Legen Sie fest, welche Bilder die Galerie beim Öffnen zeigt. Sind beide aus, zeigt sie alle Bilder. Ist eine an, zeigt sie nur diese. Sind beide an, zeigt sie Bilder, die eins von beiden sind."
+    },
     "display": {
       "title": "Anzeige",
       "description": "Wie Objektkarten und die Diashow Bilder und Informationen anzeigen.",
@@ -273,8 +278,12 @@
         "telescope": "Mein Teleskop"
       },
       "galleryProcessedOnly": {
-        "label": "Galerie: Nur bearbeitete Bilder anzeigen",
-        "description": "Die Galerie öffnet standardmäßig mit aktiviertem Filter \"Nur bearbeitet\"."
+        "label": "Nur bearbeitete Bilder anzeigen",
+        "description": "Die Galerie zeigt nur bearbeitete Bilder und blendet den Rest aus. Schalten Sie auch die Favoriten ein, um Bilder anzuzeigen, die eins von beiden sind."
+      },
+      "galleryFavorites": {
+        "label": "Nur Favoriten anzeigen",
+        "description": "Die Galerie zeigt nur die Bilder, die Sie mit einem Stern markiert haben, und blendet den Rest aus. Schalten Sie auch die bearbeiteten Bilder ein, um Bilder anzuzeigen, die eins von beiden sind."
       },
       "objectPages": {
         "label": "Objektseiten",
@@ -491,10 +500,10 @@
     },
     "descriptions": {
       "openngc": "Namen, Positionen, Helligkeiten und Typen für rund 12.000 Deep-Sky-Objekte",
-      "sesame": "Namensabfragen für Objekte, die im mitgelieferten Katalog fehlen",
-      "simbad": "Größen- und Entfernungsdetails für Katalogobjekte",
+      "sesame": "Namensabfragen für Objekte, die im mitgelieferten Katalog fehlen, über CDS oder dessen Spiegel, wenn CDS nicht erreichbar ist",
+      "simbad": "Größen- und Entfernungsdetails für Katalogobjekte, über CDS oder dessen Spiegel, wenn CDS nicht erreichbar ist",
       "hubbleCaldwell": "Hubble-Bilder und Texte für die 88 Caldwell-Objekte",
-      "hips": "DSS2-Himmelsdurchmusterungsbilder für jede Koordinate",
+      "hips": "DSS2-Himmelsdurchmusterungsbilder für jede Koordinate, über CDS oder die Spiegel ESA, MAST und CASDA, wenn CDS nicht erreichbar ist",
       "nasaImageLibrary": "Ersatzbilder für Planeten, Monde und Kometen",
       "wikipedia": "Allgemeinverständliche Zusammenfassungen und Vorschaubilder für Objekte",
       "openMeteo": "Vorhersage und vergangenes Wetter für deine Standorte sowie die Ortssuche",
@@ -1001,6 +1010,7 @@
     "alerts": "Erfahren Sie, wenn eine klare Nacht kommt oder ein Import fertig ist.",
     "libraryOrganization": "Wie Objekte benannt, gruppiert und gezählt werden.",
     "libraryProcessing": "Was Nebulis mit Aufnahmen tut, nachdem sie eingetroffen sind.",
+    "libraryGallery": "Was die Galerie beim Öffnen anzeigt.",
     "librarySlideshow": "Wie die Diashow abläuft und was sie zeigt.",
     "maintenance": "Aufgaben, die der Server jede Nacht selbstständig ausführt.",
     "catalogs": "Offline-Bilder und Satellitendaten, die auf diesem Server liegen."
@@ -1460,8 +1470,8 @@
     "lastScan": "zuletzt gescannt {{when}}",
     "neverScanned": "noch nicht gescannt",
     "offline": "Dieser Ordner ist gerade nicht erreichbar. Es wurde nichts geändert. Verbinde das Laufwerk oder die Freigabe erneut und scanne noch einmal.",
-    "missingFiles_one": "{{count}} Datei wurde beim letzten Scan nicht gefunden. Sie bleibt erhalten, bis ein zweiter Scan bestätigt, dass sie fehlt.",
-    "missingFiles_other": "{{count}} Dateien wurden beim letzten Scan nicht gefunden. Sie bleiben erhalten, bis ein zweiter Scan bestätigt, dass sie fehlen.",
+    "missingFiles_one": "{{count}} Datei wurde beim letzten Scan nicht gefunden. Sie bleibt 24 Stunden im Index. Fehlt sie bei einem späteren Scan weiterhin, wird sie entfernt.",
+    "missingFiles_other": "{{count}} Dateien wurden beim letzten Scan nicht gefunden. Sie bleiben 24 Stunden im Index. Fehlen sie bei einem späteren Scan weiterhin, werden sie entfernt.",
     "rescanDone": "Neu gescannt: {{added}} neu, {{updated}} geändert, {{missing}} nicht gefunden, {{removed}} aus dem Index entfernt.",
     "rescanOffline": "Der Ordner war nicht erreichbar, deshalb wurde nichts geändert.",
     "rescanFailed": "Erneuter Scan fehlgeschlagen",
@@ -1469,6 +1479,11 @@
     "unlinkConfirm": "Verknüpfung dieses Ordners aufheben? Seine Objekte verschwinden aus deiner Bibliothek, sofern sie keine Notizen, Favoriten oder Dateien aus einer anderen Quelle haben. Deine Dateien auf der Festplatte bleiben unberührt.",
     "unlinkConfirmButton": "Verknüpfung aufheben",
     "keepLinked": "Verknüpft lassen",
+    "removeMissing": "Jetzt entfernen",
+    "removeMissingConfirm_one": "Diese fehlende Datei jetzt aus dem Index entfernen? Nebulis scannt zuerst erneut, und fehlt die Datei weiterhin, wird ihr Indexeintrag gelöscht. Deine Dateien auf der Festplatte bleiben unberührt. Falls ein Laufwerk getrennt ist, verbinde es zuerst wieder.",
+    "removeMissingConfirm_other": "Diese {{count}} fehlenden Dateien jetzt aus dem Index entfernen? Nebulis scannt zuerst erneut, und für jede weiterhin fehlende Datei wird der Indexeintrag gelöscht. Deine Dateien auf der Festplatte bleiben unberührt. Falls ein Laufwerk getrennt ist, verbinde es zuerst wieder.",
+    "removeMissingConfirmButton": "Aus dem Index entfernen",
+    "removeMissingCancel": "Behalten",
     "howToLink": "Um einen Ordner zu verknüpfen, nutze Importieren auf der Bibliotheksseite, wähle einen Ordner auf diesem Server und klicke auf Diesen Ordner verknüpfen.",
     "refreshManual": "Nur manuell",
     "edit": "Bearbeiten",

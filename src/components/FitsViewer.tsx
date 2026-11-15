@@ -7,6 +7,7 @@ import { fetchBinary } from '../lib/api/client';
 import { parseFits, renderFitsToCanvas } from '../lib/fits';
 import { FITS_GC_MS, fitsFrameSizeQuery } from './lightbox/prefetchFits';
 import { FITS_DEFAULT_STRETCH } from './lightbox/zoomControls';
+import { BodyScrollLock } from './ui/BodyScrollLock';
 
 interface FitsViewerProps {
   url: string;
@@ -555,6 +556,7 @@ export function FitsViewer({
       {/* Satellite results modal */}
       {satModalOpen && satResult && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <BodyScrollLock />
           <div className={`w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden ${isDark ? 'bg-slate-900 border border-slate-700' : 'bg-white border border-slate-200'}`}>
             <div className={`flex items-center justify-between px-5 py-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
               <div className="flex items-center gap-2">
@@ -674,6 +676,7 @@ export function FitsViewer({
       {/* Location prompt */}
       {showLocationPrompt && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <BodyScrollLock />
           <div className={`w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden ${isDark ? 'bg-slate-900 border border-slate-700' : 'bg-white border border-slate-200'}`}>
             <div className="flex flex-col items-center gap-4 px-6 py-8">
               <div className={`flex items-center justify-center w-12 h-12 rounded-full ${isDark ? 'bg-amber-500/15' : 'bg-amber-50'}`}>
@@ -714,6 +717,7 @@ export function FitsViewer({
       {/* How satellite detection works */}
       {satHelpOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <BodyScrollLock />
           <div className={`w-full max-w-md rounded-2xl shadow-2xl overflow-hidden ${isDark ? 'bg-slate-900 border border-slate-700' : 'bg-white border border-slate-200'}`}>
             <div className={`flex items-center justify-between px-5 py-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
               <div className="flex items-center gap-2">

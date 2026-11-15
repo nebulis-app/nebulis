@@ -22,11 +22,13 @@ interface SolarEntry extends CatalogEntry {
 }
 
 const entries: SolarEntry[] = [
-  // ── Star ─────────────────────────────────────────────────────────────────
+  // ── Sun ──────────────────────────────────────────────────────────────────
+  // Its own type, not `Star`: the Library's Solar System chip matches on type, and `Star` would also pull in every
+  // other star.
   {
     id: 'Sun',
     name: 'The Sun',
-    type: 'Star',
+    type: 'Sun',
     constellation: '',
     magnitude: -26.74,
     description:

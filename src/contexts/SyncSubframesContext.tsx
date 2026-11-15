@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { SyncSubframesModal } from '../components/SyncSubframesModal';
 import { SyncSubframesContext, type SyncSubframesContextValue } from './syncSubframesContextObject';
 
-interface SyncArgs { objectId: string; sessionId: string | null; }
+interface SyncArgs { objectId: string; sessionId: string | null; force: boolean; }
 
 export function SyncSubframesProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
@@ -12,14 +12,14 @@ export function SyncSubframesProvider({ children }: { children: React.ReactNode 
   // current args without re-creating on every args change.
   const argsRef = useRef<SyncArgs | null>(null);
 
-  const openSync = useCallback((objectId: string, sessionId: string) => {
-    const next = { objectId, sessionId };
+  const openSync = useCallback((objectId: string, sessionId: string, options?: { force?: boolean }) => {
+    const next = { objectId, sessionId, force: options?.force === true };
     argsRef.current = next;
     setArgs(next);
   }, []);
 
-  const openObjectSync = useCallback((objectId: string) => {
-    const next = { objectId, sessionId: null };
+  const openObjectSync = useCallback((objectId: string, options?: { force?: boolean }) => {
+    const next = { objectId, sessionId: null, force: options?.force === true };
     argsRef.current = next;
     setArgs(next);
   }, []);
@@ -50,6 +50,7 @@ export function SyncSubframesProvider({ children }: { children: React.ReactNode 
         <SyncSubframesModal
           objectId={args.objectId}
           sessionId={args.sessionId}
+          force={args.force}
           onComplete={handleComplete}
           onClose={() => setArgs(null)}
         />

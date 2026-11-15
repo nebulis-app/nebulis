@@ -46,5 +46,10 @@
   "settings:alerts.phones.title": "Product name, the same in every language",
   "settings:siteManager.bortle": "Bortle is a proper name; the scale is written the same in every language",
   "settings:addTelescopeModal.rigFiltersPlaceholder": "Example filter names, which are the same in every language",
-  "catalogs:catalogMeta.rasc.label": "RASC is an organization acronym and NGC is a catalog name"
+  "catalogs:catalogMeta.rasc.label": "RASC is an organization acronym and NGC is a catalog name",
+  "catalogs:explore.catalogs.messier": "Catalog name",
+  "catalogs:explore.catalogs.ngc": "Catalog name",
+  "catalogs:explore.catalogs.ic": "Catalog name",
+  "catalogs:explore.catalogs.caldwell": "Catalog name",
+  "catalogs:explore.catalogs.sharpless": "Catalog name"
 }

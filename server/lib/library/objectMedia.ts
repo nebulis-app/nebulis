@@ -22,7 +22,7 @@ import { LIBRARY_API_BASE } from './objects.js';
 import { getAllProfiles } from '../telescopes.js';
 
 export const MEDIA_KINDS = ['processed', 'telescope', 'sub', 'project', 'video'] as const;
-export const MEDIA_GROUP_BYS = ['night', 'telescope', 'filter', 'type', 'none'] as const;
+export const MEDIA_GROUP_BYS = ['night', 'observation', 'telescope', 'filter', 'type', 'none'] as const;
 export const MEDIA_SORTS = ['newest', 'oldest', 'time'] as const;
 export type MediaKind = (typeof MEDIA_KINDS)[number];
 export type MediaGroupBy = (typeof MEDIA_GROUP_BYS)[number];
@@ -101,7 +101,7 @@ export interface MediaGroup {
   /** Display text for dated / named groups; the tokens `across`, `projects`
    *  and `none` for the special groups, which clients translate. */
   label: string;
-  /** Present when grouped by night. */
+  /** Present when grouped by night or observation. */
   date: string | null;
   telescope: MediaTelescope | null;
   /** Items in this group in the current filter (before the All-tab sub cap). */
@@ -291,6 +291,16 @@ const KIND_ORDER: Record<MediaKind, number> = { processed: 0, telescope: 1, vide
 const GROUP_ACROSS = '_across';
 const GROUP_PROJECTS = '_projects';
 const GROUP_NONE = '_none';
+/** Splits an observation key into its night and exposure: `2026-01-02|30.0s`. */
+const OBSERVATION_SEP = '|';
+
+/** An observation is one night of one exposure setting. Only telescope pictures and sub-frames carry an exposure,
+ *  so the other kinds (processed images, videos) sit under `date|`, which the Nights tab counts in the night's totals but not as a setting. */
+function observationKeyFor(item: MediaItem): string {
+  if (!item.date) return GROUP_NONE;
+  const exposure = item.kind === 'sub' || item.kind === 'telescope' ? item.exposure ?? '' : '';
+  return `${item.date}${OBSERVATION_SEP}${exposure}`;
+}
 
 function groupKeyFor(item: MediaItem, by: MediaGroupBy): string {
   if (item.kind === 'project') return GROUP_PROJECTS;
@@ -298,6 +308,9 @@ function groupKeyFor(item: MediaItem, by: MediaGroupBy): string {
     case 'night':
       if (item.runDates && item.runDates.length > 1) return GROUP_ACROSS;
       return item.date ?? GROUP_NONE;
+    case 'observation':
+      if (item.runDates && item.runDates.length > 1) return GROUP_ACROSS;
+      return observationKeyFor(item);
     case 'telescope': return item.telescope?.id ?? GROUP_NONE;
     case 'filter': return item.filter ?? GROUP_NONE;
     case 'type': return item.kind;
@@ -375,7 +388,7 @@ export function buildObjectMedia(all: MediaItem[], q: MediaQuery): ObjectMedia {
     if (pinA !== pinB) return pinA - pinB;
     if (a === GROUP_NONE) return 1;
     if (b === GROUP_NONE) return -1;
-    if (q.group === 'night') return byDate(a, b);
+    if (q.group === 'night' || q.group === 'observation') return byDate(a, b);
     if (q.group === 'type') {
       // Grouped by type, every key is the item's MediaKind (see groupKeyFor).
       const kindA = MEDIA_KINDS.find(k => k === a);
@@ -406,7 +419,8 @@ export function buildObjectMedia(all: MediaItem[], q: MediaQuery): ObjectMedia {
         : key === GROUP_NONE || key === 'all' ? 'none'
         : q.group === 'telescope' ? (first.telescope?.name ?? key)
         : key,
-      date: q.group === 'night' && /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : null,
+      date: q.group === 'night' && /^\d{4}-\d{2}-\d{2}$/.test(key) ? key
+        : q.group === 'observation' && /^\d{4}-\d{2}-\d{2}\|/.test(key) ? key.slice(0, 10) : null,
       telescope: q.group === 'telescope' ? first.telescope : null,
       count: bucket.length,
       subCount: subs.length,

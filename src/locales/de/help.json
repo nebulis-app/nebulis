@@ -568,7 +568,7 @@
     "offlineTerm": "Nicht erreichbare Ordner",
     "offlineDesc": "Ist das Laufwerk oder die Freigabe nicht erreichbar, wird der Ordner als nicht erreichbar markiert und nichts ändert sich. Verbinden Sie ihn wieder und scannen Sie erneut.",
     "missingTerm": "Fehlende Dateien",
-    "missingDesc": "Eine fehlende Datei bleibt im Index, bis ein zweiter Scan bestätigt, dass sie weg ist. So leert ein Scan bei halb eingehängtem Ordner nicht Ihre Bibliothek.",
+    "missingDesc": "Eine fehlende Datei bleibt 24 Stunden im Index. Findet ein späterer Scan sie weiterhin nicht, wird sie entfernt. Die Wartezeit verhindert, dass ein Scan bei halb eingehängtem Ordner Ihre Bibliothek leert.",
     "settingsAlt": "Einstellungen, Speicher, Verknüpfte Ordner, mit zwei verknüpften Ordnern und den Schaltflächen Erneut scannen, Bearbeiten und Verknüpfung aufheben",
     "settingsCaption": "Einstellungen → Speicher → Verknüpfte Ordner",
     "note": "Verknüpfte Dateien werden beim Archivieren auf einen externen Datenträger nicht berücksichtigt. Das Archiv kopiert nur die Dateien in der Nebulis-Bibliothek selbst."

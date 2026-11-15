@@ -17,6 +17,14 @@ const TEST_DATA_DIR = vi.hoisted(() => {
   return dir;
 });
 
+// An unavailable relocated library makes isLibraryAvailable() search the mounted drives for it. Left real, that
+// reads this machine's /Volumes (external and network drives included) and can outrun the 5 s test timeout.
+// Recovery itself is covered, with fake volumes, by libraryRecovery.test.ts.
+vi.mock('../../server/lib/volumes', async importOriginal => {
+  const real = await importOriginal<typeof import('../../server/lib/volumes')>();
+  return { ...real, listVolumes: vi.fn(async () => []) };
+});
+
 import {
   getLibraryDir,
   getDefaultLibraryDir,

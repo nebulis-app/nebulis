@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSunWording } from './solarObjectContext';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, CheckCircle2, Hourglass } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
@@ -21,6 +22,7 @@ export function SubframeNights({ objectId, nights, onOpen }: {
   onOpen: (date: string) => void;
 }) {
   const { t } = useTranslation('library');
+  const sun = useSunWording();
   const { isDark, isNight } = useTheme();
   const muted = isDark ? 'text-slate-400' : 'text-slate-500';
 
@@ -36,7 +38,7 @@ export function SubframeNights({ objectId, nights, onOpen }: {
         ].filter(Boolean).join(' · ');
         const title = date
           ? formatDate(new Date(`${date}T12:00:00`), { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' })
-          : t('objectMedia.group.noNight');
+          : t('objectMedia.group.noNight', sun);
         return (
           <li key={n.key}>
             <button

@@ -1,10 +1,10 @@
 import { createContext, useContext } from 'react';
 
 export interface SyncSubframesContextValue {
-  /** Sync sub-frames for a single night. */
-  openSync: (objectId: string, sessionId: string) => void;
+  /** Sync sub-frames for a single night. `force` fetches every frame again, even one already on disk. */
+  openSync: (objectId: string, sessionId: string, options?: { force?: boolean }) => void;
   /** Sync sub-frames for every night of an object in one pass. */
-  openObjectSync: (objectId: string) => void;
+  openObjectSync: (objectId: string, options?: { force?: boolean }) => void;
 }
 
 /**

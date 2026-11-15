@@ -178,6 +178,7 @@
       "opticsAutoNone": "nicht erkannt",
       "opticsSource": {
         "manual": "Für diese Nacht gewählt",
+        "manual_sun": "Für diesen Tag gewählt",
         "fits": "Aus der Brennweite in den FITS ermittelt",
         "only": "Einzige Konfiguration des Teleskops"
       }
@@ -199,6 +200,7 @@
     "conditionsPanel": {
       "title": "Bedingungen",
       "empty": "Für diese Nacht wurden keine Bedingungen erfasst. Wetterdaten werden beim Import für den Standort der Sitzung abgerufen.",
+      "empty_sun": "Für diesen Tag wurden keine Bedingungen erfasst. Wetterdaten werden beim Import für den Standort der Sitzung abgerufen.",
       "cloudClear": "Klar",
       "cloudMostlyClear": "Größtenteils klar",
       "cloudBroken": "Aufgelockerte Bewölkung",
@@ -237,7 +239,8 @@
       "downloadFailed": "Download fehlgeschlagen",
       "zipping": "Wird gezippt {{done}}/{{total}}…",
       "deleteAllTitle": "Alle Subframes dieser Sitzung löschen",
-      "empty": "Noch keine Subframes heruntergeladen. Verbinde dein Teleskop und nutze \"Subs herunterladen\", um sie zu synchronisieren."
+      "empty": "Noch keine Subframes heruntergeladen. Verbinde dein Teleskop und nutze \"Subs herunterladen\", um sie zu synchronisieren.",
+      "forceSyncTitle": "Subframes erneut herunterladen"
     },
     "sessionFileGrid": {
       "exitCompareTitle": "Vergleichsmodus verlassen",
@@ -267,11 +270,13 @@
       "setAsGalleryImage": "Als Galeriebild festlegen",
       "delete": "Löschen",
       "combinesNights": "Kombiniert {{count}} Nächte: {{list}}",
+      "combinesNights_sun": "Kombiniert {{count}} Tage: {{list}}",
       "addMore": "Weitere hinzufügen",
       "moveToImages": "Als unbearbeitet markieren"
     },
     "nightPanel": {
       "title": "Diese Nacht",
+      "title_sun": "Dieser Tag",
       "imaged": "Aufgenommen {{range}}",
       "cloud": "{{label}} · {{percent}}% Bewölkung",
       "moon": "Mond {{percent}}%"
@@ -329,7 +334,12 @@
       "markProcessedConfirm": "Als bearbeitet markieren",
       "unmarkProcessedTitle": "Als unbearbeitet markieren?",
       "unmarkProcessedMessage": "Das Bild wird aus Bearbeitet zurück in die Bilder dieser Nacht verschoben. Es wird nichts gelöscht.",
-      "unmarkProcessedConfirm": "Als unbearbeitet markieren"
+      "unmarkProcessedMessage_sun": "Das Bild wird aus Bearbeitet zurück in die Bilder dieses Tages verschoben. Es wird nichts gelöscht.",
+      "unmarkProcessedConfirm": "Als unbearbeitet markieren",
+      "forceSyncTitle": "Subframes erneut herunterladen?",
+      "forceSyncMessage_one": "Dies lädt das Einzelbild dieser Nacht erneut vom Teleskop und ersetzt die bereits in der Bibliothek vorhandene Kopie. Das Teleskop muss verbunden bleiben. Verwenden Sie dies, wenn ein Bild nicht Ihre Aufnahme zeigt.",
+      "forceSyncMessage_other": "Dies lädt alle {{count}} Einzelbilder dieser Nacht erneut vom Teleskop und ersetzt die bereits in der Bibliothek vorhandenen Kopien. Das Teleskop muss verbunden bleiben. Verwenden Sie dies, wenn ein Bild nicht Ihre Aufnahme zeigt.",
+      "forceSyncConfirm": "Erneut herunterladen"
     },
     "fitsHeaderModal": {
       "title": "FITS-Header für {{fileName}}",
@@ -381,7 +391,9 @@
       "notesLabel": "Notizen",
       "notesPlaceholder": "Bearbeitungsnotizen, verwendete Software, Belichtungszeit…",
       "combineMultipleNights": "Mehrere Nächte kombinieren",
+      "combineMultipleNights_sun": "Mehrere Tage kombinieren",
       "whichNightsQuestion": "Welche Nächte kombiniert dieser Stack?",
+      "whichNightsQuestion_sun": "Welche Tage kombiniert dieser Stack?",
       "softwarePlaceholder": "Verwendete Software (optional)",
       "uploadFailed": "Hochladen fehlgeschlagen",
       "uploading": "Wird hochgeladen…",

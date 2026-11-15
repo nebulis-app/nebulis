@@ -47,8 +47,12 @@ export const MediaTile = memo(function MediaTile({
   const cornerDate = size >= TILE_DATE_FROM ? nightLabel(item.date ?? localDateKeyOfTimestamp(item.capturedAt)) : null;
   const label = [kindLabel, night, item.telescope?.name].filter(Boolean).join(', ');
   const showFormat = item.format === 'FITS' || item.format === 'TIFF';
-  const canMarkProcessed = !!onMarkProcessed && item.kind === 'telescope' && item.isImage && !item.isFits && !!item.date;
-  const canMarkUnprocessed = !!onMarkUnprocessed && item.kind === 'processed' && item.isImage && !!item.recordId && !!item.date;
+  // The names the night page uses: JPG, PNG, TIFF, FIT.
+  const formatText = item.format === 'JPEG' ? 'JPG' : item.format === 'FITS' ? 'FIT' : item.format;
+  // A telescope item is never a sub-frame (those are their own kind), so a FITS here is a stack or integration, which
+  // can be a finished picture. An XISF or PSD result has no picture to move back to a night, so it is left out.
+  const canMarkProcessed = !!onMarkProcessed && item.kind === 'telescope' && (item.isImage || item.isFits) && !!item.date;
+  const canMarkUnprocessed = !!onMarkUnprocessed && item.kind === 'processed' && (item.isImage || item.isFits) && !!item.recordId && !!item.date;
   // A variant is its own object (`M31_mosaic`, `M16_Ha`), so its pictures are known by the owning object's id.
   const variant = variantLabelOf(item.objectId);
   const isMosaic = variant === 'Mosaic';
@@ -100,6 +104,13 @@ export const MediaTile = memo(function MediaTile({
           {[item.exposure, item.filter, item.size ? formatBytes(item.size) : null].filter(Boolean).join(' · ')}
         </div>
       )}
+      {/* The file type, small and dull, last in the bar so it sits at the bottom left. The always-visible corner
+          label (FITS, TIFF) hides on hover, so the two never show together. */}
+      {item.format && (
+        <span className="mt-1 inline-block rounded bg-white/10 px-1.5 py-0.5 font-mono text-[0.5625rem] font-medium tracking-wide text-white/50">
+          {formatText}
+        </span>
+      )}
     </div>
   );
 
@@ -107,7 +118,9 @@ export const MediaTile = memo(function MediaTile({
   const external = isVideo && item.videoUrl && !/\.avi$/i.test(item.name) ? item.videoUrl : item.downloadUrl;
 
   return (
-    <div className="group relative">
+    // Nothing in a tile is meant to be dragged out. The page is also an upload drop zone, so a dragged FITS preview
+    // (an image the browser will hand over as a file) used to land on it and upload as a JPEG copy of the preview.
+    <div className="group relative" onDragStart={e => e.preventDefault()}>
       {viewer ? (
         <button type="button" onClick={() => onOpen(item)} aria-label={label} className={tileClass}>
           {picture}
@@ -129,7 +142,7 @@ export const MediaTile = memo(function MediaTile({
 
       {showFormat && (
         <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-black/55 px-1.5 py-0.5 font-mono text-[0.5625rem] font-bold tracking-wide text-white/90 group-hover:opacity-0">
-          {item.format}
+          {formatText}
         </span>
       )}
 

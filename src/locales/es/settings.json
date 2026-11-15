@@ -22,6 +22,7 @@
     "apiKeys": "Claves de API",
     "alerts": "Alertas",
     "display": "Visualización",
+    "gallery": "Galería",
     "slideshow": "Presentación",
     "organization": "Organización",
     "processing": "Procesamiento",
@@ -263,6 +264,10 @@
     }
   },
   "librarySection": {
+    "gallery": {
+      "title": "Galería",
+      "description": "Elige qué imágenes muestra la Galería al abrirse. Con ambas desactivadas, muestra todas las imágenes. Con una activada, muestra solo esas. Con ambas activadas, muestra las imágenes de cualquiera de los dos tipos."
+    },
     "display": {
       "title": "Visualización",
       "description": "Cómo muestran las tarjetas de objeto y la presentación de diapositivas las imágenes e información.",
@@ -273,8 +278,12 @@
         "telescope": "Mi telescopio"
       },
       "galleryProcessedOnly": {
-        "label": "Galería: mostrar solo imágenes procesadas",
-        "description": "La galería se abre con el filtro \"Solo procesadas\" activado de forma predeterminada."
+        "label": "Mostrar solo imágenes procesadas",
+        "description": "La Galería muestra solo las imágenes procesadas y oculta el resto. Activa también los favoritos para mostrar las imágenes de cualquiera de los dos tipos."
+      },
+      "galleryFavorites": {
+        "label": "Mostrar solo imágenes favoritas",
+        "description": "La Galería muestra solo las imágenes que marcaste con una estrella y oculta el resto. Activa también las procesadas para mostrar las imágenes de cualquiera de los dos tipos."
       },
       "objectPages": {
         "label": "Páginas de objetos",
@@ -491,10 +500,10 @@
     },
     "descriptions": {
       "openngc": "Nombres, posiciones, magnitudes y tipos de unos 12.000 objetos de cielo profundo",
-      "sesame": "Búsqueda de nombres para objetos que faltan en el catálogo incluido",
-      "simbad": "Detalles de tamaño y distancia para los objetos del catálogo",
+      "sesame": "Búsqueda de nombres para objetos que faltan en el catálogo incluido, mediante CDS o sus réplicas cuando CDS no está disponible",
+      "simbad": "Detalles de tamaño y distancia para los objetos del catálogo, mediante CDS o sus réplicas cuando CDS no está disponible",
       "hubbleCaldwell": "Imágenes del Hubble y texto para los 88 objetos Caldwell",
-      "hips": "Imágenes del relevamiento DSS2 para cualquier coordenada que señales",
+      "hips": "Imágenes del relevamiento DSS2 para cualquier coordenada que señales, mediante CDS o las réplicas ESA, MAST y CASDA cuando no está disponible",
       "nasaImageLibrary": "Imágenes de respaldo para planetas, lunas y cometas",
       "wikipedia": "Resúmenes en lenguaje sencillo y miniaturas para los objetos",
       "openMeteo": "Previsión y tiempo pasado de tus lugares, más la búsqueda de lugares",
@@ -1001,6 +1010,7 @@
     "alerts": "Entérese cuando se acerca una noche despejada o termina una importación.",
     "libraryOrganization": "Cómo se nombran, agrupan y cuentan los objetos.",
     "libraryProcessing": "Qué hace Nebulis con los fotogramas una vez que llegan.",
+    "libraryGallery": "Lo que muestra la página Galería al abrirse.",
     "librarySlideshow": "Cómo se reproduce la presentación y qué muestra.",
     "maintenance": "Tareas que el servidor ejecuta por sí solo cada noche.",
     "catalogs": "Imágenes sin conexión y datos de satélites guardados en este servidor."
@@ -1460,8 +1470,8 @@
     "lastScan": "último análisis {{when}}",
     "neverScanned": "aún sin analizar",
     "offline": "No se puede acceder a esta carpeta ahora mismo. No se ha cambiado nada. Vuelve a conectar la unidad o el recurso compartido y analiza de nuevo.",
-    "missingFiles_one": "{{count}} archivo no se encontró en el último análisis. Se conserva hasta que un segundo análisis confirme que ya no está.",
-    "missingFiles_other": "{{count}} archivos no se encontraron en el último análisis. Se conservan hasta que un segundo análisis confirme que ya no están.",
+    "missingFiles_one": "{{count}} archivo no se encontró en el último análisis. Permanece en el índice durante 24 horas. Si sigue sin aparecer en un análisis posterior, se elimina.",
+    "missingFiles_other": "{{count}} archivos no se encontraron en el último análisis. Permanecen en el índice durante 24 horas. Si siguen sin aparecer en un análisis posterior, se eliminan.",
     "rescanDone": "Análisis repetido: {{added}} nuevos, {{updated}} modificados, {{missing}} no encontrados, {{removed}} quitados del índice.",
     "rescanOffline": "No se pudo acceder a la carpeta, así que no se cambió nada.",
     "rescanFailed": "Falló el nuevo análisis",
@@ -1469,6 +1479,11 @@
     "unlinkConfirm": "¿Desvincular esta carpeta? Sus objetos salen de tu biblioteca salvo que tengan notas, favoritos o archivos de otra fuente. Tus archivos en disco no se tocan.",
     "unlinkConfirmButton": "Desvincular",
     "keepLinked": "Mantener vinculada",
+    "removeMissing": "Eliminar ahora",
+    "removeMissingConfirm_one": "¿Eliminar ahora este archivo que falta del índice? Nebulis analiza de nuevo primero y, si el archivo sigue sin aparecer, se borra su entrada del índice. No se toca nada en tu disco. Si una unidad está desconectada, vuelve a conectarla antes.",
+    "removeMissingConfirm_other": "¿Eliminar ahora estos {{count}} archivos que faltan del índice? Nebulis analiza de nuevo primero y se borra la entrada del índice de cada archivo que siga sin aparecer. No se toca nada en tu disco. Si una unidad está desconectada, vuelve a conectarla antes.",
+    "removeMissingConfirmButton": "Eliminar del índice",
+    "removeMissingCancel": "Conservarlos",
     "howToLink": "Para vincular una carpeta, usa Importar en la página de la biblioteca, elige una carpeta de este servidor y pulsa Vincular esta carpeta.",
     "refreshManual": "Solo manual",
     "edit": "Editar",

@@ -18,6 +18,11 @@ import { renderReducedFits } from './fitsReducedRender.js';
 //     50 MB frame, and the picture is block-averaged rather than point-sampled,
 //     so faint stars are no longer dropped between sample points. Frames not
 //     much larger than the thumbnail still take the full-resolution path.
+// v5: a render now records the frame it was made from and is redrawn when that
+//     frame changes (see fitsThumbnailIsStale). The bump also retires every v4
+//     render once, so an install that already holds a picture of a frame it
+//     replaced picks up the fix by opening the page, without anyone deleting a
+//     folder by hand.
 //
 // Two size tiers share the same pipeline:
 //   - 'thumb'   256px, for grid/list previews (generated eagerly on import).
@@ -30,7 +35,7 @@ export type FitsThumbnailTier = 'thumb' | 'preview';
 // pipeline change that doesn't also change the *request URL* never reaches a
 // client that already has the old image cached — it'll keep serving the
 // stale render indefinitely regardless of what regenerates on disk.
-export const FITS_THUMBNAIL_PIPELINE_VERSION = 'v4';
+export const FITS_THUMBNAIL_PIPELINE_VERSION = 'v5';
 
 const TIERS: Record<FitsThumbnailTier, { size: number; suffix: string }> = {
   thumb: { size: 256, suffix: `.${FITS_THUMBNAIL_PIPELINE_VERSION}.jpg` },
@@ -70,6 +75,7 @@ export function purgeStaleFitsThumbnails(fitsPath: string): number {
     if (!m || `v${m[1]}` === FITS_THUMBNAIL_PIPELINE_VERSION) continue;
     try {
       fs.unlinkSync(path.join(dir, name));
+      try { fs.unlinkSync(path.join(dir, `${name}.json`)); } catch { /* no stamp */ }
       removed++;
     } catch { /* leave it */ }
   }
@@ -77,9 +83,95 @@ export function purgeStaleFitsThumbnails(fitsPath: string): number {
 }
 
 /**
+ * What the source looked like when a render of it was made.
+ *
+ * A name and a length are not enough: two frames off the same sensor have both. Size, write time and
+ * change time together are what tell a replaced file from the one that was rendered, including a copy
+ * that arrived with an older timestamp than the file it replaced.
+ */
+interface RenderStamp {
+  size: number;
+  mtimeMs: number;
+  ctimeMs: number;
+}
+
+/** Where a render's stamp lives: beside it in `.thumbs/`, so it is cleaned up with it. */
+function renderStampPath(thumbPath: string): string {
+  return `${thumbPath}.json`;
+}
+
+function stampOf(stat: fs.Stats): RenderStamp {
+  return { size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs };
+}
+
+async function readRenderStamp(thumbPath: string): Promise<RenderStamp | null> {
+  try {
+    const raw = await fs.promises.readFile(renderStampPath(thumbPath), 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed === 'object' && parsed !== null) {
+      const { size, mtimeMs, ctimeMs } = parsed as Partial<RenderStamp>;
+      if (typeof size === 'number' && typeof mtimeMs === 'number' && typeof ctimeMs === 'number') {
+        return { size, mtimeMs, ctimeMs };
+      }
+    }
+  } catch { /* no stamp, or one this version cannot read */ }
+  return null;
+}
+
+async function writeRenderStamp(thumbPath: string, stat: fs.Stats): Promise<void> {
+  // Best effort: a render without a stamp is redrawn once on its next request, which is cheap
+  // insurance against failing a render that already succeeded.
+  try {
+    await fs.promises.writeFile(renderStampPath(thumbPath), JSON.stringify(stampOf(stat)));
+  } catch { /* the next request redraws it */ }
+}
+
+/**
+ * True when the cached render is missing, or was made from a different file than the one on disk now.
+ *
+ * The render's name is only `<basename>.<pipeline>.jpg`, with nothing in it that identifies the
+ * pixels, and its existence used to be the whole cache test. A FITS rewritten under the same name (a
+ * re-download after a dropped connection, a partial copy healed on the next import, a restored
+ * backup) therefore kept its old picture forever: `generateFitsThumbnail` returned early on
+ * `existsSync`, and the thumbnail route never even asked. A stamp of the source's size and
+ * timestamps answers the same question the way `linkedThumbnailPath` does for a linked file's render,
+ * without putting those values in this file's name.
+ *
+ * A missing source is not "stale": the route stats the source itself and reports the real read error,
+ * and re-rendering a file that is gone could only fail.
+ */
+export async function fitsThumbnailIsStale(
+  fitsPath: string,
+  thumbPath: string = fitsThumbnailPath(fitsPath),
+): Promise<boolean> {
+  let source: fs.Stats;
+  try {
+    source = await fs.promises.stat(fitsPath);
+  } catch {
+    return false;
+  }
+  let thumb: fs.Stats;
+  try {
+    thumb = await fs.promises.stat(thumbPath);
+  } catch {
+    return true;
+  }
+  const recorded = await readRenderStamp(thumbPath);
+  if (!recorded) {
+    // A render from before stamps existed. Its mtime is right for every normal file; the next write
+    // records the stamp, so this fallback is paid at most once per file.
+    return thumb.mtimeMs < source.mtimeMs;
+  }
+  const current = stampOf(source);
+  return recorded.size !== current.size
+    || recorded.mtimeMs !== current.mtimeMs
+    || recorded.ctimeMs !== current.ctimeMs;
+}
+
+/**
  * Generate a square JPEG thumbnail for a FITS subframe and save it to a
- * `.thumbs/` subdirectory next to the source file. No-ops if the thumbnail
- * already exists. Throws on parse or write failure.
+ * `.thumbs/` subdirectory next to the source file. No-ops while the existing
+ * render is newer than the source. Throws on parse or write failure.
  *
  * Color handling mirrors src/lib/fits.ts: RGB cubes (NAXIS3=3) read all three
  * planes; Bayer mosaics (BAYERPAT) are debayered with a 2x2 superpixel pass;
@@ -92,9 +184,17 @@ export async function generateFitsThumbnail(
   thumbPathOverride?: string,
 ): Promise<void> {
   const thumbPath = thumbPathOverride ?? fitsThumbnailPath(fitsPath, tier);
-  if (fs.existsSync(thumbPath)) return;
+  // An override name already carries the source's size and mtime (see
+  // linkedDerivativeKey), so its presence is a hit. The managed name carries nothing, so it has to be
+  // compared against the source.
+  if (thumbPathOverride ? fs.existsSync(thumbPath) : !(await fitsThumbnailIsStale(fitsPath, thumbPath))) return;
 
   fs.mkdirSync(path.dirname(thumbPath), { recursive: true });
+
+  // Stamp what we are about to read, not what is on disk when the encode finishes. A frame that is
+  // downloaded again mid-render then compares unequal on the next request and redraws once, instead of
+  // being recorded as already rendered while the picture still holds the old bytes.
+  const sourceStat = await fs.promises.stat(fitsPath);
 
   // Async: a synchronous read of a 50 MB frame (or any frame on a network or USB volume) held the event loop, and with
   // it every other request, for the whole read.
@@ -109,6 +209,7 @@ export async function generateFitsThumbnail(
     await sharp(reduced.rgb, { raw: { width: size, height: size, channels: 3 } })
       .jpeg({ quality: 85 })
       .toFile(thumbPath);
+    await writeRenderStamp(thumbPath, sourceStat);
     if (!thumbPathOverride) purgeStaleFitsThumbnails(fitsPath);
     return;
   }
@@ -130,6 +231,7 @@ export async function generateFitsThumbnail(
   await sharp(rgb, { raw: { width: size, height: size, channels: 3 } })
     .jpeg({ quality: 85 })
     .toFile(thumbPath);
+  await writeRenderStamp(thumbPath, sourceStat);
   if (!thumbPathOverride) purgeStaleFitsThumbnails(fitsPath);
 }
 

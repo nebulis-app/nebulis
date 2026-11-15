@@ -180,6 +180,11 @@ export interface RunImportOptions {
    *  History row — the whole-object caller owns both, and "sync all
    *  sub-frames" lands as a single history entry. */
   rollup?: boolean;
+  /** Sub-frame sync only: re-fetch every candidate even when the destination already holds a
+   *  complete-looking file. A frame whose bytes are wrong (a copy the telescope returned from the
+   *  wrong session, a file replaced by hand) has the right name and the right size, so nothing that
+   *  compares the two can spot it. Only the user can say "download these again". */
+  forceRedownload?: boolean;
 }
 
 export interface ImportHistoryEntry {
@@ -2566,7 +2571,23 @@ export async function syncSessionSubFrames(
     // Only count files that actually need downloading. Already-present files
     // would otherwise be swept through synchronously before the client's first
     // status poll, making the progress bar open halfway full.
-    const toDownload = candidates.filter(f => !fs.existsSync(path.join(objLocalDir, destRelFor(f))));
+    //
+    // "Present" means present at the length the telescope reports, not merely
+    // present under the right name. A copy cut short by a dropped connection used
+    // to be counted as done by the bare existsSync() below, so "Sync all
+    // sub-frames" answered "already synced" and could never repair it. A
+    // candidate whose size the listing did not give is taken at its word (there
+    // is nothing to compare), and `forceRedownload` re-fetches regardless.
+    const toDownload = candidates.filter(f => {
+      if (options?.forceRedownload) return true;
+      let onDisk: number;
+      try {
+        onDisk = fs.statSync(path.join(objLocalDir, destRelFor(f))).size;
+      } catch {
+        return true;
+      }
+      return f.size != null && f.size > 0 ? onDisk !== f.size : false;
+    });
     importStatus.filesTotal = toDownload.length;
     importStatus.skippedFiles = candidates.length - toDownload.length;
     debugLog('subframe-sync:files', `${toDownload.length} file(s) to download, ${importStatus.skippedFiles} already present`);
@@ -2609,7 +2630,7 @@ export async function syncSessionSubFrames(
         debugLog('subframe-sync:file', `Downloading: ${file.localName}${file.size != null ? ` (${(file.size / 1024).toFixed(0)} KB)` : ''}`);
         const outcome = await writeFileIntoLibrary(
           { source: file.remotePath, destRel, expectedSize: file.size, sourceKind: 'transport' },
-          { profile, objectDir: objLocalDir, thumbnailQueue },
+          { profile, objectDir: objLocalDir, thumbnailQueue, force: options?.forceRedownload === true },
         );
         if (outcome.status === 'error') {
           downloadErrors++;

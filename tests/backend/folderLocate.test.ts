@@ -82,11 +82,20 @@ describe('locateFolderInRoots', () => {
     expect(await locateFolderInRoots([root], 'M31', samples)).toBe(dir);
   });
 
-  it('returns the parent when the sample paths carry the folder name', async () => {
+  it('returns the folder itself, not its parent, when the sample paths carry the folder name', async () => {
     const root = tempRoot();
     makeFolder(root, 'Astro/M31', files);
+    makeFolder(root, 'Astro/NGC7000', files);
     const withAnchor = [sample('M31/lights/a.fits', 100), sample('M31/b.jpg', 50)];
-    expect(await locateFolderInRoots([root], 'M31', withAnchor)).toBe(path.join(root, 'Astro'));
+    expect(await locateFolderInRoots([root], 'M31', withAnchor)).toBe(path.join(root, 'Astro', 'M31'));
+  });
+
+  it('returns a flat folder itself, so its neighbours are never offered', async () => {
+    const root = tempRoot();
+    makeFolder(root, 'Astro/IC444', { 'Light_0001.fit': 100, 'Light_0002.fit': 100 });
+    makeFolder(root, 'Astro/M31/LIGHTS', { 'a.fit': 10 });
+    const flat = [sample('IC444/Light_0001.fit', 100), sample('IC444/Light_0002.fit', 100)];
+    expect(await locateFolderInRoots([root], 'IC444', flat)).toBe(path.join(root, 'Astro', 'IC444'));
   });
 
   it('ignores a same-named decoy whose file sizes differ', async () => {

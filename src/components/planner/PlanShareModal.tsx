@@ -12,6 +12,7 @@ import { Check, Copy, Share2, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { buildPlanShareText, drawPlanShareCard, type PlanShareData, type PlanShareStrings } from '../../lib/planShare';
 import { translateMoonPhase } from '../../lib/moonPhaseLabel';
+import { BodyScrollLock } from '../ui/BodyScrollLock';
 
 interface PlanShareModalProps {
   data: PlanShareData;
@@ -111,6 +112,7 @@ export function PlanShareModal({ data, onClose }: PlanShareModalProps) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={onClose}
     >
+      <BodyScrollLock />
       <div
         className="relative rounded-2xl shadow-2xl max-w-md w-full max-h-[92vh] overflow-hidden flex flex-col bg-slate-900 text-slate-100"
         onClick={e => e.stopPropagation()}

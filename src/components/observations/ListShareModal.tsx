@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, Copy, Share2, Download, Printer } from 'lucide-react';
 import { buildListShareText, drawListShareCard, type ListShareData, type ListShareStrings } from '../../lib/listShare';
+import { BodyScrollLock } from '../ui/BodyScrollLock';
 
 interface ListShareModalProps {
   data: ListShareData;
@@ -131,6 +132,7 @@ export function ListShareModal({ data, onClose }: ListShareModalProps) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={onClose}
     >
+      <BodyScrollLock />
       <div
         className="relative rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden flex flex-col bg-slate-900 text-slate-100"
         onClick={e => e.stopPropagation()}

@@ -178,6 +178,7 @@
       "opticsAutoNone": "not detected",
       "opticsSource": {
         "manual": "Chosen for this night",
+        "manual_sun": "Chosen for this day",
         "fits": "Matched from the focal length in the FITS",
         "only": "The telescope's only configuration"
       }
@@ -199,6 +200,7 @@
     "conditionsPanel": {
       "title": "Conditions",
       "empty": "No conditions were recorded for this night. Weather is fetched for the session's location when it is imported.",
+      "empty_sun": "No conditions were recorded for this day. Weather is fetched for the session's location when it is imported.",
       "cloudClear": "Clear",
       "cloudMostlyClear": "Mostly clear",
       "cloudBroken": "Broken cloud",
@@ -237,7 +239,8 @@
       "downloadFailed": "Download failed",
       "zipping": "Zipping {{done}}/{{total}}…",
       "deleteAllTitle": "Delete all subframes for this session",
-      "empty": "No subframes downloaded yet. Connect your telescope and use Download Subs to sync them."
+      "empty": "No subframes downloaded yet. Connect your telescope and use Download Subs to sync them.",
+      "forceSyncTitle": "Re-download Subframes"
     },
     "sessionFileGrid": {
       "exitCompareTitle": "Exit compare mode",
@@ -267,11 +270,13 @@
       "setAsGalleryImage": "Set as gallery image",
       "delete": "Delete",
       "combinesNights": "Combines {{count}} nights: {{list}}",
+      "combinesNights_sun": "Combines {{count}} days: {{list}}",
       "addMore": "Add more",
       "moveToImages": "Mark as unprocessed"
     },
     "nightPanel": {
       "title": "That night",
+      "title_sun": "That day",
       "imaged": "Imaged {{range}}",
       "cloud": "{{label}} · {{percent}}% cloud",
       "moon": "Moon {{percent}}%"
@@ -329,7 +334,12 @@
       "markProcessedConfirm": "Mark as processed",
       "unmarkProcessedTitle": "Mark as unprocessed?",
       "unmarkProcessedMessage": "This moves the image out of Processed and back into this night's Images. Nothing is deleted.",
-      "unmarkProcessedConfirm": "Mark as unprocessed"
+      "unmarkProcessedMessage_sun": "This moves the image out of Processed and back into this day's Images. Nothing is deleted.",
+      "unmarkProcessedConfirm": "Mark as unprocessed",
+      "forceSyncTitle": "Re-download subframes?",
+      "forceSyncMessage_one": "This downloads the frame for this night from the telescope again, replacing the copy already in the library. The telescope must stay online. Use it when a frame does not show what you captured.",
+      "forceSyncMessage_other": "This downloads all {{count}} frames for this night from the telescope again, replacing the copies already in the library. The telescope must stay online. Use it when a frame does not show what you captured.",
+      "forceSyncConfirm": "Re-download"
     },
     "fitsHeaderModal": {
       "title": "FITS Header for {{fileName}}",
@@ -381,7 +391,9 @@
       "notesLabel": "Notes",
       "notesPlaceholder": "Processing notes, software used, integration time…",
       "combineMultipleNights": "Combine multiple nights",
+      "combineMultipleNights_sun": "Combine multiple days",
       "whichNightsQuestion": "Which nights does this stack combine?",
+      "whichNightsQuestion_sun": "Which days does this stack combine?",
       "softwarePlaceholder": "Software used (optional)",
       "uploadFailed": "Upload failed",
       "uploading": "Uploading…",

@@ -23,7 +23,7 @@ import { useClickOutside } from '../hooks/useClickOutside';
 import { FilterSection, Pill, TypeFilterSection, ActiveFilterChips, PopoverResetButton } from '../components/filters/toolbarParts';
 import { TOOLBAR_BTN, POPOVER, popoverSurface } from '../components/filters/toolbarStyles';
 import { TourAnchor } from '../components/tour/TourAnchor';
-import { buildTypeFilters, countGroupChips, matchesFilter, filterLabel, ALL_FILTER_ID, FAVORITES_FILTER_ID } from '../lib/objectTypeFilters';
+import { buildTypeFilters, countGroupChips, matchesFilter, filterLabel, ALL_FILTER_ID } from '../lib/objectTypeFilters';
 import { isOptionValue } from '../lib/typeGuards';
 
 type SortKey = 'name-asc' | 'name-desc' | 'date-desc' | 'date-asc';
@@ -99,6 +99,11 @@ export function ImageGalleryPage() {
   // effectiveFilterId below.
   const [processedOnlyOverride, setProcessedOnlyOverride] = useState<boolean | null>(null);
   const processedOnly = processedOnlyOverride ?? settings?.galleryProcessedOnlyDefault ?? false;
+  // Favorites and Processed are two ways into the same list, not two filters that narrow each other: with both on the
+  // Gallery shows an image that is either one, and with neither on it shows every image. Same default-then-override
+  // handling as Processed.
+  const [favoritesOverride, setFavoritesOverride] = useState<boolean | null>(null);
+  const favoritesOnly = favoritesOverride ?? settings?.galleryFavoritesDefault ?? false;
 
   const { data: objectFilters = [] } = useQuery({
     queryKey: ['library-object-filters'],
@@ -126,7 +131,6 @@ export function ImageGalleryPage() {
   // corrective setState-in-effect).
   const effectiveFilterId =
     activeFilterId === ALL_FILTER_ID ||
-    activeFilterId === FAVORITES_FILTER_ID ||
     chips.some(c => c.id === activeFilterId) ||
     typeFilters.some(tf => tf.id === activeFilterId)
       ? activeFilterId
@@ -172,7 +176,7 @@ export function ImageGalleryPage() {
       if (!matchesFilter(effectiveFilterId, { objectType: img.objectType, isFavorite: img.isFavorite }, objectFilters)) {
         return false;
       }
-      if (processedOnly && !img.isProcessed) return false;
+      if ((processedOnly || favoritesOnly) && !((processedOnly && img.isProcessed) || (favoritesOnly && img.isFavorite))) return false;
       if (q) {
         // Match the catalog designation (objectId, e.g. "M33", "NGC598") as
         // well as the common name and filename, all normalized so "M33",
@@ -202,7 +206,7 @@ export function ImageGalleryPage() {
         }
       }
     });
-  }, [images, effectiveFilterId, objectFilters, processedOnly, deferredSearch, sortKey]);
+  }, [images, effectiveFilterId, objectFilters, processedOnly, favoritesOnly, deferredSearch, sortKey]);
 
   // Depend on favMutation.mutate, not favMutation itself: useMutation returns a
   // fresh object every render (`{ ...result, mutate, mutateAsync }`), so
@@ -241,22 +245,27 @@ export function ImageGalleryPage() {
   }, [sortOpen]);
 
   const activeChips: { key: string; label: string; clear: () => void }[] = [];
-  if (effectiveFilterId !== ALL_FILTER_ID && effectiveFilterId !== FAVORITES_FILTER_ID) {
+  if (effectiveFilterId !== ALL_FILTER_ID) {
     activeChips.push({ key: 'type', label: filterLabel(effectiveFilterId, objectFilters, typeFilters), clear: () => setActiveFilterId(ALL_FILTER_ID) });
   }
   if (processedOnly) {
-    activeChips.push({ key: 'processed', label: t('galleryPage.processedOnly'), clear: () => setProcessedOnlyOverride(false) });
+    activeChips.push({ key: 'processed', label: t('galleryPage.showProcessed'), clear: () => setProcessedOnlyOverride(false) });
+  }
+  if (favoritesOnly) {
+    activeChips.push({ key: 'favorites', label: t('galleryPage.favorites'), clear: () => setFavoritesOverride(false) });
   }
   const activeFilterCount = activeChips.length;
   function clearAllActive() {
     setActiveFilterId(ALL_FILTER_ID);
     setProcessedOnlyOverride(false);
+    setFavoritesOverride(false);
   }
 
-  // Back to defaults: the Settings default decides Processed only, so drop the override.
+  // Back to defaults: the Settings defaults decide Processed and Favorites, so drop the overrides.
   function resetFilters() {
     setActiveFilterId(ALL_FILTER_ID);
     setProcessedOnlyOverride(null);
+    setFavoritesOverride(null);
   }
 
   function applyLayout(mode: LayoutMode) {
@@ -359,7 +368,7 @@ export function ImageGalleryPage() {
             </button>
             {filtersOpen && (
               <div className={`${POPOVER} w-[22rem] max-w-[calc(100vw-2rem)] max-h-[75vh] overflow-y-auto p-4 space-y-4 ${popoverSurface(isDark)}`}>
-                <PopoverResetButton isDark={isDark} label={t('galleryPage.reset')} disabled={activeFilterCount === 0 && effectiveFilterId !== FAVORITES_FILTER_ID && processedOnlyOverride === null} onReset={resetFilters} />
+                <PopoverResetButton isDark={isDark} label={t('galleryPage.reset')} disabled={activeFilterCount === 0 && processedOnlyOverride === null && favoritesOverride === null} onReset={resetFilters} />
                 <TypeFilterSection
                   isDark={isDark}
                   activeId={effectiveFilterId}
@@ -374,13 +383,19 @@ export function ImageGalleryPage() {
                     fewer: t('galleryPage.fewerTypes'),
                   }}
                 />
-                {/* "Processed" is a different axis (kind of image) than object
-                    type, so it stacks with the type choice and Favorites. */}
+                {/* Processed and Favorites are a different axis (which images) than object type, so
+                    they stack with the type choice. Between themselves they add up: both on shows
+                    an image that is either. */}
                 <FilterSection title={t('galleryPage.filterShow')} isDark={isDark}>
                   <Pill active={processedOnly} isDark={isDark} onClick={() => setProcessedOnlyOverride(!processedOnly)}>
                     <Sparkles className="w-3.5 h-3.5" />
-                    {t('galleryPage.processedOnly')}
+                    {t('galleryPage.showProcessed')}
                   </Pill>
+                  <Pill active={favoritesOnly} isDark={isDark} onClick={() => setFavoritesOverride(!favoritesOnly)}>
+                    <Star className="w-3.5 h-3.5" />
+                    {t('galleryPage.favorites')}
+                  </Pill>
+                  <p className={`basis-full text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{t('galleryPage.showEitherHint')}</p>
                 </FilterSection>
               </div>
             )}
@@ -388,17 +403,17 @@ export function ImageGalleryPage() {
 
           <button
             type="button"
-            onClick={() => setActiveFilterId(effectiveFilterId === FAVORITES_FILTER_ID ? ALL_FILTER_ID : FAVORITES_FILTER_ID)}
-            aria-pressed={effectiveFilterId === FAVORITES_FILTER_ID}
+            onClick={() => setFavoritesOverride(!favoritesOnly)}
+            aria-pressed={favoritesOnly}
             aria-label={t('galleryPage.favorites')}
             title={t('galleryPage.favorites')}
             className={`flex items-center justify-center w-10 h-10 rounded-full ring-1 ring-inset transition-colors ${
-              effectiveFilterId === FAVORITES_FILTER_ID
+              favoritesOnly
                 ? isDark ? 'bg-amber-500/15 text-amber-400 ring-amber-500/30' : 'bg-amber-100 text-amber-700 ring-amber-300'
                 : isDark ? 'bg-slate-900/70 text-slate-400 ring-slate-700/60 hover:bg-slate-800' : 'bg-white text-slate-500 ring-slate-200 hover:bg-slate-100'
             }`}
           >
-            <Star className={`w-4 h-4 ${effectiveFilterId === FAVORITES_FILTER_ID ? 'fill-current' : ''}`} />
+            <Star className={`w-4 h-4 ${favoritesOnly ? 'fill-current' : ''}`} />
           </button>
 
           <div role="group" aria-label={t('mosaic.layout')} className={`flex items-center p-0.5 rounded-full ring-1 ring-inset shrink-0 ${
@@ -480,12 +495,16 @@ export function ImageGalleryPage() {
       {!isLoading && !error && images && (
         <p className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
           {t('galleryPage.count', { count: filtered.length })}
-          {effectiveFilterId === FAVORITES_FILTER_ID
-            ? t('galleryPage.favoritedSuffix')
-            : effectiveFilterId !== ALL_FILTER_ID
-              ? ` · ${filterLabel(effectiveFilterId, objectFilters, typeFilters)}`
+          {effectiveFilterId !== ALL_FILTER_ID
+            ? ` · ${filterLabel(effectiveFilterId, objectFilters, typeFilters)}`
+            : favoritesOnly || processedOnly
+              ? ''
               : t('galleryPage.inLibrarySuffix')}
-          {processedOnly ? t('galleryPage.processedOnlySuffix') : ''}
+          {favoritesOnly && processedOnly
+            ? t('galleryPage.showEitherSuffix')
+            : favoritesOnly
+              ? t('galleryPage.favoritedSuffix')
+              : processedOnly ? t('galleryPage.processedOnlySuffix') : ''}
         </p>
       )}
 
@@ -531,18 +550,18 @@ export function ImageGalleryPage() {
       ) : (
         <div className={`text-center py-20 space-y-6 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
           <div className={`inline-flex p-6 rounded-full ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
-            {effectiveFilterId === FAVORITES_FILTER_ID ? <Star className="w-12 h-12 opacity-40" />
+            {favoritesOnly && !processedOnly ? <Star className="w-12 h-12 opacity-40" />
               : processedOnly ? <Sparkles className="w-12 h-12 opacity-40" />
               : <Images className="w-12 h-12 opacity-40" />}
           </div>
           <div className="space-y-2">
             <p className={`text-xl font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-              {effectiveFilterId === FAVORITES_FILTER_ID ? t('galleryPage.noFavoritedYet')
+              {favoritesOnly && !processedOnly ? t('galleryPage.noFavoritedYet')
                 : processedOnly ? t('galleryPage.noProcessedYet')
                 : search || effectiveFilterId !== ALL_FILTER_ID ? t('galleryPage.noMatchFilters')
                 : t('galleryPage.noImagesInLibrary')}
             </p>
-            {(search || effectiveFilterId !== ALL_FILTER_ID || processedOnly) && (
+            {(search || effectiveFilterId !== ALL_FILTER_ID || processedOnly || favoritesOnly) && (
               <button
                 type="button"
                 onClick={() => { setSearch(''); clearAllActive(); }}
@@ -555,7 +574,7 @@ export function ImageGalleryPage() {
               </button>
             )}
             <p className="text-sm max-w-sm mx-auto">
-              {effectiveFilterId === FAVORITES_FILTER_ID ? t('galleryPage.starToFavorite')
+              {favoritesOnly && !processedOnly ? t('galleryPage.starToFavorite')
                 : processedOnly ? t('galleryPage.uploadProcessedHint')
                 : t('galleryPage.importFromTelescopeHint')}
             </p>

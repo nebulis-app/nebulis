@@ -19,6 +19,7 @@ import { getLibraryDir } from '../../server/lib/libraryPath';
 import { ensureLibraryDir } from '../../server/lib/library/objects';
 import { getLocalObjects } from '../../server/lib/library/objects';
 import { getObjectLocation } from '../../server/lib/library/objectLocation';
+import { getLocalObservations } from '../../server/lib/library/observations';
 import {
   commitSource, rescanSource, deleteSource, renameSource, assertLinkableRoot, summarizeSources, scanSource, LinkSourceError,
 } from '../../server/lib/library/librarySources';
@@ -108,6 +109,53 @@ describe('rescanSource', () => {
     const later = await rescanSource(sourceId, SETTINGS);
     expect(later).toMatchObject({ missing: 0, removed: 1 });
     expect(fileRows(sourceId)).toHaveLength(1);
+  });
+
+  it('removeMissingNow drops a file missing for the first time without the wait, and keeps the files that are there', async () => {
+    const root = makeRoot();
+    const { sourceId } = await commitSource(root, SETTINGS, { label: 'x' });
+    fs.rmSync(path.join(root, 'Galaxies', 'M 31 - Andromeda', 'Stacked_60_M 31_10.0s_IRCUT_20260102-200000.jpg'));
+
+    const r = await rescanSource(sourceId, SETTINGS, { removeMissingNow: true });
+    expect(r).toMatchObject({ missing: 0, removed: 1 });
+    expect(fileRows(sourceId)).toHaveLength(1);
+    expect(fs.existsSync(path.join(root, 'Galaxies', 'M 31 - Andromeda', 'Stacked_60_M 31_10.0s_IRCUT_20260101-200000.jpg'))).toBe(true);
+  });
+
+  it('removeMissingNow removes nothing when the folder is offline', async () => {
+    const root = makeRoot();
+    const { sourceId } = await commitSource(root, SETTINGS, { label: 'x' });
+    fs.rmSync(path.join(root, 'Galaxies', 'M 31 - Andromeda', 'Stacked_60_M 31_10.0s_IRCUT_20260102-200000.jpg'));
+    await rescanSource(sourceId, SETTINGS);
+    fs.renameSync(root, `${root}-away`);
+    roots.push(`${root}-away`);
+
+    const r = await rescanSource(sourceId, SETTINGS, { removeMissingNow: true });
+    expect(r).toMatchObject({ offline: true, removed: 0 });
+    expect(fileRows(sourceId)).toHaveLength(2);
+  });
+
+  it('puts every night of a linked-only object on the calendar, with its file counts and a picture', async () => {
+    const root = makeRoot();
+    const { sourceId } = await commitSource(root, SETTINGS, { label: 'x' });
+    // No managed folder exists for a linked object: the files stay on the user's drive.
+    expect(fs.existsSync(path.join(getLibraryDir(), 'M31'))).toBe(false);
+
+    const nights = getLocalObservations().filter(o => o.objectId === 'M31');
+    expect(nights.map(o => o.date).sort()).toEqual(['2026-01-01', '2026-01-02']);
+    expect(nights.every(o => o.fileCount === 1 && o.stackedCount === 1)).toBe(true);
+    // The card picture comes from the linked file, whose path already carries its source.
+    expect(decodeURIComponent(nights[0].thumbnailUrl)).toContain(`@src/${sourceId}/`);
+  });
+
+  it('keeps a night the user deleted off the calendar', async () => {
+    const root = makeRoot();
+    const { sourceId } = await commitSource(root, SETTINGS, { label: 'x' });
+    expect(sourceId).toBeTruthy();
+    db.prepare("DELETE FROM librarySessions WHERE objectId = 'M31' AND date = '2026-01-01'").run();
+    db.prepare("INSERT INTO libraryDeletedSessions (objectId, date) VALUES ('M31', '2026-01-01')").run();
+    const dates = getLocalObservations().filter(o => o.objectId === 'M31').map(o => o.date);
+    expect(dates).toEqual(['2026-01-02']);
   });
 
   it('un-flags a file that comes back between rescans', async () => {

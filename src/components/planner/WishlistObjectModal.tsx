@@ -34,6 +34,7 @@ import { useIntegrationProgress } from '../../hooks/useIntegrationProgress';
 import { ObjectIntegrationSection } from '../objectDetail/ObjectIntegrationSection';
 import type { WishlistCandidate } from '../../hooks/useWishlist';
 import { WISHLIST_PRIORITIES, type WishlistItem, type WishlistPriority } from '../../lib/api/wishlist';
+import { BodyScrollLock } from '../ui/BodyScrollLock';
 
 const PRIORITY_DOT: Record<WishlistPriority, string> = {
   high: 'bg-red-500',
@@ -244,6 +245,7 @@ export function WishlistObjectModal({
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
       onClick={onClose}
     >
+      <BodyScrollLock />
       <div className="flex items-center gap-1.5 sm:gap-3 w-full max-w-[820px]" onClick={(e) => e.stopPropagation()}>
         {/* Smaller and tighter on a phone: at a 375px viewport, two full-size
             circular buttons plus their gaps were eating a quarter of the
@@ -565,6 +567,7 @@ export function WishlistObjectModal({
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 backdrop-blur-sm"
           onClick={() => setLightboxOpen(false)}
         >
+          <BodyScrollLock />
           <div className="relative" onClick={(e) => e.stopPropagation()}>
             <img
               src={lightboxImgUrl}

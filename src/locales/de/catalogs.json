@@ -464,7 +464,8 @@
       "titleOn": "Die Besten am {{date}}"
     },
     "browse": {
-      "title": "Nach Art durchsuchen"
+      "title": "Nach Art durchsuchen",
+      "byCatalog": "Nach Katalog durchsuchen"
     },
     "results": {
       "forQuery": "Ergebnisse für „{{query}}“",
@@ -478,7 +479,22 @@
       "bestTonight": "Beste heute Nacht",
       "bestOn": "Die Besten am {{date}}",
       "breadcrumb": "Wo du bist",
-      "categories": "Kategorien"
+      "categories": "Kategorien",
+      "inCatalog": "{{catalog}}-Objekte"
+    },
+    "catalogs": {
+      "messier": "Messier",
+      "ngc": "NGC",
+      "ic": "IC",
+      "caldwell": "Caldwell",
+      "sharpless": "Sharpless"
+    },
+    "catalogBlurb": {
+      "messier": "Messiers 110 helle Objekte",
+      "ngc": "Der New General Catalogue",
+      "ic": "Ergänzung zum NGC",
+      "caldwell": "Patrick Moores 109 Favoriten",
+      "sharpless": "Emissionsnebel-Katalog"
     },
     "filters": {
       "visibility": "Anzeigen",
@@ -489,13 +505,16 @@
       "sort": "Sortieren",
       "fitsScope": "Passt zu meinem Teleskop",
       "fitsScopeHint": "Objekte, die in ein Bild von {{scope}} passen",
-      "upOn": "Sichtbar am {{date}}"
+      "upOn": "Sichtbar am {{date}}",
+      "catalog": "Katalog",
+      "catalogAll": "Alle Kataloge"
     },
     "sort": {
       "best": "Beste",
       "tonight": "Beste heute Nacht",
       "bright": "Hellste",
       "large": "Größte",
+      "number": "Nummer",
       "name": "Name"
     },
     "planNight": {

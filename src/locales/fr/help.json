@@ -568,7 +568,7 @@
     "offlineTerm": "Dossiers hors ligne",
     "offlineDesc": "Si le disque ou le partage est inaccessible, le dossier est marqué comme injoignable et rien ne change. Reconnectez-le et relancez l'analyse.",
     "missingTerm": "Fichiers manquants",
-    "missingDesc": "Un fichier manquant reste dans l'index jusqu'à ce qu'une seconde analyse confirme sa disparition, de sorte qu'une analyse faite alors qu'un dossier est à moitié monté ne vide pas votre bibliothèque.",
+    "missingDesc": "Un fichier manquant reste dans l'index pendant 24 heures. Si une analyse ultérieure ne le trouve toujours pas, il est supprimé. Ce délai évite qu'une analyse faite alors qu'un dossier est à moitié monté ne vide votre bibliothèque.",
     "settingsAlt": "Réglages, Stockage, Dossiers liés, avec deux dossiers liés et les boutons Réanalyser, Modifier et Délier",
     "settingsCaption": "Réglages → Stockage → Dossiers liés",
     "note": "Les fichiers liés ne sont pas inclus quand vous archivez sur un disque externe. L'archive ne copie que les fichiers de la bibliothèque Nebulis elle-même."

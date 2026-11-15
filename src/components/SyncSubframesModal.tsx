@@ -13,6 +13,9 @@ interface SyncSubframesModalProps {
   objectId: string;
   /** A single night's date, or null to sync every night of the object. */
   sessionId: string | null;
+  /** Fetch every frame again, even one already on disk at the right size. Set only from the
+   *  "download every frame again" confirmation, never by an ordinary sync. */
+  force?: boolean;
   /** Called when the modal closes after a completed sync, so the parent can refetch. */
   onComplete: () => void;
   onClose: () => void;
@@ -20,7 +23,7 @@ interface SyncSubframesModalProps {
 
 type Phase = 'starting' | 'waiting' | 'syncing' | 'done' | 'upToDate' | 'empty' | 'error';
 
-export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }: SyncSubframesModalProps) {
+export function SyncSubframesModal({ objectId, sessionId, force = false, onComplete, onClose }: SyncSubframesModalProps) {
   const { isDark } = useTheme();
   const { t } = useTranslation('common');
   const [phase, setPhase] = useState<Phase>('starting');
@@ -49,6 +52,7 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
   // Refs capture prop values at mount so the one-shot effect needs no deps.
   const objectIdRef = useRef(objectId);
   const sessionIdRef = useRef(sessionId);
+  const forceRef = useRef(force);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
   // Same reasoning as onCompleteRef: the mount-only effect below reads this
@@ -73,8 +77,9 @@ export function SyncSubframesModal({ objectId, sessionId, onComplete, onClose }:
       while (true) {
         try {
           const sid = sessionIdRef.current;
-          if (sid) await syncSessionSubFrames(objectIdRef.current, sid);
-          else await syncObjectSubFrames(objectIdRef.current);
+          const opts = forceRef.current ? { force: true } : undefined;
+          if (sid) await syncSessionSubFrames(objectIdRef.current, sid, opts);
+          else await syncObjectSubFrames(objectIdRef.current, opts);
           break; // lock acquired, sync started
         } catch (err) {
           if (cancelledRef.current) return;

@@ -464,7 +464,8 @@
       "titleOn": "Best on {{date}}"
     },
     "browse": {
-      "title": "Browse by kind"
+      "title": "Browse by kind",
+      "byCatalog": "Browse by catalog"
     },
     "results": {
       "forQuery": "Results for \"{{query}}\"",
@@ -478,7 +479,22 @@
       "bestTonight": "Best tonight",
       "bestOn": "Best on {{date}}",
       "breadcrumb": "Where you are",
-      "categories": "Categories"
+      "categories": "Categories",
+      "inCatalog": "{{catalog}} objects"
+    },
+    "catalogs": {
+      "messier": "Messier",
+      "ngc": "NGC",
+      "ic": "IC",
+      "caldwell": "Caldwell",
+      "sharpless": "Sharpless"
+    },
+    "catalogBlurb": {
+      "messier": "Messier's 110 bright objects",
+      "ngc": "The New General Catalog",
+      "ic": "Supplement to the NGC",
+      "caldwell": "Patrick Moore's 109 favorites",
+      "sharpless": "Emission nebulae survey"
     },
     "filters": {
       "visibility": "Show",
@@ -489,13 +505,16 @@
       "sort": "Sort",
       "fitsScope": "Fits my scope",
       "fitsScopeHint": "Objects that fit one frame of {{scope}}",
-      "upOn": "Up on {{date}}"
+      "upOn": "Up on {{date}}",
+      "catalog": "Catalog",
+      "catalogAll": "All catalogs"
     },
     "sort": {
       "best": "Best",
       "tonight": "Best tonight",
       "bright": "Brightest",
       "large": "Largest",
+      "number": "Number",
       "name": "Name"
     },
     "planNight": {

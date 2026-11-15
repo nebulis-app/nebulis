@@ -573,7 +573,7 @@ describe('scan + commit', () => {
     const solar = result.objects.find(o => o.folderName === 'solar_photo');
     const lunar = result.objects.find(o => o.folderName === 'lunar_photo');
     expect(solar?.catalogMatch?.name).toBe('The Sun');
-    expect(solar?.catalogMatch?.type).toBe('Star');
+    expect(solar?.catalogMatch?.type).toBe('Sun');
     expect(solar?.sessions.map(s => s.date)).toEqual(['2026-05-20']);
     expect(lunar?.catalogMatch?.name).toBe('The Moon');
     expect(lunar?.catalogMatch?.type).toBe('Natural Satellite');

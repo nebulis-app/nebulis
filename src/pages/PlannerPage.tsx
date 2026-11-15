@@ -114,6 +114,7 @@ import type { PlanBlock } from '../lib/planTypes';
 import { formatObjectName } from '../lib/utils';
 import { formatHm } from '../lib/timeFormat';
 import SunCalc from 'suncalc';
+import { BodyScrollLock } from '../components/ui/BodyScrollLock';
 
 const TIMELINE_BUFFER_MS = 30 * 60_000; // 30-min padding beyond sunset/sunrise
 // Monotonic source of optimistic-row ids. `-Date.now()` collided when two
@@ -1886,6 +1887,7 @@ function SessionDetailsModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={onClose}
     >
+      <BodyScrollLock />
       <div
         className={`relative flex flex-col rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] ${
           isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'

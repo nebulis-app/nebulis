@@ -464,7 +464,8 @@
       "titleOn": "Lo mejor el {{date}}"
     },
     "browse": {
-      "title": "Explorar por tipo"
+      "title": "Explorar por tipo",
+      "byCatalog": "Explorar por catálogo"
     },
     "results": {
       "forQuery": "Resultados para «{{query}}»",
@@ -478,7 +479,22 @@
       "bestTonight": "Mejores esta noche",
       "bestOn": "Lo mejor el {{date}}",
       "breadcrumb": "Dónde estás",
-      "categories": "Categorías"
+      "categories": "Categorías",
+      "inCatalog": "Objetos {{catalog}}"
+    },
+    "catalogs": {
+      "messier": "Messier",
+      "ngc": "NGC",
+      "ic": "IC",
+      "caldwell": "Caldwell",
+      "sharpless": "Sharpless"
+    },
+    "catalogBlurb": {
+      "messier": "Los 110 objetos de Messier",
+      "ngc": "El New General Catalogue",
+      "ic": "Suplemento del NGC",
+      "caldwell": "Las 109 favoritas de Moore",
+      "sharpless": "Nebulosas de emisión"
     },
     "filters": {
       "visibility": "Mostrar",
@@ -489,13 +505,16 @@
       "sort": "Ordenar",
       "fitsScope": "Cabe en mi telescopio",
       "fitsScopeHint": "Objetos que caben en un solo encuadre de {{scope}}",
-      "upOn": "Visible el {{date}}"
+      "upOn": "Visible el {{date}}",
+      "catalog": "Catálogo",
+      "catalogAll": "Todos los catálogos"
     },
     "sort": {
       "best": "Mejores",
       "tonight": "Mejores esta noche",
       "bright": "Más brillantes",
       "large": "Más grandes",
+      "number": "Número",
       "name": "Nombre"
     },
     "planNight": {

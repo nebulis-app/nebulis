@@ -95,3 +95,30 @@ describe('buildScopeOptions', () => {
     expect(options.map(o => o.value)).toEqual([ALL_SCOPES, 'scope-a']);
   });
 });
+
+describe('buildScopeOptions with linked folders', () => {
+  const withLinked = [
+    ...groups,
+    { scope: '@src/src_1', fileCount: 7 },
+    { scope: '@src/src_2', fileCount: 3 },
+  ];
+  const linkedNames = new Map([['@src/src_1', 'Zeta archive'], ['@src/src_2', 'Alpha archive']]);
+
+  it('names a linked folder after its label, never as a deleted telescope', () => {
+    const options = buildScopeOptions(withLinked, new Map([['scope-a', 'Dwarf'], ['scope-b', 'Seestar']]), t, linkedNames);
+    expect(options.find(o => o.value === '@src/src_1')).toEqual({ value: '@src/src_1', label: 'calibrations.scope.linked:Zeta archive', fileCount: 7 });
+    expect(options.some(o => o.label === 'calibrations.scope.deleted')).toBe(false);
+  });
+
+  it('lists telescopes, then linked folders by name, then the shared bucket, and counts every frame', () => {
+    const options = buildScopeOptions(withLinked, new Map([['scope-a', 'Dwarf'], ['scope-b', 'Seestar']]), t, linkedNames);
+    expect(options.map(o => o.value)).toEqual([ALL_SCOPES, 'scope-a', 'scope-b', '@src/src_2', '@src/src_1', UNSCOPED]);
+    expect(options[0].fileCount).toBe(47);
+  });
+
+  it('keeps a linked scope in the URL round trip', () => {
+    expect(resolveScope('@src/src_1', withLinked)).toBe('@src/src_1');
+    expect(resolveScope('@src/gone', withLinked)).toBe(ALL_SCOPES);
+  });
+});
+

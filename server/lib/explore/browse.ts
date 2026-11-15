@@ -8,16 +8,19 @@
  */
 import type { DsoEntry } from '../dsoCatalog.js';
 import { categoryOf, type ExploreCategoryId } from './categories.js';
+import { catalogNumber, inCatalog, type ExploreCatalogId } from './catalogs.js';
 import { isShowpiece, showpieceScore } from './showpiece.js';
 import { MIN_RAIL_SHOWPIECE, tonightRank } from './rank.js';
 import { classifyFit, fitsScope, type FovDeg } from './fit.js';
 import { everVisible, type ExploreSiteContext, type TonightIndex } from './visibility.js';
 
-export type ExploreSort = 'best' | 'tonight' | 'bright' | 'large' | 'name';
+export type ExploreSort = 'best' | 'tonight' | 'bright' | 'large' | 'number' | 'name';
 export type ExploreVisibilityFilter = 'all' | 'here' | 'tonight';
 
 export interface BrowseOptions {
   category: ExploreCategoryId | 'all';
+  /** Keep only objects with a designation in this catalog (M, NGC, IC, Caldwell, Sharpless). Omitted keeps all. */
+  catalog?: ExploreCatalogId;
   /** Case-insensitive exact constellation name. */
   constellation?: string;
   notImaged: boolean;
@@ -46,6 +49,7 @@ export function selectAndSort(entries: DsoEntry[], opts: BrowseOptions, ctx: Bro
   const wantConstellation = opts.constellation?.toLowerCase();
   let list = entries.filter(entry => {
     if (!inCategory(entry, opts.category)) return false;
+    if (!inCatalog(entry, opts.catalog)) return false;
     if (wantConstellation && (entry.constellation ?? '').toLowerCase() !== wantConstellation) return false;
     if (opts.notImaged && ctx.isImaged(entry.id)) return false;
     if (opts.fitsOnly && ctx.fov && !fitsScope(classifyFit(ctx.fov, entry.majorAxisArcmin))) return false;
@@ -61,6 +65,13 @@ export function selectAndSort(entries: DsoEntry[], opts: BrowseOptions, ctx: Bro
   if (sort === 'best') list = [...list].sort((a, b) => showpieceScore(b) - showpieceScore(a));
   else if (sort === 'bright') list = [...list].sort((a, b) => (a.magnitude ?? Infinity) - (b.magnitude ?? Infinity));
   else if (sort === 'large') list = [...list].sort((a, b) => (b.majorAxisArcmin ?? 0) - (a.majorAxisArcmin ?? 0));
+  else if (sort === 'number') {
+    list = [...list].sort((a, b) => {
+      const [na, sa] = catalogNumber(a, opts.catalog);
+      const [nb, sb] = catalogNumber(b, opts.catalog);
+      return na - nb || sa.localeCompare(sb) || a.id.localeCompare(b.id);
+    });
+  }
   else if (sort === 'name') list = [...list].sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
   else if (sort === 'tonight') {
     // Up tonight first, in the shared "best tonight" order (see rank.ts), then

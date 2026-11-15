@@ -56,6 +56,13 @@ async function mockExplore(page: Page) {
       { id: 'dark-reflection', total: 37, visibleHere: 30, goodTonight: 29 },
       { id: 'galaxy-groups', total: 243, visibleHere: 222, goodTonight: 133 },
     ],
+    catalogs: [
+      { id: 'messier', total: 110, visibleHere: 105, goodTonight: 60 },
+      { id: 'ngc', total: 3718, visibleHere: 3000, goodTonight: 1400 },
+      { id: 'ic', total: 725, visibleHere: 512, goodTonight: 414 },
+      { id: 'caldwell', total: 109, visibleHere: 100, goodTonight: 50 },
+      { id: 'sharpless', total: 313, visibleHere: 250, goodTonight: 120 },
+    ],
   }))));
   await page.route('**/api/explore/best-tonight**', r => r.fulfill(json(ok({ results: [ORION], locationSet: true }))));
   await page.route('**/api/explore/search**', r => {
@@ -156,6 +163,63 @@ test.describe('Explore', () => {
     await expect(page).toHaveURL(/visibility=tonight/);
     await page.reload();
     await expect(page.getByRole('button', { name: 'Up tonight' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('the hub links to a catalog, and the results page filters by it and keeps it in the URL', async ({ page }) => {
+    await mockExplore(page);
+    const asked: string[] = [];
+    page.on('request', req => { if (req.url().includes('/api/explore/browse')) asked.push(req.url()); });
+
+    await page.goto('/explore');
+    await expect(page.getByRole('heading', { name: 'Browse by catalog' })).toBeVisible();
+    // The tile carries the same counts a kind tile does.
+    const tile = page.getByRole('link', { name: 'IC', exact: true });
+    await expect(tile).toContainText('725 objects');
+    await expect(tile).toContainText('512 visible here');
+    await tile.click();
+    await expect(page).toHaveURL(/\/explore\/all\?catalog=ic/);
+    await expect(page.getByRole('heading', { name: 'IC objects' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'IC', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => asked.some(u => new URL(u).searchParams.get('catalog') === 'ic')).toBe(true);
+
+    // Number orders by the catalog's own numbering, so it is offered only while a catalog is chosen.
+    await page.getByRole('button', { name: 'Number', exact: true }).click();
+    await expect(page).toHaveURL(/sort=number/);
+    await expect.poll(() => asked.some(u => new URL(u).searchParams.get('sort') === 'number')).toBe(true);
+
+    // Another catalog replaces it; All catalogs removes it. A reload keeps the view.
+    await page.getByRole('button', { name: 'Caldwell', exact: true }).click();
+    await expect(page).toHaveURL(/catalog=caldwell/);
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Caldwell', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: 'All catalogs' }).click();
+    await expect(page).not.toHaveURL(/catalog=/);
+    await expect(page.getByRole('button', { name: 'Number', exact: true })).toHaveCount(0);
+  });
+
+  test('the page behind an object popup does not scroll, over the popup or over the backdrop', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await mockExplore(page);
+    await page.goto('/explore');
+    await page.getByRole('button', { name: /Great Orion Nebula/ }).first().click();
+    const popup = page.getByText('Filter recommendations').or(page.getByRole('button', { name: 'Open in Planner' })).first();
+    await expect(popup).toBeVisible();
+
+    // The page is taller than the window, so it could scroll if nothing stopped it.
+    expect(await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight)).toBe(true);
+    expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+
+    // A wheel over the dark area beside the popup, which is where the report said the page moved.
+    await page.mouse.move(40, 300);
+    await page.mouse.wheel(0, 900);
+    await page.waitForTimeout(250);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Open in Planner' })).toBeHidden();
+    expect(await page.evaluate(() => document.body.style.overflow)).toBe('');
+    await page.mouse.wheel(0, 900);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   });
 
   test('browse tiles use pictures bundled with the app, so they need no catalog image requests', async ({ page }) => {

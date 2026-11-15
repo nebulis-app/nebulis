@@ -976,6 +976,8 @@ export const stmts = {
   getAllImageFavorites: db.prepare<[string], { imagePath: string }>('SELECT imagePath FROM imageFavorites WHERE userId = ?'),
   addImageFavorite: db.prepare('INSERT OR IGNORE INTO imageFavorites (imagePath, userId) VALUES (?, ?)'),
   removeImageFavorite: db.prepare('DELETE FROM imageFavorites WHERE imagePath = ? AND userId = ?'),
+  moveImageFavorites: db.prepare('UPDATE OR IGNORE imageFavorites SET imagePath = ? WHERE imagePath = ?'),
+  deleteImageFavoritesAt: db.prepare('DELETE FROM imageFavorites WHERE imagePath = ?'),
 
   // Gallery image
   getGalleryImage: db.prepare<[string], { galleryImage: string | null; galleryImageUserSet: number; galleryCrop: string | null }>(
@@ -1320,6 +1322,14 @@ export function reclassifyObject(
     backfill();
     console.log(`[library] Backfilled catalog metadata for ${needsBackfill.length} objects`);
   }
+
+  // The Sun used to be typed `Star`, which kept it out of the Solar System chip. Move a library's existing Sun to its
+  // own type, unless the user chose a type for it by hand (an override), which always stands.
+  db.prepare(
+    `UPDATE libraryObjects SET objectType = 'Sun'
+      WHERE objectId = 'Sun' AND objectType = 'Star'
+        AND NOT EXISTS (SELECT 1 FROM catalogOverrides WHERE objectId = 'SUN' AND type IS NOT NULL)`,
+  ).run();
 }
 
 // Refresh object names for rows whose stored objectName is still just the bare
@@ -1419,6 +1429,77 @@ export function resetEnrichmentCooldown(objectId: string): void {
 // Prevents concurrent enrichment calls for the same objectId from firing
 // parallel Wikipedia/SIMBAD requests. One fetch runs; others wait or skip.
 const enrichInFlight = new Set<string>();
+
+/**
+ * SIMBAD reports an object's angular size. CDS runs it and publishes mirrors for the times its own site is
+ * degraded: CfA Harvard (data ingested up to 2026-10-14) and IDIA in South Africa. Tried in that order, CDS first.
+ */
+const SIMBAD_HOSTS = [
+  'https://simbad.cds.unistra.fr',
+  'https://simbad.cfa.harvard.edu',
+  'https://simbad.idia.ac.za',
+] as const;
+
+/** The largest object SIMBAD lists is a few degrees across (the Magellanic Clouds, about 11 degrees). Beyond this a
+ *  number is a misread column, not a size. */
+const MAX_PLAUSIBLE_ARCMIN = 1000;
+
+/**
+ * Major and minor axis from a SIMBAD VOTable, in arcminutes, or null when there is no size or the numbers cannot be
+ * the axes. Columns are found by their FIELD name, so a mirror that orders them differently still answers right. A
+ * table with no FIELD elements falls back to the first two numeric cells, then everything is checked for plausibility.
+ */
+export function simbadAxes(votable: string): { major: number; minor: number } | null {
+  const names = [...votable.matchAll(/<FIELD\b[^>]*\bname="([^"]*)"/gi)].map(m => m[1].toLowerCase());
+  let major: number;
+  let minor: number;
+  const majorAt = names.indexOf('dim_majaxis');
+  const minorAt = names.indexOf('dim_minaxis');
+  if (majorAt >= 0 && minorAt >= 0) {
+    const row = votable.match(/<TR[^>]*>([\s\S]*?)<\/TR>/i);
+    if (!row) return null;
+    const cells = [...row[1].matchAll(/<TD[^>]*>([^<]*)<\/TD>/gi)].map(m => m[1].trim());
+    major = parseFloat(cells[majorAt] ?? '');
+    minor = parseFloat(cells[minorAt] ?? '');
+  } else {
+    const pair = votable.match(/<TD[^>]*>([\d.]+)<\/TD>\s*<TD[^>]*>([\d.]+)<\/TD>/);
+    if (!pair) return null;
+    major = parseFloat(pair[1]);
+    minor = parseFloat(pair[2]);
+  }
+  if (!(major > 0) || major > MAX_PLAUSIBLE_ARCMIN) return null;
+  // An absent or odd minor axis is "unknown", not a reason to drop a good major axis.
+  if (!(minor > 0) || minor > major) minor = 0;
+  return { major, minor };
+}
+
+/**
+ * Angular size as `12.3' x 4.5'` (or `12.3'` when SIMBAD only has one axis), or null when no host reports one.
+ *
+ * Exported for the mirror tests. A VOTable answer with no numbers means the object has no size recorded, which is
+ * an answer: the mirrors carry the same data, so there is nothing to gain by asking the next one.
+ */
+export async function fetchSimbadSize(searchName: string): Promise<string | null> {
+  const query = `/simbad/sim-id?output.format=votable&output.params=main_id,otype,dim_majaxis,dim_minaxis&Ident=${encodeURIComponent(searchName)}`;
+  for (const host of SIMBAD_HOSTS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    try {
+      const resp = await fetch(host + query, { signal: controller.signal });
+      if (!resp.ok) continue;
+      const text = await resp.text();
+      const axes = simbadAxes(text);
+      if (!axes) return null;
+      const { major, minor } = axes;
+      return minor > 0 ? `${major.toFixed(1)}' x ${minor.toFixed(1)}'` : `${major.toFixed(1)}'`;
+    } catch {
+      // Unreachable: the next mirror may still answer.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
 
 /**
  * Fetch enrichment data from Wikipedia + SIMBAD and store in the DB.
@@ -1539,30 +1620,12 @@ export async function enrichObjectData(objectId: string, opts: { force?: boolean
   // varies continuously with distance; SIMBAD has no useful fixed value for them)
   if (needsSimbad) {
     log.debug({ objectId, searchName }, '[enrich] SIMBAD size lookup');
-    try {
-      const simbadUrl = `https://simbad.cds.unistra.fr/simbad/sim-id?output.format=votable&output.params=main_id,otype,dim_majaxis,dim_minaxis&Ident=${encodeURIComponent(searchName)}`;
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => { log.debug({ objectId }, '[enrich] SIMBAD timeout after 5s'); ctrl.abort(); }, 5000);
-      const resp = await fetch(simbadUrl, { signal: ctrl.signal });
-      clearTimeout(timer);
-      if (resp.ok) {
-        const text = await resp.text();
-        const majMatch = text.match(/<TD[^>]*>([\d.]+)<\/TD>\s*<TD[^>]*>([\d.]+)<\/TD>/);
-        if (majMatch) {
-          const maj = parseFloat(majMatch[1]);
-          const min = parseFloat(majMatch[2]);
-          if (maj > 0) {
-            sizeArcmin = min > 0 ? `${maj.toFixed(1)}' x ${min.toFixed(1)}'` : `${maj.toFixed(1)}'`;
-            log.debug({ objectId, sizeArcmin }, '[enrich] SIMBAD size found');
-          }
-        } else {
-          log.debug({ objectId }, '[enrich] SIMBAD no size data');
-        }
-      } else {
-        log.debug({ objectId, status: resp.status }, '[enrich] SIMBAD HTTP error');
-      }
-    } catch {
-      log.debug({ objectId }, '[enrich] SIMBAD fetch failed');
+    const size = await fetchSimbadSize(searchName);
+    if (size) {
+      sizeArcmin = size;
+      log.debug({ objectId, sizeArcmin }, '[enrich] SIMBAD size found');
+    } else {
+      log.debug({ objectId }, '[enrich] SIMBAD did not give a size');
     }
   }
 

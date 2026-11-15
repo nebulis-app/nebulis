@@ -1,4 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
+import { isSunObject } from '../lib/solarObject';
+import { SolarObjectContext, useSunWording } from '../components/objectMedia/solarObjectContext';
 import { useQuery, useQueryClient, useMutation, useMutationState } from '@tanstack/react-query';
 import { isImageFavoriteVars, type ImageFavoriteVars } from '../lib/favoriteMutations';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -95,7 +97,18 @@ function formatClock(timestamp: string): string {
 // useMemo dependency below without needing its own memo layer.
 const EMPTY_FILES: SessionFile[] = [];
 
+/** The Sun is imaged by day, so wording that says "night" for other objects says "day" for it. */
 export function ObservationDetail() {
+  const { objectId = '' } = useParams<{ objectId: string }>();
+  return (
+    <SolarObjectContext.Provider value={isSunObject(objectId)}>
+      <ObservationDetailPage />
+    </SolarObjectContext.Provider>
+  );
+}
+
+function ObservationDetailPage() {
+  const sun = useSunWording();
   const { objectId = '', date = '' } = useParams<{ objectId: string; date: string }>();
   const { t } = useTranslation('observations');
   const { isDark, isNight, isSpace } = useTheme();
@@ -157,6 +170,7 @@ export function ObservationDetail() {
   const [satelliteScanOpen, setSatelliteScanOpen] = useState(false);
   const [frameAnalysisOpen, setFrameAnalysisOpen] = useState(false);
   const [confirmDeleteSubframes, setConfirmDeleteSubframes] = useState(false);
+  const [confirmForceSync, setConfirmForceSync] = useState(false);
   const [archiveState, setArchiveState] = useState<{ done: number; total: number } | 'idle' | 'error'>('idle');
   const archiveAbortRef = useRef(false);
   // In-flight ZIP job id so leaving the page stops the server-side build, not
@@ -897,6 +911,7 @@ if (isLoading) {
           archiveState={archiveState}
           onDownloadToComputer={handleDownloadToComputer}
           onOpenSync={() => objectId && date && openSync(objectId, date)}
+          onForceSync={() => setConfirmForceSync(true)}
           onScanTrails={() => setSatelliteScanOpen(true)}
           onAnalyzeFrames={() => setFrameAnalysisOpen(true)}
           onDeleteAllSubframes={() => setConfirmDeleteSubframes(true)}
@@ -1094,7 +1109,7 @@ if (isLoading) {
       {confirmUnmarkId && (
         <ConfirmModal
           title={t('observationDetail.page.unmarkProcessedTitle')}
-          message={t('observationDetail.page.unmarkProcessedMessage')}
+          message={t('observationDetail.page.unmarkProcessedMessage', sun)}
           confirmLabel={t('observationDetail.page.unmarkProcessedConfirm')}
           onCancel={() => setConfirmUnmarkId(null)}
           onConfirm={() => {
@@ -1113,6 +1128,19 @@ if (isLoading) {
           onConfirm={() => {
             void handleMarkFileAsProcessed(confirmMarkProcessedPath);
             setConfirmMarkProcessedPath(null);
+          }}
+        />
+      )}
+
+      {confirmForceSync && objectId && date && (
+        <ConfirmModal
+          title={t('observationDetail.page.forceSyncTitle')}
+          message={t('observationDetail.page.forceSyncMessage', { count: subFrames.length })}
+          confirmLabel={t('observationDetail.page.forceSyncConfirm')}
+          onCancel={() => setConfirmForceSync(false)}
+          onConfirm={() => {
+            setConfirmForceSync(false);
+            openSync(objectId, date, { force: true });
           }}
         />
       )}

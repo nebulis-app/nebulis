@@ -13,6 +13,7 @@ import { listPlannedSessions } from '../../lib/api/plannedSessions';
 import { localDateKey, plannerDateKeyForInstant, plannerToday, sameLocalDay } from '../../lib/nightWindow';
 import { useTheme } from '../../hooks/useTheme';
 import { formatDate, weekdayLabels, weekStartsOn } from '../../lib/formatLocale';
+import { BodyScrollLock } from '../ui/BodyScrollLock';
 
 interface PlanCalendarProps {
   selectedDate: Date;
@@ -86,6 +87,7 @@ export function PlanCalendar({ selectedDate, observerTimezone, onSelect, onClose
       className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4"
       onClick={onClose}
     >
+      <BodyScrollLock />
       <div
         className={`w-80 rounded-2xl shadow-2xl p-4 ${isDark ? 'bg-slate-900 text-slate-100 border border-slate-700' : 'bg-white text-slate-900 border border-slate-200'}`}
         onClick={(e) => e.stopPropagation()}

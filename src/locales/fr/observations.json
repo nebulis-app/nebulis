@@ -178,6 +178,7 @@
       "opticsAutoNone": "non détecté",
       "opticsSource": {
         "manual": "Choisi pour cette nuit",
+        "manual_sun": "Choisi pour ce jour",
         "fits": "Déduit de la focale inscrite dans les FITS",
         "only": "Seule configuration du télescope"
       }
@@ -199,6 +200,7 @@
     "conditionsPanel": {
       "title": "Conditions",
       "empty": "Aucune condition n'a été enregistrée pour cette nuit. La météo est récupérée pour la position de la session lors de son importation.",
+      "empty_sun": "Aucune condition n'a été enregistrée pour ce jour. La météo est récupérée pour la position de la session lors de son importation.",
       "cloudClear": "Dégagé",
       "cloudMostlyClear": "Plutôt dégagé",
       "cloudBroken": "Nuageux",
@@ -237,7 +239,8 @@
       "downloadFailed": "Échec du téléchargement",
       "zipping": "Compression {{done}}/{{total}}…",
       "deleteAllTitle": "Supprimer toutes les sous-poses de cette session",
-      "empty": "Aucune sous-pose téléchargée pour l'instant. Connectez votre télescope et utilisez Synchroniser les sous-poses pour les récupérer."
+      "empty": "Aucune sous-pose téléchargée pour l'instant. Connectez votre télescope et utilisez Synchroniser les sous-poses pour les récupérer.",
+      "forceSyncTitle": "Retélécharger les sous-poses"
     },
     "sessionFileGrid": {
       "exitCompareTitle": "Quitter le mode comparaison",
@@ -267,11 +270,13 @@
       "setAsGalleryImage": "Définir comme image de galerie",
       "delete": "Supprimer",
       "combinesNights": "Combine {{count}} nuits : {{list}}",
+      "combinesNights_sun": "Combine {{count}} jours : {{list}}",
       "addMore": "Ajouter d'autres",
       "moveToImages": "Marquer comme non traité"
     },
     "nightPanel": {
       "title": "Cette nuit-là",
+      "title_sun": "Ce jour-là",
       "imaged": "Capturé {{range}}",
       "cloud": "{{label}} · {{percent}}% de nuages",
       "moon": "Lune {{percent}}%"
@@ -329,7 +334,12 @@
       "markProcessedConfirm": "Marquer comme traité",
       "unmarkProcessedTitle": "Marquer comme non traité ?",
       "unmarkProcessedMessage": "L'image quitte Traités pour revenir dans les Images de cette nuit. Rien n'est supprimé.",
-      "unmarkProcessedConfirm": "Marquer comme non traité"
+      "unmarkProcessedMessage_sun": "L'image quitte Traités pour revenir dans les Images de ce jour. Rien n'est supprimé.",
+      "unmarkProcessedConfirm": "Marquer comme non traité",
+      "forceSyncTitle": "Retélécharger les sous-poses ?",
+      "forceSyncMessage_one": "Cette action retélécharge l'image de cette nuit depuis le télescope et remplace la copie déjà présente dans la bibliothèque. Le télescope doit rester connecté. À utiliser lorsqu'une image ne montre pas ce que vous avez capturé.",
+      "forceSyncMessage_other": "Cette action retélécharge les {{count}} images de cette nuit depuis le télescope et remplace les copies déjà présentes dans la bibliothèque. Le télescope doit rester connecté. À utiliser lorsqu'une image ne montre pas ce que vous avez capturé.",
+      "forceSyncConfirm": "Retélécharger"
     },
     "fitsHeaderModal": {
       "title": "En-tête FITS pour {{fileName}}",
@@ -381,7 +391,9 @@
       "notesLabel": "Notes",
       "notesPlaceholder": "Notes de traitement, logiciel utilisé, temps d'intégration…",
       "combineMultipleNights": "Combiner plusieurs nuits",
+      "combineMultipleNights_sun": "Combiner plusieurs jours",
       "whichNightsQuestion": "Quelles nuits ce stack combine-t-il ?",
+      "whichNightsQuestion_sun": "Quels jours ce stack combine-t-il ?",
       "softwarePlaceholder": "Logiciel utilisé (facultatif)",
       "uploadFailed": "Échec de l'envoi",
       "uploading": "Envoi en cours…",

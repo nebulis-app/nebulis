@@ -331,6 +331,7 @@ function subtitleKeyFor(groupId: string, sectionId: string | null): string {
       if (sectionId === 'organization') return 'subtitle.libraryOrganization';
       if (sectionId === 'processing') return 'subtitle.libraryProcessing';
       if (sectionId === 'slideshow') return 'subtitle.librarySlideshow';
+      if (sectionId === 'gallery') return 'subtitle.libraryGallery';
       return 'subtitle.library';
     case 'updates':  return 'subtitle.updates';
     case 'account':

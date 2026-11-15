@@ -10,6 +10,7 @@ import {
 } from '../../lib/mosaic/mosaicExport';
 import { everyMember } from '../unionList';
 import type { MosaicTile } from './MosaicWall';
+import { BodyScrollLock } from '../ui/BodyScrollLock';
 
 interface Props {
   tiles: MosaicTile[];
@@ -111,6 +112,7 @@ export function MosaicShareDialog({ tiles, shownAspect, labels: initialLabels, f
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75 backdrop-blur-sm sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label={t('mosaic.share.title')}>
+      <BodyScrollLock />
       <div className="flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl bg-slate-950 ring-1 ring-white/15 sm:rounded-3xl">
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
           <h2 className="font-display text-lg font-semibold text-white">{t('mosaic.share.title')}</h2>

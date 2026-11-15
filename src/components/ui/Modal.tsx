@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 const FOCUSABLE = [
   'a[href]',
@@ -89,22 +90,8 @@ export function Modal({
     };
   }, [isOpen, focusOnOpen]);
 
-  // Body scroll lock. Lock both <body> and <html>: which element owns the
-  // viewport scrollbar varies, and a tall modal with its own scroll area
-  // otherwise chains wheel/touch scrolling through to whichever one is left
-  // unlocked.
-  useEffect(() => {
-    if (!isOpen) return;
-    const { body, documentElement: html } = document;
-    const previousBody = body.style.overflow;
-    const previousHtml = html.style.overflow;
-    body.style.overflow = 'hidden';
-    html.style.overflow = 'hidden';
-    return () => {
-      body.style.overflow = previousBody;
-      html.style.overflow = previousHtml;
-    };
-  }, [isOpen]);
+  // Body scroll lock, shared with the hand-built overlays (see useBodyScrollLock).
+  useBodyScrollLock(isOpen);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {

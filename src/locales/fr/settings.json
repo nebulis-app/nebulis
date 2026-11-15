@@ -22,6 +22,7 @@
     "apiKeys": "Clés d’API",
     "alerts": "Alertes",
     "display": "Affichage",
+    "gallery": "Galerie",
     "slideshow": "Diaporama",
     "organization": "Organisation",
     "processing": "Traitement",
@@ -263,6 +264,10 @@
     }
   },
   "librarySection": {
+    "gallery": {
+      "title": "Galerie",
+      "description": "Choisissez les images que la Galerie affiche à son ouverture. Avec les deux désactivées, elle affiche toutes les images. Avec une seule activée, elle n'affiche que celles-là. Avec les deux activées, elle affiche les images de l'un ou l'autre type."
+    },
     "display": {
       "title": "Affichage",
       "description": "Comment les cartes d'objet et le diaporama affichent les images et les informations.",
@@ -273,8 +278,12 @@
         "telescope": "Mon télescope"
       },
       "galleryProcessedOnly": {
-        "label": "Galerie : afficher uniquement les images traitées",
-        "description": "La galerie s'ouvre avec le filtre \"Traitées uniquement\" activé par défaut."
+        "label": "Afficher uniquement les images traitées",
+        "description": "La Galerie n'affiche que les images traitées et masque les autres. Activez aussi les favorites pour afficher les images de l'un ou l'autre type."
+      },
+      "galleryFavorites": {
+        "label": "Afficher uniquement les images favorites",
+        "description": "La Galerie n'affiche que les images que vous avez marquées d'une étoile et masque les autres. Activez aussi les images traitées pour afficher les images de l'un ou l'autre type."
       },
       "objectPages": {
         "label": "Pages d'objet",
@@ -491,10 +500,10 @@
     },
     "descriptions": {
       "openngc": "Noms, positions, magnitudes et types pour environ 12 000 objets du ciel profond",
-      "sesame": "Recherche de noms pour les objets absents du catalogue inclus",
-      "simbad": "Détails de taille et de distance pour les objets du catalogue",
+      "sesame": "Recherche de noms pour les objets absents du catalogue inclus, via le CDS ou ses miroirs lorsqu'il est indisponible",
+      "simbad": "Détails de taille et de distance pour les objets du catalogue, via le CDS ou ses miroirs lorsqu'il est indisponible",
       "hubbleCaldwell": "Images du Hubble et textes pour les 88 objets Caldwell",
-      "hips": "Images du relevé DSS2 pour toute coordonnée pointée",
+      "hips": "Images du relevé DSS2 pour toute coordonnée pointée, via le CDS ou les miroirs ESA, MAST et CASDA lorsqu'il est indisponible",
       "nasaImageLibrary": "Images de secours pour les planètes, lunes et comètes",
       "wikipedia": "Résumés en langage simple et miniatures pour les objets",
       "openMeteo": "Prévisions et météo passée pour vos lieux, plus la recherche de lieux",
@@ -1001,6 +1010,7 @@
     "alerts": "Soyez prévenu d’une nuit dégagée ou d’un import terminé.",
     "libraryOrganization": "Comment les objets sont nommés, regroupés et comptés.",
     "libraryProcessing": "Ce que Nebulis fait des images une fois arrivées.",
+    "libraryGallery": "Ce que la page Galerie affiche à son ouverture.",
     "librarySlideshow": "Comment le diaporama se déroule et ce qu'il affiche.",
     "maintenance": "Tâches que le serveur exécute seul chaque nuit.",
     "catalogs": "Imagerie hors ligne et données de satellites conservées sur ce serveur."
@@ -1460,8 +1470,8 @@
     "lastScan": "dernière analyse {{when}}",
     "neverScanned": "pas encore analysé",
     "offline": "Ce dossier est injoignable pour le moment. Rien n'a été modifié. Reconnectez le disque ou le partage, puis réanalysez.",
-    "missingFiles_one": "{{count}} fichier est introuvable depuis la dernière analyse. Il est conservé jusqu'à ce qu'une seconde analyse confirme sa disparition.",
-    "missingFiles_other": "{{count}} fichiers sont introuvables depuis la dernière analyse. Ils sont conservés jusqu'à ce qu'une seconde analyse confirme leur disparition.",
+    "missingFiles_one": "{{count}} fichier est introuvable depuis la dernière analyse. Il reste dans l'index pendant 24 heures. S'il manque toujours lors d'une analyse ultérieure, il est supprimé.",
+    "missingFiles_other": "{{count}} fichiers sont introuvables depuis la dernière analyse. Ils restent dans l'index pendant 24 heures. S'ils manquent toujours lors d'une analyse ultérieure, ils sont supprimés.",
     "rescanDone": "Réanalyse : {{added}} nouveaux, {{updated}} modifiés, {{missing}} introuvables, {{removed}} retirés de l'index.",
     "rescanOffline": "Le dossier était injoignable, rien n'a donc été modifié.",
     "rescanFailed": "Échec de la réanalyse",
@@ -1469,6 +1479,11 @@
     "unlinkConfirm": "Délier ce dossier ? Ses objets quittent votre bibliothèque, sauf s'ils ont des notes, des favoris ou des fichiers d'une autre source. Vos fichiers sur le disque ne sont pas touchés.",
     "unlinkConfirmButton": "Délier",
     "keepLinked": "Garder lié",
+    "removeMissing": "Supprimer maintenant",
+    "removeMissingConfirm_one": "Supprimer maintenant ce fichier manquant de l'index ? Nebulis relance d'abord une analyse, et si le fichier manque toujours, son entrée d'index est supprimée. Rien n'est touché sur votre disque. Si un disque est débranché, reconnectez-le d'abord.",
+    "removeMissingConfirm_other": "Supprimer maintenant ces {{count}} fichiers manquants de l'index ? Nebulis relance d'abord une analyse, et l'entrée d'index de chaque fichier toujours manquant est supprimée. Rien n'est touché sur votre disque. Si un disque est débranché, reconnectez-le d'abord.",
+    "removeMissingConfirmButton": "Supprimer de l'index",
+    "removeMissingCancel": "Les garder",
     "howToLink": "Pour lier un dossier, utilisez Importer sur la page Bibliothèque, choisissez un dossier de ce serveur puis Lier ce dossier.",
     "refreshManual": "Manuelle uniquement",
     "edit": "Modifier",

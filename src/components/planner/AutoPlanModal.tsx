@@ -25,6 +25,7 @@ import { formatDuration } from '../../lib/captureMetrics';
 import { mergeSkipped } from '../../lib/planWeather';
 import type { PlannerTarget } from '../../lib/api/planner';
 import type { VisibleSkyMap } from '../../lib/visibilityCheck';
+import { BodyScrollLock } from '../ui/BodyScrollLock';
 
 interface AutoPlanModalProps {
   targets: PlannerTarget[];
@@ -313,6 +314,7 @@ export function AutoPlanModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={onClose}
     >
+      <BodyScrollLock />
       <div
         className={`relative rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden flex flex-col ${surface}`}
         onClick={(e) => e.stopPropagation()}

@@ -64,6 +64,11 @@ export interface LibraryWriteCtx {
   /** FITS files that actually land are pushed here for thumbnail generation.
    *  Omit to skip per-file thumbnailing (the folder wizard and archive path). */
   thumbnailQueue?: { push: (localPath: string) => void };
+  /** Overwrite a file that already looks complete. Only a user saying "download these again" sets
+   *  this: the same-length check below cannot tell two 4K frames apart, so a wrong copy under the
+   *  right name is otherwise indistinguishable from a finished one. The write still goes to
+   *  `<dest>.tmp` and is renamed into place, so the existing copy survives a failed transfer. */
+  force?: boolean;
 }
 
 export type LibraryWriteOutcome =
@@ -100,10 +105,10 @@ export async function writeFileIntoLibrary(
       const truncated = candidate.expectedSize != null
         && candidate.expectedSize > 0
         && onDiskBytes !== candidate.expectedSize;
-      if (!truncated) {
+      if (!truncated && !ctx.force) {
         return { status: 'exists', bytes: onDiskBytes || candidate.expectedSize || 0, localPath };
       }
-      // else: fall through and overwrite the partial file
+      // else: fall through and overwrite the partial file (or the copy the caller asked to replace)
     }
 
     await fs.promises.mkdir(path.dirname(localPath), { recursive: true });

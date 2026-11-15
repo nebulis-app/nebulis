@@ -20,8 +20,8 @@ import { useExploreSite } from '../hooks/useExploreSite';
 import { useResolvedFov } from '../hooks/useResolvedFov';
 import { useExploreActions } from '../components/explore/useExploreActions';
 import {
-  exploreBrowse, getExploreCategories,
-  type ExploreCategoryId, type ExploreRow, type ExploreSort, type ExploreVisibilityFilter,
+  exploreBrowse, getExploreCategories, EXPLORE_CATALOG_IDS,
+  type ExploreCatalogId, type ExploreCategoryId, type ExploreRow, type ExploreSort, type ExploreVisibilityFilter,
 } from '../lib/api/explore';
 import { ExploreShell, type ExploreTab } from '../components/explore/ExploreShell';
 import { ExploreCard } from '../components/explore/ExploreCard';
@@ -32,10 +32,11 @@ import { EXPLORE_ART } from '../lib/exploreArt';
 import { formatNumber } from '../lib/formatLocale';
 
 const PAGE_SIZE = 30;
-const SORTS: ExploreSort[] = ['best', 'tonight', 'bright', 'large', 'name'];
+const SORTS: ExploreSort[] = ['best', 'tonight', 'bright', 'large', 'number', 'name'];
 const VISIBILITIES: ExploreVisibilityFilter[] = ['tonight', 'here', 'all'];
 
 function isSort(v: string | null): v is ExploreSort { return v !== null && (SORTS as string[]).includes(v); }
+function isCatalog(v: string | null): v is ExploreCatalogId { return v !== null && (EXPLORE_CATALOG_IDS as readonly string[]).includes(v); }
 function isVisibility(v: string | null): v is ExploreVisibilityFilter { return v !== null && (VISIBILITIES as string[]).includes(v); }
 
 export function ExploreCategoryPage() {
@@ -59,7 +60,10 @@ export function ExploreCategoryPage() {
   const category: ExploreCategoryId | 'all' = meta ? meta.id : 'all';
   const q = search.get('q') ?? '';
   const constellation = search.get('constellation') ?? '';
-  const sort: ExploreSort = isSort(search.get('sort')) ? (search.get('sort') as ExploreSort) : 'best';
+  const catalog: ExploreCatalogId | undefined = isCatalog(search.get('catalog')) ? (search.get('catalog') as ExploreCatalogId) : undefined;
+  const requestedSort: ExploreSort = isSort(search.get('sort')) ? (search.get('sort') as ExploreSort) : 'best';
+  // Number means the catalog's own numbering, so it only applies while a catalog is chosen.
+  const sort: ExploreSort = requestedSort === 'number' && !catalog ? 'best' : requestedSort;
   const visibility: ExploreVisibilityFilter = isVisibility(search.get('visibility')) ? (search.get('visibility') as ExploreVisibilityFilter) : 'here';
   const notImaged = search.get('notImaged') === '1';
   const fitsScope = search.get('fitsScope') === '1';
@@ -94,9 +98,9 @@ export function ExploreCategoryPage() {
   const locationSet = stats.data?.locationSet ?? Boolean(site?.latitude != null);
 
   const browse = useInfiniteQuery({
-    queryKey: ['explore-browse', category, q, constellation, sort, visibility, notImaged, fitsScope, fov.widthDeg, fov.heightDeg, siteId, night.night],
+    queryKey: ['explore-browse', category, catalog, q, constellation, sort, visibility, notImaged, fitsScope, fov.widthDeg, fov.heightDeg, siteId, night.night],
     queryFn: ({ pageParam }) => exploreBrowse({
-      category, q: q || undefined, constellation: constellation || undefined, sort,
+      category, catalog, q: q || undefined, constellation: constellation || undefined, sort,
       visibility: locationSet ? visibility : 'all', notImaged, fitsScope, fov, night: night.night, limit: PAGE_SIZE, offset: pageParam, siteId,
     }),
     initialPageParam: 0,
@@ -114,6 +118,7 @@ export function ExploreCategoryPage() {
     ? t(`explore.categories.${meta.id}.label`)
     : q ? t('explore.results.forQuery', { query: q })
     : constellation ? t('explore.results.inConstellation', { name: constellation })
+    : catalog ? t('explore.results.inCatalog', { catalog: t(`explore.catalogs.${catalog}`) })
     : visibility === 'tonight' ? (night.dateLabel ? t('explore.results.bestOn', { date: night.dateLabel }) : t('explore.results.bestTonight'))
     : t('explore.results.all');
 
@@ -184,6 +189,18 @@ export function ExploreCategoryPage() {
             })}
           </div>
 
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t('explore.filters.catalog')}>
+            <span className={`mr-1 text-xs ${muted}`}>{t('explore.filters.catalog')}</span>
+            <button type="button" aria-pressed={!catalog} onClick={() => setParam('catalog', null)} className={chip(!catalog)}>
+              {t('explore.filters.catalogAll')}
+            </button>
+            {EXPLORE_CATALOG_IDS.map(c => (
+              <button key={c} type="button" aria-pressed={catalog === c} onClick={() => setParam('catalog', c)} className={chip(catalog === c)}>
+                {t(`explore.catalogs.${c}`)}
+              </button>
+            ))}
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
             <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t('explore.filters.visibility')}>
               {VISIBILITIES.map(v => (
@@ -209,7 +226,7 @@ export function ExploreCategoryPage() {
             </div>
             <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t('explore.filters.sort')}>
               <span className={`mr-1 text-xs ${muted}`}>{t('explore.filters.sort')}</span>
-              {SORTS.filter(s => s !== 'tonight' || locationSet).map(s => (
+              {SORTS.filter(s => (s !== 'tonight' || locationSet) && (s !== 'number' || catalog)).map(s => (
                 <button key={s} type="button" aria-pressed={sort === s} onClick={() => setParam('sort', s === 'best' ? null : s)} className={chip(sort === s)}>
                   {t(`explore.sort.${s}`)}
                 </button>

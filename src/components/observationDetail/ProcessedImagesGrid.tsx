@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next';
-import { Upload, ImagePlus, Crown, Download, Star, Trash2, Loader2, FileDown, Layers, FolderOutput } from 'lucide-react';
+import { useSunWording } from '../objectMedia/solarObjectContext';
+import { Upload, ImagePlus, Crown, Download, Star, Trash2, Loader2, FileDown, Layers, Undo2 } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
-import { isRenderableProcessed, processedFormatLabel } from '../../lib/processedFormats';
+import { isRenderableProcessed, isFitsProcessed, processedFormatLabel } from '../../lib/processedFormats';
 import { formatDate } from '../../lib/formatLocale';
 import type { ProcessedImage } from '../../types';
 import type { CompareFile } from '../ImageCompareModal';
@@ -52,6 +53,7 @@ export function ProcessedImagesGrid({
 }) {
   const { isDark } = useTheme();
   const { t } = useTranslation('observations');
+  const sun = useSunWording();
 
   return (
     <div className={`rounded-2xl border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
@@ -222,17 +224,17 @@ export function ProcessedImagesGrid({
                       </button>
                     )}
 
-                    {/* Move back to Images — admin, single-night renderable images
+                    {/* Move back to Images — admin, single-night pictures and FITS stacks
                         only. A combined-run or dateless image has no one night to
-                        return to, and a stored-only format isn't a picture. */}
-                    {isAdmin && canRender && img.date && !img.runDates && (
+                        return to, and an XISF or PSD isn't shown in that grid. */}
+                    {isAdmin && (canRender || isFitsProcessed(img.originalName)) && img.date && !img.runDates && (
                       <button
                         onClick={e => { e.stopPropagation(); onRequestUnmark(img.id); }}
                         className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30 transition"
                         title={t('observationDetail.processedImagesGrid.moveToImages')}
                         aria-label={t('observationDetail.processedImagesGrid.moveToImages')}
                       >
-                        <FolderOutput className="w-3.5 h-3.5" />
+                        <Undo2 className="w-3.5 h-3.5" />
                       </button>
                     )}
 
@@ -289,7 +291,7 @@ export function ProcessedImagesGrid({
                     </p>
                     {img.runDates && img.runDates.length > 1 && (
                       <span
-                        title={t('observationDetail.processedImagesGrid.combinesNights', { count: img.runDates.length, list: img.runDates.join(', ') })}
+                        title={t('observationDetail.processedImagesGrid.combinesNights', { count: img.runDates.length, list: img.runDates.join(', '), ...sun })}
                         className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[0.5625rem] font-medium ${
                           isDark ? 'bg-accent-500/10 text-accent-400' : 'bg-accent-50 text-accent-600'
                         }`}

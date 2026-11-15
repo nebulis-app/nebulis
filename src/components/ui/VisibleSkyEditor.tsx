@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
+import { BodyScrollLock } from './BodyScrollLock';
 import {
   SKY_MAP_AZ_SLICES,
   SKY_MAP_BANDS,
@@ -189,6 +190,7 @@ function VisibleSkyEditorBody({ initialMap, onSave, onClose }: VisibleSkyEditorP
         if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
       }}
     >
+      <BodyScrollLock />
       <div
         className={`relative rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-auto ${
           isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'

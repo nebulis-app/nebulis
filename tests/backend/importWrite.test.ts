@@ -48,6 +48,28 @@ describe('writeFileIntoLibrary', () => {
     expect(out).toEqual({ status: 'exists', bytes: 10, localPath: path.join(objDir, 'a.fit') });
   });
 
+  it('replaces a complete-looking copy when the caller forces a re-download', async () => {
+    fs.writeFileSync(path.join(srcDir, 'a.fit'), 'hello-fits');
+    fs.writeFileSync(path.join(objDir, 'a.fit'), 'other-data'); // same length, wrong frame
+    const out = await writeFileIntoLibrary(
+      { source: 'a.fit', destRel: 'a.fit', expectedSize: 10, sourceKind: 'transport' },
+      { profile: localProfile(srcDir), objectDir: objDir, force: true },
+    );
+    expect(out.status).toBe('new');
+    expect(fs.readFileSync(path.join(objDir, 'a.fit'), 'utf8')).toBe('hello-fits');
+  });
+
+  it('leaves the existing copy in place when a forced re-download fails', async () => {
+    fs.writeFileSync(path.join(srcDir, 'a.fit'), 'hello');
+    fs.writeFileSync(path.join(objDir, 'a.fit'), 'other-data');
+    const out = await writeFileIntoLibrary(
+      { source: 'a.fit', destRel: 'a.fit', expectedSize: 10, sourceKind: 'transport' },
+      { profile: localProfile(srcDir), objectDir: objDir, force: true },
+    );
+    expect(out.status).toBe('error');
+    expect(fs.readFileSync(path.join(objDir, 'a.fit'), 'utf8')).toBe('other-data');
+  });
+
   it('heals a truncated file from a prior interrupted run', async () => {
     fs.writeFileSync(path.join(srcDir, 'a.fit'), 'hello-fits');   // 10 bytes
     fs.writeFileSync(path.join(objDir, 'a.fit'), 'hel');          // partial

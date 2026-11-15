@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle, Download, Loader2, Printer, RotateCw, Share2 } from 'lucide-react';
+import { BodyScrollLock } from '../ui/BodyScrollLock';
 
 interface MapShareModalProps {
   /** Captures the current map view. Rejects if the map isn't ready or the
@@ -135,6 +136,7 @@ export function MapShareModal({ onCapture, onClose }: MapShareModalProps) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={onClose}
     >
+      <BodyScrollLock />
       <div
         className="relative rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-hidden flex flex-col bg-slate-900 text-slate-100"
         onClick={e => e.stopPropagation()}

@@ -91,27 +91,69 @@ test.describe('Image Gallery', () => {
     await expect(page.getByText('North America Nebula')).toBeVisible();
   });
 
-  // ─── Processed only ───────────────────────────────────────────────────────
+  // ─── Show: processed and favorites ────────────────────────────────────────
+  //
+  // Processed and Favorites are two ways into the same list, not two filters
+  // that narrow each other: one on shows that kind, both on shows an image that
+  // is either. Each has a pill in the Filters popover, and Favorites also has
+  // its own toolbar button, so a bare `getByRole('Favorites')` is ambiguous
+  // whenever the popover is open.
 
-  test('processed-only toggle is present', async ({ page }) => {
+  /** The "Show" section inside the Filters popover: the two pills and their hint. */
+  function showSection(page: Page) {
+    // Pill button -> its wrapping row -> the titled section.
+    return page.getByRole('button', { name: 'Processed', exact: true }).locator('xpath=../..');
+  }
+
+  test('Show section offers the processed and favorites pills', async ({ page }) => {
     await page.getByRole('button', { name: /^Filters/ }).click();
-    await expect(page.getByRole('button', { name: 'Processed only', exact: true })).toBeVisible();
+    const show = showSection(page);
+    await expect(show.getByRole('button', { name: 'Processed', exact: true })).toBeVisible();
+    await expect(show.getByRole('button', { name: 'Favorites', exact: true })).toBeVisible();
+    await expect(show.getByText('Choose both to see images that are either one.')).toBeVisible();
   });
 
-  test('processed-only filters out raw images', async ({ page }) => {
+  test('processed shows only the processed images', async ({ page }) => {
     await page.getByRole('button', { name: /^Filters/ }).click();
-    await page.getByRole('button', { name: 'Processed only', exact: true }).click();
+    await showSection(page).getByRole('button', { name: 'Processed', exact: true }).click();
     // Only the processed NGC7000 entry should remain.
     await expect(page.getByText('North America Nebula')).toBeVisible();
     await expect(page.getByText('Orion Nebula')).not.toBeVisible();
     await expect(page.getByText('Andromeda Galaxy')).not.toBeVisible();
   });
 
-  test('clearing processed-only restores all images', async ({ page }) => {
+  test('favorites pill shows only the favorited images', async ({ page }) => {
     await page.getByRole('button', { name: /^Filters/ }).click();
-    const processedBtn = page.getByRole('button', { name: 'Processed only', exact: true });
-    await processedBtn.click(); // enable
-    await processedBtn.click(); // disable
+    const favoritesPill = showSection(page).getByRole('button', { name: 'Favorites', exact: true });
+    await favoritesPill.click();
+    await expect(favoritesPill).toHaveAttribute('aria-pressed', 'true');
+    // Only M31 carries isFavorite.
+    await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
+    await expect(page.getByText('Orion Nebula')).not.toBeVisible();
+    await expect(page.getByText('North America Nebula')).not.toBeVisible();
+  });
+
+  test('both pills on show an image that is either one', async ({ page }) => {
+    await page.getByRole('button', { name: /^Filters/ }).click();
+    const show = showSection(page);
+    await show.getByRole('button', { name: 'Processed', exact: true }).click();
+    await show.getByRole('button', { name: 'Favorites', exact: true }).click();
+    // M31 (favorite) and NGC7000 (processed) stay; raw, unfavorited M42 goes.
+    await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
+    await expect(page.getByText('North America Nebula')).toBeVisible();
+    await expect(page.getByText('Orion Nebula')).not.toBeVisible();
+    await expect(page.getByText(/Favorites or processed/)).toBeVisible();
+  });
+
+  test('clearing processed and favorites restores every image', async ({ page }) => {
+    await page.getByRole('button', { name: /^Filters/ }).click();
+    const show = showSection(page);
+    const processedPill = show.getByRole('button', { name: 'Processed', exact: true });
+    const favoritesPill = show.getByRole('button', { name: 'Favorites', exact: true });
+    await processedPill.click();
+    await favoritesPill.click();
+    await processedPill.click(); // disable
+    await favoritesPill.click(); // disable
     await expect(page.getByText('Orion Nebula')).toBeVisible();
     await expect(page.getByText('Andromeda Galaxy')).toBeVisible();
     await expect(page.getByText('North America Nebula')).toBeVisible();

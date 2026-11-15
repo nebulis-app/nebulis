@@ -54,13 +54,15 @@ export interface ScopeOption {
 
 /**
  * Filter options in display order: every scope first, then each telescope by
- * name, then the unscoped bucket last (matching the server's own ordering, so
+ * name, then each linked folder by name, then the unscoped bucket last (matching the server's own ordering, so
  * "Unassigned" never leads the list). Each option carries its frame count.
  */
 export function buildScopeOptions(
   groups: ReadonlyArray<Scoped & { fileCount: number }>,
   telescopeNames: ReadonlyMap<string, string>,
   t: TFunc,
+  /** Scope value to label, for the groups read from a linked folder (their scope is `@src/<sourceId>`). */
+  linkedNames: ReadonlyMap<string, string> = new Map(),
 ): ScopeOption[] {
   const counts = new Map<string, number>();
   let total = 0;
@@ -74,15 +76,26 @@ export function buildScopeOptions(
     { value: ALL_SCOPES, label: t('calibrations.scope.all'), fileCount: total },
   ];
 
+  // Telescopes by name, then linked folders by name, then the shared bucket.
   const telescopeScopes = [...counts.keys()]
-    .filter(value => value !== UNSCOPED)
+    .filter(value => value !== UNSCOPED && !linkedNames.has(value))
     .sort((a, b) => (telescopeNames.get(a) ?? '').localeCompare(telescopeNames.get(b) ?? ''));
+  const linkedScopes = [...linkedNames.keys()]
+    .filter(value => counts.has(value))
+    .sort((a, b) => (linkedNames.get(a) ?? '').localeCompare(linkedNames.get(b) ?? ''));
   for (const value of telescopeScopes) {
     options.push({
       value,
       // A scope id with no profile left is a deleted telescope. Its frames stay
       // on disk and stay reachable, so it keeps an option with a generic label.
       label: telescopeNames.get(value) ?? t('calibrations.scope.deleted'),
+      fileCount: counts.get(value) ?? 0,
+    });
+  }
+  for (const value of linkedScopes) {
+    options.push({
+      value,
+      label: t('calibrations.scope.linked', { name: linkedNames.get(value) ?? value }),
       fileCount: counts.get(value) ?? 0,
     });
   }

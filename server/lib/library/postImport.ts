@@ -26,6 +26,7 @@ import { enqueueSessionWeatherBackfill } from './observations.js';
 import { warmObjectThumbnails, type ThumbnailProgress } from './galleryThumbnailWarm.js';
 import { prewarmSessionThumbnails } from './sessionThumbnailPrewarm.js';
 import { warmSubFrameHeaders } from './integration.js';
+import { measureLinkedFramesNightly } from '../frameAnalysis/autoMeasure.js';
 
 export type PostImportReason =
   | 'telescope-import'
@@ -137,6 +138,14 @@ export function runPostImport(opts: PostImportOptions): PostImportHandle {
           const r = await warmSubFrameHeaders(withNewFiles);
           log.info({ reason, objects: r.objects, frames: r.frames }, '[post-import] sub-frame headers: %d object(s), %d frame(s)', r.objects, r.frames);
         });
+        // Frame quality of linked folders that asked for it. Only the nightly sweep: it is the slow stage, and the
+        // folder's owner chose "at night" for it.
+        if (reason === 'nightly') {
+          await stage(reason, 'frame-analysis', async () => {
+            const r = await measureLinkedFramesNightly();
+            log.info({ reason, ...r }, '[post-import] frame analysis: %d measured, %d failed (%s)', r.measured, r.failed, r.stoppedFor);
+          });
+        }
       });
       backgroundTail = run;
       return run;

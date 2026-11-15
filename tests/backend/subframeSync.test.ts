@@ -152,3 +152,68 @@ describe('syncSessionSubFrames — scoped writes', () => {
     expect(files).toContain('Light_C63_10.0s_IRCUT_20260621-120000.fit');
   });
 });
+
+// A file at the destination is not proof that the frame arrived intact. A copy
+// cut short by a dropped SMB session, or a frame the telescope itself served
+// from the wrong session, sits at the right name; the old existsSync() check
+// counted both as done, so "Sync all sub-frames" answered "already synced" and
+// could never repair them.
+describe('syncSessionSubFrames — repairing what is already on disk', () => {
+  const FRAME = 'Light_NGC7293_10.0s_IRCUT_20260621-120000.fit';
+
+  beforeEach(() => {
+    if (fs.existsSync(LIBRARY_DIR)) fs.rmSync(LIBRARY_DIR, { recursive: true, force: true });
+  });
+
+  function deviceWith(frame: string) {
+    const deviceRoot = tmpDir('subsync-repair-device-');
+    fs.mkdirSync(path.join(deviceRoot, 'NGC7293_sub'));
+    fs.writeFileSync(path.join(deviceRoot, 'NGC7293_sub', FRAME), frame);
+    return createProfile({
+      name: 'Test SeeStar (local) repair',
+      kind: 'other',
+      connectionType: 'local',
+      localPath: deviceRoot,
+    });
+  }
+
+  function plantLibraryCopy(bytes: string): string {
+    const dest = path.join(LIBRARY_DIR, 'NGC7293', FRAME);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, bytes);
+    return dest;
+  }
+
+  it('replaces a copy whose length does not match the telescope', async () => {
+    const profile = deviceWith('hello-fits');
+    const dest = plantLibraryCopy('hel');
+
+    expect(claimImportLock()).toBe(true);
+    await syncSessionSubFrames('NGC7293', '2026-06-21', { telescopeId: profile.id });
+
+    expect(fs.readFileSync(dest, 'utf8')).toBe('hello-fits');
+  });
+
+  it('leaves a complete copy alone on an ordinary sync', async () => {
+    const profile = deviceWith('hello-fits');
+    const dest = plantLibraryCopy('older-data'); // same length, different frame
+
+    expect(claimImportLock()).toBe(true);
+    await syncSessionSubFrames('NGC7293', '2026-06-21', { telescopeId: profile.id });
+
+    expect(fs.readFileSync(dest, 'utf8')).toBe('older-data');
+  });
+
+  it('replaces it when the run asks for every frame again', async () => {
+    const profile = deviceWith('hello-fits');
+    const dest = plantLibraryCopy('older-data');
+
+    expect(claimImportLock()).toBe(true);
+    await syncSessionSubFrames('NGC7293', '2026-06-21', {
+      telescopeId: profile.id,
+      forceRedownload: true,
+    });
+
+    expect(fs.readFileSync(dest, 'utf8')).toBe('hello-fits');
+  });
+});

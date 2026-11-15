@@ -234,8 +234,11 @@ export interface CalibrationGroup {
   type: CalibrationFrameType;
   typeLabel: string;
   folderName: string;
+  /** A telescope id, null for the shared bucket, or `@src/<sourceId>` for a linked folder. */
   scope: string | null;
   scopeLabel: string;
+  /** Read in place from a linked folder: it can be browsed, downloaded and used for stacking, but not deleted here. */
+  linked: boolean;
   fileCount: number;
   bytes: number;
   modifiedAt: string | null;
@@ -509,17 +512,17 @@ export const toggleFavorite = (objectId: string, isFavorite: boolean) =>
     { method: isFavorite ? 'POST' : 'DELETE' }
   );
 
-export const syncSessionSubFrames = (objectId: string, date: string) =>
+export const syncSessionSubFrames = (objectId: string, date: string, options?: { force?: boolean }) =>
   fetchJSON<{ started: boolean; objectId: string; date: string }>(
     `/library/objects/${encodeURIComponent(objectId)}/sessions/${encodeURIComponent(date)}/sync-subframes`,
-    { method: 'POST' }
+    { method: 'POST', ...(options?.force ? { body: JSON.stringify({ force: true }) } : {}) }
   );
 
 /** Sync raw sub-frames for every session of the object in one pass. */
-export const syncObjectSubFrames = (objectId: string) =>
+export const syncObjectSubFrames = (objectId: string, options?: { force?: boolean }) =>
   fetchJSON<{ started: boolean; objectId: string }>(
     `/library/objects/${encodeURIComponent(objectId)}/sync-subframes`,
-    { method: 'POST' }
+    { method: 'POST', ...(options?.force ? { body: JSON.stringify({ force: true }) } : {}) }
   );
 
 /** Reclassify an object to a different catalog identity. Renames it if the
@@ -1080,6 +1083,7 @@ export const deleteProcessedImage = (objectId: string, date: string, id: string)
     { method: 'DELETE' }
   );
 
+
 /** Object-scoped delete, no session date — for the aggregate "Processed"
  *  section, which mixes images from many dates (and Dwarf RESTACKED imports
  *  with no date at all) in one list. */
@@ -1468,7 +1472,7 @@ export const toggleImageFavorite = (imagePath: string, isFavorite: boolean) =>
 
 export type MediaKind = 'processed' | 'telescope' | 'sub' | 'project' | 'video';
 export type MediaTabId = MediaKind | 'all';
-export type MediaGroupBy = 'night' | 'telescope' | 'filter' | 'type' | 'none';
+export type MediaGroupBy = 'night' | 'observation' | 'telescope' | 'filter' | 'type' | 'none';
 export type MediaSort = 'newest' | 'oldest' | 'time';
 
 export interface MediaTelescope { id: string; name: string; color: string }

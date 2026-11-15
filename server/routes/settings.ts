@@ -58,7 +58,10 @@ const SettingsUpdateBodySchema = z.object({
   // A wrong-length map would be stored as [] ("whole sky visible"), so reject it
   // here instead of answering 200 and silently erasing the user's mask.
   // [] is the one other legal value: "no mask set", which GET returns for a site
-  // without one and the Settings page echoes back on every save.
+  // without one and the Settings page echoes back on every save. It means "no mask" by
+  // design everywhere in the app, so a client that sends it clears a drawn mask on purpose.
+  // The browser cannot do that by accident: it saves the whole loaded form and shows no Save
+  // button until settings have loaded.
   visibleSkyMap: z.union([z.array(z.boolean()).length(SKY_MAP_CELLS), z.array(z.boolean()).length(0)]).optional(),
   syncEnabled: z.boolean().optional(),
   syncJpg: z.boolean().optional(),
@@ -79,6 +82,7 @@ const SettingsUpdateBodySchema = z.object({
   galleryImageSource: z.enum(GALLERY_IMAGE_SOURCES).optional(),
   slideshowRotateCCW: z.boolean().optional(),
   galleryProcessedOnlyDefault: z.boolean().optional(),
+  galleryFavoritesDefault: z.boolean().optional(),
   planetariumProcessedOnlyDefault: z.boolean().optional(),
   preferredCatalog: z.enum(PREFERRED_CATALOGS).optional(),
   groupObservingNights: z.boolean().optional(),
@@ -157,6 +161,7 @@ const SettingsSchema = z.object({
   // page and in Planetarium mode. Both stay user-adjustable per session once
   // opened; this only seeds where they start.
   galleryProcessedOnlyDefault: z.boolean(),
+  galleryFavoritesDefault: z.boolean(),
   planetariumProcessedOnlyDefault: z.boolean(),
   // Which catalog nomenclature to prefer for new object folder names when an
   // object has both an NGC/IC and a Caldwell designation. See
@@ -223,6 +228,7 @@ const defaultSettings: Settings = {
   galleryImageSource: 'sky-survey',
   slideshowRotateCCW: false,
   galleryProcessedOnlyDefault: false,
+  galleryFavoritesDefault: false,
   planetariumProcessedOnlyDefault: false,
   preferredCatalog: 'default',
   groupObservingNights: true,

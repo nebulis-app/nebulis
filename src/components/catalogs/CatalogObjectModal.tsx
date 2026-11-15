@@ -16,6 +16,7 @@ import { FramingModal, FRAMING_MOSAIC_ENABLED } from './FramingModal';
 import { FilterRecommendationPanel } from '../ui/FilterRecommendationPanel';
 import { BestImagingChart } from '../ui/BestImagingChart';
 import { useActiveWindowPrefs } from '../../hooks/useActiveWindowPrefs';
+import { BodyScrollLock } from '../ui/BodyScrollLock';
 
 interface Props {
   object: CatalogProgressObject;
@@ -173,6 +174,7 @@ export function CatalogObjectModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
       onClick={onClose}
     >
+      <BodyScrollLock />
       {/* Wrapper: flex row so arrows flank the card */}
       <div className="flex items-center gap-3 w-full max-w-[820px]" onClick={(e) => e.stopPropagation()}>
 
@@ -410,6 +412,7 @@ export function CatalogObjectModal({
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-sm"
           onClick={() => setLightboxOpen(false)}
         >
+          <BodyScrollLock />
           <div
             className="relative"
             onClick={(e) => e.stopPropagation()}

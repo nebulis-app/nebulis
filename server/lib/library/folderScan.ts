@@ -476,6 +476,11 @@ function isContainerDir(absDir: string, name: string, depth: number): boolean {
     .some(k => identifyObjectFromFolderName(k) !== null || isContainerDir(path.join(absDir, k), k, depth + 1));
 }
 
+/** A folder named for a night: `2025-03-01`, `2025-03-01_2126`, `20250301`. */
+const NIGHT_FOLDER_NAME = /^(?:(?:19|20)\d{2}-\d{2}-\d{2}|(?:19|20)\d{6})(?!\d)/;
+/** The random id an upload is staged under (a UUID). */
+const STAGING_FOLDER_NAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** One directory level of object discovery: its object folders (with `_sub`
  *  companions), Dwarf session groups and loose files, plus recursion into any
  *  container folders. `relPrefix` keeps excluded-folder names relative to the
@@ -506,6 +511,18 @@ function collectLevel(
 
   const allDirs = entries.filter(e => e.isDirectory());
   const candidateDirs = allDirs.filter(e => !isNonObjectFolder(e.name));
+
+  // A folder whose only sub-folders are nights (`2025-03-01_2126`, `20250301`) is one object's pictures: those
+  // folders are its sessions, not objects of their own. Without this, pointing the wizard at `NGC1499` offered one
+  // object per night. An import's staging folder is named by a random id, which says nothing about the object, so
+  // it keeps the per-night reading.
+  if (depth === 0 && candidateDirs.length > 0 && !STAGING_FOLDER_NAME.test(selfName)
+    && candidateDirs.every(e => NIGHT_FOLDER_NAME.test(e.name))) {
+    return {
+      sources: [{ folderName: selfName, sourceDirs: [rootPath], topLevelOnly: false }],
+      excludedFolders: allDirs.filter(e => isNonObjectFolder(e.name)).map(e => relPrefix + e.name).sort(),
+    };
+  }
   // Hand-organised trees group objects under category folders ("1. Caldwell
   // Objects") and telescope folders ("1. Seestar S50"). Those are containers,
   // not objects: descend into them so the object level is found at any depth.

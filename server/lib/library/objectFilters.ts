@@ -12,11 +12,12 @@ export interface LibraryObjectFilter {
  *
  * `Star` is deliberately absent. It used to be here, which filed every object
  * typed `Star` under the Solar System chip: true only of the Sun, and wrong for
- * anything else that carries the type. Stars have their own chip below, and the
- * Sun files under that one. Membership here is a claim about the type, not
- * about a particular object, so no object name belongs in this file.
+ * anything else that carries the type. The Sun has a type of its own, `Sun`,
+ * for that reason. Membership here is a claim about the type, not about a
+ * particular object, so no object name belongs in this file.
  */
 export const SOLAR_SYSTEM_OBJECT_TYPES = [
+  'Sun',
   'Planet',
   'Natural Satellite',
   'Dwarf Planet',

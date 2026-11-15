@@ -226,7 +226,7 @@ export function ObjectProcessedSection({
                               : <Star className="w-3.5 h-3.5" />}
                           </button>
                         )}
-                        {isAdmin && (
+                                        {isAdmin && (
                           <button
                             onClick={e => { e.stopPropagation(); handleDelete(img.id); }}
                             disabled={!!deletingId}
@@ -308,6 +308,7 @@ export function ObjectProcessedSection({
         settingGalleryId={settingGalleryId}
         deletingProcessedId={deletingId}
       />
+
 
       {/* Keep the viewer open: the edited record comes back from the refetch with a new URL, and the viewer swaps in
           the new picture in place instead of leaving the user on the grid to hunt for it. */}

@@ -21,10 +21,11 @@ import { useExploreSite } from '../hooks/useExploreSite';
 import { useResolvedFov } from '../hooks/useResolvedFov';
 import { useExploreActions } from '../components/explore/useExploreActions';
 import { useExploreNight, withNight } from '../components/explore/useExploreNight';
-import { getBestTonight, getExploreCategories, type ExploreRow } from '../lib/api/explore';
+import { getBestTonight, getExploreCategories, EXPLORE_CATALOG_IDS, type ExploreRow } from '../lib/api/explore';
 import { ExploreShell, type ExploreTab } from '../components/explore/ExploreShell';
 import { ExploreCard } from '../components/explore/ExploreCard';
 import { CategoryTile } from '../components/explore/CategoryTile';
+import { CatalogTile } from '../components/explore/CatalogTile';
 import { ExploreObjectSheet } from '../components/explore/ExploreObjectSheet';
 import { ExploreWishlist } from '../components/explore/ExploreWishlist';
 import { EXPLORE_CATEGORIES } from '../components/explore/categoryMeta';
@@ -68,6 +69,7 @@ export function ExplorePage() {
   const locationSet = categories.data?.locationSet ?? Boolean(site?.latitude != null);
   const bestRows = useMemo(() => best.data?.results ?? [], [best.data]);
   const statsById = useMemo(() => new Map((categories.data?.categories ?? []).map(c => [c.id, c])), [categories.data]);
+  const catalogStatsById = useMemo(() => new Map((categories.data?.catalogs ?? []).map(c => [c.id, c])), [categories.data]);
 
   // The sheet steps through whatever list it was opened from: the rail, or the
   // single object picked from the search dropdown.
@@ -140,6 +142,17 @@ export function ExplorePage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {EXPLORE_CATEGORIES.map(meta => (
                   <CategoryTile key={meta.id} meta={meta} stats={statsById.get(meta.id)} locationSet={locationSet} night={night.night} />
+                ))}
+              </div>
+            </section>
+
+            <section aria-labelledby="explore-catalogs">
+              <div className="mb-3">
+                <h2 id="explore-catalogs" className={heading}>{t('explore.browse.byCatalog')}</h2>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                {EXPLORE_CATALOG_IDS.map(id => (
+                  <CatalogTile key={id} id={id} stats={catalogStatsById.get(id)} locationSet={locationSet} night={night.night} />
                 ))}
               </div>
             </section>

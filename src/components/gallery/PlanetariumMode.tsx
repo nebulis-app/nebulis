@@ -10,6 +10,7 @@ import { formatNumber } from '../../lib/formatLocale';
 import { fisherYates, preload, slideImageUrl, TOTAL_MS } from './galleryUtils';
 import { slotReducer, type SlotState } from './galleryReducer';
 import { KenBurnsSlide } from './KenBurnsSlide';
+import { BodyScrollLock } from '../ui/BodyScrollLock';
 
 interface PlanetariumModeProps {
   initialImages: LibraryImage[];
@@ -182,6 +183,7 @@ export function PlanetariumMode({
       style={{ cursor: showUI ? 'default' : 'none' }}
       onMouseMove={resetUI}
     >
+      <BodyScrollLock />
       {/* Two composited layers, only transform + opacity, no layout */}
       <KenBurnsSlide image={slot.s0} opacity={slot.active === 0 ? 1 : 0} rotateCCW={rotateCCW} />
       <KenBurnsSlide image={slot.s1} opacity={slot.active === 1 ? 1 : 0} rotateCCW={rotateCCW} />

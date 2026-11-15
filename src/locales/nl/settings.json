@@ -22,6 +22,7 @@
     "features": "Integraties",
     "alerts": "Meldingen",
     "display": "Weergave",
+    "gallery": "Galerij",
     "slideshow": "Diavoorstelling",
     "organization": "Indeling",
     "processing": "Verwerking",
@@ -263,6 +264,10 @@
     }
   },
   "librarySection": {
+    "gallery": {
+      "title": "Galerij",
+      "description": "Kies welke afbeeldingen de Galerij toont bij het openen. Staan beide uit, dan toont ze alle afbeeldingen. Staat er één aan, dan toont ze alleen die. Staan beide aan, dan toont ze afbeeldingen die een van beide zijn."
+    },
     "display": {
       "title": "Weergave",
       "description": "Hoe objectkaarten en diavoorstellingen afbeeldingen en informatie tonen.",
@@ -273,8 +278,12 @@
         "telescope": "Mijn telescoop"
       },
       "galleryProcessedOnly": {
-        "label": "Galerij: alleen bewerkte afbeeldingen tonen",
-        "description": "De galerij opent standaard met het filter \"Alleen bewerkt\" ingeschakeld."
+        "label": "Alleen bewerkte afbeeldingen tonen",
+        "description": "De Galerij toont alleen bewerkte afbeeldingen en verbergt de rest. Zet ook de favorieten aan om afbeeldingen te tonen die een van beide zijn."
+      },
+      "galleryFavorites": {
+        "label": "Alleen favoriete afbeeldingen tonen",
+        "description": "De Galerij toont alleen de afbeeldingen die je met een ster hebt gemarkeerd en verbergt de rest. Zet ook de bewerkte afbeeldingen aan om afbeeldingen te tonen die een van beide zijn."
       },
       "objectPages": {
         "label": "Objectpagina's",
@@ -491,10 +500,10 @@
     },
     "descriptions": {
       "openngc": "Namen, posities, magnitudes en typen voor ongeveer 12.000 deepsky-objecten",
-      "sesame": "Naamzoekopdrachten voor objecten die ontbreken in de gebundelde catalogus",
-      "simbad": "Grootte- en afstandsdetails voor catalogusobjecten",
+      "sesame": "Naamzoekopdrachten voor objecten die ontbreken in de gebundelde catalogus, via CDS of zijn spiegels wanneer CDS niet bereikbaar is",
+      "simbad": "Grootte- en afstandsdetails voor catalogusobjecten, via CDS of zijn spiegels wanneer CDS niet bereikbaar is",
       "hubbleCaldwell": "Hubble-afbeeldingen en tekst voor de 88 Caldwell-objecten",
-      "hips": "Beelden uit de DSS2-hemelkartering voor elke gekozen hemelpositie",
+      "hips": "Beelden uit de DSS2-hemelkartering voor elke gekozen hemelpositie, via CDS of de spiegels ESA, MAST en CASDA wanneer CDS niet bereikbaar is",
       "nasaImageLibrary": "Alternatieve afbeeldingen voor planeten, manen en kometen",
       "wikipedia": "Samenvattingen en miniaturen voor objecten in duidelijke taal",
       "openMeteo": "Weersverwachting en eerder weer voor je locaties, plus het zoeken naar plaatsen",
@@ -1001,6 +1010,7 @@
     "alerts": "Krijg bericht als er een heldere nacht aankomt of een import klaar is.",
     "libraryOrganization": "Hoe objecten worden benoemd, gegroepeerd en geteld.",
     "libraryProcessing": "Wat Nebulis met beelden doet nadat ze zijn binnengekomen.",
+    "libraryGallery": "Wat de Galerij toont bij het openen.",
     "librarySlideshow": "Hoe de diavoorstelling wordt afgespeeld en wat hij toont.",
     "maintenance": "Taken die de server elke nacht zelf uitvoert.",
     "catalogs": "Offline beelden en satellietgegevens die op deze server staan."
@@ -1460,8 +1470,8 @@
     "lastScan": "laatst gescand {{when}}",
     "neverScanned": "nog niet gescand",
     "offline": "Deze map is momenteel niet bereikbaar. Er is niets gewijzigd. Verbind de schijf of netwerkshare opnieuw en scan nogmaals.",
-    "missingFiles_one": "{{count}} bestand is bij de laatste scan niet gevonden. De vermelding blijft behouden totdat een tweede scan bevestigt dat het bestand ontbreekt.",
-    "missingFiles_other": "{{count}} bestanden zijn bij de laatste scan niet gevonden. De vermeldingen blijven behouden totdat een tweede scan bevestigt dat de bestanden ontbreken.",
+    "missingFiles_one": "{{count}} bestand is bij de laatste scan niet gevonden. De vermelding blijft 24 uur in de index. Ontbreekt het bij een latere scan nog steeds, dan wordt het verwijderd.",
+    "missingFiles_other": "{{count}} bestanden zijn bij de laatste scan niet gevonden. De vermeldingen blijven 24 uur in de index. Ontbreken ze bij een latere scan nog steeds, dan worden ze verwijderd.",
     "rescanDone": "Opnieuw gescand: {{added}} nieuw, {{updated}} gewijzigd, {{missing}} niet gevonden, {{removed}} verwijderd uit de index.",
     "rescanOffline": "De map kon niet worden bereikt, dus er is niets gewijzigd.",
     "rescanFailed": "Opnieuw scannen mislukt",
@@ -1469,6 +1479,11 @@
     "unlinkConfirm": "Deze map ontkoppelen? De bijbehorende objecten verdwijnen uit je bibliotheek, tenzij ze notities, favorieten of bestanden uit een andere bron hebben. Je bestanden op schijf blijven ongewijzigd.",
     "unlinkConfirmButton": "Ontkoppelen",
     "keepLinked": "Gekoppeld houden",
+    "removeMissing": "Nu verwijderen",
+    "removeMissingConfirm_one": "Dit ontbrekende bestand nu uit de index verwijderen? Nebulis scant eerst opnieuw, en ontbreekt het bestand nog steeds, dan wordt de vermelding in de index verwijderd. Er wordt niets op je schijf aangeraakt. Als een schijf is losgekoppeld, sluit die dan eerst weer aan.",
+    "removeMissingConfirm_other": "Deze {{count}} ontbrekende bestanden nu uit de index verwijderen? Nebulis scant eerst opnieuw, en van elk bestand dat nog steeds ontbreekt wordt de vermelding in de index verwijderd. Er wordt niets op je schijf aangeraakt. Als een schijf is losgekoppeld, sluit die dan eerst weer aan.",
+    "removeMissingConfirmButton": "Uit index verwijderen",
+    "removeMissingCancel": "Behouden",
     "howToLink": "Gebruik \"Importeren\" op de pagina Bibliotheek om een map te koppelen. Kies een map op deze server en daarna \"Map koppelen\".",
     "refreshManual": "Alleen handmatig",
     "edit": "Bewerken",

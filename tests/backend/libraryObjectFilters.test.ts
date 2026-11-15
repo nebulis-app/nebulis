@@ -9,6 +9,7 @@ describe('library object filters', () => {
     const solar = LIBRARY_OBJECT_FILTERS.find(filter => filter.id === 'solar-system');
     expect(solar?.label).toBe('Solar System');
     expect(solar?.matchTypes).toEqual([
+      'Sun',
       'Planet',
       'Natural Satellite',
       'Dwarf Planet',
@@ -18,6 +19,7 @@ describe('library object filters', () => {
   });
 
   it('tags solar system object types', () => {
+    expect(getLibraryObjectFilterTags('Sun')).toContain('solar-system');
     expect(getLibraryObjectFilterTags('Planet')).toContain('solar-system');
     expect(getLibraryObjectFilterTags('Natural Satellite')).toContain('solar-system');
     expect(getLibraryObjectFilterTags('Dwarf Planet')).toContain('solar-system');

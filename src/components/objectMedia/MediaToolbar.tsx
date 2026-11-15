@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ChevronDown, Filter, Grid3x3, ImagePlus, LayoutGrid, ScanSearch, SlidersHorizontal, Star } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { useClickOutside } from '../../hooks/useClickOutside';
+import { useSunWording } from './solarObjectContext';
 import { nightSafeColor } from '../../lib/nightSafeColor';
 import { formatDate } from '../../lib/formatLocale';
 import { TOOLBAR_BTN, popoverSurface } from '../filters/toolbarStyles';
@@ -26,8 +27,10 @@ interface Props {
   onReview: (() => void) | null;
 }
 
-export function MediaTabs({ state, update, counts, isAdmin, trailing }: Pick<Props, 'state' | 'update' | 'counts'> & {
+export function MediaTabs({ state, update, counts, isAdmin, solar = false, trailing }: Pick<Props, 'state' | 'update' | 'counts'> & {
   isAdmin: boolean;
+  /** The Sun: its Nights tab reads Days. */
+  solar?: boolean;
   /** The page's controls, shown at the right of the tab row. */
   trailing?: React.ReactNode;
 }) {
@@ -60,7 +63,7 @@ export function MediaTabs({ state, update, counts, isAdmin, trailing }: Pick<Pro
                 : `border-transparent ${isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'}`
             }`}
           >
-            {t(`objectMedia.tab.${id}`)}
+            {t(`objectMedia.tab.${solar && id === 'nights' ? 'days' : id}`)}
             {count > 0 && (
               <span className={`text-[0.6875rem] font-sans tabular-nums px-1.5 py-px rounded-full ${
                 active
@@ -194,6 +197,7 @@ export function MediaFilterChips({ state, update, clearFilters, facets }: Pick<P
 /** Group by and sort, as pills in the same "View" popover the Library uses. */
 function ViewPopover({ state, update, size, onSizeChange }: Pick<Props, 'state' | 'update' | 'size' | 'onSizeChange'>) {
   const { t } = useTranslation('library');
+  const sun = useSunWording();
   const { isDark } = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -222,7 +226,7 @@ function ViewPopover({ state, update, size, onSizeChange }: Pick<Props, 'state' 
           <FilterSection title={t('objectMedia.toolbar.groupBy')} isDark={isDark}>
             {MEDIA_GROUPS.map(id => (
               <Pill key={id} active={state.group === id} isDark={isDark} onClick={() => update({ group: id })}>
-                {t(`objectMedia.groupBy.${id}`)}
+                {t(`objectMedia.groupBy.${id}`, sun)}
               </Pill>
             ))}
           </FilterSection>
@@ -264,6 +268,7 @@ function FilterPopover({ state, update, clearFilters, count, facets, counts }: {
   counts: MediaCounts | undefined;
 }) {
   const { t } = useTranslation('library');
+  const sun = useSunWording();
   const { isDark, isNight } = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -327,7 +332,7 @@ function FilterPopover({ state, update, clearFilters, count, facets, counts }: {
           )}
 
           {nights.length > 0 && (
-            <FilterSection title={t('objectMedia.filters.night')} isDark={isDark}>
+            <FilterSection title={t('objectMedia.filters.night', sun)} isDark={isDark}>
               <div className="flex max-h-40 w-full flex-wrap gap-1.5 overflow-y-auto">
                 {nights.map(n => (
                   <Pill key={n.date} active={state.night === n.date} isDark={isDark} onClick={() => update({ night: state.night === n.date ? '' : n.date })}>

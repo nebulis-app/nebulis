@@ -202,8 +202,9 @@ async function walkRoot(
           if (name.startsWith('.') || SKIP_DIRS.has(name.toLowerCase())) continue;
           const full = path.join(dir, name);
           if (name.toLowerCase() === anchorLower) {
-            const scanRoot = pathsIncludeAnchor ? dir : full;
-            if (await verifySamples(scanRoot, samples)) return scanRoot;
+            // Sample paths that carry the folder name are relative to its parent, so they are checked there,
+            // but the answer is always the folder itself: its parent holds whatever else sits beside it.
+            if (await verifySamples(pathsIncludeAnchor ? dir : full, samples)) return full;
           }
           next.push(full);
         }
@@ -255,9 +256,11 @@ export async function locateFolderInRoots(
  * null when no confidently matching directory is found in time.
  *
  * The sample paths are the ones the client would upload. When they start with
- * `anchorName` the scan root is the *parent* of the matched directory (the
- * client kept the folder name so the server can catalog-match it); otherwise
- * the matched directory itself is the root.
+ * `anchorName` (the client kept the folder name so the server can catalog-match
+ * it) they are checked against the matched directory's parent; otherwise
+ * against the directory itself. Either way the matched directory is the
+ * answer, never its parent: importing the parent would offer every folder
+ * that sits beside it.
  */
 export async function locateFolderOnDisk(
   anchorName: string,
@@ -268,8 +271,7 @@ export async function locateFolderOnDisk(
   const pathsIncludeAnchor = samples[0].relativePath.split('/')[0] === anchorName;
   // Spotlight hits are checked first: they are exact and instant.
   for (const candidate of await spotlightCandidates(anchorName)) {
-    const scanRoot = pathsIncludeAnchor ? path.dirname(candidate) : candidate;
-    if (await verifySamples(scanRoot, samples)) return scanRoot;
+    if (await verifySamples(pathsIncludeAnchor ? path.dirname(candidate) : candidate, samples)) return candidate;
   }
   return locateFolderInRoots(await searchRoots(), anchorName, samples);
 }

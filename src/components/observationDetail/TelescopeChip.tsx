@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSunWording } from '../objectMedia/solarObjectContext';
 import { CheckCircle2, Pencil, Wand2 } from 'lucide-react';
 import { reassignSessionTelescope, setSessionOptics } from '../../lib/api/telescopes';
 import type { SessionOptics } from '../../types';
@@ -37,6 +38,7 @@ export function TelescopeChip({
   optics?: SessionOptics;
 }) {
   const { t } = useTranslation('observations');
+  const sun = useSunWording();
   const { isNight } = useTheme();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -93,7 +95,7 @@ export function TelescopeChip({
         {train && (
           <span
             className="text-white/55"
-            title={optics?.source ? t(`observationDetail.telescopeChip.opticsSource.${optics.source}`) : undefined}
+            title={optics?.source ? t(`observationDetail.telescopeChip.opticsSource.${optics.source}`, sun) : undefined}
           >
             · {train}
           </span>

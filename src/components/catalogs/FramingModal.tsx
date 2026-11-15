@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { listTelescopes } from '../../lib/api/telescopes';
 import { getCatalogEntry } from '../../lib/api/catalog';
 import { FitBadge } from '../FitBadge';
+import { BodyScrollLock } from '../ui/BodyScrollLock';
 import {
   FOV_PROFILES,
   objectExtentArcmin,
@@ -325,6 +326,7 @@ export function FramingModal({ catalogId, objectName, isDark, onClose, savedFram
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
+      <BodyScrollLock />
       <div
         className={`relative rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] overflow-hidden flex flex-col ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}
         onClick={e => e.stopPropagation()}

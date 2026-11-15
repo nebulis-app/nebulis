@@ -12,6 +12,7 @@ import {
   POSTER_FORMATS, canvasToBlob, renderPoster, type PosterFormat, type PosterSpec,
 } from '../../../lib/catalogWallPoster';
 import { everyMember } from '../../unionList';
+import { BodyScrollLock } from '../../ui/BodyScrollLock';
 
 interface Props {
   tiles: WallTile[];
@@ -129,6 +130,7 @@ export function PosterDialog({ tiles, overrides, label, imagedCount, total, acce
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-sm sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label={t('wall.poster.title')}>
+      <BodyScrollLock />
       <div className="flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl bg-slate-950 ring-1 ring-white/15 sm:rounded-3xl">
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
           <h2 className="font-display text-lg font-semibold text-white">{t('wall.poster.title')}</h2>

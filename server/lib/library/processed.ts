@@ -20,6 +20,7 @@ import {
 } from './objects.js';
 import { getRunDates } from './processingRuns.js';
 import { recordLibraryFile } from './libraryFiles.js';
+import { moveImageFavorites, dropImageFavorites } from './favorites.js';
 
 // Single source of truth for every processed-image format: which extensions
 // are accepted, whether each can be rendered in an <img> tag, and the MIME
@@ -339,6 +340,8 @@ export function replaceProcessedImageFile(
 
   const folderName = getFolderName(row.objectId);
   const recordPath = `${folderName}/processed/${filename}`;
+  // Saved over in the editor: a new file name for the same picture, so its favorite moves with it.
+  moveImageFavorites(`${folderName}/processed/${oldFilename}`, recordPath);
   const runDates = getRunDates(row.runId);
   return {
     id,
@@ -435,6 +438,7 @@ export function moveProcessedImageToLibrary(
     stmts.setSessionImage.run(newRel, row.objectId, row.date);
   }
   stmts.deleteProcessedImageRow.run(id);
+  moveImageFavorites(processedRel, newRel);
   return newRel;
 }
 
@@ -445,4 +449,5 @@ export function deleteProcessedImage(id: string): void {
   const filePath = resolveContainedObjectDir(row.objectId, 'processed', row.filename);
   try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { /* best-effort */ }
   stmts.deleteProcessedImageRow.run(id);
+  dropImageFavorites(`${getFolderName(row.objectId)}/processed/${row.filename}`);
 }

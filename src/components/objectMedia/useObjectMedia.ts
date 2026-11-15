@@ -16,8 +16,9 @@ const PAGE_SIZE = 120;
  *  tab: Images already holds the telescope's pictures, and an old `?tab=telescope` link opens it. */
 export type ViewTabId = Exclude<MediaTabId, 'telescope'> | 'nights';
 export type MediaCounts = Record<ViewTabId, number>;
-export const MEDIA_TABS = everyMember<ViewTabId>()(['all', 'processed', 'sub', 'nights', 'project', 'video']);
-export const MEDIA_GROUPS = everyMember<MediaGroupBy>()(['night', 'telescope', 'filter', 'type', 'none']);
+export const MEDIA_TABS = everyMember<ViewTabId>()(['all', 'nights', 'sub', 'processed', 'project', 'video']);
+/** Observation is a grouping the Nights tab asks the server for; it has no heading style of its own, so it is not offered here. */
+export const MEDIA_GROUPS = everyMember<Exclude<MediaGroupBy, 'observation'>>()(['night', 'telescope', 'filter', 'type', 'none']);
 export const MEDIA_SORTS = everyMember<MediaSort>()(['newest', 'oldest', 'time']);
 
 export interface MediaViewState {
@@ -102,7 +103,8 @@ export function useObjectMedia(objectId: string) {
     initialPageParam: 0,
     queryFn: ({ pageParam }) => getObjectMedia(objectId, {
       kind: state.tab === 'nights' ? 'all' : state.tab,
-      group: state.tab === 'nights' ? 'night' : state.group,
+      // The Nights tab asks for observations (a night at one exposure) and folds them back into nights itself.
+      group: state.tab === 'nights' ? 'observation' : state.group,
       sort: state.sort,
       telescope: state.telescope,
       filter: state.filter,

@@ -464,7 +464,8 @@
       "titleOn": "Het beste op {{date}}"
     },
     "browse": {
-      "title": "Bladeren per soort"
+      "title": "Bladeren per soort",
+      "byCatalog": "Bladeren op catalogus"
     },
     "results": {
       "forQuery": "Resultaten voor \"{{query}}\"",
@@ -478,7 +479,22 @@
       "bestTonight": "Beste vannacht",
       "bestOn": "Het beste op {{date}}",
       "breadcrumb": "Waar je bent",
-      "categories": "Categorieën"
+      "categories": "Categorieën",
+      "inCatalog": "{{catalog}}-objecten"
+    },
+    "catalogs": {
+      "messier": "Messier",
+      "ngc": "NGC",
+      "ic": "IC",
+      "caldwell": "Caldwell",
+      "sharpless": "Sharpless"
+    },
+    "catalogBlurb": {
+      "messier": "Messiers 110 heldere objecten",
+      "ngc": "De New General Catalogue",
+      "ic": "Aanvulling op de NGC",
+      "caldwell": "Patrick Moores 109 favorieten",
+      "sharpless": "Emissienevels"
     },
     "filters": {
       "visibility": "Tonen",
@@ -489,13 +505,16 @@
       "sort": "Sorteren",
       "fitsScope": "Past bij mijn telescoop",
       "fitsScopeHint": "Objecten die in één beeld van {{scope}} passen",
-      "upOn": "Zichtbaar op {{date}}"
+      "upOn": "Zichtbaar op {{date}}",
+      "catalog": "Catalogus",
+      "catalogAll": "Alle catalogi"
     },
     "sort": {
       "best": "Beste",
       "tonight": "Beste vannacht",
       "bright": "Helderste",
       "large": "Grootste",
+      "number": "Nummer",
       "name": "Naam"
     },
     "planNight": {

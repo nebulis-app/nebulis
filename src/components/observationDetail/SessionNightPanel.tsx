@@ -9,6 +9,7 @@
  * is the part worth seeing next to the title.
  */
 import { useTranslation } from 'react-i18next';
+import { useSunWording } from '../objectMedia/solarObjectContext';
 import { Telescope } from 'lucide-react';
 import { AltitudeChart } from '../AltitudeChart';
 import { cloudVerdict } from '../../lib/cloudVerdict';
@@ -39,6 +40,7 @@ interface Props {
 export function SessionNightPanel({
   raHours, decDegrees, lat, lon, start, end, captureSpans, timeRange, cloudCover, moonIllumination, minAlt = 20,
 }: Props) {
+  const sun = useSunWording();
   const { t } = useTranslation('observations');
   const { isNight } = useTheme();
 
@@ -51,7 +53,7 @@ export function SessionNightPanel({
       <div className="mb-3 flex items-center gap-2">
         <Telescope className="h-3.5 w-3.5 shrink-0 text-white/40" />
         <h2 className="text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-white/50">
-          {t('observationDetail.nightPanel.title')}
+          {t('observationDetail.nightPanel.title', sun)}
         </h2>
       </div>
 

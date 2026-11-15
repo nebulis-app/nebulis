@@ -24,6 +24,7 @@ import { addDaysToDateKey, localDateKey, localParts } from '../lib/timezone.js';
 import { observerTimezoneForCoordinates } from '../lib/observerTimezone.js';
 import { OBSERVING_NIGHT_ROLLOVER_HOUR, isPlausibleCalendarDate } from '../lib/telescopeFiles.js';
 import { defaultNightAnchor, parseLocalNoon, resolvePlannerDarkWindow } from './planner.js';
+import { EXPLORE_CATALOG_IDS, catalogsOf } from '../lib/explore/catalogs.js';
 import { EXPLORE_CATEGORY_IDS, categoryOf, isExploreCategoryId, type ExploreCategoryId } from '../lib/explore/categories.js';
 import { showpieceScore, isShowpiece } from '../lib/explore/showpiece.js';
 import { classifyFit, type FitAssessment, type FovDeg } from '../lib/explore/fit.js';
@@ -218,10 +219,19 @@ router.get('/categories', async (req: Request, res: Response) => {
   const stats = new Map<ExploreCategoryId, { total: number; visibleHere: number; goodTonight: number }>(
     EXPLORE_CATEGORY_IDS.map(id => [id, { total: 0, visibleHere: 0, goodTonight: 0 }]),
   );
+  // The same three counts per catalog. An object counts toward every catalog it has a designation in.
+  const catalogStats = new Map(EXPLORE_CATALOG_IDS.map(id => [id, { total: 0, visibleHere: 0, goodTonight: 0 }]));
 
   for (const entry of getPlannerCatalog()) {
     const visible = ctx.site ? everVisible(entry, ctx.site) : true;
     const tonight = ctx.tonight?.byId.has(entry.id) ?? false;
+    for (const id of catalogsOf(entry)) {
+      const c = catalogStats.get(id);
+      if (!c) continue;
+      c.total++;
+      if (visible) c.visibleHere++;
+      if (tonight) c.goodTonight++;
+    }
     for (const id of EXPLORE_CATEGORY_IDS) {
       if (!inCategory(entry, id)) continue;
       const s = stats.get(id);
@@ -237,6 +247,7 @@ router.get('/categories', async (req: Request, res: Response) => {
     siteId: ctx.siteId,
     siteName: ctx.siteName,
     categories: EXPLORE_CATEGORY_IDS.map(id => ({ id, ...stats.get(id) })),
+    catalogs: EXPLORE_CATALOG_IDS.map(id => ({ id, ...catalogStats.get(id) })),
   });
 });
 
@@ -246,9 +257,11 @@ const flag = z.union([z.literal('1'), z.literal('true'), z.literal('0'), z.liter
 
 const BrowseQuerySchema = SiteQuerySchema.extend({
   category: z.string().default('all'),
+  /** One designation family: M, NGC, IC, Caldwell or Sharpless. Combines with every other filter. */
+  catalog: z.enum(EXPLORE_CATALOG_IDS).optional(),
   q: z.string().max(100).optional(),
   constellation: z.string().max(60).optional(),
-  sort: z.enum(['best', 'tonight', 'bright', 'large', 'name']).default('best'),
+  sort: z.enum(['best', 'tonight', 'bright', 'large', 'number', 'name']).default('best'),
   visibility: z.enum(['all', 'here', 'tonight']).default('here'),
   notImaged: flag,
   /** Keep only objects that fit one frame of the client's field of view. */
@@ -263,7 +276,7 @@ router.get('/browse', async (req: Request, res: Response) => {
     res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid query parameters');
     return;
   }
-  const { category, q, constellation, sort, visibility, notImaged, fitsScope: onlyFits, limit, offset } = parsed.data;
+  const { category, catalog, q, constellation, sort, visibility, notImaged, fitsScope: onlyFits, limit, offset } = parsed.data;
   if (category !== 'all' && !isExploreCategoryId(category)) {
     res.apiError(422, 'VALIDATION_ERROR', `Unknown category "${category}"`);
     return;
@@ -278,7 +291,7 @@ router.get('/browse', async (req: Request, res: Response) => {
     : getPlannerCatalog().map(entry => ({ entry, score: 0 }));
 
   const list = selectAndSort(scored.map(s => s.entry), {
-    category: category as ExploreCategoryId | 'all', constellation, notImaged, visibility, fitsOnly: onlyFits, sort, hasQuery: query.length > 0,
+    category: category as ExploreCategoryId | 'all', catalog, constellation, notImaged, visibility, fitsOnly: onlyFits, sort, hasQuery: query.length > 0,
   }, { site: ctx.site, tonight: ctx.tonight, fov: ctx.fov, isImaged: id => ctx.library.has(id) });
 
   const page = list.slice(offset, offset + limit).map(e => toRow(e, ctx));

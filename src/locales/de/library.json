@@ -1,9 +1,11 @@
 {
   "calibrations": {
+    "linkedNote": "Wird direkt aus deinem verknüpften Ordner gelesen. Nebulis ändert oder löscht diese Dateien nie.",
     "pageTitle": "Kalibrierungen",
     "pageSubtitle": "Bias-, Dark- und Flat-Frames deiner Teleskope, gruppiert nach Belichtung, Binning, Gain und Temperatur.",
     "scope": {
       "all": "Alle Teleskope",
+      "linked": "{{name}} (verknüpfter Ordner)",
       "unassigned": "Nicht zugeordnet",
       "deleted": "Gelöschtes Teleskop",
       "filterLabel": "Kalibrierungsframes nach Teleskop filtern",
@@ -570,6 +572,9 @@
     "customizeFilters": "Filter anpassen",
     "favorites": "Favoriten",
     "processedOnly": "Nur bearbeitete",
+    "showProcessed": "Bearbeitet",
+    "showEitherHint": "Wählen Sie beides, um Bilder zu sehen, die eins von beiden sind.",
+    "showEitherSuffix": " · Favoriten oder bearbeitet",
     "all": "Alle",
     "count_one": "{{count}} Bild",
     "count_other": "{{count}} Bilder",
@@ -587,7 +592,7 @@
     "importFromTelescopeHint": "Importiere Bilder von deinem SeeStar-Teleskop, um sie hier zu sehen.",
     "filters": "Filter",
     "filterType": "Typ",
-    "filterShow": "Anzeigen",
+    "filterShow": "Nur anzeigen",
     "moreTypes": "Weitere Typen ({{count}})",
     "fewerTypes": "Weniger Typen",
     "removeFilter": "Filter {{name}} entfernen",
@@ -878,7 +883,7 @@
     "open": "Öffnen",
     "folderToImport": "Zu importierender Ordner",
     "upOneFolder": "Einen Ordner nach oben",
-    "noSubfolders": "Dieser Ordner enthält keine Unterordner.",
+    "noSubfolders": "Dieser Ordner enthält keine Unterordner. Er wird so importiert, wie er ist. Bleiben Sie hier, um ihn zu importieren.",
     "importHint": "Nebulis importiert den oben angezeigten Ordner. Öffne einen Unterordner, um tiefer zu gehen, oder nutze den Pfeil nach oben."
   },
   "compareView": {
@@ -1331,7 +1336,9 @@
     "refreshDaily": "Jeden Tag",
     "refreshWeekly": "Jede Woche",
     "refreshOfflineHint": "Ist das Laufwerk oder die Freigabe nicht erreichbar, wird diese Prüfung übersprungen und nichts geändert.",
-    "refreshChangeLater": "Du kannst das jederzeit in den Einstellungen unter Speicher, dann Verknüpfte Ordner ändern."
+    "refreshChangeLater": "Du kannst das jederzeit in den Einstellungen unter Speicher, dann Verknüpfte Ordner ändern.",
+    "analyzeFrames": "Subframes nachts messen",
+    "analyzeFramesHint": "Bewertet jedes Rohbild auf Wolken, Sternspuren und Unschärfe während der nächtlichen Wartung, damit eine Nacht beim Öffnen bereit ist. Ein großer Ordner kann mehrere Nächte brauchen."
   },
   "linkedFilesChoice": {
     "label_one": "Auch {{count}} Originaldatei ({{size}}) vom Datenträger löschen",
@@ -1342,6 +1349,7 @@
     "nights": {
       "col": {
         "night": "Nacht",
+        "day": "Tag",
         "pictures": "Bilder",
         "frames": "Frames",
         "integration": "Integration",
@@ -1349,11 +1357,15 @@
       },
       "pictures_one": "{{count}} Bild",
       "pictures_other": "{{count}} Bilder",
-      "open": "Nacht öffnen"
+      "open": "Nacht öffnen",
+      "openDay": "Tag öffnen",
+      "showSettings": "{{count}} Belichtungseinstellungen anzeigen",
+      "hideSettings": "Belichtungseinstellungen ausblenden"
     },
     "subNights": {
       "open": "Frames öffnen",
       "back": "Alle Nächte",
+      "backDays": "Alle Tage",
       "empty": "Noch keine Sub-Frames.",
       "emptyHint": "Nutze „Alle Sub-Frames synchronisieren“ im …-Menü oben auf der Seite, um sie von deinem Teleskop zu holen."
     },
@@ -1368,6 +1380,7 @@
       "processed": "Bearbeitet",
       "telescope": "Teleskop",
       "nights": "Nächte",
+      "days": "Tage",
       "sub": "Subframes",
       "project": "Projekte",
       "video": "Videos"
@@ -1381,6 +1394,7 @@
     },
     "groupBy": {
       "night": "Nacht",
+      "night_sun": "Tag",
       "telescope": "Teleskop",
       "filter": "Filter",
       "type": "Typ",
@@ -1415,6 +1429,7 @@
       "lightFilter": "Filter",
       "format": "Format",
       "night": "Nacht",
+      "night_sun": "Tag",
       "favoritesOnly": "Nur Favoriten",
       "favorites": "Favoriten",
       "clear": "Filter zurücksetzen",
@@ -1427,12 +1442,15 @@
       "showFitsShort": "Anzeigen",
       "fitsFiles": "FITS-Dateien",
       "across": "Über mehrere Nächte",
+      "across_sun": "Über mehrere Tage",
       "projects": "Projekte",
       "all": "Alle Bilder",
       "noNight": "Keine Nacht",
+      "noNight_sun": "Kein Tag",
       "noTelescope": "Unbekanntes Teleskop",
       "noFilter": "Kein Filter",
       "openNight": "Nacht",
+      "openNight_sun": "Tag",
       "showAllSubs": "Alle anzeigen",
       "frames_one": "{{count}} Frame",
       "frames_other": "{{count}} Frames",

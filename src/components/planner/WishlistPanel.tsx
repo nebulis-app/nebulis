@@ -16,6 +16,7 @@
 import { ExternalLink, Star, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { WishlistList, type WishlistListProps } from './WishlistList';
+import { BodyScrollLock } from '../ui/BodyScrollLock';
 
 interface Props extends WishlistListProps {
   onExpand: () => void;
@@ -34,6 +35,7 @@ export function WishlistPanel({ onExpand, onClose, ...listProps }: Props) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={onClose}
     >
+      <BodyScrollLock />
       <div
         className={`relative rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col ${surface}`}
         onClick={(e) => e.stopPropagation()}

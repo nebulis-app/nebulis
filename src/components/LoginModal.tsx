@@ -7,6 +7,9 @@ import { setAuthToken } from '../lib/api/client';
 import { useTheme } from '../hooks/useTheme';
 import { Modal } from './ui/Modal';
 
+// Public recovery page on the website; it works without a signed-in session.
+const FORGOT_PASSWORD_URL = 'https://nebulis.app/reset-password/';
+
 export function LoginModal({ onLogin }: { onLogin: () => void }) {
   const { t } = useTranslation('common');
   const { isDark } = useTheme();
@@ -55,9 +58,6 @@ export function LoginModal({ onLogin }: { onLogin: () => void }) {
         <h1 className={`text-xl font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
           Nebu<span className="text-accent-500">lis</span>
         </h1>
-        <p className={`text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-          {t('auth.subtitle')}
-        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -101,6 +101,19 @@ export function LoginModal({ onLogin }: { onLogin: () => void }) {
           <LogIn className="w-4 h-4" />
           {loginMutation.isPending ? t('auth.signingIn') : t('auth.signIn')}
         </button>
+
+        <p className="text-center">
+          <a
+            href={FORGOT_PASSWORD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`text-sm transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40 ${
+              isDark ? 'text-slate-400 hover:text-accent-400' : 'text-slate-500 hover:text-accent-600'
+            }`}
+          >
+            {t('auth.forgotPassword')}
+          </a>
+        </p>
       </form>
     </Modal>
   );

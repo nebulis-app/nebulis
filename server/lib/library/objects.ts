@@ -2128,6 +2128,10 @@ export function deleteLocalObject(objectId: string): void {
     // the directory below, so there is nothing left to rebuild this object
     // from.
     deleteLibraryFileRowsForObject(objectId);
+    // The session rows go too. Their files are removed below, so a kept row
+    // can only come back as an empty session, the next time an import or a
+    // restore brings the object back.
+    stmts.clearSessions.run(objectId);
     deleteCaptureInfoForObject(objectId);
   });
   tombstoneAndPurgeRows();

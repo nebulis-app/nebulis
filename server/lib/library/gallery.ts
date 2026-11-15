@@ -24,6 +24,8 @@ import {
   LIBRARY_API_BASE,
 } from './objects.js';
 import { isRenderableProcessedName } from './processed.js';
+import { localDateKey } from '../timezone.js';
+import { activeSiteTimeZone } from '../siteTimeZone.js';
 import { isDwarfThumbnailPreviewName } from './dwarfRestack.js';
 import { isDwarfInternalArtifact } from './importFilter.js';
 import { getImageFavorites } from './favorites.js';
@@ -248,8 +250,11 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
   // so every processed image gets its own card, same as every raw one does.
   // Restricted to formats a browser can render inline: an XISF/FITS/PSD/RAW
   // deliverable can't go in an `<img>`, and has nowhere else to show here.
-  for (const r of db.prepare<[], { objectId: string; date: string | null; filename: string; notes: string }>(
-    'SELECT objectId, date, filename, notes FROM sessionProcessedImages',
+  // The upload day is the day at the observing site, not the server's: a Docker server runs in UTC, which is
+  // already tomorrow every evening in the Americas.
+  const siteZone = activeSiteTimeZone();
+  for (const r of db.prepare<[], { objectId: string; date: string | null; filename: string; notes: string; uploadedAt: string | null }>(
+    'SELECT objectId, date, filename, notes, uploadedAt FROM sessionProcessedImages',
   ).all()) {
     if (!isRenderableProcessedName(r.filename)) continue;
     if (isDwarfThumbnailPreviewName(r.filename)) continue; // Dwarf's own redundant stacked_thumbnail.* preview
@@ -260,12 +265,13 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
     results.push({
       name: r.filename,
       path: filePath,
-      // sessionProcessedImages.date is nullable (a user-uploaded processing
-      // result isn't always tied to a session date) — the sort below calls
-      // .localeCompare on this field, which throws on null and 500s the
-      // whole /library/all-images endpoint. Same 'unknown' fallback the raw
-      // walk uses above for the same field.
-      date: r.date || 'unknown',
+      // sessionProcessedImages.date is nullable: an image uploaded to the
+      // object itself, or a Dwarf RESTACKED file, belongs to no single night.
+      // The library shows such an image under its upload day (uploadedAt),
+      // so the gallery uses the same day instead of "Unknown date". 'unknown'
+      // only remains for a row with neither, since the sort below calls
+      // .localeCompare on this field and would throw on null.
+      date: r.date || processedUploadDay(r.uploadedAt, siteZone) || 'unknown',
       objectId: obj.objectId,
       objectName: obj.objectName || obj.objectId,
       objectType: obj.objectType,
@@ -279,6 +285,14 @@ function walkAllLibraryImages(LIBRARY_DIR: string): LibraryImageBase[] {
   // Sort is independent of favorite state, so we do it once before caching.
   results.sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name));
   return results;
+}
+
+/** Calendar day (YYYY-MM-DD) of a processed image's upload in the given zone, or null
+ *  when the timestamp is missing or unparseable. */
+function processedUploadDay(uploadedAt: string | null, timeZone: string): string | null {
+  if (!uploadedAt) return null;
+  const at = new Date(uploadedAt);
+  return Number.isNaN(at.getTime()) ? null : localDateKey(at, timeZone);
 }
 
 /**

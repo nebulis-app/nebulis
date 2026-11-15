@@ -14,7 +14,6 @@
     "docker:beta": "npm run public:sync -- --push --overwrite --beta",
     "start": "NODE_ENV=production tsx server/index.ts",
     "verify": "node scripts/verify.mjs",
-    "spec:coverage": "node scripts/spec-coverage.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",

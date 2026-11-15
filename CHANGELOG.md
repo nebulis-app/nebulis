@@ -1,7 +1,7 @@
 # Changelog
 ## 2.2.3 (318) - November 15th, 2026
 ### New
-- **Exposure settings within a night:** a night on the Nights tab shot at more than one exposure time, such as 30 s and 15 s, can be opened into one row per setting, each with its own frames and integration time. Nights shot at one setting look as before.
+- **Exposure settings within a night:** a night on the Nights tab shot at more than one exposure time, such as 30s and 15s, can be opened into one row per setting, each with its own frames and integration time. Nights shot at one setting look as before.
 - **Days for the Sun:** on the Sun's object page the Nights tab, its column, its group headings and filters say Days. On its observation page the day panel, the "no conditions" message, the telescope setup note, and the combine-days wording say day too.
 - **Measure sub-frames at night:** a linked folder with sub-frames can be set to have its raw frames scored (clouds, star trails, soft focus) during the nightly maintenance. Choose it on the last step of linking, or later in **Settings -> Storage -> Linked folders -> Edit**. 
 - **Calibration frames in a linked folder:** darks, flats, bias and `CALI_FRAME` folders inside a linked folder now show in the Calibration Library, read where they are, and can be downloaded and used by Export for stacking. Nothing is copied, and Nebulis never deletes them, so you no longer need to mount the telescope's storage just to read calibration data. A folder you previosuly linked shows its frames after its next rescan.
@@ -9,7 +9,6 @@
 - **Re-download Subframes:** a night's Subframes panel has an action that fetches all of that night's raw frames again and replaces the copies already in the library.
 - **Processed FITS:** a stacked or integrated `.fit` file (no subframes) can be marked as processed, like a picture, with the button on its tile or by dragging it onto the Processed tab. The arrow on its card unmarks it. The Gallery still shows pictures only.
 - **Gallery settings, and Processed or Favorites:** Settings -> Library has a new Gallery page with the Gallery's opening choices, moved from Display. Choose Processed, Favorites, or both. With both on, the Gallery shows an image that is either one, where before they were mutually exclusive. The Gallery page's Filters menu and star button follow the same rule.
-- **Set a processed image's date:** the Processed section of an object page has a calendar button on each image. Use it to give an upload with no date a night, so the Gallery shows a date instead of "Unknown date", or to correct one.
 - **Explore by catalog:** Explore has a catalog filter for Messier, NGC, IC, Caldwell and Sharpless. Choose a catalog tile under **Browse by catalog** on Explore.
 
 ### Updated
@@ -17,6 +16,7 @@
 - **Missing files in a linked folder:** the notice and Help now say a missing file stays in the index for 24 hours and is removed on a scan after that, instead of "until a second scan".
 
 ### Fixed
+- **Processed images no longer show "Unknown date" in the Gallery:** a picture added from the object page, and a Dwarf restack, belongs to no single night, so the Gallery had no date for it. It now shows the day it was added, in your observing site's time zone. thanks @jjmartres)
 - **The page behind a popup no longer scrolls:** with an object card, a share dialog, the planner's date picker or most other popups open, scrolling over the dark area around the popup moved the page underneath. The page now stays put until the popup closes, including when one popup is opened from another.
 - **Dropping a folder no longer imports its neighbors**: when the browser and the server ran on the same computer, dropping a folder with no sub-folders also listed the folders next to it. Now only the folder you dropped is listed. A folder of nights imports as one object with those nights, not one object per night.
 - **Favorites no longer vanish:** a favorited picture was lost when the picture was marked as processed, sent back to its night, or saved over in the image editor, because the star was tied to the old file name. It now follows the picture, and deleting a picture clears its star.

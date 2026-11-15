@@ -6,7 +6,7 @@ import { skyToTile, bitCombine } from '../../server/lib/hips/healpix';
 /**
  * The goldens are healpy's own answers (`ang2pix(..., nest=True)` at the tile order, and at order + 9 for the
  * sub-tile pixel index), so these tests say "we agree with the reference implementation" rather than "we agree
- * with ourselves". Regenerate with the snippet in `agent/features/hips-cutout-renderer.plan.md`.
+ * with ourselves". Regenerate by running healpy's `ang2pix(..., nest=True)` on the same inputs.
  */
 interface Golden {
   raDeg: number;

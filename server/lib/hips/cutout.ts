@@ -2,8 +2,8 @@
  * Renders a sky cutout from HiPS tiles, standing in for the CDS hips2fits service when it cannot be reached.
  *
  * The output is deliberately the same shape the framing planner already assumes: a square, north-up, gnomonic
- * (TAN) picture whose width is exactly the requested field of view, centred on the object. The client draws the
- * sensor rectangle and the fit verdict from that assumption (see `internal-doc/framing-mosaic.md`), so a projection
+ * (TAN) picture whose width is exactly the requested field of view, centered on the object. The client draws the
+ * sensor rectangle and the fit verdict from that assumption (the framing and mosaic planner), so a projection
  * or scale mistake here does not look like a bug, it looks like a telescope that does not fit the object.
  *
  * The tiles are `CDS/P/DSS2/color`, served by partner archives as a plain pyramid, so the picture is the same
@@ -64,7 +64,7 @@ export function orderForPixelScale(fovDeg: number, sizePx: number): number {
 }
 
 /**
- * Pixel (i, j) of the output to the sky position it looks at, for a north-up TAN grid centred on ra0/dec0.
+ * Pixel (i, j) of the output to the sky position it looks at, for a north-up TAN grid centered on ra0/dec0.
  *
  * East is to the left, which is the convention for a sky picture and the one hips2fits returns: a picture of the
  * sky is seen from the inside, so right ascension grows toward the left. Getting this backwards mirrors every

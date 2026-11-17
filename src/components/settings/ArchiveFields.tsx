@@ -143,8 +143,13 @@ export function DiskFields({
 }) {
   const { t } = useTranslation('settings');
   const s = archiveStyles(isDark);
+  const isGdrive = form.locationType === 'gdrive';
+  // A Drive folder that is offline means "not signed in", and one that is absent is
+  // created on adoption; both read differently from a disk.
   const stateKey = state
-    ? `archive.state.${state === 'invalid-path' ? 'invalidPath' : state}`
+    ? isGdrive && (state === 'offline' || state === 'absent')
+      ? `archive.state.gdrive${state === 'offline' ? 'Offline' : 'Absent'}`
+      : `archive.state.${state === 'invalid-path' ? 'invalidPath' : state}`
     : 'archive.state.unconfigured';
   const StateIcon = STATE_ICON[state ?? 'unconfigured'];
 
@@ -185,7 +190,7 @@ export function DiskFields({
             />
           )}
           <button type="button" onClick={onChoose} disabled={busy} className={`${s.btnBase} ${s.btnSubtle} shrink-0`}>
-            {isNetwork ? t('archive.changeDestination') : t('archive.chooseDestination')}
+            {isGdrive ? t('archive.changeGdrive') : isNetwork ? t('archive.changeDestination') : t('archive.chooseDestination')}
           </button>
         </div>
       </div>
@@ -353,6 +358,16 @@ export function CleanupFields({
   const { t } = useTranslation('settings');
   const s = archiveStyles(isDark);
   const iconColor = isDark ? 'text-red-400' : 'text-red-600';
+
+  // Both steps re-verify the archived copy through a filesystem, which a Drive folder
+  // is not, and the server refuses them there. Saying so beats two dead switches.
+  if (form.locationType === 'gdrive') {
+    return (
+      <FieldStack>
+        <p className={`text-[0.75rem] leading-relaxed ${s.subText}`}>{t('archive.gdriveCleanupUnavailable')}</p>
+      </FieldStack>
+    );
+  }
 
   return (
     <FieldStack>

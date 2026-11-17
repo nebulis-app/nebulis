@@ -170,7 +170,7 @@ export const testNetworkLibraryConnection = (network: NetworkLibraryConfig) =>
 export interface DatabaseBackupInfo {
   name: string;
   path: string;
-  kind: 'upgrade' | 'manual';
+  kind: 'upgrade' | 'manual' | 'cloud';
   version: string | null;
   createdAt: number;
   sizeBytes: number;
@@ -255,14 +255,38 @@ export interface ArchiveNetworkPatch {
   clearPassword?: boolean;
 }
 
+/** Where the archive lives: a disk the OS mounted, a share Nebulis mounts, or a
+ *  folder in Google Drive reached through the Drive API. */
+export type ArchiveLocationType = 'local' | 'network' | 'gdrive';
+
+/** A Google Drive destination. The client secret and the sign-in itself never reach
+ *  the client; these flags are all the form can know about them. */
+export interface ArchiveGdriveConfig {
+  clientId: string;
+  hasClientSecret: boolean;
+  /** A Google account is signed in. */
+  connected: boolean;
+  account: string;
+  folderName: string;
+}
+
+export interface ArchiveGdrivePatch {
+  clientId?: string;
+  /** Empty or omitted keeps the stored secret. */
+  clientSecret?: string;
+  clearClientSecret?: boolean;
+  folderName?: string;
+}
+
 export interface ArchiveConfig {
   /** The master switch. Off means the section is inert and the server refuses to
    *  write to or delete from the disk. */
   enabled: boolean;
   /** Destination root, for a local destination. */
   path: string;
-  locationType: 'local' | 'network';
+  locationType: ArchiveLocationType;
   network: ArchiveNetworkConfig;
+  gdrive: ArchiveGdriveConfig;
   archiveId: string;
   scope: ArchiveScope;
   selectedObjects: string[];
@@ -321,7 +345,7 @@ export interface ArchiveDestination {
   /** For `foreign`: the id found on the disk, so the UI can name what it would
    *  be taking over before asking the user to confirm. */
   foundArchiveId: string | null;
-  locationType: 'local' | 'network';
+  locationType: ArchiveLocationType;
   network: ArchiveNetworkConfig;
   /** False on Linux/Docker, where a share cannot be mounted in process. The picker
    *  hides the network tab there rather than offering something that cannot work. */
@@ -340,8 +364,8 @@ export const getArchiveStatus = () => fetchJSON<ArchiveStatus>('/storage/archive
 /** What can be saved. `network` is a patch of its own so a password can be sent
  *  without ever being read back. */
 export type ArchiveConfigPatch = Partial<
-  Omit<ArchiveConfig, 'network' | 'archiveId' | 'lastRunAt' | 'lastResult'>
-> & { network?: ArchiveNetworkPatch };
+  Omit<ArchiveConfig, 'network' | 'gdrive' | 'archiveId' | 'lastRunAt' | 'lastResult'>
+> & { network?: ArchiveNetworkPatch; gdrive?: ArchiveGdrivePatch };
 
 /** Save configuration. Touches no disk: adopting is a separate, explicit call. */
 export const saveArchiveConfig = (patch: ArchiveConfigPatch) =>
@@ -376,6 +400,36 @@ export const browseArchiveDestination = (options: { network?: ArchiveNetworkPatc
     method: 'POST',
     body: JSON.stringify(options),
   });
+
+// ─── Google Drive sign-in ───────────────────────────────────────────────────
+
+export type GdriveSignInState = 'idle' | 'pending' | 'connected' | 'denied' | 'expired' | 'error';
+
+export interface GdriveSignInStatus {
+  state: GdriveSignInState;
+  /** While pending: what to type at `verificationUrl`. */
+  userCode?: string;
+  verificationUrl?: string;
+  expiresAt?: number;
+  account?: string;
+  error?: string;
+}
+
+export const getGdriveSignInStatus = () => fetchJSON<GdriveSignInStatus>('/storage/archive/gdrive/status');
+
+/** Store the OAuth client and ask Google for a sign-in code. Writes nothing to Drive. */
+export const startGdriveSignIn = (client: { clientId?: string; clientSecret?: string; folderName?: string }) =>
+  fetchJSON<GdriveSignInStatus>('/storage/archive/gdrive/connect', {
+    method: 'POST',
+    body: JSON.stringify(client),
+  });
+
+export const cancelGdriveSignIn = () =>
+  fetchJSON<GdriveSignInStatus>('/storage/archive/gdrive/cancel', { method: 'POST' });
+
+/** Sign out and revoke the token. The files in Drive stay. */
+export const disconnectGdrive = () =>
+  fetchJSON<GdriveSignInStatus>('/storage/archive/gdrive/disconnect', { method: 'POST' });
 
 /**
  * Claim a disk as this install's archive.

@@ -33,6 +33,19 @@ import {
 } from '../lib/archive/archiveDestination.js';
 import { isOnSameDevice, isWithinRoot } from '../lib/archive/archivePath.js';
 import { retireArchiveManifest } from '../lib/archive/archiveManifest.js';
+import {
+  adoptGdriveArchive,
+  ensureGdriveArchiveReady,
+  gdriveDestinationState,
+  uploadSnapshotsToGdriveInBackground,
+} from '../lib/archive/gdrive/driveArchive.js';
+import {
+  cancelGdriveSignIn,
+  disconnectGdrive,
+  getGdriveSignInStatus,
+  GdriveSignInError,
+  startGdriveSignIn,
+} from '../lib/archive/gdrive/driveAuth.js';
 import zlib from 'zlib';
 import { requireAdmin } from '../middleware/auth.js';
 import { strictRateLimiter } from '../middleware/rateLimit.js';
@@ -1101,6 +1114,7 @@ router.post('/db-backups', requireAdmin, strictRateLimiter, (req: Request, res: 
       ip: req.ip ?? req.socket.remoteAddress,
       metadata: { backupName: backup.name, sizeBytes: backup.sizeBytes, pruned },
     });
+    uploadSnapshotsToGdriveInBackground('manual');
     res.apiSuccess({ backup, pruned });
   } catch (err) {
     console.error('[storage] manual db backup failed:', err instanceof Error ? err.message : err);
@@ -1219,6 +1233,10 @@ async function archiveDestinationState(config: ArchiveConfig): Promise<ArchiveDe
   };
 
   const value = await (async (): Promise<ArchiveDestinationView> => {
+    if (config.locationType === 'gdrive') {
+      const drive = await gdriveDestinationState(config);
+      return { ...base, ...drive };
+    }
     if (config.locationType === 'network') {
       // Shown as the share the user configured, not as the directory it is mounted at.
       const display = networkDisplayPath(config.network);
@@ -1275,6 +1293,9 @@ let destinationViewCache: DestinationViewCacheEntry | null = null;
 const DESTINATION_VIEW_TTL_MS = 20_000;
 
 function destinationViewCacheKey(config: ArchiveConfig): string {
+  if (config.locationType === 'gdrive') {
+    return `gdrive:${config.archiveId}:${config.gdrive.clientId}:${config.gdrive.connected}:${config.gdrive.account}:${config.gdrive.folderName}`;
+  }
   return config.locationType === 'network'
     ? `network:${config.archiveId}:${config.network.host}:${config.network.share}:${config.network.domain}:${config.network.username}:${config.network.subpath}`
     : `local:${config.archiveId}:${config.path}`;
@@ -1295,7 +1316,8 @@ export function invalidateArchiveDestinationView(): void {
  * several seconds to fail to do that on every request.
  */
 async function archiveDestinationStateForView(config: ArchiveConfig): Promise<ArchiveDestinationView> {
-  if (config.locationType !== 'network') return archiveDestinationState(config);
+  // A local disk is a stat away; a share or Google Drive is a network round trip.
+  if (config.locationType === 'local') return archiveDestinationState(config);
 
   const cached = destinationViewCache;
   const key = destinationViewCacheKey(config);
@@ -1394,6 +1416,34 @@ router.post('/archive/adopt', requireAdmin, strictRateLimiter, async (req: Reque
   const config = getArchiveConfig();
   if (config.locationType === 'local' && config.path === '') {
     res.apiError(400, 'ARCHIVE_NO_DESTINATION', 'Configure an archive destination first.');
+    return;
+  }
+
+  // A Drive folder is claimed through the Drive API, with the same rules: an
+  // unreadable marker is never overwritten, and a foreign one only on confirmation.
+  if (config.locationType === 'gdrive') {
+    const adopted = await adoptGdriveArchive(config, isRecord(req.body) ? req.body.confirmArchiveId : undefined);
+    if (!adopted.ok) {
+      res.apiError(adopted.status, adopted.code, adopted.message);
+      return;
+    }
+    if (adopted.archiveId !== config.archiveId) {
+      setArchiveConfig({ archiveId: adopted.archiveId });
+      logEvent({
+        category: 'storage',
+        event: 'archive_adopted',
+        level: adopted.replacedArchiveId ? 'warning' : 'info',
+        message: adopted.replacedArchiveId
+          ? `Adopted ${adopted.path} as the archive destination, replacing marker ${adopted.replacedArchiveId}.`
+          : `Adopted ${adopted.path} as the archive destination.`,
+        userId: req.userId,
+        username: req.username,
+        ip: req.ip ?? req.socket.remoteAddress,
+        metadata: { path: adopted.path, replacedArchiveId: adopted.replacedArchiveId, previousRecordSetAside: adopted.previousRecordSetAside },
+      });
+    }
+    const updated = getArchiveConfig();
+    res.apiSuccess({ config: updated, destination: await archiveDestinationState(updated) });
     return;
   }
 
@@ -1654,6 +1704,68 @@ function sendArchiveBusy(res: Response): void {
   );
 }
 
+// ─── Google Drive sign-in ────────────────────────────────────────────────────
+//
+// The device-code flow (see lib/archive/gdrive/driveAuth.ts). `connect` stores the
+// OAuth client the user created and asks Google for a code; the page shows the code
+// and polls `status` while the user enters it at google.com/device. Signing in
+// writes nothing to Drive: choosing Google Drive as the destination and adopting
+// the folder are the same separate steps as for a disk.
+
+// GET /api/v1/storage/archive/gdrive/status — where the sign-in stands.
+router.get('/archive/gdrive/status', requireAdmin, (_req: Request, res: Response) => {
+  res.apiSuccess(getGdriveSignInStatus());
+});
+
+// POST /api/v1/storage/archive/gdrive/connect — save the OAuth client and start a sign-in.
+router.post('/archive/gdrive/connect', requireAdmin, strictRateLimiter, async (req: Request, res: Response) => {
+  const body = isRecord(req.body) ? req.body : {};
+  const patch: Record<string, unknown> = {};
+  for (const key of ['clientId', 'clientSecret', 'folderName'] as const) {
+    if (body[key] !== undefined) patch[key] = body[key];
+  }
+  try {
+    if (Object.keys(patch).length > 0) setArchiveConfig({ gdrive: patch });
+  } catch (err) {
+    if (err instanceof ArchiveConfigError) {
+      res.apiError(400, 'ARCHIVE_INVALID_CONFIG', err.message);
+      return;
+    }
+    throw err;
+  }
+  try {
+    res.apiSuccess(await startGdriveSignIn());
+  } catch (err) {
+    if (err instanceof GdriveSignInError) {
+      res.apiError(err.code === 'no-client' ? 400 : 502, 'GDRIVE_SIGN_IN_FAILED', err.message);
+      return;
+    }
+    res.apiError(502, 'GDRIVE_SIGN_IN_FAILED', err instanceof Error ? err.message : 'Could not reach Google.');
+  }
+});
+
+// POST /api/v1/storage/archive/gdrive/cancel — stop waiting for a code to be entered.
+router.post('/archive/gdrive/cancel', requireAdmin, (_req: Request, res: Response) => {
+  cancelGdriveSignIn();
+  res.apiSuccess(getGdriveSignInStatus());
+});
+
+// POST /api/v1/storage/archive/gdrive/disconnect — sign out and revoke the token.
+// The files in Drive stay where they are.
+router.post('/archive/gdrive/disconnect', requireAdmin, strictRateLimiter, async (req: Request, res: Response) => {
+  await disconnectGdrive();
+  invalidateArchiveDestinationView();
+  logEvent({
+    category: 'storage',
+    event: 'archive_gdrive_disconnected',
+    message: 'Signed Nebulis out of Google Drive.',
+    userId: req.userId,
+    username: req.username,
+    ip: req.ip ?? req.socket.remoteAddress,
+  });
+  res.apiSuccess(getGdriveSignInStatus());
+});
+
 // GET /api/v1/storage/archive/run/status — how a run is going, and how the last one ended.
 // `lastRun` is what a background run leaves behind once it finishes, including a refusal
 // that only shows itself after selection (a full disk), because the POST has already
@@ -1697,14 +1809,22 @@ router.post('/archive/run', requireAdmin, strictRateLimiter, async (req: Request
   const config = getArchiveConfig();
   let started = false;
   try {
-    const readiness = await ensureArchiveDestinationReady(config);
-    if (!readiness.ok) {
-      if (readiness.kind === 'unconfigured') {
-        res.apiError(409, 'ARCHIVE_NO_DESTINATION', 'Configure an archive destination first.');
-      } else {
-        res.apiError(409, 'ARCHIVE_DESTINATION_UNUSABLE', 'That disk is not this install\u2019s archive.');
+    if (config.locationType === 'gdrive') {
+      const drive = await ensureGdriveArchiveReady(config);
+      if (!drive.ok) {
+        res.apiError(409, 'ARCHIVE_DESTINATION_UNUSABLE', drive.warning);
+        return;
       }
-      return;
+    } else {
+      const readiness = await ensureArchiveDestinationReady(config);
+      if (!readiness.ok) {
+        if (readiness.kind === 'unconfigured') {
+          res.apiError(409, 'ARCHIVE_NO_DESTINATION', 'Configure an archive destination first.');
+        } else {
+          res.apiError(409, 'ARCHIVE_DESTINATION_UNUSABLE', 'That disk is not this install\u2019s archive.');
+        }
+        return;
+      }
     }
 
     clearLastArchiveRun();

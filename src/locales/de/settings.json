@@ -410,7 +410,8 @@
     "unknownVersion": "Unbekannte Version",
     "kind": {
       "upgrade": "Upgrade",
-      "manual": "Manuell"
+      "manual": "Manuell",
+      "cloud": "Cloud"
     },
     "download": "Herunterladen",
     "delete": "Löschen",
@@ -1195,7 +1196,9 @@
       "invalid": "Die Kennungsdatei auf diesem Laufwerk erkennt Nebulis nicht, es wird nichts darauf geschrieben.",
       "unreadable": "Die Kennungsdatei auf diesem Laufwerk kann nicht gelesen werden, es wird nichts darauf geschrieben.",
       "invalidPath": "Dieser Pfad kann nicht verwendet werden. Er darf weder der Bibliotheksordner noch der Datenordner von Nebulis sein.",
-      "offline": "Diese Freigabe ist nicht verbunden. Prüfe, ob der Server läuft und die Freigabe erreichbar ist."
+      "offline": "Diese Freigabe ist nicht verbunden. Prüfe, ob der Server läuft und die Freigabe erreichbar ist.",
+      "gdriveOffline": "Google Drive ist nicht angemeldet. Wählen Sie das Ziel erneut, um sich anzumelden.",
+      "gdriveAbsent": "Der Ordner existiert in Google Drive noch nicht. Die Einrichtung des Archivs legt ihn an."
     },
     "includeSubframes": {
       "label": "Einzelbilder einschließen",
@@ -1345,7 +1348,9 @@
       "settings": "Einstellungen",
       "edit": "Bearbeiten",
       "close": "Schließen"
-    }
+    },
+    "gdriveCleanupUnavailable": "Das Bereinigen des Archivs und das Entfernen lokaler Einzelbilder sind für ein Google-Drive-Archiv noch nicht verfügbar. Dateien bleiben in Drive, bis Sie sie dort löschen.",
+    "changeGdrive": "Ziel ändern"
   },
   "archiveDisk": {
     "ariaLabel": "Archivlaufwerk",
@@ -1427,7 +1432,10 @@
     "cancel": "Abbrechen",
     "useFolder": "Diesen Ordner verwenden",
     "useShare": "Diese Freigabe verwenden",
-    "pickDrive": "Wähle ein Laufwerk"
+    "pickDrive": "Wähle ein Laufwerk",
+    "gdriveTab": "Google Drive",
+    "useGdrive": "Google Drive verwenden",
+    "gdrivePath": "Google Drive: /{{folder}}"
   },
   "layoutMigration": {
     "title": "Deine Bibliothek braucht ein einmaliges Update",
@@ -1781,5 +1789,24 @@
     "placeholder": "Einstellungen durchsuchen…",
     "clear": "Suche löschen",
     "noResults": "Keine passenden Einstellungen"
+  },
+  "archiveGdrive": {
+    "intro": "Sichern Sie die Bibliothek, die fertigen Bilder der Galerie und die Nebulis-Datenbank in einem Ordner Ihres Google Drive. Nebulis sieht nur die Dateien, die es dort selbst anlegt.",
+    "folder": "Ordner in „Meine Ablage“",
+    "folderHint": "Wird bei der Einrichtung des Archivs oben in „Meine Ablage“ angelegt.",
+    "clientId": "OAuth-Client-ID",
+    "clientSecret": "OAuth-Clientschlüssel",
+    "secretStored": "Gespeichert. Leer lassen, um ihn zu behalten.",
+    "clientHint": "Legen Sie einen in der Google Cloud Console an: Aktivieren Sie die Google Drive API und erstellen Sie dann einen OAuth-Client vom Typ „Fernseher und Geräte mit begrenzter Eingabe“. Siehe die Anleitung zur Google-Drive-Sicherung in der Dokumentation.",
+    "connect": "Mit Google anmelden",
+    "enterCode": "Öffnen Sie auf einem beliebigen Gerät die Adresse unten und geben Sie diesen Code ein:",
+    "waiting": "Warten auf Google…",
+    "cancel": "Abbrechen",
+    "signedIn": "Bei Google Drive angemeldet",
+    "signedInAs": "Angemeldet als {{account}}",
+    "disconnect": "Abmelden",
+    "limits": "Drive behält frühere Versionen einer Datei, die Nebulis ersetzt, und nichts wird automatisch aus Drive gelöscht, außer Datenbank-Snapshots jenseits der 30 neuesten aus Archivläufen, die in den Papierkorb wandern.",
+    "failed": "Keine Verbindung zu Google Drive möglich.",
+    "clientIdPlaceholder": "1234567890-abc.apps.googleusercontent.com"
   }
 }

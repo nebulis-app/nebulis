@@ -9,6 +9,7 @@ export const EMPTY_FORM: ArchiveConfig = {
   path: '',
   locationType: 'local',
   network: { host: '', share: '', domain: '', username: '', hasPassword: false, subpath: '' },
+  gdrive: { clientId: '', hasClientSecret: false, connected: false, account: '', folderName: 'Nebulis' },
   archiveId: '',
   scope: 'all',
   selectedObjects: [],
@@ -90,9 +91,16 @@ export function waitDaysPatch(days: number): Partial<ArchiveConfig> {
   return { copyMinAgeDays: whole, copyMinAgeEnabled: whole > 0 };
 }
 
-/** Whether a destination has been chosen at all, for either kind of disk. */
+/** Whether a destination has been chosen at all, for any kind of destination. */
 export function hasDestination(form: ArchiveConfig): boolean {
+  if (form.locationType === 'gdrive') return form.gdrive.connected;
   return form.locationType === 'network' ? form.network.host !== '' : form.path.trim() !== '';
+}
+
+/** Whether the destination is a Google Drive folder, where pruning and local removal
+ *  are not available (the server refuses them). */
+export function isRemoteDestination(form: ArchiveConfig): boolean {
+  return form.locationType === 'gdrive';
 }
 
 /**
@@ -106,7 +114,8 @@ export function hasDestination(form: ArchiveConfig): boolean {
 export function groupPayload(group: ArchiveGroup, form: ArchiveConfig): ArchiveConfigPatch {
   switch (group) {
     case 'disk':
-      return form.locationType === 'network' ? {} : { path: form.path.trim() };
+      // A share and a Drive folder are described by their own fields, saved by the picker.
+      return form.locationType === 'local' ? { path: form.path.trim() } : {};
     case 'copy':
       return {
         includeSubframes: form.includeSubframes,
@@ -123,11 +132,13 @@ export function groupPayload(group: ArchiveGroup, form: ArchiveConfig): ArchiveC
         ...(form.scheduleMode === 'custom' ? { scheduleCron: form.scheduleCron.trim() } : {}),
       };
     case 'cleanup':
+      // Neither switch can be on for a Drive archive; sending them off keeps a save
+      // from another group from being refused for a leftover value.
       return {
         retentionDays: form.retentionDays,
-        retentionEnabled: form.retentionEnabled,
+        retentionEnabled: isRemoteDestination(form) ? false : form.retentionEnabled,
         retentionSubframesOnly: form.retentionSubframesOnly,
-        removeLocalAfter: form.removeLocalAfter,
+        removeLocalAfter: isRemoteDestination(form) ? false : form.removeLocalAfter,
       };
   }
 }

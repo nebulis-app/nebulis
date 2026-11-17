@@ -2335,6 +2335,40 @@
   },
   {
     "method": "POST",
+    "path": "/storage/archive/gdrive/cancel",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/storage/archive/gdrive/connect",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/storage/archive/gdrive/disconnect",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/storage/archive/gdrive/status",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
     "path": "/storage/archive/restore",
     "guards": [
       "requireAdmin",

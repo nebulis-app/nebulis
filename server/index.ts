@@ -21,6 +21,7 @@ import { catalogRouter } from './routes/catalog.js';
 import { settingsRouter } from './routes/settings.js';
 import { openapiRouter } from './routes/openapi.js';
 import { storageRouter } from './routes/storage.js';
+import { uploadSnapshotsToGdriveInBackground } from './lib/archive/gdrive/driveArchive.js';
 import { notesRouter } from './routes/notes.js';
 import { objectNotesRouter } from './routes/objectNotes.js';
 import { telescopesRouter } from './routes/telescopes.js';
@@ -155,6 +156,9 @@ if (startupBackupOutcome.status === 'created') {
       `to ${APP_VERSION}: ${backup.name}.`,
     metadata: { backupName: backup.name, sizeBytes: backup.sizeBytes, previousVersion, currentVersion: APP_VERSION, pruned },
   });
+  // Off the machine too, when the archive is a Google Drive folder. In the
+  // background: startup must not wait on the network.
+  uploadSnapshotsToGdriveInBackground('upgrade');
 } else if (startupBackupOutcome.status === 'failed') {
   logEvent({
     category: 'system',

@@ -25,7 +25,7 @@
  *   place so a crash mid-copy cannot leave a half-written .db in the listing.
  *
  * RETENTION:
- *   The newest MAX_RETAINED of each trigger kind ('upgrade' / 'manual') are
+ *   The newest MAX_RETAINED of each trigger kind ('upgrade' / 'manual' / 'cloud') are
  *   kept; older ones are deleted. Keeping the two kinds in separate pools means
  *   a burst of manual backups can never evict the pre-upgrade snapshot, which
  *   is the valuable one. To keep a backup permanently, download it.
@@ -59,11 +59,14 @@ const RESTORE_DOC_PATH = path.join(BACKUPS_DIR, 'RESTORE.txt');
 /** Kept per trigger kind, not in total. See module header. */
 export const MAX_RETAINED = 3;
 
-export type BackupKind = 'upgrade' | 'manual';
+/** `cloud` is the snapshot each Google Drive archive run takes and uploads, so the
+ *  database is backed up off the machine on the archive's schedule rather than only
+ *  on upgrades. It has its own pool so those runs can never evict the others. */
+export type BackupKind = 'upgrade' | 'manual' | 'cloud';
 
 /** Every BackupKind, in retention-pool order. The runtime source of truth that
  *  `isBackupKind` checks against, so the union and the check cannot drift. */
-const BACKUP_KINDS = ['upgrade', 'manual'] as const satisfies readonly BackupKind[];
+const BACKUP_KINDS = ['upgrade', 'manual', 'cloud'] as const satisfies readonly BackupKind[];
 
 function isBackupKind(value: unknown): value is BackupKind {
   return BACKUP_KINDS.some(kind => kind === value);
@@ -73,9 +76,9 @@ function isBackupKind(value: unknown): value is BackupKind {
 // e.g. nebulis-db-20260903T140512.481Z-v2.0.0-upgrade.db
 // Timestamp leads so a plain lexical sort of the filenames is also chronological
 // and is millisecond-resolution so two snapshots can't collide in practice.
-// The version group is greedy but the trailing `-(upgrade|manual).db` anchors
+// The version group is greedy but the trailing `-(upgrade|manual|cloud).db` anchors
 // it, so a version containing a hyphen (e.g. "2.0.0-beta.1") still parses.
-const BACKUP_NAME_RE = /^nebulis-db-(\d{8}T\d{6}\.\d{3}Z)-v(.+)-(upgrade|manual)\.db$/;
+const BACKUP_NAME_RE = /^nebulis-db-(\d{8}T\d{6}\.\d{3}Z)-v(.+)-(upgrade|manual|cloud)\.db$/;
 
 export interface DatabaseBackupInfo {
   name: string;
@@ -198,7 +201,7 @@ export function findDatabaseBackup(name: string): DatabaseBackupInfo | null {
 /** Delete all but the newest `keep` of each trigger kind. Returns how many
  *  files were removed. */
 export function pruneDatabaseBackups(keep = MAX_RETAINED): number {
-  const byKind: Record<BackupKind, DatabaseBackupInfo[]> = { upgrade: [], manual: [] };
+  const byKind: Record<BackupKind, DatabaseBackupInfo[]> = { upgrade: [], manual: [], cloud: [] };
   for (const b of listDatabaseBackups()) byKind[b.kind].push(b);
 
   let removed = 0;

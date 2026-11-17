@@ -758,7 +758,7 @@ export const spec = {
         properties: {
           name:      strEx('nebulis-manual-3.2.0-2026-11-01T06-00-00.db'),
           path:      { type: 'string' },
-          kind:      { type: 'string', enum: ['upgrade', 'manual'] },
+          kind:      { type: 'string', enum: ['upgrade', 'manual', 'cloud'] },
           version:   nullable({ type: 'string' }),
           createdAt: { type: 'integer', description: 'Unix ms from the file mtime' },
           sizeBytes: { type: 'integer' },
@@ -859,14 +859,48 @@ export const spec = {
           hasPassword:   { type: 'boolean' },
         },
       },
+      StorageArchiveGdrive: {
+        type: 'object',
+        description: 'A Google Drive destination. The client secret and the sign-in are never returned.',
+        required: ['clientId', 'hasClientSecret', 'connected', 'account', 'folderName'],
+        properties: {
+          clientId:        { type: 'string', description: 'OAuth client of type "TVs and Limited Input devices"' },
+          hasClientSecret: { type: 'boolean' },
+          connected:       { type: 'boolean', description: 'A Google account is signed in' },
+          account:         { type: 'string', description: 'The signed-in address, for display' },
+          folderName:      { type: 'string', description: 'Archive folder at the top of My Drive' },
+        },
+      },
+      StorageArchiveGdriveInput: {
+        type: 'object',
+        properties: {
+          clientId:          { type: 'string', description: 'Changing it signs out' },
+          clientSecret:      { type: 'string', description: 'Omitted or empty keeps the stored secret' },
+          clearClientSecret: { type: 'boolean' },
+          folderName:        { type: 'string' },
+        },
+      },
+      StorageArchiveGdriveSignIn: {
+        type: 'object',
+        required: ['state'],
+        properties: {
+          state:           { type: 'string', enum: ['idle', 'pending', 'connected', 'denied', 'expired', 'error'] },
+          userCode:        { type: 'string', description: 'While pending: the code to enter at verificationUrl' },
+          verificationUrl: { type: 'string' },
+          expiresAt:       { type: 'integer', description: 'Unix ms' },
+          account:         { type: 'string' },
+          error:           { type: 'string' },
+        },
+      },
       StorageArchiveConfig: {
         type: 'object',
-        required: ['enabled', 'path', 'locationType', 'network', 'archiveId', 'scope', 'selectedObjects', 'includeSubframes', 'copyMinAgeDays', 'copyMinAgeEnabled', 'scheduleEnabled', 'scheduleMode', 'scheduleHour', 'scheduleMinute', 'scheduleIntervalHours', 'scheduleCron', 'retentionDays', 'retentionEnabled', 'retentionSubframesOnly', 'removeLocalAfter', 'lastRunAt', 'lastResult'],
+        required: ['enabled', 'path', 'locationType', 'network', 'gdrive', 'archiveId', 'scope', 'selectedObjects', 'includeSubframes', 'copyMinAgeDays', 'copyMinAgeEnabled', 'scheduleEnabled', 'scheduleMode', 'scheduleHour', 'scheduleMinute', 'scheduleIntervalHours', 'scheduleCron', 'retentionDays', 'retentionEnabled', 'retentionSubframesOnly', 'removeLocalAfter', 'lastRunAt', 'lastResult'],
         properties: {
           enabled:               { type: 'boolean', description: 'Master switch; off means nothing is copied, adopted or pruned' },
           path:                  { type: 'string' },
-          locationType:          { type: 'string', enum: ['local', 'network'] },
+          locationType:          { type: 'string', enum: ['local', 'network', 'gdrive'] },
           network:               { $ref: '#/components/schemas/StorageArchiveNetwork' },
+          gdrive:                { $ref: '#/components/schemas/StorageArchiveGdrive' },
           archiveId:             { type: 'string', description: 'Empty when the destination has not been adopted' },
           scope:                 { type: 'string', enum: ['all', 'selected'] },
           selectedObjects:       { type: 'array', items: { type: 'string' } },
@@ -893,8 +927,9 @@ export const spec = {
         properties: {
           enabled:               { type: 'boolean' },
           path:                  { type: 'string' },
-          locationType:          { type: 'string', enum: ['local', 'network'] },
+          locationType:          { type: 'string', enum: ['local', 'network', 'gdrive'] },
           network:               { $ref: '#/components/schemas/StorageArchiveNetworkInput' },
+          gdrive:                { $ref: '#/components/schemas/StorageArchiveGdriveInput' },
           scope:                 { type: 'string', enum: ['all', 'selected'] },
           selectedObjects:       { type: 'array', items: { type: 'string' } },
           includeSubframes:      { type: 'boolean' },
@@ -919,7 +954,7 @@ export const spec = {
           state:            { type: 'string', enum: ['unconfigured', 'invalid-path', 'offline', 'match', 'absent', 'foreign', 'invalid', 'unreadable'] },
           path:             { type: 'string' },
           foundArchiveId:   nullable({ type: 'string' }),
-          locationType:     { type: 'string', enum: ['local', 'network'] },
+          locationType:     { type: 'string', enum: ['local', 'network', 'gdrive'] },
           network:          { $ref: '#/components/schemas/StorageArchiveNetwork' },
           networkSupported: { type: 'boolean', description: 'False on Linux and Docker' },
           sameDiskAsLibrary: { type: 'boolean', description: 'Local destination on the library or data disk, so it would not survive that disk failing' },
@@ -8261,6 +8296,52 @@ export const spec = {
           403: { description: 'FORBIDDEN. Admin only.' },
           409: { description: 'ARCHIVE_DISABLED, ARCHIVE_ALREADY_RUNNING, ARCHIVE_LIBRARY_BUSY, ARCHIVE_NO_DESTINATION or ARCHIVE_DESTINATION_UNUSABLE' },
           503: { description: 'LIBRARY_UNAVAILABLE' },
+        },
+      },
+    },
+    '/storage/archive/gdrive/status': {
+      get: {
+        summary: 'Google Drive sign-in status',
+        tags: ['Storage'],
+        description: 'Admin only. Poll while a sign-in is pending.',
+        responses: {
+          200: jsonResponse('Where the sign-in stands', 'StorageArchiveGdriveSignIn'),
+          403: { description: 'FORBIDDEN. Admin only.' },
+        },
+      },
+    },
+    '/storage/archive/gdrive/connect': {
+      post: {
+        summary: 'Start a Google Drive sign-in',
+        tags: ['Storage'],
+        description: 'Admin only. Stores the OAuth client (clientId, clientSecret, folderName in the body, all optional) and starts the device-code flow. Writes nothing to Drive.',
+        responses: {
+          200: jsonResponse('The code to enter', 'StorageArchiveGdriveSignIn'),
+          400: { description: 'ARCHIVE_INVALID_CONFIG or GDRIVE_SIGN_IN_FAILED (no client configured)' },
+          403: { description: 'FORBIDDEN. Admin only.' },
+          502: { description: 'GDRIVE_SIGN_IN_FAILED. Google refused or could not be reached.' },
+        },
+      },
+    },
+    '/storage/archive/gdrive/cancel': {
+      post: {
+        summary: 'Stop waiting for a Google Drive sign-in',
+        tags: ['Storage'],
+        description: 'Admin only. Nothing is stored.',
+        responses: {
+          200: jsonResponse('Where the sign-in stands', 'StorageArchiveGdriveSignIn'),
+          403: { description: 'FORBIDDEN. Admin only.' },
+        },
+      },
+    },
+    '/storage/archive/gdrive/disconnect': {
+      post: {
+        summary: 'Sign out of Google Drive',
+        tags: ['Storage'],
+        description: 'Admin only. Revokes the token with Google and forgets it. Files in Drive are left as they are.',
+        responses: {
+          200: jsonResponse('Where the sign-in stands', 'StorageArchiveGdriveSignIn'),
+          403: { description: 'FORBIDDEN. Admin only.' },
         },
       },
     },

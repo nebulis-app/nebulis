@@ -410,7 +410,8 @@
     "unknownVersion": "Unknown version",
     "kind": {
       "upgrade": "upgrade",
-      "manual": "manual"
+      "manual": "manual",
+      "cloud": "cloud"
     },
     "download": "Download",
     "delete": "Delete",
@@ -1195,7 +1196,9 @@
       "invalid": "The marker file on this disk is not one Nebulis recognizes, so nothing will be written to it.",
       "unreadable": "The marker file on this disk cannot be read, so nothing will be written to it.",
       "invalidPath": "That path cannot be used. It cannot be the library folder or the Nebulis data folder.",
-      "offline": "This share is not connected. Check that the server is on and the share is available."
+      "offline": "This share is not connected. Check that the server is on and the share is available.",
+      "gdriveOffline": "Google Drive is not signed in. Choose the destination again to sign in.",
+      "gdriveAbsent": "The folder does not exist in Google Drive yet. Setting up the archive creates it."
     },
     "includeSubframes": {
       "label": "Include subframes",
@@ -1345,7 +1348,9 @@
       "settings": "Settings",
       "edit": "Edit",
       "close": "Close"
-    }
+    },
+    "gdriveCleanupUnavailable": "Pruning the archive and removing local subframes are not available for a Google Drive archive yet. Files stay in Drive until you delete them there.",
+    "changeGdrive": "Change destination"
   },
   "archiveDisk": {
     "ariaLabel": "Archive disk",
@@ -1427,7 +1432,10 @@
     "cancel": "Cancel",
     "useFolder": "Use this folder",
     "useShare": "Use this share",
-    "pickDrive": "Pick a drive to begin"
+    "pickDrive": "Pick a drive to begin",
+    "gdriveTab": "Google Drive",
+    "useGdrive": "Use Google Drive",
+    "gdrivePath": "Google Drive: /{{folder}}"
   },
   "layoutMigration": {
     "title": "Your library needs a one-time update",
@@ -1781,5 +1789,24 @@
     "placeholder": "Search settings…",
     "clear": "Clear search",
     "noResults": "No matching settings"
+  },
+  "archiveGdrive": {
+    "intro": "Back up the library, the gallery’s finished images and the Nebulis database to a folder in your Google Drive. Nebulis can only see the files it creates there.",
+    "folder": "Folder in My Drive",
+    "folderHint": "Created at the top of My Drive when the archive is set up.",
+    "clientId": "OAuth client ID",
+    "clientSecret": "OAuth client secret",
+    "secretStored": "Stored. Leave empty to keep it.",
+    "clientHint": "Create one in Google Cloud Console: enable the Google Drive API, then create an OAuth client of type “TVs and Limited Input devices”. See the Google Drive backup guide in the docs.",
+    "connect": "Sign in with Google",
+    "enterCode": "On any device, open the address below and enter this code:",
+    "waiting": "Waiting for Google…",
+    "cancel": "Cancel",
+    "signedIn": "Signed in to Google Drive",
+    "signedInAs": "Signed in as {{account}}",
+    "disconnect": "Sign out",
+    "limits": "Drive keeps earlier versions of a file Nebulis replaces, and nothing is deleted from Drive automatically, apart from database snapshots beyond the newest 30 taken by archive runs, which go to the bin.",
+    "failed": "Could not talk to Google Drive.",
+    "clientIdPlaceholder": "1234567890-abc.apps.googleusercontent.com"
   }
 }

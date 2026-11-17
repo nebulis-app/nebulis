@@ -29,8 +29,16 @@ import { isRecord } from '../typeGuards.js';
 export type ArchiveScope = 'all' | 'selected';
 
 /** Where the archive lives. `local` is a path on a filesystem the operating system
- *  has already mounted; `network` is an SMB/UNC share Nebulis connects to itself. */
-export type ArchiveLocationType = 'local' | 'network';
+ *  has already mounted; `network` is an SMB/UNC share Nebulis connects to itself;
+ *  `gdrive` is a folder in the user's Google Drive, reached through the Drive API
+ *  (see `gdrive/`). */
+export type ArchiveLocationType = 'local' | 'network' | 'gdrive';
+
+export const ARCHIVE_LOCATION_TYPES: readonly ArchiveLocationType[] = ['local', 'network', 'gdrive'];
+
+function isLocationType(value: unknown): value is ArchiveLocationType {
+  return ARCHIVE_LOCATION_TYPES.some(type => type === value);
+}
 
 /**
  * How the schedule decides when a run is due.
@@ -62,6 +70,39 @@ export interface ArchiveNetworkConfig {
   subpath: string;
 }
 
+/**
+ * The non-secret description of a Google Drive destination.
+ *
+ * Like the network password, the OAuth client secret and the refresh token are
+ * absent: they are sealed in their own columns and read only by
+ * `getArchiveGdriveSecrets`, which the Drive auth module calls.
+ */
+export interface ArchiveGdriveConfig {
+  /** The OAuth client the user created in Google Cloud ("TVs and Limited Input
+   *  devices" type), which the device-code sign-in needs. */
+  clientId: string;
+  hasClientSecret: boolean;
+  /** Whether a refresh token is stored, i.e. the account has been signed in. */
+  connected: boolean;
+  /** The signed-in account's address, for display only. */
+  account: string;
+  /** Name of the archive folder at the top of "My Drive". */
+  folderName: string;
+}
+
+export const DEFAULT_GDRIVE_FOLDER_NAME = 'Nebulis';
+
+/** Everything the Drive auth module needs. Never serialised to a client. */
+export interface ArchiveGdriveSecrets {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+  folderName: string;
+  /** The archive folder's Drive id once it has been found or created, so later runs
+   *  do not have to search for it by name. Empty means "look it up". */
+  folderId: string;
+}
+
 /** Everything the connect step needs, for the lifetime of one attempt. */
 export interface ArchiveNetworkCredentials extends Omit<ArchiveNetworkConfig, 'hasPassword'> {
   password: string;
@@ -76,6 +117,7 @@ export interface ArchiveConfig {
   path: string;
   locationType: ArchiveLocationType;
   network: ArchiveNetworkConfig;
+  gdrive: ArchiveGdriveConfig;
   /** Marker id in the destination's `.nebulisarchive`. Empty means not adopted. */
   archiveId: string;
   scope: ArchiveScope;
@@ -133,8 +175,23 @@ export interface ArchiveNetworkPatch {
   clearPassword?: boolean;
 }
 
-export type ArchiveConfigPatch = Partial<Omit<ArchiveConfig, 'network'>> & {
+/** A write-only view of the Drive fields. The refresh token is not here: it is set
+ *  only by the sign-in flow, through `setArchiveGdriveConnection`. */
+export interface ArchiveGdrivePatch {
+  clientId?: string;
+  /** Omitted or empty keeps whatever is stored, as for the network password. */
+  clientSecret?: string;
+  clearClientSecret?: boolean;
+  folderName?: string;
+  /** Read-only, accepted so a config read can be handed straight back. Ignored. */
+  hasClientSecret?: boolean;
+  connected?: boolean;
+  account?: string;
+}
+
+export type ArchiveConfigPatch = Partial<Omit<ArchiveConfig, 'network' | 'gdrive'>> & {
   network?: ArchiveNetworkPatch;
+  gdrive?: ArchiveGdrivePatch;
 };
 
 /**
@@ -149,6 +206,7 @@ export const DEFAULT_ARCHIVE_CONFIG: ArchiveConfig = {
   path: '',
   locationType: 'local',
   network: { host: '', share: '', domain: '', username: '', hasPassword: false, subpath: '' },
+  gdrive: { clientId: '', hasClientSecret: false, connected: false, account: '', folderName: DEFAULT_GDRIVE_FOLDER_NAME },
   archiveId: '',
   scope: 'all',
   selectedObjects: [],
@@ -191,7 +249,7 @@ export class ArchiveConfigError extends Error {
  *
  *  `network` is excluded because it is not a column: its fields have their own map
  *  below, and the password has its own column that no read path exposes. */
-type ScalarSetting = Exclude<keyof ArchiveConfig, 'network'>;
+type ScalarSetting = Exclude<keyof ArchiveConfig, 'network' | 'gdrive'>;
 
 const COLUMN_FOR: Record<ScalarSetting, string> = {
   enabled: 'archiveEnabled',
@@ -228,6 +286,36 @@ const NETWORK_COLUMN_FOR: Record<Exclude<keyof ArchiveNetworkConfig, 'hasPasswor
 };
 
 const PASSWORD_COLUMN = 'archiveNetworkPasswordSealed';
+
+const GDRIVE_CLIENT_ID_COLUMN = 'archiveGdriveClientId';
+const GDRIVE_CLIENT_SECRET_COLUMN = 'archiveGdriveClientSecretSealed';
+const GDRIVE_REFRESH_TOKEN_COLUMN = 'archiveGdriveRefreshTokenSealed';
+const GDRIVE_ACCOUNT_COLUMN = 'archiveGdriveAccount';
+const GDRIVE_FOLDER_NAME_COLUMN = 'archiveGdriveFolderName';
+const GDRIVE_FOLDER_ID_COLUMN = 'archiveGdriveFolderId';
+
+const GDRIVE_COLUMNS = [
+  GDRIVE_CLIENT_ID_COLUMN,
+  GDRIVE_CLIENT_SECRET_COLUMN,
+  GDRIVE_REFRESH_TOKEN_COLUMN,
+  GDRIVE_ACCOUNT_COLUMN,
+  GDRIVE_FOLDER_NAME_COLUMN,
+  GDRIVE_FOLDER_ID_COLUMN,
+];
+
+/** Google's OAuth client ids all end this way; anything else is a paste of the wrong field. */
+const GDRIVE_CLIENT_ID_RE = /^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$/;
+
+/** A Drive folder name, checked the way a user would expect a folder name to be:
+ *  not empty, not absurdly long, no slash (which would read as a path), no control
+ *  characters, and not one of the two names that mean "here" and "up". */
+function assertGdriveFolderName(value: string): void {
+  const name = value.trim();
+  const hasControl = [...name].some(c => c.charCodeAt(0) < 0x20);
+  if (name === '' || name === '.' || name === '..' || name.length > 100 || /[/\\]/.test(name) || hasControl) {
+    throw new ArchiveConfigError('gdrive.folderName', 'the Google Drive folder name must be a plain folder name, without slashes');
+  }
+}
 
 function assertString(field: string, value: unknown): asserts value is string {
   if (typeof value !== 'string') {
@@ -322,7 +410,7 @@ function normalizeArchiveConfig(row: Record<string, unknown> | undefined): Archi
     path: str('archivePath', ''),
     // Anything outside the union reads back as the safe, narrower type, the same
     // way `scope` does below.
-    locationType: row.archiveLocationType === 'network' ? 'network' : 'local',
+    locationType: isLocationType(row.archiveLocationType) ? row.archiveLocationType : 'local',
     network: {
       host: str('archiveNetworkHost', ''),
       share: str('archiveNetworkShare', ''),
@@ -332,6 +420,13 @@ function normalizeArchiveConfig(row: Record<string, unknown> | undefined): Archi
       // getArchiveNetworkCredentials() may read.
       hasPassword: str(PASSWORD_COLUMN, '') !== '',
       subpath: str('archiveNetworkSubpath', ''),
+    },
+    gdrive: {
+      clientId: str(GDRIVE_CLIENT_ID_COLUMN, ''),
+      hasClientSecret: str(GDRIVE_CLIENT_SECRET_COLUMN, '') !== '',
+      connected: str(GDRIVE_REFRESH_TOKEN_COLUMN, '') !== '',
+      account: str(GDRIVE_ACCOUNT_COLUMN, ''),
+      folderName: str(GDRIVE_FOLDER_NAME_COLUMN, '').trim() || DEFAULT_GDRIVE_FOLDER_NAME,
     },
     archiveId: str('archiveId', ''),
     // Anything outside the union reads back as the safe, narrower scope rather
@@ -370,6 +465,7 @@ export function getArchiveConfig(): ArchiveConfig {
     ...Object.values(COLUMN_FOR),
     ...Object.values(NETWORK_COLUMN_FOR),
     PASSWORD_COLUMN,
+    ...GDRIVE_COLUMNS,
   ].join(', ');
   return normalizeArchiveConfig(readSettingsRow(`SELECT ${columns} FROM appSettings WHERE id = 1`));
 }
@@ -411,6 +507,52 @@ export function getArchiveNetworkCredentials(): ArchiveNetworkCredentials {
   };
 }
 
+/** Decrypt a sealed column, or '' when it is empty or cannot be opened (a database
+ *  restored under another `DATA_KEY`). */
+function unseal(sealed: string, what: string): string {
+  if (sealed === '') return '';
+  try {
+    return decrypt(sealed);
+  } catch (err) {
+    console.warn(`[archiveConfig] Could not decrypt the ${what}, treating it as absent: ${err instanceof Error ? err.message : String(err)}`);
+    return '';
+  }
+}
+
+/**
+ * The Drive destination with its secrets, for the Drive auth module and nothing
+ * else. Separate from `getArchiveConfig()` for the same reason the network
+ * credentials are.
+ */
+export function getArchiveGdriveSecrets(): ArchiveGdriveSecrets {
+  const row = readSettingsRow(`SELECT ${GDRIVE_COLUMNS.join(', ')} FROM appSettings WHERE id = 1`);
+  const str = (key: string): string => stringField(row, key);
+  return {
+    clientId: str(GDRIVE_CLIENT_ID_COLUMN),
+    clientSecret: unseal(str(GDRIVE_CLIENT_SECRET_COLUMN), 'Google Drive client secret'),
+    refreshToken: unseal(str(GDRIVE_REFRESH_TOKEN_COLUMN), 'Google Drive sign-in'),
+    folderName: str(GDRIVE_FOLDER_NAME_COLUMN).trim() || DEFAULT_GDRIVE_FOLDER_NAME,
+    folderId: str(GDRIVE_FOLDER_ID_COLUMN),
+  };
+}
+
+/** Store the outcome of a Drive sign-in. Only the auth module calls this. */
+export function setArchiveGdriveConnection(refreshToken: string, account: string): void {
+  db.prepare(
+    `UPDATE appSettings SET ${GDRIVE_REFRESH_TOKEN_COLUMN} = ?, ${GDRIVE_ACCOUNT_COLUMN} = ?, ${GDRIVE_FOLDER_ID_COLUMN} = '' WHERE id = 1`,
+  ).run(refreshToken === '' ? '' : encrypt(refreshToken), account);
+}
+
+/** Forget the sign-in (not the client id or secret), and the folder it found. */
+export function clearArchiveGdriveConnection(): void {
+  setArchiveGdriveConnection('', '');
+}
+
+/** Remember the archive folder's id once it has been found or created. */
+export function setArchiveGdriveFolderId(folderId: string): void {
+  db.prepare(`UPDATE appSettings SET ${GDRIVE_FOLDER_ID_COLUMN} = ? WHERE id = 1`).run(folderId);
+}
+
 /**
  * The parts of the stored configuration that a patch has to be validated against
  * once applied, rather than against the fields the one call happens to mention.
@@ -430,11 +572,15 @@ function storedConfigShape(): {
   retentionDays: number;
   copyMinAgeEnabled: boolean;
   copyMinAgeDays: number;
+  removeLocalAfter: boolean;
+  gdriveClientId: string;
+  gdriveFolderName: string;
 } {
   const row = readSettingsRow(
     `SELECT archiveLocationType, archiveNetworkHost, archiveNetworkShare, archiveScheduleMode,
             archiveScheduleCron, archiveRetentionEnabled, archiveRetentionDays,
-            archiveCopyMinAgeEnabled, archiveCopyMinAgeDays
+            archiveCopyMinAgeEnabled, archiveCopyMinAgeDays, archiveRemoveLocalAfter,
+            ${GDRIVE_CLIENT_ID_COLUMN}, ${GDRIVE_FOLDER_NAME_COLUMN}
        FROM appSettings WHERE id = 1`,
   );
   const str = (key: string): string => stringField(row, key);
@@ -442,7 +588,7 @@ function storedConfigShape(): {
   const days = typeof row?.archiveRetentionDays === 'number' ? row.archiveRetentionDays : 0;
   const minAgeDays = typeof row?.archiveCopyMinAgeDays === 'number' ? row.archiveCopyMinAgeDays : 0;
   return {
-    locationType: str('archiveLocationType') === 'network' ? 'network' : 'local',
+    locationType: isLocationType(row?.archiveLocationType) ? row.archiveLocationType : 'local',
     host: str('archiveNetworkHost'),
     share: str('archiveNetworkShare'),
     scheduleMode: isScheduleMode(row?.archiveScheduleMode) ? row.archiveScheduleMode : 'daily',
@@ -451,6 +597,9 @@ function storedConfigShape(): {
     retentionDays: days,
     copyMinAgeEnabled: flag('archiveCopyMinAgeEnabled'),
     copyMinAgeDays: minAgeDays,
+    removeLocalAfter: flag('archiveRemoveLocalAfter'),
+    gdriveClientId: str(GDRIVE_CLIENT_ID_COLUMN),
+    gdriveFolderName: str(GDRIVE_FOLDER_NAME_COLUMN).trim() || DEFAULT_GDRIVE_FOLDER_NAME,
   };
 }
 
@@ -530,9 +679,10 @@ export function setArchiveConfig(patch: ArchiveConfigPatch | Readonly<Record<str
   let nextRetentionDays = stored.retentionDays;
   let nextCopyMinAgeEnabled = stored.copyMinAgeEnabled;
   let nextCopyMinAgeDays = stored.copyMinAgeDays;
+  let nextRemoveLocalAfter = stored.removeLocalAfter;
 
   for (const key of Object.keys(patch)) {
-    if (key === 'network') continue;
+    if (key === 'network' || key === 'gdrive') continue;
     if (!isScalarSetting(key)) {
       throw new ArchiveConfigError(key, `unknown archive setting "${key}"`);
     }
@@ -549,8 +699,8 @@ export function setArchiveConfig(patch: ArchiveConfigPatch | Readonly<Record<str
         assign(COLUMN_FOR[key], value);
         break;
       case 'locationType':
-        if (value !== 'local' && value !== 'network') {
-          throw new ArchiveConfigError('locationType', 'locationType must be "local" or "network"');
+        if (!isLocationType(value)) {
+          throw new ArchiveConfigError('locationType', 'locationType must be "local", "network" or "gdrive"');
         }
         nextLocationType = value;
         assign(COLUMN_FOR[key], value);
@@ -617,6 +767,7 @@ export function setArchiveConfig(patch: ArchiveConfigPatch | Readonly<Record<str
         assertBoolean(key, value);
         if (key === 'retentionEnabled') nextRetentionEnabled = value;
         if (key === 'copyMinAgeEnabled') nextCopyMinAgeEnabled = value;
+        if (key === 'removeLocalAfter') nextRemoveLocalAfter = value;
         assign(COLUMN_FOR[key], value ? 1 : 0);
         break;
     }
@@ -659,6 +810,74 @@ export function setArchiveConfig(patch: ArchiveConfigPatch | Readonly<Record<str
       if (key === 'host') nextHost = value;
       if (key === 'share') nextShare = value;
       assign(NETWORK_COLUMN_FOR[key], value);
+    }
+  }
+
+  const gdrive = patch.gdrive;
+  if (gdrive !== undefined) {
+    if (!isRecord(gdrive)) {
+      throw new ArchiveConfigError('gdrive', 'gdrive must be an object');
+    }
+    for (const key of Object.keys(gdrive)) {
+      const value: unknown = gdrive[key];
+      if (value === undefined) continue;
+      switch (key) {
+        case 'clientId': {
+          assertString('gdrive.clientId', value);
+          const id = value.trim();
+          if (id !== '' && !GDRIVE_CLIENT_ID_RE.test(id)) {
+            throw new ArchiveConfigError('gdrive.clientId', 'that is not a Google OAuth client id (it ends in .apps.googleusercontent.com)');
+          }
+          assign(GDRIVE_CLIENT_ID_COLUMN, id);
+          // A sign-in belongs to the client that made it, and with the `drive.file`
+          // scope a different client cannot even see the folder the old one created.
+          // Changing the client therefore starts over rather than keeping a token
+          // that would fail on its first refresh.
+          if (id !== stored.gdriveClientId) {
+            assign(GDRIVE_REFRESH_TOKEN_COLUMN, '');
+            assign(GDRIVE_ACCOUNT_COLUMN, '');
+            assign(GDRIVE_FOLDER_ID_COLUMN, '');
+          }
+          break;
+        }
+        case 'clientSecret':
+          assertString('gdrive.clientSecret', value);
+          if (value.trim() !== '') assign(GDRIVE_CLIENT_SECRET_COLUMN, encrypt(value.trim()));
+          break;
+        case 'clearClientSecret':
+          assertBoolean('gdrive.clearClientSecret', value);
+          if (value) assign(GDRIVE_CLIENT_SECRET_COLUMN, '');
+          break;
+        case 'folderName': {
+          assertString('gdrive.folderName', value);
+          assertGdriveFolderName(value);
+          const name = value.trim();
+          assign(GDRIVE_FOLDER_NAME_COLUMN, name);
+          if (name !== stored.gdriveFolderName) assign(GDRIVE_FOLDER_ID_COLUMN, '');
+          break;
+        }
+        // Derived or written by the sign-in flow, never by a patch. Skipped rather
+        // than refused so a config read can be handed back unchanged.
+        case 'hasClientSecret':
+        case 'connected':
+        case 'account':
+          break;
+        default:
+          throw new ArchiveConfigError(`gdrive.${key}`, `unknown Google Drive setting "${key}"`);
+      }
+    }
+  }
+
+  // Pruning and local removal both re-verify a file by hashing the archived copy on
+  // a filesystem, which a Drive folder is not. Until they have a Drive form, they
+  // are refused for a Drive archive rather than quietly doing nothing, so the
+  // settings never claim a cleanup that cannot happen.
+  if (nextLocationType === 'gdrive') {
+    if (nextRetentionEnabled) {
+      throw new ArchiveConfigError('retentionEnabled', 'pruning is not available for a Google Drive archive; turn it off first');
+    }
+    if (nextRemoveLocalAfter) {
+      throw new ArchiveConfigError('removeLocalAfter', 'removing local subframes is not available for a Google Drive archive; turn it off first');
     }
   }
 

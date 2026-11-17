@@ -242,7 +242,7 @@ When no user account exists yet, Nebulis runs in open mode and lets you get star
 1. Go to **Settings → Storage**.
 2. **Location** shows the data directory and library location, and lets you move the library to another disk.
 3. **Cleanup** shows sub-frame usage by object and can purge sub-frames you no longer need. Stacked images and thumbnails are kept.
-4. **Archive** moves older captures to an external disk, and **DB Backups** manages database snapshots.
+4. **Archive** moves older captures to an external disk, a network share or a Google Drive folder (see [Backing up to Google Drive](GOOGLE_DRIVE_BACKUP.md)), and **DB Backups** manages database snapshots.
 
 ---
 

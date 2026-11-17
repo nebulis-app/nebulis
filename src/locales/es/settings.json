@@ -410,7 +410,8 @@
     "unknownVersion": "Versión desconocida",
     "kind": {
       "upgrade": "actualización",
-      "manual": "manual"
+      "manual": "manual",
+      "cloud": "nube"
     },
     "download": "Descargar",
     "delete": "Eliminar",
@@ -1195,7 +1196,9 @@
       "invalid": "Nebulis no reconoce el archivo de identificación de este disco, así que no se escribirá nada en él.",
       "unreadable": "No se puede leer el archivo de identificación de este disco, así que no se escribirá nada en él.",
       "invalidPath": "Esa ruta no se puede usar. No puede ser la carpeta de la biblioteca ni la carpeta de datos de Nebulis.",
-      "offline": "Este recurso compartido no está conectado. Comprueba que el servidor esté encendido y el recurso disponible."
+      "offline": "Este recurso compartido no está conectado. Comprueba que el servidor esté encendido y el recurso disponible.",
+      "gdriveOffline": "Google Drive no tiene la sesión iniciada. Vuelve a elegir el destino para iniciar sesión.",
+      "gdriveAbsent": "La carpeta aún no existe en Google Drive. Configurar el archivo la crea."
     },
     "includeSubframes": {
       "label": "Incluir tomas individuales",
@@ -1345,7 +1348,9 @@
       "settings": "Ajustes",
       "edit": "Editar",
       "close": "Cerrar"
-    }
+    },
+    "gdriveCleanupUnavailable": "La depuración del archivo y la eliminación de subtomas locales aún no están disponibles para un archivo en Google Drive. Los archivos permanecen en Drive hasta que los elimines allí.",
+    "changeGdrive": "Cambiar destino"
   },
   "archiveDisk": {
     "ariaLabel": "Disco de archivo",
@@ -1427,7 +1432,10 @@
     "cancel": "Cancelar",
     "useFolder": "Usar esta carpeta",
     "useShare": "Usar este recurso",
-    "pickDrive": "Elige un disco para empezar"
+    "pickDrive": "Elige un disco para empezar",
+    "gdriveTab": "Google Drive",
+    "useGdrive": "Usar Google Drive",
+    "gdrivePath": "Google Drive: /{{folder}}"
   },
   "layoutMigration": {
     "title": "Tu biblioteca necesita una actualización única",
@@ -1781,5 +1789,24 @@
     "placeholder": "Buscar ajustes…",
     "clear": "Borrar búsqueda",
     "noResults": "Ningún ajuste coincide"
+  },
+  "archiveGdrive": {
+    "intro": "Haz una copia de la biblioteca, las imágenes finales de la galería y la base de datos de Nebulis en una carpeta de tu Google Drive. Nebulis solo puede ver los archivos que crea allí.",
+    "folder": "Carpeta en Mi unidad",
+    "folderHint": "Se crea en la raíz de Mi unidad al configurar el archivo.",
+    "clientId": "ID de cliente OAuth",
+    "clientSecret": "Secreto del cliente OAuth",
+    "secretStored": "Guardado. Déjalo vacío para conservarlo.",
+    "clientHint": "Crea uno en la consola de Google Cloud: activa la API de Google Drive y crea un cliente OAuth de tipo «TV y dispositivos de entrada limitada». Consulta la guía de copia en Google Drive en la documentación.",
+    "connect": "Iniciar sesión con Google",
+    "enterCode": "En cualquier dispositivo, abre la dirección de abajo e introduce este código:",
+    "waiting": "Esperando a Google…",
+    "cancel": "Cancelar",
+    "signedIn": "Sesión iniciada en Google Drive",
+    "signedInAs": "Sesión iniciada como {{account}}",
+    "disconnect": "Cerrar sesión",
+    "limits": "Drive conserva las versiones anteriores de un archivo que Nebulis reemplaza, y no se elimina nada de Drive automáticamente, salvo las instantáneas de la base de datos más allá de las 30 más recientes tomadas por las ejecuciones del archivo, que van a la papelera.",
+    "failed": "No se pudo comunicar con Google Drive.",
+    "clientIdPlaceholder": "1234567890-abc.apps.googleusercontent.com"
   }
 }

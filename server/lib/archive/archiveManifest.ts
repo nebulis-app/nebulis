@@ -122,7 +122,13 @@ function parseManifestObject(value: unknown): ArchiveManifestObject | null {
   return { objectId: typeof objectId === 'string' ? objectId : '', firstArchivedAt, lastArchivedAt, files: parsed };
 }
 
-/** Parse manifest text, or null when it is not a manifest we fully understand. */
+/** Parse manifest text, or null when it is not a manifest we fully understand.
+ *  Exported for the Google Drive destination, which keeps the same record as a
+ *  Drive file rather than a file on a disk. */
+export function parseArchiveManifestText(text: string): ArchiveManifest | null {
+  return parseManifestText(text);
+}
+
 function parseManifestText(text: string): ArchiveManifest | null {
   const parsed = parseJsonRecord(text);
   if (!parsed || !READABLE_VERSIONS.includes(parsed.version)) return null;

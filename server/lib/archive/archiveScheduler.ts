@@ -57,6 +57,7 @@ import type { ArchiveConfig, ArchiveScheduleMode } from './archiveConfig.js';
 import { parseCron, cronMatches } from './archiveCron.js';
 import type { ParsedCron } from './archiveCron.js';
 import { ensureArchiveDestinationReady } from './archiveDestination.js';
+import { ensureGdriveArchiveReady } from './gdrive/driveArchive.js';
 import { isArchiveRunning } from './archiveCopy.js';
 import { runArchivePipeline } from './archivePipeline.js';
 
@@ -218,6 +219,7 @@ export function resetArchiveBackoff(): void {
 /** What identifies "the same archive", so a backoff earned by one destination does
  *  not hold back a different one the user has just configured. */
 function destinationKey(config: ArchiveConfig): string {
+  if (config.locationType === 'gdrive') return `gdrive:${config.archiveId}:${config.gdrive.clientId}:${config.gdrive.folderName}`;
   return config.locationType === 'network'
     ? `network:${config.archiveId}:${config.network.host}:${config.network.share}:${config.network.subpath}`
     : `local:${config.archiveId}:${config.path}`;
@@ -279,9 +281,14 @@ export async function tickArchiveScheduler(
   // saved. A disk swapped since then must not be written to, a share that is no
   // longer mounted must not be written to either, and the marker is what says
   // whether this is still our archive.
-  const readiness = await ensureArchiveDestinationReady(config);
-  if (!readiness.ok) {
-    return refuse(config, now, readiness.kind === 'unconfigured' ? 'no-destination' : 'destination-unusable');
+  if (config.locationType === 'gdrive') {
+    const drive = await ensureGdriveArchiveReady(config);
+    if (!drive.ok) return refuse(config, now, 'destination-unusable');
+  } else {
+    const readiness = await ensureArchiveDestinationReady(config);
+    if (!readiness.ok) {
+      return refuse(config, now, readiness.kind === 'unconfigured' ? 'no-destination' : 'destination-unusable');
+    }
   }
 
   // Held from the copy until removal and pruning are done, not just for the copy:

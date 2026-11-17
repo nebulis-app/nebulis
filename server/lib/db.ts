@@ -170,7 +170,7 @@ db.exec(`
     archiveRemoveLocalAfter INTEGER NOT NULL DEFAULT 0,
     archiveLastRunAt    TEXT    NOT NULL DEFAULT '',
     archiveLastResult   TEXT    NOT NULL DEFAULT '',
-    -- 'local' or 'network'. See archiveConfig.ts: a network destination is a share
+    -- 'local', 'network' or 'gdrive'. See archiveConfig.ts: a network destination is a share
     -- Nebulis mounts itself, described by the archiveNetwork* columns below.
     archiveLocationType TEXT    NOT NULL DEFAULT 'local',
     archiveNetworkHost  TEXT    NOT NULL DEFAULT '',
@@ -178,7 +178,14 @@ db.exec(`
     archiveNetworkDomain TEXT   NOT NULL DEFAULT '',
     archiveNetworkUsername TEXT NOT NULL DEFAULT '',
     archiveNetworkPasswordSealed TEXT NOT NULL DEFAULT '',
-    archiveNetworkSubpath TEXT   NOT NULL DEFAULT ''
+    archiveNetworkSubpath TEXT   NOT NULL DEFAULT '',
+    -- Google Drive destination ('gdrive'). Secrets are sealed; see archiveConfig.ts.
+    archiveGdriveClientId TEXT NOT NULL DEFAULT '',
+    archiveGdriveClientSecretSealed TEXT NOT NULL DEFAULT '',
+    archiveGdriveRefreshTokenSealed TEXT NOT NULL DEFAULT '',
+    archiveGdriveAccount TEXT NOT NULL DEFAULT '',
+    archiveGdriveFolderName TEXT NOT NULL DEFAULT 'Nebulis',
+    archiveGdriveFolderId TEXT NOT NULL DEFAULT ''
   );
   INSERT OR IGNORE INTO appSettings (id) VALUES (1);
 
@@ -2160,6 +2167,14 @@ export function resetLibraryData(): void {
  *  so the call is wrapped here where it legitimately lives. */
 export function createManualDatabaseBackup(): { backup: DatabaseBackupInfo; pruned: number } {
   const backup = backupDatabaseNow(db, { version: getCurrentVersion().version, kind: 'manual' });
+  const pruned = pruneDatabaseBackups();
+  return { backup, pruned };
+}
+
+/** The snapshot a Google Drive archive run takes before uploading the database.
+ *  Its own retention pool (see dbBackup.ts), pruned like the others. */
+export function createCloudDatabaseBackup(): { backup: DatabaseBackupInfo; pruned: number } {
+  const backup = backupDatabaseNow(db, { version: getCurrentVersion().version, kind: 'cloud' });
   const pruned = pruneDatabaseBackups();
   return { backup, pruned };
 }

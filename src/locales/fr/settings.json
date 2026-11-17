@@ -410,7 +410,8 @@
     "unknownVersion": "Version inconnue",
     "kind": {
       "upgrade": "mise à jour",
-      "manual": "manuelle"
+      "manual": "manuelle",
+      "cloud": "cloud"
     },
     "download": "Télécharger",
     "delete": "Supprimer",
@@ -1195,7 +1196,9 @@
       "invalid": "Nebulis ne reconnaît pas le fichier d'identification de ce disque, rien n'y sera écrit.",
       "unreadable": "Le fichier d'identification de ce disque est illisible, rien n'y sera écrit.",
       "invalidPath": "Ce chemin ne peut pas être utilisé. Il ne peut être ni le dossier de la bibliothèque ni le dossier de données de Nebulis.",
-      "offline": "Ce partage n'est pas connecté. Vérifiez que le serveur est allumé et que le partage est disponible."
+      "offline": "Ce partage n'est pas connecté. Vérifiez que le serveur est allumé et que le partage est disponible.",
+      "gdriveOffline": "Google Drive n’est pas connecté. Choisissez à nouveau la destination pour vous connecter.",
+      "gdriveAbsent": "Le dossier n’existe pas encore dans Google Drive. La configuration de l’archive le crée."
     },
     "includeSubframes": {
       "label": "Inclure les poses individuelles",
@@ -1345,7 +1348,9 @@
       "settings": "Réglages",
       "edit": "Modifier",
       "close": "Fermer"
-    }
+    },
+    "gdriveCleanupUnavailable": "L’élagage de l’archive et la suppression des sous-poses locales ne sont pas encore disponibles pour une archive Google Drive. Les fichiers restent dans Drive tant que vous ne les y supprimez pas.",
+    "changeGdrive": "Changer de destination"
   },
   "archiveDisk": {
     "ariaLabel": "Disque d'archive",
@@ -1427,7 +1432,10 @@
     "cancel": "Annuler",
     "useFolder": "Utiliser ce dossier",
     "useShare": "Utiliser ce partage",
-    "pickDrive": "Choisissez un disque pour commencer"
+    "pickDrive": "Choisissez un disque pour commencer",
+    "gdriveTab": "Google Drive",
+    "useGdrive": "Utiliser Google Drive",
+    "gdrivePath": "Google Drive: /{{folder}}"
   },
   "layoutMigration": {
     "title": "Votre bibliothèque a besoin d'une mise à jour unique",
@@ -1781,5 +1789,24 @@
     "placeholder": "Rechercher un réglage…",
     "clear": "Effacer la recherche",
     "noResults": "Aucun réglage correspondant"
+  },
+  "archiveGdrive": {
+    "intro": "Sauvegardez la bibliothèque, les images finales de la galerie et la base de données Nebulis dans un dossier de votre Google Drive. Nebulis ne voit que les fichiers qu’il y crée.",
+    "folder": "Dossier dans Mon Drive",
+    "folderHint": "Créé à la racine de Mon Drive lors de la configuration de l’archive.",
+    "clientId": "ID client OAuth",
+    "clientSecret": "Code secret du client OAuth",
+    "secretStored": "Enregistré. Laissez vide pour le conserver.",
+    "clientHint": "Créez-en un dans la console Google Cloud : activez l’API Google Drive, puis créez un client OAuth de type « TV et appareils à entrée limitée ». Voir le guide de sauvegarde Google Drive dans la documentation.",
+    "connect": "Se connecter avec Google",
+    "enterCode": "Sur n’importe quel appareil, ouvrez l’adresse ci-dessous et saisissez ce code :",
+    "waiting": "En attente de Google…",
+    "cancel": "Annuler",
+    "signedIn": "Connecté à Google Drive",
+    "signedInAs": "Connecté en tant que {{account}}",
+    "disconnect": "Se déconnecter",
+    "limits": "Drive conserve les versions précédentes d’un fichier remplacé par Nebulis, et rien n’est supprimé de Drive automatiquement, sauf les instantanés de base de données au-delà des 30 plus récents pris par les exécutions de l’archive, qui vont à la corbeille.",
+    "failed": "Impossible de communiquer avec Google Drive.",
+    "clientIdPlaceholder": "1234567890-abc.apps.googleusercontent.com"
   }
 }

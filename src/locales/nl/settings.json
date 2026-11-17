@@ -410,7 +410,8 @@
     "unknownVersion": "Onbekende versie",
     "kind": {
       "upgrade": "upgrade",
-      "manual": "handmatig"
+      "manual": "handmatig",
+      "cloud": "cloud"
     },
     "download": "Downloaden",
     "delete": "Verwijderen",
@@ -1195,7 +1196,9 @@
       "invalid": "Nebulis herkent het markerbestand op deze schijf niet. Er wordt daarom niets naar de schijf geschreven.",
       "unreadable": "Het markerbestand op deze schijf kan niet worden gelezen en er wordt dus niets naar geschreven.",
       "invalidPath": "Dit pad kan niet worden gebruikt. Het mag niet de bibliotheekmap of de gegevensmap van Nebulis zijn.",
-      "offline": "Deze netwerkshare is niet verbonden. Controleer of de server aanstaat en de share beschikbaar is."
+      "offline": "Deze netwerkshare is niet verbonden. Controleer of de server aanstaat en de share beschikbaar is.",
+      "gdriveOffline": "Google Drive is niet aangemeld. Kies de bestemming opnieuw om aan te melden.",
+      "gdriveAbsent": "De map bestaat nog niet in Google Drive. Het instellen van het archief maakt hem aan."
     },
     "includeSubframes": {
       "label": "Subframes meenemen",
@@ -1345,7 +1348,9 @@
       "settings": "Instellingen",
       "edit": "Bewerken",
       "close": "Sluiten"
-    }
+    },
+    "gdriveCleanupUnavailable": "Het opschonen van het archief en het verwijderen van lokale subframes zijn nog niet beschikbaar voor een Google Drive-archief. Bestanden blijven in Drive tot je ze daar verwijdert.",
+    "changeGdrive": "Bestemming wijzigen"
   },
   "archiveDisk": {
     "ariaLabel": "Archiefschijf",
@@ -1427,7 +1432,10 @@
     "cancel": "Annuleren",
     "useFolder": "Gebruik deze map",
     "useShare": "Deze share gebruiken",
-    "pickDrive": "Kies een schijf om te beginnen"
+    "pickDrive": "Kies een schijf om te beginnen",
+    "gdriveTab": "Google Drive",
+    "useGdrive": "Google Drive gebruiken",
+    "gdrivePath": "Google Drive: /{{folder}}"
   },
   "layoutMigration": {
     "title": "Je bibliotheek moet eenmalig worden bijgewerkt",
@@ -1781,5 +1789,24 @@
     "placeholder": "Instellingen zoeken…",
     "clear": "Zoekopdracht wissen",
     "noResults": "Geen passende instellingen"
+  },
+  "archiveGdrive": {
+    "intro": "Maak een back-up van de bibliotheek, de afgewerkte afbeeldingen van de galerij en de Nebulis-database in een map in je Google Drive. Nebulis ziet alleen de bestanden die het daar zelf aanmaakt.",
+    "folder": "Map in Mijn Drive",
+    "folderHint": "Wordt bovenaan Mijn Drive aangemaakt bij het instellen van het archief.",
+    "clientId": "OAuth-client-ID",
+    "clientSecret": "OAuth-clientgeheim",
+    "secretStored": "Opgeslagen. Laat leeg om het te behouden.",
+    "clientHint": "Maak er een aan in de Google Cloud Console: schakel de Google Drive API in en maak een OAuth-client van het type ‘Tv’s en apparaten met beperkte invoer’. Zie de handleiding voor Google Drive-back-ups in de documentatie.",
+    "connect": "Aanmelden met Google",
+    "enterCode": "Open op een willekeurig apparaat het adres hieronder en voer deze code in:",
+    "waiting": "Wachten op Google…",
+    "cancel": "Annuleren",
+    "signedIn": "Aangemeld bij Google Drive",
+    "signedInAs": "Aangemeld als {{account}}",
+    "disconnect": "Afmelden",
+    "limits": "Drive bewaart eerdere versies van een bestand dat Nebulis vervangt, en er wordt niets automatisch uit Drive verwijderd, behalve databasesnapshots voorbij de 30 nieuwste van archiefruns, die naar de prullenbak gaan.",
+    "failed": "Kan geen verbinding maken met Google Drive.",
+    "clientIdPlaceholder": "1234567890-abc.apps.googleusercontent.com"
   }
 }

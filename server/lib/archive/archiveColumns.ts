@@ -96,7 +96,7 @@ export const ARCHIVE_SETTINGS_COLUMNS: ReadonlyArray<ArchiveSettingsColumn> = [
   { name: 'archiveRemoveLocalAfter', ddl: 'archiveRemoveLocalAfter INTEGER NOT NULL DEFAULT 0' },
   { name: 'archiveLastRunAt', ddl: "archiveLastRunAt TEXT NOT NULL DEFAULT ''" },
   { name: 'archiveLastResult', ddl: "archiveLastResult TEXT NOT NULL DEFAULT ''" },
-  /** 'local' or 'network'. A local destination is a path on a filesystem the
+  /** 'local', 'network' or 'gdrive'. A local destination is a path on a filesystem the
    *  operating system already mounted; a network destination is a share Nebulis
    *  connects to itself, described by the `archiveNetwork*` columns below. The two
    *  are mutually exclusive rather than merged: one source of truth per
@@ -115,6 +115,19 @@ export const ARCHIVE_SETTINGS_COLUMNS: ReadonlyArray<ArchiveSettingsColumn> = [
   /** Folder inside the share. Empty means the share root, which has to be chosen
    *  deliberately rather than arriving as a default. */
   { name: 'archiveNetworkSubpath', ddl: "archiveNetworkSubpath TEXT NOT NULL DEFAULT ''" },
+  /** Google Drive destination (`archiveLocationType = 'gdrive'`). The OAuth client
+   *  the user created in Google Cloud; the device-code sign-in needs it. */
+  { name: 'archiveGdriveClientId', ddl: "archiveGdriveClientId TEXT NOT NULL DEFAULT ''" },
+  /** Sealed with secretBox, never returned by a route. */
+  { name: 'archiveGdriveClientSecretSealed', ddl: "archiveGdriveClientSecretSealed TEXT NOT NULL DEFAULT ''" },
+  /** Sealed with secretBox, never returned by a route. Empty means not signed in. */
+  { name: 'archiveGdriveRefreshTokenSealed', ddl: "archiveGdriveRefreshTokenSealed TEXT NOT NULL DEFAULT ''" },
+  /** The signed-in account's address, for display. */
+  { name: 'archiveGdriveAccount', ddl: "archiveGdriveAccount TEXT NOT NULL DEFAULT ''" },
+  /** The archive folder's name at the top of "My Drive". */
+  { name: 'archiveGdriveFolderName', ddl: "archiveGdriveFolderName TEXT NOT NULL DEFAULT 'Nebulis'" },
+  /** The archive folder's Drive id, cached once found or created. */
+  { name: 'archiveGdriveFolderId', ddl: "archiveGdriveFolderId TEXT NOT NULL DEFAULT ''" },
 ];
 
 /**

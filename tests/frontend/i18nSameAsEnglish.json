@@ -51,5 +51,8 @@
   "catalogs:explore.catalogs.ngc": "Catalog name",
   "catalogs:explore.catalogs.ic": "Catalog name",
   "catalogs:explore.catalogs.caldwell": "Catalog name",
-  "catalogs:explore.catalogs.sharpless": "Catalog name"
+  "catalogs:explore.catalogs.sharpless": "Catalog name",
+  "settings:archiveDestination.gdriveTab": "Product name",
+  "settings:archiveDestination.gdrivePath": "Product name and a folder path",
+  "settings:archiveGdrive.clientIdPlaceholder": "An example OAuth client id"
 }

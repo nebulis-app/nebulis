@@ -170,7 +170,7 @@ export const testNetworkLibraryConnection = (network: NetworkLibraryConfig) =>
 export interface DatabaseBackupInfo {
   name: string;
   path: string;
-  kind: 'upgrade' | 'manual';
+  kind: 'upgrade' | 'manual' | 'cloud';
   version: string | null;
   createdAt: number;
   sizeBytes: number;

@@ -33,6 +33,8 @@ import {
 } from '../lib/archive/archiveDestination.js';
 import { isOnSameDevice, isWithinRoot } from '../lib/archive/archivePath.js';
 import { retireArchiveManifest } from '../lib/archive/archiveManifest.js';
+import { uploadSnapshotsToGdriveInBackground } from '../lib/archive/gdrive/driveArchive.js';
+import { registerGdriveBackupRoutes } from './storageGdrive.js';
 import zlib from 'zlib';
 import { requireAdmin } from '../middleware/auth.js';
 import { strictRateLimiter } from '../middleware/rateLimit.js';
@@ -1101,6 +1103,8 @@ router.post('/db-backups', requireAdmin, strictRateLimiter, (req: Request, res: 
       ip: req.ip ?? req.socket.remoteAddress,
       metadata: { backupName: backup.name, sizeBytes: backup.sizeBytes, pruned },
     });
+    // Off the machine too, when the Google Drive backup is on. In the background.
+    uploadSnapshotsToGdriveInBackground('manual');
     res.apiSuccess({ backup, pruned });
   } catch (err) {
     console.error('[storage] manual db backup failed:', err instanceof Error ? err.message : err);
@@ -1902,5 +1906,8 @@ router.post('/archive/restore', requireAdmin, strictRateLimiter, async (req: Req
 
   res.apiSuccess({ ...summary });
 });
+
+// The Google Drive backup, a destination of its own next to the disk archive.
+registerGdriveBackupRoutes(router);
 
 export { router as storageRouter };

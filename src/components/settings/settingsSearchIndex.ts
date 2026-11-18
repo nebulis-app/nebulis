@@ -59,6 +59,7 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   { group: 'storage', section: 'archive', labelKey: 'archive.removeLocal.label' },
   { group: 'storage', section: 'linked', labelKey: 'linkedFolders.title', keywords: 'link watch rescan external' },
   { group: 'storage', section: 'backups', labelKey: 'databaseBackups.title', keywords: 'restore snapshot' },
+  { group: 'storage', section: 'gdrive', labelKey: 'gdriveBackup.title', keywords: 'google drive cloud backup off-site offsite' },
   { group: 'storage', section: 'cleanup', labelKey: 'libraryCleanup.title', keywords: 'duplicates missing files health' },
   { group: 'storage', section: 'maintenance', labelKey: 'nightlyMaintenance.title', keywords: 'schedule prefetch housekeeping' },
   { group: 'storage', section: 'maintenance', labelKey: 'nightlyMaintenance.tasks.plannerPrefetch.label' },

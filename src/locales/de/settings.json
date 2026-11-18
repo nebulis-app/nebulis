@@ -16,6 +16,8 @@
     "danger": "Erweitert",
     "about": "Über",
     "archive": "Archiv",
+    "archiveDisk": "Externes Laufwerk",
+    "gdrive": "Google Drive",
     "linked": "Verknüpfte Ordner",
     "cleanup": "Aufräumen",
     "features": "Integrationen",
@@ -410,7 +412,8 @@
     "unknownVersion": "Unbekannte Version",
     "kind": {
       "upgrade": "Upgrade",
-      "manual": "Manuell"
+      "manual": "Manuell",
+      "cloud": "Cloud"
     },
     "download": "Herunterladen",
     "delete": "Löschen",
@@ -1781,5 +1784,92 @@
     "placeholder": "Einstellungen durchsuchen…",
     "clear": "Suche löschen",
     "noResults": "Keine passenden Einstellungen"
+  },
+  "archiveGdrive": {
+    "clientId": "OAuth-Client-ID",
+    "clientSecret": "OAuth-Clientschlüssel",
+    "secretStored": "Gespeichert. Leer lassen, um ihn zu behalten.",
+    "waiting": "Warten auf Google…",
+    "cancel": "Abbrechen",
+    "signedIn": "Bei Google Drive angemeldet",
+    "signedInAs": "Angemeldet als {{account}}",
+    "disconnect": "Abmelden",
+    "failed": "Keine Verbindung zu Google Drive möglich.",
+    "retry": "Erneut versuchen",
+    "clientIdPlaceholder": "1234567890-abc.apps.googleusercontent.com",
+    "intro": "Verbinden Sie Ihr Google-Konto. Nebulis legt die Sicherung dann in einem Ordner Nebulis oben in „Meine Ablage“ ab, den Sie beliebig verschieben können.",
+    "connect": "Mit Google anmelden",
+    "enterCode": "Öffnen Sie auf einem beliebigen Gerät (Handy, Computer) die Adresse unten und geben Sie diesen Code ein:",
+    "unverifiedHint": "Wenn Google meldet, dass die App nicht überprüft wurde, klicken Sie auf Erweitert und dann auf Weiter zu…: Es ist die App, die Sie gerade selbst erstellt haben.",
+    "folderTitle": "Sicherungsordner",
+    "preparingFolder": "Der Nebulis-Ordner in Ihrem Drive wird vorbereitet…",
+    "folderCreated": "Ordner „{{name}}“ oben in „Meine Ablage“ erstellt.",
+    "folderFound": "Der Ordner „{{name}}“ in Ihrem Drive wird verwendet.",
+    "folderMoveHint": "Sie können diesen Ordner in Google Drive jederzeit verschieben oder umbenennen: Nebulis findet ihn an seiner ID, nicht am Namen. Nebulis sieht nur die Dateien und Ordner, die es selbst erstellt hat, nie den Rest Ihres Drive.",
+    "limits": "Drive behält frühere Versionen einer Datei, die Nebulis ersetzt, und Nebulis löscht nie Bibliotheksdateien aus Drive. Aufgeräumt werden nur die Datenbank-Snapshots der Sicherungsläufe: Die 30 neuesten bleiben, ältere wandern in den Drive-Papierkorb.",
+    "guide": {
+      "title": "Zum ersten Mal? So erhalten Sie Client-ID und Clientschlüssel (etwa 10 Minuten)",
+      "why": "Google verlangt für jede App, die Drive nutzt, einen eigenen „OAuth-Client“. Sie erstellen ihn einmalig und kostenlos in der Google Cloud Console mit dem Google-Konto, in das gesichert werden soll. Folgen Sie diesen fünf Schritten der Reihe nach; jeder Link öffnet die richtige Seite.",
+      "project": {
+        "title": "Projekt erstellen",
+        "body": "Erstellen Sie ein neues Projekt nur für Nebulis, statt eines wiederzuverwenden: API und Client liegen dann zusammen, und wenn Sie das Projekt später löschen, ist der Zugriff von Nebulis auf einen Schlag entfernt. Nennen Sie es <b>Nebulis</b> und klicken Sie auf <b>Erstellen</b>. Akzeptieren Sie die Nutzungsbedingungen, falls Google danach fragt. Achten Sie darauf, dass <b>Nebulis</b> oben links ausgewählt ist.",
+        "link": "Projekt erstellen"
+      },
+      "driveApi": {
+        "title": "Google Drive API aktivieren",
+        "body": "Klicken Sie mit <b>Nebulis</b> oben links ausgewählt auf <b>Aktivieren</b>. Nicht überspringen: Die Anmeldung funktioniert auch ohne, aber Nebulis kann dann keinen Ordner auflisten oder erstellen. Die API muss im selben Projekt wie der Client aktiviert sein und kann einige Minuten brauchen, bis sie wirkt.",
+        "link": "Google Drive API öffnen"
+      },
+      "branding": {
+        "title": "App beschreiben",
+        "body": "Klicken Sie auf <b>Jetzt starten</b>. App-Name: <b>Nebulis</b>; Support-E-Mail: Ihre Adresse. Zielgruppe: <b>Extern</b>. Kontaktdaten: erneut Ihre Adresse. Akzeptieren Sie die Richtlinie und klicken Sie auf <b>Erstellen</b>.",
+        "link": "Google Auth Platform öffnen"
+      },
+      "audience": {
+        "title": "App veröffentlichen",
+        "body": "Klicken Sie unter <b>Veröffentlichungsstatus</b> auf <b>App veröffentlichen</b> und bestätigen Sie. Eine Überprüfung ist nicht nötig, da Nebulis nur Zugriff auf die selbst erstellten Dateien verlangt. Ohne diesen Schritt bleibt die App im „Test“: Dann müssen Sie Ihre Adresse unter <b>Testnutzer</b> eintragen, und Google meldet Sie alle 7 Tage ab.",
+        "link": "Zielgruppe öffnen"
+      },
+      "clients": {
+        "title": "Client erstellen",
+        "body": "Anwendungstyp: <b>Fernseher und Geräte mit begrenzter Eingabe</b> (kein anderer Typ funktioniert). Name: <b>Nebulis</b>. Klicken Sie auf <b>Erstellen</b> und kopieren Sie <b>Client-ID</b> und <b>Clientschlüssel</b> in die Felder unten. Kopieren Sie den Schlüssel sofort: Google zeigt ihn eventuell nicht noch einmal an.",
+        "link": "OAuth-Client erstellen"
+      },
+      "free": "Das ist kostenlos: Die private Nutzung der Drive API kostet nichts, und es sind keine Zahlungsdaten nötig."
+    }
+  },
+  "gdriveBackup": {
+    "title": "Sicherung in Google Drive",
+    "description": "Eine externe Kopie der Bibliothek, der Galerie und der Nebulis-Datenbank in Ihrem Google Drive.",
+    "statusOn": "Die Sicherung in Google Drive ist eingeschaltet",
+    "statusOff": "Die Sicherung in Google Drive ist ausgeschaltet",
+    "turnOn": "Einschalten",
+    "turnOff": "Ausschalten",
+    "turnedOn": "Die Sicherung in Google Drive ist eingeschaltet. Starten Sie einen ersten Lauf mit Jetzt sichern, oder überlassen Sie es dem Zeitplan.",
+    "turnedOff": "Die Sicherung in Google Drive ist ausgeschaltet. Der Ordner und seine Dateien bleiben in Drive.",
+    "connectFirst": "Verbinden Sie zuerst Google Drive.",
+    "runNow": "Jetzt sichern",
+    "cancelRun": "Stoppen",
+    "started": "Die Sicherung läuft. Sie können diese Seite verlassen.",
+    "progress": "{{done}} von {{total}} Dateien ({{bytes}} von {{totalBytes}})",
+    "lastResult": "Letzter Lauf ({{when}}): {{result}}",
+    "notCompleted": "nicht abgeschlossen",
+    "neverRun": "Es wurde noch keine Sicherung ausgeführt.",
+    "foreign": "Dieser Google-Drive-Ordner enthält bereits die Sicherung einer anderen Nebulis-Installation ({{id}}). Wenn Sie ihn übernehmen, wird er zur Sicherung dieser Installation; seine Dateien bleiben, wo sie sind.",
+    "takeOver": "Übernehmen",
+    "alongside": "Diese Sicherung läuft eigenständig neben dem Archiv auf dem Laufwerk: Beide können eingeschaltet sein und gleichzeitig laufen. Das Archiv auf dem Laufwerk schafft Platz auf diesem Computer; Google Drive ist eine externe Kopie, die nur hinzufügt.",
+    "connection": "Google-Konto",
+    "whatToCopy": "Was kopiert wird",
+    "schedule": "Zeitplan",
+    "save": "Speichern",
+    "saved": "Gespeichert.",
+    "state": {
+      "match": "{{path}}",
+      "absent": "Bereit: {{path}}. Beim Einschalten wird dieser Ordner als Sicherung dieser Installation markiert.",
+      "offline": "Der Sicherungsordner ist nicht erreichbar: nicht angemeldet, oder der Ordner wurde gelöscht.",
+      "foreign": "Dieser Ordner enthält die Sicherung einer anderen Installation.",
+      "invalid": "Die Markierungsdatei in diesem Ordner ist nicht lesbar. Entfernen Sie sie in Google Drive, wenn Sie sicher sind.",
+      "unreadable": "Die Markierungsdatei in diesem Ordner ist nicht lesbar. Entfernen Sie sie in Google Drive, wenn Sie sicher sind."
+    }
   }
 }

@@ -115,6 +115,38 @@ export const ARCHIVE_SETTINGS_COLUMNS: ReadonlyArray<ArchiveSettingsColumn> = [
   /** Folder inside the share. Empty means the share root, which has to be chosen
    *  deliberately rather than arriving as a default. */
   { name: 'archiveNetworkSubpath', ddl: "archiveNetworkSubpath TEXT NOT NULL DEFAULT ''" },
+  /* ── Google Drive backup ──────────────────────────────────────────────────
+   * A second, independent destination that runs alongside the disk archive (see
+   * gdrive/gdriveBackupConfig.ts). It has its own switch, schedule and record, and
+   * shares only the selection rules with the disk archive. */
+  /** The OAuth client the user created in Google Cloud; the device-code sign-in needs it. */
+  { name: 'archiveGdriveClientId', ddl: "archiveGdriveClientId TEXT NOT NULL DEFAULT ''" },
+  /** Sealed with secretBox, never returned by a route. */
+  { name: 'archiveGdriveClientSecretSealed', ddl: "archiveGdriveClientSecretSealed TEXT NOT NULL DEFAULT ''" },
+  /** Sealed with secretBox, never returned by a route. Empty means not signed in. */
+  { name: 'archiveGdriveRefreshTokenSealed', ddl: "archiveGdriveRefreshTokenSealed TEXT NOT NULL DEFAULT ''" },
+  /** The signed-in account's address, for display. */
+  { name: 'archiveGdriveAccount', ddl: "archiveGdriveAccount TEXT NOT NULL DEFAULT ''" },
+  /** The folder's name when it was chosen, for display only. */
+  { name: 'archiveGdriveFolderPath', ddl: "archiveGdriveFolderPath TEXT NOT NULL DEFAULT ''" },
+  /** The backup folder's Drive id. Kept by id, so the user can move or rename it. */
+  { name: 'archiveGdriveFolderId', ddl: "archiveGdriveFolderId TEXT NOT NULL DEFAULT ''" },
+  /** The master switch. OFF by default, like the disk archive's. */
+  { name: 'archiveGdriveEnabled', ddl: 'archiveGdriveEnabled INTEGER NOT NULL DEFAULT 0' },
+  /** The id in the Drive folder's `.nebulisarchive` marker. Empty means not adopted. */
+  { name: 'archiveGdriveArchiveId', ddl: "archiveGdriveArchiveId TEXT NOT NULL DEFAULT ''" },
+  /** OFF by default: subframes are most of a library, and a free Drive is 15 GB. */
+  { name: 'archiveGdriveIncludeSubframes', ddl: 'archiveGdriveIncludeSubframes INTEGER NOT NULL DEFAULT 0' },
+  { name: 'archiveGdriveCopyMinAgeEnabled', ddl: 'archiveGdriveCopyMinAgeEnabled INTEGER NOT NULL DEFAULT 0' },
+  { name: 'archiveGdriveCopyMinAgeDays', ddl: 'archiveGdriveCopyMinAgeDays INTEGER NOT NULL DEFAULT 0' },
+  { name: 'archiveGdriveScheduleEnabled', ddl: 'archiveGdriveScheduleEnabled INTEGER NOT NULL DEFAULT 0' },
+  { name: 'archiveGdriveScheduleMode', ddl: "archiveGdriveScheduleMode TEXT NOT NULL DEFAULT 'daily'" },
+  { name: 'archiveGdriveScheduleHour', ddl: 'archiveGdriveScheduleHour INTEGER NOT NULL DEFAULT 3' },
+  { name: 'archiveGdriveScheduleMinute', ddl: 'archiveGdriveScheduleMinute INTEGER NOT NULL DEFAULT 0' },
+  { name: 'archiveGdriveScheduleIntervalHours', ddl: 'archiveGdriveScheduleIntervalHours INTEGER NOT NULL DEFAULT 24' },
+  { name: 'archiveGdriveScheduleCron', ddl: "archiveGdriveScheduleCron TEXT NOT NULL DEFAULT ''" },
+  { name: 'archiveGdriveLastRunAt', ddl: "archiveGdriveLastRunAt TEXT NOT NULL DEFAULT ''" },
+  { name: 'archiveGdriveLastResult', ddl: "archiveGdriveLastResult TEXT NOT NULL DEFAULT ''" },
 ];
 
 /**

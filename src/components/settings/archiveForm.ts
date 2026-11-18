@@ -70,22 +70,37 @@ function atTimeOfDay(hour: number, minute: number): Date {
  */
 export type ScheduleChoice = 'manual' | ArchiveScheduleMode;
 
-export function scheduleChoiceOf(form: ArchiveConfig): ScheduleChoice {
+/** The copy and schedule fields, which the disk archive and the Google Drive backup
+ *  share by name, so one set of controls edits either. */
+export type CopyScheduleForm = Pick<
+  ArchiveConfig,
+  | 'includeSubframes'
+  | 'copyMinAgeEnabled'
+  | 'copyMinAgeDays'
+  | 'scheduleEnabled'
+  | 'scheduleMode'
+  | 'scheduleHour'
+  | 'scheduleMinute'
+  | 'scheduleIntervalHours'
+  | 'scheduleCron'
+>;
+
+export function scheduleChoiceOf(form: CopyScheduleForm): ScheduleChoice {
   return form.scheduleEnabled ? form.scheduleMode : 'manual';
 }
 
-export function scheduleChoicePatch(choice: ScheduleChoice): Partial<ArchiveConfig> {
+export function scheduleChoicePatch(choice: ScheduleChoice): Partial<CopyScheduleForm> {
   return choice === 'manual' ? { scheduleEnabled: false } : { scheduleEnabled: true, scheduleMode: choice };
 }
 
 /** How many days a new capture waits before it is copied. Zero means it does not. */
-export function waitDaysOf(form: ArchiveConfig): number {
+export function waitDaysOf(form: CopyScheduleForm): number {
   return form.copyMinAgeEnabled ? form.copyMinAgeDays : 0;
 }
 
 /** The stored pair behind the single "wait" number. The server refuses an enabled
  *  wait of zero days, so the switch is derived from the number and cannot disagree. */
-export function waitDaysPatch(days: number): Partial<ArchiveConfig> {
+export function waitDaysPatch(days: number): Partial<CopyScheduleForm> {
   const whole = Math.max(0, Math.floor(days) || 0);
   return { copyMinAgeDays: whole, copyMinAgeEnabled: whole > 0 };
 }

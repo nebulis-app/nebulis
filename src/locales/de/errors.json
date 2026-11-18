@@ -55,6 +55,7 @@
     "TMP_NOT_FOUND": "Upload-Sitzung nicht gefunden. Bitte von vorn beginnen.",
     "UNSUPPORTED_PLATFORM": "Bibliotheksstandorte auf Netzwerkfreigaben werden auf dieser Plattform nicht unterstützt.",
     "ARCHIVE_DISABLED": "Das Archiv ist aus, es wurde also nichts geschrieben oder gelöscht. Schalte es in den Einstellungen im Tab Archiv ein.",
-    "ARCHIVE_RETENTION_DISABLED": "Die Bereinigung ist aus, es wurde also nichts gelöscht. Schalte sie in den Archiveinstellungen ein."
+    "ARCHIVE_RETENTION_DISABLED": "Die Bereinigung ist aus, es wurde also nichts gelöscht. Schalte sie in den Archiveinstellungen ein.",
+    "GDRIVE_API_DISABLED": "Die Google Drive API ist im Google-Cloud-Projekt dieses Clients ausgeschaltet. Aktivieren Sie sie (Schritt 2 der Anleitung), warten Sie eine Minute und versuchen Sie es erneut."
   }
 }

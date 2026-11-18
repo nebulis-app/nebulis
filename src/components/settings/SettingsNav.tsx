@@ -6,7 +6,23 @@ import { getUpdateStatus } from '../../lib/api/update';
 import { TourAnchor } from '../tour/TourAnchor';
 import { SettingsSearch, type SettingsSearchTarget } from './SettingsSearch';
 
-import { SETTINGS_SECTION_LABELS, visibleSettingsNav } from './settingsNavItems';
+import { SETTINGS_SECTION_LABELS, visibleSettingsNav, type SettingsNavItem } from './settingsNavItems';
+
+type NavRow =
+  | { kind: 'item'; item: SettingsNavItem }
+  | { kind: 'parent'; labelKey: string; children: SettingsNavItem[] };
+
+/** Fold consecutive items that share a `parentLabelKey` under one sub-heading. */
+function navRows(items: SettingsNavItem[]): NavRow[] {
+  const rows: NavRow[] = [];
+  for (const item of items) {
+    const last = rows[rows.length - 1];
+    if (item.parentLabelKey === undefined) rows.push({ kind: 'item', item });
+    else if (last?.kind === 'parent' && last.labelKey === item.parentLabelKey) last.children.push(item);
+    else rows.push({ kind: 'parent', labelKey: item.parentLabelKey, children: [item] });
+  }
+  return rows;
+}
 
 interface Props {
   activeGroupId: string;
@@ -98,20 +114,39 @@ export function SettingsNav({
 
                 {group.items && isActive && (
                   <ul className={`mt-0.5 ml-[1.125rem] space-y-0.5 border-l pl-3.5 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-                    {group.items.map(item => {
-                      const itemActive = item.id === activeItemId;
+                    {navRows(group.items).map(row => {
+                      const itemClass = (active: boolean) =>
+                        `block w-full rounded-md px-2.5 py-1.5 text-left text-[0.7812rem] font-medium transition-colors ${
+                          active
+                            ? isDark ? 'text-accent-400' : 'text-accent-700'
+                            : isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-800'
+                        }`;
+                      if (row.kind === 'item') {
+                        return (
+                          <li key={row.item.id}>
+                            <button onClick={() => onNavigateItem(row.item.id)} className={itemClass(row.item.id === activeItemId)}>
+                              {t(row.item.labelKey)}
+                            </button>
+                          </li>
+                        );
+                      }
+                      // A sub-heading: opens its first child, and stays lit while any child is open.
+                      const childActive = row.children.some(c => c.id === activeItemId);
                       return (
-                        <li key={item.id}>
-                          <button
-                            onClick={() => onNavigateItem(item.id)}
-                            className={`block w-full rounded-md px-2.5 py-1.5 text-left text-[0.7812rem] font-medium transition-colors ${
-                              itemActive
-                                ? isDark ? 'text-accent-400' : 'text-accent-700'
-                                : isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-800'
-                            }`}
-                          >
-                            {t(item.labelKey)}
+                        <li key={row.labelKey}>
+                          <button onClick={() => onNavigateItem(row.children[0].id)} className={`${itemClass(childActive)} flex items-center`}>
+                            {t(row.labelKey)}
+                            <ChevronDown className="ml-auto w-3 h-3 shrink-0 opacity-50" />
                           </button>
+                          <ul className={`mt-0.5 ml-2.5 space-y-0.5 border-l pl-2.5 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                            {row.children.map(child => (
+                              <li key={child.id}>
+                                <button onClick={() => onNavigateItem(child.id)} className={itemClass(child.id === activeItemId)}>
+                                  {t(child.labelKey)}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
                         </li>
                       );
                     })}
@@ -155,7 +190,8 @@ export function SettingsNav({
           return (
             <TabStrip
               activeId={activeItemId ?? activeGroup.items[0].id}
-              items={activeGroup.items.map(i => ({ id: i.id, label: t(i.labelKey) }))}
+              // One strip, no third row on a phone: a child carries its heading in its label.
+              items={activeGroup.items.map(i => ({ id: i.id, label: i.parentLabelKey ? `${t(i.parentLabelKey)} · ${t(i.labelKey)}` : t(i.labelKey) }))}
               onSelect={onNavigateItem}
               isDark={isDark}
               compact

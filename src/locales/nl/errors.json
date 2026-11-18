@@ -55,6 +55,7 @@
     "TMP_NOT_FOUND": "Uploadsessie niet gevonden. Begin opnieuw.",
     "UNSUPPORTED_PLATFORM": "Bibliotheken in gedeelde netwerkmappen worden niet ondersteund op dit platform.",
     "ARCHIVE_DISABLED": "Het archief is uitgeschakeld, dus er is niets geschreven of verwijderd. Schakel het in via Instellingen, op het tabblad Archief.",
-    "ARCHIVE_RETENTION_DISABLED": "Automatisch opschonen is uitgeschakeld, dus er is niets verwijderd. Schakel het in bij de archiefinstellingen."
+    "ARCHIVE_RETENTION_DISABLED": "Automatisch opschonen is uitgeschakeld, dus er is niets verwijderd. Schakel het in bij de archiefinstellingen.",
+    "GDRIVE_API_DISABLED": "De Google Drive API staat uit in het Google Cloud-project van deze client. Zet hem aan (stap 2 van de handleiding), wacht een minuut en probeer het opnieuw."
   }
 }

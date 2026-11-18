@@ -758,7 +758,7 @@ export const spec = {
         properties: {
           name:      strEx('nebulis-manual-3.2.0-2026-11-01T06-00-00.db'),
           path:      { type: 'string' },
-          kind:      { type: 'string', enum: ['upgrade', 'manual'] },
+          kind:      { type: 'string', enum: ['upgrade', 'manual', 'cloud'] },
           version:   nullable({ type: 'string' }),
           createdAt: { type: 'integer', description: 'Unix ms from the file mtime' },
           sizeBytes: { type: 'integer' },
@@ -857,6 +857,84 @@ export const spec = {
           password:      { type: 'string', description: 'Omitted or empty keeps the stored password' },
           clearPassword: { type: 'boolean', description: 'Forget the stored password' },
           hasPassword:   { type: 'boolean' },
+        },
+      },
+      StorageGdriveBackupConfig: {
+        type: 'object',
+        description: 'The Google Drive backup, a destination of its own next to the disk archive. The client secret and the sign-in are never returned.',
+        required: ['enabled', 'clientId', 'hasClientSecret', 'connected', 'account', 'folderId', 'folderPath', 'archiveId', 'includeSubframes', 'copyMinAgeEnabled', 'copyMinAgeDays', 'scheduleEnabled', 'scheduleMode', 'scheduleHour', 'scheduleMinute', 'scheduleIntervalHours', 'scheduleCron', 'lastRunAt', 'lastResult'],
+        properties: {
+          enabled:               { type: 'boolean', description: 'Master switch; off means nothing is uploaded' },
+          clientId:              { type: 'string', description: 'OAuth client of type "TVs and Limited Input devices"' },
+          hasClientSecret:       { type: 'boolean' },
+          connected:             { type: 'boolean', description: 'A Google account is signed in' },
+          account:               { type: 'string', description: 'The signed-in address, for display' },
+          folderId:              { type: 'string', description: 'The backup folder. Empty until one is prepared.' },
+          folderPath:            { type: 'string', description: 'The folder name when it was prepared, for display only' },
+          archiveId:             { type: 'string', description: 'Empty until the folder is adopted' },
+          includeSubframes:      { type: 'boolean' },
+          copyMinAgeEnabled:     { type: 'boolean' },
+          copyMinAgeDays:        { type: 'integer', minimum: 0 },
+          scheduleEnabled:       { type: 'boolean' },
+          scheduleMode:          { type: 'string', enum: ['daily', 'interval', 'custom'] },
+          scheduleHour:          { type: 'integer', minimum: 0, maximum: 23 },
+          scheduleMinute:        { type: 'integer', minimum: 0, maximum: 59 },
+          scheduleIntervalHours: { type: 'integer', minimum: 1, maximum: 168 },
+          scheduleCron:          { type: 'string' },
+          lastRunAt:             { type: 'string' },
+          lastResult:            { type: 'string' },
+        },
+      },
+      StorageGdriveBackupInput: {
+        type: 'object',
+        description: 'enabled, archiveId, lastRunAt and lastResult are refused: the switch has its own routes.',
+        properties: {
+          clientId:              { type: 'string', description: 'Changing it signs out and switches the backup off' },
+          clientSecret:          { type: 'string', description: 'Omitted or empty keeps the stored secret' },
+          clearClientSecret:     { type: 'boolean' },
+          folderId:              { type: 'string', description: 'From POST /gdrive-backup/folder; changing it switches the backup off until it is adopted' },
+          folderPath:            { type: 'string' },
+          includeSubframes:      { type: 'boolean' },
+          copyMinAgeEnabled:     { type: 'boolean' },
+          copyMinAgeDays:        { type: 'integer', minimum: 0 },
+          scheduleEnabled:       { type: 'boolean' },
+          scheduleMode:          { type: 'string', enum: ['daily', 'interval', 'custom'] },
+          scheduleHour:          { type: 'integer', minimum: 0, maximum: 23 },
+          scheduleMinute:        { type: 'integer', minimum: 0, maximum: 59 },
+          scheduleIntervalHours: { type: 'integer', minimum: 1, maximum: 168 },
+          scheduleCron:          { type: 'string' },
+        },
+      },
+      StorageGdriveDestination: {
+        type: 'object',
+        required: ['state', 'path', 'foundArchiveId'],
+        properties: {
+          state:          { type: 'string', enum: ['offline', 'absent', 'match', 'foreign', 'invalid', 'unreadable'] },
+          path:           { type: 'string' },
+          foundArchiveId: nullable({ type: 'string' }),
+        },
+      },
+      StorageGdriveBackup: {
+        type: 'object',
+        required: ['config', 'destination'],
+        properties: {
+          config:      { $ref: '#/components/schemas/StorageGdriveBackupConfig' },
+          destination: { $ref: '#/components/schemas/StorageGdriveDestination' },
+          progress:    { $ref: '#/components/schemas/StorageArchiveRunProgress' },
+          running:     { type: 'boolean' },
+          lastRun:     { description: 'How the last run of this process ended (trigger, finishedAt, result with summary), or null', oneOf: [{ type: 'object' }, { type: 'null' }] },
+        },
+      },
+      StorageGdriveSignIn: {
+        type: 'object',
+        required: ['state'],
+        properties: {
+          state:           { type: 'string', enum: ['idle', 'pending', 'connected', 'denied', 'expired', 'error'] },
+          userCode:        { type: 'string', description: 'While pending: the code to enter at verificationUrl' },
+          verificationUrl: { type: 'string' },
+          expiresAt:       { type: 'integer', description: 'Unix ms' },
+          account:         { type: 'string' },
+          error:           { type: 'string' },
         },
       },
       StorageArchiveConfig: {
@@ -8273,6 +8351,122 @@ export const spec = {
           202: jsonResponse('The run is stopping', 'StorageArchiveCancelling'),
           403: { description: 'FORBIDDEN. Admin only.' },
           409: { description: 'ARCHIVE_NOT_RUNNING' },
+        },
+      },
+    },
+    '/storage/gdrive-backup': {
+      get: {
+        summary: 'Google Drive backup',
+        tags: ['Storage'],
+        description: 'The Google Drive backup settings, where its folder stands, and how a run is going. Runs alongside the disk archive.',
+        responses: { 200: jsonResponse('The backup', 'StorageGdriveBackup') },
+      },
+      put: {
+        summary: 'Save the Google Drive backup settings',
+        tags: ['Storage'],
+        description: 'Admin only. Body: StorageGdriveBackupInput. Validated as a whole before anything is written.',
+        responses: {
+          200: jsonResponse('The saved backup', 'StorageGdriveBackup'),
+          400: { description: 'GDRIVE_INVALID_CONFIG' },
+          403: { description: 'FORBIDDEN. Admin only.' },
+        },
+      },
+    },
+    '/storage/gdrive-backup/enable': {
+      post: {
+        summary: 'Turn the Google Drive backup on',
+        tags: ['Storage'],
+        description: 'Admin only. Adopts the folder (writes the .nebulisarchive marker) and switches the backup on. Body: { confirmArchiveId } to take over another install\u2019s folder.',
+        responses: {
+          200: jsonResponse('The backup', 'StorageGdriveBackup'),
+          403: { description: 'FORBIDDEN. Admin only.' },
+          409: { description: 'GDRIVE_NO_FOLDER, GDRIVE_MARKER_UNREADABLE or GDRIVE_FOREIGN_CONFIRMATION_REQUIRED' },
+          400: { description: 'GDRIVE_UNUSABLE' },
+          502: { description: 'GDRIVE_ADOPT_FAILED' },
+        },
+      },
+    },
+    '/storage/gdrive-backup/disable': {
+      post: {
+        summary: 'Turn the Google Drive backup off',
+        tags: ['Storage'],
+        description: 'Admin only. The folder, its files and the sign-in are kept.',
+        responses: { 200: jsonResponse('The backup', 'StorageGdriveBackup'), 403: { description: 'FORBIDDEN. Admin only.' } },
+      },
+    },
+    '/storage/gdrive-backup/sign-in': {
+      get: {
+        summary: 'Google Drive sign-in status',
+        tags: ['Storage'],
+        description: 'Admin only. Poll while a sign-in is pending.',
+        responses: { 200: jsonResponse('Where the sign-in stands', 'StorageGdriveSignIn'), 403: { description: 'FORBIDDEN. Admin only.' } },
+      },
+    },
+    '/storage/gdrive-backup/connect': {
+      post: {
+        summary: 'Start a Google Drive sign-in',
+        tags: ['Storage'],
+        description: 'Admin only. Stores the OAuth client (clientId and clientSecret in the body, both optional) and starts the device-code flow. Writes nothing to Drive.',
+        responses: {
+          200: jsonResponse('The code to enter', 'StorageGdriveSignIn'),
+          400: { description: 'GDRIVE_INVALID_CONFIG or GDRIVE_SIGN_IN_FAILED (no client configured)' },
+          403: { description: 'FORBIDDEN. Admin only.' },
+          502: { description: 'GDRIVE_SIGN_IN_FAILED. Google refused or could not be reached.' },
+        },
+      },
+    },
+    '/storage/gdrive-backup/sign-in/cancel': {
+      post: {
+        summary: 'Stop waiting for a Google Drive sign-in',
+        tags: ['Storage'],
+        description: 'Admin only. Nothing is stored.',
+        responses: { 200: jsonResponse('Where the sign-in stands', 'StorageGdriveSignIn'), 403: { description: 'FORBIDDEN. Admin only.' } },
+      },
+    },
+    '/storage/gdrive-backup/disconnect': {
+      post: {
+        summary: 'Sign out of Google Drive',
+        tags: ['Storage'],
+        description: 'Admin only. Revokes the token with Google and forgets it. Files in Drive are left as they are.',
+        responses: { 200: jsonResponse('Where the sign-in stands', 'StorageGdriveSignIn'), 403: { description: 'FORBIDDEN. Admin only.' } },
+      },
+    },
+    '/storage/gdrive-backup/folder': {
+      post: {
+        summary: 'Prepare the Google Drive backup folder',
+        tags: ['Storage'],
+        description:
+          'Admin only. Returns the backup folder: the one already saved (kept by id, even if moved or renamed), else a Nebulis folder at the top of My Drive, created when missing. Nothing is saved; save the id with PUT.',
+        responses: {
+          200: { description: 'folder: { id, name } and created (true when it was just made)' },
+          403: { description: 'FORBIDDEN. Admin only.' },
+          409: { description: 'GDRIVE_NOT_CONNECTED or GDRIVE_API_DISABLED' },
+          502: { description: 'GDRIVE_UNREACHABLE' },
+        },
+      },
+    },
+    '/storage/gdrive-backup/run': {
+      post: {
+        summary: 'Back up to Google Drive now',
+        tags: ['Storage'],
+        description: 'Admin only. Answers 202 and continues in the background; poll GET /gdrive-backup. Can run while a disk archive run is in progress.',
+        responses: {
+          202: jsonResponse('The run was accepted', 'StorageArchiveStarted'),
+          403: { description: 'FORBIDDEN. Admin only.' },
+          409: { description: 'GDRIVE_BACKUP_DISABLED, GDRIVE_BACKUP_ALREADY_RUNNING, LIBRARY_BUSY or GDRIVE_UNUSABLE' },
+          503: { description: 'LIBRARY_UNAVAILABLE' },
+        },
+      },
+    },
+    '/storage/gdrive-backup/run/cancel': {
+      post: {
+        summary: 'Cancel the Google Drive backup run',
+        tags: ['Storage'],
+        description: 'Admin only. Takes effect at the next file. Files already uploaded stay in Drive and in the record.',
+        responses: {
+          202: jsonResponse('The run is stopping', 'StorageArchiveCancelling'),
+          403: { description: 'FORBIDDEN. Admin only.' },
+          409: { description: 'GDRIVE_BACKUP_NOT_RUNNING' },
         },
       },
     },

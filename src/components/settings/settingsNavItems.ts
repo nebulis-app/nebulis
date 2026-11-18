@@ -25,6 +25,10 @@ export interface SettingsNavItem {
   id: string;
   labelKey: string;
   adminOnly?: boolean;
+  /** Label key of a sub-heading this item sits under, one level deeper. Display
+   *  only: items stay a flat list, so `?section=` ids, search and deep links do
+   *  not change. Consecutive items with the same parent share one heading. */
+  parentLabelKey?: string;
 }
 
 export interface SettingsNavGroup {
@@ -88,11 +92,12 @@ export const SETTINGS_NAV: SettingsNavGroup[] = [
     section: 'system',
     items: [
       { id: 'location', labelKey: 'nav.location' },
-      // A bare "Archive" in the nav, which the user asked for. This codebase also has
-      // a calibration archive, so the section title stays "External archive" and the
-      // copy says "archive disk" throughout: the short nav label is disambiguated by
-      // what it opens, not by repeating the qualifier in the menu.
-      { id: 'archive', labelKey: 'nav.archive' },
+      // "Archive" is a sub-heading over the two places a copy can go. They are two
+      // features that run side by side, not two kinds of one destination. The disk
+      // archive keeps its `archive` id, which deep links already use. This codebase
+      // also has a calibration archive, so the section title stays "External archive".
+      { id: 'archive', labelKey: 'nav.archiveDisk', parentLabelKey: 'nav.archive' },
+      { id: 'gdrive', labelKey: 'nav.gdrive', parentLabelKey: 'nav.archive' },
       { id: 'linked', labelKey: 'nav.linked' },
       { id: 'backups', labelKey: 'nav.backups' },
       { id: 'cleanup', labelKey: 'nav.cleanup' },

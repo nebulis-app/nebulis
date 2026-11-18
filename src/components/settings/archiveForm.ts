@@ -9,7 +9,6 @@ export const EMPTY_FORM: ArchiveConfig = {
   path: '',
   locationType: 'local',
   network: { host: '', share: '', domain: '', username: '', hasPassword: false, subpath: '' },
-  gdrive: { clientId: '', hasClientSecret: false, connected: false, account: '', folderName: 'Nebulis' },
   archiveId: '',
   scope: 'all',
   selectedObjects: [],
@@ -71,36 +70,44 @@ function atTimeOfDay(hour: number, minute: number): Date {
  */
 export type ScheduleChoice = 'manual' | ArchiveScheduleMode;
 
-export function scheduleChoiceOf(form: ArchiveConfig): ScheduleChoice {
+/** The copy and schedule fields, which the disk archive and the Google Drive backup
+ *  share by name, so one set of controls edits either. */
+export type CopyScheduleForm = Pick<
+  ArchiveConfig,
+  | 'includeSubframes'
+  | 'copyMinAgeEnabled'
+  | 'copyMinAgeDays'
+  | 'scheduleEnabled'
+  | 'scheduleMode'
+  | 'scheduleHour'
+  | 'scheduleMinute'
+  | 'scheduleIntervalHours'
+  | 'scheduleCron'
+>;
+
+export function scheduleChoiceOf(form: CopyScheduleForm): ScheduleChoice {
   return form.scheduleEnabled ? form.scheduleMode : 'manual';
 }
 
-export function scheduleChoicePatch(choice: ScheduleChoice): Partial<ArchiveConfig> {
+export function scheduleChoicePatch(choice: ScheduleChoice): Partial<CopyScheduleForm> {
   return choice === 'manual' ? { scheduleEnabled: false } : { scheduleEnabled: true, scheduleMode: choice };
 }
 
 /** How many days a new capture waits before it is copied. Zero means it does not. */
-export function waitDaysOf(form: ArchiveConfig): number {
+export function waitDaysOf(form: CopyScheduleForm): number {
   return form.copyMinAgeEnabled ? form.copyMinAgeDays : 0;
 }
 
 /** The stored pair behind the single "wait" number. The server refuses an enabled
  *  wait of zero days, so the switch is derived from the number and cannot disagree. */
-export function waitDaysPatch(days: number): Partial<ArchiveConfig> {
+export function waitDaysPatch(days: number): Partial<CopyScheduleForm> {
   const whole = Math.max(0, Math.floor(days) || 0);
   return { copyMinAgeDays: whole, copyMinAgeEnabled: whole > 0 };
 }
 
-/** Whether a destination has been chosen at all, for any kind of destination. */
+/** Whether a destination has been chosen at all, for either kind of disk. */
 export function hasDestination(form: ArchiveConfig): boolean {
-  if (form.locationType === 'gdrive') return form.gdrive.connected;
   return form.locationType === 'network' ? form.network.host !== '' : form.path.trim() !== '';
-}
-
-/** Whether the destination is a Google Drive folder, where pruning and local removal
- *  are not available (the server refuses them). */
-export function isRemoteDestination(form: ArchiveConfig): boolean {
-  return form.locationType === 'gdrive';
 }
 
 /**
@@ -114,8 +121,7 @@ export function isRemoteDestination(form: ArchiveConfig): boolean {
 export function groupPayload(group: ArchiveGroup, form: ArchiveConfig): ArchiveConfigPatch {
   switch (group) {
     case 'disk':
-      // A share and a Drive folder are described by their own fields, saved by the picker.
-      return form.locationType === 'local' ? { path: form.path.trim() } : {};
+      return form.locationType === 'network' ? {} : { path: form.path.trim() };
     case 'copy':
       return {
         includeSubframes: form.includeSubframes,
@@ -132,13 +138,11 @@ export function groupPayload(group: ArchiveGroup, form: ArchiveConfig): ArchiveC
         ...(form.scheduleMode === 'custom' ? { scheduleCron: form.scheduleCron.trim() } : {}),
       };
     case 'cleanup':
-      // Neither switch can be on for a Drive archive; sending them off keeps a save
-      // from another group from being refused for a leftover value.
       return {
         retentionDays: form.retentionDays,
-        retentionEnabled: isRemoteDestination(form) ? false : form.retentionEnabled,
+        retentionEnabled: form.retentionEnabled,
         retentionSubframesOnly: form.retentionSubframesOnly,
-        removeLocalAfter: isRemoteDestination(form) ? false : form.removeLocalAfter,
+        removeLocalAfter: form.removeLocalAfter,
       };
   }
 }

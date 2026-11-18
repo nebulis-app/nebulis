@@ -38,7 +38,6 @@ import { selectArchiveFiles, type ArchiveCandidate } from './archiveSelect.js';
 import type { ArchiveManifest, ArchiveManifestFile } from './archiveManifest.js';
 import { mergeArchiveRun, readArchiveManifestResult, writeArchiveManifest, EMPTY_ARCHIVE_MANIFEST } from './archiveManifest.js';
 import { availableBytes, bytesStillNeeded, hasRoomFor } from './archiveSpace.js';
-import { runGdriveArchive } from './gdrive/driveArchive.js';
 
 /** Suffix for an in-flight copy. `isRealFile` rejects nothing here, but the
  *  selector only ever reads the library, and this name is only ever written to
@@ -381,7 +380,7 @@ function refusal(reason: ArchiveRunRefusal): ArchiveRunResult {
  */
 export async function runArchive(
   config: ArchiveConfig = getArchiveConfig(),
-  options: { signal?: AbortSignal; takeDatabaseSnapshot?: () => void } = {},
+  options: { signal?: AbortSignal } = {},
 ): Promise<ArchiveRunResult> {
   const { signal } = options;
   if (progress.running) return refusal('already-running');
@@ -392,36 +391,6 @@ export async function runArchive(
   // the try block below releases it again, so a refusal is not left looking like a
   // run in progress.
   progress = { ...IDLE_PROGRESS, running: true, phase: 'scanning', startedAt: Date.now() };
-
-  // A Drive folder is not a filesystem: its engine shares this slot and this progress
-  // record, and nothing else below.
-  if (config.locationType === 'gdrive') {
-    try {
-      const result = await runGdriveArchive(config, {
-        signal,
-        takeDatabaseSnapshot: options.takeDatabaseSnapshot,
-        report: patch => {
-          progress = { ...progress, ...patch };
-        },
-      });
-      if (!result.ran) {
-        progress = { ...IDLE_PROGRESS };
-        return result;
-      }
-      progress.phase = result.failures.length > 0 ? 'failed' : 'done';
-      return result;
-    } catch (err) {
-      progress.phase = 'failed';
-      return {
-        ...refusal('destination-unusable'),
-        ran: true,
-        failures: [{ archiveRelPath: '(run)', error: err instanceof Error ? err.message : String(err) }],
-      };
-    } finally {
-      progress.running = false;
-      progress.finishedAt = Date.now();
-    }
-  }
 
   // Connect first where that applies, then prove the marker: one call, so no path
   // can answer "is it reachable" without also answering "is it ours".

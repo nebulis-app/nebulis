@@ -1,7 +1,11 @@
 /**
- * The archive, when its destination is a Google Drive folder.
+ * The Google Drive backup engine: the library, the gallery and the database, copied
+ * to a folder in the user's Google Drive.
  *
- * It keeps the promises the disk archive makes, in Drive's terms:
+ * This is a second destination, independent of the disk archive (see
+ * gdriveBackupConfig.ts for why), with its own runner and schedule
+ * (gdriveBackupRunner.ts). It keeps the promises the disk archive makes, in Drive's
+ * terms:
  *
  *  - **The layout is mirrored.** `<folder>/<object>/<session>/<file>`, exactly as on
  *    a disk, so the folder can be downloaded and opened in Siril or PixInsight
@@ -22,21 +26,15 @@
  * not in Drive yet into `.nebulis-database/`. The pre-upgrade and manual snapshots
  * are uploaded as soon as they are taken, through `uploadDatabaseBackupsToGdrive`.
  *
- * What is not here yet: pruning, removing local subframes, browsing and restoring.
- * All four re-verify through a filesystem, and the config refuses the first two for
- * a Drive archive rather than letting them do nothing quietly.
+ * It never deletes library files from Drive: it is a backup that only adds. Pruning,
+ * removing local subframes and restoring belong to the disk archive.
  */
 
 import fs from 'fs';
 import fsp from 'fs/promises';
 import { createHash } from 'crypto';
 
-import {
-  getArchiveConfig,
-  getArchiveGdriveSecrets,
-  setArchiveGdriveFolderId,
-  type ArchiveConfig,
-} from '../archiveConfig.js';
+import { getGdriveBackupConfig, getGdriveBackupSecrets, gdriveSelectionConfig, type GdriveBackupConfig } from './gdriveBackupConfig.js';
 import { ARCHIVE_MARKER_FILENAME, newArchiveId, parseArchiveMarker, type ArchiveMarkerState } from '../archiveMarker.js';
 import {
   ARCHIVE_MANIFEST_BACKUP_FILENAME,
@@ -66,13 +64,23 @@ export const GDRIVE_CLOUD_SNAPSHOTS_KEPT = 30;
 const MANIFEST_FLUSH_FILES = 500;
 const MANIFEST_FLUSH_MS = 5 * 60_000;
 
-export const GDRIVE_NOT_CONNECTED = 'Google Drive is not signed in. Connect it in Settings, on the Archive tab.';
-export const GDRIVE_FOLDER_MISSING = 'The Google Drive archive folder was not found. Set it up again from the Archive tab.';
-const GDRIVE_NOT_OURS = 'That Google Drive folder is not this install’s archive.';
+export const GDRIVE_NOT_CONNECTED = 'Google Drive is not signed in. Connect it in Settings → Storage → Archive → Google Drive.';
+export const GDRIVE_FOLDER_MISSING = 'The Google Drive backup folder was not found. Open Settings → Storage → Archive → Google Drive to prepare it again.';
+const GDRIVE_NOT_OURS = 'That Google Drive folder is not this install’s backup.';
 
 // ─── Small helpers ──────────────────────────────────────────────────────────
 
+/** Drive's answer when the client's Google Cloud project never turned the Drive API on
+ *  (setup step 2). Sign-in still works then, so this is the first Drive call to notice. */
+export const GDRIVE_API_DISABLED =
+  'The Google Drive API is turned off in the Google Cloud project of this client. Turn it on (step 2 of the setup guide), wait a minute, then try again.';
+
+function isApiDisabled(err: unknown): boolean {
+  return err instanceof DriveError && err.reason === 'accessNotConfigured';
+}
+
 function message(err: unknown): string {
+  if (isApiDisabled(err)) return GDRIVE_API_DISABLED;
   return err instanceof Error ? err.message : String(err);
 }
 
@@ -99,35 +107,75 @@ export function uploadMatches(uploaded: DriveFile, bytes: number, digests: { sha
 }
 
 /** What the settings page shows as the destination. */
-export function gdriveDisplayPath(config: ArchiveConfig): string {
-  const account = config.gdrive.account ? ` (${config.gdrive.account})` : '';
-  return `Google Drive: /${config.gdrive.folderName}${account}`;
+export function gdriveDisplayPath(config: GdriveBackupConfig): string {
+  const account = config.account ? ` (${config.account})` : '';
+  return `Google Drive: /${config.folderPath}${account}`;
 }
 
-// ─── The archive folder and its marker ──────────────────────────────────────
+// ─── The backup folder and its marker ───────────────────────────────────────
 
 /**
- * The archive folder at the top of "My Drive", found by its remembered id or by name,
- * and created only when `create` is set (adoption).
- *
- * With the `drive.file` scope a search only sees folders this app made, so a folder
- * the user created by hand with the same name is never picked up by accident.
+ * The backup folder, by its stored id. Null when none has been prepared, or when this
+ * sign-in cannot see it (moved to the bin, or another account). Nothing here creates
+ * a folder: `prepareGdriveArchiveFolder` is the only place that does.
  */
-export async function findArchiveFolder(client: DriveClient, create: boolean): Promise<DriveFile | null> {
-  const secrets = getArchiveGdriveSecrets();
-  if (secrets.folderId !== '') {
-    const known = await client.getFile(secrets.folderId);
-    if (known && known.mimeType === FOLDER_MIME && known.name === secrets.folderName) return known;
+export async function findArchiveFolder(client: DriveClient): Promise<DriveFile | null> {
+  const { folderId } = getGdriveBackupSecrets();
+  if (folderId === '') return null;
+  const folder = await client.getFile(folderId);
+  return folder && folder.mimeType === FOLDER_MIME ? folder : null;
+}
+
+export interface GdriveFolderEntry {
+  id: string;
+  name: string;
+}
+
+export class GdriveFolderError extends Error {
+  constructor(message: string, public readonly status: number, public readonly code: string) {
+    super(message);
+    this.name = 'GdriveFolderError';
   }
-  const [found] = await client.findByName('root', secrets.folderName, true);
-  if (found) {
-    setArchiveGdriveFolderId(found.id);
-    return found;
+}
+
+function signedInClient(): DriveClient {
+  const client = getGdriveClient();
+  if (!client) throw new GdriveFolderError(GDRIVE_NOT_CONNECTED, 409, 'GDRIVE_NOT_CONNECTED');
+  return client;
+}
+
+/** Turn the Drive errors a user can fix into a folder error with its own code. */
+async function folderCall<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    if (isApiDisabled(err)) throw new GdriveFolderError(GDRIVE_API_DISABLED, 409, 'GDRIVE_API_DISABLED');
+    throw err;
   }
-  if (!create) return null;
-  const created = await client.createFolder('root', secrets.folderName);
-  setArchiveGdriveFolderId(created.id);
-  return created;
+}
+
+/** The folder Nebulis creates at the top of My Drive when none is chosen yet. */
+export const GDRIVE_DEFAULT_FOLDER = 'Nebulis';
+
+/**
+ * The backup folder, made ready right after sign-in. There is no folder picker: with
+ * the `drive.file` scope Nebulis could only ever list the folders it made itself.
+ *
+ * In order: the folder already chosen, wherever the user has since moved or renamed it
+ * (it is kept by id); else a `Nebulis` folder at the top of My Drive that Nebulis made
+ * earlier; else a new one there. Only the last case writes to Drive, and it writes an
+ * empty folder. Nothing is saved here: the folder is saved with the backup settings.
+ */
+export async function prepareGdriveArchiveFolder(): Promise<{ folder: GdriveFolderEntry; created: boolean }> {
+  const client = signedInClient();
+  return folderCall(async () => {
+    const current = await findArchiveFolder(client);
+    if (current) return { folder: { id: current.id, name: current.name }, created: false };
+    const [earlier] = await client.findByName('root', GDRIVE_DEFAULT_FOLDER, true);
+    if (earlier) return { folder: { id: earlier.id, name: earlier.name }, created: false };
+    const made = await client.createFolder('root', GDRIVE_DEFAULT_FOLDER);
+    return { folder: { id: made.id, name: made.name }, created: true };
+  });
 }
 
 type RemoteMarker = ArchiveMarkerState & { fileId?: string };
@@ -155,17 +203,18 @@ export type GdriveReadiness =
   | { ok: false; warning: string };
 
 /** The strict form, for every step that writes: signed in, folder found, marker ours. */
-export async function ensureGdriveArchiveReady(config: ArchiveConfig): Promise<GdriveReadiness> {
+export async function ensureGdriveArchiveReady(config: GdriveBackupConfig): Promise<GdriveReadiness> {
   const client = getGdriveClient();
   if (!client) return { ok: false, warning: GDRIVE_NOT_CONNECTED };
   try {
-    const folder = await findArchiveFolder(client, false);
+    const folder = await findArchiveFolder(client);
     if (!folder) return { ok: false, warning: GDRIVE_FOLDER_MISSING };
     const marker = await readRemoteMarker(client, folder.id, config.archiveId);
     if (marker.state !== 'match') return { ok: false, warning: GDRIVE_NOT_OURS };
     return { ok: true, client, folderId: folder.id };
   } catch (err) {
     if (err instanceof GdriveAuthError) return { ok: false, warning: err.message };
+    if (isApiDisabled(err)) return { ok: false, warning: GDRIVE_API_DISABLED };
     return { ok: false, warning: `Google Drive could not be reached: ${message(err)}` };
   }
 }
@@ -176,16 +225,16 @@ export interface GdriveDestinationView {
   foundArchiveId: string | null;
 }
 
-/** Where the Drive destination stands, for the settings page. Reads only. A folder
- *  that does not exist yet is `absent`, which is what offers the adopt button, and
- *  adopting is what creates it. */
-export async function gdriveDestinationState(config: ArchiveConfig): Promise<GdriveDestinationView> {
+/** Where the Drive destination stands, for the settings page. Reads only. A chosen
+ *  folder without our marker is `absent`, which is what offers the adopt button; a
+ *  folder that cannot be found (none chosen, or gone) is `offline`. */
+export async function gdriveDestinationState(config: GdriveBackupConfig): Promise<GdriveDestinationView> {
   const path = gdriveDisplayPath(config);
   const client = getGdriveClient();
   if (!client) return { state: 'offline', path, foundArchiveId: null };
   try {
-    const folder = await findArchiveFolder(client, false);
-    if (!folder) return { state: 'absent', path, foundArchiveId: null };
+    const folder = await findArchiveFolder(client);
+    if (!folder) return { state: 'offline', path, foundArchiveId: null };
     const marker = await readRemoteMarker(client, folder.id, config.archiveId);
     const foundArchiveId = marker.state === 'match' || marker.state === 'foreign' ? marker.marker.archiveId : null;
     return { state: marker.state, path, foundArchiveId };
@@ -199,17 +248,16 @@ export type GdriveAdoptResult =
   | { ok: false; status: number; code: string; message: string };
 
 /**
- * Claim the Drive folder as this install's archive: create it if needed and write
- * our marker. The same rules as adopting a disk: an unreadable marker is never
+ * Claim the Drive folder as this install's backup by writing our marker. The same rules as adopting a disk: an unreadable marker is never
  * overwritten, and a foreign one only when the caller echoes its id back.
  */
-export async function adoptGdriveArchive(config: ArchiveConfig, confirmArchiveId: unknown): Promise<GdriveAdoptResult> {
+export async function adoptGdriveArchive(config: GdriveBackupConfig, confirmArchiveId: unknown): Promise<GdriveAdoptResult> {
   const client = getGdriveClient();
-  if (!client) return { ok: false, status: 400, code: 'ARCHIVE_DESTINATION_UNUSABLE', message: GDRIVE_NOT_CONNECTED };
+  if (!client) return { ok: false, status: 400, code: 'GDRIVE_UNUSABLE', message: GDRIVE_NOT_CONNECTED };
   const path = gdriveDisplayPath(config);
   try {
-    const folder = await findArchiveFolder(client, true);
-    if (!folder) return { ok: false, status: 400, code: 'ARCHIVE_DESTINATION_UNUSABLE', message: GDRIVE_FOLDER_MISSING };
+    const folder = await findArchiveFolder(client);
+    if (!folder) return { ok: false, status: 400, code: 'GDRIVE_UNUSABLE', message: GDRIVE_FOLDER_MISSING };
     const marker = await readRemoteMarker(client, folder.id, config.archiveId);
 
     if (marker.state === 'match') {
@@ -219,7 +267,7 @@ export async function adoptGdriveArchive(config: ArchiveConfig, confirmArchiveId
       return {
         ok: false,
         status: 409,
-        code: 'ARCHIVE_MARKER_UNREADABLE',
+        code: 'GDRIVE_MARKER_UNREADABLE',
         message: 'The marker file in that Google Drive folder cannot be read, so it will not be overwritten. Remove it in Google Drive if you are sure.',
       };
     }
@@ -227,8 +275,8 @@ export async function adoptGdriveArchive(config: ArchiveConfig, confirmArchiveId
       return {
         ok: false,
         status: 409,
-        code: 'ARCHIVE_FOREIGN_CONFIRMATION_REQUIRED',
-        message: `That Google Drive folder already holds an archive (${marker.marker.archiveId}). Confirm that id to take it over.`,
+        code: 'GDRIVE_FOREIGN_CONFIRMATION_REQUIRED',
+        message: `That Google Drive folder already holds another install’s backup (${marker.marker.archiveId}). Confirm that id to take it over.`,
       };
     }
 
@@ -263,8 +311,8 @@ export async function adoptGdriveArchive(config: ArchiveConfig, confirmArchiveId
       path,
     };
   } catch (err) {
-    if (err instanceof GdriveAuthError) return { ok: false, status: 400, code: 'ARCHIVE_DESTINATION_UNUSABLE', message: err.message };
-    return { ok: false, status: 502, code: 'ARCHIVE_ADOPT_FAILED', message: `Google Drive could not be reached: ${message(err)}` };
+    if (err instanceof GdriveAuthError) return { ok: false, status: 400, code: 'GDRIVE_UNUSABLE', message: err.message };
+    return { ok: false, status: 502, code: 'GDRIVE_ADOPT_FAILED', message: `Google Drive could not be reached: ${message(err)}` };
   }
 }
 
@@ -390,7 +438,7 @@ function emptyResult(overrides: Partial<ArchiveRunResult>): ArchiveRunResult {
 }
 
 /** Copy everything the configuration selects to the Drive folder, then the database. */
-export async function runGdriveArchive(config: ArchiveConfig, options: GdriveRunOptions): Promise<ArchiveRunResult> {
+export async function runGdriveArchive(config: GdriveBackupConfig, options: GdriveRunOptions): Promise<ArchiveRunResult> {
   const { signal, report } = options;
   const readiness = await ensureGdriveArchiveReady(config);
   if (!readiness.ok) return emptyResult({ ran: false, reason: 'destination-unusable', warnings: [readiness.warning] });
@@ -419,7 +467,7 @@ export async function runGdriveArchive(config: ArchiveConfig, options: GdriveRun
   };
   let manifestFileId = manifestRead.status === 'ok' ? manifestRead.fileId : undefined;
 
-  const selection = selectArchiveFiles(config);
+  const selection = selectArchiveFiles(gdriveSelectionConfig(config));
   report({ filesTotal: selection.candidates.length, bytesTotal: selection.bytesTotal, warnings: [...selection.warnings], phase: 'copying' });
 
   // What the record already knows, so an unchanged library is not re-hashed.
@@ -693,16 +741,16 @@ export async function syncDatabaseBackups(
 let dbUploadChain: Promise<unknown> = Promise.resolve();
 
 /**
- * Upload the local database snapshots to Drive now, when a Drive archive is set up,
+ * Upload the local database snapshots to Drive now, when the Drive backup is set up,
  * switched on and ours. Called after an upgrade snapshot and after a manual one.
  * Serialised, so two snapshots taken close together never upload the same file twice.
  *
- * Resolves to null when there is nothing to do (no Drive archive), and never rejects.
+ * Resolves to null when there is nothing to do (no Drive backup), and never rejects.
  */
 export function uploadDatabaseBackupsToGdrive(
-  config: ArchiveConfig,
+  config: GdriveBackupConfig,
 ): Promise<{ uploaded: number; failures: ArchiveRunResult['failures'] } | { error: string } | null> {
-  if (!config.enabled || config.locationType !== 'gdrive' || config.archiveId === '') return Promise.resolve(null);
+  if (!config.enabled || config.archiveId === '') return Promise.resolve(null);
   const next = dbUploadChain.then(async () => {
     const readiness = await ensureGdriveArchiveReady(config);
     if (!readiness.ok) return { error: readiness.warning };
@@ -718,12 +766,12 @@ export function uploadDatabaseBackupsToGdrive(
 }
 
 /**
- * Send the local database snapshots to the Google Drive archive, when there is one,
+ * Send the local database snapshots to the Google Drive backup, when there is one,
  * without holding up the request that took the snapshot. The outcome goes to the
  * system log, which is where a failed backup has to be visible.
  */
 export function uploadSnapshotsToGdriveInBackground(trigger: 'manual' | 'upgrade'): void {
-  void uploadDatabaseBackupsToGdrive(getArchiveConfig()).then(result => {
+  void uploadDatabaseBackupsToGdrive(getGdriveBackupConfig()).then(result => {
     if (result === null) return;
     if ('error' in result) {
       logEvent({

@@ -24,7 +24,6 @@ import { runArchive } from './archiveCopy.js';
 import type { ArchiveRunResult } from './archiveCopy.js';
 import { removeVerifiedLocalSubframes } from './archiveLocalRemoval.js';
 import { applyArchiveRetention, planArchiveRetention } from './archiveRetention.js';
-import { createCloudDatabaseBackup } from '../db.js';
 
 export type ArchiveTrigger = 'scheduled' | 'manual';
 
@@ -108,14 +107,7 @@ export async function runArchivePipeline(
   activeAbort = controller;
   let copy: ArchiveRunResult;
   try {
-    copy = await runArchive(config, {
-      signal: controller.signal,
-      // A Drive run backs the database up too. The snapshot is taken here rather than
-      // inside the engine so the engine never touches the live database handle.
-      takeDatabaseSnapshot: () => {
-        createCloudDatabaseBackup();
-      },
-    });
+    copy = await runArchive(config, { signal: controller.signal });
   } finally {
     // A cancel that lands after the copy loop has nothing left to stop, and must not
     // be able to reach a later run through a stale handle.
@@ -134,9 +126,7 @@ export async function runArchivePipeline(
   // The disk went away mid-run. Files copied before that are safe, but nothing may be deleted or pruned on the
   // strength of a run that ended this way, and it is not an attempt that satisfies the schedule.
   if (copy.diskLost) {
-    const summary = config.locationType === 'gdrive'
-      ? 'failed: Google Drive access was lost during the run'
-      : 'failed: the archive disk was disconnected during the run';
+    const summary = 'failed: the archive disk was disconnected during the run';
     setArchiveConfig({ lastResult: summary });
     return finish({ ...copy, summary, localRemoved: 0, retentionRemoved: 0 });
   }
@@ -152,10 +142,7 @@ export async function runArchivePipeline(
   // leave a run that has deleted something it did not finish backing up.
   let localRemoved = 0;
   let localRemovalSkipped = false;
-  // Never for a Drive archive: the config refuses both switches there, and this is
-  // the second lock on that door, because both steps verify through a filesystem.
-  const filesystem = config.locationType !== 'gdrive';
-  if (filesystem && config.removeLocalAfter) {
+  if (config.removeLocalAfter) {
     const removal = await removeVerifiedLocalSubframes(config);
     localRemoved = removal.removed;
     localRemovalSkipped = removal.removed === 0 && removal.failures.length > 0;
@@ -165,7 +152,7 @@ export async function runArchivePipeline(
   // off copies files without deleting any. It runs after the copy for the same
   // reason local removal does: the thing being pruned was just backed up.
   let retentionRemoved = 0;
-  if (filesystem && config.retentionEnabled) {
+  if (config.retentionEnabled) {
     const plan = await planArchiveRetention(config, now);
     if (plan.items.length > 0) {
       retentionRemoved = (await applyArchiveRetention(config, plan)).removed;

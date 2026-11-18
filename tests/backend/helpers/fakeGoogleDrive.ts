@@ -10,7 +10,9 @@ import { createHash } from 'crypto';
  *
  * Knobs for the failure paths: `corruptNextUploads` makes Drive report a wrong MD5
  * for the next N uploads, `failNextChunks` answers the next N chunk PUTs with a 503,
- * and `revoked` makes every token refresh answer `invalid_grant`.
+ * `revoked` makes every token refresh answer `invalid_grant`, and `apiDisabled`
+ * answers every Drive call with the 403 `accessNotConfigured` of a project whose
+ * Drive API is off.
  */
 
 export interface FakeDriveFile {
@@ -28,10 +30,14 @@ const FOLDER = 'application/vnd.google-apps.folder';
 export class FakeGoogleDrive {
   files = new Map<string, FakeDriveFile>();
   uploads = 0;
+  /** Every request this fake has answered, OAuth included. */
+  requests = 0;
   chunkPuts = 0;
   corruptNextUploads = 0;
   failNextChunks = 0;
   revoked = false;
+  /** Answer every Drive call as a project that never turned the Drive API on. */
+  apiDisabled = false;
   quota: { limit: number | null; usage: number } = { limit: null, usage: 0 };
   /** Device-flow answers, in order, for the token poll. */
   devicePollAnswers: Array<{ status: number; body: Record<string, unknown> }> = [];
@@ -115,6 +121,7 @@ export class FakeGoogleDrive {
   }
 
   fetch: typeof fetch = async (input, init) => {
+    this.requests++;
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
     const method = (init?.method ?? 'GET').toUpperCase();
 
@@ -142,6 +149,12 @@ export class FakeGoogleDrive {
     // ── Drive ──
     const auth = new Headers(init?.headers).get('authorization');
     if (auth !== 'Bearer access-token') return this.json({ error: { message: 'unauthorized' } }, 401);
+    if (this.apiDisabled) {
+      return this.json(
+        { error: { code: 403, message: 'Google Drive API has not been used in project 1 before or it is disabled.', errors: [{ reason: 'accessNotConfigured' }] } },
+        403,
+      );
+    }
 
     if (url.pathname === '/drive/v3/about') {
       return this.json({

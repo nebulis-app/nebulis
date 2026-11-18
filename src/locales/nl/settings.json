@@ -16,6 +16,8 @@
     "danger": "Geavanceerd",
     "about": "Over",
     "archive": "Archief",
+    "archiveDisk": "Externe schijf",
+    "gdrive": "Google Drive",
     "linked": "Gekoppelde mappen",
     "cleanup": "Opruimen",
     "apiKeys": "API-sleutels",
@@ -1196,9 +1198,7 @@
       "invalid": "Nebulis herkent het markerbestand op deze schijf niet. Er wordt daarom niets naar de schijf geschreven.",
       "unreadable": "Het markerbestand op deze schijf kan niet worden gelezen en er wordt dus niets naar geschreven.",
       "invalidPath": "Dit pad kan niet worden gebruikt. Het mag niet de bibliotheekmap of de gegevensmap van Nebulis zijn.",
-      "offline": "Deze netwerkshare is niet verbonden. Controleer of de server aanstaat en de share beschikbaar is.",
-      "gdriveOffline": "Google Drive is niet aangemeld. Kies de bestemming opnieuw om aan te melden.",
-      "gdriveAbsent": "De map bestaat nog niet in Google Drive. Het instellen van het archief maakt hem aan."
+      "offline": "Deze netwerkshare is niet verbonden. Controleer of de server aanstaat en de share beschikbaar is."
     },
     "includeSubframes": {
       "label": "Subframes meenemen",
@@ -1348,9 +1348,7 @@
       "settings": "Instellingen",
       "edit": "Bewerken",
       "close": "Sluiten"
-    },
-    "gdriveCleanupUnavailable": "Het opschonen van het archief en het verwijderen van lokale subframes zijn nog niet beschikbaar voor een Google Drive-archief. Bestanden blijven in Drive tot je ze daar verwijdert.",
-    "changeGdrive": "Bestemming wijzigen"
+    }
   },
   "archiveDisk": {
     "ariaLabel": "Archiefschijf",
@@ -1432,10 +1430,7 @@
     "cancel": "Annuleren",
     "useFolder": "Gebruik deze map",
     "useShare": "Deze share gebruiken",
-    "pickDrive": "Kies een schijf om te beginnen",
-    "gdriveTab": "Google Drive",
-    "useGdrive": "Google Drive gebruiken",
-    "gdrivePath": "Google Drive: /{{folder}}"
+    "pickDrive": "Kies een schijf om te beginnen"
   },
   "layoutMigration": {
     "title": "Je bibliotheek moet eenmalig worden bijgewerkt",
@@ -1791,22 +1786,90 @@
     "noResults": "Geen passende instellingen"
   },
   "archiveGdrive": {
-    "intro": "Maak een back-up van de bibliotheek, de afgewerkte afbeeldingen van de galerij en de Nebulis-database in een map in je Google Drive. Nebulis ziet alleen de bestanden die het daar zelf aanmaakt.",
-    "folder": "Map in Mijn Drive",
-    "folderHint": "Wordt bovenaan Mijn Drive aangemaakt bij het instellen van het archief.",
     "clientId": "OAuth-client-ID",
     "clientSecret": "OAuth-clientgeheim",
     "secretStored": "Opgeslagen. Laat leeg om het te behouden.",
-    "clientHint": "Maak er een aan in de Google Cloud Console: schakel de Google Drive API in en maak een OAuth-client van het type ‘Tv’s en apparaten met beperkte invoer’. Zie de handleiding voor Google Drive-back-ups in de documentatie.",
-    "connect": "Aanmelden met Google",
-    "enterCode": "Open op een willekeurig apparaat het adres hieronder en voer deze code in:",
     "waiting": "Wachten op Google…",
     "cancel": "Annuleren",
     "signedIn": "Aangemeld bij Google Drive",
     "signedInAs": "Aangemeld als {{account}}",
     "disconnect": "Afmelden",
-    "limits": "Drive bewaart eerdere versies van een bestand dat Nebulis vervangt, en er wordt niets automatisch uit Drive verwijderd, behalve databasesnapshots voorbij de 30 nieuwste van archiefruns, die naar de prullenbak gaan.",
     "failed": "Kan geen verbinding maken met Google Drive.",
-    "clientIdPlaceholder": "1234567890-abc.apps.googleusercontent.com"
+    "retry": "Opnieuw proberen",
+    "clientIdPlaceholder": "1234567890-abc.apps.googleusercontent.com",
+    "intro": "Koppel je Google-account. Nebulis bewaart de back-up dan in een map Nebulis bovenaan in Mijn Drive, die je kunt verplaatsen waarheen je wilt.",
+    "connect": "Aanmelden met Google",
+    "enterCode": "Open op een willekeurig apparaat (telefoon, computer) het adres hieronder en voer deze code in:",
+    "unverifiedHint": "Als Google meldt dat de app niet is geverifieerd, klik dan op Geavanceerd en daarna op Ga naar…: het is de app die je net zelf hebt gemaakt.",
+    "folderTitle": "Back-upmap",
+    "preparingFolder": "De Nebulis-map in je Drive wordt voorbereid…",
+    "folderCreated": "Map ‘{{name}}’ gemaakt bovenaan in Mijn Drive.",
+    "folderFound": "De map ‘{{name}}’ in je Drive wordt gebruikt.",
+    "folderMoveHint": "Je kunt deze map in Google Drive verplaatsen of hernoemen wanneer je wilt: Nebulis vindt hem aan zijn ID, niet aan zijn naam. Nebulis ziet alleen de bestanden en mappen die het zelf heeft gemaakt, nooit de rest van je Drive.",
+    "limits": "Drive bewaart eerdere versies van een bestand dat Nebulis vervangt, en Nebulis verwijdert nooit bibliotheekbestanden uit Drive. Alleen de databasesnapshots van back-upruns worden opgeruimd: de 30 nieuwste blijven, oudere gaan naar de prullenbak van Drive.",
+    "guide": {
+      "title": "Eerste keer? Zo krijg je een client-ID en -geheim (ongeveer 10 minuten)",
+      "why": "Google eist dat elke app die Drive gebruikt een eigen ‘OAuth-client’ heeft. Je maakt die één keer, gratis, in Google Cloud Console met het Google-account waarnaar je een back-up wilt maken. Volg deze vijf stappen op volgorde; elke link opent de juiste pagina.",
+      "project": {
+        "title": "Maak een project",
+        "body": "Maak een nieuw project alleen voor Nebulis in plaats van er een te hergebruiken: de API en de client staan dan bij elkaar, en als je het project later verwijdert, is de toegang van Nebulis in één keer weg. Noem het <b>Nebulis</b> en klik op <b>Maken</b>. Accepteer de voorwaarden van Google als daarom wordt gevraagd. Controleer dat <b>Nebulis</b> linksboven is geselecteerd.",
+        "link": "Project maken"
+      },
+      "driveApi": {
+        "title": "Zet de Google Drive API aan",
+        "body": "Klik met <b>Nebulis</b> linksboven geselecteerd op <b>Inschakelen</b>. Sla het niet over: aanmelden werkt ook zonder, maar Nebulis kan dan geen map tonen of maken. De API moet aanstaan in hetzelfde project als de client en kan een paar minuten nodig hebben om actief te worden.",
+        "link": "Google Drive API openen"
+      },
+      "branding": {
+        "title": "Beschrijf de app",
+        "body": "Klik op <b>Aan de slag</b>. App-naam: <b>Nebulis</b>; ondersteunings-e-mail: je eigen adres. Doelgroep: kies <b>Extern</b>. Contactgegevens: opnieuw je adres. Accepteer het beleid en klik op <b>Maken</b>.",
+        "link": "Google Auth Platform openen"
+      },
+      "audience": {
+        "title": "Publiceer de app",
+        "body": "Klik onder <b>Publicatiestatus</b> op <b>App publiceren</b> en bevestig. Er is geen beoordeling nodig, omdat Nebulis alleen toegang vraagt tot de bestanden die het zelf maakt. Zonder deze stap blijft de app in ‘Testen’: dan moet je je adres toevoegen bij <b>Testgebruikers</b>, en meldt Google je elke 7 dagen af.",
+        "link": "Doelgroep openen"
+      },
+      "clients": {
+        "title": "Maak de client",
+        "body": "Applicatietype: <b>Tv’s en apparaten met beperkte invoer</b> (geen ander type werkt). Naam: <b>Nebulis</b>. Klik op <b>Maken</b> en kopieer de <b>Client-ID</b> en het <b>Clientgeheim</b> naar de velden hieronder. Kopieer het geheim meteen: Google toont het mogelijk niet opnieuw.",
+        "link": "OAuth-client maken"
+      },
+      "free": "Dit is gratis: persoonlijk gebruik van de Drive API kost niets, en er zijn geen betaalgegevens nodig."
+    }
+  },
+  "gdriveBackup": {
+    "title": "Back-up naar Google Drive",
+    "description": "Een externe kopie van de bibliotheek, de galerij en de Nebulis-database, in je Google Drive.",
+    "statusOn": "Back-up naar Google Drive staat aan",
+    "statusOff": "Back-up naar Google Drive staat uit",
+    "turnOn": "Aanzetten",
+    "turnOff": "Uitzetten",
+    "turnedOn": "Back-up naar Google Drive staat aan. Start een eerste run met Nu back-uppen, of laat de planning het doen.",
+    "turnedOff": "Back-up naar Google Drive staat uit. De map en de bestanden blijven in Drive.",
+    "connectFirst": "Koppel eerst Google Drive.",
+    "runNow": "Nu back-uppen",
+    "cancelRun": "Stoppen",
+    "started": "De back-up is gestart. Je kunt deze pagina verlaten.",
+    "progress": "{{done}} van {{total}} bestanden ({{bytes}} van {{totalBytes}})",
+    "lastResult": "Laatste run ({{when}}): {{result}}",
+    "notCompleted": "niet voltooid",
+    "neverRun": "Er is nog geen back-up gemaakt.",
+    "foreign": "Deze Google Drive-map bevat al de back-up van een andere Nebulis-installatie ({{id}}). Als je hem overneemt, wordt hij de back-up van deze installatie; de bestanden blijven waar ze zijn.",
+    "takeOver": "Overnemen",
+    "alongside": "Deze back-up werkt zelfstandig, naast het archief op schijf: beide kunnen aanstaan en tegelijk draaien. Het archief op schijf maakt ruimte vrij op deze computer; Google Drive is een externe kopie die alleen toevoegt.",
+    "connection": "Google-account",
+    "whatToCopy": "Wat kopiëren",
+    "schedule": "Planning",
+    "save": "Opslaan",
+    "saved": "Opgeslagen.",
+    "state": {
+      "match": "{{path}}",
+      "absent": "Klaar: {{path}}. Bij het aanzetten wordt deze map gemarkeerd als de back-up van deze installatie.",
+      "offline": "De back-upmap is niet bereikbaar: niet aangemeld, of de map is verwijderd.",
+      "foreign": "Deze map bevat de back-up van een andere installatie.",
+      "invalid": "Het markeringsbestand in deze map is niet leesbaar. Verwijder het in Google Drive als je het zeker weet.",
+      "unreadable": "Het markeringsbestand in deze map is niet leesbaar. Verwijder het in Google Drive als je het zeker weet."
+    }
   }
 }

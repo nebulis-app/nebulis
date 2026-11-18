@@ -110,9 +110,7 @@ export function ArchiveSection({ isDark }: { isDark: boolean }) {
   const state: ArchiveDestinationState | null = data?.destination.state ?? null;
   const adoptable = state === 'absent' || state === 'foreign';
   const isNetwork = form.locationType === 'network';
-  /** A share or a Drive folder: described by the server, not typed into the path box. */
-  const isRemoteDescribed = form.locationType !== 'local';
-  const destinationPath = isRemoteDescribed ? data?.destination.path ?? '' : form.path;
+  const destinationPath = isNetwork ? data?.destination.path ?? '' : form.path;
 
   /** The stored switch, which is what the server actually enforces. */
   const on = data?.config.enabled === true;
@@ -153,7 +151,7 @@ export function ArchiveSection({ isDark }: { isDark: boolean }) {
   const saveDisk = async (): Promise<boolean> => {
     let usable = false;
     await guarded(async () => {
-      const status = isRemoteDescribed ? data : await saveArchiveConfig(groupPayload('disk', form));
+      const status = isNetwork ? data : await saveArchiveConfig(groupPayload('disk', form));
       await refetch();
       const saved = status?.destination.state ?? null;
       if (isUnusableState(saved)) {
@@ -219,15 +217,6 @@ export function ArchiveSection({ isDark }: { isDark: boolean }) {
     guarded(async () => {
       if (choice.kind === 'local') {
         await saveArchiveConfig({ locationType: 'local', path: choice.path });
-      } else if (choice.kind === 'gdrive') {
-        // Pruning and local removal are not available for a Drive folder, and the
-        // server refuses the switch while either is on, so they go off with it.
-        await saveArchiveConfig({
-          locationType: 'gdrive',
-          gdrive: { folderName: choice.folderName },
-          retentionEnabled: false,
-          removeLocalAfter: false,
-        });
       } else {
         await saveArchiveConfig({ locationType: 'network', network: choice.network });
       }
@@ -241,9 +230,6 @@ export function ArchiveSection({ isDark }: { isDark: boolean }) {
         delete rest.path;
         delete rest.locationType;
         delete rest.network;
-        delete rest.gdrive;
-        delete rest.retentionEnabled;
-        delete rest.removeLocalAfter;
         return rest;
       });
       await refetch();
@@ -332,11 +318,7 @@ export function ArchiveSection({ isDark }: { isDark: boolean }) {
     edit(next && form.retentionDays <= 0 ? { retentionEnabled: true, retentionDays: 30 } : { retentionEnabled: next });
   };
 
-  const summary = buildArchiveSummary(
-    t,
-    form,
-    isNetwork ? data?.destination.path || form.network.host : isRemoteDescribed ? data?.destination.path ?? '' : form.path.trim(),
-  );
+  const summary = buildArchiveSummary(t, form, isNetwork ? data?.destination.path || form.network.host : form.path.trim());
 
   if (isLoading) {
     return (
@@ -356,8 +338,7 @@ export function ArchiveSection({ isDark }: { isDark: boolean }) {
     destinationPath,
     state,
     sameDisk: data?.destination.sameDiskAsLibrary === true,
-    // "Described by the server rather than typed": true for a Drive folder as well.
-    isNetwork: isRemoteDescribed,
+    isNetwork,
     adoptable,
     onChoose: () => setChoosing(true),
     // A typed path is not a chosen folder, so adopting it will not create anything

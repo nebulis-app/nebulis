@@ -11,6 +11,7 @@ import {
   timeValue,
   waitDaysOf,
   waitDaysPatch,
+  type CopyScheduleForm,
   type ScheduleChoice,
 } from './archiveForm';
 import { archiveStyles, STATE_ICON, stateColor } from './archiveStyles';
@@ -32,6 +33,17 @@ interface FieldsProps {
   form: ArchiveConfig;
   edit: (patch: Partial<ArchiveConfig>) => void;
   busy: boolean;
+}
+
+/** The copy and schedule groups read only the fields the Google Drive backup shares
+ *  with the disk archive, so its page uses the same controls. `idPrefix` keeps the
+ *  input ids distinct. */
+interface CopyScheduleProps {
+  isDark: boolean;
+  form: CopyScheduleForm;
+  edit: (patch: Partial<CopyScheduleForm>) => void;
+  busy: boolean;
+  idPrefix?: string;
 }
 
 /** A switch with its label and help text, laid out the way the master switch used to
@@ -143,13 +155,8 @@ export function DiskFields({
 }) {
   const { t } = useTranslation('settings');
   const s = archiveStyles(isDark);
-  const isGdrive = form.locationType === 'gdrive';
-  // A Drive folder that is offline means "not signed in", and one that is absent is
-  // created on adoption; both read differently from a disk.
   const stateKey = state
-    ? isGdrive && (state === 'offline' || state === 'absent')
-      ? `archive.state.gdrive${state === 'offline' ? 'Offline' : 'Absent'}`
-      : `archive.state.${state === 'invalid-path' ? 'invalidPath' : state}`
+    ? `archive.state.${state === 'invalid-path' ? 'invalidPath' : state}`
     : 'archive.state.unconfigured';
   const StateIcon = STATE_ICON[state ?? 'unconfigured'];
 
@@ -190,7 +197,7 @@ export function DiskFields({
             />
           )}
           <button type="button" onClick={onChoose} disabled={busy} className={`${s.btnBase} ${s.btnSubtle} shrink-0`}>
-            {isGdrive ? t('archive.changeGdrive') : isNetwork ? t('archive.changeDestination') : t('archive.chooseDestination')}
+            {isNetwork ? t('archive.changeDestination') : t('archive.chooseDestination')}
           </button>
         </div>
       </div>
@@ -214,7 +221,7 @@ export function DiskFields({
 
 /* ─── What to copy ──────────────────────────────────────────────────────────── */
 
-export function CopyFields({ isDark, form, edit, busy }: FieldsProps) {
+export function CopyFields({ isDark, form, edit, busy, idPrefix = 'archive' }: CopyScheduleProps) {
   const { t } = useTranslation('settings');
   return (
     <FieldStack>
@@ -229,7 +236,7 @@ export function CopyFields({ isDark, form, edit, busy }: FieldsProps) {
       {/* One number, not a switch and a number: zero is "do not wait". The two stored
           fields are derived from it, so they cannot disagree. */}
       <NumberField
-        id="archive-wait-days"
+        id={`${idPrefix}-wait-days`}
         label={t('archive.minAge.label')}
         description={t('archive.minAge.description')}
         unit={t('archive.minAge.unit')}
@@ -245,7 +252,7 @@ export function CopyFields({ isDark, form, edit, busy }: FieldsProps) {
 
 /* ─── Schedule ──────────────────────────────────────────────────────────────── */
 
-export function ScheduleFields({ isDark, form, edit, busy }: FieldsProps) {
+export function ScheduleFields({ isDark, form, edit, busy, idPrefix = 'archive' }: CopyScheduleProps) {
   const { t } = useTranslation('settings');
   const s = archiveStyles(isDark);
   const choice = scheduleChoiceOf(form);
@@ -274,12 +281,12 @@ export function ScheduleFields({ isDark, form, edit, busy }: FieldsProps) {
 
       {choice === 'daily' && (
         <div className="flex items-center justify-between gap-4">
-          <label htmlFor="archive-time" className={`text-[0.8125rem] font-medium ${s.strongText}`}>
+          <label htmlFor={`${idPrefix}-time`} className={`text-[0.8125rem] font-medium ${s.strongText}`}>
             {t('archive.schedule.timeLabel')}
           </label>
           <div className="w-36">
             <input
-              id="archive-time"
+              id={`${idPrefix}-time`}
               type="time"
               value={timeValue(form.scheduleHour, form.scheduleMinute)}
               onChange={e => {
@@ -297,7 +304,7 @@ export function ScheduleFields({ isDark, form, edit, busy }: FieldsProps) {
 
       {choice === 'interval' && (
         <NumberField
-          id="archive-interval"
+          id={`${idPrefix}-interval`}
           label={t('archive.schedule.intervalLabel')}
           unit={t('archive.schedule.intervalUnit')}
           value={form.scheduleIntervalHours}
@@ -311,11 +318,11 @@ export function ScheduleFields({ isDark, form, edit, busy }: FieldsProps) {
 
       {choice === 'custom' && (
         <div>
-          <label htmlFor="archive-cron" className={getLabelClass(isDark)}>
+          <label htmlFor={`${idPrefix}-cron`} className={getLabelClass(isDark)}>
             {t('archive.schedule.cronLabel')}
           </label>
           <input
-            id="archive-cron"
+            id={`${idPrefix}-cron`}
             type="text"
             value={form.scheduleCron}
             onChange={e => edit({ scheduleCron: e.target.value })}
@@ -358,16 +365,6 @@ export function CleanupFields({
   const { t } = useTranslation('settings');
   const s = archiveStyles(isDark);
   const iconColor = isDark ? 'text-red-400' : 'text-red-600';
-
-  // Both steps re-verify the archived copy through a filesystem, which a Drive folder
-  // is not, and the server refuses them there. Saying so beats two dead switches.
-  if (form.locationType === 'gdrive') {
-    return (
-      <FieldStack>
-        <p className={`text-[0.75rem] leading-relaxed ${s.subText}`}>{t('archive.gdriveCleanupUnavailable')}</p>
-      </FieldStack>
-    );
-  }
 
   return (
     <FieldStack>

@@ -1,11 +1,10 @@
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
   ArrowUp,
   ChevronRight,
-  Cloud,
   FolderOpen,
   HardDrive,
   Loader2,
@@ -27,26 +26,21 @@ import { formatBytes } from '../../lib/utils';
 import { getInputClass } from './SettingsUI';
 import { looksLikeShareAddress, parseShareAddress } from '../../lib/uncInput';
 import { Modal } from '../ui/Modal';
-import { ArchiveGdrivePanel } from './ArchiveGdrivePanel';
 
 /** What the picker hands back. `createFolder` is true when the folder the user chose
  *  does not exist yet, which is the only case where adopting creates one. */
 export type DestinationChoice =
   | { kind: 'local'; path: string; createFolder: boolean }
-  | { kind: 'network'; network: ArchiveNetworkPatch; createFolder: boolean }
-  /** A folder at the top of the signed-in account's Google Drive. Adopting creates
-   *  it when it does not exist yet, so there is no folder to pick. */
-  | { kind: 'gdrive'; folderName: string; createFolder: false };
+  | { kind: 'network'; network: ArchiveNetworkPatch; createFolder: boolean };
 
 /**
  * Choosing where the archive lives.
  *
- * Three tabs, because the answers are different kinds of thing: a folder on a disk
- * the operating system has already mounted, a share Nebulis connects to itself with
- * credentials it stores, or a folder in Google Drive reached through the Drive API.
- * The drive tab lists volumes and walks folders; the network tab fills in a share,
- * tests it, and then walks its folders once it is connected; the Google Drive tab
- * signs an account in.
+ * Two tabs, because the two answers are different kinds of thing: a folder on a disk
+ * the operating system has already mounted, or a share Nebulis connects to itself
+ * with credentials it stores. The drive tab lists volumes and walks folders; the
+ * network tab fills in a share, tests it, and then walks its folders once it is
+ * connected.
  *
  * The picker writes nothing to any disk. It returns a choice, the caller saves it, and
  * adopting is still a separate press in the settings section: that is the distinction
@@ -69,13 +63,7 @@ export function ArchiveDestinationModal({
   const { t } = useTranslation('settings');
   const startOnNetwork = config.locationType === 'network' && networkSupported;
 
-  const [tab, setTab] = useState<'drive' | 'network' | 'gdrive'>(
-    config.locationType === 'gdrive' ? 'gdrive' : startOnNetwork ? 'network' : 'drive',
-  );
-  const [gdriveFolder, setGdriveFolder] = useState(config.gdrive.folderName);
-  const [gdriveConnected, setGdriveConnected] = useState(config.gdrive.connected);
-  const onGdriveConnected = useCallback((connected: boolean) => setGdriveConnected(connected), []);
-  const gdriveFolderValid = /^[^/\\]+$/.test(gdriveFolder.trim()) && !['.', '..'].includes(gdriveFolder.trim());
+  const [tab, setTab] = useState<'drive' | 'network'>(startOnNetwork ? 'network' : 'drive');
   const [volume, setVolume] = useState<VolumeInfo | null>(null);
   const [browsePath, setBrowsePath] = useState<string>('');
   const [newFolderName, setNewFolderName] = useState('');
@@ -299,15 +287,6 @@ export function ArchiveDestinationModal({
 
   const networkReady = network.host.trim() !== '' && network.share.trim() !== '' && testResult?.ok === true;
 
-  function chooseGdrive(): void {
-    onChoose({ kind: 'gdrive', folderName: gdriveFolder.trim(), createFolder: false });
-  }
-
-  const tabClass = (which: typeof tab): string =>
-    `inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${
-      tab === which ? (isDark ? 'bg-slate-700 text-white' : 'bg-white text-slate-800 shadow-sm') : sub
-    }`;
-
   return (
     <Modal
       isOpen
@@ -322,32 +301,32 @@ export function ArchiveDestinationModal({
           <h3 className={`text-base font-semibold ${heading}`}>{t('archiveDestination.title')}</h3>
           <p className={`mt-0.5 text-xs ${subText}`}>{t('archiveDestination.subtitle')}</p>
         </div>
-        <div className={`flex shrink-0 flex-wrap gap-1 rounded-lg p-1 ${isDark ? 'bg-slate-800/60' : 'bg-slate-100'}`}>
-          <button type="button" onClick={() => { setTab('drive'); setError(''); }} className={tabClass('drive')}>
-            <HardDrive className="h-3.5 w-3.5" /> {t('archiveDestination.driveTab')}
-          </button>
-          {networkSupported && (
-            <button type="button" onClick={() => { setTab('network'); setError(''); }} className={tabClass('network')}>
+        {networkSupported && (
+          <div className={`flex shrink-0 gap-1 rounded-lg p-1 ${isDark ? 'bg-slate-800/60' : 'bg-slate-100'}`}>
+            <button
+              type="button"
+              onClick={() => { setTab('drive'); setError(''); }}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${
+                tab === 'drive' ? (isDark ? 'bg-slate-700 text-white' : 'bg-white text-slate-800 shadow-sm') : sub
+              }`}
+            >
+              <HardDrive className="h-3.5 w-3.5" /> {t('archiveDestination.driveTab')}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTab('network'); setError(''); }}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${
+                tab === 'network' ? (isDark ? 'bg-slate-700 text-white' : 'bg-white text-slate-800 shadow-sm') : sub
+              }`}
+            >
               <Server className="h-3.5 w-3.5" /> {t('archiveDestination.networkTab')}
             </button>
-          )}
-          <button type="button" onClick={() => { setTab('gdrive'); setError(''); }} className={tabClass('gdrive')}>
-            <Cloud className="h-3.5 w-3.5" /> {t('archiveDestination.gdriveTab')}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
       <div className="max-h-[60vh] space-y-4 overflow-y-auto px-5 py-4">
-        {tab === 'gdrive' ? (
-          <ArchiveGdrivePanel
-            isDark={isDark}
-            config={config}
-            folderName={gdriveFolder}
-            onFolderNameChange={setGdriveFolder}
-            onConnectedChange={onGdriveConnected}
-            onError={setError}
-          />
-        ) : tab === 'drive' ? (
+        {tab === 'drive' ? (
           <>
             <div>
               <div className="mb-2 flex items-center justify-between">
@@ -617,13 +596,11 @@ export function ArchiveDestinationModal({
 
       <div className={`flex items-center justify-between gap-3 border-t px-5 py-4 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
         <span className={`min-w-0 truncate font-mono text-xs ${subText}`}>
-          {tab === 'gdrive'
-            ? t('archiveDestination.gdrivePath', { folder: gdriveFolder.trim() })
-            : tab === 'drive'
-              ? localTarget !== ''
-                ? localTarget
-                : t('archiveDestination.pickDrive')
-              : shareRootName}
+          {tab === 'drive'
+            ? localTarget !== ''
+              ? localTarget
+              : t('archiveDestination.pickDrive')
+            : shareRootName}
         </span>
         <div className="flex shrink-0 items-center gap-2">
           <button
@@ -633,16 +610,7 @@ export function ArchiveDestinationModal({
           >
             {t('archiveDestination.cancel')}
           </button>
-          {tab === 'gdrive' ? (
-            <button
-              type="button"
-              onClick={chooseGdrive}
-              disabled={!gdriveConnected || !gdriveFolderValid}
-              className={`${btnBase} ${btnPrimary}`}
-            >
-              {t('archiveDestination.useGdrive')}
-            </button>
-          ) : tab === 'drive' ? (
+          {tab === 'drive' ? (
             <button
               type="button"
               onClick={chooseLocal}

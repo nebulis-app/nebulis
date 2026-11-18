@@ -21,12 +21,7 @@
  * the project would have to get verified, and its "secret" would be public anyway.
  */
 
-import {
-  clearArchiveGdriveConnection,
-  getArchiveConfig,
-  getArchiveGdriveSecrets,
-  setArchiveGdriveConnection,
-} from '../archiveConfig.js';
+import { clearGdriveConnection, getGdriveBackupConfig, getGdriveBackupSecrets, setGdriveConnection } from './gdriveBackupConfig.js';
 import { isRecord } from '../../typeGuards.js';
 import { DriveClient } from './driveClient.js';
 
@@ -82,7 +77,7 @@ const str = (value: unknown): string => (typeof value === 'string' ? value : '')
 /** A valid access token, refreshed from the stored refresh token when the cached one
  *  is missing or about to expire. */
 export async function getGdriveAccessToken(): Promise<string> {
-  const secrets = getArchiveGdriveSecrets();
+  const secrets = getGdriveBackupSecrets();
   if (secrets.refreshToken === '') throw new GdriveAuthError('Google Drive is not signed in.', 'not-connected');
   if (accessToken && accessToken.refreshToken === secrets.refreshToken && accessToken.expiresAt - 60_000 > Date.now()) {
     return accessToken.token;
@@ -101,7 +96,7 @@ export async function getGdriveAccessToken(): Promise<string> {
     // changed, or a testing-mode consent that expired after 7 days). Keeping the token
     // would only make every later call fail the same way.
     if (error === 'invalid_grant') {
-      clearArchiveGdriveConnection();
+      clearGdriveConnection();
       throw new GdriveAuthError('Google Drive access was revoked or has expired. Sign in again in Settings.', 'revoked');
     }
     throw new GdriveAuthError(str(body.error_description) || error || `Google answered ${status}`, error || 'refresh-failed');
@@ -113,7 +108,7 @@ export async function getGdriveAccessToken(): Promise<string> {
 
 /** A Drive client for the stored sign-in, or null when there is none. */
 export function getGdriveClient(): DriveClient | null {
-  if (getArchiveGdriveSecrets().refreshToken === '') return null;
+  if (getGdriveBackupSecrets().refreshToken === '') return null;
   return new DriveClient({
     getAccessToken: getGdriveAccessToken,
     invalidateAccessToken: () => {
@@ -147,7 +142,7 @@ export function getGdriveSignInStatus(): GdriveSignInStatus {
   // A finished sign-in is reported from what is stored, so a restart (which forgets
   // the in-memory state) still shows "connected", and a sign-out shows "idle".
   if (signIn.state !== 'pending') {
-    const { connected, account } = getArchiveConfig().gdrive;
+    const { connected, account } = getGdriveBackupConfig();
     if (connected) return { state: 'connected', ...(account ? { account } : {}) };
     if (signIn.state === 'connected') return { state: 'idle' };
   }
@@ -168,7 +163,7 @@ export class GdriveSignInError extends Error {
  * on in the background and lands in `getGdriveSignInStatus`.
  */
 export async function startGdriveSignIn(): Promise<GdriveSignInStatus> {
-  const secrets = getArchiveGdriveSecrets();
+  const secrets = getGdriveBackupSecrets();
   if (secrets.clientId === '') throw new GdriveSignInError('Enter your Google OAuth client id first.', 'no-client');
   if (secrets.clientSecret === '') throw new GdriveSignInError('Enter your Google OAuth client secret first.', 'no-client');
 
@@ -259,7 +254,7 @@ async function pollForToken(myGeneration: number, deviceCode: string, intervalSe
 async function finishSignIn(refreshToken: string, token: string, expiresIn: number): Promise<void> {
   // Stored before asking who the account is, so a failure of that cosmetic call
   // cannot lose a sign-in the user just completed.
-  setArchiveGdriveConnection(refreshToken, '');
+  setGdriveConnection(refreshToken, '');
   if (token !== '') accessToken = { token, expiresAt: Date.now() + expiresIn * 1000, refreshToken };
   let account = '';
   try {
@@ -267,14 +262,14 @@ async function finishSignIn(refreshToken: string, token: string, expiresIn: numb
   } catch {
     // Display only.
   }
-  setArchiveGdriveConnection(refreshToken, account);
+  setGdriveConnection(refreshToken, account);
   signIn = { state: 'connected', ...(account ? { account } : {}) };
 }
 
 /** Sign out: revoke the token with Google (best effort) and forget it. */
 export async function disconnectGdrive(): Promise<void> {
   cancelGdriveSignIn();
-  const { refreshToken } = getArchiveGdriveSecrets();
+  const { refreshToken } = getGdriveBackupSecrets();
   if (refreshToken !== '') {
     try {
       await postForm(REVOKE_URL, { token: refreshToken });
@@ -282,7 +277,7 @@ export async function disconnectGdrive(): Promise<void> {
       // Revoking is a courtesy; forgetting the token locally is what matters.
     }
   }
-  clearArchiveGdriveConnection();
+  clearGdriveConnection();
   accessToken = null;
   signIn = { state: 'idle' };
 }

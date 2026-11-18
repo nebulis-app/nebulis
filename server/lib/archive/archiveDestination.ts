@@ -37,7 +37,7 @@ import {
 
 /** Which kind of destination a config describes, for the route layer to report and
  *  for the UI to label. */
-export type ArchiveDestinationKind = 'local' | 'network' | 'gdrive' | 'unconfigured';
+export type ArchiveDestinationKind = 'local' | 'network' | 'unconfigured';
 
 /**
  * A refusal carries both a sentence and the code behind it. The sentence is what the
@@ -72,8 +72,6 @@ export const DESTINATION_REJECTION_MESSAGE: Record<string, string> = {
   'overlaps-library': 'The destination cannot be the library folder, contain it, or sit inside it.',
   'overlaps-data-dir': 'The destination cannot be the data folder, contain it, or sit inside it.',
   'overlaps-linked-source': 'The destination cannot be a linked folder, contain one, or sit inside one.',
-  // A Google Drive folder has no path on this machine
-  'remote-destination': 'Browsing, restoring and pruning are not available for a Google Drive archive yet. Open the folder in Google Drive instead.',
   // archiveNetwork.ts, for a share
   incomplete: 'That network destination needs a server and a share.',
   'invalid-subpath': 'The folder inside the share is not a usable path.',
@@ -95,17 +93,6 @@ export const DESTINATION_REJECTION_MESSAGE: Record<string, string> = {
  * `connectArchiveDestination`.
  */
 export function resolveArchiveDestination(config: ArchiveConfig): ArchiveDestinationResolution {
-  // Never resolved to a path. Every caller of this resolver reads or deletes through
-  // the filesystem, so a Drive archive is refused here, and the Drive engine has
-  // its own readiness check (gdrive/driveArchive.ts).
-  if (config.locationType === 'gdrive') {
-    return {
-      ok: false,
-      kind: 'gdrive',
-      reason: 'remote-destination',
-      warning: DESTINATION_REJECTION_MESSAGE['remote-destination'],
-    };
-  }
   if (config.locationType === 'network') {
     const resolved = resolveNetworkArchiveRoot(config.network);
     if (!resolved.ok) {

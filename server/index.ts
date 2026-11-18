@@ -58,6 +58,7 @@ import { pixinsightRepoRouter } from './routes/pixinsightRepo.js';
 import { startPackUpdateChecker } from './lib/catalogPack/updater.js';
 import { startPlannerNightlyScheduler } from './lib/plannerNightlyPrefetch.js';
 import { startArchiveScheduler } from './lib/archive/archiveScheduler.js';
+import { startGdriveBackupScheduler } from './lib/archive/gdrive/gdriveBackupRunner.js';
 import { runPostImport } from './lib/library/postImport.js';
 import { startForecastRefresh } from './lib/forecastCache.js';
 import { startLinkedSourceScheduler } from './lib/library/linkedSourceScheduler.js';
@@ -156,8 +157,8 @@ if (startupBackupOutcome.status === 'created') {
       `to ${APP_VERSION}: ${backup.name}.`,
     metadata: { backupName: backup.name, sizeBytes: backup.sizeBytes, previousVersion, currentVersion: APP_VERSION, pruned },
   });
-  // Off the machine too, when the archive is a Google Drive folder. In the
-  // background: startup must not wait on the network.
+  // Off the machine too, when the Google Drive backup is on. In the background:
+  // startup must not wait on the network.
   uploadSnapshotsToGdriveInBackground('upgrade');
 } else if (startupBackupOutcome.status === 'failed') {
   logEvent({
@@ -904,6 +905,7 @@ scheduleAutoImport();
 // configuration on every tick, so changing the schedule in Settings takes effect
 // without a restart and nothing has to remember to re-arm it.
 startArchiveScheduler();
+startGdriveBackupScheduler();
 
 
 // Pre-download TLE satellite catalog in background so it's ready for trail detection

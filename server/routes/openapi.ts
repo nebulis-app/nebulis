@@ -859,28 +859,73 @@ export const spec = {
           hasPassword:   { type: 'boolean' },
         },
       },
-      StorageArchiveGdrive: {
+      StorageGdriveBackupConfig: {
         type: 'object',
-        description: 'A Google Drive destination. The client secret and the sign-in are never returned.',
-        required: ['clientId', 'hasClientSecret', 'connected', 'account', 'folderName'],
+        description: 'The Google Drive backup, a destination of its own next to the disk archive. The client secret and the sign-in are never returned.',
+        required: ['enabled', 'clientId', 'hasClientSecret', 'connected', 'account', 'folderId', 'folderPath', 'archiveId', 'includeSubframes', 'copyMinAgeEnabled', 'copyMinAgeDays', 'scheduleEnabled', 'scheduleMode', 'scheduleHour', 'scheduleMinute', 'scheduleIntervalHours', 'scheduleCron', 'lastRunAt', 'lastResult'],
         properties: {
-          clientId:        { type: 'string', description: 'OAuth client of type "TVs and Limited Input devices"' },
-          hasClientSecret: { type: 'boolean' },
-          connected:       { type: 'boolean', description: 'A Google account is signed in' },
-          account:         { type: 'string', description: 'The signed-in address, for display' },
-          folderName:      { type: 'string', description: 'Archive folder at the top of My Drive' },
+          enabled:               { type: 'boolean', description: 'Master switch; off means nothing is uploaded' },
+          clientId:              { type: 'string', description: 'OAuth client of type "TVs and Limited Input devices"' },
+          hasClientSecret:       { type: 'boolean' },
+          connected:             { type: 'boolean', description: 'A Google account is signed in' },
+          account:               { type: 'string', description: 'The signed-in address, for display' },
+          folderId:              { type: 'string', description: 'The backup folder. Empty until one is prepared.' },
+          folderPath:            { type: 'string', description: 'The folder name when it was prepared, for display only' },
+          archiveId:             { type: 'string', description: 'Empty until the folder is adopted' },
+          includeSubframes:      { type: 'boolean' },
+          copyMinAgeEnabled:     { type: 'boolean' },
+          copyMinAgeDays:        { type: 'integer', minimum: 0 },
+          scheduleEnabled:       { type: 'boolean' },
+          scheduleMode:          { type: 'string', enum: ['daily', 'interval', 'custom'] },
+          scheduleHour:          { type: 'integer', minimum: 0, maximum: 23 },
+          scheduleMinute:        { type: 'integer', minimum: 0, maximum: 59 },
+          scheduleIntervalHours: { type: 'integer', minimum: 1, maximum: 168 },
+          scheduleCron:          { type: 'string' },
+          lastRunAt:             { type: 'string' },
+          lastResult:            { type: 'string' },
         },
       },
-      StorageArchiveGdriveInput: {
+      StorageGdriveBackupInput: {
         type: 'object',
+        description: 'enabled, archiveId, lastRunAt and lastResult are refused: the switch has its own routes.',
         properties: {
-          clientId:          { type: 'string', description: 'Changing it signs out' },
-          clientSecret:      { type: 'string', description: 'Omitted or empty keeps the stored secret' },
-          clearClientSecret: { type: 'boolean' },
-          folderName:        { type: 'string' },
+          clientId:              { type: 'string', description: 'Changing it signs out and switches the backup off' },
+          clientSecret:          { type: 'string', description: 'Omitted or empty keeps the stored secret' },
+          clearClientSecret:     { type: 'boolean' },
+          folderId:              { type: 'string', description: 'From POST /gdrive-backup/folder; changing it switches the backup off until it is adopted' },
+          folderPath:            { type: 'string' },
+          includeSubframes:      { type: 'boolean' },
+          copyMinAgeEnabled:     { type: 'boolean' },
+          copyMinAgeDays:        { type: 'integer', minimum: 0 },
+          scheduleEnabled:       { type: 'boolean' },
+          scheduleMode:          { type: 'string', enum: ['daily', 'interval', 'custom'] },
+          scheduleHour:          { type: 'integer', minimum: 0, maximum: 23 },
+          scheduleMinute:        { type: 'integer', minimum: 0, maximum: 59 },
+          scheduleIntervalHours: { type: 'integer', minimum: 1, maximum: 168 },
+          scheduleCron:          { type: 'string' },
         },
       },
-      StorageArchiveGdriveSignIn: {
+      StorageGdriveDestination: {
+        type: 'object',
+        required: ['state', 'path', 'foundArchiveId'],
+        properties: {
+          state:          { type: 'string', enum: ['offline', 'absent', 'match', 'foreign', 'invalid', 'unreadable'] },
+          path:           { type: 'string' },
+          foundArchiveId: nullable({ type: 'string' }),
+        },
+      },
+      StorageGdriveBackup: {
+        type: 'object',
+        required: ['config', 'destination'],
+        properties: {
+          config:      { $ref: '#/components/schemas/StorageGdriveBackupConfig' },
+          destination: { $ref: '#/components/schemas/StorageGdriveDestination' },
+          progress:    { $ref: '#/components/schemas/StorageArchiveRunProgress' },
+          running:     { type: 'boolean' },
+          lastRun:     { description: 'How the last run of this process ended (trigger, finishedAt, result with summary), or null', oneOf: [{ type: 'object' }, { type: 'null' }] },
+        },
+      },
+      StorageGdriveSignIn: {
         type: 'object',
         required: ['state'],
         properties: {
@@ -894,13 +939,12 @@ export const spec = {
       },
       StorageArchiveConfig: {
         type: 'object',
-        required: ['enabled', 'path', 'locationType', 'network', 'gdrive', 'archiveId', 'scope', 'selectedObjects', 'includeSubframes', 'copyMinAgeDays', 'copyMinAgeEnabled', 'scheduleEnabled', 'scheduleMode', 'scheduleHour', 'scheduleMinute', 'scheduleIntervalHours', 'scheduleCron', 'retentionDays', 'retentionEnabled', 'retentionSubframesOnly', 'removeLocalAfter', 'lastRunAt', 'lastResult'],
+        required: ['enabled', 'path', 'locationType', 'network', 'archiveId', 'scope', 'selectedObjects', 'includeSubframes', 'copyMinAgeDays', 'copyMinAgeEnabled', 'scheduleEnabled', 'scheduleMode', 'scheduleHour', 'scheduleMinute', 'scheduleIntervalHours', 'scheduleCron', 'retentionDays', 'retentionEnabled', 'retentionSubframesOnly', 'removeLocalAfter', 'lastRunAt', 'lastResult'],
         properties: {
           enabled:               { type: 'boolean', description: 'Master switch; off means nothing is copied, adopted or pruned' },
           path:                  { type: 'string' },
-          locationType:          { type: 'string', enum: ['local', 'network', 'gdrive'] },
+          locationType:          { type: 'string', enum: ['local', 'network'] },
           network:               { $ref: '#/components/schemas/StorageArchiveNetwork' },
-          gdrive:                { $ref: '#/components/schemas/StorageArchiveGdrive' },
           archiveId:             { type: 'string', description: 'Empty when the destination has not been adopted' },
           scope:                 { type: 'string', enum: ['all', 'selected'] },
           selectedObjects:       { type: 'array', items: { type: 'string' } },
@@ -927,9 +971,8 @@ export const spec = {
         properties: {
           enabled:               { type: 'boolean' },
           path:                  { type: 'string' },
-          locationType:          { type: 'string', enum: ['local', 'network', 'gdrive'] },
+          locationType:          { type: 'string', enum: ['local', 'network'] },
           network:               { $ref: '#/components/schemas/StorageArchiveNetworkInput' },
-          gdrive:                { $ref: '#/components/schemas/StorageArchiveGdriveInput' },
           scope:                 { type: 'string', enum: ['all', 'selected'] },
           selectedObjects:       { type: 'array', items: { type: 'string' } },
           includeSubframes:      { type: 'boolean' },
@@ -954,7 +997,7 @@ export const spec = {
           state:            { type: 'string', enum: ['unconfigured', 'invalid-path', 'offline', 'match', 'absent', 'foreign', 'invalid', 'unreadable'] },
           path:             { type: 'string' },
           foundArchiveId:   nullable({ type: 'string' }),
-          locationType:     { type: 'string', enum: ['local', 'network', 'gdrive'] },
+          locationType:     { type: 'string', enum: ['local', 'network'] },
           network:          { $ref: '#/components/schemas/StorageArchiveNetwork' },
           networkSupported: { type: 'boolean', description: 'False on Linux and Docker' },
           sameDiskAsLibrary: { type: 'boolean', description: 'Local destination on the library or data disk, so it would not survive that disk failing' },
@@ -8299,52 +8342,6 @@ export const spec = {
         },
       },
     },
-    '/storage/archive/gdrive/status': {
-      get: {
-        summary: 'Google Drive sign-in status',
-        tags: ['Storage'],
-        description: 'Admin only. Poll while a sign-in is pending.',
-        responses: {
-          200: jsonResponse('Where the sign-in stands', 'StorageArchiveGdriveSignIn'),
-          403: { description: 'FORBIDDEN. Admin only.' },
-        },
-      },
-    },
-    '/storage/archive/gdrive/connect': {
-      post: {
-        summary: 'Start a Google Drive sign-in',
-        tags: ['Storage'],
-        description: 'Admin only. Stores the OAuth client (clientId, clientSecret, folderName in the body, all optional) and starts the device-code flow. Writes nothing to Drive.',
-        responses: {
-          200: jsonResponse('The code to enter', 'StorageArchiveGdriveSignIn'),
-          400: { description: 'ARCHIVE_INVALID_CONFIG or GDRIVE_SIGN_IN_FAILED (no client configured)' },
-          403: { description: 'FORBIDDEN. Admin only.' },
-          502: { description: 'GDRIVE_SIGN_IN_FAILED. Google refused or could not be reached.' },
-        },
-      },
-    },
-    '/storage/archive/gdrive/cancel': {
-      post: {
-        summary: 'Stop waiting for a Google Drive sign-in',
-        tags: ['Storage'],
-        description: 'Admin only. Nothing is stored.',
-        responses: {
-          200: jsonResponse('Where the sign-in stands', 'StorageArchiveGdriveSignIn'),
-          403: { description: 'FORBIDDEN. Admin only.' },
-        },
-      },
-    },
-    '/storage/archive/gdrive/disconnect': {
-      post: {
-        summary: 'Sign out of Google Drive',
-        tags: ['Storage'],
-        description: 'Admin only. Revokes the token with Google and forgets it. Files in Drive are left as they are.',
-        responses: {
-          200: jsonResponse('Where the sign-in stands', 'StorageArchiveGdriveSignIn'),
-          403: { description: 'FORBIDDEN. Admin only.' },
-        },
-      },
-    },
     '/storage/archive/run/cancel': {
       post: {
         summary: 'Cancel the archive run',
@@ -8354,6 +8351,122 @@ export const spec = {
           202: jsonResponse('The run is stopping', 'StorageArchiveCancelling'),
           403: { description: 'FORBIDDEN. Admin only.' },
           409: { description: 'ARCHIVE_NOT_RUNNING' },
+        },
+      },
+    },
+    '/storage/gdrive-backup': {
+      get: {
+        summary: 'Google Drive backup',
+        tags: ['Storage'],
+        description: 'The Google Drive backup settings, where its folder stands, and how a run is going. Runs alongside the disk archive.',
+        responses: { 200: jsonResponse('The backup', 'StorageGdriveBackup') },
+      },
+      put: {
+        summary: 'Save the Google Drive backup settings',
+        tags: ['Storage'],
+        description: 'Admin only. Body: StorageGdriveBackupInput. Validated as a whole before anything is written.',
+        responses: {
+          200: jsonResponse('The saved backup', 'StorageGdriveBackup'),
+          400: { description: 'GDRIVE_INVALID_CONFIG' },
+          403: { description: 'FORBIDDEN. Admin only.' },
+        },
+      },
+    },
+    '/storage/gdrive-backup/enable': {
+      post: {
+        summary: 'Turn the Google Drive backup on',
+        tags: ['Storage'],
+        description: 'Admin only. Adopts the folder (writes the .nebulisarchive marker) and switches the backup on. Body: { confirmArchiveId } to take over another install\u2019s folder.',
+        responses: {
+          200: jsonResponse('The backup', 'StorageGdriveBackup'),
+          403: { description: 'FORBIDDEN. Admin only.' },
+          409: { description: 'GDRIVE_NO_FOLDER, GDRIVE_MARKER_UNREADABLE or GDRIVE_FOREIGN_CONFIRMATION_REQUIRED' },
+          400: { description: 'GDRIVE_UNUSABLE' },
+          502: { description: 'GDRIVE_ADOPT_FAILED' },
+        },
+      },
+    },
+    '/storage/gdrive-backup/disable': {
+      post: {
+        summary: 'Turn the Google Drive backup off',
+        tags: ['Storage'],
+        description: 'Admin only. The folder, its files and the sign-in are kept.',
+        responses: { 200: jsonResponse('The backup', 'StorageGdriveBackup'), 403: { description: 'FORBIDDEN. Admin only.' } },
+      },
+    },
+    '/storage/gdrive-backup/sign-in': {
+      get: {
+        summary: 'Google Drive sign-in status',
+        tags: ['Storage'],
+        description: 'Admin only. Poll while a sign-in is pending.',
+        responses: { 200: jsonResponse('Where the sign-in stands', 'StorageGdriveSignIn'), 403: { description: 'FORBIDDEN. Admin only.' } },
+      },
+    },
+    '/storage/gdrive-backup/connect': {
+      post: {
+        summary: 'Start a Google Drive sign-in',
+        tags: ['Storage'],
+        description: 'Admin only. Stores the OAuth client (clientId and clientSecret in the body, both optional) and starts the device-code flow. Writes nothing to Drive.',
+        responses: {
+          200: jsonResponse('The code to enter', 'StorageGdriveSignIn'),
+          400: { description: 'GDRIVE_INVALID_CONFIG or GDRIVE_SIGN_IN_FAILED (no client configured)' },
+          403: { description: 'FORBIDDEN. Admin only.' },
+          502: { description: 'GDRIVE_SIGN_IN_FAILED. Google refused or could not be reached.' },
+        },
+      },
+    },
+    '/storage/gdrive-backup/sign-in/cancel': {
+      post: {
+        summary: 'Stop waiting for a Google Drive sign-in',
+        tags: ['Storage'],
+        description: 'Admin only. Nothing is stored.',
+        responses: { 200: jsonResponse('Where the sign-in stands', 'StorageGdriveSignIn'), 403: { description: 'FORBIDDEN. Admin only.' } },
+      },
+    },
+    '/storage/gdrive-backup/disconnect': {
+      post: {
+        summary: 'Sign out of Google Drive',
+        tags: ['Storage'],
+        description: 'Admin only. Revokes the token with Google and forgets it. Files in Drive are left as they are.',
+        responses: { 200: jsonResponse('Where the sign-in stands', 'StorageGdriveSignIn'), 403: { description: 'FORBIDDEN. Admin only.' } },
+      },
+    },
+    '/storage/gdrive-backup/folder': {
+      post: {
+        summary: 'Prepare the Google Drive backup folder',
+        tags: ['Storage'],
+        description:
+          'Admin only. Returns the backup folder: the one already saved (kept by id, even if moved or renamed), else a Nebulis folder at the top of My Drive, created when missing. Nothing is saved; save the id with PUT.',
+        responses: {
+          200: { description: 'folder: { id, name } and created (true when it was just made)' },
+          403: { description: 'FORBIDDEN. Admin only.' },
+          409: { description: 'GDRIVE_NOT_CONNECTED or GDRIVE_API_DISABLED' },
+          502: { description: 'GDRIVE_UNREACHABLE' },
+        },
+      },
+    },
+    '/storage/gdrive-backup/run': {
+      post: {
+        summary: 'Back up to Google Drive now',
+        tags: ['Storage'],
+        description: 'Admin only. Answers 202 and continues in the background; poll GET /gdrive-backup. Can run while a disk archive run is in progress.',
+        responses: {
+          202: jsonResponse('The run was accepted', 'StorageArchiveStarted'),
+          403: { description: 'FORBIDDEN. Admin only.' },
+          409: { description: 'GDRIVE_BACKUP_DISABLED, GDRIVE_BACKUP_ALREADY_RUNNING, LIBRARY_BUSY or GDRIVE_UNUSABLE' },
+          503: { description: 'LIBRARY_UNAVAILABLE' },
+        },
+      },
+    },
+    '/storage/gdrive-backup/run/cancel': {
+      post: {
+        summary: 'Cancel the Google Drive backup run',
+        tags: ['Storage'],
+        description: 'Admin only. Takes effect at the next file. Files already uploaded stay in Drive and in the record.',
+        responses: {
+          202: jsonResponse('The run is stopping', 'StorageArchiveCancelling'),
+          403: { description: 'FORBIDDEN. Admin only.' },
+          409: { description: 'GDRIVE_BACKUP_NOT_RUNNING' },
         },
       },
     },

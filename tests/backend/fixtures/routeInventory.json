@@ -2335,40 +2335,6 @@
   },
   {
     "method": "POST",
-    "path": "/storage/archive/gdrive/cancel",
-    "guards": [
-      "requireAdmin",
-      "<anonymous>"
-    ]
-  },
-  {
-    "method": "POST",
-    "path": "/storage/archive/gdrive/connect",
-    "guards": [
-      "requireAdmin",
-      "<anonymous>",
-      "<anonymous>"
-    ]
-  },
-  {
-    "method": "POST",
-    "path": "/storage/archive/gdrive/disconnect",
-    "guards": [
-      "requireAdmin",
-      "<anonymous>",
-      "<anonymous>"
-    ]
-  },
-  {
-    "method": "GET",
-    "path": "/storage/archive/gdrive/status",
-    "guards": [
-      "requireAdmin",
-      "<anonymous>"
-    ]
-  },
-  {
-    "method": "POST",
     "path": "/storage/archive/restore",
     "guards": [
       "requireAdmin",
@@ -2478,6 +2444,101 @@
   {
     "method": "GET",
     "path": "/storage/db-backups/:name/download",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/storage/gdrive-backup",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/storage/gdrive-backup",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/storage/gdrive-backup/connect",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/storage/gdrive-backup/disable",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/storage/gdrive-backup/disconnect",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/storage/gdrive-backup/enable",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/storage/gdrive-backup/folder",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/storage/gdrive-backup/run",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/storage/gdrive-backup/run/cancel",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/storage/gdrive-backup/sign-in",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/storage/gdrive-backup/sign-in/cancel",
     "guards": [
       "requireAdmin",
       "<anonymous>"

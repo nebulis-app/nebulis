@@ -54,7 +54,8 @@ export function SettingsSearch({ isDark, isAdmin, onSelect }: Props) {
       if (e.section && group.items && !item) return [];
       const label = e.ns === 'common' ? tCommon(e.labelKey) : t(e.labelKey);
       const groupLabel = t(group.labelKey);
-      const trail = item && group.items!.length > 1 ? `${groupLabel} › ${t(item.labelKey)}` : groupLabel;
+      const itemLabel = item ? (item.parentLabelKey ? `${t(item.parentLabelKey)} › ${t(item.labelKey)}` : t(item.labelKey)) : '';
+      const trail = item && group.items!.length > 1 ? `${groupLabel} › ${itemLabel}` : groupLabel;
       return [{
         key: `${e.group}/${e.section ?? ''}/${e.labelKey}`,
         group: e.group,

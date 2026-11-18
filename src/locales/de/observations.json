@@ -758,6 +758,7 @@
     "wbppHint": "Ein Ordnerbaum; WBPP sortiert die Aufnahmen anhand ihrer Header. Mehrere Nächte liegen in NIGHT_<Datum>-Ordnern: NIGHT als Gruppierungsschlüssel hinzufügen, damit jede Nacht ihre eigenen Flats bekommt.",
     "sirilHint": "Ein Ordner pro Nacht und Filter mit lights, darks, flats und biases, wie es die Vorverarbeitungsskripte von Siril erwarten. Darks werden in jedem Ordner wiederholt.",
     "includeNotKept": "Nicht behaltene Einzelbilder einschließen",
+    "precalibratedOption": "Lights bereits kalibriert: keine Kalibrierbilder",
     "planFailed": "Kalibrierbilder konnten nicht zugeordnet werden.",
     "matching": "Kalibrierbilder werden zugeordnet…",
     "summary": "{{lights}} Lights · {{calibration}} Kalibrierbilder · {{size}}",
@@ -785,6 +786,7 @@
     "sameNight": "gleiche Nacht",
     "biasNotNeeded": "Nicht nötig: Flat-Darks kalibrieren die Flats",
     "flatDarkNotNeeded": "Keine: Bias kalibriert die Flats",
+    "precalibrated": "Bereits kalibriert: keine Kalibrierbilder",
     "row": {
       "dark": "Darks",
       "flat": "Flats",

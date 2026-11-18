@@ -1696,6 +1696,10 @@ export interface StackingPlanGroup {
   gain: number | null;
   binning: number | null;
   sensorTempC: number | null;
+  camera: string | null;
+  telescope: string | null;
+  /** Already calibrated (header, or asked for): no calibration frames. */
+  precalibrated: boolean;
   frames: number;
   kept: number;
   bytes: number;
@@ -1710,6 +1714,7 @@ export interface StackingPlan {
   objectId: string;
   nights: string[];
   includeNotKept: boolean;
+  precalibrated: boolean;
   groups: StackingPlanGroup[];
   /** Nights with raw frames that have no analysis yet (counted as kept until measured). */
   unmeasuredByNight: Record<string, number>;
@@ -1718,15 +1723,15 @@ export interface StackingPlan {
 
 export type StackingLayout = 'wbpp' | 'siril';
 
-export const getStackingPlan = (objectId: string, dates: string[], includeNotKept: boolean) =>
+export const getStackingPlan = (objectId: string, dates: string[], includeNotKept: boolean, precalibrated = false) =>
   fetchJSON<StackingPlan>(`/library/objects/${encodeURIComponent(objectId)}/stacking-export/plan`, {
     method: 'POST',
-    body: JSON.stringify({ dates, includeNotKept }),
+    body: JSON.stringify({ dates, includeNotKept, precalibrated }),
   });
 
 /** Starts the ZIP build; poll it with getSubframesArchiveStatus like the sub-frame download. */
-export const startStackingExport = (objectId: string, dates: string[], includeNotKept: boolean, layout: StackingLayout) =>
+export const startStackingExport = (objectId: string, dates: string[], includeNotKept: boolean, layout: StackingLayout, precalibrated = false) =>
   fetchJSON<{ jobId: string; filesTotal: number }>(`/library/objects/${encodeURIComponent(objectId)}/stacking-export`, {
     method: 'POST',
-    body: JSON.stringify({ dates, includeNotKept, layout }),
+    body: JSON.stringify({ dates, includeNotKept, precalibrated, layout }),
   });

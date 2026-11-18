@@ -49,6 +49,7 @@ export function StackingExportModal({ objectId, onClose }: { objectId: string; o
   // null = every night (the default); a set once the user unticks one.
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [includeNotKept, setIncludeNotKept] = useState(false);
+  const [precalibrated, setPrecalibrated] = useState(false);
   const [layout, setLayout] = useState<StackingLayout>('wbpp');
   const job = useArchiveJob();
 
@@ -74,8 +75,8 @@ export function StackingExportModal({ objectId, onClose }: { objectId: string; o
   const allPicked = dates.length === nights.length;
 
   const { data: plan, isFetching, error: planError } = useQuery({
-    queryKey: ['stacking-plan', objectId, dates.join(','), includeNotKept],
-    queryFn: () => getStackingPlan(objectId, dates, includeNotKept),
+    queryKey: ['stacking-plan', objectId, dates.join(','), includeNotKept, precalibrated],
+    queryFn: () => getStackingPlan(objectId, dates, includeNotKept, precalibrated),
     enabled: dates.length > 0,
     placeholderData: prev => prev,
     // Always rebuilt on open: a Keep decision changed on the observation page
@@ -184,6 +185,10 @@ export function StackingExportModal({ objectId, onClose }: { objectId: string; o
           <label className={`inline-flex cursor-pointer items-center gap-1.5 text-xs ${muted}`}>
             <input type="checkbox" checked={includeNotKept} onChange={e => setIncludeNotKept(e.target.checked)} className="accent-amber-500" />
             {t('stackingExport.includeNotKept')}
+          </label>
+          <label className={`inline-flex cursor-pointer items-center gap-1.5 text-xs ${muted}`}>
+            <input type="checkbox" checked={precalibrated} onChange={e => setPrecalibrated(e.target.checked)} className="accent-amber-500" />
+            {t('stackingExport.precalibratedOption')}
           </label>
         </div>
         <p className={`text-[0.6875rem] ${muted}`}>{t(layout === 'wbpp' ? 'stackingExport.wbppHint' : 'stackingExport.sirilHint')}</p>
@@ -302,7 +307,7 @@ export function StackingExportModal({ objectId, onClose }: { objectId: string; o
             <button
               type="button"
               disabled={!plan || dates.length === 0 || plan.totals.lights === 0 || isFetching || quality.measuring}
-              onClick={() => void job.start(() => startStackingExport(objectId, dates, includeNotKept, layout))}
+              onClick={() => void job.start(() => startStackingExport(objectId, dates, includeNotKept, layout, precalibrated))}
               className="inline-flex items-center gap-1.5 rounded-lg bg-accent-500 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-accent-600 disabled:opacity-50"
             >
               <Download className="h-3.5 w-3.5" />
@@ -324,6 +329,7 @@ function GroupCard({ group: g, includeNotKept, multiNight }: { group: StackingPl
     g.gain !== null ? t('stackingExport.gain', { value: g.gain }) : null,
     g.binning !== null ? `bin ${g.binning}` : null,
     g.sensorTempC !== null ? `${g.sensorTempC} °C` : null,
+    g.camera,
   ].filter(Boolean).join(' · ');
   const groupIssues = g.issues.filter(i => ISSUE_ROW[i.code] === null);
 
@@ -339,11 +345,18 @@ function GroupCard({ group: g, includeNotKept, multiNight }: { group: StackingPl
           {includeNotKept ? t('stackingExport.lights', { count: g.frames }) : t('stackingExport.lightsKept', { kept: g.kept, total: g.frames })}
         </span>
       </header>
-      <dl className="mt-2 grid gap-1 text-xs">
-        {ROWS.map(row => (
-          <CalibrationRow key={row} row={row} group={g} issues={g.issues.filter(i => ISSUE_ROW[i.code] === row)} />
-        ))}
-      </dl>
+      {g.precalibrated ? (
+        <p className={`mt-2 inline-flex items-center gap-1.5 text-xs ${muted}`}>
+          <MinusCircle className="h-3.5 w-3.5" aria-hidden="true" />
+          {t('stackingExport.precalibrated')}
+        </p>
+      ) : (
+        <dl className="mt-2 grid gap-1 text-xs">
+          {ROWS.map(row => (
+            <CalibrationRow key={row} row={row} group={g} issues={g.issues.filter(i => ISSUE_ROW[i.code] === row)} />
+          ))}
+        </dl>
+      )}
       {groupIssues.map(i => (
         <p key={i.code} className={`mt-1 text-[0.6875rem] ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>{t(`stackingExport.issue.${i.code}`, i.params)}</p>
       ))}

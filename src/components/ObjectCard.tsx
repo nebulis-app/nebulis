@@ -116,13 +116,19 @@ export const ObjectCard = memo(function ObjectCard({ object, isDark, telescopes,
         .slice(0, 3)
     : [];
 
+  // An object with at least one archived processing project gets a coloured
+  // frame, so the ones already worked on stand out in the grid at a glance.
+  const hasProject = (object.projectArchiveCount ?? 0) > 0;
+  const borderClass = hasProject
+    ? (isDark ? 'border-violet-500/70 ring-1 ring-violet-500/40' : 'border-violet-400 ring-1 ring-violet-400/40')
+    : (isDark ? 'border-slate-800' : 'border-slate-200');
+
   return (
     <Link
       to={`/object/${encodeURIComponent(object.id)}`}
-      className={`group card-hover flex flex-col h-full rounded-2xl overflow-hidden border transition-all ${
-        isDark
-          ? 'bg-slate-900 border-slate-800 hover:border-accent-400'
-          : 'bg-white border-slate-200 hover:border-accent-400 shadow-sm hover:shadow-md'
+      data-has-project={hasProject || undefined}
+      className={`group card-hover flex flex-col h-full rounded-2xl overflow-hidden border transition-all hover:border-accent-400 ${borderClass} ${
+        isDark ? 'bg-slate-900' : 'bg-white shadow-sm hover:shadow-md'
       }`}
     >
       {/* Preview area with sky image */}

@@ -2428,6 +2428,7 @@ export const spec = {
         properties: {
           dates:          { type: 'array', minItems: 1, maxItems: 366, items: { type: 'string', format: 'date' } },
           includeNotKept: { type: 'boolean' },
+          precalibrated:  { type: 'boolean', description: 'Treat every light as already calibrated: no calibration frames are matched or exported. Lights whose header says so (PROC, CALSTAT) are treated that way anyway.' },
           layout:         { type: 'string', enum: ['wbpp', 'siril'] },
         },
       },
@@ -6763,7 +6764,7 @@ export const spec = {
       post: {
         summary: 'What a stacking export would contain',
         tags: ['Library (Local)'],
-        description: 'Lights and matched calibration, with totals. Which lights are kept follows Frame Analysis: the user review first, then the grade.',
+        description: 'Lights and matched calibration, with totals. Which lights are kept follows Frame Analysis: the user review first, then the grade. Calibration frames only match lights from the same camera (INSTRUME, sensor and pixel size), and flats the same telescope too; a group with none gets no_dark / no_flat.',
         parameters: [subIdParam('objectId')],
         requestBody: jsonBody('LibraryStackingExportInput'),
         responses: {

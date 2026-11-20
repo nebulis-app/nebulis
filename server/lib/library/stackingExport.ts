@@ -23,6 +23,7 @@ import {
   type CalType,
   type LightGroupInput,
   type MatchIssue,
+  type RigInfo,
 } from '../stackingMatch.js';
 import { listCalibrationLibrary, calibrationBundleName, resolveFrameType, type CalibrationFile } from './calibrationScan.js';
 import { resolveAttachmentsForSession } from './calibrationAttachments.js';
@@ -56,29 +57,69 @@ export interface LightInfo {
   binning: number | null;
   sensorTempC: number | null;
   kept: boolean;
+  /** Camera and telescope from the header. */
+  rig: RigInfo | null;
+  /** The header says the frame is already calibrated (see isPrecalibrated). */
+  precalibrated: boolean;
 }
+
+type HeaderValues = Record<string, string | number | boolean>;
 
 const num = (v: unknown): number | null => {
   const n = typeof v === 'number' ? v : Number.parseFloat(String(v ?? ''));
   return Number.isFinite(n) ? n : null;
 };
 
-/** Settings of one light: FITS header first (EXPTIME, GAIN, XBINNING,
- *  CCD-TEMP, FILTER), the ASIAIR-style filename for anything it lacks. */
-export function readLightSettings(abs: string, fileName: string): Pick<LightInfo, 'filter' | 'exposureSec' | 'gain' | 'binning' | 'sensorTempC'> {
-  let values: Record<string, string | number | boolean> = {};
+/** The primary header's keywords; empty when the file has none or cannot be read. */
+function readHeaderValues(abs: string): HeaderValues {
   try {
     const fd = fs.openSync(abs, 'r');
     try {
       const buf = Buffer.alloc(HEADER_BYTES);
       const read = fs.readSync(fd, buf, 0, HEADER_BYTES, 0);
-      values = parseFitsHeader(buf.subarray(0, read)).values;
+      return parseFitsHeader(buf.subarray(0, read)).values;
     } finally {
       fs.closeSync(fd);
     }
   } catch {
-    // Unreadable header: the filename is all there is.
+    return {};
   }
+}
+
+const text = (v: unknown): string | null => (v === undefined || v === null ? null : String(v).trim() || null);
+
+/** Camera and telescope from a header: INSTRUME, TELESCOP, the full sensor
+ *  size (NAXIS1/2 × binning) and the unbinned pixel size. Null with none. */
+export function rigFromHeader(values: HeaderValues): RigInfo | null {
+  const bin = num(values['XBINNING']) ?? 1;
+  const w = num(values['NAXIS1']);
+  const h = num(values['NAXIS2']);
+  const pixel = num(values['XPIXSZ'] ?? values['PIXSIZE1']);
+  const rig: RigInfo = {
+    camera: text(values['INSTRUME']),
+    telescope: text(values['TELESCOP']),
+    sensorPx: w && h ? [Math.max(w, h) * bin, Math.min(w, h) * bin] : null,
+    pixelUm: pixel && pixel > 0 ? pixel / bin : null,
+  };
+  return rig.camera || rig.telescope || rig.sensorPx || rig.pixelUm ? rig : null;
+}
+
+/** Lights already calibrated by a pipeline: Telescope.live and other remote
+ *  observatories write PROC = 'True'; PixInsight and others write CALSTAT
+ *  (the steps applied, e.g. 'BDF'). Such lights need no calibration frames. */
+export function isPrecalibrated(values: HeaderValues): boolean {
+  const proc = values['PROC'];
+  if (proc === true || /^(t|true|y|yes|1)$/i.test(String(proc ?? '').trim())) return true;
+  return /[bdf]/i.test(String(values['CALSTAT'] ?? ''));
+}
+
+/** Settings of one light: FITS header first (EXPTIME, GAIN, XBINNING,
+ *  CCD-TEMP, FILTER), the ASIAIR-style filename for anything it lacks. */
+export function readLightSettings(
+  abs: string,
+  fileName: string,
+  values: HeaderValues = readHeaderValues(abs),
+): Pick<LightInfo, 'filter' | 'exposureSec' | 'gain' | 'binning' | 'sensorTempC'> {
   const fromName = (re: RegExp) => {
     const m = re.exec(fileName);
     return m ? Number.parseFloat(m[1]) : null;
@@ -108,7 +149,8 @@ function nightLights(objectId: string, night: string, normalize: FilterNormalize
     if (!resolved) continue; // outside the library or gone: nothing to export
     let bytes = 0;
     try { bytes = fs.statSync(resolved.abs).size; } catch { /* listed but gone: zero bytes, still listed */ }
-    const settings = readLightSettings(resolved.abs, row.name);
+    const header = readHeaderValues(resolved.abs);
+    const settings = readLightSettings(resolved.abs, row.name, header);
     lights.push({
       relPath: row.path,
       fileName: row.name,
@@ -118,6 +160,8 @@ function nightLights(objectId: string, night: string, normalize: FilterNormalize
       ...settings,
       filter: normalize(settings.filter),
       kept: row.kept,
+      rig: rigFromHeader(header),
+      precalibrated: isPrecalibrated(header),
     });
   }
   return { lights, unmeasured: report.total - report.measured };
@@ -135,6 +179,12 @@ type CandidateRef = { scope: string | null; folderName: string; key: string; fil
 const candidateId = (c: CandidateRef) => `${c.scope ?? ''}\u0000${c.folderName}\u0000${c.key}\u0000${c.filter ?? ''}`;
 /** The bundle a candidate came from, which is what attachments point at. */
 const bundleId = (scope: string | null, folderName: string, key: string) => `${scope ?? ''}\u0000${folderName}\u0000${key}`;
+
+/** The rig of a bundle, from the header of its first FITS file. */
+function bundleRig(files: CalibrationFile[]): RigInfo | null {
+  const fits = files.find(f => /\.(fits?|fts)$/i.test(f.name));
+  return fits ? rigFromHeader(readHeaderValues(fits.path)) : null;
+}
 
 function sumBytes(files: CalibrationFile[]): number {
   return files.reduce((n, f) => n + f.size, 0);
@@ -179,6 +229,7 @@ function listCalibrationCandidates(normalize: FilterNormalizer = filterNormalize
       for (const [filter, files] of byFilter) {
         out.push({
           ...base,
+          rig: bundleRig(files),
           name: split && filter ? `${base.name}_${filter}` : base.name,
           filter: filter || null,
           fileCount: files.length,
@@ -221,6 +272,11 @@ export interface PlanGroup {
   gain: number | null;
   binning: number | null;
   sensorTempC: number | null;
+  /** INSTRUME / TELESCOP of the lights, when the headers say. */
+  camera: string | null;
+  telescope: string | null;
+  /** The lights are already calibrated (header, or asked for): no calibration frames are matched or exported. */
+  precalibrated: boolean;
   frames: number;
   kept: number;
   bytes: number;
@@ -235,6 +291,8 @@ export interface StackingPlan {
   objectId: string;
   nights: string[];
   includeNotKept: boolean;
+  /** Asked to treat every light as already calibrated. */
+  precalibrated: boolean;
   groups: PlanGroup[];
   /** Nights with raw frames that have no analysis yet; an unmeasured frame counts as kept, so the dialog offers
    *  to measure these before exporting. Nights with none are left out. */
@@ -269,6 +327,9 @@ function toPlanCalibration(pick: CalPick | null): PlanCalibration | null {
   };
 }
 
+/** Lights that are stacked together: same night, filter, exposure, gain, binning and camera. */
+const groupKey = (f: LightInfo) => [f.filter ?? '', f.exposureSec ?? '', f.gain ?? '', f.binning ?? '', f.rig?.camera ?? ''].join('|');
+
 const median = (xs: number[]) => {
   if (xs.length === 0) return null;
   const s = [...xs].sort((a, b) => a - b);
@@ -279,9 +340,10 @@ const median = (xs: number[]) => {
 export function buildStackingPlan(
   objectId: string,
   nights: string[],
-  opts: { includeNotKept?: boolean } = {},
+  opts: { includeNotKept?: boolean; precalibrated?: boolean } = {},
 ): StackingPlanWithFiles {
   const includeNotKept = !!opts.includeNotKept;
+  const allPrecalibrated = !!opts.precalibrated;
   const sortedNights = [...new Set(nights)].sort();
   const unmeasuredByNight: Record<string, number> = {};
   const normalize = filterNormalizer();
@@ -306,7 +368,7 @@ export function buildStackingPlan(
 
     const byKey = new Map<string, LightInfo[]>();
     for (const f of nightFrames) {
-      const k = [f.filter ?? '', f.exposureSec ?? '', f.gain ?? '', f.binning ?? ''].join('|');
+      const k = groupKey(f);
       const list = byKey.get(k);
       if (list) list.push(f); else byKey.set(k, [f]);
     }
@@ -320,12 +382,20 @@ export function buildStackingPlan(
         binning: first.binning,
         sensorTempC: median(frames.map(f => f.sensorTempC).filter((t): t is number => t !== null)),
         scope,
+        rig: first.rig,
       };
-      const match = matchGroup(input, candidateList, attached, nightFilterCount);
+      const precalibrated = allPrecalibrated || frames.every(f => f.precalibrated);
+      const match = precalibrated
+        ? { dark: null, flat: null, flatDark: null, bias: null, issues: [] }
+        : matchGroup(input, candidateList, attached, nightFilterCount);
       const included = frames.filter(f => includeNotKept || f.kept);
+      const { rig, ...settings } = input;
       groups.push({
         id: `${night}|${k}`,
-        ...input,
+        ...settings,
+        camera: rig?.camera ?? null,
+        telescope: rig?.telescope ?? null,
+        precalibrated,
         frames: frames.length,
         kept: frames.filter(f => f.kept).length,
         bytes: included.reduce((s, f) => s + f.bytes, 0),
@@ -350,6 +420,7 @@ export function buildStackingPlan(
     objectId,
     nights: sortedNights,
     includeNotKept,
+    precalibrated: allPrecalibrated,
     groups,
     unmeasuredByNight: Object.fromEntries(Object.entries(unmeasuredByNight).filter(([, n]) => n > 0)),
     totals: {
@@ -417,7 +488,7 @@ export function buildExportEntries(
   const lightsByGroup = new Map<string, LightInfo[]>();
   for (const f of lights) {
     if (!plan.includeNotKept && !f.kept) continue;
-    const k = `${f.night}|${[f.filter ?? '', f.exposureSec ?? '', f.gain ?? '', f.binning ?? ''].join('|')}`;
+    const k = `${f.night}|${groupKey(f)}`;
     const list = lightsByGroup.get(k);
     if (list) list.push(f); else lightsByGroup.set(k, [f]);
   }
@@ -477,7 +548,11 @@ function readme(plan: StackingPlan, layout: StackingLayout): string {
   lines.push(`Lights: ${plan.totals.lights}${plan.totals.excluded ? ` (${plan.totals.excluded} not kept, listed in not-kept.txt)` : ''}`);
   lines.push('');
   for (const g of plan.groups) {
-    lines.push(`${g.night} · ${g.filter ?? 'no filter'} · ${fmtExp(g.exposureSec)} · gain ${g.gain ?? '?'} · bin ${g.binning ?? '?'} · ${g.sensorTempC ?? '?'}°C — ${plan.includeNotKept ? g.frames : g.kept} lights`);
+    lines.push(`${g.night} · ${g.filter ?? 'no filter'} · ${fmtExp(g.exposureSec)} · gain ${g.gain ?? '?'} · bin ${g.binning ?? '?'} · ${g.sensorTempC ?? '?'}°C${g.camera ? ` · ${g.camera}` : ''} — ${plan.includeNotKept ? g.frames : g.kept} lights`);
+    if (g.precalibrated) {
+      lines.push('  already calibrated: no calibration frames');
+      continue;
+    }
     for (const [label, c] of [['dark', g.dark], ['flat', g.flat], ['flat dark', g.flatDark], ['bias', g.bias]] as const) {
       lines.push(`  ${label.padEnd(9)} ${c ? `${c.name} (${c.fileCount}${c.source === 'attached' ? ', attached' : ''}${c.deltaDays ? `, ${c.deltaDays} d from the night` : ''})` : '—'}`);
     }

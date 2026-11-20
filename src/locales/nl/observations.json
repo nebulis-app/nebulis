@@ -758,6 +758,7 @@
     "wbppHint": "Eén mappenboom; WBPP sorteert de opnamen op hun headers. Meerdere nachten staan in NIGHT_<datum>-mappen: voeg NIGHT toe als groeperingssleutel zodat elke nacht zijn eigen flats krijgt.",
     "sirilHint": "Eén map per nacht en filter met lights, darks, flats en biases, zoals de voorbewerkingsscripts van Siril verwachten. Darks worden in elke map herhaald.",
     "includeNotKept": "Niet bewaarde subframes meenemen",
+    "precalibratedOption": "Lights al gekalibreerd: geen kalibratieframes",
     "planFailed": "Kalibratieopnamen konden niet worden gekoppeld.",
     "matching": "Kalibratieopnamen koppelen…",
     "summary": "{{lights}} lights · {{calibration}} kalibratieopnamen · {{size}}",
@@ -785,6 +786,7 @@
     "sameNight": "zelfde nacht",
     "biasNotNeeded": "Niet nodig: flat darks kalibreren de flats",
     "flatDarkNotNeeded": "Geen: bias kalibreert de flats",
+    "precalibrated": "Al gekalibreerd: geen kalibratieframes",
     "row": {
       "dark": "Darks",
       "flat": "Flats",

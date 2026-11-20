@@ -758,6 +758,7 @@
     "wbppHint": "One folder tree; WBPP sorts the frames from their headers. Several nights go in NIGHT_<date> folders: add NIGHT as a grouping keyword so each night gets its own flats.",
     "sirilHint": "One folder per night and filter with lights, darks, flats and biases, as Siril’s preprocessing scripts expect. Darks are repeated in each folder.",
     "includeNotKept": "Include sub-frames not kept",
+    "precalibratedOption": "Lights already calibrated: leave out calibration frames",
     "planFailed": "Could not match the calibration frames.",
     "matching": "Matching calibration frames…",
     "summary": "{{lights}} lights · {{calibration}} calibration frames · {{size}}",
@@ -785,6 +786,7 @@
     "sameNight": "same night",
     "biasNotNeeded": "Not needed: flat darks calibrate the flats",
     "flatDarkNotNeeded": "None: bias calibrates the flats",
+    "precalibrated": "Already calibrated: no calibration frames",
     "row": {
       "dark": "Darks",
       "flat": "Flats",

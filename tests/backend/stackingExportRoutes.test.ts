@@ -23,11 +23,37 @@ import { LIBRARY_DIR } from '../../server/lib/paths';
 import { stmts } from '../../server/lib/library/objects';
 import { recordLibraryFile } from '../../server/lib/library/libraryFiles';
 import { setFrameReview } from '../../server/lib/frameAnalysis/service';
-import { readLightSettings } from '../../server/lib/library/stackingExport';
+import { readLightSettings, rigFromHeader, isPrecalibrated } from '../../server/lib/library/stackingExport';
 import { updateSettingsData } from '../../server/lib/telescopes';
 
 const N1 = '2026-09-05';
 const N2 = '2026-09-07';
+const N3 = '2026-09-10';
+const N4 = '2026-09-12';
+
+const card = (k: string, v: string) => `${k.padEnd(8)}= ${v.padStart(20)}`.padEnd(80);
+const str = (k: string, v: string) => `${k.padEnd(8)}= '${v}'`.padEnd(80);
+
+/** A header-only FITS file with the given cards (the plan never reads pixels). */
+function fitsFile(cards: string[]): Buffer {
+  let header = [card('SIMPLE', 'T'), card('BITPIX', '16'), ...cards, 'END'.padEnd(80)].join('');
+  header = header.padEnd(Math.ceil(header.length / 2880) * 2880);
+  return Buffer.concat([Buffer.from(header, 'ascii'), Buffer.alloc(2880)]);
+}
+
+const ASI585 = [card('NAXIS', '2'), card('NAXIS1', '3840'), card('NAXIS2', '2160'), card('XPIXSZ', '2.9'), str('INSTRUME', 'ZWO ASI585MC'), str('TELESCOP', 'Askar 91F')];
+const PL9000 = [card('NAXIS', '2'), card('NAXIS1', '3056'), card('NAXIS2', '3056'), card('XPIXSZ', '12'), str('INSTRUME', 'FLI ProLine PL9000'), str('TELESCOP', 'Planewave CDK24')];
+
+/** An M16 light: the remote CCD (pre-calibrated or not) or the user's own ASI585. */
+function addM16Light(night: string, name: string, rig: string[], extra: string[] = []) {
+  const dir = path.join(LIBRARY_DIR, 'M16');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, name), fitsFile([
+    ...rig, card('EXPTIME', '600'), card('GAIN', '0'), card('XBINNING', '1'), card('CCD-TEMP', '-10'),
+    str('FILTER', 'SII'), str('IMAGETYP', 'Light'), ...extra,
+  ]));
+  recordLibraryFile({ objectId: 'M16', folderName: 'M16', fileName: name, role: 'sub', captureDate: night, captureTime: '223000' });
+}
 
 /** A tiny but valid 16-bit FITS light with the acquisition keywords. */
 function light(filter: string, temp = -10): Buffer {
@@ -91,6 +117,20 @@ beforeAll(async () => {
   addCal('Flats', [1, 2].map(i => `Flat_1.5s_Bin1_H_gain200_20260906-06000${i}_-10.0C_000${i}.fit`));
   addCal('FlatDarks', [`FlatDark_1.5s_Bin1_gain200_20260906-061000_-10.0C_0001.fit`]);
 
+  // M16: remote CCD lights next to the user's own ASI585 ones, and calibration from the ASI585 only.
+  stmts.upsertObject.run('M16', 'M16', 0, new Date().toISOString(), 0, null, 'M16', 'Eagle', null, null, null, null, null, null, null);
+  for (let i = 1; i <= 2; i++) addM16Light(N3, `Light_M16_600.0s_Bin1_SII_gain0_20260910-22${i}000_-10.0C_000${i}.fit`, PL9000);
+  addM16Light(N3, 'Light_M16_600.0s_Bin1_SII_gain0_20260910-230000_-10.0C_0001.fit', ASI585);
+  for (let i = 1; i <= 2; i++) addM16Light(N4, `Light_M16_600.0s_Bin1_SII_gain0_20260912-22${i}000_-10.0C_000${i}.fit`, PL9000, [str('PROC', 'True')]);
+  const calDir = path.join(LIBRARY_DIR, '_archive', '_unscoped');
+  const addHeaderCal = (folder: string, name: string, cards: string[]) => {
+    fs.mkdirSync(path.join(calDir, folder), { recursive: true });
+    fs.writeFileSync(path.join(calDir, folder, name), fitsFile(cards));
+  };
+  addHeaderCal('Darks', 'Dark_600.0s_Bin1_gain0_20260801-120000_-10.0C_0001.fit', ASI585);
+  addHeaderCal('Bias', 'Bias_0.001s_Bin1_gain0_20260801-120000_-10.0C_0001.fit', ASI585);
+  addHeaderCal('Flats', 'Flat_0.5s_Bin1_SII_gain0_20260911-060000_-10.0C_0001.fit', ASI585);
+
   const app = express();
   app.use(express.json());
   app.use(apiEnvelope);
@@ -121,6 +161,22 @@ describe('readLightSettings', () => {
   });
 });
 
+describe('rig and calibration state from the header', () => {
+  it('reads the camera, telescope, sensor and pixel size', () => {
+    expect(rigFromHeader({ INSTRUME: 'FLI ProLine PL9000', TELESCOP: 'CDK24', NAXIS1: 1528, NAXIS2: 1528, XBINNING: 2, XPIXSZ: 24 }))
+      .toEqual({ camera: 'FLI ProLine PL9000', telescope: 'CDK24', sensorPx: [3056, 3056], pixelUm: 12 });
+    expect(rigFromHeader({ EXPTIME: 60 })).toBeNull();
+  });
+
+  it('spots lights a pipeline already calibrated', () => {
+    expect(isPrecalibrated({ PROC: 'True' })).toBe(true);
+    expect(isPrecalibrated({ PROC: true })).toBe(true);
+    expect(isPrecalibrated({ CALSTAT: 'BDF' })).toBe(true);
+    expect(isPrecalibrated({ PROC: 'False' })).toBe(false);
+    expect(isPrecalibrated({})).toBe(false);
+  });
+});
+
 describe('stacking export plan', () => {
   it('groups lights per night and filter, applies Keep, and matches calibration', async () => {
     const res = await post('/objects/NGC6888/stacking-export/plan', { dates: [N2, N1] });
@@ -146,6 +202,36 @@ describe('stacking export plan', () => {
     expect(h2.issues).toEqual([expect.objectContaining({ code: 'flat_other_night', severity: 'warning' })]);
   });
 
+  it('matches calibration to the lights\' own camera only', async () => {
+    const plan = (await (await post('/objects/M16/stacking-export/plan', { dates: [N3] })).json()).data;
+    const byCamera = Object.fromEntries(plan.groups.map((g: { camera: string }) => [g.camera, g]));
+    expect(Object.keys(byCamera).sort()).toEqual(['FLI ProLine PL9000', 'ZWO ASI585MC']);
+
+    const remote = byCamera['FLI ProLine PL9000'];
+    expect(remote).toMatchObject({ frames: 2, precalibrated: false, dark: null, flat: null, bias: null });
+    expect(remote.issues).toEqual([
+      { code: 'no_dark', severity: 'error' },
+      { code: 'no_flat', severity: 'error', params: { filter: 'SII' } },
+    ]);
+
+    const own = byCamera['ZWO ASI585MC'];
+    expect(own.dark).toMatchObject({ exposureSec: 600, gain: 0 });
+    expect(own.flat).toMatchObject({ filter: 'SII' });
+    expect(own.bias).toMatchObject({ gain: 0 });
+    expect(plan.totals.errors).toBe(2);
+  });
+
+  it('leaves calibration out for lights already calibrated', async () => {
+    const fromHeader = (await (await post('/objects/M16/stacking-export/plan', { dates: [N4] })).json()).data;
+    expect(fromHeader.groups).toEqual([expect.objectContaining({ precalibrated: true, dark: null, flat: null, flatDark: null, bias: null, issues: [] })]);
+    expect(fromHeader.totals).toMatchObject({ calibrationFrames: 0, errors: 0 });
+
+    const asked = (await (await post('/objects/M16/stacking-export/plan', { dates: [N3], precalibrated: true })).json()).data;
+    expect(asked.precalibrated).toBe(true);
+    expect(asked.groups.every((g: { precalibrated: boolean; issues: unknown[] }) => g.precalibrated && g.issues.length === 0)).toBe(true);
+    expect(asked.totals).toMatchObject({ lights: 3, calibrationFrames: 0, errors: 0 });
+  });
+
   it('can include the subs that are not kept', async () => {
     const plan = (await (await post('/objects/NGC6888/stacking-export/plan', { dates: [N1], includeNotKept: true })).json()).data;
     expect(plan.totals).toMatchObject({ lights: 5, excluded: 0 });
@@ -158,8 +244,8 @@ describe('stacking export plan', () => {
   });
 });
 
-async function exportZip(body: unknown): Promise<string[]> {
-  const start = await post('/objects/NGC6888/stacking-export', body);
+async function exportZip(body: unknown, objectId = 'NGC6888'): Promise<string[]> {
+  const start = await post(`/objects/${objectId}/stacking-export`, body);
   expect(start.status).toBe(200);
   const { jobId } = (await start.json()).data;
   let status: { status: string; token?: string } = { status: 'running' };
@@ -205,6 +291,19 @@ describe('stacking export ZIP', () => {
     // Flat darks stand in for bias in biases/ when there are any.
     expect(names).toContain(`${root}/${N1}_H/biases/FlatDark_1.5s_Bin1_gain200_20260906-061000_-10.0C_0001.fit`);
     expect(names).toContain(`${root}/${N1}_O/biases/Bias_0.001s_Bin1_gain200_20260801-110000_-10.0C_0001.fit`);
+  });
+});
+
+describe('stacking export ZIP of pre-calibrated lights', () => {
+  it('holds the lights and no calibration frames', async () => {
+    const names = await exportZip({ dates: [N4], layout: 'wbpp' }, 'M16');
+    const root = `M16_${N4}_wbpp`;
+    expect(names).toEqual([
+      `${root}/Lights/NIGHT_${N4}/FILTER_SII/Light_M16_600.0s_Bin1_SII_gain0_20260912-221000_-10.0C_0001.fit`,
+      `${root}/Lights/NIGHT_${N4}/FILTER_SII/Light_M16_600.0s_Bin1_SII_gain0_20260912-222000_-10.0C_0002.fit`,
+      `${root}/README.txt`,
+      `${root}/manifest.json`,
+    ]);
   });
 });
 

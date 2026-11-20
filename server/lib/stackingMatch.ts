@@ -18,12 +18,30 @@
  *   - bias: same gain and binning. Only required when the flats have no flat
  *     darks, but included whenever found (stackers use it for the flats).
  *
+ * Every frame must also come from the same camera as the lights (INSTRUME,
+ * sensor size and pixel size, see `sameCamera`), and flats from the same
+ * telescope too (TELESCOP, and the library's telescope folder): another rig's
+ * frames are never a fallback, the group gets no_dark / no_flat instead.
+ *
  * "Same" for a setting means equal when both sides know it: a field missing
  * from a filename or header never blocks a match on its own (that is how the
  * Calibration Library groups bundles too).
  */
 
 export type CalType = 'bias' | 'dark' | 'flat' | 'flatDark';
+
+/** The rig a frame was shot with, read from its FITS header. Null fields are
+ *  unknown and never block a match. */
+export interface RigInfo {
+  /** INSTRUME. */
+  camera: string | null;
+  /** TELESCOP. */
+  telescope: string | null;
+  /** Full sensor size in unbinned pixels (NAXIS1/2 × binning), larger side first. */
+  sensorPx: [number, number] | null;
+  /** Unbinned pixel size in µm (XPIXSZ / binning). */
+  pixelUm: number | null;
+}
 
 /** One calibration bundle, flattened from the Calibration Library. */
 export interface CalCandidate {
@@ -43,6 +61,8 @@ export interface CalCandidate {
   isExpired: boolean;
   fileCount: number;
   bytes: number;
+  /** From the header of one of the bundle's files, when it has one. */
+  rig?: RigInfo | null;
 }
 
 export interface LightGroupInput {
@@ -55,6 +75,8 @@ export interface LightGroupInput {
   sensorTempC: number | null;
   /** Telescope that captured the night, when known. */
   scope: string | null;
+  /** Camera and telescope from the lights' headers, when known. */
+  rig?: RigInfo | null;
 }
 
 export interface CalPick {
@@ -98,6 +120,34 @@ const sameExposure = (a: number | null, b: number | null) =>
   a === null || b === null || Math.abs(a - b) <= Math.max(0.01, 0.005 * Math.max(a, b));
 const sameSetting = (a: number | null, b: number | null) => a === null || b === null || a === b;
 const normFilter = (f: string | null) => (f ?? '').trim().toLowerCase() || null;
+const normName = (s: string | null) => (s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '') || null;
+
+/** Two header names for the same device: equal once punctuation is dropped,
+ *  or one contains the other (`ZWO ASI585MC` / `ZWO ASI585MC Air`), since
+ *  capture apps spell the same camera slightly differently. */
+function sameName(a: string | null, b: string | null): boolean {
+  const x = normName(a);
+  const y = normName(b);
+  return x === null || y === null || x.includes(y) || y.includes(x);
+}
+
+/** Same camera: model name, sensor size and pixel size agree wherever both
+ *  sides know them. */
+export function sameCamera(a: RigInfo | null | undefined, b: RigInfo | null | undefined): boolean {
+  if (!a || !b) return true;
+  if (!sameName(a.camera, b.camera)) return false;
+  if (a.sensorPx && b.sensorPx
+    && (Math.abs(a.sensorPx[0] - b.sensorPx[0]) > 2 || Math.abs(a.sensorPx[1] - b.sensorPx[1]) > 2)) return false;
+  if (a.pixelUm !== null && b.pixelUm !== null && Math.abs(a.pixelUm - b.pixelUm) > 0.05 * Math.max(a.pixelUm, b.pixelUm)) return false;
+  return true;
+}
+
+/** Same telescope, for flats: the TELESCOP keyword and the library's
+ *  telescope folder agree wherever both sides know them. */
+function sameTelescope(group: LightGroupInput, c: CalCandidate): boolean {
+  if (group.scope && c.scope && group.scope !== c.scope) return false;
+  return sameName(group.rig?.telescope ?? null, c.rig?.telescope ?? null);
+}
 
 /** Noon of the night's date to noon two days later, local time — covers dusk
  *  flats, dawn flats and flats shot the next afternoon. */
@@ -140,6 +190,7 @@ const timeScore = (c: CalCandidate) => -(c.capturedAt ? new Date(c.capturedAt).g
 export function pickDark(group: LightGroupInput, all: CalCandidate[]): { pick: CalPick | null; issues: MatchIssue[] } {
   const settings = all.filter(c =>
     c.type === 'dark'
+    && sameCamera(c.rig, group.rig)
     && sameExposure(c.exposureSec, group.exposureSec)
     && sameSetting(c.gain, group.gain)
     && sameSetting(c.binning, group.binning));
@@ -169,7 +220,7 @@ export function pickDark(group: LightGroupInput, all: CalCandidate[]): { pick: C
 
 function pickBias(group: LightGroupInput, all: CalCandidate[]): CalPick | null {
   const chosen = best(
-    all.filter(c => c.type === 'bias' && sameSetting(c.gain, group.gain) && sameSetting(c.binning, group.binning)),
+    all.filter(c => c.type === 'bias' && sameCamera(c.rig, group.rig) && sameSetting(c.gain, group.gain) && sameSetting(c.binning, group.binning)),
     c => [group.scope && c.scope !== group.scope ? 1 : 0, c.isExpired ? 1 : 0, timeScore(c), -c.fileCount],
   );
   return chosen ? { candidate: chosen, source: 'matched' } : null;
@@ -188,6 +239,8 @@ export function pickFlat(
 ): { pick: CalPick | null; issues: MatchIssue[] } {
   const filter = normFilter(group.filter);
   const fits = (c: CalCandidate) => sameSetting(c.binning, group.binning)
+    && sameCamera(c.rig, group.rig)
+    && sameTelescope(group, c)
     && (normFilter(c.filter) === filter || (c.filter === null && nightFilterCount <= 1));
 
   const att = best(attached.filter(c => c.type === 'flat' && fits(c)), c => [normFilter(c.filter) === filter ? 0 : 1, timeScore(c)]);
@@ -207,8 +260,16 @@ export function pickFlat(
   return { pick: { candidate: chosen.c, source: 'matched', deltaDays: chosen.days ?? undefined }, issues };
 }
 
-export function pickFlatDark(flat: CalCandidate, night: string, all: CalCandidate[], attached: CalCandidate[]): CalPick | null {
+export function pickFlatDark(
+  flat: CalCandidate,
+  night: string,
+  all: CalCandidate[],
+  attached: CalCandidate[],
+  lightRig: RigInfo | null = null,
+): CalPick | null {
   const fits = (c: CalCandidate) => c.type === 'flatDark'
+    && sameCamera(c.rig, flat.rig)
+    && sameCamera(c.rig, lightRig)
     && sameExposure(c.exposureSec, flat.exposureSec)
     && sameSetting(c.gain, flat.gain)
     && sameSetting(c.binning, flat.binning);
@@ -232,7 +293,7 @@ export function matchGroup(
   issues.push(...dark.issues);
   const flat = pickFlat(group, all, attached, nightFilterCount);
   issues.push(...flat.issues);
-  const flatDark = flat.pick ? pickFlatDark(flat.pick.candidate, group.night, all, attached) : null;
+  const flatDark = flat.pick ? pickFlatDark(flat.pick.candidate, group.night, all, attached, group.rig ?? null) : null;
   const bias = pickBias(group, all);
 
   if (flat.pick && !flatDark && !bias) issues.push({ code: 'no_flat_calibration', severity: 'error' });

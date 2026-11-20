@@ -758,6 +758,7 @@
     "wbppHint": "Une seule arborescence ; WBPP classe les poses d’après leurs en-têtes. Plusieurs nuits vont dans des dossiers NIGHT_<date> : ajoutez NIGHT comme mot-clé de regroupement pour que chaque nuit utilise ses propres flats.",
     "sirilHint": "Un dossier par nuit et par filtre avec lights, darks, flats et biases, comme l’attendent les scripts de prétraitement de Siril. Les darks sont répétés dans chaque dossier.",
     "includeNotKept": "Inclure les sous-poses non gardées",
+    "precalibratedOption": "Lights déjà calibrées : ne pas inclure de calibration",
     "planFailed": "Impossible d’apparier les poses de calibration.",
     "matching": "Appariement des poses de calibration…",
     "summary": "{{lights}} lights · {{calibration}} poses de calibration · {{size}}",
@@ -785,6 +786,7 @@
     "sameNight": "même nuit",
     "biasNotNeeded": "Inutile : les flat darks calibrent les flats",
     "flatDarkNotNeeded": "Aucun : le bias calibre les flats",
+    "precalibrated": "Déjà calibrées : aucune image de calibration",
     "row": {
       "dark": "Darks",
       "flat": "Flats",

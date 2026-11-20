@@ -758,6 +758,7 @@
     "wbppHint": "Un solo árbol de carpetas; WBPP clasifica las tomas por sus cabeceras. Varias noches van en carpetas NIGHT_<fecha>: añade NIGHT como palabra clave de agrupación para que cada noche use sus propios flats.",
     "sirilHint": "Una carpeta por noche y filtro con lights, darks, flats y biases, como esperan los scripts de preprocesado de Siril. Los darks se repiten en cada carpeta.",
     "includeNotKept": "Incluir subtomas no conservadas",
+    "precalibratedOption": "Lights ya calibradas: sin tomas de calibración",
     "planFailed": "No se pudieron emparejar las tomas de calibración.",
     "matching": "Emparejando tomas de calibración…",
     "summary": "{{lights}} lights · {{calibration}} tomas de calibración · {{size}}",
@@ -785,6 +786,7 @@
     "sameNight": "misma noche",
     "biasNotNeeded": "No hace falta: los flat darks calibran los flats",
     "flatDarkNotNeeded": "Ninguno: el bias calibra los flats",
+    "precalibrated": "Ya calibradas: sin tomas de calibración",
     "row": {
       "dark": "Darks",
       "flat": "Flats",

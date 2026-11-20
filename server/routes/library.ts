@@ -2084,6 +2084,8 @@ const NIGHT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const StackingExportSchema = z.object({
   dates: z.array(z.string().regex(NIGHT_DATE_RE, 'dates must be YYYY-MM-DD')).min(1).max(366),
   includeNotKept: z.boolean().optional(),
+  /** Treat every light as already calibrated: no calibration frames are matched or exported. */
+  precalibrated: z.boolean().optional(),
   layout: z.enum(['wbpp', 'siril']).optional(),
 });
 
@@ -2105,14 +2107,14 @@ router.post('/objects/:objectId/stacking-export/plan', strictRateLimiter, async 
   const r = stackingRequest(req, res);
   if (!r) return;
   if (!(await requireLibraryReachable(res))) return;
-  res.apiSuccess(buildStackingPlan(r.objectId, r.dates, { includeNotKept: r.includeNotKept }).plan);
+  res.apiSuccess(buildStackingPlan(r.objectId, r.dates, { includeNotKept: r.includeNotKept, precalibrated: r.precalibrated }).plan);
 });
 
 router.post('/objects/:objectId/stacking-export', strictRateLimiter, async (req: Request, res: Response) => {
   const r = stackingRequest(req, res);
   if (!r) return;
   if (!(await requireLibraryReachable(res))) return;
-  const data = buildStackingPlan(r.objectId, r.dates, { includeNotKept: r.includeNotKept });
+  const data = buildStackingPlan(r.objectId, r.dates, { includeNotKept: r.includeNotKept, precalibrated: r.precalibrated });
   if (data.plan.totals.lights === 0) {
     res.apiError(404, 'NO_FILES', 'No light frames to export for the selected nights');
     return;

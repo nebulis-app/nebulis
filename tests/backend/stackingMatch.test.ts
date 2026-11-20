@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchGroup, pickDark, pickFlat, _internal, type CalCandidate, type LightGroupInput } from '../../server/lib/stackingMatch';
+import { matchGroup, pickDark, pickFlat, sameCamera, _internal, type CalCandidate, type LightGroupInput, type RigInfo } from '../../server/lib/stackingMatch';
 
 const NIGHT = '2026-09-05';
 
@@ -99,6 +99,53 @@ describe('matchGroup', () => {
   it('flags flats that nothing can calibrate', () => {
     const m = matchGroup(group(), [dark, flat], [], 1);
     expect(m.issues).toEqual([{ code: 'no_flat_calibration', severity: 'error' }]);
+  });
+});
+
+describe('camera and telescope', () => {
+  const asi585: RigInfo = { camera: 'ZWO ASI585MC', telescope: 'Askar 91F', sensorPx: [3840, 2160], pixelUm: 2.9 };
+  const pl9000: RigInfo = { camera: 'FLI ProLine PL9000', telescope: 'CDK24', sensorPx: [3056, 3056], pixelUm: 12 };
+  const remote = (over: Partial<LightGroupInput> = {}) => group({ rig: pl9000, scope: 'chi1', ...over });
+
+  it('tells cameras apart by name, sensor size or pixel size', () => {
+    expect(sameCamera(asi585, { ...asi585, camera: 'ZWO ASI585MC Air' })).toBe(true);
+    expect(sameCamera(asi585, pl9000)).toBe(false);
+    expect(sameCamera(asi585, { ...asi585, camera: null, sensorPx: [3056, 3056] })).toBe(false);
+    expect(sameCamera(asi585, { ...asi585, camera: null, sensorPx: null, pixelUm: 3.76 })).toBe(false);
+    // Unknown on either side never blocks.
+    expect(sameCamera(asi585, null)).toBe(true);
+    expect(sameCamera(asi585, { camera: null, telescope: null, sensorPx: null, pixelUm: null })).toBe(true);
+  });
+
+  it('never falls back to another camera\'s darks or bias', () => {
+    const dark = cal('dark', { exposureSec: 180, sensorTempC: -10, rig: asi585 });
+    expect(pickDark(remote(), [dark])).toEqual({ pick: null, issues: [{ code: 'no_dark', severity: 'error' }] });
+    const m = matchGroup(remote(), [dark, cal('bias', { rig: asi585 })], [], 1);
+    expect(m.bias).toBeNull();
+  });
+
+  it('never falls back to another rig\'s flats, attached or not', () => {
+    const flat = cal('flat', { filter: 'H', capturedAt: `${NIGHT}T23:30:00`, rig: asi585 });
+    expect(pickFlat(remote(), [flat], [flat], 1).issues).toEqual([{ code: 'no_flat', severity: 'error', params: { filter: 'H' } }]);
+    // Same camera, but on another telescope: flats only hold for their own optical train.
+    const otherScope = cal('flat', { filter: 'H', scope: 'asiair', capturedAt: `${NIGHT}T23:30:00`, rig: pl9000 });
+    expect(pickFlat(remote(), [otherScope], [], 1).pick).toBeNull();
+    const otherTelescop = cal('flat', { filter: 'H', scope: 'chi1', capturedAt: `${NIGHT}T23:30:00`, rig: { ...pl9000, telescope: 'RC16' } });
+    expect(pickFlat(remote(), [otherTelescop], [], 1).pick).toBeNull();
+  });
+
+  it('matches the lights\' own camera, and frames whose camera is unknown', () => {
+    const own = cal('dark', { exposureSec: 180, sensorTempC: -10, name: 'own', rig: { ...pl9000, telescope: null } });
+    const theirs = cal('dark', { exposureSec: 180, sensorTempC: -10, rig: asi585, fileCount: 100 });
+    expect(pickDark(remote(), [theirs, own]).pick?.candidate.name).toBe('own');
+    expect(pickDark(remote(), [cal('dark', { exposureSec: 180, sensorTempC: -10, name: 'unknown' })]).pick?.candidate.name).toBe('unknown');
+  });
+
+  it('keeps flat darks on the flats\' and the lights\' camera', () => {
+    const flat = cal('flat', { filter: 'H', exposureSec: 1.2, scope: 'chi1', capturedAt: '2026-09-06T06:00:00' });
+    const wrong = cal('flatDark', { exposureSec: 1.2, rig: asi585 });
+    const m = matchGroup(remote(), [flat, wrong], [], 1);
+    expect(m.flatDark).toBeNull();
   });
 });
 

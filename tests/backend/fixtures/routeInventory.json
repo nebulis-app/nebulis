@@ -1243,7 +1243,8 @@
     "path": "/library/objects/:objectId/processed-images",
     "guards": [
       "requireAdmin",
-      "multerMiddleware",
+      "rejectOversizedBody",
+      "multerSingleFile",
       "<anonymous>"
     ]
   },
@@ -1260,7 +1261,8 @@
     "path": "/library/objects/:objectId/processed-images/:id",
     "guards": [
       "requireAdmin",
-      "multerMiddleware",
+      "rejectOversizedBody",
+      "multerSingleFile",
       "<anonymous>"
     ]
   },
@@ -1299,8 +1301,9 @@
     "path": "/library/objects/:objectId/project-archives",
     "guards": [
       "requireAdmin",
+      "rejectOversizedBody",
       "checkArchiveUploadSpace",
-      "multerMiddleware",
+      "multerSingleFile",
       "<anonymous>"
     ]
   },
@@ -1409,7 +1412,8 @@
     "path": "/library/objects/:objectId/sessions/:date/processed-images",
     "guards": [
       "requireAdmin",
-      "multerMiddleware",
+      "rejectOversizedBody",
+      "multerSingleFile",
       "<anonymous>"
     ]
   },
@@ -2830,6 +2834,46 @@
   {
     "method": "POST",
     "path": "/telescopes/test-connection",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/uploads",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/uploads/:uploadId",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/uploads/:uploadId",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/uploads/:uploadId/chunks/:index",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/uploads/:uploadId/complete",
     "guards": [
       "requireAdmin",
       "<anonymous>"

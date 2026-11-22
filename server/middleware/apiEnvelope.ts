@@ -14,6 +14,7 @@ export interface ApiResponse<T = unknown> {
   error?: {
     code: string;
     message: string;
+    [detail: string]: unknown;
   };
 }
 
@@ -31,9 +32,11 @@ export function apiEnvelope(_req: Request, res: Response, next: NextFunction) {
   };
 
   // Attach helper for error responses
-  res.apiError = function (statusCode: number, code: string, message: string) {
+  // `details` adds machine-readable fields next to code and message (for
+  // example `maxSize` on a 413), so a client need not parse the message.
+  res.apiError = function (statusCode: number, code: string, message: string, details?: Record<string, unknown>) {
     res.status(statusCode);
-    return originalJson({ ok: false, data: null, error: { code, message } });
+    return originalJson({ ok: false, data: null, error: { ...details, code, message } });
   };
 
   // Type guard: narrows `unknown` to `Record<string, unknown>` so we can safely
@@ -96,7 +99,7 @@ declare global {
   namespace Express {
     interface Response {
       apiSuccess: (data: unknown, meta?: Record<string, unknown>) => Response;
-      apiError: (statusCode: number, code: string, message: string) => Response;
+      apiError: (statusCode: number, code: string, message: string, details?: Record<string, unknown>) => Response;
     }
   }
 }

@@ -13,6 +13,7 @@ import { forecastRouter } from '../../server/routes/forecast';
 import { gearRouter } from '../../server/routes/gear';
 import { journalRouter } from '../../server/routes/journal';
 import { libraryRouter } from '../../server/routes/library';
+import { uploadsRouter } from '../../server/routes/uploads';
 import { metaRouter } from '../../server/routes/meta';
 import { notesRouter } from '../../server/routes/notes';
 import { objectNotesRouter } from '../../server/routes/objectNotes';
@@ -74,6 +75,7 @@ const V1_MOUNTS: Array<[prefix: string, routerName: string]> = [
   ['/observations', 'observationsRouter'],
   ['/satellite', 'satelliteRouter'],
   ['/library', 'libraryRouter'],
+  ['/uploads', 'uploadsRouter'],
   ['/annotate', 'annotateRouter'],
   ['/planner', 'plannerRouter'],
   ['/sky-events', 'skyEventsRouter'],
@@ -123,6 +125,7 @@ const ROUTERS: Record<string, Router> = {
   alertsRouter,
   telescopeRouter,
   telescopesRouter,
+  uploadsRouter,
   wishlistRouter,
 };
 

@@ -166,6 +166,7 @@ import {
 } from '../lib/library/calibrationAttachments.js';
 import { stmts as objectStmts } from '../lib/library/objects.js';
 import { stageUploadDestPath } from '../lib/library/uploadPath.js';
+import { maxUploadBytes } from '../lib/library/chunkedUploads.js';
 import {
   IMPORT_TMP_BASE,
   isValidTmpId,
@@ -3716,19 +3717,76 @@ router.put('/objects/:objectId/sessions/:date/session-image', requireAdmin, stri
 // localLibrary barrel — observations.ts needs the same renderability check for
 // the session auto-thumbnail pick, so the single source of truth moved there.
 
+// Limits are read once at startup; see chunkedUploads.ts for the variables.
+const PROCESSED_IMAGE_MAX_BYTES = maxUploadBytes('processed-image');
+const PROJECT_ARCHIVE_MAX_BYTES = maxUploadBytes('project-archive');
+
 const processedUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, os.tmpdir()),
     filename: (_req, file, cb) => cb(null, `processed_${randomUUID()}_${path.basename(file.originalname)}`),
   }),
-  // 2 GB: a 32-bit XISF or FITS integration of a multi-night project routinely
-  // passes the old 300 MB cap. multer streams to a temp file, so the ceiling is
-  // disk rather than memory.
-  limits: { fileSize: 2 * 1024 * 1024 * 1024, fieldSize: 1 * 1024 * 1024 },
+  // 2 GB by default (NEBULIS_MAX_PROCESSED_IMAGE_BYTES): a 32-bit XISF or FITS
+  // integration of a multi-night project routinely passes the old 300 MB cap.
+  // multer streams to a temp file, so the ceiling is disk rather than memory.
+  limits: { fileSize: PROCESSED_IMAGE_MAX_BYTES, fieldSize: 1 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     cb(null, isRenderableProcessedName(file.originalname) || isStoredOnlyProcessedName(file.originalname));
   },
 });
+
+/** Room for the multipart boundaries and the small text fields (each capped
+ *  at 1 MB by `fieldSize`) on top of the file itself. */
+const MULTIPART_OVERHEAD_BYTES = 16 * 1024 * 1024;
+
+function tooLargeMessage(maxSize: number): string {
+  return `File is too large for this upload endpoint (limit ${(maxSize / 1e9).toFixed(1)} GB). ` +
+    'Larger files, or uploads that must survive a dropped connection, go through the chunked upload API (POST /uploads).';
+}
+
+/**
+ * Refuse a single-POST upload whose declared Content-Length is already over
+ * the limit, before a byte of it is staged. The client gets a 413 with
+ * `maxSize` straight away instead of streaming gigabytes to be told no.
+ * `Connection: close` because the body is left unread.
+ */
+function rejectOversizedUpload(maxSize: number) {
+  return function rejectOversizedBody(req: Request, res: Response, next: () => void): void {
+    const declared = Number(req.headers['content-length']);
+    if (Number.isFinite(declared) && declared > maxSize + MULTIPART_OVERHEAD_BYTES) {
+      res.set('Connection', 'close');
+      res.apiError(413, 'LIMIT_FILE_SIZE', tooLargeMessage(maxSize), { maxSize });
+      return;
+    }
+    next();
+  };
+}
+
+/**
+ * `upload.single(field)`, with the file-size limit answered here as a 413
+ * carrying `maxSize` (the global handler's 413 has no limit in it). multer
+ * stages to disk, never to memory, and removes the partial file itself.
+ */
+function singleFileUpload(upload: multer.Multer, field: string, maxSize: number) {
+  const handler = upload.single(field);
+  return function multerSingleFile(req: Request, res: Response, next: (err?: unknown) => void): void {
+    handler(req, res, (err?: unknown) => {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        log.warn({ maxSize, contentLength: req.headers['content-length'], url: req.originalUrl }, '[upload] refused: file over the limit');
+        res.set('Connection', 'close');
+        res.apiError(413, 'LIMIT_FILE_SIZE', tooLargeMessage(maxSize), { maxSize });
+        return;
+      }
+      next(err);
+    });
+  };
+}
+
+/** The processed-image single POST, guarded. */
+const processedImageUpload = [
+  rejectOversizedUpload(PROCESSED_IMAGE_MAX_BYTES),
+  singleFileUpload(processedUpload, 'image', PROCESSED_IMAGE_MAX_BYTES),
+];
 
 // Separate, deliberately narrow uploader for the "save edited image back into
 // the library folder" route below. That one writes into the *object* directory,
@@ -3752,7 +3810,7 @@ router.get('/objects/:objectId/sessions/:date/processed-images', (req: Request, 
   res.apiSuccess(getProcessedImages(objectId, date).map(p => ({ ...p, isFavorite: favorites.has(p.path) })));
 });
 
-router.post('/objects/:objectId/sessions/:date/processed-images', requireAdmin, processedUpload.single('image'), (req: Request, res: Response) => {
+router.post('/objects/:objectId/sessions/:date/processed-images', requireAdmin, ...processedImageUpload, (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const date = String(req.params.date);
   const file = req.file;
@@ -3891,7 +3949,7 @@ router.post('/objects/:objectId/sessions/:date/processed-images/:id/unmark', req
 // and id — the image editor's "Save" (vs the POST above, "Save as new
 // version"). Not scoped by session date so it also covers an object-level
 // processed image (date NULL).
-router.put('/objects/:objectId/processed-images/:id', requireAdmin, processedUpload.single('image'), (req: Request, res: Response) => {
+router.put('/objects/:objectId/processed-images/:id', requireAdmin, ...processedImageUpload, (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const id = String(req.params.id);
   const file = req.file;
@@ -3959,14 +4017,16 @@ const projectArchiveUpload = multer({
     destination: (_req, _file, cb) => cb(null, os.tmpdir()),
     filename: (_req, file, cb) => cb(null, `projectarchive_${randomUUID()}_${path.basename(file.originalname)}`),
   }),
-  // 20 GB: a real PixInsight project (masters + every intermediate XISF
-  // process stage) or a full Siril working folder can run well past the 2 GB
-  // cap the processed-image uploader uses for one finished picture — this is
-  // meant to hold a whole project, not one file. multer streams to a temp
-  // file, so — same as every other uploader in this file — the ceiling bounds
-  // temp-disk usage, not memory; see checkArchiveUploadSpace below for the
-  // free-space guard that actually protects the disk at this size.
-  limits: { fileSize: 20 * 1024 * 1024 * 1024, fieldSize: 1 * 1024 * 1024 },
+  // 20 GB by default (NEBULIS_MAX_PROJECT_ARCHIVE_BYTES): a real PixInsight
+  // project (masters + every intermediate XISF process stage) or a full Siril
+  // working folder can run well past the 2 GB cap the processed-image uploader
+  // uses for one finished picture — this is meant to hold a whole project, not
+  // one file. multer streams to a temp file, so — same as every other uploader
+  // in this file — the ceiling bounds temp-disk usage, not memory; see
+  // checkArchiveUploadSpace below for the free-space guard that actually
+  // protects the disk at this size. Clients that cannot send one multi-GB
+  // request (macOS refuses a single send over ~2 GiB) use POST /uploads.
+  limits: { fileSize: PROJECT_ARCHIVE_MAX_BYTES, fieldSize: 1 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => cb(null, isProjectArchiveName(file.originalname)),
 });
 
@@ -4013,8 +4073,9 @@ router.get('/objects/:objectId/project-archives', (req: Request, res: Response) 
 router.post(
   '/objects/:objectId/project-archives',
   requireAdmin,
+  rejectOversizedUpload(PROJECT_ARCHIVE_MAX_BYTES),
   checkArchiveUploadSpace,
-  projectArchiveUpload.single('archive'),
+  singleFileUpload(projectArchiveUpload, 'archive', PROJECT_ARCHIVE_MAX_BYTES),
   (req: Request, res: Response) => {
     const objectId = String(req.params.objectId);
     const file = req.file;
@@ -4325,7 +4386,7 @@ router.get('/processed-images/:id', async (req: Request, res: Response) => {
  *  Stored with date NULL (source stays 'user'), so it shows in the object's
  *  aggregate Processed Images section but under no single observation. No
  *  runId: combining nights is a per-session-upload concept. */
-router.post('/objects/:objectId/processed-images', requireAdmin, processedUpload.single('image'), (req: Request, res: Response) => {
+router.post('/objects/:objectId/processed-images', requireAdmin, ...processedImageUpload, (req: Request, res: Response) => {
   const objectId = String(req.params.objectId);
   const file = req.file;
   if (!file) {

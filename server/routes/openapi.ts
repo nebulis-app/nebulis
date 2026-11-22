@@ -2356,6 +2356,69 @@ export const spec = {
           software: { type: 'string' },
         },
       },
+      ChunkedUploadInput: {
+        type: 'object',
+        required: ['target', 'objectId', 'filename', 'size'],
+        properties: {
+          target:   { type: 'string', enum: ['project-archive', 'processed-image'], description: 'What the file becomes: a project archive or an object-level processed image' },
+          objectId: { type: 'string', example: 'M52' },
+          filename: { type: 'string', example: 'M52_project.zip', description: 'Original name. Any directory part is dropped. The extension must suit the target (project-archive: .zip, .xpsm, .pxiproject; processed-image: the processed-image formats).' },
+          size:     { type: 'integer', minimum: 1, description: 'Exact file size in bytes' },
+          sha256:   { type: 'string', pattern: '^[0-9a-fA-F]{64}$', description: 'Optional. Checked at complete.' },
+          title:    { type: 'string' },
+          notes:    { type: 'string' },
+          software: { type: 'string', description: 'project-archive only' },
+        },
+      },
+      ChunkedUploadStarted: {
+        type: 'object',
+        required: ['uploadId', 'chunkSize', 'chunkCount', 'maxSize', 'expiresAt'],
+        properties: {
+          uploadId:   { type: 'string', format: 'uuid' },
+          chunkSize:  { type: 'integer', description: 'Bytes per chunk; every chunk but the last is exactly this long. 64 MiB by default, never above 1 GiB.' },
+          chunkCount: { type: 'integer' },
+          maxSize:    { type: 'integer', description: 'Largest file this target accepts' },
+          expiresAt:  { ...isoDate, description: 'The upload is dropped if no chunk arrives before this. Each chunk pushes it back.' },
+        },
+      },
+      ChunkedUploadStatus: {
+        type: 'object',
+        required: ['uploadId', 'target', 'objectId', 'filename', 'size', 'chunkSize', 'chunkCount', 'received', 'receivedBytes', 'missing', 'status', 'expiresAt'],
+        properties: {
+          uploadId:      { type: 'string', format: 'uuid' },
+          target:        { type: 'string', enum: ['project-archive', 'processed-image'] },
+          objectId:      { type: 'string' },
+          filename:      { type: 'string' },
+          size:          { type: 'integer' },
+          chunkSize:     { type: 'integer' },
+          chunkCount:    { type: 'integer' },
+          received: {
+            type: 'array',
+            description: 'Inclusive byte ranges on disk, merged',
+            items: { type: 'object', required: ['start', 'end'], properties: { start: { type: 'integer' }, end: { type: 'integer' } } },
+          },
+          receivedBytes: { type: 'integer' },
+          missing:       { type: 'array', items: { type: 'integer' }, description: 'Chunk indices still to send' },
+          status:        { type: 'string', enum: ['uploading', 'completing', 'complete'] },
+          expiresAt:     isoDate,
+        },
+      },
+      ChunkedUploadChunkResult: {
+        allOf: [
+          { $ref: '#/components/schemas/ChunkedUploadStatus' },
+          {
+            type: 'object',
+            required: ['chunk'],
+            properties: {
+              chunk: {
+                type: 'object',
+                required: ['index', 'start', 'end', 'sha256'],
+                properties: { index: { type: 'integer' }, start: { type: 'integer' }, end: { type: 'integer' }, sha256: { type: 'string', description: 'Of this chunk, as received' } },
+              },
+            },
+          },
+        ],
+      },
       LibraryProjectArchive: {
         type: 'object',
         required: ['id', 'objectId', 'filename', 'originalName', 'title', 'notes', 'software', 'size', 'mimeType', 'uploadedAt', 'url', 'path'],
@@ -6440,7 +6503,7 @@ export const spec = {
       post: {
         summary: 'Upload an object-level processed image',
         tags: ['Library (Local)'],
-        description: 'Admin only. multipart/form-data with the picture in `image` and optional `title` and `notes`. Stored with no session date.',
+        description: 'Admin only. multipart/form-data with the picture in `image` and optional `title` and `notes`. Stored with no session date. Above the size limit the answer is 413; use the chunked `POST /uploads` (target `processed-image`) for a file that will not go in one request.',
         parameters: [subIdParam('objectId')],
         requestBody: {
           required: true,
@@ -6458,6 +6521,7 @@ export const spec = {
           200: jsonResponse('The new record', 'LibraryProcessedImage'),
           400: { description: 'NO_IMAGE' },
           403: { description: 'FORBIDDEN. Admin only.' },
+          413: { description: 'LIMIT_FILE_SIZE. Over the processed-image limit (2 GB by default); `error.maxSize` holds it in bytes.' },
           500: { description: 'UPLOAD_FAILED' },
         },
       },
@@ -6484,6 +6548,7 @@ export const spec = {
           200: jsonResponse('The updated record', 'LibraryProcessedImage'),
           400: { description: 'NO_IMAGE' },
           403: { description: 'FORBIDDEN. Admin only.' },
+          413: { description: 'LIMIT_FILE_SIZE. Over the processed-image limit (2 GB by default); `error.maxSize` holds it in bytes.' },
           404: { description: 'NOT_FOUND' },
           500: { description: 'UPLOAD_FAILED' },
         },
@@ -6528,6 +6593,7 @@ export const spec = {
           200: jsonResponse('The new record', 'LibraryProcessedImage'),
           400: { description: 'NO_IMAGE' },
           403: { description: 'FORBIDDEN. Admin only.' },
+          413: { description: 'LIMIT_FILE_SIZE. Over the processed-image limit (2 GB by default); `error.maxSize` holds it in bytes.' },
           422: { description: 'runId does not belong to this object' },
           500: { description: 'UPLOAD_FAILED' },
         },
@@ -6618,6 +6684,111 @@ export const spec = {
         },
       },
     },
+    '/uploads': {
+      post: {
+        summary: 'Start a chunked upload',
+        tags: ['Uploads'],
+        description: [
+          'Admin only. For a project archive or processed image too large for one multipart POST, or on a link that may drop.',
+          'The file is checked here, before any bytes: the extension must suit the target, `size` must be within the target limit',
+          '(project archives 20 GB, processed images 2 GB by default; `NEBULIS_MAX_PROJECT_ARCHIVE_BYTES`, `NEBULIS_MAX_PROCESSED_IMAGE_BYTES`)',
+          'and both the staging area and the library must have room for it.',
+          '',
+          'Then PUT each chunk, GET to see what is missing after a failure, and POST complete. The upload belongs to the credential',
+          'that started it: the same key must be sent on every later call. An upload with no new chunk for 24 hours',
+          '(`NEBULIS_UPLOAD_EXPIRY_HOURS`) is deleted. Walkthrough with a client example: docs/CHUNKED_UPLOADS.md.',
+        ].join('\n'),
+        requestBody: jsonBody('ChunkedUploadInput'),
+        responses: {
+          200: jsonResponse('The upload id and how to chunk it', 'ChunkedUploadStarted'),
+          403: { description: 'FORBIDDEN. Admin only.' },
+          413: { description: 'FILE_TOO_LARGE. `error.maxSize` holds the limit in bytes.' },
+          415: { description: 'UNSUPPORTED_FILE_TYPE. The target does not take this extension.' },
+          422: { description: 'VALIDATION_ERROR, INVALID_FILENAME, INVALID_SIZE, INVALID_SHA256 or INVALID_OBJECT' },
+          507: { description: 'INSUFFICIENT_STORAGE. `error.requiredBytes` and `error.freeBytes` say by how much.' },
+        },
+      },
+    },
+    '/uploads/{uploadId}': {
+      get: {
+        summary: 'Chunked upload status',
+        tags: ['Uploads'],
+        description: 'Admin only, same key as the start. What has arrived, so a client can resume by sending the `missing` chunks.',
+        parameters: [{ name: 'uploadId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          200: jsonResponse('Received ranges and missing chunks', 'ChunkedUploadStatus'),
+          403: { description: 'FORBIDDEN. Admin only.' },
+          404: { description: 'UPLOAD_NOT_FOUND. Unknown, expired, or started with another key.' },
+        },
+      },
+      delete: {
+        summary: 'Abort a chunked upload',
+        tags: ['Uploads'],
+        description: 'Admin only, same key as the start. Deletes the staged bytes.',
+        parameters: [{ name: 'uploadId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          200: { description: '`{ aborted: true, uploadId }`' },
+          403: { description: 'FORBIDDEN. Admin only.' },
+          404: { description: 'UPLOAD_NOT_FOUND' },
+          409: { description: 'UPLOAD_COMPLETING. Too late to abort.' },
+        },
+      },
+    },
+    '/uploads/{uploadId}/chunks/{index}': {
+      put: {
+        summary: 'Send one chunk',
+        tags: ['Uploads'],
+        description: [
+          'Admin only, same key as the start. The body is the raw bytes of chunk `index` (0-based), as `application/octet-stream`,',
+          'with `Content-Range: bytes <start>-<end>/<size>` where start = index × chunkSize and end is inclusive.',
+          'Chunks may be sent in any order and in parallel. Sending a chunk again overwrites it.',
+          'The server streams the body to disk at its offset; a chunk counts as received only once all its bytes are written,',
+          'so a dropped connection leaves it in `missing`.',
+        ].join('\n'),
+        parameters: [{ name: 'uploadId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }, { name: 'index', in: 'path', required: true, schema: { type: 'integer', minimum: 0 } }],
+        requestBody: { required: true, content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
+        responses: {
+          200: jsonResponse('The upload status after this chunk', 'ChunkedUploadChunkResult'),
+          400: { description: 'INVALID_CHUNK_INDEX, INVALID_LENGTH (Content-Length is not the chunk length) or CHUNK_INCOMPLETE (send it again)' },
+          403: { description: 'FORBIDDEN. Admin only.' },
+          404: { description: 'UPLOAD_NOT_FOUND' },
+          409: { description: 'CHUNK_IN_PROGRESS (this chunk is being written) or UPLOAD_NOT_ACTIVE (completing or complete)' },
+          413: { description: 'CHUNK_TOO_LARGE' },
+          415: { description: 'UNSUPPORTED_MEDIA_TYPE. Send application/octet-stream.' },
+          416: { description: 'INVALID_RANGE. `error.expected` is the Content-Range this chunk needs.' },
+        },
+      },
+    },
+    '/uploads/{uploadId}/complete': {
+      post: {
+        summary: 'Complete a chunked upload',
+        tags: ['Uploads'],
+        description: [
+          'Admin only, same key as the start. Checks that every chunk arrived, the size, and the sha256 if one was given, then files',
+          'the file exactly as the single POST would. `data` is the same record as',
+          '`POST /library/objects/{objectId}/project-archives` or `POST /library/objects/{objectId}/processed-images` returns;',
+          '`meta` carries `sha256` and `size` as computed on the server. Calling it again after success returns the same record.',
+          'Hashing a multi-GB file takes a while; keep the request open.',
+        ].join('\n'),
+        parameters: [{ name: 'uploadId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          200: {
+            description: 'The new record (`LibraryProjectArchive` or `LibraryProcessedImage`), with `meta: { sha256, size }`',
+            content: {
+              'application/json': {
+                schema: { oneOf: [{ $ref: '#/components/schemas/LibraryProjectArchive' }, { $ref: '#/components/schemas/LibraryProcessedImage' }] },
+              },
+            },
+          },
+          403: { description: 'FORBIDDEN. Admin only.' },
+          404: { description: 'UPLOAD_NOT_FOUND' },
+          409: { description: 'UPLOAD_INCOMPLETE (`error.missing` lists the chunks), CHUNK_IN_PROGRESS or UPLOAD_COMPLETING' },
+          410: { description: 'UPLOAD_LOST. The staged file is gone; start again.' },
+          422: { description: 'CHECKSUM_MISMATCH (`error.expected`, `error.actual`) or SIZE_MISMATCH' },
+          500: { description: 'UPLOAD_FAILED' },
+        },
+      },
+    },
     '/library/objects/{objectId}/project-archives': {
       get: {
         summary: 'Project archives of an object',
@@ -6628,7 +6799,7 @@ export const spec = {
       post: {
         summary: 'Upload a project archive',
         tags: ['Library (Local)'],
-        description: 'Admin only. multipart/form-data with the project in `archive` (zip, xpsm or pxiproject, up to 20 GB), plus optional `title`, `notes` and `software`. Refused with 507 when temp or library storage is short.',
+        description: 'Admin only. multipart/form-data with the project in `archive` (zip, xpsm or pxiproject, up to 20 GB by default), plus optional `title`, `notes` and `software`. Refused with 507 when temp or library storage is short, and with 413 above the limit. For large files, or a client that cannot send one multi-GB request, use the chunked `POST /uploads`.',
         parameters: [subIdParam('objectId')],
         requestBody: {
           required: true,
@@ -6651,6 +6822,7 @@ export const spec = {
           200: jsonResponse('The new archive', 'LibraryProjectArchive'),
           400: { description: 'NO_ARCHIVE' },
           403: { description: 'FORBIDDEN. Admin only.' },
+          413: { description: 'LIMIT_FILE_SIZE. `error.maxSize` holds the limit in bytes.' },
           507: { description: 'INSUFFICIENT_STORAGE' },
           500: { description: 'UPLOAD_FAILED' },
         },

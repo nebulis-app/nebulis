@@ -31,6 +31,7 @@ import { authRouter } from './routes/auth.js';
 import { observationsRouter } from './routes/observations.js';
 import { satelliteRouter } from './routes/satellite.js';
 import { libraryRouter } from './routes/library.js';
+import { uploadsRouter } from './routes/uploads.js';
 import { annotateRouter } from './routes/annotate.js';
 import { restoreSpaceStrippedFolders, repairAliasDirectories } from './lib/library/objects.js';
 import { backfillLibraryFiles, rebuildFromManifests } from './lib/library/libraryFiles.js';
@@ -62,6 +63,7 @@ import { startForecastRefresh } from './lib/forecastCache.js';
 import { startLinkedSourceScheduler } from './lib/library/linkedSourceScheduler.js';
 import { startAutoSolveScheduler } from './lib/annotate/autoSolve.js';
 import { startAutoMeasureScheduler } from './lib/frameAnalysis/autoMeasure.js';
+import { startUploadExpiryScheduler } from './lib/library/chunkedUploads.js';
 import { startAlerts } from './lib/alerts/index.js';
 import { backfillSessionFocals } from './lib/library/sessionOptics.js';
 import { startAppUpdateChecker } from './lib/appUpdate/updater.js';
@@ -403,6 +405,7 @@ v1.use('/forecast', forecastRouter);
 v1.use('/observations', observationsRouter);
 v1.use('/satellite', satelliteRouter);
 v1.use('/library', libraryRouter);
+v1.use('/uploads', uploadsRouter);
 v1.use('/annotate', annotateRouter);
 v1.use('/planner', plannerRouter);
 v1.use('/sky-events', skyEventsRouter);
@@ -713,6 +716,8 @@ function onListening(): void {
     backfillSessionFocals();
     startAutoSolveScheduler();
     startAutoMeasureScheduler();
+    // Drop chunked uploads left unfinished past their expiry.
+    startUploadExpiryScheduler();
   }
 
   // Library-wide sweep of the post-import pipeline (session thumbnails and

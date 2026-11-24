@@ -27,6 +27,8 @@ export function ObservedFromControl({
   date,
   siteId,
   fileCoordinates,
+  fileCoordinatesSource = null,
+  matchedSite = null,
   isAdmin,
 }: {
   objectId: string;
@@ -37,6 +39,11 @@ export function ObservedFromControl({
    *  Undefined as well as null: a response from before this field existed
    *  omits it entirely, and reading `.lat` off that took the whole page down. */
   fileCoordinates: { lat: number; lon: number } | null | undefined;
+  /** 'exif' = a DWARF stacked.jpg's GPS; 'fits' = a FITS header. */
+  fileCoordinatesSource?: 'fits' | 'exif' | null;
+  /** A saved site within 50 m of the file coordinates. While untagged, "let
+   *  the files decide" resolves to it, so the file option is named after it. */
+  matchedSite?: { id: string; name: string; distanceM: number } | null;
   isAdmin: boolean;
 }) {
   const { isDark } = useTheme();
@@ -63,15 +70,28 @@ export function ObservedFromControl({
   const selected = siteId
     ?? (hasFileLocation ? FILE_OPTION : sites.find(s => s.isDefault)?.id ?? null);
 
-  const options: Array<{ value: string; label: string; hint?: string; fromFile?: boolean }> = [
-    ...(hasFileLocation
-      ? [{
+  // "Let the files decide": named after the saved site the recorded position
+  // fell within 50 m of, or after the kind of file that recorded it.
+  const fileOption = hasFileLocation
+    ? matchedSite
+      ? {
         value: FILE_OPTION,
-        label: t('observationDetail.observedFromPanel.fromImageData'),
+        label: matchedSite.name,
+        hint: t('observationDetail.observedFromPanel.matchedFromFile', { distance: matchedSite.distanceM }),
+        fromFile: true,
+      }
+      : {
+        value: FILE_OPTION,
+        label: fileCoordinatesSource === 'exif'
+          ? t('observationDetail.observedFromPanel.fromTelescopeGps')
+          : t('observationDetail.observedFromPanel.fromImageData'),
         hint: `${fileCoordinates.lat.toFixed(2)}°, ${fileCoordinates.lon.toFixed(2)}°`,
         fromFile: true,
-      }]
-      : []),
+      }
+    : null;
+
+  const options: Array<{ value: string; label: string; hint?: string; fromFile?: boolean }> = [
+    ...(fileOption ? [fileOption] : []),
     ...sites.map(s => ({
       value: s.id,
       label: s.name,

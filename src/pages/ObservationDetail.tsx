@@ -992,6 +992,9 @@ if (isLoading) {
                       siteId={observation.siteId}
                       coordinates={observation.coordinates}
                       fileCoordinates={observation.fileCoordinates}
+                      fileCoordinatesSource={observation.fileCoordinatesSource ?? null}
+                      fileElevationM={observation.fileElevationM ?? null}
+                      matchedSite={observation.matchedSite ?? null}
                       locationName={locationName}
                       isAdmin={isAdmin}
                     />

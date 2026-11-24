@@ -221,6 +221,8 @@
     },
     "observedFromPanel": {
       "fromImageData": "Uit beeldgegevens",
+      "fromTelescopeGps": "Van de gps van de telescoop",
+      "matchedFromFile": "Gps · {{distance}} m",
       "default": "Standaard",
       "updateFailed": "De locatie kon niet worden bijgewerkt.",
       "defaultSite": "Standaardlocatie"

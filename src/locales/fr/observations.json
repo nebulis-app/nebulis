@@ -221,6 +221,8 @@
     },
     "observedFromPanel": {
       "fromImageData": "D'après les données de l'image",
+      "fromTelescopeGps": "D’après le GPS du télescope",
+      "matchedFromFile": "GPS · à {{distance}} m",
       "default": "Par défaut",
       "updateFailed": "Échec de la mise à jour de la position.",
       "defaultSite": "Site par défaut"

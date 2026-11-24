@@ -6,11 +6,13 @@
  *
  *   foreground (the import waits for these, each with a cap)
  *     1. catalog enrichment      Wikipedia / SIMBAD, per touched object
- *     2. session weather         queued, never awaited (FC-3)
- *     3. gallery thumbnails      capped at THUMB_PREWARM_MAX_WAIT_MS
+ *     2. session coordinates     FITS SITELAT or a DWARF stacked.jpg's GPS,
+ *                                per touched object (sessionLocation.ts)
+ *     3. session weather         queued, never awaited (FC-3)
+ *     4. gallery thumbnails      capped at THUMB_PREWARM_MAX_WAIT_MS
  *   background (never awaited, serialized across runs)
- *     4. session thumbnails      the Nights calendar's per-night images
- *     5. sub-frame headers       FITS filter / exposure, persisted in
+ *     5. session thumbnails      the Nights calendar's per-night images
+ *     6. sub-frame headers       FITS filter / exposure, persisted in
  *                                `subFrameHeaderCache` for the integration view
  *
  * Boot and the nightly housekeeping call it with no objects, which runs only
@@ -27,6 +29,7 @@ import { warmObjectThumbnails, type ThumbnailProgress } from './galleryThumbnail
 import { prewarmSessionThumbnails } from './sessionThumbnailPrewarm.js';
 import { warmSubFrameHeaders } from './integration.js';
 import { measureLinkedFramesNightly } from '../frameAnalysis/autoMeasure.js';
+import { resolveObjectSessionCoords } from './sessionLocation.js';
 
 export type PostImportReason =
   | 'telescope-import'
@@ -111,6 +114,11 @@ export function runPostImport(opts: PostImportOptions): PostImportHandle {
     if (sweep) return;
     for (const objectId of touched) {
       await stage(reason, `enrich ${objectId}`, () => enrichObjectData(objectId));
+      // Before weather, so the weather is fetched where the files say the scope
+      // was (a DWARF stacked.jpg's GPS, a FITS SITELAT). A linked folder's
+      // refresh also re-checks the sessions that had no location last time.
+      await stage(reason, `session-coords ${objectId}`, async () =>
+        resolveObjectSessionCoords(objectId, { recheckUnresolved: reason === 'linked-folder' || reason === 'linked-rescan' }));
       // Queued, not awaited: a slow archive API for a 25-night object used to
       // add minutes to import completion (FC-3).
       await stage(reason, `weather ${objectId}`, async () => enqueueSessionWeatherBackfill(objectId));

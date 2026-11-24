@@ -1321,6 +1321,16 @@ db.exec(`
   if (!lsCols.some(c => c.name === 'coordsResolved')) {
     db.prepare('ALTER TABLE librarySessions ADD COLUMN coordsResolved INTEGER NOT NULL DEFAULT 0').run();
   }
+  // Which file the cached lat/lon came from: 'fits' (SITELAT/SITELONG) or
+  // 'exif' (a DWARF stacked.jpg's GPS block). NULL with coordinates means
+  // 'fits', which is all a cache written before this column could hold.
+  // `elevationM` is the altitude the file recorded, when it recorded one.
+  if (!lsCols.some(c => c.name === 'coordsSource')) {
+    db.prepare('ALTER TABLE librarySessions ADD COLUMN coordsSource TEXT').run();
+  }
+  if (!lsCols.some(c => c.name === 'elevationM')) {
+    db.prepare('ALTER TABLE librarySessions ADD COLUMN elevationM REAL').run();
+  }
 
   // The coordinates the cached weather was actually fetched at.
   //
@@ -1592,6 +1602,30 @@ for (const table of ['alertChannels', 'alertDevices']) {
       console.log(`[library] Cleared ${cleared.changes} stale FITS-coordinate cache entr(ies) for re-resolution`);
     }
     db.prepare('UPDATE libraryMeta SET nestedFitsCoordsRechecked = 1 WHERE id = 1').run();
+  }
+}
+
+// ─── Re-read linked sessions for EXIF GPS (DWARF stacked.jpg) ───────────────
+// The resolver used to look only at managed FITS files, so every session of a
+// linked folder cached as "resolved, no coordinates". It now reads the linked
+// files too, including the GPS a DWARF writes into stacked.jpg. Clear the
+// coordless entries of sessions that have linked files so they get one fresh
+// look. One-shot, like the recheck above.
+{
+  const lmCols = db.prepare<[], { name: string }>('PRAGMA table_info(libraryMeta)').all();
+  if (!lmCols.some(c => c.name === 'linkedFileCoordsRechecked')) {
+    db.prepare('ALTER TABLE libraryMeta ADD COLUMN linkedFileCoordsRechecked INTEGER NOT NULL DEFAULT 0').run();
+    const cleared = db
+      .prepare(
+        `UPDATE librarySessions SET coordsResolved = 0
+          WHERE coordsResolved = 1 AND lat IS NULL
+            AND objectId IN (SELECT DISTINCT objectId FROM libraryFiles WHERE sourceId IS NOT NULL)`,
+      )
+      .run();
+    if (cleared.changes > 0) {
+      console.log(`[library] Cleared ${cleared.changes} linked-session coordinate cache entr(ies) for re-resolution`);
+    }
+    db.prepare('UPDATE libraryMeta SET linkedFileCoordsRechecked = 1 WHERE id = 1').run();
   }
 }
 

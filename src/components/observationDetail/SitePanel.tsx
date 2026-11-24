@@ -20,6 +20,9 @@ export function SitePanel({
   siteId,
   coordinates,
   fileCoordinates,
+  fileCoordinatesSource = null,
+  fileElevationM = null,
+  matchedSite = null,
   /** Reverse-geocoded place name, once it resolves. */
   locationName,
   isAdmin,
@@ -29,6 +32,9 @@ export function SitePanel({
   siteId: string | null;
   coordinates: { lat: number; lon: number } | null | undefined;
   fileCoordinates: { lat: number; lon: number } | null | undefined;
+  fileCoordinatesSource?: 'fits' | 'exif' | null;
+  fileElevationM?: number | null;
+  matchedSite?: { id: string; name: string; distanceM: number } | null;
   locationName: string | null;
   isAdmin: boolean;
 }) {
@@ -48,6 +54,8 @@ export function SitePanel({
         date={date}
         siteId={siteId}
         fileCoordinates={fileCoordinates}
+        fileCoordinatesSource={fileCoordinatesSource}
+        matchedSite={matchedSite}
         isAdmin={isAdmin}
       />
 
@@ -66,6 +74,9 @@ export function SitePanel({
             </span>
             <span className="shrink-0 font-medium tabular-nums">
               {coordinates.lat.toFixed(2)}°, {coordinates.lon.toFixed(2)}°
+              {/* The altitude the telescope's GPS recorded, while the files
+                  decide the location (no explicit site tag). */}
+              {siteId === null && fileElevationM != null && ` · ${Math.round(fileElevationM)} m`}
             </span>
           </div>
         </>

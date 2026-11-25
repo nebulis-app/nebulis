@@ -1,0 +1,19 @@
+SIMPLE  =                    T / file does conform to FITS standard
+BITPIX  =                   16 / number of bits per data pixel
+NAXIS   =                    2 / number of data axes
+NAXIS1  =                 3840 / length of data axis 1
+NAXIS2  =                 2160 / length of data axis 2
+OFFSET  =                   15 / camera offset
+FOCALLEN=                  611 / Focal length of telescope in mm
+SET-TEMP=                  -10 / CCD temperature setpoint in degrees C
+XBINNING=                    1 / Camera X Bin
+IMAGETYP= 'Light   '           / Type of image
+EXPTIME =                 180. / Exposure time in seconds
+CCD-TEMP=    -9.89999961853027 / sensor temperature in C
+DATE-OBS= '2026-08-08T01:27:32.593630' / Image exposure start time
+FILTER  = 'H       '           / Filter used when taking image
+INSTRUME= 'ZWO ASI585MC Air'   / Camera model
+GAIN    =                  200 / Gain Value
+TELESCOP= 'ZWO AM3N'           / Telescope name
+ROTATOR =                    3 / Camera Angle
+END

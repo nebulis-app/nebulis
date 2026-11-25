@@ -1,0 +1,39 @@
+SIMPLE  =                    T / file does conform to FITS standard
+BITPIX  =                   16 / number of bits per data pixel
+NAXIS   =                    2 / number of data axes
+NAXIS1  =                 3840 / length of data axis 1
+NAXIS2  =                 2160 / length of data axis 2
+EXTEND  =                    T / FITS dataset may contain extensions
+COMMENT   FITS (Flexible Image Transport System) format is defined in 'Astronomy
+COMMENT   and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H
+BZERO   =                32768 / offset data range to that of unsigned short
+BSCALE  =                    1 / default scaling factor
+CREATOR = 'ZWO 585AIR'         / Capture software
+OFFSET  =                   15 / camera offset
+XORGSUBF=                    0 / Subframe X position in binned pixels
+YORGSUBF=                    0 / Subframe Y position in binned pixels
+FOCALLEN=                  609 / Focal length of telescope in mm
+SET-TEMP=                   -8 / CCD temperature setpoint in degrees C
+EGAIN   =     3.57337379455566 / Electronic gain in e-/ADU
+XBINNING=                    1 / Camera X Bin
+YBINNING=                    1 / Camera Y Bin
+CCDXBIN =                    1 / Camera X Bin
+CCDYBIN =                    1 / Camera Y Bin
+XPIXSZ  =     2.90000009536743 / pixel size in microns (with binning)
+YPIXSZ  =     2.90000009536743 / pixel size in microns (with binning)
+IMAGETYP= 'Flat    '           / Type of image
+EXPOSURE=   0.0799999982118607 / Exposure time in seconds
+EXPTIME =   0.0799999982118607 / Exposure time in seconds
+CCD-TEMP=                  -8. / sensor temperature in C
+RA      =           107.200005 / Object Right Ascension in degrees
+DEC     =            38.641945 / Object Declination in degrees
+DATE-OBS= '2026-11-08T03:09:09.448208' / Image exposure start time
+FILTER  = 'None    '           / Filter used when taking image
+INSTRUME= 'ZWO ASI585MC Air'   / Camera model
+GUIDECAM= 'ZWO ASI220MM Air'   / Guide camera model
+BAYERPAT= 'RGGB    '           / Bayer pattern
+GAIN    =                  100 / Gain Value
+FOCUSPOS=                11685 / Focuser position in steps
+TELESCOP= 'ZWO AM3N'           / Telescope name
+ROTATOR =                    4 / Camera Angle
+END

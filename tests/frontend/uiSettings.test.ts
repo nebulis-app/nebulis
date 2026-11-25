@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   setUiSetting, removeUiSetting, hydrateUiSettings, flushUiSettings, resetUiSettingsSync, isSyncedUiSetting,
-  UI_SETTINGS_HYDRATED_EVENT, __resetUiSettingsForTests,
+  UI_SETTINGS_HYDRATED_EVENT, UI_SETTINGS_OWNER_KEY, __resetUiSettingsForTests,
 } from '../../src/lib/uiSettings';
 import { setAuthToken } from '../../src/lib/api/client';
 
@@ -12,6 +12,7 @@ let calls: Call[];
 let serverSettings: Record<string, string>;
 let failGet: boolean;
 let failPatch: boolean;
+let currentUser: string | null;
 
 function ok(data: unknown): Response {
   return new Response(JSON.stringify({ ok: true, data }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -24,10 +25,15 @@ beforeEach(() => {
   serverSettings = {};
   failGet = false;
   failPatch = false;
+  currentUser = 'user-a';
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ url, method, body });
+    if (url.endsWith('/auth/me')) {
+      if (currentUser === null) return new Response('{}', { status: 500 });
+      return ok({ id: currentUser, username: currentUser, role: 'admin' });
+    }
     if (method === 'GET') {
       if (failGet) return new Response('{}', { status: 500 });
       return ok(serverSettings);
@@ -113,6 +119,70 @@ describe('hydrateUiSettings', () => {
     await flushUiSettings();
     expect(patches()).toEqual([]);
     expect(localStorage.getItem('nebulis-theme')).toBe('light');
+  });
+});
+
+describe('a browser shared by several accounts', () => {
+  it('records the user it hydrated for, in a key that is never synced', async () => {
+    await hydrateUiSettings();
+    expect(localStorage.getItem(UI_SETTINGS_OWNER_KEY)).toBe('user-a');
+    expect(isSyncedUiSetting(UI_SETTINGS_OWNER_KEY)).toBe(false);
+  });
+
+  it('sends up local-only keys when the same user signs in again', async () => {
+    localStorage.setItem(UI_SETTINGS_OWNER_KEY, 'user-a');
+    localStorage.setItem('nebulis-library-sort', 'name');
+    await hydrateUiSettings();
+    await flushUiSettings();
+    expect(patches()).toEqual([{ 'nebulis-library-sort': 'name' }]);
+  });
+
+  it("clears another user's settings instead of sending them up, and applies this user's own", async () => {
+    localStorage.setItem(UI_SETTINGS_OWNER_KEY, 'user-a');
+    localStorage.setItem('nebulis-theme', 'night');
+    localStorage.setItem('nebulis-library-sort', 'name');
+    localStorage.setItem('nebulis-library-hero-collapsed', '1');
+    localStorage.setItem('nebulis-ui-scale', '1.2'); // per-device, never synced: kept
+    currentUser = 'user-b';
+    serverSettings = { 'nebulis-theme': 'light' };
+    const events: string[][] = [];
+    const onHydrated = (e: Event) => events.push((e as CustomEvent<{ changed: string[] }>).detail.changed);
+    window.addEventListener(UI_SETTINGS_HYDRATED_EVENT, onHydrated);
+
+    await hydrateUiSettings();
+    await flushUiSettings();
+    window.removeEventListener(UI_SETTINGS_HYDRATED_EVENT, onHydrated);
+
+    expect(patches()).toEqual([]);
+    expect(localStorage.getItem('nebulis-theme')).toBe('light');
+    expect(localStorage.getItem('nebulis-library-sort')).toBeNull();
+    expect(localStorage.getItem('nebulis-library-hero-collapsed')).toBeNull();
+    expect(localStorage.getItem('nebulis-ui-scale')).toBe('1.2');
+    expect(localStorage.getItem(UI_SETTINGS_OWNER_KEY)).toBe('user-b');
+    expect(events).toHaveLength(1);
+    expect(new Set(events[0])).toEqual(new Set(['nebulis-theme', 'nebulis-library-sort', 'nebulis-library-hero-collapsed']));
+  });
+
+  it('then syncs the new user normally', async () => {
+    localStorage.setItem(UI_SETTINGS_OWNER_KEY, 'user-a');
+    currentUser = 'user-b';
+    await hydrateUiSettings();
+    setUiSetting('nebulis-library-columns', '3');
+    await flushUiSettings();
+    expect(patches()).toEqual([{ 'nebulis-library-columns': '3' }]);
+  });
+
+  it('when the current user cannot be read, applies the server copy but sends and clears nothing', async () => {
+    localStorage.setItem(UI_SETTINGS_OWNER_KEY, 'user-a');
+    localStorage.setItem('nebulis-library-sort', 'name');
+    currentUser = null;
+    serverSettings = { 'nebulis-theme': 'space' };
+    await hydrateUiSettings();
+    await flushUiSettings();
+    expect(patches()).toEqual([]);
+    expect(localStorage.getItem('nebulis-theme')).toBe('space');
+    expect(localStorage.getItem('nebulis-library-sort')).toBe('name');
+    expect(localStorage.getItem(UI_SETTINGS_OWNER_KEY)).toBe('user-a');
   });
 });
 

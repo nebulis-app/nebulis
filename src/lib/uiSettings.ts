@@ -151,19 +151,64 @@ export async function flushUiSettings(options: { keepalive?: boolean } = {}): Pr
 }
 
 /**
+ * Which user's settings this browser's synced keys hold: the id of the last user hydrated here. Kept in this browser
+ * only (it is not a synced key). Absent on a browser that has not hydrated since syncing existed.
+ */
+export const UI_SETTINGS_OWNER_KEY = 'nebulis-ui-settings-owner';
+
+/** Synced keys present in this browser. Storage that cannot be enumerated has none. */
+function localSyncedKeys(): string[] {
+  const keys: string[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key !== null && isSyncedUiSetting(key)) keys.push(key);
+    }
+  } catch { /* storage not enumerable */ }
+  return keys;
+}
+
+/**
  * Load the signed-in user's settings into localStorage, then start syncing. Resolves once the app can render with
  * them; a failed load resolves too (the browser's own copy is used and nothing is synced until the next sign-in or
  * reload, so a server we could not read is never overwritten with local values).
+ *
+ * Synced keys only this browser has, and the server lacks, depend on who last hydrated this browser:
+ *  - the same user: they are sent up (a choice made while the server was unreachable);
+ *  - nobody yet (a browser that predates syncing): they are sent up, as this browser's settings from before syncing
+ *    existed. A shared browser cannot be told apart here, so its first user after the upgrade takes them;
+ *  - another user (a shared browser): they are cleared, so one account never inherits another's;
+ *  - unknown, because the current user could not be read: they are left alone and not sent.
  */
 export async function hydrateUiSettings(): Promise<void> {
   if (getAuthToken() === null) return;
   let server: Record<string, string>;
+  let userId: string | null;
   try {
-    server = await fetchJSON<Record<string, string>>('/preferences/ui');
+    const [settings, me] = await Promise.all([
+      fetchJSON<Record<string, string>>('/preferences/ui'),
+      fetchJSON<{ id?: unknown }>('/auth/me').then(u => (typeof u.id === 'string' ? u.id : null), () => null),
+    ]);
+    server = settings;
+    userId = me;
   } catch {
     return;
   }
+
+  const previousOwner = readLocal(UI_SETTINGS_OWNER_KEY);
+  const otherUsersSettings = userId !== null && previousOwner !== null && previousOwner !== userId;
+  // Upload this browser's own keys only when they are known to be this user's, or when this browser predates the
+  // owner record (the migration path for settings saved before syncing existed).
+  const uploadLocal = userId !== null && !otherUsersSettings;
+
   const changed: string[] = [];
+  if (otherUsersSettings) {
+    for (const key of localSyncedKeys()) {
+      if (key in server) continue; // overwritten just below
+      writeLocal(key, null);
+      changed.push(key);
+    }
+  }
   for (const [key, value] of Object.entries(server)) {
     if (!isSyncedUiSetting(key)) continue; // a key this version no longer syncs: leave it on the server, ignore here
     if (readLocal(key) !== value) {
@@ -171,24 +216,23 @@ export async function hydrateUiSettings(): Promise<void> {
       changed.push(key);
     }
   }
+  if (userId !== null) writeLocal(UI_SETTINGS_OWNER_KEY, userId);
   hydrated = true;
 
-  // Synced keys only this browser has: this browser's settings from before syncing existed, or a choice made while
-  // signed out. Send them up so the next browser gets them.
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key !== null && isSyncedUiSetting(key) && !(key in server)) {
-        const value = readLocal(key);
-        if (value !== null) pending[key] = value;
-      }
+  if (uploadLocal) {
+    for (const key of localSyncedKeys()) {
+      if (key in server) continue;
+      const value = readLocal(key);
+      if (value !== null) pending[key] = value;
     }
-  } catch { /* storage not enumerable: nothing local to send */ }
+  }
   void flushUiSettings();
 
   if (changed.includes(LANGUAGE_STORAGE_KEY)) {
     const lang = server[LANGUAGE_STORAGE_KEY];
-    if (lang && lang !== i18n.language) void i18n.changeLanguage(lang);
+    // No saved language (the previous user's was cleared): detect again from the browser, as on a first visit.
+    if (!lang) void i18n.changeLanguage();
+    else if (lang !== i18n.language) void i18n.changeLanguage(lang);
   }
   if (changed.length > 0) {
     window.dispatchEvent(new CustomEvent(UI_SETTINGS_HYDRATED_EVENT, { detail: { changed } }));

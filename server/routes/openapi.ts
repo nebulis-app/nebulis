@@ -862,7 +862,7 @@ export const spec = {
       StorageGdriveBackupConfig: {
         type: 'object',
         description: 'The Google Drive backup, a destination of its own next to the disk archive. The client secret and the sign-in are never returned.',
-        required: ['enabled', 'clientId', 'hasClientSecret', 'connected', 'account', 'folderId', 'folderPath', 'archiveId', 'includeSubframes', 'copyMinAgeEnabled', 'copyMinAgeDays', 'scheduleEnabled', 'scheduleMode', 'scheduleHour', 'scheduleMinute', 'scheduleIntervalHours', 'scheduleCron', 'lastRunAt', 'lastResult'],
+        required: ['enabled', 'clientId', 'hasClientSecret', 'connected', 'account', 'folderId', 'folderPath', 'archiveId', 'includeSubframes', 'copyMinAgeEnabled', 'copyMinAgeDays', 'scheduleEnabled', 'scheduleMode', 'scheduleHour', 'scheduleMinute', 'scheduleIntervalHours', 'scheduleCron', 'lastRunAt', 'lastResult', 'lastAttemptAt'],
         properties: {
           enabled:               { type: 'boolean', description: 'Master switch; off means nothing is uploaded' },
           clientId:              { type: 'string', description: 'OAuth client of type "TVs and Limited Input devices"' },
@@ -870,7 +870,7 @@ export const spec = {
           connected:             { type: 'boolean', description: 'A Google account is signed in' },
           account:               { type: 'string', description: 'The signed-in address, for display' },
           folderId:              { type: 'string', description: 'The backup folder. Empty until one is prepared.' },
-          folderPath:            { type: 'string', description: 'The folder name when it was prepared, for display only' },
+          folderPath:            { type: 'string', description: 'The folder name when it was prepared. The page shows the name Drive reports now (destination.path)' },
           archiveId:             { type: 'string', description: 'Empty until the folder is adopted' },
           includeSubframes:      { type: 'boolean' },
           copyMinAgeEnabled:     { type: 'boolean' },
@@ -881,13 +881,14 @@ export const spec = {
           scheduleMinute:        { type: 'integer', minimum: 0, maximum: 59 },
           scheduleIntervalHours: { type: 'integer', minimum: 1, maximum: 168 },
           scheduleCron:          { type: 'string' },
-          lastRunAt:             { type: 'string' },
-          lastResult:            { type: 'string' },
+          lastRunAt:             { type: 'string', description: 'ISO start of the last complete run; a cancelled run leaves it, so the schedule stays due' },
+          lastResult:            { type: 'string', description: 'One-line result of the last attempt, complete or not' },
+          lastAttemptAt:         { type: 'string', description: 'ISO start of the attempt behind lastResult' },
         },
       },
       StorageGdriveBackupInput: {
         type: 'object',
-        description: 'enabled, archiveId, lastRunAt and lastResult are refused: the switch has its own routes.',
+        description: 'enabled, archiveId, lastRunAt, lastResult and lastAttemptAt are refused: the switch has its own routes.',
         properties: {
           clientId:              { type: 'string', description: 'Changing it signs out and switches the backup off' },
           clientSecret:          { type: 'string', description: 'Omitted or empty keeps the stored secret' },
@@ -910,7 +911,7 @@ export const spec = {
         required: ['state', 'path', 'foundArchiveId'],
         properties: {
           state:          { type: 'string', enum: ['offline', 'absent', 'match', 'foreign', 'invalid', 'unreadable'] },
-          path:           { type: 'string' },
+          path:           { type: 'string', description: 'The folder by the name Drive reports now, and the account. A name, not a path: drive.file cannot see the folders around it' },
           foundArchiveId: nullable({ type: 'string' }),
         },
       },
@@ -922,7 +923,17 @@ export const spec = {
           destination: { $ref: '#/components/schemas/StorageGdriveDestination' },
           progress:    { $ref: '#/components/schemas/StorageArchiveRunProgress' },
           running:     { type: 'boolean' },
-          lastRun:     { description: 'How the last run of this process ended (trigger, finishedAt, result with summary), or null', oneOf: [{ type: 'object' }, { type: 'null' }] },
+          lastRun:     { description: 'How the last run of this process ended (trigger, startedAt and finishedAt as ISO strings, result with summary), or null', oneOf: [{ type: 'object' }, { type: 'null' }] },
+          schedule:    { $ref: '#/components/schemas/StorageGdriveSchedule' },
+        },
+      },
+      StorageGdriveSchedule: {
+        type: 'object',
+        required: ['timeZone', 'timeZoneSource', 'nextRunAt'],
+        properties: {
+          timeZone:       { type: 'string', description: 'IANA zone the schedule runs in' },
+          timeZoneSource: { type: 'string', enum: ['site', 'server'], description: "site: the observing site's zone; server: the site has none, so the server's (often UTC)" },
+          nextRunAt:      nullable({ type: 'string', format: 'date-time', description: 'When the schedule will next start a run, give or take its one-minute tick; null when off' }),
         },
       },
       StorageGdriveSignIn: {

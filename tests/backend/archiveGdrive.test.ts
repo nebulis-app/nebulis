@@ -38,6 +38,7 @@ import {
   gdriveDestinationState,
   GDRIVE_CLOUD_SNAPSHOTS_KEPT,
   GDRIVE_DATABASE_FOLDER,
+  InOrderDigest,
   runGdriveArchive,
   uploadDatabaseBackupsToGdrive,
   type GdriveRunOptions,
@@ -45,6 +46,7 @@ import {
 import {
   getGdriveBackupProgress,
   getLastGdriveBackupRun,
+  cancelGdriveBackupRun,
   resetGdriveBackupStateForTests,
   runGdriveBackup,
   tickGdriveBackupScheduler,
@@ -58,6 +60,7 @@ import {
 } from '../../server/lib/archive/gdrive/driveAuth';
 import { DriveClient, nextOffset, quoteDriveQuery } from '../../server/lib/archive/gdrive/driveClient';
 import { FakeGoogleDrive, type FakeDriveFile } from './helpers/fakeGoogleDrive';
+import { log } from '../../server/lib/logger';
 
 /**
  * The Google Drive backup, a destination of its own next to the disk archive.
@@ -116,6 +119,7 @@ const noReport: GdriveRunOptions = { report: () => undefined };
 const run = (options: Partial<GdriveRunOptions> = {}) => runGdriveArchive(getGdriveBackupConfig(), { ...noReport, ...options });
 
 const md5 = (s: string | Buffer): string => createHash('md5').update(s).digest('hex');
+const sha256 = (s: string | Buffer): string => createHash('sha256').update(s).digest('hex');
 
 beforeEach(() => {
   drive = new FakeGoogleDrive();
@@ -438,6 +442,46 @@ describe('a run', () => {
     expect(manifest?.objects['M 42']).toBeUndefined();
   });
 
+  it('reads a new file once: it is hashed from the chunks it is sent in', async () => {
+    configureGdrive();
+    await adopt();
+    seedObject('M42', 'M 42');
+    write('M 42/processed/final.jpg', 'payload sent once');
+    const streams = vi.spyOn(fs, 'createReadStream');
+    let hashedSeparately: boolean;
+    try {
+      const result = await run();
+      expect(result).toMatchObject({ copied: 1, failures: [] });
+      hashedSeparately = streams.mock.calls.some(call => String(call[0]).endsWith('final.jpg'));
+    } finally {
+      streams.mockRestore();
+    }
+    expect(hashedSeparately).toBe(false);
+    expect(drive.tree(FOLDER).get('M 42/processed/final.jpg')?.content.toString()).toBe('payload sent once');
+  });
+
+  it('does not record a file that changed while it was being sent, and takes the upload away', async () => {
+    configureGdrive();
+    await adopt();
+    seedObject('M42', 'M 42');
+    write('M 42/processed/final.jpg', 'payload');
+    const source = path.join(getLibraryDir(), 'M 42/processed/final.jpg');
+    // The file is touched while its bytes are on the way.
+    setGdriveFetchForTests(async (input, init) => {
+      if (init?.method === 'PUT') {
+        const later = new Date(Date.now() + 60_000);
+        fs.utimesSync(source, later, later);
+      }
+      return drive.fetch(input, init);
+    });
+
+    const result = await run();
+    expect(result.failures).toEqual([
+      { archiveRelPath: 'M 42/processed/final.jpg', error: 'source changed during upload; it will be sent again next run' },
+    ]);
+    expect(drive.tree(FOLDER).has('M 42/processed/final.jpg')).toBe(false);
+  });
+
   it('refuses when the Drive quota cannot hold what is left to send', async () => {
     configureGdrive();
     await adopt();
@@ -523,13 +567,48 @@ describe('the runner and its schedule', () => {
     await adopt();
     seedOne();
     const now = new Date('2026-03-01T03:00:00Z');
+    const info = vi.spyOn(log, 'info');
     const result = await runGdriveBackup(getGdriveBackupConfig(), now, 'manual');
     expect(result).toMatchObject({ ran: true, copied: 1, failures: [] });
+    // The server log follows the run: its start, each file sent, and its end.
+    const lines = info.mock.calls.map(call => String(call[1] ?? call[0]));
+    info.mockRestore();
+    expect(lines.some(l => l.startsWith('[gdrive-backup] run started: 1 files'))).toBe(true);
+    expect(lines.some(l => l.startsWith('[gdrive-backup] uploaded M 42/processed/final.jpg ('))).toBe(true);
+    expect(lines.some(l => /^\[gdrive-backup\] run finished after \d+ s: 1 uploaded/.test(l))).toBe(true);
     expect(getGdriveBackupConfig()).toMatchObject({ lastRunAt: now.toISOString(), lastResult: '1 uploaded, 0 already in Drive' });
     expect(getGdriveBackupProgress()).toMatchObject({ running: false, phase: 'done', filesDone: 1, filesTotal: 1 });
     expect(getLastGdriveBackupRun()).toMatchObject({ trigger: 'manual', result: { summary: '1 uploaded, 0 already in Drive' } });
+    // A complete run is also the last attempt, and the run record gives both ends in one format.
+    expect(getGdriveBackupConfig().lastAttemptAt).toBe(now.toISOString());
+    const last = getLastGdriveBackupRun()!;
+    expect(last.startedAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
+    expect(Date.parse(last.finishedAt)).toBeGreaterThanOrEqual(Date.parse(last.startedAt));
     // The database went too.
     expect([...drive.tree(FOLDER).keys()].some(k => k.startsWith(`${GDRIVE_DATABASE_FOLDER}/`) && k.endsWith('-cloud.db'))).toBe(true);
+  });
+
+  it('dates a cancelled attempt on its own, and leaves the last complete run as it was', async () => {
+    configureGdrive();
+    await adopt();
+    seedOne();
+    const first = new Date('2026-03-01T03:00:00Z');
+    await runGdriveBackup(getGdriveBackupConfig(), first, 'manual');
+
+    write('M 42/processed/second.jpg', 'second');
+    const later = new Date('2026-03-02T03:00:00Z');
+    const pending = runGdriveBackup(getGdriveBackupConfig(), later, 'manual');
+    expect(cancelGdriveBackupRun()).toBe(true);
+    const result = await pending;
+
+    expect(result.cancelled).toBe(true);
+    expect(getGdriveBackupConfig()).toMatchObject({
+      // Still the complete run: the schedule must keep counting from it.
+      lastRunAt: first.toISOString(),
+      // The attempt, with its own date and result.
+      lastAttemptAt: later.toISOString(),
+      lastResult: expect.stringMatching(/^cancelled: /),
+    });
   });
 
   it('runs while the disk archive holds the library lock: the two are independent', async () => {
@@ -589,6 +668,23 @@ describe('Drive client', () => {
   function client(fetchImpl: typeof fetch, chunkBytes = 4): DriveClient {
     return new DriveClient({ getAccessToken: async () => 'access-token', fetch: fetchImpl, backoffMs: () => 0, chunkBytes });
   }
+
+  it('hashes the chunks an upload reads, each byte once and in order, across a resume', () => {
+    const bytes = Buffer.from('abcdefghijklmnopqrstuvwxy');
+    const digest = new InOrderDigest();
+    digest.feed(0, bytes.subarray(0, 10));
+    digest.feed(10, bytes.subarray(10, 20));
+    // Drive kept only 15 bytes: the upload resumes there and reads 15–20 again.
+    digest.feed(15, bytes.subarray(15, 20));
+    digest.feed(20, bytes.subarray(20, 25));
+    expect(digest.result(bytes.length)).toEqual({ sha256: sha256(bytes), md5: md5(bytes) });
+
+    // A gap means the chunks did not cover the file: no digest, so the caller hashes it.
+    const gap = new InOrderDigest();
+    gap.feed(0, bytes.subarray(0, 5));
+    gap.feed(10, bytes.subarray(10, 25));
+    expect(gap.result(bytes.length)).toBeNull();
+  });
 
   it('reads the resume offset from a 308', () => {
     expect(nextOffset(null)).toBe(0);

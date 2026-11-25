@@ -24,8 +24,12 @@ export interface GdriveBackupConfig {
   scheduleMinute: number;
   scheduleIntervalHours: number;
   scheduleCron: string;
+  /** ISO start of the last complete run. A cancelled run leaves it, so the schedule stays due. */
   lastRunAt: string;
+  /** The last attempt's one-line result, complete or not. */
   lastResult: string;
+  /** ISO start of the attempt behind `lastResult`. */
+  lastAttemptAt: string;
 }
 
 /** What a settings save may carry. The switch has its own routes. */
@@ -57,6 +61,7 @@ export interface GdriveDestination {
 
 export interface GdriveBackupLastRun {
   trigger: 'scheduled' | 'manual';
+  startedAt: string;
   finishedAt: string;
   result: {
     ran: boolean;
@@ -76,6 +81,16 @@ export interface GdriveBackupStatus {
   progress?: ArchiveRunProgress;
   running?: boolean;
   lastRun?: GdriveBackupLastRun | null;
+  schedule?: GdriveBackupSchedule;
+}
+
+export interface GdriveBackupSchedule {
+  /** IANA zone the schedule runs in. */
+  timeZone: string;
+  /** `site`: the observing site's zone. `server`: the site has none, so the server's (often UTC). */
+  timeZoneSource: 'site' | 'server';
+  /** ISO; null when the schedule is off. */
+  nextRunAt: string | null;
 }
 
 export interface GdriveSignInStatus {

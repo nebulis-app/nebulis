@@ -52,8 +52,12 @@ export interface GdriveBackupConfig {
   scheduleMinute: number;
   scheduleIntervalHours: number;
   scheduleCron: string;
+  /** When the last complete run started. A cancelled run leaves it alone, so the schedule still counts as due. */
   lastRunAt: string;
+  /** The last attempt's one-line result, complete or not. */
   lastResult: string;
+  /** When the attempt behind `lastResult` started. */
+  lastAttemptAt: string;
 }
 
 /** Everything the Drive auth module needs. Never serialised to a client. */
@@ -96,6 +100,7 @@ export const DEFAULT_GDRIVE_BACKUP_CONFIG: GdriveBackupConfig = {
   scheduleCron: '',
   lastRunAt: '',
   lastResult: '',
+  lastAttemptAt: '',
 };
 
 const CLIENT_SECRET_COLUMN = 'archiveGdriveClientSecretSealed';
@@ -121,6 +126,7 @@ const COLUMN_FOR: Record<Stored, string> = {
   scheduleCron: 'archiveGdriveScheduleCron',
   lastRunAt: 'archiveGdriveLastRunAt',
   lastResult: 'archiveGdriveLastResult',
+  lastAttemptAt: 'archiveGdriveLastAttemptAt',
 };
 
 const ALL_COLUMNS = [...Object.values(COLUMN_FOR), CLIENT_SECRET_COLUMN, REFRESH_TOKEN_COLUMN, ACCOUNT_COLUMN];
@@ -184,6 +190,7 @@ export function getGdriveBackupConfig(): GdriveBackupConfig {
     scheduleCron: str(row, COLUMN_FOR.scheduleCron),
     lastRunAt: str(row, COLUMN_FOR.lastRunAt),
     lastResult: str(row, COLUMN_FOR.lastResult),
+    lastAttemptAt: str(row, COLUMN_FOR.lastAttemptAt),
   };
 }
 
@@ -326,6 +333,7 @@ export function setGdriveBackupConfig(patch: GdriveBackupPatch | Readonly<Record
       case 'archiveId':
       case 'lastRunAt':
       case 'lastResult':
+      case 'lastAttemptAt':
         assertString(key, value);
         assign(COLUMN_FOR[key], value);
         break;

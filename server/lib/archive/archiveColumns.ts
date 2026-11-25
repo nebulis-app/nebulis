@@ -147,6 +147,9 @@ export const ARCHIVE_SETTINGS_COLUMNS: ReadonlyArray<ArchiveSettingsColumn> = [
   { name: 'archiveGdriveScheduleCron', ddl: "archiveGdriveScheduleCron TEXT NOT NULL DEFAULT ''" },
   { name: 'archiveGdriveLastRunAt', ddl: "archiveGdriveLastRunAt TEXT NOT NULL DEFAULT ''" },
   { name: 'archiveGdriveLastResult', ddl: "archiveGdriveLastResult TEXT NOT NULL DEFAULT ''" },
+  // When the last attempt started, complete or not. `archiveGdriveLastRunAt` only moves on a complete run,
+  // because the schedule reads it; `archiveGdriveLastResult` belongs to the attempt, so it needs its own date.
+  { name: 'archiveGdriveLastAttemptAt', ddl: "archiveGdriveLastAttemptAt TEXT NOT NULL DEFAULT ''" },
 ];
 
 /**
@@ -175,5 +178,9 @@ export function ensureArchiveColumns(db: Database): void {
 
   if (added.has('archiveRetentionEnabled')) {
     db.prepare('UPDATE appSettings SET archiveRetentionEnabled = 1 WHERE archiveRetentionDays > 0').run();
+  }
+  // Until it existed, the last result was always shown with the last complete run's date.
+  if (added.has('archiveGdriveLastAttemptAt')) {
+    db.prepare('UPDATE appSettings SET archiveGdriveLastAttemptAt = archiveGdriveLastRunAt').run();
   }
 }

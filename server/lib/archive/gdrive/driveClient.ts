@@ -273,7 +273,9 @@ export class DriveClient {
 
   /** Upload a file from disk in resumable chunks, replacing `existingId`'s content
    *  when given. The source is read chunk by chunk, so a large file never sits in
-   *  memory. `signal` is checked between chunks. */
+   *  memory. `signal` is checked between chunks. `onRead` sees every chunk read from
+   *  disk with its offset, so a caller can hash the file in the same read; a resumed
+   *  upload may read a range again, which is why the offset comes along. */
   async uploadFile(
     parentId: string,
     name: string,
@@ -281,6 +283,7 @@ export class DriveClient {
     size: number,
     existingId?: string,
     signal?: AbortSignal,
+    onRead?: (start: number, chunk: Buffer) => void,
   ): Promise<DriveFile> {
     const handle = await fs.promises.open(sourcePath, 'r');
     try {
@@ -299,6 +302,7 @@ export class DriveClient {
             if (bytesRead === 0) throw new Error('source file shrank during upload');
             offset += bytesRead;
           }
+          onRead?.(start, buf);
           return buf;
         },
       });

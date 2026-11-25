@@ -199,7 +199,8 @@ db.exec(`
     archiveGdriveScheduleIntervalHours INTEGER NOT NULL DEFAULT 24,
     archiveGdriveScheduleCron TEXT NOT NULL DEFAULT '',
     archiveGdriveLastRunAt TEXT NOT NULL DEFAULT '',
-    archiveGdriveLastResult TEXT NOT NULL DEFAULT ''
+    archiveGdriveLastResult TEXT NOT NULL DEFAULT '',
+    archiveGdriveLastAttemptAt TEXT NOT NULL DEFAULT ''
   );
   INSERT OR IGNORE INTO appSettings (id) VALUES (1);
 

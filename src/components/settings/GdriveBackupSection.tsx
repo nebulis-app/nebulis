@@ -43,6 +43,18 @@ const COPY_SCHEDULE_KEYS = [
  * connect Google (the folder is prepared on its own), choose what to copy and when,
  * then turn it on. Once it is on, the status block at the top is what matters.
  */
+/** An instant as a short date and time in `timeZone`. A zone Intl rejects (a site
+ *  record edited by hand) falls back to the browser's own zone instead of throwing
+ *  in the render. */
+function formatInZone(iso: string, timeZone: string): string {
+  const options: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
+  try {
+    return new Date(iso).toLocaleString(undefined, { ...options, timeZone });
+  } catch {
+    return new Date(iso).toLocaleString(undefined, options);
+  }
+}
+
 export function GdriveBackupSection({ isDark }: { isDark: boolean }) {
   const { t } = useTranslation('settings');
   const queryClient = useQueryClient();
@@ -105,6 +117,7 @@ export function GdriveBackupSection({ isDark }: { isDark: boolean }) {
   const dirty = COPY_SCHEDULE_KEYS.some(key => key in edits && edits[key] !== config[key]);
   const destination = data?.destination;
   const progress = data?.progress;
+  const schedule = data?.schedule;
   const running = data?.running === true;
   const ready = config.connected && config.folderId !== '';
 
@@ -127,6 +140,10 @@ export function GdriveBackupSection({ isDark }: { isDark: boolean }) {
 
   const stateKey = destination ? `gdriveBackup.state.${destination.state}` : 'gdriveBackup.state.offline';
   const lastRunWhen = config.lastRunAt ? new Date(config.lastRunAt).toLocaleString() : null;
+  // A cancelled or interrupted attempt has its own date: showing its result with the
+  // last complete run's date would read as if the attempt had happened then.
+  const attemptIncomplete = config.lastAttemptAt !== '' && config.lastAttemptAt !== config.lastRunAt;
+  const lastAttemptWhen = config.lastAttemptAt ? new Date(config.lastAttemptAt).toLocaleString() : null;
 
   return (
     <Sec title={t('gdriveBackup.title')} description={t('gdriveBackup.description')} isDark={isDark}>
@@ -153,11 +170,22 @@ export function GdriveBackupSection({ isDark }: { isDark: boolean }) {
                 {t(stateKey, { path: destination.path })}
               </p>
             )}
-            <p className={`text-[0.75rem] ${s.subText}`}>
-              {config.lastResult
-                ? t('gdriveBackup.lastResult', { result: config.lastResult, when: lastRunWhen ?? t('gdriveBackup.notCompleted') })
-                : t('gdriveBackup.neverRun')}
-            </p>
+            {config.lastResult && attemptIncomplete ? (
+              <>
+                <p className={`text-[0.75rem] ${s.subText}`}>
+                  {t('gdriveBackup.lastAttempt', { result: config.lastResult, when: lastAttemptWhen })}
+                </p>
+                <p className={`text-[0.75rem] ${s.subText}`}>
+                  {lastRunWhen ? t('gdriveBackup.lastComplete', { when: lastRunWhen }) : t('gdriveBackup.noCompleteYet')}
+                </p>
+              </>
+            ) : (
+              <p className={`text-[0.75rem] ${s.subText}`}>
+                {config.lastResult
+                  ? t('gdriveBackup.lastResult', { result: config.lastResult, when: lastRunWhen ?? t('gdriveBackup.notCompleted') })
+                  : t('gdriveBackup.neverRun')}
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {config.enabled && !running && (
@@ -243,6 +271,23 @@ export function GdriveBackupSection({ isDark }: { isDark: boolean }) {
       <div className="space-y-4 px-5 py-4">
         <h4 className={`text-[0.8125rem] font-semibold ${s.strongText}`}>{t('gdriveBackup.schedule')}</h4>
         <ScheduleFields isDark={isDark} form={form} edit={patch => setEdits(e => ({ ...e, ...patch }))} busy={busy} idPrefix="gdrive" />
+        {/* What the saved schedule will do, in the zone it really runs in. Hidden while
+            edits are unsaved, so it never describes a schedule that is not stored yet. */}
+        {schedule && !dirty && config.scheduleEnabled && (
+          <div className="space-y-1">
+            {schedule.nextRunAt && (
+              <p className={`text-[0.75rem] ${s.strongText}`}>
+                {t('gdriveBackup.nextRun', { when: formatInZone(schedule.nextRunAt, schedule.timeZone), zone: schedule.timeZone })}
+              </p>
+            )}
+            {schedule.timeZoneSource === 'server' && (
+              <p className="flex items-start gap-1.5 text-[0.75rem] text-amber-500">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {t('gdriveBackup.serverTimeZone', { zone: schedule.timeZone })}
+              </p>
+            )}
+          </div>
+        )}
         <p className={`text-[0.75rem] leading-relaxed ${s.subText}`}>{t('archiveGdrive.limits')}</p>
         {dirty && (
           <div className="flex gap-2">

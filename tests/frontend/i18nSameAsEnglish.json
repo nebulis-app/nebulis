@@ -54,6 +54,5 @@
   "catalogs:explore.catalogs.sharpless": "Catalog name",
   "settings:archiveGdrive.clientIdPlaceholder": "An example OAuth client id",
   "help:archiveGdrive.limits.invalidClientTerm": "Google OAuth error code, shown verbatim",
-  "settings:nav.gdrive": "Product name",
-  "settings:gdriveBackup.state.match": "Only the folder path, no words"
+  "settings:nav.gdrive": "Product name"
 }

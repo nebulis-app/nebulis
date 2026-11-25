@@ -16,12 +16,13 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 import fs from 'fs';
 import db from '../../server/lib/db';
 import { apiEnvelope } from '../../server/middleware/apiEnvelope';
-import { registerGdriveBackupRoutes } from '../../server/routes/storageGdrive';
+import { registerGdriveBackupRoutes, VIEW_TTL_MS } from '../../server/routes/storageGdrive';
 import { ARCHIVE_SETTINGS_COLUMNS } from '../../server/lib/archive/archiveColumns';
 import { getGdriveBackupConfig, setGdriveBackupConfig, setGdriveConnection } from '../../server/lib/archive/gdrive/gdriveBackupConfig';
 import { setGdriveFetchForTests } from '../../server/lib/archive/gdrive/driveAuth';
 import { resetGdriveBackupStateForTests } from '../../server/lib/archive/gdrive/gdriveBackupRunner';
 import { FakeGoogleDrive } from './helpers/fakeGoogleDrive';
+import { updateSettingsData } from '../../server/lib/telescopes';
 
 /**
  * The Google Drive backup routes, mounted on a plain router over real HTTP: the
@@ -120,8 +121,60 @@ describe('Google Drive backup routes', () => {
     expect(getGdriveBackupConfig().archiveId).not.toBe('');
   });
 
+  it('caches the folder view between polls, and shows the folder by its current name', async () => {
+    signIn();
+    const folder = data(await call('POST', '/storage/gdrive-backup/folder')).folder!;
+    await call('PUT', '/storage/gdrive-backup', { folderId: folder.id, folderPath: folder.name });
+    await call('POST', '/storage/gdrive-backup/enable');
+
+    const first = data(await call('GET', '/storage/gdrive-backup')).destination as { state: string; path: string };
+    // A name, not a path: no leading slash that would suggest the root of My Drive.
+    expect(first).toMatchObject({ state: 'match', path: 'Google Drive: Nebulis (astro@example.com)' });
+
+    // A second poll inside the cache's lifetime does not ask Drive again.
+    const before = drive.requests;
+    await call('GET', '/storage/gdrive-backup');
+    expect(drive.requests).toBe(before);
+
+    // Renamed in Drive: once the cache expires, the page shows the new name.
+    drive.files.get(folder.id)!.name = 'Astro backup';
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(Date.now() + VIEW_TTL_MS + 1_000);
+      const later = data(await call('GET', '/storage/gdrive-backup')).destination as { state: string; path: string };
+      expect(later).toMatchObject({ state: 'match', path: 'Google Drive: Astro backup (astro@example.com)' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('states the schedule: the time zone it runs in, where that comes from, and the next run', async () => {
+    signIn();
+    const folder = data(await call('POST', '/storage/gdrive-backup/folder')).folder!;
+    await call('PUT', '/storage/gdrive-backup', { folderId: folder.id, folderPath: folder.name });
+    await call('POST', '/storage/gdrive-backup/enable');
+    type Schedule = { timeZone: string; timeZoneSource: string; nextRunAt: string | null };
+    const scheduleOf = async () => (data(await call('GET', '/storage/gdrive-backup')) as unknown as { schedule: Schedule }).schedule;
+
+    updateSettingsData({ timezone: '' });
+    // Schedule off: no next run.
+    expect(await scheduleOf()).toMatchObject({ timeZoneSource: 'server', nextRunAt: null });
+
+    await call('PUT', '/storage/gdrive-backup', { scheduleEnabled: true, scheduleMode: 'custom', scheduleCron: '0 18 * * *' });
+    const fromServer = await scheduleOf();
+    expect(fromServer.timeZoneSource).toBe('server');
+    expect(fromServer.nextRunAt).toMatch(/T\d{2}:00:00\.000Z$/);
+
+    // With the site's zone, the schedule runs in it: 18:00 in Paris is 17:00 UTC in winter, 16:00 in summer.
+    updateSettingsData({ timezone: 'Europe/Paris' });
+    const fromSite = await scheduleOf();
+    expect(fromSite).toMatchObject({ timeZone: 'Europe/Paris', timeZoneSource: 'site' });
+    expect(fromSite.nextRunAt).toMatch(/T1[67]:00:00\.000Z$/);
+    updateSettingsData({ timezone: '' });
+  });
+
   it('keeps the switch, the adoption and the run record out of a settings save', async () => {
-    for (const key of ['enabled', 'archiveId', 'lastRunAt', 'lastResult']) {
+    for (const key of ['enabled', 'archiveId', 'lastRunAt', 'lastResult', 'lastAttemptAt']) {
       const r = await call('PUT', '/storage/gdrive-backup', { [key]: key === 'enabled' ? true : 'x' });
       expect(r.status, key).toBe(400);
       expect(errorCode(r)).toBe('GDRIVE_INVALID_CONFIG');

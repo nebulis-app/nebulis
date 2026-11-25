@@ -34,6 +34,8 @@ export interface GdriveBackupResult extends ArchiveRunResult {
 
 export interface GdriveBackupLastRun {
   trigger: GdriveBackupTrigger;
+  /** ISO, like `finishedAt`, so one object gives the run's duration. */
+  startedAt: string;
   finishedAt: string;
   result: GdriveBackupResult;
 }
@@ -132,7 +134,8 @@ export async function runGdriveBackup(
     };
   }
   lastRun = null;
-  progress = { ...IDLE, running: true, phase: 'scanning', startedAt: Date.now() };
+  const startedAt = new Date();
+  progress = { ...IDLE, running: true, phase: 'scanning', startedAt: startedAt.getTime() };
   const controller = new AbortController();
   activeAbort = controller;
 
@@ -167,7 +170,7 @@ export async function runGdriveBackup(
   if (!copy.ran) {
     progress = { ...IDLE, phase: 'failed', finishedAt: Date.now(), warnings: [...copy.warnings] };
     const result = { ...copy, summary: '' };
-    lastRun = { trigger, finishedAt: new Date().toISOString(), result };
+    lastRun = { trigger, startedAt: startedAt.toISOString(), finishedAt: new Date().toISOString(), result };
     return result;
   }
 
@@ -180,9 +183,13 @@ export async function runGdriveBackup(
   };
   const summary = summarise(copy);
   const complete = !copy.cancelled && !copy.diskLost;
-  setGdriveBackupConfig(complete ? { lastRunAt: now.toISOString(), lastResult: summary } : { lastResult: summary });
+  setGdriveBackupConfig(
+    complete
+      ? { lastRunAt: now.toISOString(), lastAttemptAt: now.toISOString(), lastResult: summary }
+      : { lastAttemptAt: now.toISOString(), lastResult: summary },
+  );
   const result = { ...copy, summary };
-  lastRun = { trigger, finishedAt: new Date().toISOString(), result };
+  lastRun = { trigger, startedAt: startedAt.toISOString(), finishedAt: new Date().toISOString(), result };
   return result;
 }
 
@@ -206,7 +213,7 @@ function backupKey(config: GdriveBackupConfig): string {
   return `${config.clientId}:${config.folderId}:${config.archiveId}:${config.account}`;
 }
 
-function scheduleOf(config: GdriveBackupConfig): ArchiveSchedule {
+export function gdriveScheduleOf(config: GdriveBackupConfig): ArchiveSchedule {
   return {
     mode: config.scheduleMode,
     hour: config.scheduleHour,
@@ -227,7 +234,7 @@ export async function tickGdriveBackupScheduler(
   if (!config.enabled || !config.scheduleEnabled || config.archiveId === '') return skip('disabled');
 
   // Pure arithmetic first: nothing below touches the network unless a run is due.
-  const schedule = scheduleOf(config);
+  const schedule = gdriveScheduleOf(config);
   const parsed = schedule.mode === 'custom' ? parseCron(schedule.cron) : null;
   if (!isArchiveDue(now, schedule, config.lastRunAt, timeZone, parsed?.ok ? parsed.cron : null)) return skip('not-due');
 

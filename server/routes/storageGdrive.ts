@@ -22,6 +22,7 @@ import { logEvent } from '../lib/systemLog.js';
 import { isRecord } from '../lib/typeGuards.js';
 import { isLibraryAvailable } from '../lib/libraryPath.js';
 import { ArchiveConfigError } from '../lib/archive/archiveConfig.js';
+import { archiveScheduleTimeZoneInfo, nextArchiveRun } from '../lib/archive/archiveScheduler.js';
 import { getGdriveBackupConfig, setGdriveBackupConfig, type GdriveBackupConfig } from '../lib/archive/gdrive/gdriveBackupConfig.js';
 import {
   adoptGdriveArchive,
@@ -44,18 +45,23 @@ import {
   gdriveBackupBlockedByLibraryWork,
   getGdriveBackupProgress,
   getLastGdriveBackupRun,
+  gdriveScheduleOf,
   isGdriveBackupRunning,
   runGdriveBackup,
 } from '../lib/archive/gdrive/gdriveBackupRunner.js';
 
 /** Fields a settings save may not carry: the switch and the adoption have their own
  *  routes, which check Drive first, and the run record is written by runs. */
-const NOT_SETTABLE = ['enabled', 'archiveId', 'lastRunAt', 'lastResult'] as const;
+const NOT_SETTABLE = ['enabled', 'archiveId', 'lastRunAt', 'lastResult', 'lastAttemptAt'] as const;
 
-// A passive read of where the folder stands is a network round trip, so the page's
-// polling goes through a short cache. Anything that changes the backup clears it.
+// A passive read of where the folder stands is two Drive calls (the folder, then its
+// marker), about a second. The page polls this route every 1.5 s during a run, and a
+// background tab's throttled timer still polls about every 20 s, so the view is cached
+// for longer than either. During a run the cached view is kept whatever its age: the
+// run checked the folder before copying, and asking Drive again only slows each poll.
+// Anything that changes the backup clears the cache.
 let viewCache: { key: string; at: number; value: GdriveDestinationView } | null = null;
-const VIEW_TTL_MS = 20_000;
+export const VIEW_TTL_MS = 60_000;
 
 function viewKey(config: GdriveBackupConfig): string {
   return `${config.clientId}:${config.connected}:${config.account}:${config.folderId}:${config.archiveId}`;
@@ -67,10 +73,20 @@ function invalidateView(): void {
 
 async function destinationView(config: GdriveBackupConfig, fresh = false): Promise<GdriveDestinationView> {
   const key = viewKey(config);
-  if (!fresh && viewCache !== null && viewCache.key === key && Date.now() - viewCache.at < VIEW_TTL_MS) return viewCache.value;
+  const cached = viewCache !== null && viewCache.key === key ? viewCache : null;
+  if (!fresh && cached !== null && (isGdriveBackupRunning() || Date.now() - cached.at < VIEW_TTL_MS)) return cached.value;
   const value = await gdriveDestinationState(config);
   viewCache = { key, at: Date.now(), value };
   return value;
+}
+
+/** The schedule as the page shows it: which time zone it runs in, and when it will
+ *  next start a run (null when off, or when a custom expression names no minute). */
+function scheduleView(config: GdriveBackupConfig): { timeZone: string; timeZoneSource: 'site' | 'server'; nextRunAt: string | null } {
+  const { timeZone, source } = archiveScheduleTimeZoneInfo();
+  const on = config.enabled && config.scheduleEnabled && config.archiveId !== '';
+  const next = on ? nextArchiveRun(new Date(), gdriveScheduleOf(config), config.lastRunAt, timeZone) : null;
+  return { timeZone, timeZoneSource: source, nextRunAt: next ? next.toISOString() : null };
 }
 
 function actor(req: Request): { userId?: string; username?: string; ip?: string } {
@@ -104,6 +120,7 @@ export function registerGdriveBackupRoutes(router: Router): void {
       progress: getGdriveBackupProgress(),
       running: isGdriveBackupRunning(),
       lastRun: getLastGdriveBackupRun(),
+      schedule: scheduleView(config),
     });
   });
 

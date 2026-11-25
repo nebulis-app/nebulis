@@ -50,6 +50,7 @@ import type { ArchiveRunProgress, ArchiveRunResult, KnownArchivedFile } from '..
 import { listDatabaseBackups, parseBackupName } from '../../dbBackup.js';
 import { getCurrentVersion } from '../../appUpdate/platform.js';
 import { logEvent } from '../../systemLog.js';
+import { log } from '../../logger.js';
 import { DriveError, FOLDER_MIME, type DriveClient, type DriveFile } from './driveClient.js';
 import { GdriveAuthError, getGdriveClient } from './driveAuth.js';
 
@@ -84,6 +85,16 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** "1.2 GB", "340 MB": for log lines a person reads while a run goes on. */
+function readableBytes(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
+  return `${Math.round(bytes / 1e3)} kB`;
+}
+
+/** How often a long run logs where it stands, besides one line per file sent. */
+const PROGRESS_LOG_MS = 60_000;
+
 /** SHA-256 (the manifest's digest) and MD5 (what Drive reports for every file) in one read. */
 export async function digestFile(filePath: string): Promise<{ sha256: string; md5: string }> {
   const sha = createHash('sha256');
@@ -97,6 +108,33 @@ export async function digestFile(filePath: string): Promise<{ sha256: string; md
   return { sha256: sha.digest('hex'), md5: md5.digest('hex') };
 }
 
+/**
+ * SHA-256 and MD5 of a file from the chunks an upload reads, so a file that is sent
+ * is read once instead of hashed first and read again. A resumed upload can read a
+ * range again (Drive asks for the bytes after what it holds); each byte counts once,
+ * in order. `result` is null when the chunks did not cover the file from 0 to its
+ * end, and the caller then hashes the file the plain way.
+ */
+export class InOrderDigest {
+  private readonly sha = createHash('sha256');
+  private readonly md5 = createHash('md5');
+  private hashedUpTo = 0;
+
+  feed(start: number, chunk: Buffer): void {
+    const end = start + chunk.length;
+    if (start > this.hashedUpTo || end <= this.hashedUpTo) return;
+    const fresh = chunk.subarray(this.hashedUpTo - start);
+    this.sha.update(fresh);
+    this.md5.update(fresh);
+    this.hashedUpTo = end;
+  }
+
+  result(size: number): { sha256: string; md5: string } | null {
+    if (this.hashedUpTo !== size) return null;
+    return { sha256: this.sha.digest('hex'), md5: this.md5.digest('hex') };
+  }
+}
+
 /** Whether Drive's account of an upload agrees with what was read locally. */
 export function uploadMatches(uploaded: DriveFile, bytes: number, digests: { sha256: string; md5: string }): boolean {
   if (uploaded.size !== bytes) return false;
@@ -106,10 +144,17 @@ export function uploadMatches(uploaded: DriveFile, bytes: number, digests: { sha
   return true;
 }
 
-/** What the settings page shows as the destination. */
-export function gdriveDisplayPath(config: GdriveBackupConfig): string {
+/**
+ * What the settings page shows as the destination: the folder's name and the account.
+ * Not a path: under `drive.file` Nebulis cannot see the user's own folders, so it
+ * cannot tell where the folder sits once the user moves it. `liveName` is the name
+ * Drive reports now, which follows a rename; the name saved when the folder was
+ * prepared is the fallback when Drive was not asked.
+ */
+export function gdriveDisplayPath(config: GdriveBackupConfig, liveName?: string): string {
   const account = config.account ? ` (${config.account})` : '';
-  return `Google Drive: /${config.folderPath}${account}`;
+  const name = liveName?.trim() || config.folderPath;
+  return `Google Drive: ${name}${account}`;
 }
 
 // ─── The backup folder and its marker ───────────────────────────────────────
@@ -237,7 +282,7 @@ export async function gdriveDestinationState(config: GdriveBackupConfig): Promis
     if (!folder) return { state: 'offline', path, foundArchiveId: null };
     const marker = await readRemoteMarker(client, folder.id, config.archiveId);
     const foundArchiveId = marker.state === 'match' || marker.state === 'foreign' ? marker.marker.archiveId : null;
-    return { state: marker.state, path, foundArchiveId };
+    return { state: marker.state, path: gdriveDisplayPath(config, folder.name), foundArchiveId };
   } catch {
     return { state: 'offline', path, foundArchiveId: null };
   }
@@ -527,6 +572,17 @@ export async function runGdriveArchive(config: GdriveBackupConfig, options: Gdri
   let manifestFailed = false;
   let unrecorded: ArchiveCandidate[] = [];
   let lastFlushAt = Date.now();
+  // The server log shows a run as it goes: one line per file sent (files already in
+  // Drive are too many to list), every failure, a progress line each minute, and the end.
+  const runStartedAt = Date.now();
+  let lastProgressLogAt = runStartedAt;
+  log.info(
+    { files: selection.candidates.length, bytes: selection.bytesTotal },
+    `[gdrive-backup] run started: ${selection.candidates.length} files, ${readableBytes(selection.bytesTotal)} selected`,
+  );
+  const logFailure = (path: string, error: string): void => {
+    log.warn({ file: path, error }, `[gdrive-backup] failed: ${path}: ${error}`);
+  };
 
   const flushRecord = async (): Promise<void> => {
     if (unrecorded.length === 0 || manifestFailed) return;
@@ -550,6 +606,7 @@ export async function runGdriveArchive(config: GdriveBackupConfig, options: Gdri
       cancelled = true;
       break;
     }
+    const fileStartedAt = Date.now();
     try {
       const outcome = await uploadCandidate(client, tree, candidate, knownFor(candidate), signal);
       if (outcome === 'cancelled') {
@@ -562,25 +619,40 @@ export async function runGdriveArchive(config: GdriveBackupConfig, options: Gdri
         if (outcome.copied) {
           copied++;
           bytesCopied += candidate.bytes;
+          const seconds = Math.max(0.001, (Date.now() - fileStartedAt) / 1000);
+          log.info(
+            { file: candidate.archiveRelPath, bytes: candidate.bytes, ms: Math.round(seconds * 1000) },
+            `[gdrive-backup] uploaded ${candidate.archiveRelPath} (${readableBytes(candidate.bytes)} in ${seconds.toFixed(1)} s, ${readableBytes(candidate.bytes / seconds)}/s)`,
+          );
         } else {
           skipped++;
         }
       } else {
         failures.push({ archiveRelPath: candidate.archiveRelPath, error: outcome });
+        logFailure(candidate.archiveRelPath, outcome);
       }
     } catch (err) {
       if (err instanceof GdriveAuthError) {
         // The sign-in is gone: every remaining file would fail the same way.
         failures.push({ archiveRelPath: '(drive)', error: err.message });
+        logFailure('(drive)', err.message);
         connectionLost = true;
         break;
       }
       failures.push({ archiveRelPath: candidate.archiveRelPath, error: message(err) });
+      logFailure(candidate.archiveRelPath, message(err));
     }
 
     filesDone++;
     bytesDone += candidate.bytes;
     report({ filesDone, bytesDone, copied, skipped });
+    if (Date.now() - lastProgressLogAt >= PROGRESS_LOG_MS) {
+      lastProgressLogAt = Date.now();
+      log.info(
+        { filesDone, filesTotal: selection.candidates.length, bytesDone, bytesTotal: selection.bytesTotal },
+        `[gdrive-backup] progress: ${filesDone} of ${selection.candidates.length} files, ${readableBytes(bytesDone)} of ${readableBytes(selection.bytesTotal)}`,
+      );
+    }
     if (unrecorded.length >= MANIFEST_FLUSH_FILES || Date.now() - lastFlushAt >= MANIFEST_FLUSH_MS) await flushRecord();
   }
 
@@ -602,6 +674,12 @@ export async function runGdriveArchive(config: GdriveBackupConfig, options: Gdri
       failures.push({ archiveRelPath: GDRIVE_DATABASE_FOLDER, error: message(err) });
     }
   }
+
+  const runSeconds = Math.round((Date.now() - runStartedAt) / 1000);
+  log.info(
+    { copied, skipped, failures: failures.length, bytesCopied, cancelled, seconds: runSeconds },
+    `[gdrive-backup] run ${cancelled ? 'cancelled' : connectionLost ? 'stopped: sign-in lost' : 'finished'} after ${runSeconds} s: ${copied} uploaded (${readableBytes(bytesCopied)}), ${skipped} already in Drive, ${failures.length} failed`,
+  );
 
   return emptyResult({
     copied,
@@ -652,22 +730,37 @@ async function uploadCandidate(
     return { copied: false, sha256: known.sha256 };
   }
 
-  const digests = await digestFile(candidate.sourcePath);
-  if (remote && remote.size === stat.size && remote.md5Checksum?.toLowerCase() === digests.md5) {
-    return { copied: false, sha256: digests.sha256 };
+  // A file of the same size already in Drive may be this very file, not in the record
+  // yet (an earlier run, or another install): hash it first, and send nothing if it is.
+  // Any other file is going to be sent, and is hashed from the chunks the upload reads.
+  let digests: { sha256: string; md5: string } | null = null;
+  if (remote && remote.size === stat.size) {
+    digests = await digestFile(candidate.sourcePath);
+    if (remote.md5Checksum?.toLowerCase() === digests.md5) return { copied: false, sha256: digests.sha256 };
   }
   if (signal?.aborted) return 'cancelled';
 
+  const streamed = digests === null ? new InOrderDigest() : null;
   let uploaded: DriveFile;
   try {
-    uploaded = await client.uploadFile(folderId, fileName, candidate.sourcePath, stat.size, remote?.id, signal);
+    uploaded = await client.uploadFile(
+      folderId, fileName, candidate.sourcePath, stat.size, remote?.id, signal,
+      streamed ? (start, chunk) => streamed.feed(start, chunk) : undefined,
+    );
   } catch (err) {
     if (err instanceof GdriveAuthError) throw err;
     if (err instanceof DriveError && err.reason === 'cancelled') return 'cancelled';
     return message(err);
   }
 
-  if (!uploadMatches(uploaded, stat.size, digests)) {
+  // Hashing what was sent cannot see a file that changed while it was being sent, which
+  // hashing it beforehand did (the two digests then disagreed). Size and modification
+  // time, before and after, catch it instead.
+  const after = await fsp.stat(candidate.sourcePath).catch(() => null);
+  const changedDuringUpload = after === null || after.size !== stat.size || after.mtimeMs !== stat.mtimeMs;
+  digests ??= streamed?.result(stat.size) ?? (await digestFile(candidate.sourcePath));
+
+  if (changedDuringUpload || !uploadMatches(uploaded, stat.size, digests)) {
     // A new file that does not match is taken away again. Replacing an existing one
     // leaves Drive's previous revision available, so nothing is lost either way.
     if (!remote) {
@@ -677,7 +770,7 @@ async function uploadCandidate(
         // Best effort; the record does not name it, so nothing relies on it.
       }
     }
-    return 'checksum mismatch after upload';
+    return changedDuringUpload ? 'source changed during upload; it will be sent again next run' : 'checksum mismatch after upload';
   }
   (await tree.listing(folderId)).files.set(fileName, uploaded);
   return { copied: true, sha256: digests.sha256 };

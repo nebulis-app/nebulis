@@ -26,6 +26,7 @@ import { CatalogToolbar, type SortKey, type StatusFilter } from '../components/c
 import { CatalogTile } from '../components/catalogs/CatalogTile';
 import { CatalogObjectModal } from '../components/catalogs/CatalogObjectModal';
 import { CatalogPlanModal } from '../components/catalogs/CatalogPlanModal';
+import { setUiSetting } from '../lib/uiSettings';
 
 function matchesSearch(obj: CatalogProgressObject, needle: string): boolean {
   return (
@@ -50,7 +51,7 @@ export function CatalogBoard() {
     try { return localStorage.getItem('catalogs.observableOnly') === '1'; } catch { return false; }
   });
   useEffect(() => {
-    try { localStorage.setItem('catalogs.observableOnly', observableOnly ? '1' : '0'); } catch { /* storage unavailable */ }
+    try { setUiSetting('catalogs.observableOnly', observableOnly ? '1' : '0'); } catch { /* storage unavailable */ }
   }, [observableOnly]);
   // Tracked by catalog id rather than grid index: an index would go stale
   // the moment a filter/sort/search change reshuffles the array underneath

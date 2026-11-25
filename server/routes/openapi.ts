@@ -107,6 +107,7 @@ import {
 } from '../lib/noteSchemas.js';
 import {
   LastSeenVersionBodySchema,
+  UiSettingsPatchSchema,
   WatermarkPresetsBodySchema,
   WatermarkPresetSchema,
 } from '../lib/userPreferences.js';
@@ -3118,6 +3119,12 @@ export const spec = {
         required: ['seenAt'],
         properties: { seenAt: nullable({ type: 'string', format: 'date-time' }) },
       },
+      PreferencesUiSettings: {
+        type: 'object',
+        description: 'Web UI settings keyed by browser storage key. Values are opaque strings owned by the web client.',
+        additionalProperties: { type: 'string' },
+      },
+      PreferencesUiSettingsPatch: jsonSchemaOf(UiSettingsPatchSchema, 'input'),
 
       // Device pairing and connected devices.
       PairStartBody: {
@@ -4251,6 +4258,25 @@ export const spec = {
         tags: ['Settings'],
         description: 'Takes no body. Called when the ask is closed or its coffee link is opened. Idempotent: the first call keeps its date.',
         responses: { 200: jsonResponse('The instant it was first dismissed', 'PreferencesSupportAsk') },
+      },
+    },
+
+    '/preferences/ui': {
+      get: {
+        summary: "This user's saved web UI settings",
+        tags: ['Settings'],
+        description: 'An empty object when nothing was saved. The web client mirrors these into browser storage at sign-in.',
+        responses: { 200: jsonResponse('The settings', 'PreferencesUiSettings') },
+      },
+      patch: {
+        summary: 'Merge web UI settings',
+        tags: ['Settings'],
+        description: `A string value sets the key, null removes it; keys not sent are kept. Open to viewers. Keys match [A-Za-z0-9_.:-], up to 120 characters; values up to 20,000 characters; at most 200 keys stored.`,
+        requestBody: jsonBody('PreferencesUiSettingsPatch'),
+        responses: {
+          200: jsonResponse('The merged settings', 'PreferencesUiSettings'),
+          422: { description: 'VALIDATION_ERROR' },
+        },
       },
     },
 

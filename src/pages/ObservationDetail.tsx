@@ -59,6 +59,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/AuthContext';
 import type { SessionFile, ProcessedImage } from '../types';
 import type { CompareItem } from '../components/observationDetail/types';
+import { setUiSetting } from '../lib/uiSettings';
 
 /** `YYYYMMDD-HHMMSS` (what the telescope writes) or an ISO timestamp, as
  *  `HH:MM` in 24-hour time. */
@@ -182,7 +183,7 @@ function ObservationDetailPage() {
   });
   const toggleDetails = () => {
     setDetailsOpen(open => {
-      try { localStorage.setItem('nebulis.observationDetails', open ? 'closed' : 'open'); } catch { /* not persisted */ }
+      try { setUiSetting('nebulis.observationDetails', open ? 'closed' : 'open'); } catch { /* not persisted */ }
       return !open;
     });
   };

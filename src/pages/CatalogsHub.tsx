@@ -11,6 +11,7 @@ import { CATALOG_LIST } from '../lib/catalogMeta';
 import { CatalogPanel } from '../components/catalogs/CatalogPanel';
 import { CatalogsHero } from '../components/catalogs/CatalogsHero';
 import { TourAnchor } from '../components/tour/TourAnchor';
+import { setUiSetting } from '../lib/uiSettings';
 
 const HIDDEN_STORAGE_KEY = 'catalogs.hidden';
 
@@ -35,7 +36,7 @@ export function CatalogsHub() {
 
   const [hidden, setHidden] = useState<Set<string>>(readHidden);
   useEffect(() => {
-    try { localStorage.setItem(HIDDEN_STORAGE_KEY, JSON.stringify([...hidden])); } catch { /* storage unavailable */ }
+    try { setUiSetting(HIDDEN_STORAGE_KEY, JSON.stringify([...hidden])); } catch { /* storage unavailable */ }
   }, [hidden]);
   const toggleCatalog = (id: string) => {
     setHidden(prev => {

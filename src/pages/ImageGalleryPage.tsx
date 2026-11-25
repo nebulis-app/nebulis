@@ -25,6 +25,7 @@ import { TOOLBAR_BTN, POPOVER, popoverSurface } from '../components/filters/tool
 import { TourAnchor } from '../components/tour/TourAnchor';
 import { buildTypeFilters, countGroupChips, matchesFilter, filterLabel, ALL_FILTER_ID } from '../lib/objectTypeFilters';
 import { isOptionValue } from '../lib/typeGuards';
+import { setUiSetting } from '../lib/uiSettings';
 
 type SortKey = 'name-asc' | 'name-desc' | 'date-desc' | 'date-asc';
 
@@ -270,7 +271,7 @@ export function ImageGalleryPage() {
 
   function applyLayout(mode: LayoutMode) {
     setLayoutMode(mode);
-    try { localStorage.setItem(LAYOUT_STORAGE_KEY, mode); } catch { /* ignore */ }
+    try { setUiSetting(LAYOUT_STORAGE_KEY, mode); } catch { /* ignore */ }
   }
 
   // Mosaic: favorites and processed pictures first, then newest; a tile's size follows that order. The sort menu
@@ -302,7 +303,7 @@ export function ImageGalleryPage() {
   function applySort(key: SortKey) {
     setSortKey(key);
     setSortOpen(false);
-    try { localStorage.setItem(SORT_STORAGE_KEY, key); } catch { /* ignore */ }
+    try { setUiSetting(SORT_STORAGE_KEY, key); } catch { /* ignore */ }
   }
 
   if (planetariumImages) {

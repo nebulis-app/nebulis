@@ -15,6 +15,7 @@ import {
   type SuggestedFilter,
   type SuggestionRig,
 } from '../../lib/integrationSuggestion';
+import { setUiSetting } from '../../lib/uiSettings';
 
 const TELESCOPE_KEY = 'nebulis.integrationSuggest.telescope';
 
@@ -23,7 +24,7 @@ function readStored(key: string): string | null {
 }
 
 function writeStored(key: string, value: string): void {
-  try { localStorage.setItem(key, value); } catch { /* a remembered pick is a convenience only */ }
+  try { setUiSetting(key, value); } catch { /* a remembered pick is a convenience only */ }
 }
 
 /**

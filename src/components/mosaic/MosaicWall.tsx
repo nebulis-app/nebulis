@@ -5,6 +5,7 @@ import { layoutMosaic, type Placement } from '../../lib/mosaic/mosaicPacker';
 import { useTheme } from '../../hooks/useTheme';
 import { MosaicShareDialog } from './MosaicShareDialog';
 import { BodyScrollLock } from '../ui/BodyScrollLock';
+import { setUiSetting } from '../../lib/uiSettings';
 
 export interface MosaicTile {
   id: string;
@@ -324,7 +325,7 @@ export function MosaicWall({ tiles, onOpen, labelsStorageKey, ariaLabel, shareFi
 
   function toggleLabels() {
     setLabels(v => {
-      try { localStorage.setItem(labelsStorageKey, v ? '0' : '1'); } catch { /* ignore */ }
+      try { setUiSetting(labelsStorageKey, v ? '0' : '1'); } catch { /* ignore */ }
       return !v;
     });
   }

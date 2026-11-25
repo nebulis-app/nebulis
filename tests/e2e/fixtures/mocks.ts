@@ -1171,6 +1171,9 @@ export async function mockAllRoutes(page: Page) {
   // support-ask.spec.ts overrides this route to test the ask itself.
   await page.route('**/api/preferences/support-ask', r =>
     r.fulfill(json(ok({ seenAt: '2026-01-01T00:00:00.000Z' }))));
+  // No saved UI settings, so each spec runs with the settings it put in localStorage. A PATCH is echoed back.
+  await page.route('**/api/preferences/ui', r =>
+    r.fulfill(json(ok(r.request().method() === 'PATCH' ? r.request().postDataJSON() : {}))));
 
   // Thumbnails — return a tiny blank PNG
   await page.route('**/thumbnail**', r =>

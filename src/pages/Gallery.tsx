@@ -29,6 +29,7 @@ import { buildTypeFilters, countGroupChips, matchesFilter, ALL_FILTER_ID, FAVORI
 import { isOptionValue } from '../lib/typeGuards';
 import { isObjectFavoriteVars, type ObjectFavoriteVars } from '../lib/favoriteMutations';
 import { compareDesignations, catalogFamilyOf, CATALOG_FAMILY_ORDER, type CatalogFamily } from '../lib/designationSort';
+import { setUiSetting } from '../lib/uiSettings';
 
 type SortKey = 'catalog-asc' | 'name-asc' | 'name-desc' | 'session-date-desc' | 'session-date-asc' | 'session-count-desc' | 'import-desc';
 
@@ -258,26 +259,26 @@ export function Gallery() {
 
   function applyGroup(key: GroupKey) {
     setGroupKey(key);
-    try { localStorage.setItem(GROUP_STORAGE_KEY, key); } catch { /* ignore */ }
+    try { setUiSetting(GROUP_STORAGE_KEY, key); } catch { /* ignore */ }
   }
 
   function toggleGroupCollapsed(id: string) {
     setCollapsedGroups(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
-      try { localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      try { setUiSetting(COLLAPSED_STORAGE_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
       return next;
     });
   }
 
   function applyLayout(mode: LayoutMode) {
     setLayoutMode(mode);
-    try { localStorage.setItem(LAYOUT_STORAGE_KEY, mode); } catch { /* ignore */ }
+    try { setUiSetting(LAYOUT_STORAGE_KEY, mode); } catch { /* ignore */ }
   }
 
   function applyColumns(n: number) {
     setColumns(n);
-    try { localStorage.setItem(COLUMNS_STORAGE_KEY, String(n)); } catch { /* ignore */ }
+    try { setUiSetting(COLUMNS_STORAGE_KEY, String(n)); } catch { /* ignore */ }
   }
 
   const viewIsCustom = groupKey !== DEFAULT_GROUP || sortKey !== DEFAULT_SORT || columns !== COLUMNS_DEFAULT;
@@ -289,7 +290,7 @@ export function Gallery() {
 
   function applySort(key: SortKey) {
     setSortKey(key);
-    try { localStorage.setItem(SORT_STORAGE_KEY, key); } catch { /* ignore */ }
+    try { setUiSetting(SORT_STORAGE_KEY, key); } catch { /* ignore */ }
   }
 
 

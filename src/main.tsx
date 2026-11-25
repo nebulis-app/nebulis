@@ -7,6 +7,7 @@ import { reloadOnceForStaleChunk } from './lib/chunkReload';
 import './i18n';
 import './index.css';
 import { initUiScale } from './hooks/useUiScale';
+import { installUiSettingsSync } from './lib/uiSettings';
 
 // Vite dispatches this when a module preload or a wrapped dynamic import fails.
 // The usual cause in production is a tab whose index.html predates the build the
@@ -38,6 +39,7 @@ const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Nebulis: missing #root element in index.html');
 
 initUiScale();
+installUiSettingsSync();
 
 createRoot(rootElement).render(
   <StrictMode>

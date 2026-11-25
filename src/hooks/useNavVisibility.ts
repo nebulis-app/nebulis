@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useCallback, useMemo, createElement, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, createElement, type ReactNode } from 'react';
 import { isOneOf } from '../lib/typeGuards';
+import { setUiSetting, uiSettingsStore, UI_SETTINGS_HYDRATED_EVENT } from '../lib/uiSettings';
 
 export type NavItemId =
   | 'library'
@@ -140,11 +141,11 @@ function getInitialHidden(): Set<NavItemId> {
     // A non-array payload used to throw on `.filter` and land in the catch.
     if (!Array.isArray(parsed)) return defaultHidden();
     const valid = parsed.filter((id: unknown): id is NavItemId => isNavItemId(id) && id !== LOCKED_VISIBLE_ID);
-    const seeded = applyDefaultSeeds(new Set(valid), localStorage);
-    const merged = applyWishlistMerge(parsed, seeded.hidden, localStorage);
+    const seeded = applyDefaultSeeds(new Set(valid), uiSettingsStore);
+    const merged = applyWishlistMerge(parsed, seeded.hidden, uiSettingsStore);
     const hidden = merged.hidden;
     const changed = seeded.changed || merged.changed;
-    if (changed) localStorage.setItem(VISIBILITY_STORAGE_KEY, JSON.stringify([...hidden]));
+    if (changed) setUiSetting(VISIBILITY_STORAGE_KEY, JSON.stringify([...hidden]));
 
     return hidden;
   } catch {
@@ -216,6 +217,16 @@ export function NavVisibilityProvider({ children }: { children: ReactNode }) {
   const [hidden, setHidden] = useState<Set<NavItemId>>(getInitialHidden);
   const [order, setOrder] = useState<NavItemId[]>(getInitialOrder);
 
+  // Mounted before sign-in: re-read once the user's saved nav arrives (see lib/uiSettings.ts).
+  useEffect(() => {
+    const reload = () => {
+      setHidden(getInitialHidden());
+      setOrder(getInitialOrder());
+    };
+    window.addEventListener(UI_SETTINGS_HYDRATED_EVENT, reload);
+    return () => window.removeEventListener(UI_SETTINGS_HYDRATED_EVENT, reload);
+  }, []);
+
   const toggle = useCallback((id: NavItemId) => {
     if (id === LOCKED_VISIBLE_ID) return;
     setHidden(prev => {
@@ -225,7 +236,7 @@ export function NavVisibilityProvider({ children }: { children: ReactNode }) {
       } else {
         next.add(id);
       }
-      localStorage.setItem(VISIBILITY_STORAGE_KEY, JSON.stringify([...next]));
+      setUiSetting(VISIBILITY_STORAGE_KEY, JSON.stringify([...next]));
       return next;
     });
   }, []);
@@ -241,7 +252,7 @@ export function NavVisibilityProvider({ children }: { children: ReactNode }) {
       if (index === -1 || target < 0 || target >= prev.length) return prev;
       const next = [...prev];
       [next[index], next[target]] = [next[target], next[index]];
-      localStorage.setItem(ORDER_STORAGE_KEY, JSON.stringify(next));
+      setUiSetting(ORDER_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
   }, []);
@@ -253,7 +264,7 @@ export function NavVisibilityProvider({ children }: { children: ReactNode }) {
       const next = prev.filter(id => id !== draggedId);
       const targetIndex = next.indexOf(targetId);
       next.splice(targetIndex, 0, draggedId);
-      localStorage.setItem(ORDER_STORAGE_KEY, JSON.stringify(next));
+      setUiSetting(ORDER_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
   }, []);

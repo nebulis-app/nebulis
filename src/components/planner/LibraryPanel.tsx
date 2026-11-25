@@ -37,6 +37,7 @@ import { useResolvedFov } from '../../hooks/useResolvedFov';
 import { useWishlist } from '../../hooks/useWishlist';
 import { classifyFit, fitDisplayStrings, objectExtentArcmin } from '../../lib/telescopeFov';
 import { FitBadge } from '../FitBadge';
+import { setUiSetting } from '../../lib/uiSettings';
 
 /** Minimal shape the details modal needs — satisfied by both observable
  *  targets and unobservable catalog entries. */
@@ -143,7 +144,7 @@ export function LibraryPanel({
   const [order, setOrderState] = useState<TargetOrder>(readOrder);
   const setOrder = useCallback((next: TargetOrder) => {
     setOrderState(next);
-    try { localStorage.setItem(ORDER_KEY, next); } catch { /* private mode: the choice just won't persist */ }
+    try { setUiSetting(ORDER_KEY, next); } catch { /* private mode: the choice just won't persist */ }
   }, []);
   const sortedTargets = useMemo(() => orderTargets(targets, order), [targets, order]);
 

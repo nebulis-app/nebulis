@@ -1289,6 +1289,12 @@ db.exec(`
   if (!upCols.some(c => c.name === 'supportAskSeenAt')) {
     db.prepare('ALTER TABLE userPreferences ADD COLUMN supportAskSeenAt TEXT').run();
   }
+  // The web client's UI settings (theme, sort orders, view modes, …) as a JSON object of string values keyed by the
+  // browser storage key. The browser keeps its own copy for a flicker-free first paint; this one survives clearing
+  // site data and follows the user to other browsers. See src/lib/uiSettings.ts.
+  if (!upCols.some(c => c.name === 'uiSettings')) {
+    db.prepare("ALTER TABLE userPreferences ADD COLUMN uiSettings TEXT NOT NULL DEFAULT '{}'").run();
+  }
 
   // Version of the curated-description backfill that has been applied to
   // libraryObjects. curated-descriptions.json was merged into the one catalog

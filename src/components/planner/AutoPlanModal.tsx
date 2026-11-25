@@ -26,6 +26,7 @@ import { mergeSkipped } from '../../lib/planWeather';
 import type { PlannerTarget } from '../../lib/api/planner';
 import type { VisibleSkyMap } from '../../lib/visibilityCheck';
 import { BodyScrollLock } from '../ui/BodyScrollLock';
+import { setUiSetting } from '../../lib/uiSettings';
 
 interface AutoPlanModalProps {
   targets: PlannerTarget[];
@@ -509,7 +510,7 @@ export function AutoPlanModal({
                   checked={narrowband}
                   onChange={(e) => {
                     setNarrowband(e.target.checked);
-                    try { localStorage.setItem(NARROWBAND_KEY, e.target.checked ? '1' : '0'); } catch { /* private mode: the choice just won't persist */ }
+                    try { setUiSetting(NARROWBAND_KEY, e.target.checked ? '1' : '0'); } catch { /* private mode: the choice just won't persist */ }
                   }}
                   className="accent-amber-500"
                 />

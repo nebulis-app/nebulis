@@ -15,7 +15,8 @@ const TEST_DATA_DIR = vi.hoisted(() => {
 import db from '../../server/lib/db';
 import {
   getWatermarkPresets, setWatermarkPresets, getLastSeenVersion, setLastSeenVersion,
-  getSupportAskSeenAt, setSupportAskSeen,
+  getSupportAskSeenAt, setSupportAskSeen, getUiSettings, patchUiSettings,
+  UiSettingsLimitError, UiSettingsPatchSchema, MAX_UI_SETTINGS_KEYS,
   WatermarkPresetsBodySchema, type WatermarkPreset,
 } from '../../server/lib/userPreferences';
 
@@ -183,5 +184,53 @@ describe('support ask (supportAskSeenAt)', () => {
     setSupportAskSeen('u2');
     expect(getSupportAskSeenAt('u2')).not.toBeNull();
     expect(db.prepare<[string], { c: number }>('SELECT COUNT(*) AS c FROM userPreferences WHERE userId = ?').get('u1')!.c).toBe(1);
+  });
+});
+
+describe('web UI settings (uiSettings)', () => {
+  it('is empty for a user who never saved any', () => {
+    expect(getUiSettings('nobody')).toEqual({});
+  });
+
+  it('merges a patch: sets and replaces keys, null removes, unsent keys are kept', () => {
+    expect(patchUiSettings('u1', { 'nebulis-theme': 'space', 'catalogs.observableOnly': '1' }))
+      .toEqual({ 'nebulis-theme': 'space', 'catalogs.observableOnly': '1' });
+    expect(patchUiSettings('u1', { 'nebulis-theme': 'night', 'catalogs.observableOnly': null, nebulis_media_tile_size: '240' }))
+      .toEqual({ 'nebulis-theme': 'night', nebulis_media_tile_size: '240' });
+    expect(getUiSettings('u1')).toEqual({ 'nebulis-theme': 'night', nebulis_media_tile_size: '240' });
+  });
+
+  it('is per user and leaves the other columns of the row alone', () => {
+    setLastSeenVersion('u1', '2.2.3');
+    patchUiSettings('u1', { 'nebulis-theme': 'light' });
+    expect(getLastSeenVersion('u1')).toBe('2.2.3');
+    expect(getUiSettings('u2')).toEqual({});
+    setLastSeenVersion('u1', '2.2.4');
+    expect(getUiSettings('u1')).toEqual({ 'nebulis-theme': 'light' });
+  });
+
+  it('reads a corrupt or non-object row as empty and drops non-string values', () => {
+    db.prepare('INSERT INTO userPreferences (userId, uiSettings) VALUES (?, ?)').run('bad', '{not json');
+    expect(getUiSettings('bad')).toEqual({});
+    db.prepare('INSERT INTO userPreferences (userId, uiSettings) VALUES (?, ?)').run('arr', '["a"]');
+    expect(getUiSettings('arr')).toEqual({});
+    db.prepare('INSERT INTO userPreferences (userId, uiSettings) VALUES (?, ?)').run('mix', JSON.stringify({ a: 'x', b: 2, c: null }));
+    expect(getUiSettings('mix')).toEqual({ a: 'x' });
+  });
+
+  it('refuses a patch that would store more than the key limit, and keeps the previous value', () => {
+    const many = Object.fromEntries(Array.from({ length: MAX_UI_SETTINGS_KEYS }, (_, i) => [`k${i}`, 'v']));
+    patchUiSettings('u1', many);
+    expect(() => patchUiSettings('u1', { extra: 'v' })).toThrow(UiSettingsLimitError);
+    expect(Object.keys(getUiSettings('u1'))).toHaveLength(MAX_UI_SETTINGS_KEYS);
+  });
+
+  it('validates the PATCH body', () => {
+    expect(UiSettingsPatchSchema.safeParse({ 'nebulis-theme': 'dark', 'x.y': null }).success).toBe(true);
+    expect(UiSettingsPatchSchema.safeParse({}).success).toBe(false);
+    expect(UiSettingsPatchSchema.safeParse({ 'bad key': 'v' }).success).toBe(false);
+    expect(UiSettingsPatchSchema.safeParse({ k: 1 }).success).toBe(false);
+    expect(UiSettingsPatchSchema.safeParse({ k: 'x'.repeat(20_001) }).success).toBe(false);
+    expect(UiSettingsPatchSchema.safeParse(['a']).success).toBe(false);
   });
 });

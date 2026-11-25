@@ -7,7 +7,11 @@ import {
   setLastSeenVersion,
   getSupportAskSeenAt,
   setSupportAskSeen,
+  getUiSettings,
+  patchUiSettings,
+  UiSettingsLimitError,
   LastSeenVersionBodySchema,
+  UiSettingsPatchSchema,
   WatermarkPresetsBodySchema,
 } from '../lib/userPreferences.js';
 
@@ -67,4 +71,28 @@ preferencesRouter.put('/last-seen-version', (req, res) => {
   const userId = resolveUserId(req);
   setLastSeenVersion(userId, parsed.data.version);
   res.apiSuccess({ lastSeenVersion: parsed.data.version });
+});
+
+/** GET /preferences/ui — the web client's saved UI settings, a flat key → string map ({} when none). */
+preferencesRouter.get('/ui', (req, res) => {
+  res.apiSuccess(getUiSettings(resolveUserId(req)));
+});
+
+/** PATCH /preferences/ui — merge settings into the saved map: a string sets a key, null removes it. Returns the
+ *  merged map. Open to viewers: these are the caller's own UI choices, not library data. */
+preferencesRouter.patch('/ui', (req, res) => {
+  const parsed = UiSettingsPatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Expected an object of string or null values');
+    return;
+  }
+  try {
+    res.apiSuccess(patchUiSettings(resolveUserId(req), parsed.data));
+  } catch (err) {
+    if (err instanceof UiSettingsLimitError) {
+      res.apiError(422, 'VALIDATION_ERROR', err.message);
+      return;
+    }
+    throw err;
+  }
 });

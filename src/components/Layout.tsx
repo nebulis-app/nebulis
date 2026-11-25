@@ -11,6 +11,7 @@ import { getImportStatus, formatTransportSuffix, triggerImport } from '../lib/ap
 import { getCurrentUser } from '../lib/api/auth';
 import { getUpdateStatus } from '../lib/api/update';
 import { clearAuthToken, getAuthToken } from '../lib/api/client';
+import { flushUiSettings } from '../lib/uiSettings';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { useRefreshLibraryOnImport } from '../hooks/useRefreshLibraryOnImport';
 import { useMediaQuery } from '../hooks/useMediaQuery';
@@ -308,7 +309,9 @@ export function Layout({ children }: LayoutProps) {
     };
   }, [isCompactNav, navSignature]);
 
-  function handleLogout() {
+  async function handleLogout() {
+    // Send any setting changed in the last moment while the token is still valid.
+    await flushUiSettings();
     clearAuthToken();
     window.location.reload();
   }

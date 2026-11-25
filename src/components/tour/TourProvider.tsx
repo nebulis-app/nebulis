@@ -16,6 +16,7 @@ import {
   plantTourSampleObject,
   purgeTourSampleObject,
 } from '../../lib/api/library';
+import { setUiSetting } from '../../lib/uiSettings';
 
 /** Every cached view the demo object appears in or disappears from. Planting
  *  and purging both change what the library holds, so both refresh these. */
@@ -132,7 +133,7 @@ export function TourProvider({ children, autoStart = false }: { children: ReactN
     setPendingRoute(null);
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem(STORAGE_KEY, '1');
+        setUiSetting(STORAGE_KEY, '1');
       } catch {
         /* storage may be unavailable; seeing the tour again is harmless */
       }

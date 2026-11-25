@@ -172,7 +172,9 @@ export function NightlyMaintenanceSection({
               }`}
             />
             <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              {t('nightlyMaintenance.localTime')}
+              {form.scheduleTimeZoneInUse
+                ? t('nightlyMaintenance.inZone', { zone: form.scheduleTimeZoneInUse.timeZone })
+                : t('nightlyMaintenance.localTime')}
             </span>
 
             <button

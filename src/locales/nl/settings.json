@@ -104,6 +104,16 @@
       "description": "Waarden op de pagina Weersverwachting."
     }
   },
+  "scheduleTimeZone": {
+    "title": "Tijdzone",
+    "description": "De tijdzone van alle planningen: het archief op schijf, de Google Drive-back-up en het nachtelijk onderhoud. Waarneemlocaties houden hun eigen tijdzone voor schemering en weersverwachting.",
+    "label": "Planningen volgen",
+    "placeholder": "bijv. Europe/Paris",
+    "useBrowser": "Die van deze browser gebruiken ({{zone}})",
+    "unknown": "Onbekende tijdzone: kies er een uit de lijst, zoals Europe/Paris.",
+    "fromSite": "Niet gekozen: planningen volgen de tijdzone van de standaard waarneemlocatie ({{zone}}).",
+    "fromServer": "Niet gekozen: planningen volgen de tijdzone van de server ({{zone}}), in een container vaak UTC. Kies de uwe zodat ze op het verwachte uur lopen."
+  },
   "systemLog": {
     "title": "Systeemlogboek",
     "description": "Aanmeldingen, gebruikers- en telescoopwijzigingen, synchronisaties en andere administratieve activiteiten voor deze installatie.",
@@ -190,6 +200,7 @@
     "lastRun": "Laatst uitgevoerd {{time}}.",
     "runAt": "Uitvoeren om",
     "localTime": "lokale tijd",
+    "inZone": "tijd {{zone}}",
     "runNowTitle": "Voer de onderhoudstaken nu uit in plaats van te wachten op de geplande tijd",
     "runNow": "Nu uitvoeren",
     "starting": "Starten…",
@@ -993,7 +1004,7 @@
     "photoAlt": "Foto van {{name}}"
   },
   "subtitle": {
-    "general": "Uiterlijk en eenheden.",
+    "general": "Uiterlijk, eenheden en tijdzone.",
     "library": "Hoe objectkaarten, naamgeving en de diavoorstelling zich gedragen.",
     "updates": "Versie, versienotities en update-instellingen.",
     "accountDevices": "Telefoons en Apple TV's die aan je account zijn gekoppeld.",
@@ -1070,6 +1081,9 @@
     "latitudePlaceholder": "bijv. 40.7128",
     "longitudeLabel": "Lengtegraad",
     "longitudePlaceholder": "bijv. -74.0060",
+    "timezoneLabel": "Tijdzone",
+    "timezonePlaceholder": "bijv. Europe/Paris",
+    "timezoneHint": "Voor schemering en de weersverwachting op deze locatie. Planningen gebruiken de tijdzone van de installatie (Instellingen → Algemeen).",
     "detecting": "Detecteren…",
     "useCurrentLocation": "Gebruik huidige locatie",
     "clear": "Wissen",
@@ -1207,7 +1221,7 @@
       "unit": "dagen"
     },
     "schedule": {
-      "description": "Kopieert nieuwe bestanden volgens een schema, in de tijdzone van je waarneemlocatie.",
+      "description": "Kopieert nieuwe bestanden volgens een planning, in de tijdzone van de installatie (Instellingen → Algemeen).",
       "timeLabel": "Tijd van de dag",
       "intervalLabel": "Uren tussen archiveringen",
       "intervalUnit": "uur",
@@ -1263,7 +1277,9 @@
       "retentionEverything_other": "Objecten worden {{count}} dagen na hun laatste archivering uit het archief verwijderd. Bestanden die niet meer in je bibliotheek staan, blijven behouden.",
       "retentionSubframes_one": "Subframes worden 1 dag na de laatste archivering uit het archief verwijderd. Uiteindelijke afbeeldingen en bestanden die niet meer in je bibliotheek staan, blijven behouden.",
       "retentionSubframes_other": "Subframes worden {{count}} dagen na de laatste archivering uit het archief verwijderd. Uiteindelijke afbeeldingen en bestanden die niet meer in je bibliotheek staan, blijven behouden.",
-      "removeLocal": "Subframes worden ook uit deze lokale Nebulis-bibliotheek verwijderd zodra hun gearchiveerde kopie is gecontroleerd."
+      "removeLocal": "Subframes worden ook uit deze lokale Nebulis-bibliotheek verwijderd zodra hun gearchiveerde kopie is gecontroleerd.",
+      "nextRun": "Volgende run: {{when}} ({{zone}})",
+      "serverZone": "Geen tijdzone gekozen: die van de server ({{zone}}) geldt. Stel de uwe in onder Instellingen → Algemeen."
     },
     "save": "Opslaan",
     "saved": "Opgeslagen.",

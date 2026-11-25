@@ -104,6 +104,16 @@
       "description": "Lectures de la page des prévisions."
     }
   },
+  "scheduleTimeZone": {
+    "title": "Fuseau horaire",
+    "description": "Le fuseau horaire de toutes les planifications : l’archive sur disque, la sauvegarde Google Drive et la maintenance nocturne. Les sites d’observation gardent leur propre fuseau pour le crépuscule et la météo.",
+    "label": "Les planifications suivent",
+    "placeholder": "par ex. Europe/Paris",
+    "useBrowser": "Utiliser celui de ce navigateur ({{zone}})",
+    "unknown": "Fuseau inconnu : choisissez-en un dans la liste, comme Europe/Paris.",
+    "fromSite": "Non choisi : les planifications suivent le fuseau du site d’observation par défaut ({{zone}}).",
+    "fromServer": "Non choisi : les planifications suivent le fuseau du serveur ({{zone}}), souvent UTC dans un conteneur. Choisissez le vôtre pour qu’elles partent à l’heure attendue."
+  },
   "systemLog": {
     "title": "Journal système",
     "description": "Connexions, changements d'utilisateurs et de télescopes, synchronisations et autre activité administrative de cette installation.",
@@ -190,6 +200,7 @@
     "lastRun": "Dernière exécution {{time}}.",
     "runAt": "Exécuter à",
     "localTime": "heure locale",
+    "inZone": "heure {{zone}}",
     "runNowTitle": "Exécuter les tâches de maintenance maintenant plutôt que d'attendre l'heure programmée",
     "runNow": "Exécuter maintenant",
     "starting": "Démarrage…",
@@ -993,7 +1004,7 @@
     "photoAlt": "Photo de {{name}}"
   },
   "subtitle": {
-    "general": "Apparence et unités.",
+    "general": "Apparence, unités et fuseau horaire.",
     "library": "Comment se comportent les cartes d'objet, le nommage et le diaporama.",
     "updates": "Version, notes de version et paramètres de mise à jour.",
     "accountDevices": "Téléphones et Apple TV liés à votre compte.",
@@ -1070,6 +1081,9 @@
     "latitudePlaceholder": "ex. 40.7128",
     "longitudeLabel": "Longitude",
     "longitudePlaceholder": "ex. -74.0060",
+    "timezoneLabel": "Fuseau horaire",
+    "timezonePlaceholder": "par ex. Europe/Paris",
+    "timezoneHint": "Pour le crépuscule et la météo de ce site. Les planifications suivent le fuseau de l’installation (Paramètres → Général).",
     "detecting": "Détection…",
     "useCurrentLocation": "Utiliser la position actuelle",
     "clear": "Effacer",
@@ -1207,7 +1221,7 @@
       "unit": "jours"
     },
     "schedule": {
-      "description": "Copie les nouveautés selon un planning, dans le fuseau horaire de votre site d'observation.",
+      "description": "Copie les nouveautés selon un planning, dans le fuseau horaire de l’installation (Paramètres → Général).",
       "timeLabel": "Heure de la journée",
       "intervalLabel": "Heures entre les exécutions",
       "intervalUnit": "heures",
@@ -1263,7 +1277,9 @@
       "retentionEverything_other": "Les objets sont supprimés de l'archive {{count}} jours après leur dernier archivage. Les fichiers que votre bibliothèque n'a plus sont conservés.",
       "retentionSubframes_one": "Les sous-expositions sont supprimées de l'archive 1 jour après leur dernier archivage. Les images finales et les fichiers que votre bibliothèque n'a plus sont conservés.",
       "retentionSubframes_other": "Les sous-expositions sont supprimées de l'archive {{count}} jours après leur dernier archivage. Les images finales et les fichiers que votre bibliothèque n'a plus sont conservés.",
-      "removeLocal": "Les sous-expositions sont aussi supprimées de cette installation Nebulis locale une fois leur copie archivée vérifiée."
+      "removeLocal": "Les sous-expositions sont aussi supprimées de cette installation Nebulis locale une fois leur copie archivée vérifiée.",
+      "nextRun": "Prochaine exécution : {{when}} ({{zone}})",
+      "serverZone": "Aucun fuseau choisi : celui du serveur ({{zone}}) s’applique. Réglez le vôtre dans Paramètres → Général."
     },
     "save": "Enregistrer",
     "saved": "Enregistré.",

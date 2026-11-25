@@ -7,6 +7,8 @@ import { CleanupFields, CopyFields, DiskFields, ScheduleFields } from './Archive
 import { ARCHIVE_GROUPS, type ArchiveGroup, type ArchiveSummary } from './archiveForm';
 import { archiveStyles, STATE_ICON, stateColor } from './archiveStyles';
 import { RowGroup } from './SettingsUI';
+import { scheduleNextRunLines } from './archiveForm';
+import type { ScheduleView } from '../../lib/api/storage';
 
 interface OverviewProps {
   isDark: boolean;
@@ -24,6 +26,8 @@ interface OverviewProps {
   lastResult: string;
   /** The stored retention switch, which is what the apply route checks. */
   storedRetentionEnabled: boolean;
+  /** The saved schedule as the server runs it: zone, and next run. */
+  schedule?: ScheduleView;
   onChoose: () => void;
   onPathTyped: () => void;
   onAdopt: () => void;
@@ -66,7 +70,7 @@ export function ArchiveOverview(props: OverviewProps) {
   const rowValue: Record<ArchiveGroup, string[]> = {
     disk: [summary.disk],
     copy: summary.copy,
-    schedule: [summary.schedule],
+    schedule: [summary.schedule, ...scheduleNextRunLines(t, props.schedule, form.scheduleEnabled)],
     cleanup: summary.cleanup,
   };
 

@@ -104,6 +104,16 @@
       "description": "Lecturas de la página de pronóstico."
     }
   },
+  "scheduleTimeZone": {
+    "title": "Zona horaria",
+    "description": "La zona horaria de todas las programaciones: el archivo en disco, la copia en Google Drive y el mantenimiento nocturno. Los sitios de observación conservan su propia zona para el crepúsculo y el pronóstico.",
+    "label": "Las programaciones siguen",
+    "placeholder": "p. ej. Europe/Paris",
+    "useBrowser": "Usar la de este navegador ({{zone}})",
+    "unknown": "Zona horaria desconocida: elija una de la lista, como Europe/Paris.",
+    "fromSite": "Sin elegir: las programaciones siguen la zona del sitio de observación predeterminado ({{zone}}).",
+    "fromServer": "Sin elegir: las programaciones siguen la zona del servidor ({{zone}}), a menudo UTC en un contenedor. Elija la suya para que se ejecuten a la hora esperada."
+  },
   "systemLog": {
     "title": "Registro del sistema",
     "description": "Inicios de sesión, cambios de usuarios y telescopios, sincronizaciones y otra actividad administrativa de esta instalación.",
@@ -190,6 +200,7 @@
     "lastRun": "Última ejecución {{time}}.",
     "runAt": "Ejecutar a las",
     "localTime": "hora local",
+    "inZone": "hora de {{zone}}",
     "runNowTitle": "Ejecutar las tareas de mantenimiento ahora en lugar de esperar a la hora programada",
     "runNow": "Ejecutar ahora",
     "starting": "Iniciando…",
@@ -993,7 +1004,7 @@
     "photoAlt": "Foto de {{name}}"
   },
   "subtitle": {
-    "general": "Apariencia y unidades.",
+    "general": "Apariencia, unidades y zona horaria.",
     "library": "Cómo se comportan las tarjetas de objeto, el nombrado y la presentación de diapositivas.",
     "updates": "Versión, notas de la versión y configuración de actualizaciones.",
     "accountDevices": "Teléfonos y Apple TV vinculados a tu cuenta.",
@@ -1070,6 +1081,9 @@
     "latitudePlaceholder": "p. ej. 40.7128",
     "longitudeLabel": "Longitud",
     "longitudePlaceholder": "p. ej. -74.0060",
+    "timezoneLabel": "Zona horaria",
+    "timezonePlaceholder": "p. ej. Europe/Paris",
+    "timezoneHint": "Para el crepúsculo y el pronóstico de este sitio. Las programaciones usan la zona de la instalación (Configuración → General).",
     "detecting": "Detectando…",
     "useCurrentLocation": "Usar ubicación actual",
     "clear": "Borrar",
@@ -1207,7 +1221,7 @@
       "unit": "días"
     },
     "schedule": {
-      "description": "Copia lo nuevo según un horario, en la zona horaria de tu lugar de observación.",
+      "description": "Copia lo nuevo según una programación, en la zona horaria de la instalación (Configuración → General).",
       "timeLabel": "Hora del día",
       "intervalLabel": "Horas entre ejecuciones",
       "intervalUnit": "horas",
@@ -1263,7 +1277,9 @@
       "retentionEverything_other": "Los objetos se borran del archivo {{count}} días después de su último archivado. Los archivos que tu biblioteca ya no tiene se conservan.",
       "retentionSubframes_one": "Los subframes se borran del archivo 1 día después de su último archivado. Las imágenes terminadas y los archivos que tu biblioteca ya no tiene se conservan.",
       "retentionSubframes_other": "Los subframes se borran del archivo {{count}} días después de su último archivado. Las imágenes terminadas y los archivos que tu biblioteca ya no tiene se conservan.",
-      "removeLocal": "Los subframes también se eliminan de esta instalación local de Nebulis una vez verificada su copia archivada."
+      "removeLocal": "Los subframes también se eliminan de esta instalación local de Nebulis una vez verificada su copia archivada.",
+      "nextRun": "Próxima ejecución: {{when}} ({{zone}})",
+      "serverZone": "Ninguna zona elegida: se usa la del servidor ({{zone}}). Configure la suya en Configuración → General."
     },
     "save": "Guardar",
     "saved": "Guardado.",

@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { registerUser } from '../lib/api/auth';
 import { setAuthToken } from '../lib/api/client';
@@ -17,8 +17,21 @@ import { hostAddressError } from '../lib/hostAddress';
 import { OnboardingChrome } from './onboarding/OnboardingChrome';
 import { OnboardingSteps } from './onboarding/OnboardingSteps';
 import type { TestStatus } from './onboarding/OnboardingStep2';
+import { browserTimeZone } from '../lib/timeZones';
 
 const TRANSITION_MS = 150;
+
+/**
+ * A fresh install's schedules run in the zone of the browser that sets it up, unless
+ * one is already set (the container's TZ, taken at install). Without it, a Docker
+ * server would run every schedule in UTC. Changed later in Settings → General.
+ */
+function scheduleTimeZoneDefault(queryClient: QueryClient): { scheduleTimeZone?: string } {
+  const current = queryClient.getQueryData<{ scheduleTimeZone?: string }>(['settings']);
+  if (current?.scheduleTimeZone) return {};
+  const zone = browserTimeZone();
+  return zone ? { scheduleTimeZone: zone } : {};
+}
 
 export function OnboardingModal({ onComplete }: { onComplete: () => void }) {
   const { t } = useTranslation('common');
@@ -107,6 +120,7 @@ export function OnboardingModal({ onComplete }: { onComplete: () => void }) {
         importSubFrames,
         prefetchCatalogAssets,
         onboardingCompleted: true,
+        ...scheduleTimeZoneDefault(queryClient),
       });
     },
     onSuccess: () => {
@@ -165,7 +179,7 @@ export function OnboardingModal({ onComplete }: { onComplete: () => void }) {
   }
 
   function handleSkip() {
-    updateSettings({ onboardingCompleted: true }).then(() => {
+    updateSettings({ onboardingCompleted: true, ...scheduleTimeZoneDefault(queryClient) }).then(() => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       onComplete();
     });

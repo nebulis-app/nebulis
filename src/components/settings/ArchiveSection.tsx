@@ -369,6 +369,7 @@ export function ArchiveSection({ isDark }: { isDark: boolean }) {
           progress={runStatus?.running ? { done: runStatus.progress.filesDone, total: runStatus.progress.filesTotal } : null}
           lastResult={data?.config.lastResult ?? ''}
           storedRetentionEnabled={storedRetentionEnabled}
+          schedule={runStatus?.schedule}
           onAdopt={adopt}
           onRunNow={runNow}
           onCancelRun={cancelRun}

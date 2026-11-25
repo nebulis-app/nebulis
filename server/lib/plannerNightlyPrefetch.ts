@@ -25,6 +25,7 @@ import { refreshForecastCache } from './forecastCache.js';
 import { checkAndUpdatePacks } from './catalogPack/updater.js';
 import { localDateKey, localParts } from './timezone.js';
 import { observingNightAnchor } from './telescopeFiles.js';
+import { scheduleTimeZone } from './scheduleTimeZone.js';
 
 // ─── Scheduler state ──────────────────────────────────────────────────────────
 
@@ -102,7 +103,8 @@ function tick(): void {
   if (!settings.nightlyMaintenanceEnabled) return;
 
   const timeStr = typeof settings.plannerPrefetchTime === 'string' ? settings.plannerPrefetchTime : '03:00';
-  const tz = (typeof settings.timezone === 'string' ? settings.timezone : '') || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // The installation's zone (Settings → General), like every scheduler: see scheduleTimeZone.ts.
+  const tz = scheduleTimeZone();
   const now = new Date();
 
   // `!isRunning` guards against this tick firing twice while an attempt is

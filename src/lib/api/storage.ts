@@ -434,8 +434,18 @@ export interface ArchiveRetentionPlanSummary {
   warnings: string[];
 }
 
+/** A schedule as the server sees it: the zone it runs in, where that zone comes from,
+ *  and when it next starts a run (ISO; null when off). */
+export interface ScheduleView {
+  timeZone: string;
+  timeZoneSource: 'installation' | 'site' | 'server';
+  nextRunAt: string | null;
+}
+
 export const getArchiveRunStatus = () =>
-  fetchJSON<{ progress: ArchiveRunProgress; running: boolean; lastRun: ArchiveLastRun | null }>('/storage/archive/run/status');
+  fetchJSON<{ progress: ArchiveRunProgress; running: boolean; lastRun: ArchiveLastRun | null; schedule?: ScheduleView }>(
+    '/storage/archive/run/status',
+  );
 
 /** Start an archive run now, rather than waiting for the schedule. Answers as soon as
  *  the run has started; poll `getArchiveRunStatus` for progress and for `lastRun`. */

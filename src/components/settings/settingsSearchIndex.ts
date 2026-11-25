@@ -25,6 +25,7 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   { group: 'general', labelKey: 'navigation.title', keywords: 'tabs menu order reorder hide' },
   { group: 'general', labelKey: 'units.temperature.label', keywords: 'celsius fahrenheit' },
   { group: 'general', labelKey: 'units.windSpeed.label', keywords: 'mph kmh knots' },
+  { group: 'general', labelKey: 'scheduleTimeZone.title', keywords: 'timezone time zone utc schedule cron archive backup nightly clock hour' },
 
   // Library
   { group: 'library', section: 'display', labelKey: 'librarySection.display.cardPictures.label', keywords: 'reference image my telescope images catalog thumbnail hubble dss2 nasa captures object card' },

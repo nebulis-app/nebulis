@@ -1,4 +1,4 @@
-import type { ArchiveConfig, ArchiveConfigPatch, ArchiveScheduleMode } from '../../lib/api/storage';
+import type { ArchiveConfig, ArchiveConfigPatch, ArchiveScheduleMode, ScheduleView } from '../../lib/api/storage';
 import { formatTimeAuto } from '../../lib/formatLocale';
 
 type TFunc = (key: string, opts?: Record<string, unknown>) => string;
@@ -186,4 +186,30 @@ export function buildArchiveSummary(t: TFunc, form: ArchiveConfig, destination: 
   if (form.removeLocalAfter) cleanup.push(t('archive.summary.removeLocal'));
 
   return { disk, copy, schedule, cleanup };
+}
+
+/** An instant as a short date and time in `timeZone`. A zone Intl rejects falls back to
+ *  the browser's own instead of throwing in a render. */
+export function formatInZone(iso: string, timeZone: string): string {
+  const options: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
+  try {
+    return new Date(iso).toLocaleString(undefined, { ...options, timeZone });
+  } catch {
+    return new Date(iso).toLocaleString(undefined, options);
+  }
+}
+
+/**
+ * What a saved schedule will do, for the line under its summary: when it next runs, in
+ * the zone it really runs in, and a note when that zone is only the server's because
+ * none was chosen in Settings → General.
+ */
+export function scheduleNextRunLines(t: TFunc, schedule: ScheduleView | undefined, enabled: boolean): string[] {
+  if (!schedule || !enabled) return [];
+  const lines: string[] = [];
+  if (schedule.nextRunAt) {
+    lines.push(t('archive.summary.nextRun', { when: formatInZone(schedule.nextRunAt, schedule.timeZone), zone: schedule.timeZone }));
+  }
+  if (schedule.timeZoneSource === 'server') lines.push(t('archive.summary.serverZone', { zone: schedule.timeZone }));
+  return lines;
 }

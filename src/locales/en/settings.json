@@ -104,6 +104,16 @@
       "description": "Forecast page readings."
     }
   },
+  "scheduleTimeZone": {
+    "title": "Time zone",
+    "description": "The time zone every schedule runs in: the disk archive, the Google Drive backup and the nightly maintenance. Observing sites keep their own zone for twilight and the forecast.",
+    "label": "Schedules run in",
+    "placeholder": "e.g. Europe/Paris",
+    "useBrowser": "Use this browser’s ({{zone}})",
+    "unknown": "Unknown time zone: pick one from the list, such as Europe/Paris.",
+    "fromSite": "Not chosen: schedules use the default observing site’s zone ({{zone}}).",
+    "fromServer": "Not chosen: schedules use the server’s own zone ({{zone}}), often UTC in a container. Choose yours so they run at the hour you expect."
+  },
   "systemLog": {
     "title": "System Log",
     "description": "Sign-ins, user and telescope changes, syncs, and other administrative activity for this install.",
@@ -190,6 +200,7 @@
     "lastRun": "Last run {{time}}.",
     "runAt": "Run at",
     "localTime": "local time",
+    "inZone": "{{zone}} time",
     "runNowTitle": "Run the maintenance tasks now instead of waiting for the scheduled time",
     "runNow": "Run now",
     "starting": "Starting…",
@@ -993,7 +1004,7 @@
     "photoAlt": "Photo of {{name}}"
   },
   "subtitle": {
-    "general": "Appearance and units.",
+    "general": "Appearance, units and time zone.",
     "library": "How object cards, naming, and the slideshow behave.",
     "updates": "Version, release notes, and update settings.",
     "accountDevices": "Phones and Apple TVs linked to your account.",
@@ -1070,6 +1081,9 @@
     "latitudePlaceholder": "e.g. 40.7128",
     "longitudeLabel": "Longitude",
     "longitudePlaceholder": "e.g. -74.0060",
+    "timezoneLabel": "Time zone",
+    "timezonePlaceholder": "e.g. Europe/Paris",
+    "timezoneHint": "For twilight and the forecast at this site. Schedules use the installation’s zone (Settings → General).",
     "detecting": "Detecting…",
     "useCurrentLocation": "Use current location",
     "clear": "Clear",
@@ -1207,7 +1221,7 @@
       "unit": "days"
     },
     "schedule": {
-      "description": "Copies anything new on a schedule, in the timezone of your observing site.",
+      "description": "Copies anything new on a schedule, in the installation’s time zone (Settings → General).",
       "timeLabel": "Time of day",
       "intervalLabel": "Hours between runs",
       "intervalUnit": "hours",
@@ -1263,7 +1277,9 @@
       "retentionEverything_other": "Objects are deleted from the archive {{count}} days after they were last archived. Files your library no longer has are kept.",
       "retentionSubframes_one": "Subframes are deleted from the archive 1 day after they were last archived. Finished images, and files your library no longer has, are kept.",
       "retentionSubframes_other": "Subframes are deleted from the archive {{count}} days after they were last archived. Finished images, and files your library no longer has, are kept.",
-      "removeLocal": "Subframes are also deleted from this local Nebulis instance once their archived copy is verified."
+      "removeLocal": "Subframes are also deleted from this local Nebulis instance once their archived copy is verified.",
+      "nextRun": "Next run: {{when}} ({{zone}})",
+      "serverZone": "No time zone chosen: the server’s ({{zone}}) is used. Set yours in Settings → General."
     },
     "save": "Save",
     "saved": "Saved.",

@@ -174,6 +174,7 @@ export function pushRelayUrl(): string {
 const DEVICE_TTL_SECONDS: Record<AlertEvent['type'], number> = {
   'night.clear': 4 * 3600,
   'night.dew': 3 * 3600,
+  'night.watchdog': 2 * 3600,
   'import.finished': 12 * 3600,
   'import.failed': 12 * 3600,
   'update.available': 24 * 3600,
@@ -184,6 +185,7 @@ const DEVICE_TTL_SECONDS: Record<AlertEvent['type'], number> = {
 const DEVICE_LINKS: Partial<Record<AlertEvent['type'], string>> = {
   'night.clear': 'nebulis://sky',
   'night.dew': 'nebulis://sky',
+  'night.watchdog': 'nebulis://library',
   'import.finished': 'nebulis://library',
   'import.failed': 'nebulis://settings',
   'update.available': 'nebulis://settings',

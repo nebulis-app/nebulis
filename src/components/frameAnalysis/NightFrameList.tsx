@@ -25,6 +25,7 @@ import { FLAG_ICONS, n0, n1, reasonText, targetLevelText } from './frameFormat';
 import {
   captureTime, longestGap, orderRows, sharedPrefixLength, summaryOf, timelineTicks, type SortKey,
 } from './frameListLogic';
+import { setUiSetting } from '../../lib/uiSettings';
 
 const PREVIEWS_KEY = 'nebulis_frame_list_previews';
 const BASE = 'observationDetail.frameList';
@@ -104,7 +105,7 @@ export function NightFrameList({ objectId, objectName, date, includeVariants = f
   };
   const togglePreviews = () => {
     setPreviews(p => {
-      try { localStorage.setItem(PREVIEWS_KEY, p ? '0' : '1'); } catch { /* per-viewer convenience only */ }
+      try { setUiSetting(PREVIEWS_KEY, p ? '0' : '1'); } catch { /* per-viewer convenience only */ }
       return !p;
     });
   };

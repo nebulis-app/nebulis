@@ -4,6 +4,7 @@ import { HardDrive, FolderOpen, ChevronRight, ArrowUp, RefreshCw, Telescope, Cor
 import { useTranslation } from 'react-i18next';
 import { listVolumes, browseDirectory, type VolumeInfo, type DirectoryEntry } from '../../lib/api/storage';
 import { formatBytes } from '../../lib/utils';
+import { setUiSetting } from '../../lib/uiSettings';
 
 const RECENT_PATHS_KEY = 'nebulis_import_recent_paths';
 const MAX_RECENT_PATHS = 5;
@@ -22,7 +23,7 @@ function getRecentPaths(): string[] {
 function rememberRecentPath(p: string): string[] {
   const next = [p, ...getRecentPaths().filter(x => x.toLowerCase() !== p.toLowerCase())].slice(0, MAX_RECENT_PATHS);
   try {
-    localStorage.setItem(RECENT_PATHS_KEY, JSON.stringify(next));
+    setUiSetting(RECENT_PATHS_KEY, JSON.stringify(next));
   } catch {
     // Private mode or blocked storage: recent paths are a convenience, not
     // required. The typed path still works this session.

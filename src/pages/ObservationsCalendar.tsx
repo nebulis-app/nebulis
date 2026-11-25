@@ -42,6 +42,7 @@ import { useLocalToday } from '../hooks/useLocalToday';
 import { nightSafeColor } from '../lib/nightSafeColor';
 import { cleanCatalogId, formatObjectName } from '../lib/utils';
 import { formatDate, formatTime24, weekStartsOn } from '../lib/formatLocale';
+import { setUiSetting } from '../lib/uiSettings';
 
 function obsName(obs: ObservationSummary): string {
   const id = cleanCatalogId(obs.objectId);
@@ -303,7 +304,7 @@ export function ObservationsCalendar() {
   });
   const handleShowPlannedChange = (value: boolean) => {
     setShowPlanned(value);
-    try { localStorage.setItem('nebulis_calendar_show_planned', value ? '1' : '0'); } catch { /* storage blocked */ }
+    try { setUiSetting('nebulis_calendar_show_planned', value ? '1' : '0'); } catch { /* storage blocked */ }
   };
 
   // Calendar grid generation

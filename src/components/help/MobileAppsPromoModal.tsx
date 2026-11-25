@@ -3,6 +3,7 @@ import { X, Smartphone, Tv, Mail } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { useTheme } from '../../hooks/useTheme';
 import { MOBILE_PROMO_DISMISSED_KEY, MOBILE_PROMO_SESSION_KEY } from '../../lib/mobilePromo';
+import { setUiSetting } from '../../lib/uiSettings';
 
 interface Props {
   isOpen: boolean;
@@ -14,7 +15,7 @@ export function MobileAppsPromoModal({ isOpen, onClose }: Props) {
   const { isDark } = useTheme();
 
   function dismiss() {
-    localStorage.setItem(MOBILE_PROMO_DISMISSED_KEY, 'true');
+    setUiSetting(MOBILE_PROMO_DISMISSED_KEY, 'true');
     onClose();
   }
 

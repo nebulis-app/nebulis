@@ -44,6 +44,26 @@ import { SyncSubframesProvider } from './contexts/SyncSubframesContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { getAuthStatus } from './lib/api/auth';
 import { getSettings } from './lib/api/settings';
+import { hydrateUiSettings } from './lib/uiSettings';
+
+/** How long the app shell waits for the saved UI settings before rendering with this browser's own copy. */
+const UI_SETTINGS_WAIT_MS = 3000;
+
+/** True once the signed-in user's UI settings are in localStorage (or the wait gave up), so pages mounted after it
+ *  read the user's settings on their first render. Signed out there is nothing to load. */
+function useUiSettingsReady(hasToken: boolean): boolean {
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if (!hasToken) return;
+    let cancelled = false;
+    const timeout = new Promise<void>(resolve => setTimeout(resolve, UI_SETTINGS_WAIT_MS));
+    void Promise.race([hydrateUiSettings(), timeout]).then(() => {
+      if (!cancelled) setLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, [hasToken]);
+  return !hasToken || loaded;
+}
 
 // Shown while a lazily-loaded route chunk is being fetched. Kept intentionally
 // minimal so it doesn't flash heavy chrome for the usually-instant local load.
@@ -74,6 +94,7 @@ function AppInner() {
   const queryClient = useQueryClient();
   const { refresh: refreshAuth, hasToken } = useAuth();
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const uiSettingsReady = useUiSettingsReady(hasToken);
 
   const { data: authStatus, isError: authStatusFailed, refetch: retryAuthStatus } = useQuery({
     queryKey: ['auth-status'],
@@ -124,6 +145,10 @@ function AppInner() {
 
   if (showLogin) {
     return <LoginModal onLogin={handleLogin} />;
+  }
+
+  if (!uiSettingsReady) {
+    return <RouteFallback />;
   }
 
   return (

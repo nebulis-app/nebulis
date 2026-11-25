@@ -13,6 +13,7 @@ import {
 } from '../../../lib/catalogWallPoster';
 import { everyMember } from '../../unionList';
 import { BodyScrollLock } from '../../ui/BodyScrollLock';
+import { setUiSetting } from '../../../lib/uiSettings';
 
 interface Props {
   tiles: WallTile[];
@@ -51,7 +52,7 @@ export function PosterDialog({ tiles, overrides, label, imagedCount, total, acce
   }), [tiles, overrides, title, subtitle, format, imagedOnly, labels, brand, brandSide, imagedCount, total, accent]);
 
   useEffect(() => {
-    try { localStorage.setItem(SUBTITLE_KEY, subtitle); } catch { /* storage unavailable */ }
+    try { setUiSetting(SUBTITLE_KEY, subtitle); } catch { /* storage unavailable */ }
   }, [subtitle]);
 
   useEffect(() => {

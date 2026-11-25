@@ -17,6 +17,7 @@
 import type { TelescopeKind } from './telescopePresets';
 import type { TelescopeProfile, TelescopeOpticalConfig } from './api/telescopes';
 import { isRecord } from './typeGuards';
+import { setUiSetting } from './uiSettings';
 
 export interface FovProfile {
   id: string;
@@ -340,7 +341,7 @@ export function readFovSetup(): FovSetup {
 
 export function writeFovSetup(setup: FovSetup): void {
   try {
-    localStorage.setItem(FOV_SETUP_KEY, JSON.stringify(setup));
+    setUiSetting(FOV_SETUP_KEY, JSON.stringify(setup));
   } catch {
     /* ignore — a private/full storage just means the pick won't stick */
   }
@@ -381,7 +382,7 @@ export function readSavedCustomRigs(): SavedCustomRig[] {
 
 function writeSavedCustomRigs(rigs: SavedCustomRig[]): void {
   try {
-    localStorage.setItem(SAVED_CUSTOM_RIGS_KEY, JSON.stringify(rigs));
+    setUiSetting(SAVED_CUSTOM_RIGS_KEY, JSON.stringify(rigs));
   } catch {
     /* ignore — a private/full storage just means the preset won't stick */
   }

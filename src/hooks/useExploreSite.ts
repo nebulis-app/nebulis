@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getSites, getActiveSite, type ObservingSite } from '../lib/api/sites';
+import { setUiSetting } from '../lib/uiSettings';
 
 const STORAGE_KEY = 'nebulis-explore-site';
 
@@ -26,7 +27,7 @@ export function useExploreSite() {
 
   const setSiteId = useCallback((id: string) => {
     setPicked(id);
-    try { localStorage.setItem(STORAGE_KEY, id); } catch { /* private mode: the pick just won't persist */ }
+    try { setUiSetting(STORAGE_KEY, id); } catch { /* private mode: the pick just won't persist */ }
   }, []);
 
   return {

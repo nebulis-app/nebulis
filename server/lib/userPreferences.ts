@@ -194,3 +194,75 @@ export function setSupportAskSeen(userId: string, now: Date = new Date()): strin
   upsertSupportAskStmt.run(userId, now.toISOString());
   return getSupportAskSeenAt(userId) as string;
 }
+
+// ─── Web UI settings (uiSettings) ───────────────────────────────────────────
+// A flat key → string map owned by the web client, which mirrors a known list of its browser storage keys here so
+// clearing site data or switching browsers does not reset the UI. The server does not interpret the values; it only
+// bounds what can be stored. PATCH merges, so two tabs changing different settings do not undo each other.
+
+export type UiSettings = Record<string, string>;
+
+export const MAX_UI_SETTINGS_KEYS = 200;
+export const MAX_UI_SETTING_KEY = 120;
+export const MAX_UI_SETTING_VALUE = 20_000;
+
+const UiSettingKeySchema = z.string().regex(/^[A-Za-z0-9_.:-]+$/, 'Invalid setting key').min(1).max(MAX_UI_SETTING_KEY);
+
+/** PATCH body: a string sets the key, null removes it. */
+export const UiSettingsPatchSchema = z.record(UiSettingKeySchema, z.string().max(MAX_UI_SETTING_VALUE).nullable())
+  .refine(patch => Object.keys(patch).length > 0, 'Expected at least one setting')
+  .refine(patch => Object.keys(patch).length <= MAX_UI_SETTINGS_KEYS, `At most ${MAX_UI_SETTINGS_KEYS} settings per request`);
+
+interface UiSettingsRow {
+  uiSettings: string;
+}
+
+const getUiSettingsStmt = db.prepare<[string], UiSettingsRow>(
+  'SELECT uiSettings FROM userPreferences WHERE userId = ?',
+);
+
+const upsertUiSettingsStmt = db.prepare<[string, string]>(`
+  INSERT INTO userPreferences (userId, uiSettings, updatedAt)
+  VALUES (?, ?, datetime('now'))
+  ON CONFLICT(userId) DO UPDATE
+    SET uiSettings = excluded.uiSettings,
+        updatedAt  = excluded.updatedAt
+`);
+
+/** The stored UI settings, or {} when none were saved. Non-string values (a hand-edited row) are dropped. */
+export function getUiSettings(userId: string): UiSettings {
+  const row = getUiSettingsStmt.get(userId);
+  if (!row) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(row.uiSettings);
+  } catch {
+    return {}; // a corrupt row reads as "nothing saved" instead of failing the client's boot
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+  const out: UiSettings = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof value === 'string') out[key] = value;
+  }
+  return out;
+}
+
+export class UiSettingsLimitError extends Error {}
+
+/**
+ * Merge `patch` into the stored settings (null removes a key) and return the result. Read and write run in one
+ * transaction so concurrent PATCHes from two tabs cannot lose each other's keys. Throws UiSettingsLimitError when
+ * the merged map would hold more than MAX_UI_SETTINGS_KEYS keys.
+ */
+export const patchUiSettings = db.transaction((userId: string, patch: Record<string, string | null>): UiSettings => {
+  const next = getUiSettings(userId);
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) delete next[key];
+    else next[key] = value;
+  }
+  if (Object.keys(next).length > MAX_UI_SETTINGS_KEYS) {
+    throw new UiSettingsLimitError(`At most ${MAX_UI_SETTINGS_KEYS} UI settings can be stored`);
+  }
+  upsertUiSettingsStmt.run(userId, JSON.stringify(next));
+  return next;
+});

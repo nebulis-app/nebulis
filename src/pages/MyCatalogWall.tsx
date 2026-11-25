@@ -27,6 +27,7 @@ import { WallEditControls } from '../components/catalogs/wall/WallEditControls';
 import { WallImageChooser } from '../components/catalogs/wall/WallImageChooser';
 import { WALL_OVERRIDE_KEYS, type WallOverride, type WallOverrides } from '../lib/catalogWallOverrides';
 import type { Placement } from '../lib/catalogWallLayout';
+import { setUiSetting } from '../lib/uiSettings';
 
 type KindFilter = 'all' | 'processed' | 'telescope';
 const NO_OVERRIDES: WallOverrides = {};
@@ -44,7 +45,7 @@ export function MyCatalogWall() {
     try { return localStorage.getItem('catalogs.wallObservableOnly') === '1'; } catch { return false; }
   });
   useEffect(() => {
-    try { localStorage.setItem('catalogs.wallObservableOnly', observableOnly ? '1' : '0'); } catch { /* storage unavailable */ }
+    try { setUiSetting('catalogs.wallObservableOnly', observableOnly ? '1' : '0'); } catch { /* storage unavailable */ }
   }, [observableOnly]);
   const [popover, setPopover] = useState<{ tile: WallTile; x: number; y: number } | null>(null);
 

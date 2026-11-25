@@ -5,6 +5,7 @@ import { AnnotationPanel } from './AnnotationPanel';
 import { NO_RESERVE, type DockReserve } from './dockReserve';
 import type { useImageAnnotations } from './useImageAnnotations';
 import type { ZoomPan } from './useZoomPan';
+import { setUiSetting } from '../../lib/uiSettings';
 
 /** Gap between the tile and the picture, in px. */
 const GAP = 12;
@@ -56,7 +57,7 @@ export function AnnotationDock({ annotations, canInstall, zoomedPastEstimate, zp
   const [minimized, setMinimized] = useState(readMinimized);
   const setMinimizedSaved = (next: boolean) => {
     setMinimized(next);
-    try { localStorage.setItem(MINIMIZED_KEY, next ? '1' : '0'); } catch { /* per-viewer convenience only */ }
+    try { setUiSetting(MINIMIZED_KEY, next ? '1' : '0'); } catch { /* per-viewer convenience only */ }
   };
   // With no free strip beside the picture the tile cannot sit anywhere without covering it, so it opens only when asked.
   const [peek, setPeek] = useState(false);

@@ -10,6 +10,7 @@ import { Sec } from './SettingsUI';
 import { formatBytes } from '../../lib/utils';
 import { ChangeLocationModal } from '../ui/ChangeLocationModal';
 import { Modal } from '../ui/Modal';
+import { setUiSetting } from '../../lib/uiSettings';
 
 const ACTIVE_PHASES: MigrationStatus['phase'][] = ['validating', 'copying', 'verifying', 'finalizing'];
 
@@ -41,7 +42,7 @@ export function LibraryLocationSection({ isDark }: { isDark: boolean }) {
     : false;
   function dismissNotice() {
     if (!completionKey) return;
-    localStorage.setItem(completionKey, '1');
+    setUiSetting(completionKey, '1');
     setDismissedKeys(k => ({ ...k, [completionKey]: true }));
   }
 

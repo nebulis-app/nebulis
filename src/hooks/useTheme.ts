@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, createElement, type ReactNode } from 'react';
+import { setUiSetting, UI_SETTINGS_HYDRATED_EVENT } from '../lib/uiSettings';
 
 export type Theme = 'light' | 'dark' | 'space' | 'night';
 
@@ -62,12 +63,23 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(getInitialTheme);
   const [nebulaBackdrop, setNebulaBackdropState] = useState<boolean>(getInitialNebulaBackdrop);
 
+  // This provider mounts before sign-in, so it read this browser's copy. Pick up the user's saved values once
+  // they arrive (see lib/uiSettings.ts).
+  useEffect(() => {
+    const reload = () => {
+      setThemeState(getInitialTheme());
+      setNebulaBackdropState(getInitialNebulaBackdrop());
+    };
+    window.addEventListener(UI_SETTINGS_HYDRATED_EVENT, reload);
+    return () => window.removeEventListener(UI_SETTINGS_HYDRATED_EVENT, reload);
+  }, []);
+
   useEffect(() => {
     const root = document.documentElement;
     VALID_THEMES.forEach(t => root.classList.remove(t));
     root.classList.add(theme);
     root.classList.toggle('dark-base', theme !== 'light');
-    localStorage.setItem('nebulis-theme', theme);
+    setUiSetting('nebulis-theme', theme);
 
     const themeColors: Record<Theme, string> = {
       dark:  '#0a0e17',
@@ -97,7 +109,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setNebulaBackdrop = useCallback((on: boolean) => {
     setNebulaBackdropState(on);
-    localStorage.setItem(NEBULA_BACKDROP_KEY, on ? '1' : '0');
+    setUiSetting(NEBULA_BACKDROP_KEY, on ? '1' : '0');
   }, []);
 
   const cycle = useCallback(() => {

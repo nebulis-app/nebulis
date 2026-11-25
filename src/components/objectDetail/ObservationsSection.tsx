@@ -18,6 +18,7 @@ import { ObservationCard, type ObservationCardModel } from './ObservationCard';
 import { formatDuration } from '../../lib/captureMetrics';
 import { nightSafeColor } from '../../lib/nightSafeColor';
 import { useTheme } from '../../hooks/useTheme';
+import { setUiSetting } from '../../lib/uiSettings';
 
 type GroupBy = 'year' | 'rig';
 const GROUP_BY_KEY = 'nebulis.objectDetail.observationsGroupBy';
@@ -83,7 +84,7 @@ export function ObservationsSection({
   const grouped = groupBy === 'rig' || years.length > 1;
   const chooseGroupBy = (g: GroupBy) => {
     setGroupByChoice(g);
-    try { localStorage.setItem(GROUP_BY_KEY, g); } catch { /* per-browser nicety only */ }
+    try { setUiSetting(GROUP_BY_KEY, g); } catch { /* per-browser nicety only */ }
   };
   const sections = groupBy === 'rig'
     ? rigs.map(r => ({

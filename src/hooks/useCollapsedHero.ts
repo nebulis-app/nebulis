@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { setUiSetting, removeUiSetting } from '../lib/uiSettings';
 
 /**
  * Whether a page's hero banner is folded to its slim bar, remembered per page.
@@ -39,9 +40,9 @@ function read(page: string, startsCollapsed: boolean): boolean {
 export function setCompactBanners(on: boolean): void {
   try {
     for (const key of Object.keys(localStorage)) {
-      if (/^nebulis-.+-hero-collapsed$/.test(key)) localStorage.removeItem(key);
+      if (/^nebulis-.+-hero-collapsed$/.test(key)) removeUiSetting(key);
     }
-    localStorage.setItem(COMPACT_KEY, on ? '1' : '0');
+    setUiSetting(COMPACT_KEY, on ? '1' : '0');
   } catch { /* the choice just won't persist */ }
   window.dispatchEvent(new Event(PREF_EVENT));
 }
@@ -65,7 +66,7 @@ export function useCollapsedHero(page: string, startsCollapsed = false): [boolea
   }, [page, startsCollapsed]);
   const setCollapsed = useCallback((next: boolean) => {
     setCollapsedState(next);
-    try { localStorage.setItem(storageKey(page), next ? '1' : '0'); } catch { /* the choice just won't persist */ }
+    try { setUiSetting(storageKey(page), next ? '1' : '0'); } catch { /* the choice just won't persist */ }
   }, [page]);
   return [collapsed, setCollapsed];
 }

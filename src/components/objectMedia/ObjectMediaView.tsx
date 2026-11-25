@@ -30,6 +30,7 @@ import { MediaFilterChips, MediaTabs, MediaToolbar } from './MediaToolbar';
 import { TILE_DEFAULT, opensInViewer, parseTileSize, type TileSize } from './tileSizing';
 import { useObjectMedia } from './useObjectMedia';
 import type { ProcessedImage } from '../../types';
+import { setUiSetting } from '../../lib/uiSettings';
 
 const SIZE_KEY = 'nebulis_media_tile_size';
 const SUBS_VIEW_KEY = 'nebulis_media_subs_view';
@@ -98,7 +99,7 @@ export function ObjectMediaView({ objectId, objectName, isAdmin, onAddObservatio
   const listMode = state.tab === 'sub' && subsView === 'list';
   const chooseSubsView = useCallback((next: SubsView) => {
     setSubsViewPref(next);
-    try { localStorage.setItem(SUBS_VIEW_KEY, next); } catch { /* per-viewer convenience only */ }
+    try { setUiSetting(SUBS_VIEW_KEY, next); } catch { /* per-viewer convenience only */ }
   }, []);
 
   // Quality analysis reads raw FITS frames, so it is offered on the Subframes tab, and only to admins (it is CPU work).
@@ -108,7 +109,7 @@ export function ObjectMediaView({ objectId, objectName, isAdmin, onAddObservatio
   const toggleHideFits = useCallback(() => {
     setHideFits(prev => {
       const next = !prev;
-      try { localStorage.setItem(HIDE_FITS_KEY, next ? '1' : '0'); } catch { /* per-viewer convenience only */ }
+      try { setUiSetting(HIDE_FITS_KEY, next ? '1' : '0'); } catch { /* per-viewer convenience only */ }
       return next;
     });
   }, []);
@@ -116,7 +117,7 @@ export function ObjectMediaView({ objectId, objectName, isAdmin, onAddObservatio
   const [size, setSize] = useState<TileSize>(readSize);
   const changeSize = useCallback((next: TileSize) => {
     setSize(next);
-    try { localStorage.setItem(SIZE_KEY, String(next)); } catch { /* per-viewer convenience only */ }
+    try { setUiSetting(SIZE_KEY, String(next)); } catch { /* per-viewer convenience only */ }
   }, []);
 
   const refresh = useCallback(() => {

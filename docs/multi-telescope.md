@@ -142,6 +142,25 @@ ASIAIR is the one exception to `basePath` carrying the whole layout: its targets
 
 **Partly speculative:** the ASIAIR folder layout has been confirmed against a real device, so the telescope kind no longer carries a beta marker. Two pieces of it remain unconfirmed, and nothing parses either: the filenames ASIAIR gives `Live/` output, and the `Video/` folder layout.
 
+#### What an ASIAIR frame carries, and what Nebulis reads
+
+The headers below come from a real ASIAIR rig: an ASI585MC Air, an EFW with dual-band filters, a CAA rotator and an AM3N mount. They are kept in [`tests/fixtures/asiair/`](../tests/fixtures/asiair/README.md) and tested in `tests/backend/asiairRealData.test.ts`.
+
+| What | Where ASIAIR writes it | Read by Nebulis |
+|---|---|---|
+| Filter (EFW slot name: `H`, `SII`, `None`; `Dark` on the blank slot) | `FILTER`, and the name's filter token | Yes. Lights: header first. Calibration bundles: name |
+| Exposure, gain, binning | `EXPTIME`, `GAIN`, `XBINNING`, and the name | Yes, header first. The name fallback reads `120_0s` and `-8_0C` as well as `120.0s` and `-8.0C` |
+| Sensor temperature | `CCD-TEMP` (measured), `SET-TEMP` (setpoint) | Measured only |
+| Camera | `INSTRUME` (`ZWO ASI585MC Air`) | Yes |
+| Telescope | `TELESCOP` holds the **mount** (`ZWO AM3N`); the optics only show through `FOCALLEN` | As the telescope's name; focal length for the optical train |
+| Rotator angle | `ROTATOR`, and the name's `_Ndeg` token. It changes between nights, and by 180° within a night after a meridian flip | Parsed from calibration names only; not used to match flats |
+| Offset | `OFFSET` | No |
+| Time | `DATE-OBS` in UTC; the name's time is local | Yes: `DATE-OBS`, turned into the site's local time |
+| Pointing and plate solution | `RA`/`DEC` in decimal degrees; lights carry a full TAN-SIP solution | Yes, for frame analysis and annotation |
+| Guide camera, focuser | `GUIDECAM`, `FOCUSPOS` | No (not needed) |
+
+Older ASIAIR firmware leaves gain and temperature out of light names (`Light_SH2-131_180.0s_Bin1_H_20260808-033034_3deg_0091.fit`); the header still has both.
+
 ---
 
 ## 5. Import flow

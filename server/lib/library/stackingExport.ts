@@ -120,18 +120,26 @@ export function readLightSettings(
   fileName: string,
   values: HeaderValues = readHeaderValues(abs),
 ): Pick<LightInfo, 'filter' | 'exposureSec' | 'gain' | 'binning' | 'sensorTempC'> {
+  // ASIAIR names write a decimal point as an underscore on some firmware (`120_0s`,
+  // `-8_0C`): read either, or the fallback takes the digits after the underscore alone.
   const fromName = (re: RegExp) => {
     const m = re.exec(fileName);
-    return m ? Number.parseFloat(m[1]) : null;
+    return m ? Number.parseFloat(m[1].replace('_', '.')) : null;
+  };
+  const exposureFromName = (): number | null => {
+    const m = /_(\d+(?:[._]\d+)?)(m?s)_/i.exec(fileName);
+    if (!m) return null;
+    const value = Number.parseFloat(m[1].replace('_', '.'));
+    return m[2].toLowerCase() === 'ms' ? value / 1000 : value;
   };
   const headerFilter = values['FILTER'] === undefined ? '' : String(values['FILTER']).trim();
-  const exposure = num(values['EXPTIME'] ?? values['EXPOSURE']) ?? fromName(/_(\d+(?:\.\d+)?)s_/i);
+  const exposure = num(values['EXPTIME'] ?? values['EXPOSURE']) ?? exposureFromName();
   return {
     filter: headerFilter || parseFilename(fileName).filter || null,
     exposureSec: exposure !== null && exposure > 0 ? exposure : null,
     gain: num(values['GAIN']) ?? fromName(/_gain(\d+)/i),
     binning: num(values['XBINNING']) ?? fromName(/_Bin(\d+)/i),
-    sensorTempC: num(values['CCD-TEMP'] ?? values['TEMPERAT']) ?? fromName(/_(-?\d+(?:\.\d+)?)C(?:_|\.)/),
+    sensorTempC: num(values['CCD-TEMP'] ?? values['TEMPERAT']) ?? fromName(/_(-?\d+(?:[._]\d+)?)C(?:_|\.)/),
   };
 }
 

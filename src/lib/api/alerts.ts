@@ -11,7 +11,7 @@ import { fetchJSON } from './client';
 export const ALERT_CHANNEL_KINDS = ['ntfy', 'discord', 'slack', 'webhook'] as const;
 export type AlertChannelKind = (typeof ALERT_CHANNEL_KINDS)[number];
 
-export const ALERT_EVENTS = ['night.clear', 'night.dew', 'import.finished', 'import.failed', 'update.available'] as const;
+export const ALERT_EVENTS = ['night.clear', 'night.dew', 'night.watchdog', 'import.finished', 'import.failed', 'update.available'] as const;
 export type AlertEventType = (typeof ALERT_EVENTS)[number];
 
 export const ALERT_LANGUAGES = ['en', 'fr', 'de', 'es', 'nl'] as const;

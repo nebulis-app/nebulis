@@ -6,7 +6,7 @@
  * live here, one table per language. Every table has the same keys; the
  * parity test in tests/backend/alertMessages.test.ts keeps it that way.
  */
-import type { AlertDetails, AlertEvent, AlertLanguage, ClearNightAlertData, ImportAlertData } from './types.js';
+import type { AlertDetails, AlertEvent, AlertLanguage, ClearNightAlertData, ImportAlertData, WatchdogAlertData } from './types.js';
 
 export interface AlertMessage {
   title: string;
@@ -55,6 +55,23 @@ const STRINGS = {
     dewLikely: 'Dew likely from {time}',
     dewPossible: 'Dew possible from {time}',
     dewLow: 'Low {temp}. Start your dew heater.',
+    watchdogSoft: 'soft focus',
+    watchdogClouds: 'clouds',
+    watchdogTrails: 'trailing',
+    watchdogSpots: 'dew spots',
+    watchdogTitle: '{object}: {problem}',
+    watchdogLine: '{count} of the last {window} frames: {problem}',
+    watchdogSoftDetail: 'FWHM {value} against {typical} earlier tonight',
+    watchdogCloudsDetail: '{value} fewer stars than earlier tonight',
+    watchdogTrailsDetail: 'Stars stretched {value}:1',
+    watchdogSpotsDetail: '{value} round shadows the other frames lack',
+    watchdogSoftAdvice: 'Check the focus.',
+    watchdogCloudsAdvice: 'Clouds or haze?',
+    watchdogTrailsAdvice: 'Check the guiding and the mount.',
+    watchdogSpotsAdvice: 'Dew or frost on the optics? Check the dew heater.',
+    watchdogLastFrame: 'Last frame: {frame}',
+    watchdogRecoveredTitle: '{object}: back to normal',
+    watchdogRecoveredBody: 'The last {window} frames are good again: no more {problem}.',
     seeing1: 'excellent', seeing2: 'good', seeing3: 'average', seeing4: 'poor', seeing5: 'bad',
     updateTitle: 'Nebulis {version} is available',
     updateBody: 'You are on {current}. Open Settings to update.',
@@ -90,6 +107,23 @@ const STRINGS = {
     dewLikely: 'Rosée probable dès {time}',
     dewPossible: 'Rosée possible dès {time}',
     dewLow: 'Minimum {temp}. Allumez votre résistance anti-buée.',
+    watchdogSoft: 'mise au point floue',
+    watchdogClouds: 'nuages',
+    watchdogTrails: 'étoiles allongées',
+    watchdogSpots: 'taches de rosée',
+    watchdogTitle: '{object} : {problem}',
+    watchdogLine: '{count} des {window} dernières images : {problem}',
+    watchdogSoftDetail: 'FWHM {value} contre {typical} plus tôt dans la nuit',
+    watchdogCloudsDetail: '{value} d’étoiles en moins que plus tôt dans la nuit',
+    watchdogTrailsDetail: 'Étoiles étirées à {value}:1',
+    watchdogSpotsDetail: '{value} ombres rondes absentes des autres images',
+    watchdogSoftAdvice: 'Vérifiez la mise au point.',
+    watchdogCloudsAdvice: 'Nuages ou voile ?',
+    watchdogTrailsAdvice: 'Vérifiez le guidage et la monture.',
+    watchdogSpotsAdvice: 'Rosée ou givre sur l’optique ? Vérifiez la résistance anti-buée.',
+    watchdogLastFrame: 'Dernière image : {frame}',
+    watchdogRecoveredTitle: '{object} : retour à la normale',
+    watchdogRecoveredBody: 'Les {window} dernières images sont de nouveau bonnes : plus de {problem}.',
     seeing1: 'excellent', seeing2: 'bon', seeing3: 'moyen', seeing4: 'médiocre', seeing5: 'mauvais',
     updateTitle: 'Nebulis {version} est disponible',
     updateBody: 'Version installée : {current}. Ouvrez les paramètres pour mettre à jour.',
@@ -125,6 +159,23 @@ const STRINGS = {
     dewLikely: 'Tau wahrscheinlich ab {time}',
     dewPossible: 'Tau möglich ab {time}',
     dewLow: 'Tiefstwert {temp}. Schalten Sie Ihre Tauheizung ein.',
+    watchdogSoft: 'unscharfer Fokus',
+    watchdogClouds: 'Wolken',
+    watchdogTrails: 'verzogene Sterne',
+    watchdogSpots: 'Taufecken',
+    watchdogTitle: '{object}: {problem}',
+    watchdogLine: '{count} der letzten {window} Aufnahmen: {problem}',
+    watchdogSoftDetail: 'FWHM {value} gegenüber {typical} früher in der Nacht',
+    watchdogCloudsDetail: '{value} weniger Sterne als früher in der Nacht',
+    watchdogTrailsDetail: 'Sterne gestreckt auf {value}:1',
+    watchdogSpotsDetail: '{value} runde Schatten, die den anderen Aufnahmen fehlen',
+    watchdogSoftAdvice: 'Prüfen Sie den Fokus.',
+    watchdogCloudsAdvice: 'Wolken oder Dunst?',
+    watchdogTrailsAdvice: 'Prüfen Sie Nachführung und Montierung.',
+    watchdogSpotsAdvice: 'Tau oder Reif auf der Optik? Prüfen Sie die Taukappenheizung.',
+    watchdogLastFrame: 'Letzte Aufnahme: {frame}',
+    watchdogRecoveredTitle: '{object}: wieder normal',
+    watchdogRecoveredBody: 'Die letzten {window} Aufnahmen sind wieder gut. Problem behoben: {problem}.',
     seeing1: 'ausgezeichnet', seeing2: 'gut', seeing3: 'mittel', seeing4: 'schlecht', seeing5: 'sehr schlecht',
     updateTitle: 'Nebulis {version} ist verfügbar',
     updateBody: 'Installiert ist {current}. Öffnen Sie die Einstellungen zum Aktualisieren.',
@@ -160,6 +211,23 @@ const STRINGS = {
     dewLikely: 'Rocío probable desde las {time}',
     dewPossible: 'Rocío posible desde las {time}',
     dewLow: 'Mínima de {temp}. Enciende tu calefactor anticondensación.',
+    watchdogSoft: 'enfoque blando',
+    watchdogClouds: 'nubes',
+    watchdogTrails: 'estrellas alargadas',
+    watchdogSpots: 'manchas de rocío',
+    watchdogTitle: '{object}: {problem}',
+    watchdogLine: '{count} de las últimas {window} tomas: {problem}',
+    watchdogSoftDetail: 'FWHM {value} frente a {typical} antes esta noche',
+    watchdogCloudsDetail: '{value} menos estrellas que antes esta noche',
+    watchdogTrailsDetail: 'Estrellas estiradas {value}:1',
+    watchdogSpotsDetail: '{value} sombras redondas que las otras tomas no tienen',
+    watchdogSoftAdvice: 'Revisa el enfoque.',
+    watchdogCloudsAdvice: '¿Nubes o bruma?',
+    watchdogTrailsAdvice: 'Revisa el guiado y la montura.',
+    watchdogSpotsAdvice: '¿Rocío o escarcha en la óptica? Revisa el calefactor anticondensación.',
+    watchdogLastFrame: 'Última toma: {frame}',
+    watchdogRecoveredTitle: '{object}: todo normal de nuevo',
+    watchdogRecoveredBody: 'Las últimas {window} tomas vuelven a ser buenas: ya no hay {problem}.',
     seeing1: 'excelente', seeing2: 'bueno', seeing3: 'medio', seeing4: 'malo', seeing5: 'muy malo',
     updateTitle: 'Nebulis {version} está disponible',
     updateBody: 'Versión instalada: {current}. Abre Configuración para actualizar.',
@@ -195,6 +263,23 @@ const STRINGS = {
     dewLikely: 'Dauw waarschijnlijk vanaf {time}',
     dewPossible: 'Dauw mogelijk vanaf {time}',
     dewLow: 'Laagste temperatuur {temp}. Zet je dauwverwarming aan.',
+    watchdogSoft: 'onscherpe focus',
+    watchdogClouds: 'bewolking',
+    watchdogTrails: 'uitgerekte sterren',
+    watchdogSpots: 'dauwvlekken',
+    watchdogTitle: '{object}: {problem}',
+    watchdogLine: '{count} van de laatste {window} opnames: {problem}',
+    watchdogSoftDetail: 'FWHM {value} tegen {typical} eerder vannacht',
+    watchdogCloudsDetail: '{value} minder sterren dan eerder vannacht',
+    watchdogTrailsDetail: 'Sterren uitgerekt tot {value}:1',
+    watchdogSpotsDetail: '{value} ronde schaduwen die de andere opnames niet hebben',
+    watchdogSoftAdvice: 'Controleer de focus.',
+    watchdogCloudsAdvice: 'Wolken of nevel?',
+    watchdogTrailsAdvice: 'Controleer de guiding en de montering.',
+    watchdogSpotsAdvice: 'Dauw of rijp op de optiek? Controleer je dauwverwarming.',
+    watchdogLastFrame: 'Laatste opname: {frame}',
+    watchdogRecoveredTitle: '{object}: weer normaal',
+    watchdogRecoveredBody: 'De laatste {window} opnames zijn weer goed: geen {problem} meer.',
     seeing1: 'uitstekend', seeing2: 'goed', seeing3: 'gemiddeld', seeing4: 'slecht', seeing5: 'zeer slecht',
     updateTitle: 'Nebulis {version} is beschikbaar',
     updateBody: 'Geïnstalleerd: {current}. Open Instellingen om bij te werken.',
@@ -324,6 +409,49 @@ function clearNightBody(d: ClearNightAlertData, lang: AlertLanguage, options: Al
   return lines.filter((l): l is string => l !== null).join('\n');
 }
 
+const WATCHDOG_KEYS = {
+  soft: { name: 'watchdogSoft', detail: 'watchdogSoftDetail', advice: 'watchdogSoftAdvice', tag: 'eyeglasses' },
+  clouds: { name: 'watchdogClouds', detail: 'watchdogCloudsDetail', advice: 'watchdogCloudsAdvice', tag: 'cloud' },
+  trails: { name: 'watchdogTrails', detail: 'watchdogTrailsDetail', advice: 'watchdogTrailsAdvice', tag: 'shooting_star' },
+  spots: { name: 'watchdogSpots', detail: 'watchdogSpotsDetail', advice: 'watchdogSpotsAdvice', tag: 'droplet' },
+} as const;
+
+/** A watchdog measure with its unit: 3.4″, 3.4 px, 45 %, 1.6, 3. */
+function watchdogValue(value: number, unit: WatchdogAlertData['unit']): string {
+  switch (unit) {
+    case 'arcsec': return `${value.toFixed(1)}″`;
+    case 'px': return `${value.toFixed(1)} px`;
+    case 'percent': return `${Math.round(value)} %`;
+    case 'ratio': return value.toFixed(1);
+    default: return String(Math.round(value));
+  }
+}
+
+function watchdogMessage(d: WatchdogAlertData, s: (typeof STRINGS)[AlertLanguage]): AlertMessage {
+  const keys = WATCHDOG_KEYS[d.problem];
+  const problem = s[keys.name];
+  if (d.kind === 'recovered') {
+    return {
+      title: fill(s.watchdogRecoveredTitle, { object: d.objectName }),
+      body: fill(s.watchdogRecoveredBody, { window: d.window, problem }),
+      tags: ['white_check_mark'],
+      url: null,
+      lead: null,
+    };
+  }
+  const lines = [fill(s.watchdogLine, { count: d.count, window: d.window, problem })];
+  if (d.value !== null) {
+    lines.push(fill(s[keys.detail], {
+      value: watchdogValue(d.value, d.unit),
+      typical: d.typical !== null ? watchdogValue(d.typical, d.unit) : '?',
+    }));
+  }
+  lines.push(s[keys.advice]);
+  lines.push(fill(s.watchdogLastFrame, { frame: d.lastFrame }));
+  // The count is the point: a phone shows it under the title.
+  return { title: fill(s.watchdogTitle, { object: d.objectName, problem }), body: lines.join('\n'), tags: [keys.tag], url: null, lead: lines[0] ?? null };
+}
+
 export function formatAlert(event: AlertEvent, lang: AlertLanguage, options: AlertFormatOptions = {}): AlertMessage {
   const s = STRINGS[lang];
   switch (event.type) {
@@ -363,6 +491,8 @@ export function formatAlert(event: AlertEvent, lang: AlertLanguage, options: Ale
       // The first line is the point of the warning, so a phone shows it under the title.
       return { title: fill(s.dewTitle, { site: d.siteName }), body: lines.join('\n'), tags: ['droplet'], url: null, lead: lines[0] ?? null };
     }
+    case 'night.watchdog':
+      return watchdogMessage(event.data, s);
     case 'update.available':
       return {
         title: fill(s.updateTitle, { version: event.data.latestVersion }),

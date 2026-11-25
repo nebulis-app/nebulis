@@ -11,7 +11,7 @@ export type AlertChannelKind = (typeof ALERT_CHANNEL_KINDS)[number];
 
 /** Events a channel can subscribe to. `test` is not subscribable: it goes to
  *  the one channel being tested. */
-export const ALERT_EVENTS = ['import.finished', 'import.failed', 'night.clear', 'night.dew', 'update.available'] as const;
+export const ALERT_EVENTS = ['import.finished', 'import.failed', 'night.clear', 'night.dew', 'night.watchdog', 'update.available'] as const;
 export type AlertEventType = (typeof ALERT_EVENTS)[number];
 
 export const ALERT_LANGUAGES = ['en', 'fr', 'de', 'es', 'nl'] as const;
@@ -125,6 +125,36 @@ export interface DewAlertData {
   leadMinutes: number;
 }
 
+/** The problems the night watchdog looks for in the latest frames. */
+export const WATCHDOG_PROBLEMS = ['soft', 'clouds', 'trails', 'spots'] as const;
+export type WatchdogProblem = (typeof WATCHDOG_PROBLEMS)[number];
+
+/**
+ * The night watchdog: most of the latest frames of a night being imaged show the same problem, or, after such an
+ * alert, the latest frames are good again.
+ */
+export interface WatchdogAlertData {
+  kind: 'problem' | 'recovered';
+  problem: WatchdogProblem;
+  objectId: string;
+  objectName: string;
+  /** Observing night, YYYY-MM-DD (the session's date). */
+  night: string;
+  /** The frames looked at (the latest of one filter and exposure) and how many show the problem. */
+  window: number;
+  count: number;
+  filter: string | null;
+  /** The latest frame's file name. */
+  lastFrame: string;
+  /**
+   * The measure behind the problem, over the frames that show it: FWHM in arcseconds (pixels when the scale is
+   * unknown) against the night's typical value; how many fewer stars, in %; the elongation ratio; dew spots counted.
+   */
+  value: number | null;
+  typical: number | null;
+  unit: 'arcsec' | 'px' | 'percent' | 'ratio' | 'count' | null;
+}
+
 export interface UpdateAlertData {
   currentVersion: string;
   latestVersion: string;
@@ -135,6 +165,7 @@ export type AlertEvent =
   | { type: 'import.finished' | 'import.failed'; occurredAt: string; data: ImportAlertData }
   | { type: 'night.clear'; occurredAt: string; data: ClearNightAlertData }
   | { type: 'night.dew'; occurredAt: string; data: DewAlertData }
+  | { type: 'night.watchdog'; occurredAt: string; data: WatchdogAlertData }
   | { type: 'update.available'; occurredAt: string; data: UpdateAlertData }
   | { type: 'test'; occurredAt: string; data: Record<string, never> };
 

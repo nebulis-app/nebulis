@@ -1673,6 +1673,11 @@
           "short": "Dauwwaarschuwing",
           "label": "Dauwwaarschuwing",
           "help": "Wordt vlak voor de verwachte dauw verstuurd, één keer per nacht, alleen op nachten die helder genoeg zijn om te fotograferen. Kies hieronder hoe ver van tevoren."
+        },
+        "watchdog": {
+          "short": "Nachtwaker",
+          "label": "Nacht gaat mis",
+          "help": "Tijdens een opnamenacht, wanneer de meeste laatste opnames onscherp, bewolkt of uitgerekt zijn of dauwvlekken tonen, en opnieuw zodra ze weer goed zijn. Vereist de automatische import van de telescoop, liefst elke 10 tot 15 minuten."
         }
       },
       "import": {

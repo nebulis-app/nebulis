@@ -1673,6 +1673,11 @@
           "short": "Alerte rosée",
           "label": "Alerte rosée",
           "help": "Envoyée peu avant la rosée attendue, une fois par nuit, seulement les nuits assez dégagées pour photographier. Choisissez ci-dessous l’avance."
+        },
+        "watchdog": {
+          "short": "Veilleur de nuit",
+          "label": "La nuit se dégrade",
+          "help": "Pendant une nuit d’imagerie, quand la plupart des dernières images sont floues, voilées, étirées ou tachées de rosée, puis quand elles redeviennent bonnes. Nécessite l’import automatique du télescope, idéalement toutes les 10 à 15 minutes."
         }
       },
       "import": {

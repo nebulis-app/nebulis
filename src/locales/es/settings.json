@@ -1673,6 +1673,11 @@
           "short": "Aviso de rocío",
           "label": "Aviso de rocío",
           "help": "Se envía poco antes de que se espere el rocío, una vez por noche, solo en noches lo bastante despejadas para fotografiar. Elija abajo con cuánta antelación."
+        },
+        "watchdog": {
+          "short": "Vigilante nocturno",
+          "label": "La noche va mal",
+          "help": "Durante una noche de captura, cuando la mayoría de las últimas tomas están desenfocadas, nubladas, alargadas o con manchas de rocío, y de nuevo cuando vuelven a ser buenas. Requiere la importación automática del telescopio, idealmente cada 10 a 15 minutos."
         }
       },
       "import": {

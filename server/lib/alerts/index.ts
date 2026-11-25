@@ -12,6 +12,7 @@
 import { onUpdateAvailable, type UpdateStatus } from '../appUpdate/state.js';
 import { startClearNightScheduler } from './clearNight.js';
 import { startDewWarningScheduler } from './dewWarning.js';
+import { startNightWatchdogScheduler } from './nightWatchdog.js';
 import { emitAlert } from './delivery.js';
 import { getAlertState, setAlertState } from './store.js';
 
@@ -31,4 +32,5 @@ export function startAlerts(): void {
   onUpdateAvailable(announceUpdate);
   startClearNightScheduler();
   startDewWarningScheduler();
+  startNightWatchdogScheduler();
 }

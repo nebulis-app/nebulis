@@ -1673,6 +1673,11 @@
           "short": "Dew warning",
           "label": "Dew warning",
           "help": "Sent shortly before the dew is expected to form, once a night, only on nights clear enough to image. Choose how far ahead below."
+        },
+        "watchdog": {
+          "short": "Night watchdog",
+          "label": "Night going wrong",
+          "help": "While a night is being imaged, when most of the latest frames are soft, clouded, trailed or show dew spots, and again once they are good. Needs the telescope’s automatic import, ideally every 10 to 15 minutes."
         }
       },
       "import": {

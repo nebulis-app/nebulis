@@ -1673,6 +1673,11 @@
           "short": "Taupunkt-Warnung",
           "label": "Taupunkt-Warnung",
           "help": "Wird kurz vor der erwarteten Taubildung gesendet, einmal pro Nacht, nur in Nächten, die klar genug zum Fotografieren sind. Unten wählen Sie den Vorlauf."
+        },
+        "watchdog": {
+          "short": "Nachtwächter",
+          "label": "Nacht läuft schief",
+          "help": "Während einer Aufnahmenacht, wenn die meisten der letzten Aufnahmen unscharf, bewölkt, verzogen sind oder Taufecken zeigen, und erneut, sobald sie wieder gut sind. Benötigt den automatischen Import des Teleskops, am besten alle 10 bis 15 Minuten."
         }
       },
       "import": {

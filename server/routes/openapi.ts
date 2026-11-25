@@ -1026,11 +1026,21 @@ export const spec = {
       },
       StorageArchiveRunStatus: {
         type: 'object',
-        required: ['progress', 'running', 'lastRun'],
+        required: ['progress', 'running', 'lastRun', 'schedule'],
         properties: {
           progress: { $ref: '#/components/schemas/StorageArchiveRunProgress' },
           running:  { type: 'boolean' },
           lastRun:  { oneOf: [{ $ref: '#/components/schemas/StorageArchiveLastRun' }, { type: 'null' }] },
+          schedule: { $ref: '#/components/schemas/StorageScheduleView' },
+        },
+      },
+      StorageScheduleView: {
+        type: 'object',
+        required: ['timeZone', 'timeZoneSource', 'nextRunAt'],
+        properties: {
+          timeZone:       { type: 'string', description: 'IANA zone the schedule runs in' },
+          timeZoneSource: { type: 'string', enum: ['installation', 'site', 'server'], description: 'installation: Settings → General; site: the default site, when that is empty; server: neither is set (often UTC)' },
+          nextRunAt:      nullable({ type: 'string', format: 'date-time', description: 'When the schedule will next start a run, give or take its one-minute tick; null when off' }),
         },
       },
       StorageArchiveStarted: {
@@ -3749,7 +3759,15 @@ export const spec = {
           latitude:        nullable({ type: 'number', example: 40.7128, description: 'Observer latitude, decimal degrees north' }),
           longitude:       nullable({ type: 'number', example: -74.006, description: 'Observer longitude, decimal degrees east' }),
           locationName:    strEx('New York, NY'),
-          timezone:        strEx('America/New_York'),
+          timezone:        { type: 'string', example: 'America/New_York', description: "The default observing site's zone, for astronomy. Schedules use scheduleTimeZone" },
+          scheduleTimeZone: { type: 'string', example: 'Europe/Paris', description: 'IANA zone every scheduler runs in (disk archive, Drive backup, nightly maintenance). Empty: not chosen' },
+          scheduleTimeZoneInUse: {
+            type: 'object',
+            readOnly: true,
+            description: 'The zone schedules use now, and where it comes from: installation (scheduleTimeZone), site (the default site, when scheduleTimeZone is empty) or server (neither is set)',
+            properties: { timeZone: { type: 'string' }, source: { type: 'string', enum: ['installation', 'site', 'server'] } },
+          },
+          serverTimeZone:  { type: 'string', readOnly: true, description: "The server process's own zone, UTC in most containers" },
           minAlt:          { type: 'integer', default: 20, description: 'Minimum altitude in degrees for planner visibility filter (0–45)' },
           horizonProfile:  {
             type: 'array',

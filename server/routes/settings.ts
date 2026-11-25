@@ -38,6 +38,7 @@ import {
 import { getCurrentVersion } from '../lib/appUpdate/platform.js';
 import { logEvent } from '../lib/systemLog.js';
 import { SettingsApiKeyCreateBodySchema, SettingsResetDatabaseBodySchema } from '../lib/settingsSchemas.js';
+import { isValidTimeZone, scheduleTimeZoneInfo, serverTimeZone } from '../lib/scheduleTimeZone.js';
 
 const router = Router();
 
@@ -110,6 +111,11 @@ const SettingsUpdateBodySchema = z.object({
   objectPageLayout: z.enum(OBJECT_PAGE_LAYOUTS).optional(),
   annotateAutoSolve: z.boolean().optional(),
   autoMeasureFrames: z.boolean().optional(),
+  // Settings → General → "Time zone". The IANA zone every scheduler runs in; empty
+  // means not chosen (the site's saved zone, else the server's, applies).
+  scheduleTimeZone: z.string().max(64)
+    .refine(v => v === '' || isValidTimeZone(v), 'Unknown time zone: use an IANA name such as Europe/Paris')
+    .optional(),
 });
 
 // The full Settings shape, as returned by GET/PUT. Derived (not hand-copied)
@@ -195,6 +201,7 @@ const SettingsSchema = z.object({
   objectPageLayout: z.enum(OBJECT_PAGE_LAYOUTS),
   annotateAutoSolve: z.boolean(),
   autoMeasureFrames: z.boolean(),
+  scheduleTimeZone: z.string(),
 });
 
 type Settings = z.infer<typeof SettingsSchema>;
@@ -251,6 +258,7 @@ const defaultSettings: Settings = {
   objectPageLayout: 'media',
   annotateAutoSolve: true,
   autoMeasureFrames: false,
+  scheduleTimeZone: '',
 };
 
 // The persistable field list is the request schema's own key set, read off the
@@ -275,13 +283,21 @@ function settingsValueEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
-router.get('/', (_req: Request, res: Response) => {
-  const settings = loadSettings();
-  res.apiSuccess({
+/** What GET and PUT answer: the settings with the API key masked, plus two read-only
+ *  facts about time zones the General page needs (which zone schedules use now and
+ *  why, and the server's own zone, which an unset zone falls back to). */
+function settingsResponse(settings: Settings) {
+  return {
     ...settings,
     apiKey: settings.apiKey ? `${settings.apiKey.slice(0, 8)}...` : '',
     hasApiKey: !!settings.apiKey,
-  });
+    scheduleTimeZoneInUse: scheduleTimeZoneInfo(),
+    serverTimeZone: serverTimeZone(),
+  };
+}
+
+router.get('/', (_req: Request, res: Response) => {
+  res.apiSuccess(settingsResponse(loadSettings()));
 });
 
 // Update settings
@@ -446,12 +462,7 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
     restartPlannerNightlyScheduler();
   }
 
-  const settings = loadSettings();
-  res.apiSuccess({
-    ...settings,
-    apiKey: settings.apiKey ? `${settings.apiKey.slice(0, 8)}...` : '',
-    hasApiKey: !!settings.apiKey,
-  });
+  res.apiSuccess(settingsResponse(loadSettings()));
 });
 
 // Run the nightly maintenance batch now, on demand. Respects the master

@@ -21,6 +21,7 @@ import {
 } from './dbBackup.js';
 import { getCurrentVersion } from './appUpdate/platform.js';
 import { ensureArchiveColumns } from './archive/archiveColumns.js';
+import { initialScheduleTimeZone } from './scheduleTimeZoneSeed.js';
 
 const DB_PATH = path.join(DATA_DIR, 'nebulis.db');
 
@@ -1461,6 +1462,30 @@ db.exec(`
   const measureCols = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
   if (!measureCols.some(c => c.name === 'autoMeasureFrames')) {
     db.prepare('ALTER TABLE appSettings ADD COLUMN autoMeasureFrames INTEGER NOT NULL DEFAULT 0').run();
+  }
+}
+
+// Settings → General → "Time zone". The zone every scheduler runs in (disk archive,
+// Google Drive backup, nightly maintenance); see scheduleTimeZone.ts. Before it, the
+// schedulers read the default site's saved zone, empty for a site made from typed-in
+// coordinates, so a Docker server ran every schedule in UTC. An existing install
+// starts from that zone when it had one, else the one its coordinates give, else TZ.
+{
+  const zoneCols = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
+  if (!zoneCols.some(c => c.name === 'scheduleTimeZone')) {
+    db.prepare("ALTER TABLE appSettings ADD COLUMN scheduleTimeZone TEXT NOT NULL DEFAULT ''").run();
+    const row = db.prepare<[], { timezone: string | null; latitude: number | null; longitude: number | null }>(
+      'SELECT timezone, latitude, longitude FROM appSettings WHERE id = 1',
+    ).get();
+    if (row) {
+      const initial = initialScheduleTimeZone({
+        siteTimeZone: row.timezone,
+        latitude: row.latitude,
+        longitude: row.longitude,
+        envTimeZone: process.env.TZ,
+      });
+      if (initial !== '') db.prepare('UPDATE appSettings SET scheduleTimeZone = ? WHERE id = 1').run(initial);
+    }
   }
 }
 

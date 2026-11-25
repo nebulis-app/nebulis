@@ -202,7 +202,8 @@ const appSettingsStmts = {
     pixinsightEnabled = ?,
     objectPageLayout = ?,
     annotateAutoSolve = ?,
-    autoMeasureFrames = ?
+    autoMeasureFrames = ?,
+    scheduleTimeZone = ?
     WHERE id = 1`),
   setApiKey: db.prepare('UPDATE appSettings SET apiKey = ? WHERE id = 1'),
 };
@@ -339,6 +340,8 @@ interface AppSettingsRow {
   objectPageLayout: string; // 'nights' (Classic) | 'media' (Combined)
   annotateAutoSolve: number;
   autoMeasureFrames: number;
+  /** IANA zone every scheduler runs in; empty = not chosen (see scheduleTimeZone.ts). */
+  scheduleTimeZone: string;
 }
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -412,6 +415,7 @@ function rowToSettings(row: AppSettingsRow): Record<string, unknown> {
     objectPageLayout: isObjectPageLayout(row.objectPageLayout) ? row.objectPageLayout : 'media',
     annotateAutoSolve: Boolean(row.annotateAutoSolve ?? 1),
     autoMeasureFrames: Boolean(row.autoMeasureFrames ?? 0),
+    scheduleTimeZone: row.scheduleTimeZone ?? '',
   };
 }
 
@@ -471,6 +475,7 @@ function saveSettingsRow(data: Record<string, unknown>): void {
     isObjectPageLayout(data.objectPageLayout) ? data.objectPageLayout : 'media',
     boolToInt(data.annotateAutoSolve, 1),
     boolToInt(data.autoMeasureFrames, 0),
+    str(data.scheduleTimeZone, ''),
   );
   settingsCache = null;
 }

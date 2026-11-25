@@ -61,7 +61,8 @@ import {
 } from '../lib/archive/archiveConfig.js';
 import { getArchiveRunProgress, isArchiveRunning } from '../lib/archive/archiveCopy.js';
 import { cancelArchiveRun, clearLastArchiveRun, getLastArchiveRun, runArchivePipeline } from '../lib/archive/archivePipeline.js';
-import { archiveBlockedByLibraryWork } from '../lib/archive/archiveScheduler.js';
+import { archiveBlockedByLibraryWork, nextArchiveRun, scheduleOf } from '../lib/archive/archiveScheduler.js';
+import { scheduleTimeZoneInfo } from '../lib/scheduleTimeZone.js';
 import { applyArchiveRetention, planArchiveRetention } from '../lib/archive/archiveRetention.js';
 import { listArchivedFiles, listArchivedObjects } from '../lib/archive/archiveBrowse.js';
 import { restoreArchivedFiles } from '../lib/archive/archiveRestore.js';
@@ -1659,8 +1660,24 @@ function sendArchiveBusy(res: Response): void {
 // that only shows itself after selection (a full disk), because the POST has already
 // answered by then.
 router.get('/archive/run/status', (_req: Request, res: Response) => {
-  res.apiSuccess({ progress: getArchiveRunProgress(), running: isArchiveRunning(), lastRun: getLastArchiveRun() });
+  res.apiSuccess({
+    progress: getArchiveRunProgress(),
+    running: isArchiveRunning(),
+    lastRun: getLastArchiveRun(),
+    schedule: archiveScheduleView(),
+  });
 });
+
+/** The schedule as the page shows it: the zone it runs in, where that zone comes from,
+ *  and when it will next start a run (null when off, or a custom expression that
+ *  names no minute in the next eight days). */
+function archiveScheduleView(): { timeZone: string; timeZoneSource: string; nextRunAt: string | null } {
+  const { timeZone, source } = scheduleTimeZoneInfo();
+  const config = getArchiveConfig();
+  const on = config.enabled && config.scheduleEnabled && config.archiveId !== '';
+  const next = on ? nextArchiveRun(new Date(), scheduleOf(config), config.lastRunAt, timeZone) : null;
+  return { timeZone, timeZoneSource: source, nextRunAt: next ? next.toISOString() : null };
+}
 
 // POST /api/v1/storage/archive/run — archive now, without waiting for the schedule.
 //

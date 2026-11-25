@@ -91,6 +91,12 @@ export interface Settings {
   annotateAutoSolve: boolean;
   /** Analyze new raw frames in the background once an import has finished. Default off. */
   autoMeasureFrames: boolean;
+  /** IANA zone every scheduler runs in (disk archive, Drive backup, nightly maintenance). Empty: not chosen. */
+  scheduleTimeZone: string;
+  /** Read-only: the zone schedules use now, and where it comes from. */
+  scheduleTimeZoneInUse?: { timeZone: string; source: 'installation' | 'site' | 'server' };
+  /** Read-only: the server process's own zone (UTC in most containers). */
+  serverTimeZone?: string;
   /** Admin opt-in: serve the PixInsight update repository at /plugins/pixinsight/. Default off. */
   pixinsightEnabled: boolean;
   /** Object page layout: 'nights' (grid of observations) or 'media' (every picture on one page). Default 'nights'. */

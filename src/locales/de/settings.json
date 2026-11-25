@@ -104,6 +104,16 @@
       "description": "Werte auf der Vorhersageseite."
     }
   },
+  "scheduleTimeZone": {
+    "title": "Zeitzone",
+    "description": "Die Zeitzone aller Zeitpläne: Archiv auf Datenträger, Google-Drive-Sicherung und nächtliche Wartung. Beobachtungsorte behalten ihre eigene Zeitzone für Dämmerung und Wettervorhersage.",
+    "label": "Zeitpläne laufen in",
+    "placeholder": "z. B. Europe/Paris",
+    "useBrowser": "Die dieses Browsers verwenden ({{zone}})",
+    "unknown": "Unbekannte Zeitzone: Wählen Sie eine aus der Liste, z. B. Europe/Paris.",
+    "fromSite": "Nicht gewählt: Zeitpläne nutzen die Zeitzone des Standard-Beobachtungsorts ({{zone}}).",
+    "fromServer": "Nicht gewählt: Zeitpläne nutzen die Zeitzone des Servers ({{zone}}), in einem Container oft UTC. Wählen Sie Ihre, damit sie zur erwarteten Uhrzeit laufen."
+  },
   "systemLog": {
     "title": "Systemprotokoll",
     "description": "Anmeldungen, Benutzer- und Teleskopänderungen, Syncs und andere Admin-Aktivitäten für diese Installation.",
@@ -190,6 +200,7 @@
     "lastRun": "Zuletzt ausgeführt {{time}}.",
     "runAt": "Ausführen um",
     "localTime": "Ortszeit",
+    "inZone": "Zeit {{zone}}",
     "runNowTitle": "Die Wartungsaufgaben jetzt ausführen, statt auf die geplante Zeit zu warten",
     "runNow": "Jetzt ausführen",
     "starting": "Wird gestartet…",
@@ -993,7 +1004,7 @@
     "photoAlt": "Foto von {{name}}"
   },
   "subtitle": {
-    "general": "Erscheinungsbild und Einheiten.",
+    "general": "Erscheinungsbild, Einheiten und Zeitzone.",
     "library": "Wie Objektkarten, Benennung und die Diashow sich verhalten.",
     "updates": "Version, Versionshinweise und Update-Einstellungen.",
     "accountDevices": "Telefone und Apple TVs, die mit deinem Konto verknüpft sind.",
@@ -1070,6 +1081,9 @@
     "latitudePlaceholder": "z. B. 40.7128",
     "longitudeLabel": "Längengrad",
     "longitudePlaceholder": "z. B. -74.0060",
+    "timezoneLabel": "Zeitzone",
+    "timezonePlaceholder": "z. B. Europe/Paris",
+    "timezoneHint": "Für Dämmerung und Vorhersage an diesem Ort. Zeitpläne nutzen die Zeitzone der Installation (Einstellungen → Allgemein).",
     "detecting": "Wird ermittelt…",
     "useCurrentLocation": "Aktuellen Standort verwenden",
     "clear": "Löschen",
@@ -1207,7 +1221,7 @@
       "unit": "Tagen"
     },
     "schedule": {
-      "description": "Kopiert Neues nach Zeitplan, in der Zeitzone deines Beobachtungsorts.",
+      "description": "Kopiert Neues nach Zeitplan, in der Zeitzone der Installation (Einstellungen → Allgemein).",
       "timeLabel": "Uhrzeit",
       "intervalLabel": "Stunden zwischen Läufen",
       "intervalUnit": "Stunden",
@@ -1263,7 +1277,9 @@
       "retentionEverything_other": "Objekte werden {{count}} Tage nach dem letzten Archivieren aus dem Archiv gelöscht. Dateien, die deine Bibliothek nicht mehr hat, bleiben.",
       "retentionSubframes_one": "Subframes werden 1 Tag nach dem letzten Archivieren aus dem Archiv gelöscht. Fertige Bilder und Dateien, die deine Bibliothek nicht mehr hat, bleiben.",
       "retentionSubframes_other": "Subframes werden {{count}} Tage nach dem letzten Archivieren aus dem Archiv gelöscht. Fertige Bilder und Dateien, die deine Bibliothek nicht mehr hat, bleiben.",
-      "removeLocal": "Subframes werden außerdem aus dieser lokalen Nebulis-Installation gelöscht, sobald ihre Archivkopie geprüft ist."
+      "removeLocal": "Subframes werden außerdem aus dieser lokalen Nebulis-Installation gelöscht, sobald ihre Archivkopie geprüft ist.",
+      "nextRun": "Nächster Lauf: {{when}} ({{zone}})",
+      "serverZone": "Keine Zeitzone gewählt: die des Servers ({{zone}}) gilt. Legen Sie Ihre unter Einstellungen → Allgemein fest."
     },
     "save": "Speichern",
     "saved": "Gespeichert.",

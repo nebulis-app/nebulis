@@ -19,6 +19,7 @@ import { readArchiveManifest, writeArchiveManifest } from '../../server/lib/arch
 import { runArchive, isArchiveRunning } from '../../server/lib/archive/archiveCopy';
 import {
   isArchiveDue,
+  nextArchiveRun,
   tickArchiveScheduler,
   resetArchiveBackoff,
   REFUSAL_BACKOFF_MS,
@@ -586,5 +587,61 @@ describe('tickArchiveScheduler — what it costs and how it backs off', () => {
     configure(dest, { scheduleHour: 0 });
     const outcome = await tickArchiveScheduler(new Date(NOON_UTC.getTime() + 60_000), 'UTC');
     expect(outcome.ran).toBe(true);
+  });
+});
+
+describe('nextArchiveRun', () => {
+  const PARIS = 'Europe/Paris';
+  const sched = (over: Partial<ArchiveSchedule>): ArchiveSchedule => ({
+    mode: 'daily', hour: 3, minute: 0, intervalHours: 24, cron: '', ...over,
+  });
+  const at = (iso: string) => new Date(iso);
+
+  it('daily: today at the time when not run yet, tomorrow once it has run, now when the time has passed', () => {
+    const s = sched({ hour: 3, minute: 0 });
+    // 10:00 in Paris (CET, UTC+1), already run at 03:00 today: tomorrow 03:00 Paris = 02:00 UTC.
+    expect(nextArchiveRun(at('2026-11-25T09:00:00Z'), s, '2026-11-25T02:00:00Z', PARIS)?.toISOString()).toBe('2026-11-26T02:00:00.000Z');
+    // 01:00 in Paris, last run yesterday: today 03:00.
+    expect(nextArchiveRun(at('2026-11-25T00:00:00Z'), s, '2026-11-24T02:00:00Z', PARIS)?.toISOString()).toBe('2026-11-25T02:00:00.000Z');
+    // 10:00 in Paris, not run today: due now, on the next tick.
+    expect(nextArchiveRun(at('2026-11-25T09:00:30Z'), s, '2026-11-24T02:00:00Z', PARIS)?.toISOString()).toBe('2026-11-25T09:00:00.000Z');
+  });
+
+  it('interval: the last run plus the interval, or now when overdue or never run', () => {
+    const s = sched({ mode: 'interval', intervalHours: 6 });
+    expect(nextArchiveRun(at('2026-11-25T10:00:00Z'), s, '2026-11-25T08:00:00Z', 'UTC')?.toISOString()).toBe('2026-11-25T14:00:00.000Z');
+    expect(nextArchiveRun(at('2026-11-25T20:00:00Z'), s, '2026-11-25T08:00:00Z', 'UTC')?.toISOString()).toBe('2026-11-25T20:00:00.000Z');
+    expect(nextArchiveRun(at('2026-11-25T20:00:00Z'), s, '', 'UTC')?.toISOString()).toBe('2026-11-25T20:00:00.000Z');
+  });
+
+  it('custom: the next matching minute in the schedule time zone', () => {
+    // 18:00 Paris is 17:00 UTC in November: the case that ran an hour late on a UTC server.
+    const six = sched({ mode: 'custom', cron: '0 18 * * *' });
+    expect(nextArchiveRun(at('2026-11-25T16:50:00Z'), six, '', PARIS)?.toISOString()).toBe('2026-11-25T17:00:00.000Z');
+    expect(nextArchiveRun(at('2026-11-25T16:50:00Z'), six, '', 'UTC')?.toISOString()).toBe('2026-11-25T18:00:00.000Z');
+    // Already run in that minute: the next day.
+    expect(nextArchiveRun(at('2026-11-25T17:00:20Z'), six, '2026-11-25T17:00:05Z', PARIS)?.toISOString()).toBe('2026-11-26T17:00:00.000Z');
+    // Mondays at 02:30 Paris, asked on a Wednesday: the next Monday.
+    const monday = sched({ mode: 'custom', cron: '30 2 * * 1' });
+    expect(nextArchiveRun(at('2026-11-25T12:00:00Z'), monday, '', PARIS)?.toISOString()).toBe('2026-11-30T01:30:00.000Z');
+    // Several minutes an hour.
+    const quarter = sched({ mode: 'custom', cron: '*/15 * * * *' });
+    expect(nextArchiveRun(at('2026-11-25T12:07:00Z'), quarter, '', 'UTC')?.toISOString()).toBe('2026-11-25T12:15:00.000Z');
+    expect(nextArchiveRun(at('2026-11-25T12:00:00Z'), sched({ mode: 'custom', cron: 'not a cron' }), '', 'UTC')).toBeNull();
+  });
+
+  it('agrees with isArchiveDue: the minute it names is due, and the minute before is not', () => {
+    const cases: Array<[ArchiveSchedule, string, string, string]> = [
+      [sched({ hour: 3, minute: 0 }), '2026-11-25T00:00:00Z', '2026-11-24T02:00:00Z', PARIS],
+      [sched({ mode: 'custom', cron: '0 18 * * *' }), '2026-11-25T16:50:00Z', '', PARIS],
+      [sched({ mode: 'custom', cron: '30 2 * * 1' }), '2026-11-25T12:00:00Z', '', PARIS],
+      // Across the spring DST change in Paris (28 March 2027).
+      [sched({ mode: 'custom', cron: '30 3 * * *' }), '2027-03-27T12:00:00Z', '', PARIS],
+    ];
+    for (const [s, now, last, tz] of cases) {
+      const next = nextArchiveRun(at(now), s, last, tz)!;
+      expect(isArchiveDue(next, s, last, tz), `${s.mode} ${s.cron} due at ${next.toISOString()}`).toBe(true);
+      expect(isArchiveDue(new Date(next.getTime() - 60_000), s, last, tz), `${s.mode} ${s.cron} not due before`).toBe(false);
+    }
   });
 });

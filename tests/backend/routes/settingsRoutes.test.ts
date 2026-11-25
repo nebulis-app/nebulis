@@ -97,6 +97,23 @@ describe('GET / and PUT /', () => {
     expect(getSettingsData().temperatureUnit).toBe('celsius');
   });
 
+  it('saves the installation time zone, refuses one it does not know, and says which zone schedules use', async () => {
+    const saved = await request(app).put('/').send({ scheduleTimeZone: 'Europe/Paris' });
+    expect(saved.status).toBe(200);
+    expect(saved.body.data.scheduleTimeZone).toBe('Europe/Paris');
+    expect(saved.body.data.scheduleTimeZoneInUse).toEqual({ timeZone: 'Europe/Paris', source: 'installation' });
+    expect(typeof saved.body.data.serverTimeZone).toBe('string');
+
+    const refused = await request(app).put('/').send({ scheduleTimeZone: 'Paris' });
+    expect(refused.status).toBe(422);
+    expect(getSettingsData().scheduleTimeZone).toBe('Europe/Paris');
+
+    // Cleared: the schedules fall back, and the page is told where to.
+    const cleared = await request(app).put('/').send({ scheduleTimeZone: '' });
+    expect(cleared.body.data.scheduleTimeZone).toBe('');
+    expect(['site', 'server']).toContain(cleared.body.data.scheduleTimeZoneInUse.source);
+  });
+
   it('a masked API key sent back never overwrites the real one', async () => {
     setApiKey('shub_abcdefghijklmnop');
     const res = await request(app).put('/').send({ apiKey: 'shub_abc...', temperatureUnit: 'celsius' });

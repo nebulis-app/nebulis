@@ -143,6 +143,24 @@ test.describe('Settings Page', () => {
     expect((putBody as { temperatureUnit?: string }).temperatureUnit).toBe('celsius');
   });
 
+  test('the installation time zone says what an unset one means, and is sent on save', async ({ page }) => {
+    let putBody: Record<string, unknown> | null = null;
+    await page.route('**/api/settings', async r => {
+      if (r.request().method() === 'PUT') putBody = r.request().postDataJSON() as Record<string, unknown>;
+      r.fulfill(json({ ...MOCK.settings, scheduleTimeZone: '', scheduleTimeZoneInUse: { timeZone: 'UTC', source: 'server' }, serverTimeZone: 'UTC' }));
+    });
+    await page.reload();
+
+    const field = page.getByRole('combobox', { name: 'Schedules run in' });
+    await expect(field).toHaveValue('');
+    await expect(page.getByText(/Not chosen: schedules use the server’s own zone \(UTC\)/)).toBeVisible();
+
+    await field.fill('Europe/Paris');
+    await page.getByRole('button', { name: /save/i }).click();
+    await expect.poll(() => putBody).not.toBeNull();
+    expect(putBody).toMatchObject({ scheduleTimeZone: 'Europe/Paris' });
+  });
+
   // ─── Observer location ────────────────────────────────────────────────────
   // Latitude/longitude left the top level of Settings and now belong to an
   // observing site, edited from Settings → Sky → Observing sites.

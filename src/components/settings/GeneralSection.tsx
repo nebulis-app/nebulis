@@ -7,6 +7,7 @@ import { useCompactBanners } from '../../hooks/useCollapsedHero';
 import { useNavVisibility, type NavItemId } from '../../hooks/useNavVisibility';
 import type { Settings as SettingsType } from '../../types';
 import { Sec, Row, Seg, RadioCard, Toggle, getInputClass } from './SettingsUI';
+import { browserTimeZone, knownTimeZones } from '../../lib/timeZones';
 import { Library, Images, Calendar, CloudMoon, Crosshair, Compass, BookOpen, Aperture, Settings as SettingsIcon, HelpCircle, GripVertical, Lock } from 'lucide-react';
 
 const NAV_ITEM_ICONS: Record<NavItemId, React.ReactNode> = {
@@ -307,6 +308,73 @@ export function GeneralSection({
           />
         </Row>
       </Sec>
+
+      <ScheduleTimeZoneSection isDark={isDark} form={form} setForm={setForm} />
     </>
+  );
+}
+
+/**
+ * Settings → General → Time zone: the zone every scheduler runs in (disk archive,
+ * Google Drive backup, nightly maintenance). It belongs to the installation, not to
+ * an observing site, because schedules run once for the whole server.
+ */
+function ScheduleTimeZoneSection({
+  isDark,
+  form,
+  setForm,
+}: {
+  isDark: boolean;
+  form: Partial<SettingsType>;
+  setForm: React.Dispatch<React.SetStateAction<Partial<SettingsType>>>;
+}) {
+  const { t: tSettings } = useTranslation('settings');
+  const zones = knownTimeZones();
+  const browserZone = browserTimeZone();
+  const value = form.scheduleTimeZone ?? '';
+  // Only refuse what the browser can tell is wrong; the server checks again on save.
+  const unknown = value !== '' && zones.length > 0 && !zones.includes(value);
+  const inUse = form.scheduleTimeZoneInUse;
+  const server = form.serverTimeZone ?? 'UTC';
+
+  return (
+    <Sec title={tSettings('scheduleTimeZone.title')} description={tSettings('scheduleTimeZone.description')} isDark={isDark}>
+      <Row label={tSettings('scheduleTimeZone.label')} isDark={isDark}>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            list="schedule-time-zones"
+            value={value}
+            placeholder={tSettings('scheduleTimeZone.placeholder')}
+            aria-label={tSettings('scheduleTimeZone.label')}
+            aria-invalid={unknown}
+            spellCheck={false}
+            onChange={e => setForm(f => ({ ...f, scheduleTimeZone: e.target.value.trim() }))}
+            className={`w-56 ${getInputClass(isDark)}`}
+          />
+          <datalist id="schedule-time-zones">
+            {zones.map(zone => <option key={zone} value={zone} />)}
+          </datalist>
+          {browserZone && browserZone !== value && (
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, scheduleTimeZone: browserZone }))}
+              className={`text-[0.75rem] underline underline-offset-2 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}
+            >
+              {tSettings('scheduleTimeZone.useBrowser', { zone: browserZone })}
+            </button>
+          )}
+        </div>
+      </Row>
+      <div className="space-y-1 px-5 pb-4 text-[0.75rem]">
+        {unknown && <p className="text-red-500">{tSettings('scheduleTimeZone.unknown')}</p>}
+        {!unknown && value === '' && inUse?.source === 'site' && (
+          <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>{tSettings('scheduleTimeZone.fromSite', { zone: inUse.timeZone })}</p>
+        )}
+        {!unknown && value === '' && inUse?.source !== 'site' && (
+          <p className="text-amber-500">{tSettings('scheduleTimeZone.fromServer', { zone: server })}</p>
+        )}
+      </div>
+    </Sec>
   );
 }

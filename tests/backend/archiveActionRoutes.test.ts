@@ -30,6 +30,7 @@ import { setLibraryMigrating } from '../../server/lib/libraryMaintenance';
 import { ARCHIVE_MARKER_FILENAME, writeArchiveMarker } from '../../server/lib/archive/archiveMarker';
 import { DEFAULT_ARCHIVE_CONFIG, getArchiveConfig, setArchiveConfig } from '../../server/lib/archive/archiveConfig';
 import { runArchive } from '../../server/lib/archive/archiveCopy';
+import { updateSettingsData } from '../../server/lib/telescopes';
 
 /**
  * The archive's action routes.
@@ -166,6 +167,21 @@ describe('run', () => {
     const { status, body } = await api('GET', '/archive/run/status');
     expect(status).toBe(200);
     expect(body.data.progress).toBeDefined();
+  });
+
+  it('states the schedule: the zone it runs in, where that comes from, and the next run', async () => {
+    updateSettingsData({ scheduleTimeZone: 'Europe/Paris' });
+    try {
+      const off = (await api('GET', '/archive/run/status')).body.data.schedule;
+      expect(off).toEqual({ timeZone: 'Europe/Paris', timeZoneSource: 'installation', nextRunAt: null });
+
+      configure(scratchDir('nebulis-archive-test-sched-'), { scheduleEnabled: true, scheduleMode: 'custom', scheduleCron: '0 18 * * *' });
+      const on = (await api('GET', '/archive/run/status')).body.data.schedule;
+      // 18:00 in Paris: 17:00 UTC in winter, 16:00 in summer.
+      expect(on.nextRunAt).toMatch(/T1[67]:00:00\.000Z$/);
+    } finally {
+      updateSettingsData({ scheduleTimeZone: '' });
+    }
   });
 
   it('requires admin to start a run', async () => {

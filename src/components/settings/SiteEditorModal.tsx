@@ -12,6 +12,7 @@ import { clampOffset, windowPrefsOf, WINDOW_OFFSET_MAX, WINDOW_OFFSET_MIN } from
 import { nightWindowFor, plannerToday } from '../../lib/nightWindow';
 import { formatTime } from '../../lib/forecastScore';
 import { formatNumber } from '../../lib/formatLocale';
+import { knownTimeZones } from '../../lib/timeZones';
 
 /**
  * A whole-number minutes field that lets you finish typing. The number is only settled (held to the allowed range,
@@ -253,6 +254,26 @@ export function SiteEditorModal({
                 onChange={e => setLongitude(e.target.value === '' ? null : parseFloat(e.target.value))}
               />
             </div>
+          </div>
+
+          {/* Filled by the place search, and editable: a site saved from typed-in
+              coordinates used to have no zone at all, with nowhere to set one. */}
+          <div>
+            <label className={labelClass} htmlFor="site-time-zone">{t('siteEditorModal.timezoneLabel')}</label>
+            <input
+              id="site-time-zone"
+              type="text"
+              list="site-time-zones"
+              spellCheck={false}
+              placeholder={t('siteEditorModal.timezonePlaceholder')}
+              className={inputClass}
+              value={timezone}
+              onChange={e => setTimezone(e.target.value.trim())}
+            />
+            <datalist id="site-time-zones">
+              {knownTimeZones().map(zone => <option key={zone} value={zone} />)}
+            </datalist>
+            <p className={`mt-1 text-[0.75rem] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{t('siteEditorModal.timezoneHint')}</p>
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">

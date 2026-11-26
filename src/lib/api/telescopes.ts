@@ -117,6 +117,10 @@ export interface TelescopeRig {
   sensorType: 'color' | 'mono' | null;
   /** Filter names as the owner calls them, e.g. "Ha", "L-eXtreme". */
   filters: string[];
+  /** What the rig rides on, for the planner's meridian flip. Null until the owner says. */
+  mount?: 'equatorial' | 'altaz' | null;
+  /** Minutes lost at the flip; null reads as 10. */
+  flipPauseMinutes?: number | null;
 }
 
 /** One named optical setup on a telescope profile — e.g. "Native" vs. "0.8x

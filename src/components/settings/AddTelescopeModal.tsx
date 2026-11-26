@@ -1316,16 +1316,26 @@ function RigSettingsEditor({
   const saved = (telescopes?.find(tel => tel.id === profile.id) ?? profile).rig ?? { sensorType: null, filters: [] };
   const [sensorType, setSensorType] = useState(saved.sensorType);
   const [filtersText, setFiltersText] = useState(saved.filters.join(', '));
+  const [mount, setMount] = useState(saved.mount ?? null);
+  const [pauseText, setPauseText] = useState(saved.flipPauseMinutes != null ? String(saved.flipPauseMinutes) : '');
   const [error, setError] = useState('');
 
   const filters = splitFilterNames(filtersText);
-  const dirty = sensorType !== saved.sensorType || filters.join('\u0000') !== saved.filters.join('\u0000');
+  // Blank means the default pause; anything else must be a whole number of minutes (the server checks the range).
+  const pause = pauseText.trim() === '' ? null : Number(pauseText);
+  const pauseValid = pause === null || (Number.isInteger(pause) && pause >= 0 && pause <= 60);
+  const dirty = sensorType !== saved.sensorType || filters.join('\u0000') !== saved.filters.join('\u0000')
+    || mount !== (saved.mount ?? null) || pause !== (saved.flipPauseMinutes ?? null);
+  // What the planner assumes until the owner picks: an ASIAIR drives an equatorial mount, another rig does not.
+  const assumedMount = profile.kind === 'asiair' ? 'equatorial' : 'altaz';
+  const flips = (mount ?? assumedMount) === 'equatorial';
 
   const mutation = useMutation({
-    mutationFn: () => saveTelescopeRig(profile.id, { sensorType, filters }),
+    mutationFn: () => saveTelescopeRig(profile.id, { sensorType, filters, mount, flipPauseMinutes: pause }),
     onSuccess: rig => {
       setError('');
       setFiltersText(rig.filters.join(', '));
+      setPauseText(rig.flipPauseMinutes != null ? String(rig.flipPauseMinutes) : '');
       void queryClient.invalidateQueries({ queryKey: ['telescopes'] });
     },
     onError: (err: Error) => setError(err.message),
@@ -1401,6 +1411,51 @@ function RigSettingsEditor({
         </div>
       </div>
 
+      <div>
+        <span className={labelClass}>{t('addTelescopeModal.rigMount')}</span>
+        <div className="flex flex-wrap gap-1.5 mt-1" role="group" aria-label={t('addTelescopeModal.rigMount')}>
+          {([
+            { value: null, label: t(`addTelescopeModal.rigMountUnset.${assumedMount}`) },
+            { value: 'equatorial' as const, label: t('addTelescopeModal.rigMountEquatorial') },
+            { value: 'altaz' as const, label: t('addTelescopeModal.rigMountAltaz') },
+          ]).map(o => (
+            <button
+              key={String(o.value)}
+              type="button"
+              aria-pressed={mount === o.value}
+              onClick={() => setMount(o.value)}
+              className={`text-xs font-medium px-2.5 py-1 rounded-lg border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/30 ${
+                mount === o.value
+                  ? 'bg-accent-500/15 border-accent-500/40 text-accent-600'
+                  : isDark ? 'border-slate-700 text-slate-400 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-white'
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <p className={`${helperClass} mt-1`}>{t('addTelescopeModal.rigMountHelp')}</p>
+      </div>
+
+      {flips && (
+        <div>
+          <label className={labelClass} htmlFor={`rig-flip-pause-${profile.id}`}>{t('addTelescopeModal.rigFlipPause')}</label>
+          <input
+            id={`rig-flip-pause-${profile.id}`}
+            type="number"
+            min={0}
+            max={60}
+            step={1}
+            inputMode="numeric"
+            value={pauseText}
+            onChange={e => setPauseText(e.target.value)}
+            placeholder="10"
+            className={`${inputClass} max-w-[8rem]`}
+          />
+          {!pauseValid && <p className={`text-xs mt-1 ${isDark ? 'text-red-400' : 'text-red-600'}`}>{t('addTelescopeModal.rigFlipPauseInvalid')}</p>}
+        </div>
+      )}
+
       {error && <p className={`text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>{error}</p>}
       <div className="flex items-center justify-end gap-2">
         {!dirty && !mutation.isPending && saved.sensorType !== null && (
@@ -1412,7 +1467,7 @@ function RigSettingsEditor({
         <button
           type="button"
           onClick={() => mutation.mutate()}
-          disabled={!dirty || mutation.isPending}
+          disabled={!dirty || !pauseValid || mutation.isPending}
           className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition disabled:opacity-50"
         >
           {t('addTelescopeModal.rigSave')}

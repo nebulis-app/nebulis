@@ -990,7 +990,17 @@
     "photoChange": "Change photo",
     "photoRemove": "Remove",
     "photoUploading": "Uploading…",
-    "photoAlt": "Photo of {{name}}"
+    "photoAlt": "Photo of {{name}}",
+    "rigMount": "Mount",
+    "rigMountUnset": {
+      "equatorial": "Not said (equatorial assumed)",
+      "altaz": "Not said (no flip assumed)"
+    },
+    "rigMountEquatorial": "Equatorial",
+    "rigMountAltaz": "Alt-az",
+    "rigMountHelp": "On an equatorial mount the planner marks the meridian flip in each block and takes the pause off its imaging time.",
+    "rigFlipPause": "Pause at the flip (minutes)",
+    "rigFlipPauseInvalid": "A whole number of minutes from 0 to 60, or blank for 10."
   },
   "subtitle": {
     "general": "Appearance and units.",

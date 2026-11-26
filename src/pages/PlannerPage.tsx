@@ -61,7 +61,9 @@ import { NightWeatherModal, type NightAstro } from '../components/planner/NightW
 import { LightPollutionPill } from '../components/forecast/LightPollutionPill';
 import { FramingModal, FRAMING_MOSAIC_ENABLED } from '../components/catalogs/FramingModal';
 import { useResolvedFov } from '../hooks/useResolvedFov';
-import { classifyFit, fitDisplayStrings, objectExtentArcmin } from '../lib/telescopeFov';
+import { flipInBlock, flipSettingsFor, type BlockFlip } from '../lib/meridianFlip';
+import { listTelescopes } from '../lib/api/telescopes';
+import { classifyFit, fitDisplayStrings, objectExtentArcmin, TELESCOPE_PROFILE_PREFIX } from '../lib/telescopeFov';
 import { FitBadge } from '../components/FitBadge';
 import { filterRecommendations } from '../lib/filterRecommendations';
 import { FilterRecommendationPanel } from '../components/ui/FilterRecommendationPanel';
@@ -807,6 +809,23 @@ export function PlannerPage() {
     return map;
   }, [sessions, planner?.targets]);
 
+  // The meridian flip of each block, for the telescope the planner follows (the one its framing uses). Only a custom
+  // rig on an equatorial mount flips; see src/lib/meridianFlip.ts.
+  const plannerFov = useResolvedFov();
+  const { data: plannerTelescopes } = useQuery({ queryKey: ['telescopes'], queryFn: listTelescopes, staleTime: 60_000 });
+  const flipById = useMemo(() => {
+    const map = new Map<number, BlockFlip>();
+    if (observerLon == null || !plannerFov.profileId.startsWith(TELESCOPE_PROFILE_PREFIX)) return map;
+    const telescopeId = plannerFov.profileId.slice(TELESCOPE_PROFILE_PREFIX.length).split(':')[0];
+    const flips = flipSettingsFor(plannerTelescopes?.find(p => p.id === telescopeId));
+    if (!flips) return map;
+    for (const s of sessions) {
+      const flip = flipInBlock(s.ra, observerLon, new Date(s.startTime), new Date(s.endTime), flips.pauseMinutes);
+      if (flip) map.set(s.id, flip);
+    }
+    return map;
+  }, [sessions, observerLon, plannerFov.profileId, plannerTelescopes]);
+
   const scheduledIds = useMemo(() => new Set(sessions.map(s => s.objectId)), [sessions]);
 
   // Bound to a local so the onSaveFraming closure keeps the null-narrowing
@@ -1293,6 +1312,7 @@ export function PlannerPage() {
           sessions={sessions}
           visibilityById={visibilityById}
           moonById={moonById}
+          flipById={flipById}
           thumbnailById={thumbnailById}
           dragDeltaById={dragDeltaMap}
           resizeDeltaById={resizePreview}

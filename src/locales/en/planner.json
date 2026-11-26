@@ -122,6 +122,13 @@
     "bandShort": {
       "broadband": "BB",
       "narrowband": "NB"
+    },
+    "flip": {
+      "title": "Meridian flip at {{time}}, then about {{minutes}} min to turn over and restart",
+      "chip": "Flip {{time}} · −{{minutes}} min",
+      "imaging": "{{minutes}} min of imaging once the flip pause is taken off",
+      "endAtFlip": "Little is left after the meridian flip: ending at {{time}} avoids it.",
+      "startAfterFlip": "Little comes before the meridian flip: starting at {{time}} avoids it."
     }
   },
   "libraryPanel": {

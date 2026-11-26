@@ -122,6 +122,13 @@
     "bandShort": {
       "broadband": "BA",
       "narrowband": "BE"
+    },
+    "flip": {
+      "title": "Volteo de meridiano a las {{time}}, luego unos {{minutes}} min para voltear y reanudar",
+      "chip": "Volteo {{time}} · −{{minutes}} min",
+      "imaging": "{{minutes}} min de captura descontada la pausa del volteo",
+      "endAtFlip": "Queda poco después del volteo de meridiano: terminar a las {{time}} lo evita.",
+      "startAfterFlip": "Hay poco antes del volteo de meridiano: empezar a las {{time}} lo evita."
     }
   },
   "libraryPanel": {

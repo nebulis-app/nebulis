@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { mockAllRoutes, ok, json } from './fixtures/mocks';
+import { lstHours } from '../../src/lib/altaz';
 
 // The planner is a split-pane layout: a searchable object library on the left
 // and a dusk-to-dawn schedule timeline on the right. Targets are dragged from
@@ -238,6 +239,43 @@ test.describe('Planner Page', () => {
     await page.reload();
     await expect(page.getByRole('button', { name: /copy last night/i })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Share', exact: true })).toBeEnabled();
+  });
+
+  test.describe('meridian flip', () => {
+    // The mocked night runs from an hour ago to eight hours from now; the block sits inside it, and the target's
+    // right ascension is the local sidereal time at the block's middle, so it crosses the meridian there.
+    async function planBlock(page: import('@playwright/test').Page, kind: 'asiair' | 'seestar-s50') {
+      const start = new Date(Date.now() + 60 * 60_000);
+      const end = new Date(Date.now() + 240 * 60_000);
+      const middle = new Date((start.getTime() + end.getTime()) / 2);
+      const ra = lstHours(middle, -122.42);
+      await page.route('**/api/telescopes', r => r.fulfill(json(ok([{
+        id: 'rig-1', name: 'Garden rig', model: 'ASIAIR', hostname: '', kind, color: '#06b6d4', archivedAt: null,
+        isActive: true, opticalConfigs: [], activeOpticalConfigId: null, transports: [],
+        rig: { sensorType: 'mono', filters: ['Ha'], mount: null, flipPauseMinutes: null },
+      }]))));
+      await page.route('**/api/planned-sessions**', route => {
+        if (route.request().method() !== 'GET') return route.fulfill(json(ok({ id: 1 })));
+        return route.fulfill(json(ok([{
+          id: 1, objectId: 'M42', objectName: 'Orion Nebula', ra, dec: -5.4,
+          startTime: start.toISOString(), endTime: end.toISOString(), notes: '', framingSetup: null,
+          createdAt: start.toISOString(), updatedAt: start.toISOString(),
+        }])));
+      });
+      await page.reload();
+    }
+
+    test('an ASIAIR block shows where the target crosses the meridian and the pause it costs', async ({ page }) => {
+      await planBlock(page, 'asiair');
+      await expect(page.locator('[data-meridian-flip]')).toHaveCount(1);
+      await expect(page.getByText(/^Flip \d{2}:\d{2} · −10 min$/)).toBeVisible();
+    });
+
+    test('a smart telescope block has no flip', async ({ page }) => {
+      await planBlock(page, 'seestar-s50');
+      await expect(page.getByText('Orion Nebula').first()).toBeVisible();
+      await expect(page.locator('[data-meridian-flip]')).toHaveCount(0);
+    });
   });
 
   test('the rating key explains the night strip', async ({ page }) => {

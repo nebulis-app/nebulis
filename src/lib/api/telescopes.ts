@@ -374,6 +374,20 @@ export const deleteProfileTransport = (profileId: string, transportId: string) =
 // on the same OTA. Manage them from AddTelescopeModal in edit mode; pick
 // which is active via updateTelescope's `activeOpticalConfigId`.
 
+/** What a telescope gathers in a night and keeps (server/lib/trainRate.ts). */
+export interface TelescopeNightRate {
+  telescopeId: string;
+  nights: number;
+  /** Median seconds of light subs per night; null below 2 nights. */
+  medianNightSec: number | null;
+  reviewedFrames: number;
+  /** Share of reviewed subs kept; null below 20 reviewed. */
+  keptRatio: number | null;
+}
+
+export const getTelescopeNightRate = (profileId: string) =>
+  fetchJSON<TelescopeNightRate>(`/telescopes/${encodeURIComponent(profileId)}/night-rate`);
+
 export const saveTelescopeRig = (profileId: string, rig: TelescopeRig) =>
   fetchJSON<TelescopeRig>(`/telescopes/${encodeURIComponent(profileId)}/rig`, {
     method: 'PUT',

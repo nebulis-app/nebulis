@@ -438,7 +438,11 @@
     "title": "{{filter}}: {{done}} of {{goal}}",
     "noFilter": "No filter",
     "complete": "Goals reached",
-    "completeTitle": "Every integration goal on this object is reached"
+    "completeTitle": "Every integration goal on this object is reached",
+    "nights_one": "≈ {{count}} night",
+    "nights_other": "≈ {{count}} nights",
+    "nightsTitle": "Based on {{duration}} of subs on a typical night with the planner's telescope",
+    "nightsTitleKept": "Based on {{duration}} of kept subs on a typical night with the planner's telescope ({{pct}} % of reviewed subs kept)"
   },
   "planOutcome": {
     "status": {

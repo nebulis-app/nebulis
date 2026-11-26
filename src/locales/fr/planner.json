@@ -438,7 +438,11 @@
     "title": "{{filter}} : {{done}} sur {{goal}}",
     "noFilter": "Sans filtre",
     "complete": "Objectifs atteints",
-    "completeTitle": "Tous les objectifs d’intégration de cet objet sont atteints"
+    "completeTitle": "Tous les objectifs d’intégration de cet objet sont atteints",
+    "nights_one": "≈ {{count}} nuit",
+    "nights_other": "≈ {{count}} nuits",
+    "nightsTitle": "Sur la base de {{duration}} de poses lors d'une nuit typique avec le télescope du planificateur",
+    "nightsTitleKept": "Sur la base de {{duration}} de poses conservées lors d'une nuit typique avec le télescope du planificateur ({{pct}} % des poses examinées conservées)"
   },
   "planOutcome": {
     "status": {

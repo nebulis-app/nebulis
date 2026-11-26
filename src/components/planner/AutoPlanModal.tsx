@@ -26,6 +26,9 @@ import { mergeSkipped } from '../../lib/planWeather';
 import type { PlannerTarget } from '../../lib/api/planner';
 import type { VisibleSkyMap } from '../../lib/visibilityCheck';
 import { BodyScrollLock } from '../ui/BodyScrollLock';
+import { FitBadge } from '../FitBadge';
+import { usePlannerTelescope } from '../../hooks/usePlannerTelescope';
+import { classifyFit, fitDisplayStrings, objectExtentArcmin, type FitAssessment } from '../../lib/telescopeFov';
 
 interface AutoPlanModalProps {
   targets: PlannerTarget[];
@@ -154,8 +157,26 @@ export function AutoPlanModal({
   // favour unfinished campaigns and leave finished ones out. The switch only
   // shows when at least one candidate has goals.
   const progressFor = useIntegrationProgress();
+
+  // How each target fills the field of the telescope the planner follows, sent with it so the plan leans toward
+  // what frames well and away from what would be lost in the frame or need a mosaic.
+  const { t: tCatalogs } = useTranslation('catalogs');
+  const { fov, telescopeId } = usePlannerTelescope();
+  const fitById = useMemo(() => {
+    const map = new Map<string, FitAssessment>();
+    for (const target of targets) {
+      const fit = classifyFit(fov, objectExtentArcmin(null, target.majorAxisArcmin));
+      if (fit) map.set(target.id, fit);
+    }
+    return map;
+  }, [targets, fov]);
+  const fittedTargets = useMemo<PlanCandidate[]>(
+    () => targets.map(target => ({ ...target, frameFit: fitById.get(target.id)?.tag ?? null })),
+    [targets, fitById],
+  );
+
   const targetsWithGoals = useMemo<PlanCandidate[]>(
-    () => targets.map(target => {
+    () => fittedTargets.map(target => {
       const progress = progressFor(target.id);
       if (!progress) return target;
       return {
@@ -163,7 +184,7 @@ export function AutoPlanModal({
         goals: progress.filters.map(f => ({ filter: f.filter, goalSec: f.goalSec, remainingSec: f.remainingSec })),
       };
     }),
-    [targets, progressFor],
+    [fittedTargets, progressFor],
   );
   const anyGoals = useMemo(() => targetsWithGoals.some(t => t.goals), [targetsWithGoals]);
 
@@ -183,7 +204,7 @@ export function AutoPlanModal({
           : objectCount;
 
       return generateNightPlanWithWeather({
-        targets: anyGoals && favorGoals ? targetsWithGoals : targets,
+        targets: anyGoals && favorGoals ? targetsWithGoals : fittedTargets,
         observerLat,
         observerLon,
         windowStart: new Date(s),
@@ -202,9 +223,10 @@ export function AutoPlanModal({
         favorGoals: anyGoals && favorGoals,
         // Unchecked leaves it out, so a narrowband filter in Gear still counts.
         narrowbandCapable: narrowband ? true : undefined,
+        telescopeId: telescopeId ?? undefined,
       });
     },
-    [startMs, endMs, splitMode, minutesPerObject, objectCount, focus, unimagedOnly, avoidClouds, maxCloudCover, narrowband, targets, targetsWithGoals, anyGoals, favorGoals, observerLat, observerLon, minAlt, moonIllumination, visibleSkyMap],
+    [startMs, endMs, splitMode, minutesPerObject, objectCount, focus, unimagedOnly, avoidClouds, maxCloudCover, narrowband, fittedTargets, targetsWithGoals, anyGoals, favorGoals, observerLat, observerLon, minAlt, moonIllumination, visibleSkyMap, telescopeId],
   );
 
   /** Every object any take of this plan has shown, so a shuffle can move on from them. */
@@ -575,8 +597,14 @@ export function AutoPlanModal({
                         <div className="font-medium text-sm truncate">
                           {formatObjectName(b.target.id, b.target.name)}
                         </div>
-                        <div className={`text-xs truncate ${subtle}`}>
-                          {b.target.type}
+                        <div className={`flex items-center gap-1.5 text-xs ${subtle}`}>
+                          <span className="truncate">{b.target.type}</span>
+                          {(() => {
+                            const fit = fitById.get(b.target.id);
+                            if (!fit) return null;
+                            const strings = fitDisplayStrings(fit, tCatalogs);
+                            return <FitBadge tag={fit.tag} label={strings.short} title={strings.label} isDark={isDark} />;
+                          })()}
                         </div>
                         <div className="flex items-center gap-3 mt-1 text-[0.6875rem]">
                           <span className="inline-flex items-center gap-1 text-accent-500">

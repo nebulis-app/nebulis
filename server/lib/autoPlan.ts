@@ -54,6 +54,31 @@ export interface PlanCandidate {
   /** Integration goals of the object, per filter (see
    *  server/lib/library/integration.ts). Only read when `favorGoals` is on. */
   goals?: GoalProgress[];
+  /** How the object sits in the field of the telescope that will shoot it (the client's `classifyFit`, in
+   *  src/lib/telescopeFov.ts). Absent or null when the client sent no field or the object's size is unknown: no
+   *  effect on the score. */
+  frameFit?: FrameFit | null;
+}
+
+export type FrameFit = 'fits' | 'tight' | 'tiny' | 'mosaic';
+
+/**
+ * Score for how an object fills the frame, in degrees of altitude-equivalent. A comfortable fit gains a little; a
+ * tight crop is neutral; an object lost in the frame or needing a mosaic loses ground, so on the same night with the
+ * same sky a wide-field rig gets the big nebulae and a long focal length gets the small galaxies. Smaller than the
+ * popularity bonus and far smaller than a real altitude gap, so it orders comparable targets rather than sending the
+ * plan to a low one.
+ */
+export const FRAME_FIT_SCORE: Record<FrameFit, number> = { fits: 10, tight: 0, tiny: -15, mosaic: -20 };
+
+/** Moon illumination (%) from which narrowband targets start to gain, and the most they gain at full Moon. */
+export const BRIGHT_MOON_FROM = 50;
+export const BRIGHT_MOON_NARROWBAND_BONUS = 20;
+
+/** The narrowband bonus for a slot: nothing below BRIGHT_MOON_FROM, rising to the full bonus at a full Moon. */
+export function brightMoonNarrowbandBonus(moonIllumination: number): number {
+  if (moonIllumination <= BRIGHT_MOON_FROM) return 0;
+  return BRIGHT_MOON_NARROWBAND_BONUS * Math.min(1, (moonIllumination - BRIGHT_MOON_FROM) / (100 - BRIGHT_MOON_FROM));
 }
 
 export interface GoalProgress {
@@ -102,6 +127,9 @@ export interface AutoPlanParams {
   /** Whether the user can shoot narrowband (a dual/tri/narrow-band filter in their gear). Only `false` changes
    *  anything: objects are then judged broadband whatever their type, as before filter-aware planning. */
   narrowbandCapable?: boolean;
+  /** Lean toward narrowband targets as the Moon gets brighter. Set when the plan is for a known telescope that can
+   *  shoot narrowband (see server/lib/trainRate.ts); off otherwise, so a plan with no telescope is unchanged. */
+  preferNarrowbandOnBrightMoon?: boolean;
 }
 
 export interface SkippedSlot {
@@ -314,13 +342,17 @@ export function generateNightPlanDetailed(p: AutoPlanParams): NightPlanResult {
       //     toward recognizable targets over obscure catalog entries
       //   + seeing fit: small targets gain in steady air (forecast only)
       //   + goal bonus: time left toward integration goals (favorGoals only)
+      //   + frame fit: how the object fills the telescope's field (only when the client sent it)
+      //   + bright-Moon narrowband bonus (only for a telescope that can shoot narrowband)
       //   + jitter for "Shuffle", minus AVOID_PENALTY for what the last take already showed
       // Already-imaged status has no score effect here: unimagedOnly (above)
       // is the sole switch for whether imaged objects are eligible at all.
       const moonPenalty = moon.verdict === 'caution' ? 10 : 0;
       const popularBonus = t.commonNames.length > 0 ? 30 : 0;
       const bonus = goalBonus(goals);
-      const score = meanAlt - moonPenalty + popularBonus + seeingAdjustment(sky, t) + bonus
+      const fitScore = t.frameFit ? FRAME_FIT_SCORE[t.frameFit] : 0;
+      const moonBandBonus = p.preferNarrowbandOnBrightMoon && band === 'narrowband' ? brightMoonNarrowbandBonus(p.moonIllumination) : 0;
+      const score = meanAlt - moonPenalty + popularBonus + seeingAdjustment(sky, t) + bonus + fitScore + moonBandBonus
         + (jitter > 0 ? (Math.random() * 2 - 1) * jitter : 0)
         - (avoid.has(t.id) ? AVOID_PENALTY : 0);
       const candidate = { target: t, meanAlt, moon, band, goal, score, boosted: bonus > 0 };

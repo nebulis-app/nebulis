@@ -438,7 +438,11 @@
     "title": "{{filter}}: {{done}} de {{goal}}",
     "noFilter": "Sin filtro",
     "complete": "Objetivos alcanzados",
-    "completeTitle": "Todos los objetivos de integración de este objeto se han alcanzado"
+    "completeTitle": "Todos los objetivos de integración de este objeto se han alcanzado",
+    "nights_one": "≈ {{count}} noche",
+    "nights_other": "≈ {{count}} noches",
+    "nightsTitle": "Basado en {{duration}} de tomas en una noche típica con el telescopio del planificador",
+    "nightsTitleKept": "Basado en {{duration}} de tomas conservadas en una noche típica con el telescopio del planificador ({{pct}} % de las tomas revisadas conservadas)"
   },
   "planOutcome": {
     "status": {

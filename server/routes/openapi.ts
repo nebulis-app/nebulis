@@ -1248,6 +1248,7 @@ export const spec = {
           commonNames:     { type: 'array', items: { type: 'string' } },
           isAlreadyImaged: { type: 'boolean' },
           goals:           { type: 'array', maxItems: 50, items: { $ref: '#/components/schemas/PlannerGoalInput' } },
+          frameFit:        nullable({ type: 'string', enum: ['fits', 'tight', 'tiny', 'mosaic'], description: 'How the object fills the shooting telescope\'s field. A comfortable fit gains a little in the plan, a tiny object or one needing a mosaic loses some. Omitted: no effect.' }),
         },
       },
       PlannerPlanInput: {
@@ -1276,6 +1277,7 @@ export const spec = {
           maxCloudCover:    { type: 'number', minimum: 0, maximum: 100 },
           favorGoals:       { type: 'boolean' },
           narrowbandCapable: { type: 'boolean' },
+          telescopeId:      { type: 'string', maxLength: 200, description: 'The telescope that will shoot. Its own filters (Gear assigned to it, its rig, what it has shot through) decide narrowband capability, and narrowband targets gain as the Moon brightens when it has them. Omitted: planned as before.' },
         },
       },
       PlannerSky: {
@@ -4936,6 +4938,34 @@ export const spec = {
         parameters: [idParam],
         requestBody: jsonBody('TelescopeRigInput'),
         responses: { 200: jsonResponse('Saved rig', 'TelescopeRig'), 404: notFound, 422: { description: 'Validation error' } },
+      },
+    },
+    '/telescopes/{id}/night-rate': {
+      get: {
+        summary: 'What the telescope gathers in a night',
+        tags: ['Telescope'],
+        description: 'Median seconds of light subs per observing night from this telescope (null below 2 nights) and the share of subs kept in Frame Analysis (null below 20 reviewed). Used to estimate how many nights an integration goal still needs.',
+        parameters: [idParam],
+        responses: {
+          200: {
+            description: 'The night rate',
+            content: { 'application/json': { schema: { type: 'object', properties: {
+              ok: { type: 'boolean' },
+              data: {
+                type: 'object',
+                required: ['telescopeId', 'nights', 'medianNightSec', 'reviewedFrames', 'keptRatio'],
+                properties: {
+                  telescopeId:    { type: 'string' },
+                  nights:         { type: 'integer' },
+                  medianNightSec: nullable({ type: 'integer' }),
+                  reviewedFrames: { type: 'integer' },
+                  keptRatio:      nullable({ type: 'number', minimum: 0, maximum: 1 }),
+                },
+              },
+            } } } },
+          },
+          404: notFound,
+        },
       },
     },
     '/telescopes/{id}/photo': {

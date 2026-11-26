@@ -46,6 +46,8 @@ import {
 } from '../lib/forecastCache.js';
 import { log } from '../lib/logger.js';
 import { hasNarrowbandCapableFilter } from '../lib/gear.js';
+import { narrowbandCapableFor } from '../lib/trainRate.js';
+import { getProfileById } from '../lib/telescopes.js';
 import { checkMoonProximity, moonThresholdForIllumination, moonVerdictFor } from '../lib/moonProximity.js';
 import { checkBlockVisibility, type VisibleSkyMap } from '../lib/visibilityCheck.js';
 import { computeBestTonightScore } from '../lib/bestTonightScore.js';
@@ -444,6 +446,8 @@ const PlanCandidateSchema = z.object({
     goalSec: z.number().min(0),
     remainingSec: z.number().min(0),
   })).max(50).optional(),
+  /** How the object fills the shooting telescope's field (client `classifyFit`). Omitted: no effect. */
+  frameFit: z.enum(['fits', 'tight', 'tiny', 'mosaic']).nullable().optional(),
 });
 
 const AutoPlanBodySchema = z.object({
@@ -480,6 +484,9 @@ const AutoPlanBodySchema = z.object({
   favorGoals: z.boolean().optional(),
   /** Overrides the gear lookup: can this user shoot narrowband? Absent = ask the Gear inventory. */
   narrowbandCapable: z.boolean().optional(),
+  /** The telescope that will shoot (Settings → Telescopes profile id). Its own filters decide narrowband, and
+   *  narrowband targets gain on a bright Moon when it has them. Omitted: planned as before. */
+  telescopeId: z.string().max(200).optional(),
 });
 
 /**
@@ -534,7 +541,8 @@ router.post('/plan', async (req: Request, res: Response) => {
     return;
   }
 
-  const narrowbandCapable = body.narrowbandCapable ?? hasNarrowbandCapableFilter();
+  const telescope = body.telescopeId ? getProfileById(body.telescopeId) : null;
+  const narrowbandCapable = body.narrowbandCapable ?? (telescope ? narrowbandCapableFor(telescope.id) : hasNarrowbandCapableFilter());
   const forecast = body.useForecast ? await forecastHoursFor(body.observerLat, body.observerLon) : null;
   const indexedHours = forecast ? indexForecastHours(forecast.hours) : null;
   const maxCloudCover = body.maxCloudCover ?? DEFAULT_MAX_CLOUD_COVER;
@@ -559,6 +567,7 @@ router.post('/plan', async (req: Request, res: Response) => {
     avoidIds: body.avoidIds,
     favorGoals: body.favorGoals,
     narrowbandCapable,
+    preferNarrowbandOnBrightMoon: telescope != null && narrowbandCapable,
   });
 
   res.apiSuccess(
@@ -589,6 +598,7 @@ router.post('/plan', async (req: Request, res: Response) => {
         })),
       },
       narrowbandCapable,
+      telescopeId: telescope?.id ?? null,
       goals: {
         requested: body.favorGoals === true,
         complete: goalsComplete.map(t => ({ id: t.id, name: t.name })),

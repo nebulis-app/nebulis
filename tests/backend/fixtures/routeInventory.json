@@ -454,6 +454,29 @@
   },
   {
     "method": "GET",
+    "path": "/dso/comets",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/dso/comets",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/dso/comets/:kind/:designation",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
     "path": "/dso/curve/:objectId",
     "guards": [
       "<anonymous>"
@@ -1908,6 +1931,29 @@
     "method": "GET",
     "path": "/planner/:id",
     "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/planner/comets",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/planner/comets",
+    "guards": [
+      "requireAdmin",
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/planner/comets/:kind/:designation",
+    "guards": [
+      "requireAdmin",
       "<anonymous>"
     ]
   },

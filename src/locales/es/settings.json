@@ -332,6 +332,10 @@
       "autoMeasure": {
         "label": "Analizar fotogramas tras importar",
         "description": "Puntúa en segundo plano cada fotograma en bruto nuevo cuando termina una importación, para que la lista de subfotogramas ya esté completa al abrir una noche. Lee cada archivo FITS, por eso viene desactivado. Abrir una noche sigue analizándola bajo demanda."
+      },
+      "comets": {
+        "label": "Cometas y asteroides en el planificador",
+        "description": "El planificador puede sugerir cometas y asteroides brillantes: los que añada en su pestaña Cometas y los cometas que ya están en su biblioteca. Pregunta al servicio gratuito Horizons del JPL de la NASA dónde estará cada uno desde su sitio durante las próximas dos semanas, una vez al día por cometa, y guarda la respuesta."
       }
     },
     "calibration": {
@@ -516,7 +520,8 @@
       "legacySurvey": "Segundo respaldo de imágenes del cielo donde SDSS no tiene cobertura. Cubre solo parte del cielo.",
       "nominatim": "Convierte las coordenadas de tu lugar de observación en un nombre de lugar.",
       "nebulisDownloads": "Paquetes de catálogo y actualizaciones de la app. Nebulis comprueba aquí si hay versiones nuevas y las descarga desde aquí.",
-      "nebulisPush": "Entrega las alertas al iPhone, solo si las activas."
+      "nebulisPush": "Entrega las alertas al iPhone, solo si las activas.",
+      "horizons": "Posiciones y brillo previsto de cometas y asteroides desde su sitio, para la pestaña Cometas del planificador"
     }
   },
   "siteManager": {

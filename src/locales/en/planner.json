@@ -190,7 +190,8 @@
     "orderBestTitle": "Ordered by Best tonight: how well placed a target is, and how rewarding it is to shoot",
     "orderConditionsTitle": "Ordered by Best conditions: how well placed a target is tonight",
     "openExploreTitle": "Find more targets for this night in Explore",
-    "findMoreInExplore": "Find more in Explore"
+    "findMoreInExplore": "Find more in Explore",
+    "filterComets": "Comets"
   },
   "nightStrip": {
     "legendLabel": "Rating key",
@@ -542,5 +543,31 @@
       "stop": "Stop"
     },
     "timeRange": "{{start}} to {{end}}"
+  },
+  "comets": {
+    "disabled": "Turn on Comets and asteroids in Settings → Library to see where they are.",
+    "addLabel": "Add a comet or asteroid",
+    "addPlaceholder": "C/2023 A3, 12P, 4 Vesta…",
+    "add": "Add",
+    "loading": "Asking JPL Horizons…",
+    "empty": "No comet or asteroid yet. Add one by its designation, number or name.",
+    "kind": {
+      "comet": "Comet",
+      "asteroid": "Asteroid"
+    },
+    "inLibrary": "In your library",
+    "jplTitle": "Orbit and ephemeris on JPL's Small-Body Database",
+    "remove": "Remove {{name}}",
+    "notFound": "JPL Horizons knows no body by that designation.",
+    "unavailable": "JPL Horizons could not be reached. Try again later.",
+    "tonight": "Tonight: up to {{alt}}° at {{time}}",
+    "tonightMag": "Tonight: up to {{alt}}° at {{time}}, magnitude {{mag}}",
+    "nextUp": "Not high enough tonight. Next: {{date}}, up to {{alt}}°",
+    "notUp": "Not high enough in the dark over the next two weeks.",
+    "bestNights": "Nights it is high enough",
+    "nightTitle": "Best at {{time}}, Moon {{moon}} % lit",
+    "objectTitle": "Where it is",
+    "openPlanner": "Plan it",
+    "ephemeris": "Ephemeris of {{designation}} (JPL)"
   }
 }

@@ -1455,6 +1455,15 @@ db.exec(`
   }
 }
 
+// Settings → Library → "Comets and asteroids in the planner". Off by default: it asks a third-party service
+// (JPL Horizons) for their positions from the site.
+{
+  const cometCols = db.prepare<[], { name: string }>('PRAGMA table_info(appSettings)').all();
+  if (!cometCols.some(c => c.name === 'cometEphemerides')) {
+    db.prepare('ALTER TABLE appSettings ADD COLUMN cometEphemerides INTEGER NOT NULL DEFAULT 0').run();
+  }
+}
+
 // Settings → Library → "Analyze frames after import". Off by default: measuring reads every FITS frame, so it is
 // opt-in. Opening a night's frame list still measures that night on demand.
 {

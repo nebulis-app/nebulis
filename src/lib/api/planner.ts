@@ -202,6 +202,74 @@ export type DsoSort = 'name' | 'magnitude';
 
 // Auto-plan ("Plan My Night") — the scheduling algorithm runs server-side so
 // every client (web, iOS, and eventually Android) produces the same plan for
+// ── Comets and bright asteroids (JPL Horizons) ──
+// Mirrors server/lib/horizons.ts and server/lib/cometPlanner.ts.
+
+export type SmallBodyKind = 'comet' | 'asteroid';
+
+export interface SmallBody {
+  designation: string;
+  kind: SmallBodyKind;
+  label: string;
+  source: 'watchlist' | 'library';
+  libraryObjectId: string | null;
+}
+
+export interface EphemerisRow {
+  t: string;
+  /** Hours, J2000. */
+  ra: number;
+  dec: number;
+  az: number;
+  alt: number;
+  mag: number | null;
+}
+
+export interface BodyNight {
+  start: string;
+  end: string;
+  maxAlt: number | null;
+  bestTime: string | null;
+  magnitude: number | null;
+  ra: number | null;
+  dec: number | null;
+  moonIllumination: number;
+  moonVerdict: 'ok' | 'caution' | 'warning' | null;
+  observable: boolean;
+}
+
+export interface CometEntry {
+  body: SmallBody;
+  /** idle: the setting is off; not-found: Horizons knows no such body; unavailable: Horizons failed (see message). */
+  status: 'idle' | 'ok' | 'not-found' | 'unavailable';
+  message: string | null;
+  /** Tonight's planner target, when the body clears the floor tonight. */
+  target: PlannerTarget | null;
+  nights: BodyNight[];
+  /** Hourly positions over tonight, for a block placed away from the best time. */
+  tonight: EphemerisRow[];
+}
+
+export interface CometsResponse {
+  enabled: boolean;
+  locationSet: boolean;
+  bodies: CometEntry[];
+}
+
+export const getPlannerComets = (opts?: { date?: string; siteId?: string }) => {
+  const params = new URLSearchParams();
+  if (opts?.date) params.set('date', opts.date);
+  if (opts?.siteId) params.set('siteId', opts.siteId);
+  const qs = params.toString();
+  return fetchJSON<CometsResponse>(`/planner/comets${qs ? `?${qs}` : ''}`);
+};
+
+export const addPlannerComet = (input: string) =>
+  fetchJSON<SmallBody>('/planner/comets', { method: 'POST', body: JSON.stringify({ input }) });
+
+export const removePlannerComet = (kind: SmallBodyKind, designation: string) =>
+  fetchJSON<{ removed: boolean }>(`/planner/comets/${kind}/${encodeURIComponent(designation)}`, { method: 'DELETE' });
+
 // the same inputs. See server/lib/autoPlan.ts for the canonical algorithm.
 
 export interface AutoPlanRequest {

@@ -240,6 +240,104 @@ test.describe('Planner Page', () => {
     await expect(page.getByRole('button', { name: 'Share', exact: true })).toBeEnabled();
   });
 
+  test.describe('comets tab', () => {
+    // Tonight's hourly positions: the comet drifts 0.1 h of RA an hour, so a block's position depends on its time.
+    function cometData(enabled = true) {
+      const t0 = Math.floor(Date.now() / 3_600_000) * 3_600_000 - 3_600_000;
+      const tonight = Array.from({ length: 12 }, (_, i) => ({
+        t: new Date(t0 + i * 3_600_000).toISOString(), ra: 10 + i * 0.1, dec: 20 + i * 0.05, az: 120 + i * 10, alt: 30 + i, mag: 6.1,
+      }));
+      const best = new Date(t0 + 4 * 3_600_000).toISOString();
+      const night = (dayOffset: number, alt: number, observable: boolean) => ({
+        start: new Date(t0 + dayOffset * 86_400_000).toISOString(), end: new Date(t0 + dayOffset * 86_400_000 + 8 * 3_600_000).toISOString(),
+        maxAlt: alt, bestTime: best, magnitude: 6.1, ra: 10.4, dec: 20.2, moonIllumination: 30, moonVerdict: 'ok', observable,
+      });
+      return ok({
+        enabled,
+        locationSet: true,
+        bodies: enabled ? [
+          {
+            body: { designation: 'C/2023 A3', kind: 'comet', label: 'C/2023 A3 (Tsuchinshan-ATLAS)', source: 'watchlist', libraryObjectId: null },
+            status: 'ok', message: null,
+            target: {
+              id: 'C/2023 A3', ngcName: 'C/2023 A3', name: 'C/2023 A3 (Tsuchinshan-ATLAS)', type: 'Comet', typeCode: 'Comet', constellation: null,
+              magnitude: 6.1, majorAxisArcmin: null, ra: 10.4, dec: 20.2, commonNames: ['C/2023 A3 (Tsuchinshan-ATLAS)'], aliases: [],
+              altNow: 31, azNow: 130, maxAlt: 41, maxAltTime: best, risesAt: tonight[0].t, setsAt: tonight[11].t,
+              isInWishlist: false, isAlreadyImaged: false, libraryObjectId: null,
+            },
+            nights: [night(0, 41, true), night(1, 43, true)],
+            tonight,
+          },
+          {
+            body: { designation: '12P', kind: 'comet', label: '12P/Pons-Brooks', source: 'library', libraryObjectId: '12P_Pons-Brooks' },
+            status: 'ok', message: null, target: null, nights: [night(0, 3, false), night(3, 25, true)], tonight: [],
+          },
+          {
+            body: { designation: 'C/2099 Y9', kind: 'comet', label: 'C/2099 Y9', source: 'watchlist', libraryObjectId: null },
+            status: 'not-found', message: 'Horizons knows no body by that designation', target: null, nights: [], tonight: [],
+          },
+        ] : [],
+      });
+    }
+
+    async function openComets(page: import('@playwright/test').Page, enabled = true) {
+      const posted: { comets: unknown[]; sessions: Record<string, unknown>[] } = { comets: [], sessions: [] };
+      await page.route('**/api/planner/comets**', route => {
+        if (route.request().method() === 'POST') {
+          posted.comets.push(route.request().postDataJSON());
+          return route.fulfill(json(ok({ designation: 'C/2023 A3', kind: 'comet', label: 'C/2023 A3', source: 'watchlist', libraryObjectId: null })));
+        }
+        return route.fulfill(json(cometData(enabled)));
+      });
+      await page.route('**/api/planned-sessions**', route => {
+        if (route.request().method() === 'POST') {
+          posted.sessions.push(route.request().postDataJSON());
+          return route.fulfill(json(ok({ id: 77, ...route.request().postDataJSON() })));
+        }
+        return route.fulfill(json(ok([])));
+      });
+      await page.reload();
+      await page.getByRole('button', { name: 'Comets', exact: true }).click();
+      return posted;
+    }
+
+    test('lists tonight, the next nights, and what Horizons does not know; only comets in the list', async ({ page }) => {
+      await openComets(page);
+      const panel = page.locator('[data-comets-panel]');
+      await expect(panel.locator('[data-comet="C/2023 A3"]')).toContainText(/Tonight: up to 41° at \d{2}:\d{2}, magnitude 6\.1/);
+      await expect(panel.locator('[data-comet="12P"]')).toContainText('Not high enough tonight. Next:');
+      await expect(panel.locator('[data-comet="12P"]').getByRole('link', { name: 'In your library' })).toHaveAttribute('href', '/object/12P_Pons-Brooks');
+      await expect(panel.locator('[data-comet="C/2099 Y9"]')).toContainText('JPL Horizons knows no body by that designation.');
+      await expect(page.locator('button[aria-label="Add C/2023 A3 (Tsuchinshan-ATLAS) to the schedule"]')).toBeVisible();
+      await expect(page.getByText('M42 - Orion Nebula')).toHaveCount(0);
+    });
+
+    test('adds a comet by designation', async ({ page }) => {
+      const posted = await openComets(page);
+      await page.getByLabel('Add a comet or asteroid').fill('12P/Pons-Brooks');
+      await page.getByRole('button', { name: 'Add', exact: true }).click();
+      await expect.poll(() => posted.comets.length).toBe(1);
+      expect(posted.comets[0]).toEqual({ input: '12P/Pons-Brooks' });
+    });
+
+    test("a comet's block takes the comet's position at the block's middle", async ({ page }) => {
+      const posted = await openComets(page);
+      await page.locator('button[aria-label="Add C/2023 A3 (Tsuchinshan-ATLAS) to the schedule"]').click();
+      await expect.poll(() => posted.sessions.length).toBe(1);
+      const block = posted.sessions[0] as { ra: number; dec: number; startTime: string; endTime: string };
+      const t0 = Math.floor(Date.now() / 3_600_000) * 3_600_000 - 3_600_000;
+      const middle = (new Date(block.startTime).getTime() + new Date(block.endTime).getTime()) / 2;
+      const hours = (middle - t0) / 3_600_000;
+      expect(block.ra).toBeCloseTo(10 + hours * 0.1, 3);
+      expect(block.dec).toBeCloseTo(20 + hours * 0.05, 3);
+    });
+
+    test('says how to turn it on when the setting is off', async ({ page }) => {
+      await openComets(page, false);
+      await expect(page.locator('[data-comets-panel]')).toContainText('Turn on Comets and asteroids in Settings → Library');
+    });
+  });
+
   test('the rating key explains the night strip', async ({ page }) => {
     await page.getByRole('button', { name: 'Rating key', exact: true }).click();
     const key = page.getByRole('dialog', { name: 'Rating key' });

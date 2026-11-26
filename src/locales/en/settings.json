@@ -332,6 +332,10 @@
       "autoMeasure": {
         "label": "Analyze frames after import",
         "description": "Scores every new raw frame in the background once an import has finished, so the Subframes list is already filled in when you open a night. It reads each FITS file, so it is off by default. Opening a night still analyzes it on demand either way."
+      },
+      "comets": {
+        "label": "Comets and asteroids in the planner",
+        "description": "The planner can suggest comets and bright asteroids: the ones you add on its Comets tab, and the comets already in your library. It asks NASA JPL's free Horizons service where each one will be from your site over the next two weeks, once a day per comet, and keeps the answer."
       }
     },
     "calibration": {
@@ -516,7 +520,8 @@
       "legacySurvey": "Second backup for sky pictures where SDSS has no coverage. Covers only part of the sky.",
       "nominatim": "Turns the coordinates of your observing site into a place name.",
       "nebulisDownloads": "Catalog packs and app updates. Nebulis checks here for new versions and downloads them from here.",
-      "nebulisPush": "Delivers iPhone alerts, only when you turn them on."
+      "nebulisPush": "Delivers iPhone alerts, only when you turn them on.",
+      "horizons": "Comet and asteroid positions and predicted brightness from your site, for the planner's Comets tab"
     }
   },
   "siteManager": {

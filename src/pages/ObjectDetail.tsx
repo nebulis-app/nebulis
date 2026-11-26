@@ -55,6 +55,7 @@ import { ObjectAboutSection } from '../components/objectDetail/ObjectAboutSectio
 import { ObjectProjectPanel } from '../components/objectDetail/ObjectProjectPanel';
 import { ObjectHero } from '../components/objectDetail/ObjectHero';
 import { TonightPanel } from '../components/objectDetail/TonightPanel';
+import { CometPanel } from '../components/objectDetail/CometPanel';
 import { ObservationsSection } from '../components/objectDetail/ObservationsSection';
 import { ObjectTrashModal } from '../components/objectDetail/ObjectTrashModal';
 import { DangerConfirm } from '../components/objectDetail/DangerConfirm';
@@ -694,9 +695,12 @@ export function ObjectDetail() {
   }
 
   // Visibility-tonight math doesn't apply to a non-celestial synthetic target.
+  // A comet has no catalog position: its panel comes from its ephemeris instead.
   const heroTonight = isSyntheticDwarfObject
     ? null
-    : (
+    : baseObject?.type === 'Comet' && baseObjectId
+      ? <CometPanel libraryObjectId={baseObjectId} timeZone={site?.timezone || undefined} />
+      : (
       <TonightPanel variant="hero" raHours={raHours} decDegrees={decDegrees} site={site}>
         {/* What to shoot it through sits with whether you can shoot it at
             all: both are planning answers, and the hero is dark in every

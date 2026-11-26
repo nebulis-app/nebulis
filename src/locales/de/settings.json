@@ -332,6 +332,10 @@
       "autoMeasure": {
         "label": "Frames nach dem Import analysieren",
         "description": "Bewertet jedes neue Rohbild im Hintergrund, sobald ein Import abgeschlossen ist, damit die Subframe-Liste beim Öffnen einer Nacht schon gefüllt ist. Jede FITS-Datei wird gelesen, deshalb ist die Option standardmäßig aus. Beim Öffnen einer Nacht wird sie weiterhin bei Bedarf analysiert."
+      },
+      "comets": {
+        "label": "Kometen und Asteroiden im Planer",
+        "description": "Der Planer kann Kometen und helle Asteroiden vorschlagen: die, die Sie im Tab Kometen hinzufügen, und die Kometen, die schon in Ihrer Bibliothek sind. Er fragt den kostenlosen Dienst Horizons des NASA-JPL, wo jeder in den nächsten zwei Wochen von Ihrem Standort aus stehen wird, einmal pro Tag und Komet, und speichert die Antwort."
       }
     },
     "calibration": {
@@ -516,7 +520,8 @@
       "legacySurvey": "Zweiter Ersatz für Himmelsbilder, wo SDSS keine Abdeckung hat. Deckt nur einen Teil des Himmels ab.",
       "nominatim": "Wandelt die Koordinaten deines Beobachtungsstandorts in einen Ortsnamen um.",
       "nebulisDownloads": "Katalogpakete und App-Updates. Nebulis prüft hier auf neue Versionen und lädt sie von hier herunter.",
-      "nebulisPush": "Stellt iPhone-Benachrichtigungen zu, nur wenn du sie aktivierst."
+      "nebulisPush": "Stellt iPhone-Benachrichtigungen zu, nur wenn du sie aktivierst.",
+      "horizons": "Positionen und vorhergesagte Helligkeit von Kometen und Asteroiden von Ihrem Standort aus, für den Tab Kometen des Planers"
     }
   },
   "siteManager": {

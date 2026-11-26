@@ -29,7 +29,11 @@ describe('PixInsight connector packaging', () => {
     expect(read(SOURCE)).toMatch(/^\s*#(engine|feature-id)/m);
   });
 
-  describe.each(PKG_BUILDS)('$name build', ({ script, config, releaseDir }) => {
+  // The installer build scripts and pkg configs are not in every checkout (the public repository does not carry
+  // them), so these checks run where they exist and are skipped, not failed, where they do not.
+  const hasPkgBuilds = PKG_BUILDS.every(b => fs.existsSync(path.join(ROOT, b.script)) && fs.existsSync(path.join(ROOT, b.config)));
+
+  describe.skipIf(!hasPkgBuilds).each(PKG_BUILDS)('$name build', ({ script, config, releaseDir }) => {
     it('build script copies the source script to assets/pixinsight/NebulisConnector.pjsr', () => {
       const src = read(script);
       expect(src).toContain("'assets', 'pixinsight'");

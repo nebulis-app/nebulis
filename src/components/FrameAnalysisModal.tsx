@@ -223,6 +223,7 @@ export function FrameAnalysisModal({ isOpen, onClose, objectId, nights, initialD
     isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
   }`;
   const reference = report?.reference ?? null;
+  const nightSky = report?.sky ?? null;
   const base = 'observationDetail.frameAnalysisModal';
 
   return (
@@ -343,6 +344,18 @@ export function FrameAnalysisModal({ isOpen, onClose, objectId, nights, initialD
                   stars: n0(reference.stars), fwhm: n1(reference.fwhm), elongation: formatNumber(reference.elongation, { maximumFractionDigits: 2 }),
                 })}
                 {(reference.otherFrames ?? 0) > 0 && ` ${t(`${base}.otherNights`, { count: reference.otherFrames })}`}
+              </p>
+            )}
+            {nightSky && (
+              <p className={`mt-1 text-xs ${muted}`} data-night-sky>
+                {nightSky.electronsPerSecond !== null
+                  ? t(`${base}.nightSky`, { value: formatNumber(nightSky.electronsPerSecond, { maximumFractionDigits: 2 }) })
+                  : t(`${base}.nightSkyAdu`, { value: formatNumber(nightSky.aduPerSecond, { maximumFractionDigits: 1 }) })}
+                {nightSky.electronsPerSecondPerArcsec2 !== null && ` ${t(`${base}.nightSkyArcsec`, { value: formatNumber(nightSky.electronsPerSecondPerArcsec2, { maximumFractionDigits: 3 }) })}`}
+                {nightSky.darkest && nightSky.magnitudesBrighter !== null && ' '}
+                {nightSky.darkest && nightSky.magnitudesBrighter !== null && (nightSky.magnitudesBrighter > 0.05
+                  ? t(`${base}.nightSkyBrighter`, { mag: formatNumber(nightSky.magnitudesBrighter, { maximumFractionDigits: 1 }), night: nightSky.darkest.night })
+                  : t(`${base}.nightSkyDarkest`))}
               </p>
             )}
           </>

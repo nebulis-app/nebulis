@@ -529,7 +529,11 @@
         "noise": "Rauschen",
         "signal": "Signal",
         "pixels": "{{value}} px",
-        "times": "{{value}}×"
+        "times": "{{value}}×",
+        "sky": "Himmel",
+        "skyValue": "{{value}} e⁻/s",
+        "skyTitle": "Himmelshintergrund in Elektronen pro Sekunde und Pixel, Pegel von {{bundle}} abgezogen",
+        "skyAdu": "{{value}} ADU/s"
       },
       "reasons": {
         "noStars": "Nur {{stars}} Sterne gefunden, gegenüber etwa {{typical}} in einem typischen Bild dieser Nacht. Der Himmel war bedeckt oder die Optik beschlagen.",
@@ -570,7 +574,12 @@
       "markKeep": "Behalten",
       "markReject": "Verwerfen",
       "followGrade": "Markierung entfernen",
-      "otherNights": "Auch verglichen mit {{count}} Aufnahmen dieses Objekts aus anderen Nächten, mit gleichem Filter, gleicher Belichtung und gleichem Teleskop."
+      "otherNights": "Auch verglichen mit {{count}} Aufnahmen dieses Objekts aus anderen Nächten, mit gleichem Filter, gleicher Belichtung und gleichem Teleskop.",
+      "nightSky": "Himmelshintergrund in dieser Nacht: {{value}} e⁻/s pro Pixel",
+      "nightSkyArcsec": "({{value}} e⁻/s pro Bogensekunde²)",
+      "nightSkyBrighter": "{{mag}} mag heller als am {{night}}, der dunkelsten Nacht mit diesem Filter, dieser Belichtung und diesem Teleskop.",
+      "nightSkyDarkest": "Die dunkelste Nacht mit diesem Filter, dieser Belichtung und diesem Teleskop.",
+      "nightSkyAdu": "Himmelshintergrund in dieser Nacht: {{value}} ADU/s pro Pixel über dem Dark (keine Elektronen: die Wandlertiefe dieser Kamera ist nicht bekannt)"
     },
     "frameList": {
       "notMeasuredTitle": "Öffne die Nacht, um ihre Frames zu messen.",

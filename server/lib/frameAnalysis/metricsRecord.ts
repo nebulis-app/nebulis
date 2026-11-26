@@ -42,7 +42,32 @@ export function coerceMetrics(value: unknown): FrameMetrics | null {
     focal: numberOrNull(rigRaw.focal),
     scale: numberOrNull(rigRaw.scale),
   };
+  let sensor: FrameMetrics['sensor'] = null;
+  if (isRecord(value.sensor)) {
+    const s = value.sensor;
+    sensor = {
+      exposureSec: numberOrNull(s.exposureSec),
+      electronsPerAdu: numberOrNull(s.electronsPerAdu),
+      gain: numberOrNull(s.gain),
+      offset: numberOrNull(s.offset),
+      temperatureC: numberOrNull(s.temperatureC),
+      aduStep: numberOrNull(s.aduStep),
+      binning: numberOrNull(s.binning) ?? 1,
+    };
+  }
+  let sky: FrameMetrics['sky'] = null;
+  if (isRecord(value.sky)) {
+    const k = value.sky;
+    const adu = numberOrNull(k.aduPerSecond), level = numberOrNull(k.darkLevel);
+    if (adu !== null && level !== null && typeof k.darkBundle === 'string') {
+      sky = {
+        aduPerSecond: adu, electronsPerSecond: numberOrNull(k.electronsPerSecond),
+        electronsPerSecondPerArcsec2: numberOrNull(k.electronsPerSecondPerArcsec2), darkLevel: level, darkBundle: k.darkBundle,
+      };
+    }
+  }
   return {
+    sensor, sky,
     width, height, starCount,
     fwhm: numberOrNull(value.fwhm),
     elongation: numberOrNull(value.elongation),

@@ -11,8 +11,11 @@ import { getCatalogEntry } from '../catalogLookup.js';
 import { parseDecToDegs, parseRaToDegs } from '../fitsWcs.js';
 import { getLibraryObjectNames } from '../library/objects.js';
 import { normalizeCatalogId, parseFilename } from '../telescopeFiles.js';
-import { FRAME_METRICS_VERSION, FrameDecodeError, type FrameMetrics, type TargetSpec } from './measure.js';
+import { FRAME_METRICS_VERSION, FrameDecodeError, type FrameMetrics, type FrameSky, type TargetSpec } from './measure.js';
 import { coerceMetrics } from './metricsRecord.js';
+import { getLibraryFileRow, sessionDateForRow } from '../library/libraryFiles.js';
+import { darkLevelFor } from './darkLevel.js';
+import { magnitudesBrighter, median as medianOf, skyFromDark } from './skyBackground.js';
 import { measureOffThread } from './measureOffThread.js';
 import { rankFrames, isFrameKept, focalGroups, type FrameReference, type FrameVerdict } from './ranking.js';
 
@@ -79,6 +82,17 @@ export function targetForFile(relPath: string): TargetSpec | null {
   return { ra, dec, radiusArcmin: entry.majorAxisArcmin / 2 };
 }
 
+/** The absolute sky background of a just-measured frame, from a matching dark. Null when it cannot be had. */
+async function skyFor(metrics: FrameMetrics, abs: string, relPath: string) {
+  if (!metrics.sensor?.exposureSec) return null;
+  try {
+    const dark = await darkLevelFor(abs, relPath.split('/').pop() ?? relPath);
+    return dark ? skyFromDark(metrics, dark.level, dark.bundle) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The measurement of one library file, from the store when the file is unchanged, otherwise read and stored.
  * The reading and the star search run on a worker thread; this thread only touches the database.
@@ -94,6 +108,7 @@ export async function measureLibraryFile(relPath: string, force = false): Promis
     let target: TargetSpec | null = null;
     try { target = targetForFile(relPath); } catch { /* no catalog place: measured without a target */ }
     metrics = await measureOffThread(file.abs, target);
+    metrics = { ...metrics, sky: await skyFor(metrics, file.abs, relPath) };
   } catch (err) {
     if (err instanceof FrameDecodeError) throw new FrameFileError('UNREADABLE', err.message);
     throw err;
@@ -152,11 +167,26 @@ export interface FrameAnalysisRow {
   kept: boolean;
 }
 
+/** The sky background of the night's main set, against the other nights of the same set (same filter, exposure, rig). */
+export interface NightSky {
+  /** Median ADU per second per pixel tonight; in electrons, and per square arcsecond, when they are known. */
+  aduPerSecond: number;
+  electronsPerSecond: number | null;
+  electronsPerSecondPerArcsec2: number | null;
+  frames: number;
+  /** The darkest other night of the same set, by its median ADU rate (same camera and settings, so comparable). */
+  darkest: { night: string; aduPerSecond: number } | null;
+  /** How much brighter tonight's sky is than that night's, in magnitudes (0 when tonight is the darkest). */
+  magnitudesBrighter: number | null;
+}
+
 export interface FrameAnalysisReport {
   objectId: string;
   date: string;
   frames: FrameAnalysisRow[];
   reference: FrameReference | null;
+  /** Null when no frame of the main set has an absolute sky value (no matching dark, or no EGAIN). */
+  sky: NightSky | null;
   measured: number;
   total: number;
 }
@@ -176,6 +206,8 @@ interface OtherNightFrame {
   filter: string | null;
   exposure: string | null;
   metrics: FrameMetrics;
+  /** The frame's night, when it has a library row. */
+  night: string | null;
 }
 
 /**
@@ -198,7 +230,8 @@ function otherNightsMetrics(objectIds: string[], exclude: Set<string>): OtherNig
       let metrics: FrameMetrics | null = null;
       try { metrics = coerceMetrics(JSON.parse(row.metricsJson)); } catch { metrics = null; }
       if (!metrics) continue;
-      out.push({ filter: parsed.filter || null, exposure: parsed.exposure || null, metrics });
+      const fileRow = getLibraryFileRow(row.relPath);
+      out.push({ filter: parsed.filter || null, exposure: parsed.exposure || null, metrics, night: fileRow ? sessionDateForRow(fileRow) : null });
     }
   }
   return out;
@@ -229,10 +262,13 @@ export function buildSessionReport(objectIds: string[], date: string): FrameAnal
   const focalOf = focalGroups([...measuredRows.map(r => r.metrics!.rig.focal), ...otherNights.map(o => o.metrics.rig.focal)]
     .filter((f): f is number => f !== null));
   const history = new Map<string, FrameMetrics[]>();
+  const historyNights = new Map<string, OtherNightFrame[]>();
   for (const o of otherNights) {
     const key = setKey(o.filter, o.exposure, o.metrics, focalOf);
     const list = history.get(key);
     if (list) list.push(o.metrics); else history.set(key, [o.metrics]);
+    const frames = historyNights.get(key);
+    if (frames) frames.push(o); else historyNights.set(key, [o]);
   }
   // Frames are only comparable through the same filter for the same time: a D2 frame brings far less light than
   // a D1 one, a 60 s frame less than a 180 s one, and judged together the weaker set would read as clouded.
@@ -243,13 +279,18 @@ export function buildSessionReport(objectIds: string[], date: string): FrameAnal
     if (list) list.push(row); else groups.set(key, [row]);
   }
   let reference: FrameReference | null = null;
+  let sky: NightSky | null = null;
   let largest = 0;
   for (const rows of groups.values()) {
     const key = setKey(rows[0].file.filter, rows[0].file.exposure, rows[0].metrics!, focalOf);
     const ranked = rankFrames(rows.flatMap(r => (r.metrics ? [r.metrics] : [])), history.get(key) ?? []);
     rows.forEach((row, i) => { row.verdict = ranked.verdicts[i]; });
     // The summary line describes the night's main set.
-    if (rows.length > largest) { largest = rows.length; reference = ranked.reference; }
+    if (rows.length > largest) {
+      largest = rows.length;
+      reference = ranked.reference;
+      sky = nightSky(rows.flatMap(r => (r.metrics?.sky ? [r.metrics.sky] : [])), historyNights.get(key) ?? []);
+    }
   }
   const reviews = readReviews(frames.map(r => r.path));
   for (const row of frames) {
@@ -257,5 +298,34 @@ export function buildSessionReport(objectIds: string[], date: string): FrameAnal
     row.kept = isFrameKept(row.review, row.verdict);
   }
 
-  return { objectId: objectIds[0] ?? '', date, frames, reference, measured: measuredRows.length, total: frames.length };
+  return { objectId: objectIds[0] ?? '', date, frames, reference, sky, measured: measuredRows.length, total: frames.length };
+}
+
+/** Tonight's sky, and how it compares with the darkest other night of the same set. */
+export function nightSky(tonight: FrameSky[], others: { night: string | null; metrics: Pick<FrameMetrics, 'sky'> }[]): NightSky | null {
+  const adu = medianOf(tonight.map(s => s.aduPerSecond));
+  if (adu === null) return null;
+  const electrons = medianOf(tonight.flatMap(s => (s.electronsPerSecond !== null ? [s.electronsPerSecond] : [])));
+  const perArcsec = medianOf(tonight.flatMap(s => (s.electronsPerSecondPerArcsec2 !== null ? [s.electronsPerSecondPerArcsec2] : [])));
+  const byNight = new Map<string, number[]>();
+  for (const o of others) {
+    if (!o.night || !o.metrics.sky) continue;
+    const list = byNight.get(o.night);
+    if (list) list.push(o.metrics.sky.aduPerSecond); else byNight.set(o.night, [o.metrics.sky.aduPerSecond]);
+  }
+  let darkest: NightSky['darkest'] = null;
+  for (const [night, values] of byNight) {
+    const m = medianOf(values);
+    if (m !== null && m > 0 && (!darkest || m < darkest.aduPerSecond)) darkest = { night, aduPerSecond: m };
+  }
+  // Tonight is the darkest when no other night is darker.
+  const brighter = darkest ? Math.max(0, magnitudesBrighter(adu, darkest.aduPerSecond) ?? 0) : null;
+  return {
+    aduPerSecond: adu,
+    electronsPerSecond: electrons,
+    electronsPerSecondPerArcsec2: perArcsec,
+    frames: tonight.length,
+    darkest,
+    magnitudesBrighter: brighter,
+  };
 }

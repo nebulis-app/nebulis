@@ -529,7 +529,11 @@
         "noise": "Bruit",
         "signal": "Signal",
         "pixels": "{{value}} px",
-        "times": "{{value}}×"
+        "times": "{{value}}×",
+        "sky": "Ciel",
+        "skyValue": "{{value}} e⁻/s",
+        "skyTitle": "Fond de ciel en électrons par seconde et par pixel, niveau de {{bundle}} retiré",
+        "skyAdu": "{{value}} ADU/s"
       },
       "reasons": {
         "noStars": "Seulement {{stars}} étoiles trouvées, contre environ {{typical}} dans une image typique de cette nuit. Le ciel était couvert ou l'optique embuée.",
@@ -570,7 +574,12 @@
       "markKeep": "Garder",
       "markReject": "Rejeter",
       "followGrade": "Retirer la marque",
-      "otherNights": "Comparée aussi à {{count}} images de cet objet prises d'autres nuits, avec le même filtre, la même pose et le même télescope."
+      "otherNights": "Comparée aussi à {{count}} images de cet objet prises d'autres nuits, avec le même filtre, la même pose et le même télescope.",
+      "nightSky": "Fond de ciel cette nuit : {{value}} e⁻/s par pixel",
+      "nightSkyArcsec": "({{value}} e⁻/s par arcsec²)",
+      "nightSkyBrighter": "{{mag}} mag plus clair que le {{night}}, la nuit la plus sombre avec ce filtre, cette pose et ce télescope.",
+      "nightSkyDarkest": "La nuit la plus sombre avec ce filtre, cette pose et ce télescope.",
+      "nightSkyAdu": "Fond de ciel cette nuit : {{value}} ADU/s par pixel au-dessus du dark (pas d'électrons : la profondeur du convertisseur de cette caméra n'est pas connue)"
     },
     "frameList": {
       "notMeasuredTitle": "Ouvrez la nuit pour mesurer ses images.",

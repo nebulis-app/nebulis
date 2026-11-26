@@ -529,7 +529,11 @@
         "noise": "Ruido",
         "signal": "Señal",
         "pixels": "{{value}} px",
-        "times": "{{value}}×"
+        "times": "{{value}}×",
+        "sky": "Cielo",
+        "skyValue": "{{value}} e⁻/s",
+        "skyTitle": "Fondo de cielo en electrones por segundo y por píxel, restado el nivel de {{bundle}}",
+        "skyAdu": "{{value}} ADU/s"
       },
       "reasons": {
         "noStars": "Solo se encontraron {{stars}} estrellas, frente a unas {{typical}} en un fotograma típico de esta noche. El cielo estaba cubierto o la óptica empañada.",
@@ -570,7 +574,12 @@
       "markKeep": "Conservar",
       "markReject": "Rechazar",
       "followGrade": "Quitar marca",
-      "otherNights": "Comparado también con {{count}} fotogramas de este objeto de otras noches, con el mismo filtro, exposición y telescopio."
+      "otherNights": "Comparado también con {{count}} fotogramas de este objeto de otras noches, con el mismo filtro, exposición y telescopio.",
+      "nightSky": "Fondo de cielo esta noche: {{value}} e⁻/s por píxel",
+      "nightSkyArcsec": "({{value}} e⁻/s por segundo de arco²)",
+      "nightSkyBrighter": "{{mag}} mag más brillante que el {{night}}, la noche más oscura con este filtro, esta exposición y este telescopio.",
+      "nightSkyDarkest": "La noche más oscura con este filtro, esta exposición y este telescopio.",
+      "nightSkyAdu": "Fondo de cielo esta noche: {{value}} ADU/s por píxel sobre el dark (sin electrones: no se conoce la profundidad del convertidor de esta cámara)"
     },
     "frameList": {
       "notMeasuredTitle": "Abre la noche para medir sus fotogramas.",

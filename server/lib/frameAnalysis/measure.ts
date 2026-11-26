@@ -24,6 +24,40 @@ export interface FrameRig {
   scale: number | null;
 }
 
+/**
+ * What the camera recorded about a frame, for the absolute sky background (skyBackground.ts): the header's exposure,
+ * gain in electrons per ADU, gain setting, offset and sensor temperature, and the ADU step found in the pixels.
+ */
+export interface FrameSensor {
+  exposureSec: number | null;
+  /** EGAIN: electrons per ADU of the camera's own converter. */
+  electronsPerAdu: number | null;
+  /** GAIN and OFFSET settings, as the driver wrote them. */
+  gain: number | null;
+  offset: number | null;
+  temperatureC: number | null;
+  /**
+   * The step between stored values: the lowest bit any pixel sets. 1 means every value is used (16-bit data). A larger
+   * step hints at a narrower converter but does not measure it (see skyBackground.ts). Null for floating-point data.
+   */
+  aduStep: number | null;
+  /** How many file pixels make one grid pixel along a side (2 when the grid was binned). */
+  binning: number;
+}
+
+/** The sky background in physical units, worked out by the service from the sensor facts and a matching dark. */
+export interface FrameSky {
+  /** Stored ADU per second per pixel from the sky, after the dark's level is taken off. */
+  aduPerSecond: number;
+  /** The same in electrons, when the camera's converter depth is known (skyBackground.ts); null otherwise. */
+  electronsPerSecond: number | null;
+  /** The same per square arcsecond, when the plate scale is known. */
+  electronsPerSecondPerArcsec2: number | null;
+  /** The level taken off (offset and dark current), in stored ADU, and the calibration bundle it came from. */
+  darkLevel: number;
+  darkBundle: string;
+}
+
 export interface FrameMetrics {
   /** The grid the numbers refer to. A color-filter-array frame is analyzed at half size. */
   width: number;
@@ -64,10 +98,14 @@ export interface FrameMetrics {
   /** Where the telescope pointed, degrees, from the header. A mosaic points somewhere new every frame. */
   ra: number | null;
   dec: number | null;
+  /** What the camera recorded, for the absolute sky background. Null for a frame decoded without a header. */
+  sensor?: FrameSensor | null;
+  /** The absolute sky background, when a matching dark was found. Added by the service, not by the measurement. */
+  sky?: FrameSky | null;
 }
 
 /** Bump when a change here makes the same file measure differently, so stored results are dropped on upgrade. */
-export const FRAME_METRICS_VERSION = 7;
+export const FRAME_METRICS_VERSION = 8;
 
 const BAYER_PATTERNS = new Set(['RGGB', 'BGGR', 'GRBG', 'GBRG']);
 const SUPPORTED_BITPIX = new Set([8, 16, 32, -32, -64]);
@@ -101,6 +139,7 @@ export interface Grid {
   /** The header's plate solution, mapped onto this grid. */
   wcs: GridWcs | null;
   rig: FrameRig;
+  sensor?: FrameSensor | null;
 }
 
 // ─── Decode ───────────────────────────────────────────────────────────────
@@ -208,13 +247,42 @@ export function decodeGrid(buf: Buffer): Grid {
   const ra = headerNumber(v, 'RA');
   const dec = headerNumber(v, 'DEC');
   const located = ra !== null && dec !== null && ra >= 0 && ra <= 360 && dec >= -90 && dec <= 90;
+  const exposure = headerNumber(v, 'EXPTIME') ?? headerNumber(v, 'EXPOSURE');
+  const egain = headerNumber(v, 'EGAIN');
   return {
     data: out, width: ow, height: oh,
     ceiling: bitpix === 8 ? 255 : bitpix === 16 ? 65535 : null,
     ra: located ? ra : null, dec: located ? dec : null,
     wcs: readWcs(v, bin ? 2 : 1),
     rig: readRig(v, bin ? 2 : 1),
+    sensor: {
+      exposureSec: exposure !== null && exposure > 0 ? exposure : null,
+      electronsPerAdu: egain !== null && egain > 0 ? egain : null,
+      gain: headerNumber(v, 'GAIN'),
+      offset: headerNumber(v, 'OFFSET'),
+      temperatureC: headerNumber(v, 'CCD-TEMP') ?? headerNumber(v, 'CCD_TEMP'),
+      aduStep: bitpix > 0 && bscale === 1 ? aduStep(i => readAt(i) * bscale + bzero, offset, bytes, pixels * planes) : null,
+      binning: bin ? 2 : 1,
+    },
   };
+}
+
+/** Pixels sampled to find the ADU step: plenty to see a set low bit in a real frame's noise. */
+const ADU_STEP_SAMPLES = 50_000;
+
+/**
+ * The step between stored values: the lowest bit set in any sampled pixel (16 for 12-bit data stored in 16 bits, 4 for
+ * 14-bit, 1 for 16-bit). Null when every sample is zero.
+ */
+export function aduStep(valueAt: (byteIndex: number) => number, offset: number, bytes: number, count: number): number | null {
+  const stride = Math.max(1, Math.floor(count / ADU_STEP_SAMPLES));
+  let bits = 0;
+  for (let k = 0; k < count && bits !== 1; k += stride) {
+    const value = Math.round(valueAt(offset + k * bytes));
+    bits |= Math.abs(value);
+  }
+  if (bits === 0) return null;
+  return Math.min(256, bits & -bits);
 }
 
 function headerText(values: Record<string, string | number | boolean>, ...keys: string[]): string | null {
@@ -802,6 +870,7 @@ function measureGrid(g: Grid, target?: TargetSpec | null): FrameMetrics {
     spots: findSpots(blocks),
     rig: g.rig,
     ...pointing,
+    sensor: g.sensor ?? null,
   };
 }
 

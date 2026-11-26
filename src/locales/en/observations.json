@@ -529,7 +529,11 @@
         "noise": "Noise",
         "signal": "Signal",
         "pixels": "{{value}} px",
-        "times": "{{value}}×"
+        "times": "{{value}}×",
+        "sky": "Sky",
+        "skyValue": "{{value}} e⁻/s",
+        "skyTitle": "Sky background in electrons per second per pixel, with the level of {{bundle}} taken off",
+        "skyAdu": "{{value}} ADU/s"
       },
       "reasons": {
         "noStars": "Only {{stars}} stars found, against about {{typical}} in a typical frame this night. The sky was covered or the lens was fogged.",
@@ -570,7 +574,12 @@
       "markKeep": "Mark keep",
       "markReject": "Mark reject",
       "followGrade": "Clear mark",
-      "otherNights": "Also compared with {{count}} frames of this object from other nights, same filter, exposure and telescope."
+      "otherNights": "Also compared with {{count}} frames of this object from other nights, same filter, exposure and telescope.",
+      "nightSky": "Sky background tonight: {{value}} e⁻/s per pixel",
+      "nightSkyArcsec": "({{value}} e⁻/s per arcsec²)",
+      "nightSkyBrighter": "{{mag}} mag brighter than {{night}}, the darkest night with this filter, exposure and telescope.",
+      "nightSkyDarkest": "The darkest night with this filter, exposure and telescope.",
+      "nightSkyAdu": "Sky background tonight: {{value}} ADU/s per pixel above the dark (no electrons: this camera's converter depth is not known)"
     },
     "frameList": {
       "notMeasuredTitle": "Open the night to measure its frames.",

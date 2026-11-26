@@ -529,7 +529,11 @@
         "noise": "Ruis",
         "signal": "Signaal",
         "pixels": "{{value}} px",
-        "times": "{{value}}×"
+        "times": "{{value}}×",
+        "sky": "Hemel",
+        "skyValue": "{{value}} e⁻/s",
+        "skyTitle": "Hemelachtergrond in elektronen per seconde per pixel, met het niveau van {{bundle}} eraf",
+        "skyAdu": "{{value}} ADU/s"
       },
       "reasons": {
         "noStars": "Slechts {{stars}} sterren gevonden, tegenover ongeveer {{typical}} in een typische opname van deze nacht. De lucht was bewolkt of de optiek was beslagen.",
@@ -570,7 +574,12 @@
       "markKeep": "Behouden",
       "markReject": "Afkeuren",
       "followGrade": "Markering wissen",
-      "otherNights": "Ook vergeleken met {{count}} opnamen van dit object uit andere nachten, met hetzelfde filter, dezelfde belichting en dezelfde telescoop."
+      "otherNights": "Ook vergeleken met {{count}} opnamen van dit object uit andere nachten, met hetzelfde filter, dezelfde belichting en dezelfde telescoop.",
+      "nightSky": "Hemelachtergrond vannacht: {{value}} e⁻/s per pixel",
+      "nightSkyArcsec": "({{value}} e⁻/s per boogseconde²)",
+      "nightSkyBrighter": "{{mag}} mag helderder dan {{night}}, de donkerste nacht met dit filter, deze belichting en deze telescoop.",
+      "nightSkyDarkest": "De donkerste nacht met dit filter, deze belichting en deze telescoop.",
+      "nightSkyAdu": "Hemelachtergrond vannacht: {{value}} ADU/s per pixel boven de dark (geen elektronen: de diepte van de converter van deze camera is niet bekend)"
     },
     "frameList": {
       "notMeasuredTitle": "Open de nacht om de frames te meten.",

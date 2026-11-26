@@ -73,6 +73,18 @@ export function FrameRow({ row, selected, onToggle, onOpen, onView, placeholder,
                 <Stat label={t(`${BASE}.stats.round`)} value={m.elongation !== null ? formatNumber(m.elongation, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '–'} muted={muted} text={text} />
                 <Stat label={t(`${BASE}.stats.noise`)} value={n1(m.noise)} muted={muted} text={text} />
                 {m.peakSNR !== null && <Stat label={t(`${BASE}.stats.signal`)} value={t(`${BASE}.stats.times`, { value: n0(m.peakSNR) })} muted={muted} text={text} />}
+                {m.sky && (
+                  <span title={t(`${BASE}.stats.skyTitle`, { bundle: m.sky.darkBundle })}>
+                    <Stat
+                      label={t(`${BASE}.stats.sky`)}
+                      value={m.sky.electronsPerSecond !== null
+                        ? t(`${BASE}.stats.skyValue`, { value: formatNumber(m.sky.electronsPerSecond, { maximumFractionDigits: 2 }) })
+                        : t(`${BASE}.stats.skyAdu`, { value: formatNumber(m.sky.aduPerSecond, { maximumFractionDigits: 1 }) })}
+                      muted={muted}
+                      text={text}
+                    />
+                  </span>
+                )}
               </span>
               {firstReason && <span className={`mt-1 block text-xs ${muted}`}>{reasonText(t, firstReason)}</span>}
             </>

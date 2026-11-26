@@ -25,6 +25,19 @@ export interface FrameMetrics {
   spots?: { x: number; y: number; diameter: number; depth: number }[];
   ra: number | null;
   dec: number | null;
+  /** The sky's own brightness, when a matching dark was found (server/lib/frameAnalysis/skyBackground.ts). Absent on old results. */
+  sky?: { aduPerSecond: number; electronsPerSecond: number | null; electronsPerSecondPerArcsec2: number | null; darkLevel: number; darkBundle: string } | null;
+}
+
+/** The night's sky against the darkest other night of the same filter, exposure and rig. */
+export interface NightSky {
+  aduPerSecond: number;
+  /** Null when the camera's converter depth is not known: only ADU rates then. */
+  electronsPerSecond: number | null;
+  electronsPerSecondPerArcsec2: number | null;
+  frames: number;
+  darkest: { night: string; aduPerSecond: number } | null;
+  magnitudesBrighter: number | null;
 }
 
 /** One finding with the numbers behind it. The sentence is built in the UI so it follows the display language. */
@@ -82,6 +95,8 @@ export interface FrameAnalysisReport {
   date: string;
   frames: FrameAnalysisRow[];
   reference: FrameReference | null;
+  /** Absent on older servers, null without a matching dark. */
+  sky?: NightSky | null;
   measured: number;
   total: number;
   /** Frames of this night waiting for, or being measured by, the server's background worker. */

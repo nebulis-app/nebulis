@@ -71,7 +71,7 @@ const num = (v: unknown): number | null => {
 };
 
 /** The primary header's keywords; empty when the file has none or cannot be read. */
-function readHeaderValues(abs: string): HeaderValues {
+export function readHeaderValues(abs: string): HeaderValues {
   try {
     const fd = fs.openSync(abs, 'r');
     try {
@@ -200,7 +200,7 @@ function sumBytes(files: CalibrationFile[]): number {
  * all of them. Filter labels go through the same aliases as the integration
  * breakdown.
  */
-function listCalibrationCandidates(normalize: FilterNormalizer = filterNormalizer()): CandidateWithFiles[] {
+export function listCalibrationCandidates(normalize: FilterNormalizer = filterNormalizer()): CandidateWithFiles[] {
   const out: CandidateWithFiles[] = [];
   for (const group of listCalibrationLibrary()) {
     for (const set of group.settingsGroups) {

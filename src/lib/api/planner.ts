@@ -229,6 +229,9 @@ export interface AutoPlanRequest {
   favorGoals?: boolean;
   /** Judge emission nebulae against the narrowband Moon limit. Omit to let a narrowband filter in Gear decide. */
   narrowbandCapable?: boolean;
+  /** The telescope that will shoot: its own filters decide narrowband, and narrowband targets gain on a bright Moon
+   *  when it has them. Omit to plan as before. */
+  telescopeId?: string;
 }
 
 interface WirePlanBlock {

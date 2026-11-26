@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next';
-import { Check, Hourglass } from 'lucide-react';
+import { CalendarDays, Check, Hourglass } from 'lucide-react';
+import { usePlannerTelescope } from '../../hooks/usePlannerTelescope';
+import { nightsNeeded } from '../../lib/nightsNeeded';
 import { useIntegrationProgress, useIntegrationProgressByLibraryId } from '../../hooks/useIntegrationProgress';
 import type { ObjectIntegrationProgress } from '../../lib/api/library';
 import { formatDuration } from '../../lib/captureMetrics';
@@ -56,6 +58,9 @@ function RemainingChips({
   tone: Tone;
 }) {
   const { t } = useTranslation('planner');
+  // Nights left at the pace of the telescope the planner follows; nothing when it has too little history.
+  const { nightRate } = usePlannerTelescope();
+  const estimate = nightsNeeded(progress, nightRate);
 
   const chipBase = 'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.625rem] font-medium tabular-nums';
   const pending = tone === 'block'
@@ -100,6 +105,17 @@ function RemainingChips({
         </span>
       ))}
       {hidden > 0 && <span className={`${chipBase} ${pending}`}>+{hidden}</span>}
+      {estimate && (
+        <span
+          className={`${chipBase} ${pending}`}
+          title={nightRate?.keptRatio != null
+            ? t('integrationRemaining.nightsTitleKept', { duration: formatDuration(Math.round(estimate.usableNightSec)), pct: Math.round(nightRate.keptRatio * 100) })
+            : t('integrationRemaining.nightsTitle', { duration: formatDuration(Math.round(estimate.usableNightSec)) })}
+        >
+          <CalendarDays className="h-2.5 w-2.5" />
+          {t('integrationRemaining.nights', { count: estimate.nights })}
+        </span>
+      )}
     </>
   );
 }

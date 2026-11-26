@@ -70,6 +70,7 @@ import {
   deleteOpticalConfig,
 } from '../lib/telescopeOpticalConfigs.js';
 import { getRig, setRig, getUsedFilterNames } from '../lib/telescopeRig.js';
+import { getTelescopeNightRate } from '../lib/trainRate.js';
 
 const router = Router();
 
@@ -384,6 +385,16 @@ const photoUpload = multer({
 });
 
 // GET /api/v1/telescopes/:id/photo   The picture (WebP). 404 when the telescope has none.
+// What this telescope gathers in a night and keeps, for the planner's "nights left" estimate.
+router.get('/:id/night-rate', (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  if (!getProfileById(id)) {
+    res.apiError(404, 'NOT_FOUND', 'Telescope profile not found');
+    return;
+  }
+  res.apiSuccess(getTelescopeNightRate(id));
+});
+
 router.get('/:id/photo', (req: Request, res: Response) => {
   const file = getTelescopePhotoPath(String(req.params.id));
   if (!file) {

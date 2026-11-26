@@ -438,7 +438,11 @@
     "title": "{{filter}}: {{done}} van {{goal}}",
     "noFilter": "Geen filter",
     "complete": "Doelen bereikt",
-    "completeTitle": "Alle integratiedoelen voor dit object zijn bereikt"
+    "completeTitle": "Alle integratiedoelen voor dit object zijn bereikt",
+    "nights_one": "≈ {{count}} nacht",
+    "nights_other": "≈ {{count}} nachten",
+    "nightsTitle": "Uitgaande van {{duration}} aan opnamen in een gewone nacht met de telescoop van de planner",
+    "nightsTitleKept": "Uitgaande van {{duration}} aan behouden opnamen in een gewone nacht met de telescoop van de planner ({{pct}} % van de beoordeelde opnamen behouden)"
   },
   "planOutcome": {
     "status": {

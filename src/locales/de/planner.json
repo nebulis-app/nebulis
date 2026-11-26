@@ -438,7 +438,11 @@
     "title": "{{filter}}: {{done}} von {{goal}}",
     "noFilter": "Ohne Filter",
     "complete": "Ziele erreicht",
-    "completeTitle": "Alle Integrationsziele für dieses Objekt sind erreicht"
+    "completeTitle": "Alle Integrationsziele für dieses Objekt sind erreicht",
+    "nights_one": "≈ {{count}} Nacht",
+    "nights_other": "≈ {{count}} Nächte",
+    "nightsTitle": "Ausgehend von {{duration}} Einzelbildern in einer typischen Nacht mit dem Teleskop des Planers",
+    "nightsTitleKept": "Ausgehend von {{duration}} behaltenen Einzelbildern in einer typischen Nacht mit dem Teleskop des Planers ({{pct}} % der geprüften Bilder behalten)"
   },
   "planOutcome": {
     "status": {

@@ -238,3 +238,40 @@ describe('POST /planner/plan — favorGoals', () => {
     expect(body.meta.goals).toEqual({ requested: false, complete: [] });
   });
 });
+
+describe('POST /planner/plan — the telescope that will shoot', () => {
+  const SCOPE = 'plan-scope';
+
+  async function plan(body: Record<string, unknown>) {
+    const res = await fetch(`${baseUrl}/planner/plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...planRequestBody(baseTarget), ...body }),
+    });
+    return { status: res.status, body: await res.json() };
+  }
+
+  it("decides narrowband from the telescope's own filters and says which telescope it planned for", async () => {
+    const { default: db } = await import('../../server/lib/db');
+    db.prepare(`INSERT OR IGNORE INTO telescopeProfiles (id, name, createdAt) VALUES (?, ?, '2026-01-01')`).run(SCOPE, SCOPE);
+    const { setRig } = await import('../../server/lib/telescopeRig');
+    setRig(SCOPE, { sensorType: 'mono', filters: ['L', 'R', 'G', 'B'] });
+    let res = await plan({ telescopeId: SCOPE });
+    expect(res.status).toBe(200);
+    expect(res.body.meta).toMatchObject({ narrowbandCapable: false, telescopeId: SCOPE });
+    setRig(SCOPE, { sensorType: 'mono', filters: ['L', 'Ha', 'OIII'] });
+    res = await plan({ telescopeId: SCOPE });
+    expect(res.body.meta).toMatchObject({ narrowbandCapable: true, telescopeId: SCOPE });
+  });
+
+  it('plans as before for an unknown telescope, and accepts a frame fit on each target', async () => {
+    const res = await plan({ telescopeId: 'no-such-scope', targets: [{ ...baseTarget, frameFit: 'tiny' }] });
+    expect(res.status).toBe(200);
+    expect(res.body.meta.telescopeId).toBeNull();
+  });
+
+  it('refuses a frame fit it does not know', async () => {
+    const res = await plan({ targets: [{ ...baseTarget, frameFit: 'huge' }] });
+    expect(res.status).toBe(422);
+  });
+});

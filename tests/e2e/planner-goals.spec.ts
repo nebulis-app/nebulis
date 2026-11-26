@@ -248,3 +248,44 @@ test.describe('Plan versus actual on the schedule', () => {
 
 // Keeps the shared mock reachable for the specs above if its shape is ever needed here.
 void MOCK;
+
+test.describe("Plan My Night: the telescope's optics", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAllRoutes(page);
+    await page.route('**/api/library/integration/progress', r => r.fulfill(json(ok([progress]))));
+    // The planner follows the configured telescope (a SeeStar S50, about 1.3° × 0.7°). Four hours a night, three in four
+    // subs kept: three hours of usable subs a night.
+    await page.route('**/api/telescopes/scope-1/night-rate', r => r.fulfill(json(ok({
+      telescopeId: 'scope-1', nights: 12, medianNightSec: 4 * 3600, reviewedFrames: 400, keptRatio: 0.75,
+    }))));
+    await page.goto('/planner');
+  });
+
+  test('building sends the telescope and how each target fills its field', async ({ page }) => {
+    await openPlanMyNight(page);
+    const posted = await mockPlan(page);
+    await page.getByRole('button', { name: 'Build my plan' }).click();
+    await expect(page.getByText('Add to', { exact: false }).first()).toBeVisible();
+    expect(posted.body?.telescopeId).toBe('scope-1');
+    const targets = posted.body?.targets as { id: string; frameFit?: string | null }[];
+    // Orion is 85′ across: wider than the S50's frame.
+    expect(targets.find(t => t.id === 'M42')?.frameFit).toBe('mosaic');
+  });
+
+  test('the preview says when a target needs a mosaic in this field', async ({ page }) => {
+    await openPlanMyNight(page);
+    await mockPlan(page);
+    await page.getByRole('button', { name: 'Build my plan' }).click();
+    // The preview row, told apart from the target list behind it by the goal time it shows.
+    const row = page.locator('div.rounded-xl', { hasText: '8h left · Ha' }).filter({ hasText: 'M42 - Orion Nebula' }).last();
+    await expect(row.getByText('Mosaic', { exact: true })).toBeVisible();
+  });
+
+  test('the goal chips say how many nights are left at this telescope\'s pace', async ({ page }) => {
+    // 8 h left on Ha, 3 h kept a night: 3 nights.
+    await page.getByRole('button', { name: 'Show altitude and filters for Orion Nebula', exact: true }).click();
+    const chip = page.getByText('≈ 3 nights').first();
+    await expect(chip).toBeVisible();
+    await expect(chip).toHaveAttribute('title', /3h of kept subs .*75 % of reviewed subs kept/);
+  });
+});

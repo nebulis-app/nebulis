@@ -435,6 +435,12 @@ export interface ResolvedFov {
  *  `telescope:<telescopeId>:<configId>` (a specific one). */
 export const TELESCOPE_PROFILE_PREFIX = 'telescope:';
 
+/** The Settings → Telescopes profile id a resolved field belongs to, or null for a preset or custom optics. */
+export function telescopeIdOfFovProfile(profileId: string): string | null {
+  if (!profileId.startsWith(TELESCOPE_PROFILE_PREFIX)) return null;
+  return profileId.slice(TELESCOPE_PROFILE_PREFIX.length).split(':')[0] || null;
+}
+
 export function telescopeProfileOptionId(telescopeId: string, configId?: string | null): string {
   return configId ? `${TELESCOPE_PROFILE_PREFIX}${telescopeId}:${configId}` : `${TELESCOPE_PROFILE_PREFIX}${telescopeId}`;
 }

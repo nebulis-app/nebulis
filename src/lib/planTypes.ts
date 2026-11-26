@@ -22,6 +22,8 @@ export interface PlanCandidate {
   isAlreadyImaged: boolean;
   /** Per-filter integration goals, sent with `favorGoals`. */
   goals?: PlanGoal[];
+  /** How the object fills the shooting telescope's field (`classifyFit`). Mirrors server/lib/autoPlan.ts FrameFit. */
+  frameFit?: 'fits' | 'tight' | 'tiny' | 'mosaic' | null;
 }
 
 /** Mirrors server/lib/autoPlan.ts GoalProgress. */

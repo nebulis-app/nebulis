@@ -8,6 +8,7 @@
  */
 import { fitsDataOffset, parseFitsHeader } from '../fitsParser.js';
 import { blockMedians, findSpots, measureTarget, type FrameSpot, type FrameTarget, type GridWcs, type TargetSpec } from './field.js';
+export type { GridWcs } from './field.js';
 
 export type { FrameSpot, FrameTarget, TargetSpec } from './field.js';
 
@@ -64,10 +65,19 @@ export interface FrameMetrics {
   /** Where the telescope pointed, degrees, from the header. A mosaic points somewhere new every frame. */
   ra: number | null;
   dec: number | null;
+  /**
+   * Where the plate solution that placed the object came from: the frame's own header, or one borrowed from another
+   * frame of the same night and pointing (pointingWcs.ts). Null when there was none (the object, if measured, was taken
+   * to be at the centre of a frame pointed at it). Absent on older results.
+   */
+  wcsSource?: 'header' | 'borrowed' | null;
 }
 
+/** A plate solution in the file's own pixels (FITS, 1-based), as a header would carry it: one to lend a frame without one. */
+export type FileWcs = Omit<GridWcs, 'bin'>;
+
 /** Bump when a change here makes the same file measure differently, so stored results are dropped on upgrade. */
-export const FRAME_METRICS_VERSION = 7;
+export const FRAME_METRICS_VERSION = 8;
 
 const BAYER_PATTERNS = new Set(['RGGB', 'BGGR', 'GRBG', 'GBRG']);
 const SUPPORTED_BITPIX = new Set([8, 16, 32, -32, -64]);
@@ -100,6 +110,7 @@ export interface Grid {
   dec: number | null;
   /** The header's plate solution, mapped onto this grid. */
   wcs: GridWcs | null;
+  wcsSource?: 'header' | 'borrowed' | null;
   rig: FrameRig;
 }
 
@@ -115,7 +126,7 @@ function headerNumber(values: Record<string, string | number | boolean>, key: st
  * 2 by 2 so each value holds one of every color; very large pictures are binned too. Nothing at full size is
  * held: each output pixel is accumulated from the file, so an 8 MP frame costs about 2 MP of floats.
  */
-export function decodeGrid(buf: Buffer): Grid {
+export function decodeGrid(buf: Buffer, borrowed: FileWcs | null = null): Grid {
   const header = parseFitsHeader(buf);
   const v = header.values;
   const bitpix = headerNumber(v, 'BITPIX') ?? 16;
@@ -208,11 +219,14 @@ export function decodeGrid(buf: Buffer): Grid {
   const ra = headerNumber(v, 'RA');
   const dec = headerNumber(v, 'DEC');
   const located = ra !== null && dec !== null && ra >= 0 && ra <= 360 && dec >= -90 && dec <= 90;
+  const own = readWcs(v, bin ? 2 : 1);
   return {
     data: out, width: ow, height: oh,
     ceiling: bitpix === 8 ? 255 : bitpix === 16 ? 65535 : null,
     ra: located ? ra : null, dec: located ? dec : null,
-    wcs: readWcs(v, bin ? 2 : 1),
+    // The header's own solution always wins: a borrowed one is only for a frame that has none.
+    wcs: own ?? (borrowed ? { ...borrowed, bin: bin ? 2 : 1 } : null),
+    wcsSource: own ? 'header' : borrowed ? 'borrowed' : null,
     rig: readRig(v, bin ? 2 : 1),
   };
 }
@@ -802,12 +816,13 @@ function measureGrid(g: Grid, target?: TargetSpec | null): FrameMetrics {
     spots: findSpots(blocks),
     rig: g.rig,
     ...pointing,
+    wcsSource: g.wcsSource ?? null,
   };
 }
 
 /** Measure one raw sub-frame from the bytes of its FITS file. Throws FrameDecodeError for a file that is not a readable image. */
-export function measureFrame(buf: Buffer, target?: TargetSpec | null): FrameMetrics {
-  return measureGrid(decodeGrid(buf), target);
+export function measureFrame(buf: Buffer, target?: TargetSpec | null, borrowedWcs: FileWcs | null = null): FrameMetrics {
+  return measureGrid(decodeGrid(buf, borrowedWcs), target);
 }
 
 /** Exposed for tests: measure a grid built in memory. */

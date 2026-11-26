@@ -177,6 +177,8 @@ const DEVICE_TTL_SECONDS: Record<AlertEvent['type'], number> = {
   'import.finished': 12 * 3600,
   'import.failed': 12 * 3600,
   'update.available': 24 * 3600,
+  // A pass alert is worthless once the pass is over.
+  'iss.pass': 15 * 60,
   test: 300,
 };
 
@@ -187,6 +189,7 @@ const DEVICE_LINKS: Partial<Record<AlertEvent['type'], string>> = {
   'import.finished': 'nebulis://library',
   'import.failed': 'nebulis://settings',
   'update.available': 'nebulis://settings',
+  'iss.pass': 'nebulis://sky',
 };
 
 /**

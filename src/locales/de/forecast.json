@@ -150,5 +150,28 @@
     "colClouds": "Mittlere Bewölkung",
     "colMoon": "Mond",
     "none": "k. A."
+  },
+  "issPasses": {
+    "title": "ISS-Überflüge",
+    "subtitle": "Wann die Internationale Raumstation diese Woche nach Einbruch der Dunkelheit über {{deg}}° über Ihren Himmel zieht.",
+    "loading": "Überflüge werden berechnet…",
+    "unavailable": "Die Bahn der Station ist gerade nicht verfügbar.",
+    "none": "Diese Woche kein sichtbarer Überflug über der Mindesthöhe.",
+    "stale": "Die Bahndaten sind {{days}} Tage alt: Die Zeiten können um Minuten abweichen.",
+    "path": "Von {{from}}, bis {{alt}}° im {{peak}}, nach {{to}}",
+    "magnitude": "Helligkeit {{mag}} mag",
+    "shadow": "Verschwindet im Schatten",
+    "shadowTitle": "Sie verschwindet vor dem Untergang im Erdschatten.",
+    "source": "Bahndaten von CelesTrak, {{hours}} h alt.",
+    "compass": {
+      "N": "Norden",
+      "NE": "Nordosten",
+      "E": "Osten",
+      "SE": "Südosten",
+      "S": "Süden",
+      "SW": "Südwesten",
+      "W": "Westen",
+      "NW": "Nordwesten"
+    }
   }
 }

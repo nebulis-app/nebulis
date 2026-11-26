@@ -24,6 +24,12 @@ import {
   DEW_LEAD_DEFAULT_MINUTES,
   DEW_LEAD_MAX_MINUTES,
   DEW_LEAD_MIN_MINUTES,
+  ISS_LEAD_DEFAULT_MINUTES,
+  ISS_LEAD_MAX_MINUTES,
+  ISS_LEAD_MIN_MINUTES,
+  ISS_MIN_ALTITUDE_DEFAULT,
+  ISS_MIN_ALTITUDE_MAX,
+  ISS_MIN_ALTITUDE_MIN,
   EVENING_HHMM,
   NO_ALERT_DETAILS,
 } from './types.js';
@@ -89,7 +95,11 @@ function parseEvents(raw: string): AlertEventType[] {
 export function parseDetails(raw: string | null | undefined): AlertDetails {
   try {
     const v = JSON.parse(raw ?? '{}') as Partial<Record<keyof AlertDetails, unknown>> | null;
-    return { dew: v?.dew === true, plan: v?.plan === true, dewLeadMinutes: leadOrDefault(v?.dewLeadMinutes) };
+    return {
+      dew: v?.dew === true, plan: v?.plan === true, dewLeadMinutes: leadOrDefault(v?.dewLeadMinutes),
+      issLeadMinutes: intInRange(v?.issLeadMinutes, ISS_LEAD_MIN_MINUTES, ISS_LEAD_MAX_MINUTES, ISS_LEAD_DEFAULT_MINUTES),
+      issMinAltitude: intInRange(v?.issMinAltitude, ISS_MIN_ALTITUDE_MIN, ISS_MIN_ALTITUDE_MAX, ISS_MIN_ALTITUDE_DEFAULT),
+    };
   } catch {
     return { ...NO_ALERT_DETAILS };
   }
@@ -100,9 +110,21 @@ function leadOrDefault(v: unknown): number {
   return typeof v === 'number' && Number.isInteger(v) && v >= DEW_LEAD_MIN_MINUTES && v <= DEW_LEAD_MAX_MINUTES ? v : DEW_LEAD_DEFAULT_MINUTES;
 }
 
+function intInRange(v: unknown, min: number, max: number, fallback: number): number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : fallback;
+}
+
 /** A change to some of the switches leaves the others as they were. */
 export function mergeDetails(current: AlertDetails, patch: Partial<AlertDetails> | undefined): AlertDetails {
-  return { dew: patch?.dew ?? current.dew, plan: patch?.plan ?? current.plan, dewLeadMinutes: patch?.dewLeadMinutes === undefined ? current.dewLeadMinutes : leadOrDefault(patch.dewLeadMinutes) };
+  return {
+    dew: patch?.dew ?? current.dew,
+    plan: patch?.plan ?? current.plan,
+    dewLeadMinutes: patch?.dewLeadMinutes === undefined ? current.dewLeadMinutes : leadOrDefault(patch.dewLeadMinutes),
+    issLeadMinutes: patch?.issLeadMinutes === undefined ? current.issLeadMinutes
+      : intInRange(patch.issLeadMinutes, ISS_LEAD_MIN_MINUTES, ISS_LEAD_MAX_MINUTES, ISS_LEAD_DEFAULT_MINUTES),
+    issMinAltitude: patch?.issMinAltitude === undefined ? current.issMinAltitude
+      : intInRange(patch.issMinAltitude, ISS_MIN_ALTITUDE_MIN, ISS_MIN_ALTITUDE_MAX, ISS_MIN_ALTITUDE_DEFAULT),
+  };
 }
 
 function fromRow(row: ChannelRow): AlertChannel {

@@ -11,7 +11,7 @@ import { fetchJSON } from './client';
 export const ALERT_CHANNEL_KINDS = ['ntfy', 'discord', 'slack', 'webhook'] as const;
 export type AlertChannelKind = (typeof ALERT_CHANNEL_KINDS)[number];
 
-export const ALERT_EVENTS = ['night.clear', 'night.dew', 'import.finished', 'import.failed', 'update.available'] as const;
+export const ALERT_EVENTS = ['night.clear', 'night.dew', 'iss.pass', 'import.finished', 'import.failed', 'update.available'] as const;
 export type AlertEventType = (typeof ALERT_EVENTS)[number];
 
 export const ALERT_LANGUAGES = ['en', 'fr', 'de', 'es', 'nl'] as const;
@@ -23,13 +23,21 @@ export interface AlertDetails {
   plan: boolean;
   /** For the dew warning: minutes before the dew is expected to send it. */
   dewLeadMinutes: number;
+  /** For ISS passes: minutes before the pass becomes visible to send it. */
+  issLeadMinutes: number;
+  /** For ISS passes: only passes reaching at least this altitude, degrees. */
+  issMinAltitude: number;
 }
+
+/** How far ahead of an ISS pass, in minutes, and how high it must get, in degrees. */
+export const ISS_LEAD_CHOICES = [5, 10, 15, 30] as const;
+export const ISS_MIN_ALTITUDE_CHOICES = [10, 20, 30, 45, 60] as const;
 
 /** How far ahead of the dew a warning can be set to go, in minutes. A stored value outside these (set elsewhere) is still shown. */
 export const DEW_LEAD_CHOICES = [30, 60, 120, 180] as const;
 
 /** Nothing extra: how every channel and phone starts. */
-export const NO_ALERT_DETAILS: AlertDetails = { dew: false, plan: false, dewLeadMinutes: 60 };
+export const NO_ALERT_DETAILS: AlertDetails = { dew: false, plan: false, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30 };
 
 export interface AlertChannel {
   id: string;

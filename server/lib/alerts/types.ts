@@ -11,7 +11,7 @@ export type AlertChannelKind = (typeof ALERT_CHANNEL_KINDS)[number];
 
 /** Events a channel can subscribe to. `test` is not subscribable: it goes to
  *  the one channel being tested. */
-export const ALERT_EVENTS = ['import.finished', 'import.failed', 'night.clear', 'night.dew', 'update.available'] as const;
+export const ALERT_EVENTS = ['import.finished', 'import.failed', 'night.clear', 'night.dew', 'update.available', 'iss.pass'] as const;
 export type AlertEventType = (typeof ALERT_EVENTS)[number];
 
 export const ALERT_LANGUAGES = ['en', 'fr', 'de', 'es', 'nl'] as const;
@@ -136,9 +136,32 @@ export type AlertEvent =
   | { type: 'night.clear'; occurredAt: string; data: ClearNightAlertData }
   | { type: 'night.dew'; occurredAt: string; data: DewAlertData }
   | { type: 'update.available'; occurredAt: string; data: UpdateAlertData }
+  | { type: 'iss.pass'; occurredAt: string; data: IssPassAlertData }
   | { type: 'test'; occurredAt: string; data: Record<string, never> };
 
 /** Extra lines a person can add to the clear-night alert, chosen per channel and per phone. Both are off until chosen. */
+/** A visible ISS pass coming up over the active site. Times are the visible stretch, ISO UTC; azimuths in degrees. */
+export interface IssPassAlertData {
+  siteName: string;
+  timeZone: string;
+  start: string;
+  peak: string;
+  end: string;
+  startAz: number;
+  peakAz: number;
+  endAz: number;
+  /** Highest altitude while visible, degrees. */
+  maxAlt: number;
+  /** Estimated, lower is brighter. */
+  magnitude: number | null;
+  /** It fades into Earth's shadow before it sets. */
+  endsInShadow: boolean;
+  /** How far ahead this destination asked to be told. */
+  leadMinutes: number;
+  /** Age of the orbital elements in days when they are old enough to be minutes off, else null. */
+  staleDays: number | null;
+}
+
 export interface AlertDetails {
   /** Dew risk and the night's low temperature. */
   dew: boolean;
@@ -146,13 +169,27 @@ export interface AlertDetails {
   plan: boolean;
   /** For the dew warning: how many minutes before the dew is expected to send it. */
   dewLeadMinutes: number;
+  /** For ISS passes: how many minutes before the pass becomes visible to send it. */
+  issLeadMinutes: number;
+  /** For ISS passes: only passes reaching at least this altitude, degrees. */
+  issMinAltitude: number;
 }
+
+/** ISS passes: told 10 minutes ahead, for passes reaching 30° or more, unless asked otherwise. */
+export const ISS_LEAD_DEFAULT_MINUTES = 10;
+export const ISS_LEAD_MIN_MINUTES = 2;
+export const ISS_LEAD_MAX_MINUTES = 60;
+export const ISS_MIN_ALTITUDE_DEFAULT = 30;
+export const ISS_MIN_ALTITUDE_MIN = 10;
+export const ISS_MIN_ALTITUDE_MAX = 80;
 
 /** The dew warning goes out an hour ahead unless asked otherwise, and never closer than 15 minutes or further than 6 hours. */
 export const DEW_LEAD_DEFAULT_MINUTES = 60;
 export const DEW_LEAD_MIN_MINUTES = 15;
 export const DEW_LEAD_MAX_MINUTES = 360;
-export const NO_ALERT_DETAILS: AlertDetails = { dew: false, plan: false, dewLeadMinutes: DEW_LEAD_DEFAULT_MINUTES };
+export const NO_ALERT_DETAILS: AlertDetails = {
+  dew: false, plan: false, dewLeadMinutes: DEW_LEAD_DEFAULT_MINUTES, issLeadMinutes: 10, issMinAltitude: 30,
+};
 
 export interface AlertConfig {
   language: AlertLanguage;

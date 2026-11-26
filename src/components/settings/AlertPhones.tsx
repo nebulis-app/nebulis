@@ -111,6 +111,9 @@ export function AlertPhoneRows({ isDark, devices, onChanged }: { isDark: boolean
                 {d.events.includes('night.dew') && (
                   <p className={`mt-1.5 text-[0.7188rem] ${subtle}`}>{t('alerts.detail.dewRow', { time: leadLabel(d.details?.dewLeadMinutes ?? 60, t) })}</p>
                 )}
+                {d.events.includes('iss.pass') && (
+                  <p className={`mt-1.5 text-[0.7188rem] ${subtle}`}>{t('alerts.detail.issRow', { time: leadLabel(d.details?.issLeadMinutes ?? 10, t), deg: d.details?.issMinAltitude ?? 30 })}</p>
+                )}
                 {d.events.includes('night.clear') && extras.length > 0 && (
                   <p className={`mt-1.5 text-[0.7188rem] ${subtle}`}>{t('alerts.phones.extras', { list: extras.join(', ') })}</p>
                 )}

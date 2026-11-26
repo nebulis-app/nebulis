@@ -509,7 +509,7 @@
       "openMeteo": "Vorhersage und vergangenes Wetter für deine Standorte sowie die Ortssuche",
       "sevenTimer": "Seeing- und Transparenzvorhersagen für Beobachtungsnächte",
       "sunCalc": "Mondphase, Dämmerung sowie Sonnen- und Mondposition für deine Standorte",
-      "celestrak": "Bahnelemente aktiver Satelliten, genutzt für Spurprüfungen",
+      "celestrak": "Bahnelemente aktiver Satelliten für die Spurenprüfung, und die der Station für ISS-Überflüge (höchstens alle 4 Stunden abgefragt)",
       "esri": "Kartenkacheln für die Beobachtungsort-Ansicht",
       "darkskysites": "Liefert die Bortle-Klasse deines Standorts aus dem monatlichen VIIRS-Satellitenmosaik. Nebulis sendet die Koordinaten des ausgewählten Beobachtungsstandorts und speichert die Antwort 24 Stunden lang zwischen.",
       "sdss": "Ersatz-Himmelsbilder, wenn die DSS2-Durchmusterung nicht erreichbar ist. Deckt nur einen Teil des Himmels ab.",
@@ -1693,6 +1693,13 @@
           "label": "Update verfügbar",
           "help": "Einmal pro neuer Nebulis-Version."
         }
+      },
+      "iss": {
+        "pass": {
+          "short": "ISS-Überflug",
+          "label": "ISS-Überflug",
+          "help": "Wird kurz bevor die Internationale Raumstation nach Einbruch der Dunkelheit über Ihren Himmel zieht gesendet, einmal pro Überflug. Wählen Sie, wie lange vorher und wie hoch ein Überflug steigen muss."
+        }
       }
     },
     "language": "Sprache der Meldungen",
@@ -1773,7 +1780,11 @@
       "leadHours_other": "{{count}} Stunden",
       "leadMinutes_one": "{{count}} Minute",
       "leadMinutes_other": "{{count}} Minuten",
-      "dewRow": "Taupunkt-Warnung: {{time}} vor dem Tau"
+      "dewRow": "Taupunkt-Warnung: {{time}} vor dem Tau",
+      "issLeadLabel": "Wie lange vor einem ISS-Überflug",
+      "issMinAltLabel": "Überflüge ab",
+      "issMinAlt": "{{deg}}° und höher",
+      "issRow": "ISS-Überflug: {{time}} vorher, ab {{deg}}°"
     }
   },
   "search": {

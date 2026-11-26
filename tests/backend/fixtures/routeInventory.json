@@ -2254,6 +2254,13 @@
   },
   {
     "method": "GET",
+    "path": "/sky-events/iss-passes",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
     "path": "/storage",
     "guards": [
       "<anonymous>"

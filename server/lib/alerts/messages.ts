@@ -28,6 +28,13 @@ type Vars = Record<string, string | number>;
 
 const STRINGS = {
   en: {
+    issTitle: 'ISS in {minutes} min: {site}',
+    issBody: 'From {from} at {start}, highest {alt}° {peak} at {top}, then {to} at {end}',
+    issShadow: 'It fades into Earth\'s shadow before it sets.',
+    issMag: 'Magnitude {mag}',
+    issStale: 'Orbit data {days} days old: times may be minutes off.',
+    issCompass: 'N,NE,E,SE,S,SW,W,NW',
+    issPeakDir: 'in the {dir}',
     importFinishedTitle: '{count} new files from {origin}',
     importFinishedBody: '{objects}',
     importFinishedNoObjects: 'Open the library to see them.',
@@ -63,6 +70,13 @@ const STRINGS = {
     decimal: '.',
   },
   fr: {
+    issTitle: 'ISS dans {minutes} min : {site}',
+    issBody: 'Depuis le {from} à {start}, au plus haut {alt}° {peak} à {top}, puis vers le {to} à {end}',
+    issShadow: 'Elle disparaît dans l\'ombre de la Terre avant de se coucher.',
+    issMag: 'Magnitude {mag}',
+    issStale: 'Données d\'orbite vieilles de {days} jours : les heures peuvent varier de quelques minutes.',
+    issCompass: 'N,NE,E,SE,S,SO,O,NO',
+    issPeakDir: 'au {dir}',
     importFinishedTitle: '{count} nouveaux fichiers depuis {origin}',
     importFinishedBody: '{objects}',
     importFinishedNoObjects: 'Ouvrez la bibliothèque pour les voir.',
@@ -98,6 +112,13 @@ const STRINGS = {
     decimal: ',',
   },
   de: {
+    issTitle: 'ISS in {minutes} min: {site}',
+    issBody: 'Ab {from} um {start}, am höchsten {alt}° {peak} um {top}, dann {to} um {end}',
+    issShadow: 'Sie verschwindet vor dem Untergang im Erdschatten.',
+    issMag: 'Helligkeit {mag} mag',
+    issStale: 'Bahndaten {days} Tage alt: Die Zeiten können um Minuten abweichen.',
+    issCompass: 'N,NO,O,SO,S,SW,W,NW',
+    issPeakDir: 'im {dir}',
     importFinishedTitle: '{count} neue Dateien von {origin}',
     importFinishedBody: '{objects}',
     importFinishedNoObjects: 'Öffnen Sie die Bibliothek, um sie zu sehen.',
@@ -133,6 +154,13 @@ const STRINGS = {
     decimal: ',',
   },
   es: {
+    issTitle: 'ISS en {minutes} min: {site}',
+    issBody: 'Desde el {from} a las {start}, máxima altura {alt}° {peak} a las {top}, luego hacia el {to} a las {end}',
+    issShadow: 'Se desvanece en la sombra de la Tierra antes de ponerse.',
+    issMag: 'Magnitud {mag}',
+    issStale: 'Datos de órbita de hace {days} días: las horas pueden variar unos minutos.',
+    issCompass: 'N,NE,E,SE,S,SO,O,NO',
+    issPeakDir: 'al {dir}',
     importFinishedTitle: '{count} archivos nuevos desde {origin}',
     importFinishedBody: '{objects}',
     importFinishedNoObjects: 'Abre la biblioteca para verlos.',
@@ -168,6 +196,13 @@ const STRINGS = {
     decimal: ',',
   },
   nl: {
+    issTitle: 'ISS over {minutes} min: {site}',
+    issBody: 'Vanuit het {from} om {start}, op zijn hoogst {alt}° {peak} om {top}, dan naar het {to} om {end}',
+    issShadow: 'Hij verdwijnt in de schaduw van de aarde voordat hij ondergaat.',
+    issMag: 'Magnitude {mag}',
+    issStale: 'Baangegevens {days} dagen oud: de tijden kunnen minuten afwijken.',
+    issCompass: 'N,NO,O,ZO,Z,ZW,W,NW',
+    issPeakDir: 'in het {dir}',
     importFinishedTitle: '{count} nieuwe bestanden van {origin}',
     importFinishedBody: '{objects}',
     importFinishedNoObjects: 'Open de bibliotheek om ze te bekijken.',
@@ -324,6 +359,12 @@ function clearNightBody(d: ClearNightAlertData, lang: AlertLanguage, options: Al
   return lines.filter((l): l is string => l !== null).join('\n');
 }
 
+/** One of eight compass points for an azimuth, from a comma list in the message language (N first, clockwise). */
+export function compassPoint(azimuth: number, points: string): string {
+  const names = points.split(',');
+  return names[Math.round((((azimuth % 360) + 360) % 360) / 45) % 8] ?? '';
+}
+
 export function formatAlert(event: AlertEvent, lang: AlertLanguage, options: AlertFormatOptions = {}): AlertMessage {
   const s = STRINGS[lang];
   switch (event.type) {
@@ -362,6 +403,19 @@ export function formatAlert(event: AlertEvent, lang: AlertLanguage, options: Ale
       if (d.lowTempC !== null) lines.push(fill(s.dewLow, { temp: formatTemperature(d.lowTempC, options.temperatureUnit ?? 'celsius') }));
       // The first line is the point of the warning, so a phone shows it under the title.
       return { title: fill(s.dewTitle, { site: d.siteName }), body: lines.join('\n'), tags: ['droplet'], url: null, lead: lines[0] ?? null };
+    }
+    case 'iss.pass': {
+      const d = event.data;
+      const dir = (az: number) => compassPoint(az, s.issCompass);
+      const lines = [fill(s.issBody, {
+        from: dir(d.startAz), start: formatClock(d.start, d.timeZone),
+        alt: Math.round(d.maxAlt), peak: fill(s.issPeakDir, { dir: dir(d.peakAz) }), top: formatClock(d.peak, d.timeZone),
+        to: dir(d.endAz), end: formatClock(d.end, d.timeZone),
+      })];
+      if (d.magnitude !== null) lines.push(fill(s.issMag, { mag: d.magnitude.toFixed(1) }));
+      if (d.endsInShadow) lines.push(s.issShadow);
+      if (d.staleDays !== null) lines.push(fill(s.issStale, { days: d.staleDays }));
+      return { title: fill(s.issTitle, { minutes: d.leadMinutes, site: d.siteName }), body: lines.join('\n'), tags: ['satellite'], url: null, lead: lines[0] ?? null };
     }
     case 'update.available':
       return {

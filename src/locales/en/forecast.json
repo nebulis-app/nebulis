@@ -150,5 +150,28 @@
     "colClouds": "Median cloud cover",
     "colMoon": "Moon",
     "none": "n/a"
+  },
+  "issPasses": {
+    "title": "ISS passes",
+    "subtitle": "When the International Space Station crosses your sky after dark this week, above {{deg}}°.",
+    "loading": "Working out the passes…",
+    "unavailable": "The station's orbit is not available right now.",
+    "none": "No visible pass above the floor this week.",
+    "stale": "The orbit data is {{days}} days old: times may be minutes off.",
+    "path": "From {{from}}, up to {{alt}}° in the {{peak}}, to {{to}}",
+    "magnitude": "Magnitude {{mag}}",
+    "shadow": "Fades into shadow",
+    "shadowTitle": "It disappears into Earth's shadow before it sets.",
+    "source": "Orbit data from CelesTrak, {{hours}} h old.",
+    "compass": {
+      "N": "north",
+      "NE": "northeast",
+      "E": "east",
+      "SE": "southeast",
+      "S": "south",
+      "SW": "southwest",
+      "W": "west",
+      "NW": "northwest"
+    }
   }
 }

@@ -3786,6 +3786,7 @@ export const spec = {
           planetariumProcessedOnlyDefault: { type: 'boolean', description: 'Planetarium opens with the processed-only filter on' },
           annotateAutoSolve: { type: 'boolean', default: true, description: 'Plate-solve new stacked images in the background while the library is idle, so Annotate has results ready' },
           autoMeasureFrames: { type: 'boolean', default: false, description: 'Analyze new raw sub-frames in the background after an import, once the library is idle, so the Subframes list is already scored when opened' },
+          cometEphemerides: { type: 'boolean', default: false, description: 'Let the planner ask JPL Horizons for the positions of comets and asteroids (the ones added to the planner, and the comets in the library) from the site' },
           onboardingCompleted: { type: 'boolean' },
           prefetchCatalogAssets: { type: 'boolean', description: 'Toggles the bulk background prefetch job that warms catalog imagery/descriptions in the cache' },
           planetariumShowInfo: { type: 'boolean' },
@@ -6944,6 +6945,40 @@ export const spec = {
         },
       },
     },
+    '/dso/comets': {
+      get: {
+        summary: 'Comets and asteroids for the planner',
+        tags: ['DSO Catalog'],
+        description: 'The same handler as GET /planner/comets.',
+        parameters: [
+          { name: 'date', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'siteId', in: 'query', schema: { type: 'string' } },
+          { name: 'lat', in: 'query', schema: { type: 'number' } },
+          { name: 'lon', in: 'query', schema: { type: 'number' } },
+          { name: 'minAlt', in: 'query', schema: { type: 'number' } },
+        ],
+        responses: { 200: { description: 'See GET /planner/comets' }, 422: { description: 'VALIDATION_ERROR' } },
+      },
+      post: {
+        summary: 'Add a comet or asteroid to the planner',
+        tags: ['DSO Catalog'],
+        description: 'The same handler as POST /planner/comets. Admin only.',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['input'], properties: { input: { type: 'string', maxLength: 80 } } } } } },
+        responses: { 200: { description: 'The body as stored' }, 403: { description: 'FORBIDDEN. Admin only.' }, 422: { description: 'VALIDATION_ERROR' } },
+      },
+    },
+    '/dso/comets/{kind}/{designation}': {
+      delete: {
+        summary: 'Remove a comet or asteroid from the planner',
+        tags: ['DSO Catalog'],
+        description: 'The same handler as DELETE /planner/comets/{kind}/{designation}. Admin only.',
+        parameters: [
+          { name: 'kind', in: 'path', required: true, schema: { type: 'string', enum: ['comet', 'asteroid'] } },
+          { name: 'designation', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { 200: { description: 'Removed' }, 403: { description: 'FORBIDDEN. Admin only.' }, 404: { description: 'NOT_FOUND' }, 422: { description: 'VALIDATION_ERROR' } },
+      },
+    },
     '/dso/curve/{objectId}': {
       get: {
         summary: 'Altitude curve for tonight',
@@ -7750,6 +7785,96 @@ export const spec = {
           200: jsonResponse('One verdict per item', 'PlannerVerdict', true),
           422: { description: 'VALIDATION_ERROR' },
         },
+      },
+    },
+    '/planner/comets': {
+      get: {
+        summary: 'Comets and asteroids for the planner',
+        tags: ['Planner'],
+        description: [
+          'The comets and asteroids the planner knows (the ones added with POST, and the comets in the library), each with',
+          'its nights over the next 14 (highest elevation in the imaging window, when, predicted magnitude, the Moon then)',
+          'and, when it clears the floor tonight, a planner target placed where it is at its best time, plus tonight\'s hourly',
+          'positions. Asks JPL Horizons once per body, day and site, and only when `cometEphemerides` is on; otherwise',
+          '`enabled` is false and each body has status `idle`. A body Horizons does not know has status `not-found`; a',
+          'failure is `unavailable` with a message, and the others are still answered.',
+        ].join('\n'),
+        parameters: [
+          { name: 'date', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Local date of the first night (defaults to tonight)' },
+          { name: 'siteId', in: 'query', schema: { type: 'string' } },
+          { name: 'lat', in: 'query', schema: { type: 'number' } },
+          { name: 'lon', in: 'query', schema: { type: 'number' } },
+          { name: 'minAlt', in: 'query', schema: { type: 'number' }, description: 'Override the site floor (degrees)' },
+        ],
+        responses: {
+          200: {
+            description: 'The bodies',
+            content: { 'application/json': { schema: { type: 'object', properties: { ok: { type: 'boolean' }, data: {
+              type: 'object',
+              required: ['enabled', 'locationSet', 'bodies'],
+              properties: {
+                enabled: { type: 'boolean' },
+                locationSet: { type: 'boolean' },
+                bodies: { type: 'array', items: {
+                  type: 'object',
+                  required: ['body', 'status', 'message', 'target', 'nights', 'tonight'],
+                  properties: {
+                    body: { type: 'object', required: ['designation', 'kind', 'label', 'source', 'libraryObjectId'], properties: {
+                      designation: { type: 'string' },
+                      kind: { type: 'string', enum: ['comet', 'asteroid'] },
+                      label: { type: 'string' },
+                      source: { type: 'string', enum: ['watchlist', 'library'] },
+                      libraryObjectId: nullable({ type: 'string' }),
+                    } },
+                    status: { type: 'string', enum: ['idle', 'ok', 'not-found', 'unavailable'] },
+                    message: nullable({ type: 'string' }),
+                    target: nullable({ type: 'object', description: 'Same shape as a /planner/tonight target, type Comet or Asteroid, majorAxisArcmin null' }),
+                    nights: { type: 'array', items: { type: 'object', properties: {
+                      start: { type: 'string', format: 'date-time' },
+                      end: { type: 'string', format: 'date-time' },
+                      maxAlt: nullable({ type: 'number' }),
+                      bestTime: nullable({ type: 'string', format: 'date-time' }),
+                      magnitude: nullable({ type: 'number' }),
+                      ra: nullable({ type: 'number', description: 'Hours, J2000' }),
+                      dec: nullable({ type: 'number' }),
+                      moonIllumination: { type: 'integer' },
+                      moonVerdict: nullable({ type: 'string', enum: ['ok', 'caution', 'warning'] }),
+                      observable: { type: 'boolean' },
+                    } } },
+                    tonight: { type: 'array', description: 'Hourly positions over tonight', items: { type: 'object', properties: {
+                      t: { type: 'string', format: 'date-time' },
+                      ra: { type: 'number', description: 'Hours, J2000' },
+                      dec: { type: 'number' },
+                      az: { type: 'number' },
+                      alt: { type: 'number' },
+                      mag: nullable({ type: 'number' }),
+                    } } },
+                  },
+                } },
+              },
+            } } } } },
+          },
+          422: { description: 'VALIDATION_ERROR' },
+        },
+      },
+      post: {
+        summary: 'Add a comet or asteroid to the planner',
+        tags: ['Planner'],
+        description: 'Admin only. `input` is a comet designation (C/2023 A3, 12P), an asteroid number (4) or name (Vesta). At most 30.',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['input'], properties: { input: { type: 'string', maxLength: 80 } } } } } },
+        responses: { 200: { description: 'The body as stored' }, 403: { description: 'FORBIDDEN. Admin only.' }, 422: { description: 'VALIDATION_ERROR' } },
+      },
+    },
+    '/planner/comets/{kind}/{designation}': {
+      delete: {
+        summary: 'Remove a comet or asteroid from the planner',
+        tags: ['Planner'],
+        description: 'Admin only. Library comets are not on the list and cannot be removed here.',
+        parameters: [
+          { name: 'kind', in: 'path', required: true, schema: { type: 'string', enum: ['comet', 'asteroid'] } },
+          { name: 'designation', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { 200: { description: 'Removed' }, 403: { description: 'FORBIDDEN. Admin only.' }, 404: { description: 'NOT_FOUND' }, 422: { description: 'VALIDATION_ERROR' } },
       },
     },
     '/planner/tonight': {

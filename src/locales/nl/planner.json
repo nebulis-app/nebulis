@@ -190,7 +190,8 @@
     "orderBestTitle": "Gesorteerd op Beste vannacht: hoe goed een doel staat en hoe de moeite waard het is",
     "orderConditionsTitle": "Gesorteerd op Beste omstandigheden: hoe goed een doel vannacht staat",
     "openExploreTitle": "Meer doelen voor deze nacht vinden in Verkennen",
-    "findMoreInExplore": "Meer vinden in Verkennen"
+    "findMoreInExplore": "Meer vinden in Verkennen",
+    "filterComets": "Kometen"
   },
   "nightStrip": {
     "legendLabel": "Legenda",
@@ -542,5 +543,31 @@
       "stop": "Stoppen"
     },
     "timeRange": "{{start}} tot {{end}}"
+  },
+  "comets": {
+    "disabled": "Zet Kometen en planetoïden aan bij Instellingen → Bibliotheek om te zien waar ze staan.",
+    "addLabel": "Komeet of planetoïde toevoegen",
+    "addPlaceholder": "C/2023 A3, 12P, 4 Vesta…",
+    "add": "Toevoegen",
+    "loading": "JPL Horizons wordt gevraagd…",
+    "empty": "Nog geen komeet of planetoïde. Voeg er een toe met zijn aanduiding, nummer of naam.",
+    "kind": {
+      "comet": "Komeet",
+      "asteroid": "Planetoïde"
+    },
+    "inLibrary": "In uw bibliotheek",
+    "jplTitle": "Baan en efemeriden in de database van kleine hemellichamen van het JPL",
+    "remove": "{{name}} verwijderen",
+    "notFound": "JPL Horizons kent geen hemellichaam met die aanduiding.",
+    "unavailable": "JPL Horizons is niet bereikbaar. Probeer het later opnieuw.",
+    "tonight": "Vannacht: tot {{alt}}° om {{time}}",
+    "tonightMag": "Vannacht: tot {{alt}}° om {{time}}, magnitude {{mag}}",
+    "nextUp": "Vannacht niet hoog genoeg. Volgende keer: {{date}}, tot {{alt}}°",
+    "notUp": "De komende twee weken niet hoog genoeg in de donkere nacht.",
+    "bestNights": "Nachten waarin hij hoog genoeg staat",
+    "nightTitle": "Op zijn best om {{time}}, maan voor {{moon}} % verlicht",
+    "objectTitle": "Waar hij staat",
+    "openPlanner": "Inplannen",
+    "ephemeris": "Efemeriden van {{designation}} (JPL)"
   }
 }

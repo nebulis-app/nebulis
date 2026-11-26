@@ -43,6 +43,7 @@ const DATA_SOURCE_GROUPS: Array<{
       { name: 'Nebulis catalog (OpenNGC)', descriptionKey: 'dataSources.descriptions.openngc', url: 'https://github.com/mattiaverga/OpenNGC', icon: <BookOpen className="w-4 h-4" />, badge: 'bundled', cacheKey: 'dataSources.cache.bundledWithApp' },
       { name: 'CDS Sesame', descriptionKey: 'dataSources.descriptions.sesame', url: 'https://cdsweb.u-strasbg.fr', icon: <Globe className="w-4 h-4" />, badge: 'free', cacheKey: 'dataSources.cache.cachedToDisk' },
       { name: 'SIMBAD', descriptionKey: 'dataSources.descriptions.simbad', url: 'https://simbad.cds.unistra.fr', icon: <Database className="w-4 h-4" />, badge: 'free' },
+      { name: 'JPL Horizons', descriptionKey: 'dataSources.descriptions.horizons', url: 'https://ssd.jpl.nasa.gov/horizons/', icon: <Database className="w-4 h-4" />, badge: 'free', cacheKey: 'dataSources.cache.cachedToDisk' },
     ],
   },
   {

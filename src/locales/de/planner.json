@@ -190,7 +190,8 @@
     "orderBestTitle": "Nach „Beste heute Nacht“ sortiert: wie gut ein Ziel steht und wie lohnend es ist",
     "orderConditionsTitle": "Nach „Beste Bedingungen“ sortiert: wie gut ein Ziel heute Nacht steht",
     "openExploreTitle": "Mehr Ziele für diese Nacht in Entdecken finden",
-    "findMoreInExplore": "Mehr in Entdecken finden"
+    "findMoreInExplore": "Mehr in Entdecken finden",
+    "filterComets": "Kometen"
   },
   "nightStrip": {
     "legendLabel": "Legende",
@@ -542,5 +543,31 @@
       "stop": "Stopp"
     },
     "timeRange": "{{start}} bis {{end}}"
+  },
+  "comets": {
+    "disabled": "Schalten Sie Kometen und Asteroiden unter Einstellungen → Bibliothek ein, um zu sehen, wo sie stehen.",
+    "addLabel": "Komet oder Asteroid hinzufügen",
+    "addPlaceholder": "C/2023 A3, 12P, 4 Vesta…",
+    "add": "Hinzufügen",
+    "loading": "JPL Horizons wird gefragt…",
+    "empty": "Noch kein Komet oder Asteroid. Fügen Sie einen über Bezeichnung, Nummer oder Namen hinzu.",
+    "kind": {
+      "comet": "Komet",
+      "asteroid": "Asteroid"
+    },
+    "inLibrary": "In Ihrer Bibliothek",
+    "jplTitle": "Bahn und Ephemeriden in der Kleinkörperdatenbank des JPL",
+    "remove": "{{name}} entfernen",
+    "notFound": "JPL Horizons kennt keinen Körper mit dieser Bezeichnung.",
+    "unavailable": "JPL Horizons ist nicht erreichbar. Versuchen Sie es später erneut.",
+    "tonight": "Heute Nacht: bis {{alt}}° um {{time}}",
+    "tonightMag": "Heute Nacht: bis {{alt}}° um {{time}}, Helligkeit {{mag}} mag",
+    "nextUp": "Heute Nacht nicht hoch genug. Nächstes Mal: {{date}}, bis {{alt}}°",
+    "notUp": "In den nächsten zwei Wochen nicht hoch genug in der dunklen Nacht.",
+    "bestNights": "Nächte, in denen er hoch genug steht",
+    "nightTitle": "Am besten um {{time}}, Mond zu {{moon}} % beleuchtet",
+    "objectTitle": "Wo er steht",
+    "openPlanner": "Einplanen",
+    "ephemeris": "Ephemeriden von {{designation}} (JPL)"
   }
 }

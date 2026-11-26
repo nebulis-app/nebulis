@@ -190,7 +190,8 @@
     "orderBestTitle": "Ordenado por Mejores esta noche: lo bien situado que está un objetivo y lo que merece la pena fotografiarlo",
     "orderConditionsTitle": "Ordenado por Mejores condiciones: lo bien situado que está un objetivo esta noche",
     "openExploreTitle": "Encontrar más objetivos para esta noche en Explorar",
-    "findMoreInExplore": "Encontrar más en Explorar"
+    "findMoreInExplore": "Encontrar más en Explorar",
+    "filterComets": "Cometas"
   },
   "nightStrip": {
     "legendLabel": "Leyenda",
@@ -542,5 +543,31 @@
       "stop": "Detener"
     },
     "timeRange": "{{start}} a {{end}}"
+  },
+  "comets": {
+    "disabled": "Active Cometas y asteroides en Ajustes → Biblioteca para ver dónde están.",
+    "addLabel": "Añadir un cometa o asteroide",
+    "addPlaceholder": "C/2023 A3, 12P, 4 Vesta…",
+    "add": "Añadir",
+    "loading": "Consultando JPL Horizons…",
+    "empty": "Todavía no hay cometas ni asteroides. Añada uno por su designación, número o nombre.",
+    "kind": {
+      "comet": "Cometa",
+      "asteroid": "Asteroide"
+    },
+    "inLibrary": "En su biblioteca",
+    "jplTitle": "Órbita y efemérides en la base de datos de cuerpos menores del JPL",
+    "remove": "Quitar {{name}}",
+    "notFound": "JPL Horizons no conoce ningún cuerpo con esa designación.",
+    "unavailable": "No se pudo contactar con JPL Horizons. Inténtelo más tarde.",
+    "tonight": "Esta noche: hasta {{alt}}° a las {{time}}",
+    "tonightMag": "Esta noche: hasta {{alt}}° a las {{time}}, magnitud {{mag}}",
+    "nextUp": "No sube lo suficiente esta noche. Próxima: {{date}}, hasta {{alt}}°",
+    "notUp": "No sube lo suficiente en la noche oscura en las próximas dos semanas.",
+    "bestNights": "Noches en que sube lo suficiente",
+    "nightTitle": "Mejor a las {{time}}, Luna iluminada al {{moon}} %",
+    "objectTitle": "Dónde está",
+    "openPlanner": "Planificarlo",
+    "ephemeris": "Efemérides de {{designation}} (JPL)"
   }
 }

@@ -126,6 +126,17 @@ export function LibrarySection({
             label={t('librarySection.organization.autoMeasure.label')}
           />
         </Row>
+        <Row
+          label={t('librarySection.organization.comets.label')}
+          description={t('librarySection.organization.comets.description')}
+          isDark={isDark}
+        >
+          <Toggle
+            checked={form.cometEphemerides ?? false}
+            onChange={v => setForm(f => ({ ...f, cometEphemerides: v }))}
+            label={t('librarySection.organization.comets.label')}
+          />
+        </Row>
       </Sec>
       </>
     );

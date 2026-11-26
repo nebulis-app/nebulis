@@ -45,6 +45,11 @@ import {
   type ForecastHour,
 } from '../lib/forecastCache.js';
 import { log } from '../lib/logger.js';
+import { requireAdmin } from '../middleware/auth.js';
+import { getSettingsData } from '../lib/telescopes.js';
+import { mapLimit } from '../lib/deadline.js';
+import { EPHEMERIS_DAYS, HorizonsError, ephemerisFor, positionAt } from '../lib/horizons.js';
+import { SmallBodyInputError, aboveFloor, addToWatchlist, bodyNights, listSmallBodies, removeFromWatchlist } from '../lib/cometPlanner.js';
 import { hasNarrowbandCapableFilter } from '../lib/gear.js';
 import { checkMoonProximity, moonThresholdForIllumination, moonVerdictFor } from '../lib/moonProximity.js';
 import { checkBlockVisibility, type VisibleSkyMap } from '../lib/visibilityCheck.js';
@@ -145,6 +150,125 @@ function resolvePlannerTimelineWindow(night: ReturnType<typeof getNightWindow>):
   if (!start || !end || end.getTime() <= start.getTime()) return null;
   return { start, end };
 }
+
+// ─── Comets and bright asteroids (JPL Horizons, opt-in) ─────────────────────
+
+const SmallBodyKindSchema = z.enum(['comet', 'asteroid']);
+
+/**
+ * GET /api/v1/planner/comets
+ *   The comets and asteroids the planner knows (the ones added, and the library's comets), each with its nights
+ *   over the next EPHEMERIS_DAYS and, when it clears the site's floor tonight, a planner target placed where it is at
+ *   its best time, with tonight's hourly positions for blocks placed at other times. Same site and date parameters
+ *   as /tonight. Asks JPL Horizons only when the setting is on, once per body, day and site.
+ */
+router.get('/comets', async (req: Request, res: Response) => {
+  const parsed = PlannerTonightQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid query parameters');
+    return;
+  }
+  const enabled = getSettingsData().cometEphemerides === true;
+  const bodies = listSmallBodies();
+  const site = resolveSite({ siteId: parsed.data.siteId, lat: parsed.data.lat, lon: parsed.data.lon });
+  if (!enabled || site.latitude === null || site.longitude === null) {
+    res.apiSuccess({ enabled, locationSet: site.latitude !== null, bodies: bodies.map(body => ({ body, status: 'idle', message: null, target: null, nights: [], tonight: [] })) });
+    return;
+  }
+  const lat = site.latitude;
+  const lon = site.longitude;
+  const observerTimezone = await observerTimezoneForCoordinates(lat, lon, site.timezone || null);
+  const anchor = parsed.data.date ? parseLocalNoon(parsed.data.date, observerTimezone) : defaultNightAnchor(new Date(), observerTimezone);
+  const windowPrefs = windowPrefsOf(site);
+  const minAlt = parsed.data.minAlt ?? site.minAlt;
+  // One imaging window per night, tonight first; the last ephemeris day is left out so every window is covered.
+  const windows: { start: Date; end: Date }[] = [];
+  for (let n = 0; n < EPHEMERIS_DAYS - 1; n++) {
+    const night = getNightWindow(new Date(anchor.getTime() + n * 86_400_000), lat, lon, windowPrefs);
+    const w = resolvePlannerDarkWindow(night) ?? resolvePlannerTimelineWindow(night);
+    if (w) windows.push(w);
+  }
+  const tonightTimeline = resolvePlannerTimelineWindow(getNightWindow(anchor, lat, lon, windowPrefs));
+  const wishlistIds = new Set(loadWishlist());
+
+  const results = await mapLimit(bodies, 3, async body => {
+    try {
+      const rows = await ephemerisFor(body.designation, body.kind, { latitude: lat, longitude: lon }, anchor);
+      const nights = bodyNights(rows, windows, { latitude: lat, longitude: lon }, minAlt);
+      const tonightNight = nights[0];
+      const tonight = tonightTimeline
+        ? rows.filter(r => { const t = new Date(r.t).getTime(); return t >= tonightTimeline.start.getTime() - 3_600_000 && t <= tonightTimeline.end.getTime() + 3_600_000; })
+        : [];
+      let target = null;
+      if (tonightNight?.observable && tonightNight.ra !== null && tonightNight.dec !== null && windows[0]) {
+        const { risesAt, setsAt } = aboveFloor(rows, windows[0], minAlt);
+        const now = positionAt(rows, new Date());
+        const nowAltAz = now ? altAz(now.ra, now.dec, lat, lon, new Date()) : null;
+        target = {
+          id: body.designation,
+          ngcName: body.designation,
+          name: body.label,
+          type: body.kind === 'comet' ? 'Comet' : 'Asteroid',
+          typeCode: body.kind === 'comet' ? 'Comet' : 'Asteroid',
+          constellation: null,
+          magnitude: tonightNight.magnitude,
+          majorAxisArcmin: null,
+          ra: tonightNight.ra,
+          dec: tonightNight.dec,
+          commonNames: body.label !== body.designation ? [body.label] : [],
+          aliases: [],
+          altNow: nowAltAz ? Math.round(nowAltAz.alt * 10) / 10 : 0,
+          azNow: nowAltAz ? Math.round(nowAltAz.az * 10) / 10 : 0,
+          maxAlt: tonightNight.maxAlt ?? 0,
+          maxAltTime: tonightNight.bestTime,
+          risesAt,
+          setsAt,
+          isInWishlist: wishlistIds.has(body.designation),
+          isAlreadyImaged: body.libraryObjectId !== null,
+          libraryObjectId: body.libraryObjectId,
+        };
+      }
+      return { body, status: 'ok', message: null, target, nights, tonight };
+    } catch (err) {
+      if (!(err instanceof HorizonsError)) throw err;
+      log.warn({ designation: body.designation, err: err.message }, '[planner] comet ephemeris failed');
+      return { body, status: err.code, message: err.message, target: null, nights: [], tonight: [] };
+    }
+  });
+  res.apiSuccess({ enabled, locationSet: true, bodies: results });
+});
+
+/** POST /api/v1/planner/comets — add a comet or asteroid: `{ input: "C/2023 A3" | "12P" | "4" | "Vesta" }`. */
+router.post('/comets', requireAdmin, (req: Request, res: Response) => {
+  const parsed = z.object({ input: z.string().min(1).max(80) }).safeParse(req.body);
+  if (!parsed.success) {
+    res.apiError(422, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request body');
+    return;
+  }
+  try {
+    res.apiSuccess(addToWatchlist(parsed.data.input));
+  } catch (err) {
+    if (err instanceof SmallBodyInputError) {
+      res.apiError(422, 'VALIDATION_ERROR', err.message);
+      return;
+    }
+    throw err;
+  }
+});
+
+/** DELETE /api/v1/planner/comets/:kind/:designation — remove one the user added (library comets stay). */
+router.delete('/comets/:kind/:designation', requireAdmin, (req: Request, res: Response) => {
+  const kind = SmallBodyKindSchema.safeParse(req.params.kind);
+  if (!kind.success) {
+    res.apiError(422, 'VALIDATION_ERROR', 'kind must be comet or asteroid');
+    return;
+  }
+  if (!removeFromWatchlist(kind.data, String(req.params.designation))) {
+    res.apiError(404, 'NOT_FOUND', 'Not on the list');
+    return;
+  }
+  res.apiSuccess({ removed: true });
+});
 
 // GET /api/v1/planner/tonight
 router.get('/tonight', async (req: Request, res: Response) => {

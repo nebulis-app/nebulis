@@ -31,7 +31,7 @@ import {
 import { CalendarRange, CalendarPlus, Check, Copy, ListTree, Frame, Moon, Share2, Telescope } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../hooks/useTheme';
-import { getPlannerTargets, getForecastForSite, getBlockVerdicts, type ForecastHour, type PlannerTarget } from '../lib/api/planner';
+import { getPlannerTargets, getPlannerComets, getForecastForSite, getBlockVerdicts, type EphemerisRow, type ForecastHour, type PlannerTarget } from '../lib/api/planner';
 import { getSites, getActiveSite, setActiveSite, type ObservingSite } from '../lib/api/sites';
 import { windowPrefsOf } from '../lib/imagingWindow';
 import { SitePicker } from '../components/SitePicker';
@@ -61,6 +61,8 @@ import { NightWeatherModal, type NightAstro } from '../components/planner/NightW
 import { LightPollutionPill } from '../components/forecast/LightPollutionPill';
 import { FramingModal, FRAMING_MOSAIC_ENABLED } from '../components/catalogs/FramingModal';
 import { useResolvedFov } from '../hooks/useResolvedFov';
+import { placeMovingBody } from '../lib/cometPosition';
+import { CometsPanel } from '../components/planner/CometsPanel';
 import { classifyFit, fitDisplayStrings, objectExtentArcmin } from '../lib/telescopeFov';
 import { FitBadge } from '../components/FitBadge';
 import { filterRecommendations } from '../lib/filterRecommendations';
@@ -211,6 +213,31 @@ export function PlannerPage() {
   });
   const planner = plannerQuery.data;
   const observerTimezone = planner?.observerTimezone || settingsTimezone;
+
+  // Comets and asteroids (JPL Horizons, opt-in): the server answers with the list even when the setting is off, so the
+  // Comets tab can say how to turn it on. Tonight's ones join the targets like any other.
+  const cometsQuery = useQuery({
+    queryKey: ['planner-comets', effectiveSiteId, isToday ? 'today' : selectedDateKey],
+    queryFn: () => getPlannerComets({
+      ...(isToday ? {} : { date: selectedDateKey }),
+      ...(effectiveSiteId ? { siteId: effectiveSiteId } : {}),
+    }),
+    enabled: sitesQuery.isSuccess && activeSiteQuery.isSuccess,
+    staleTime: 10 * 60_000,
+    placeholderData: keepPreviousData,
+  });
+  const comets = cometsQuery.data;
+  const plannerTargets = useMemo(() => {
+    const base = planner?.targets ?? [];
+    const moving = (comets?.bodies ?? []).flatMap(b => (b.target ? [b.target] : []));
+    return moving.length > 0 ? [...base, ...moving] : base;
+  }, [planner?.targets, comets]);
+  // A comet moves through the night: a block takes the position at its middle, from tonight's hourly rows.
+  const bodyRowsRef = useRef(new Map<string, EphemerisRow[]>());
+  useEffect(() => {
+    bodyRowsRef.current = new Map((comets?.bodies ?? []).filter(b => b.tonight.length > 0).map(b => [b.body.designation, b.tonight]));
+  }, [comets]);
+  const placeBody = useCallback(<T extends PlannedSessionCreate>(block: T): T => placeMovingBody(block, bodyRowsRef.current), []);
   useEffect(() => {
     if (!observerTimezone || dateTouched) return;
     setSelectedDate(plannerToday(new Date(), observerTimezone));
@@ -401,14 +428,15 @@ export function PlannerPage() {
 
   // ── Mutations ──────────────────────────────────────────────────────────
   const createMut = useMutation({
-    mutationFn: createPlannedSession,
+    mutationFn: (vars: PlannedSessionCreate) => createPlannedSession(placeBody(vars)),
     // Optimistically add the block so it appears on the timeline immediately,
     // even while catalog thumbnails are still loading. Those image requests can
     // saturate the browser's per-host connection pool, which otherwise delays
     // both this POST and the follow-up refetch, making a dropped block look
     // stuck on "Saving" and never appear. The real row replaces the temp one as
     // soon as the server responds.
-    onMutate: async (vars: PlannedSessionCreate) => {
+    onMutate: async (rawVars: PlannedSessionCreate) => {
+      const vars = placeBody(rawVars);
       await queryClient.cancelQueries({ queryKey: ['planned-sessions'] });
       const tempId = makeTempId();
       const now = new Date().toISOString();
@@ -723,7 +751,7 @@ export function PlannerPage() {
           const newStart = clampTime(new Date(new Date(s.startTime).getTime() + DAY_MS), windowStart, windowEnd);
           const newEnd = clampTime(new Date(new Date(s.endTime).getTime() + DAY_MS), windowStart, windowEnd);
           if (minutesBetween(newStart, newEnd) < MIN_BLOCK_MINUTES) return Promise.resolve();
-          return createPlannedSession({
+          return createPlannedSession(placeBody({
             objectId: s.objectId,
             objectName: s.objectName,
             ra: s.ra,
@@ -732,7 +760,7 @@ export function PlannerPage() {
             endTime: newEnd.toISOString(),
             filterBand: s.filterBand ?? null,
             filter: s.filter ?? null,
-          });
+          }));
         }),
       );
       await queryClient.invalidateQueries({ queryKey: ['planned-sessions'] });
@@ -744,7 +772,7 @@ export function PlannerPage() {
     } finally {
       setCopyingPrevNight(false);
     }
-  }, [observerLat, observerLon, timelineStartIso, timelineEndIso, queryClient, t]);
+  }, [observerLat, observerLon, timelineStartIso, timelineEndIso, queryClient, t, placeBody]);
 
   // Moon-proximity + sky-visibility verdicts for placed blocks. Computed
   // server-side (POST /planner/verdict, see server/lib/autoPlan.ts's sibling
@@ -1091,7 +1119,7 @@ export function PlannerPage() {
             minSeparation: b.moonSeparation,
             illumination: nightMoonIllumination ?? 0,
           });
-        await createPlannedSession({
+        await createPlannedSession(placeBody({
           objectId: b.target.id,
           objectName: b.target.name,
           ra: b.target.ra,
@@ -1100,11 +1128,11 @@ export function PlannerPage() {
           endTime: b.end.toISOString(),
           filterBand: pick?.band ?? b.filterBand ?? null,
           filter: pick?.filter ?? null,
-        });
+        }));
       }
       await queryClient.invalidateQueries({ queryKey: ['planned-sessions'] });
     },
-    [queryClient, timelineStartIso, timelineEndIso, integrationProgressFor, nightMoonIllumination],
+    [queryClient, timelineStartIso, timelineEndIso, integrationProgressFor, nightMoonIllumination, placeBody],
   );
 
   const stepDate = useCallback((days: number) => {
@@ -1235,7 +1263,7 @@ export function PlannerPage() {
 
   const targetsPane = (
     <LibraryPanel
-      targets={planner?.targets ?? []}
+      targets={plannerTargets}
       initialQuery={initialSearch}
       observerLat={observerLat}
       observerLon={observerLon}
@@ -1248,6 +1276,7 @@ export function PlannerPage() {
       onQuickAdd={hasWindow ? handleQuickAdd : undefined}
       onShowDetails={handleShowTargetDetails}
       onOpenExplore={() => navigate(`/explore/all?visibility=tonight&sort=tonight&night=${selectedDateKey}`)}
+      cometsPanel={<CometsPanel data={comets} loading={cometsQuery.isLoading} isDark={isDark} observerTimezone={observerTimezone} />}
     />
   );
 
@@ -1470,7 +1499,7 @@ export function PlannerPage() {
 
       {autoPlanOpen && autoPlanRange && observerLat != null && observerLon != null && (
         <AutoPlanModal
-          targets={planner?.targets ?? []}
+          targets={plannerTargets}
           observerLat={observerLat}
           observerLon={observerLon}
           scheduleStart={autoPlanRange.start}

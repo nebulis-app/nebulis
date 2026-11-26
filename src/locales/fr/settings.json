@@ -332,6 +332,10 @@
       "autoMeasure": {
         "label": "Analyser les images après l’import",
         "description": "Évalue en arrière-plan chaque nouvelle image brute une fois l’import terminé, pour que la liste des sous-images soit déjà remplie à l’ouverture d’une nuit. Chaque fichier FITS est lu, c’est donc désactivé par défaut. Ouvrir une nuit l’analyse toujours à la demande."
+      },
+      "comets": {
+        "label": "Comètes et astéroïdes dans le planificateur",
+        "description": "Le planificateur peut proposer des comètes et des astéroïdes brillants : ceux que vous ajoutez dans son onglet Comètes, et les comètes déjà présentes dans votre bibliothèque. Il demande au service gratuit Horizons du JPL (NASA) où chacun se trouvera depuis votre site au cours des deux prochaines semaines, une fois par jour et par comète, et conserve la réponse."
       }
     },
     "calibration": {
@@ -516,7 +520,8 @@
       "legacySurvey": "Deuxième secours pour les images du ciel là où SDSS n'a pas de couverture. Ne couvre qu'une partie du ciel.",
       "nominatim": "Transforme les coordonnées de votre lieu d'observation en nom de lieu.",
       "nebulisDownloads": "Paquets de catalogue et mises à jour de l'app. Nebulis y cherche les nouvelles versions et les télécharge depuis ce serveur.",
-      "nebulisPush": "Envoie les alertes à l'iPhone, uniquement si vous les activez."
+      "nebulisPush": "Envoie les alertes à l'iPhone, uniquement si vous les activez.",
+      "horizons": "Positions et éclat prévu des comètes et astéroïdes depuis votre site, pour l'onglet Comètes du planificateur"
     }
   },
   "siteManager": {

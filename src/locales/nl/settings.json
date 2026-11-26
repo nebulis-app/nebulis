@@ -332,6 +332,10 @@
       "autoMeasure": {
         "label": "Frames analyseren na import",
         "description": "Beoordeelt elke nieuwe ruwe frame op de achtergrond zodra een import klaar is, zodat de lijst met subframes al gevuld is als je een nacht opent. Elk FITS-bestand wordt gelezen, daarom staat dit standaard uit. Een nacht openen analyseert hem nog steeds op aanvraag."
+      },
+      "comets": {
+        "label": "Kometen en planetoïden in de planner",
+        "description": "De planner kan kometen en heldere planetoïden voorstellen: de objecten die u toevoegt op het tabblad Kometen en de kometen die al in uw bibliotheek staan. Hij vraagt de gratis dienst Horizons van NASA's JPL waar elk object de komende twee weken vanaf uw locatie staat, één keer per dag per komeet, en bewaart het antwoord."
       }
     },
     "calibration": {
@@ -516,7 +520,8 @@
       "legacySurvey": "Tweede reserve voor beelden van de hemel waar SDSS geen dekking heeft. Dekt maar een deel van de hemel.",
       "nominatim": "Zet de coördinaten van je waarneemlocatie om in een plaatsnaam.",
       "nebulisDownloads": "Catalogus-pakketten en app-updates. Nebulis controleert hier op nieuwe versies en downloadt ze hier.",
-      "nebulisPush": "Bezorgt iPhone-meldingen, alleen als je ze inschakelt."
+      "nebulisPush": "Bezorgt iPhone-meldingen, alleen als je ze inschakelt.",
+      "horizons": "Posities en voorspelde helderheid van kometen en planetoïden vanaf uw locatie, voor het tabblad Kometen van de planner"
     }
   },
   "siteManager": {

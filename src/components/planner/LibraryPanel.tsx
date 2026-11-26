@@ -12,7 +12,7 @@
  * catalog and render them as dimmed, non-draggable rows. The user can open
  * their details but cannot schedule them.
  */
-import { memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDraggable } from '@dnd-kit/core';
 import { Search, Info, MoonStar, ArrowUp, Check, Plus, Star, ChevronRight, Compass, X } from 'lucide-react';
@@ -57,7 +57,7 @@ interface UnobservableEntry {
   reason: string;
 }
 
-type LibraryFilter = 'all' | 'galaxies' | 'nebulae' | 'clusters';
+type LibraryFilter = 'all' | 'galaxies' | 'nebulae' | 'clusters' | 'comets';
 
 /** Default-view size. With no search/filter, only this many popular targets
  *  render. Picked so the DOM stays light on first paint; anything beyond is
@@ -73,11 +73,15 @@ const FILTER_LABEL_KEY: Record<LibraryFilter, string> = {
   galaxies: 'libraryPanel.filterGalaxies',
   nebulae: 'libraryPanel.filterNebulae',
   clusters: 'libraryPanel.filterClusters',
+  comets: 'libraryPanel.filterComets',
 };
 
 /** Chip render order. Object.keys() returns string[], so listing the filters
  *  explicitly keeps the array typed without asserting over Object.keys. */
-const FILTER_ORDER: readonly LibraryFilter[] = ['all', 'galaxies', 'nebulae', 'clusters'];
+const FILTER_ORDER: readonly LibraryFilter[] = ['all', 'galaxies', 'nebulae', 'clusters', 'comets'];
+
+/** Comets and asteroids: their own tab, never under the deep-sky ones. */
+const isMovingTarget = (t: Pick<PlannerTarget, 'type'>) => t.type === 'Comet' || t.type === 'Asteroid';
 
 interface LibraryPanelProps {
   targets: PlannerTarget[];
@@ -100,6 +104,8 @@ interface LibraryPanelProps {
   observerTimezone?: string;
   /** Opens Explore on this night, listing what is up, best first. Omitted hides the button. */
   onOpenExplore?: () => void;
+  /** The Comets tab's panel (comets and asteroids, JPL Horizons). Omitted hides the tab. */
+  cometsPanel?: ReactNode;
 }
 
 /** How the list is ordered. "Best tonight" is the order Explore uses too (conditions blended with how rewarding the
@@ -131,6 +137,7 @@ export function LibraryPanel({
   scheduledIds,
   observerTimezone,
   onOpenExplore,
+  cometsPanel,
 }: LibraryPanelProps) {
   const { t } = useTranslation('planner');
   const { isDark } = useTheme();
@@ -215,6 +222,8 @@ export function LibraryPanel({
   const filtered = useMemo(() => {
     if (isNarrowing) {
       const matched = sortedTargets.filter(t => {
+        if (filter === 'comets' && !isMovingTarget(t)) return false;
+        if (filter !== 'comets' && filter !== 'all' && isMovingTarget(t)) return false;
         if (filter === 'galaxies' && !typeInClass(t.type, 'galaxy')) return false;
         if (filter === 'nebulae' && !typeInClass(t.type, 'nebula')) return false;
         if (filter === 'clusters' && !typeInClass(t.type, 'cluster')) return false;
@@ -375,7 +384,7 @@ export function LibraryPanel({
         />
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {FILTER_ORDER.map(f => (
+          {FILTER_ORDER.filter(f => f !== 'comets' || cometsPanel).map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -394,7 +403,8 @@ export function LibraryPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {visibleRows.length === 0 && unobservable.length === 0 && (
+        {filter === 'comets' && cometsPanel}
+        {visibleRows.length === 0 && unobservable.length === 0 && filter !== 'comets' && (
           <div className={`p-6 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             {t('libraryPanel.noTargetsMatch')}
             {onOpenExplore && (

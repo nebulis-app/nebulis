@@ -26,7 +26,7 @@ import { parseFitsHeader } from '../fitsParser.js';
 import { headerNumber, parseDecToDegs, parseRaToDegs, readCdMatrix } from '../fitsWcs.js';
 import { KIND_FOV_DEG } from '../companionGeometry.js';
 import { getAnnotationEntry as getDsoById } from './ringCentres.js';
-import { getAllProfiles, getProfileById } from '../telescopes.js';
+import { getAllProfiles, getProfileById, getSettingsData } from '../telescopes.js';
 import { isUnsolvableObject } from './unsolvable.js';
 import { isGeometryEdited } from './geometryEdits.js';
 import { isTelescopeKind, type TelescopeKind } from '../types/telescopeKind.js';
@@ -34,6 +34,10 @@ import { log } from '../logger.js';
 import { annotateFrame, type FrameAnnotation } from './catalogQuery.js';
 import { getSolverStatus, solve as runSolve, SolveFailedError, type SolveHint, type SolverStatus } from './astap.js';
 import { approximateWcs, parseWcs, scaleWcs, transformWcs, wcsFromFitsSolution, type GeometryEdit, type Wcs } from './wcs.js';
+import { notableInFrame } from './notableObjects.js';
+import { bodiesForPicture, fieldCone, solarSystemMarks, SkybotError, type SkybotFetch } from './skybot.js';
+import { activeSiteTimeZone } from '../siteTimeZone.js';
+import { zonedDateTimeToUtc } from '../timezone.js';
 
 export type AnnotateQuality = 'solved' | 'header' | 'approximate' | 'unavailable';
 
@@ -339,6 +343,19 @@ export async function getAnnotations(relPath: string): Promise<AnnotationResult>
   }
   const base = { imageWidth: ctx.previewW, imageHeight: ctx.previewH, solver, solve };
 
+  const { wcs, quality, reason } = resolveWcs(relPath, ctx);
+  if (!wcs) return { ...base, quality: 'unavailable', reason, pixelScaleArcsec: null, annotations: [] };
+
+  // A mosaic's object id ("IC1805_mosaic") is not a catalog id; its target is the part before the suffix.
+  const annotations = annotateFrame(wcs, { targetId: ctx.objectId?.replace(/_mosaic$/i, '') ?? null });
+  // Notable objects are points: only an exact solution places them on the right star.
+  if (quality === 'solved' || quality === 'header') annotations.push(...notableInFrame(wcs));
+  const det = Math.abs(wcs.cd.cd11 * wcs.cd.cd22 - wcs.cd.cd12 * wcs.cd.cd21);
+  return { ...base, quality, reason: null, pixelScaleArcsec: Math.sqrt(det) * 3600, annotations };
+}
+
+/** The best sky solution there is for the picture, in its preview grid, and how good it is. */
+function resolveWcs(relPath: string, ctx: FrameContext): { wcs: Wcs | null; quality: AnnotateQuality; reason: UnavailableReason | null } {
   let wcs: Wcs | null = null;
   let quality: AnnotateQuality = 'unavailable';
   let reason: UnavailableReason | null = null;
@@ -374,14 +391,89 @@ export async function getAnnotations(relPath: string): Promise<AnnotationResult>
     }
   }
 
-  if (!wcs) return { ...base, quality: 'unavailable', reason, pixelScaleArcsec: null, annotations: [] };
-
-  // A mosaic's object id ("IC1805_mosaic") is not a catalog id; its target is the part before the suffix.
-  const annotations = annotateFrame(wcs, { targetId: ctx.objectId?.replace(/_mosaic$/i, '') ?? null });
-  const det = Math.abs(wcs.cd.cd11 * wcs.cd.cd22 - wcs.cd.cd12 * wcs.cd.cd21);
-  return { ...base, quality, reason: null, pixelScaleArcsec: Math.sqrt(det) * 3600, annotations };
+  return { wcs, quality: wcs ? quality : 'unavailable', reason: wcs ? null : reason };
 }
 
+// ─── Asteroids and comets ───────────────────────────────────────────────────
+
+/**
+ * - `ok`: SkyBoT was asked (or its kept answer read); `annotations` may be empty.
+ * - `disabled`: the setting is off.
+ * - `inexact`: the picture has no plate solve or header WCS; an estimated field is too loose for points.
+ * - `no-time`: nothing says when the picture was taken (a multi-night integration, a processed export).
+ * - `unavailable`: the service failed or could not be reached; `message` says how.
+ */
+export type SolarSystemStatus = 'ok' | 'disabled' | 'inexact' | 'no-time' | 'unavailable';
+
+export interface SolarSystemResult {
+  status: SolarSystemStatus;
+  /** The instant SkyBoT was asked about (ISO, UTC), and where it came from. */
+  epoch: string | null;
+  epochSource: 'fits' | 'file' | null;
+  annotations: FrameAnnotation[];
+  /** Bodies in the field fainter than the marks' limit, not drawn. */
+  fainter: number;
+  message: string | null;
+}
+
+const fileTimeStmt = db.prepare<[string], { captureDate: string | null; captureTime: string | null }>(
+  'SELECT captureDate, captureTime FROM libraryFiles WHERE relPath = ?',
+);
+
+/** DATE-OBS is UTC by the FITS standard; some writers add an offset, others leave the zone out. */
+export function fitsInstant(raw: unknown): Date | null {
+  if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(raw.trim())) return null;
+  const isoish = raw.trim().replace(' ', 'T');
+  const date = new Date(/[zZ]$|[+-]\d{2}:?\d{2}$/.test(isoish) ? isoish : `${isoish}Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * When the picture was taken: the FITS twin's DATE-OBS (exact, UTC), else the capture date and time the importer read
+ * from the file name (the site's wall clock, so converted through the site's zone). A picture with neither, such as
+ * an integration of several nights exported from a processing app, has no single moment to ask about.
+ */
+export function captureInstant(
+  twinValues: Record<string, unknown> | null,
+  file: { captureDate: string | null; captureTime: string | null } | undefined,
+  siteZone: string,
+): { epoch: Date; source: 'fits' | 'file' } | null {
+  const fromFits = fitsInstant(twinValues?.['DATE-OBS'] ?? twinValues?.DATE_OBS);
+  if (fromFits) return { epoch: fromFits, source: 'fits' };
+  const date = file?.captureDate;
+  const time = file?.captureTime;
+  if (!date || !time || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{6}$/.test(time)) return null;
+  try {
+    const epoch = zonedDateTimeToUtc(date, { hour: Number(time.slice(0, 2)), minute: Number(time.slice(2, 4)), second: Number(time.slice(4, 6)) }, siteZone);
+    return Number.isNaN(epoch.getTime()) ? null : { epoch, source: 'file' };
+  } catch {
+    return null;
+  }
+}
+
+/** The asteroids and comets in a picture at its capture time, from IMCCE SkyBoT. Asks the service at most once per picture. */
+export async function getSolarSystem(relPath: string, fetcher?: SkybotFetch): Promise<SolarSystemResult> {
+  const empty = { epoch: null, epochSource: null, annotations: [], fainter: 0, message: null };
+  const ctx = await buildContext(relPath);
+  if (getSettingsData().annotateSolarSystem !== true) return { ...empty, status: 'disabled' };
+  if (isUnsolvableObject(ctx.objectId)) return { ...empty, status: 'inexact' };
+  const { wcs, quality } = resolveWcs(relPath, ctx);
+  if (!wcs || (quality !== 'solved' && quality !== 'header')) return { ...empty, status: 'inexact' };
+  const when = captureInstant(ctx.twinValues, fileTimeStmt.get(relPath), activeSiteTimeZone());
+  if (!when) return { ...empty, status: 'no-time' };
+  const cone = fieldCone(wcs);
+  if (!cone) return { ...empty, status: 'inexact' };
+  const stamp = { epoch: when.epoch.toISOString(), epochSource: when.source };
+  try {
+    const bodies = await bodiesForPicture(relPath, ctx.mtimeMs, when.epoch, cone, fetcher);
+    const { annotations, fainter } = solarSystemMarks(wcs, bodies);
+    return { ...empty, ...stamp, status: 'ok', annotations, fainter };
+  } catch (err) {
+    if (!(err instanceof SkybotError)) throw err;
+    log.warn({ relPath: path.basename(relPath), err: err.message }, '[annotate] asteroid and comet lookup failed');
+    return { ...empty, ...stamp, status: 'unavailable', message: err.message };
+  }
+}
 /**
  * Start a background plate solve for this file. Returns immediately with the
  * job's state; poll `getAnnotations` for the outcome. Already-running solves are

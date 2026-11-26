@@ -332,6 +332,10 @@
       "autoMeasure": {
         "label": "Frames nach dem Import analysieren",
         "description": "Bewertet jedes neue Rohbild im Hintergrund, sobald ein Import abgeschlossen ist, damit die Subframe-Liste beim Öffnen einer Nacht schon gefüllt ist. Jede FITS-Datei wird gelesen, deshalb ist die Option standardmäßig aus. Beim Öffnen einer Nacht wird sie weiterhin bei Bedarf analysiert."
+      },
+      "solarSystem": {
+        "label": "Asteroiden und Kometen",
+        "description": "Annotieren kann die Asteroiden und Kometen zeigen, die zum Aufnahmezeitpunkt im Bild standen. Dafür wird der kostenlose Dienst SkyBoT des IMCCE (Paris) nach Himmelsposition und Aufnahmezeit des Bildes gefragt, nur wenn Sie die Ebene im Betrachter einschalten, und die Antwort wird gespeichert. Erfordert ein astrometrisch gelöstes Bild mit bekannter Aufnahmezeit."
       }
     },
     "calibration": {
@@ -516,7 +520,8 @@
       "legacySurvey": "Zweiter Ersatz für Himmelsbilder, wo SDSS keine Abdeckung hat. Deckt nur einen Teil des Himmels ab.",
       "nominatim": "Wandelt die Koordinaten deines Beobachtungsstandorts in einen Ortsnamen um.",
       "nebulisDownloads": "Katalogpakete und App-Updates. Nebulis prüft hier auf neue Versionen und lädt sie von hier herunter.",
-      "nebulisPush": "Stellt iPhone-Benachrichtigungen zu, nur wenn du sie aktivierst."
+      "nebulisPush": "Stellt iPhone-Benachrichtigungen zu, nur wenn du sie aktivierst.",
+      "skybot": "Positionen von Asteroiden und Kometen zu einem bestimmten Zeitpunkt, für die Ebene Asteroiden und Kometen in Annotieren"
     }
   },
   "siteManager": {

@@ -37,6 +37,27 @@ export interface FrameAnnotation {
    *  ring marks the region rather than outlining the object. */
   oversized: boolean;
   isTarget: boolean;
+  /**
+   * Absent for the catalog's deep-sky objects. `notable`: an object worth pointing out that the catalog leaves out
+   * (notableObjects.ts). `solarSystem`: an asteroid or comet where it stood when the picture was taken (skybot.ts).
+   */
+  layer?: 'notable' | 'solarSystem';
+  /** For `solarSystem` marks: what SkyBoT said about the body. */
+  sso?: SolarSystemDetails;
+}
+
+export interface SolarSystemDetails {
+  /** Minor-planet number, or null when the body is only designated. */
+  number: number | null;
+  /** SkyBoT class: `MB>Inner`, `NEA>Apollo`, `Comet>JFC`, `KBO>Classical`, `Planet`… */
+  bodyClass: string;
+  vmag: number | null;
+  /** Apparent motion in arcseconds per hour (RA·cos δ, Dec). */
+  motionArcsecPerHour: number | null;
+  /** Distance from the observer, in astronomical units. */
+  distanceAu: number | null;
+  /** The body's page in JPL's Small-Body Database. */
+  link: string | null;
 }
 
 export interface AnnotateOptions {

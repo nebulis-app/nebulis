@@ -127,6 +127,13 @@
     ]
   },
   {
+    "method": "GET",
+    "path": "/annotate/solar-system",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
     "method": "POST",
     "path": "/annotate/solve",
     "guards": [

@@ -1558,6 +1558,60 @@
       "original": "Archivo original",
       "originalHint": "Tal como se capturó, sin los nombres.",
       "failed": "No se pudo crear la imagen anotada. Prueba con el original."
+    },
+    "layers": {
+      "notable": "Objetos destacados",
+      "solarSystem": "Asteroides y cometas"
+    },
+    "solarSystem": {
+      "loading": "Consultando SkyBoT (IMCCE)…",
+      "inexact": "Requiere una imagen con resolución astrométrica: un campo estimado es demasiado impreciso para puntos.",
+      "disabled": "Active primero Asteroides y cometas en Ajustes → Biblioteca.",
+      "noTime": "No se conoce una única hora de captura para esta imagen (una integración de varias noches, o una exportación sin archivo FITS al lado).",
+      "unavailable": "No se pudo contactar con SkyBoT. Inténtelo más tarde.",
+      "none": "Ningún asteroide ni cometa más brillante que la magnitud 20.",
+      "found_one": "{{count}} asteroide o cometa.",
+      "found_other": "{{count}} asteroides y cometas.",
+      "fainter_one": "{{count}} más débil no mostrado.",
+      "fainter_other": "{{count}} más débiles no mostrados.",
+      "motion": "Se mueve {{value}}″ por hora",
+      "distance": "A {{value}} UA",
+      "jpl": "Base de datos de cuerpos menores del JPL",
+      "credit": "Posición a la hora de captura, según SkyBoT (IMCCE).",
+      "family": {
+        "mainBelt": "Asteroide del cinturón principal",
+        "nearEarth": "Asteroide cercano a la Tierra",
+        "comet": "Cometa",
+        "trojan": "Troyano de Júpiter",
+        "transNeptunian": "Objeto transneptuniano",
+        "centaur": "Centauro",
+        "marsCrosser": "Asteroide que cruza la órbita de Marte",
+        "hungaria": "Asteroide Hungaria",
+        "planet": "Planeta",
+        "other": "Cuerpo del sistema solar"
+      }
+    },
+    "notable": {
+      "kind": {
+        "quasar": "Cuásar",
+        "blackHole": "Agujero negro",
+        "lens": "Lente gravitacional",
+        "blazar": "Blázar",
+        "microquasar": "Microcuásar"
+      },
+      "about": {
+        "3c273": "El primer cuásar identificado (1963) y el más brillante del cielo. Esa débil estrella es el núcleo de una galaxia a unos 2.400 millones de años luz, alimentado por un agujero negro que brilla más que toda su galaxia.",
+        "cygx1": "El primer agujero negro confirmado. La estrella visible, HDE 226868, es una supergigante azul que cede gas a una compañera invisible de unas 21 masas solares, a 7.000 años luz.",
+        "m87star": "El agujero negro en el corazón de M87, el primero fotografiado (Event Horizon Telescope, 2019). Pesa 6.500 millones de soles e impulsa un chorro de 5.000 años luz que las imágenes profundas pueden mostrar.",
+        "sgrastar": "El agujero negro del centro de nuestra galaxia, de unos 4 millones de masas solares, a 26.000 años luz. El polvo lo oculta en luz visible; se marca aquí por su ubicación.",
+        "twinquasar": "La primera lente gravitacional descubierta (1979): un solo cuásar visto dos veces, a 6″ de distancia, porque una galaxia en primer plano curva su luz. Las dos imágenes llegan con unos 417 días de diferencia.",
+        "einsteincross": "Un cuásar a 8.000 millones de años luz visto cuatro veces alrededor del núcleo de una galaxia más cercana que curva su luz. Las cuatro imágenes están a menos de 2″ entre sí.",
+        "mrk421": "Uno de los blázares más cercanos, a unos 400 millones de años luz: una galaxia cuyo chorro apunta casi directamente hacia nosotros, y una de las primeras fuentes observadas en rayos gamma de TeV.",
+        "mrk501": "Un blázar cercano, a unos 450 millones de años luz, cuyo chorro apunta hacia nosotros. Su brillo cambia de una noche a otra.",
+        "bllac": "El prototipo de toda una clase de blázares. Catalogado durante mucho tiempo como estrella variable, resultó ser el núcleo de una galaxia a 900 millones de años luz.",
+        "oj287": "Un blázar a 3.500 millones de años luz que alberga, según se cree, dos agujeros negros en órbita. Tiene estallidos cada 12 años aproximadamente y se fotografía desde la década de 1890.",
+        "ss433": "Un microcuásar de nuestra propia galaxia, a 18.000 años luz: una estrella que alimenta a una compañera compacta que lanza chorros a un cuarto de la velocidad de la luz."
+      }
     }
   }
 }

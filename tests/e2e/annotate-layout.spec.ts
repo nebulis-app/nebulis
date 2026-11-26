@@ -29,7 +29,7 @@ const ANNOTATION = (quality: 'approximate' | 'solved') => ok({
   solve: { state: 'idle', message: null },
 });
 
-async function open(page: Page, w: number, h: number, quality: 'approximate' | 'solved' = 'approximate', opts: { annotate?: boolean } = {}) {
+async function open(page: Page, w: number, h: number, quality: 'approximate' | 'solved' = 'approximate', opts: { annotate?: boolean; annotation?: unknown } = {}) {
   await mockAllRoutes(page);
   await page.route('**/api/observations/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ok({
     ...MOCK.observationDetail, files: [FILE], stackedCount: 1, fitsCount: 0, subFrameCount: 0, processedCount: 0,
@@ -39,7 +39,7 @@ async function open(page: Page, w: number, h: number, quality: 'approximate' | '
   })) }));
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="#123"/></svg>`;
   await page.route('**/api/library/file**', r => r.fulfill({ status: 200, contentType: 'image/svg+xml', body: svg }));
-  await page.route('**/api/annotate?**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ANNOTATION(quality)) }));
+  await page.route('**/api/annotate?**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(opts.annotation ?? ANNOTATION(quality)) }));
   await page.route('**/api/catalog/**/info', r => r.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ ok: false, data: null, error: { code: 'NOT_FOUND', message: 'x' } }) }));
 
   await page.goto('/observations/M42/2024-03-15');
@@ -313,5 +313,72 @@ test.describe('Annotation details card', () => {
     expect(box.y).toBeGreaterThanOrEqual(pane.y - 1);
     expect(box.x + box.width).toBeLessThanOrEqual(pane.x + pane.width + 1);
     expect(box.y + box.height).toBeLessThanOrEqual(pane.y + pane.height + 1);
+  });
+});
+
+test.describe("What's in my image: notable objects and asteroids", () => {
+  test.use({ viewport: { width: 1280, height: 760 } });
+
+  const WITH_NOTABLE = () => {
+    const base = ANNOTATION('solved');
+    return ok({
+      ...base.data,
+      annotations: [
+        ...base.data.annotations,
+        { id: 'notable:3c273', label: '3C 273', designation: null, typeCode: 'quasar', type: 'quasar', magnitude: null, x: 300, y: 400, r: 18, rTrue: 18, oversized: false, isTarget: false, layer: 'notable' },
+      ],
+    });
+  };
+  const SOLAR = ok({
+    status: 'ok', epoch: '2025-08-11T03:26:08.000Z', epochSource: 'file', fainter: 41, message: null,
+    annotations: [{
+      id: 'sso:17684', label: '(17684) 1997 AS16', designation: null, typeCode: 'MB>Outer', type: 'MB>Outer', magnitude: 17.8,
+      x: 700, y: 1100, r: 18, rTrue: 18, oversized: false, isTarget: false, layer: 'solarSystem',
+      sso: { number: 17684, bodyClass: 'MB>Outer', vmag: 17.8, motionArcsecPerHour: 24.8, distanceAu: 2.04, link: 'https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=17684' },
+    }],
+  });
+
+  test('a notable object has its own card and layer switch; asteroids are asked only once the layer is on', async ({ page }) => {
+    let solarAsks = 0;
+    const { dialog } = await open(page, 1200, 1800, 'solved', { annotation: WITH_NOTABLE() });
+    // After open(): its catch-all mocks are registered last and would win otherwise.
+    await page.route('**/api/annotate/solar-system?**', r => {
+      solarAsks++;
+      return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SOLAR) });
+    });
+    const dock = dialog.locator('[data-annotation-dock]');
+    await expect(dock).toBeVisible();
+
+    await dialog.getByRole('button', { name: 'Details for 3C 273' }).first().click();
+    const card = page.locator('[role="dialog"][aria-label="3C 273"]');
+    await expect(card).toContainText('Quasar');
+    await expect(card).toContainText('first quasar ever identified');
+    await expect(card.getByRole('link', { name: /SIMBAD/ })).toHaveAttribute('href', /Ident=3C%20273/);
+    await card.getByRole('button', { name: 'Close details' }).click();
+
+    await dock.getByRole('checkbox', { name: 'Notable objects' }).uncheck();
+    await expect(dialog.getByRole('button', { name: 'Details for 3C 273' })).toHaveCount(0);
+    await dock.getByRole('checkbox', { name: 'Notable objects' }).check();
+
+    expect(solarAsks).toBe(0);
+    await dock.getByRole('checkbox', { name: 'Asteroids and comets' }).check();
+    await expect(dock).toContainText('1 asteroid or comet. 41 fainter ones not shown.');
+    expect(solarAsks).toBe(1);
+    await dialog.getByRole('button', { name: 'Details for (17684) 1997 AS16' }).first().click();
+    const sso = page.locator('[role="dialog"][aria-label="(17684) 1997 AS16"]');
+    await expect(sso).toContainText('Main-belt asteroid');
+    await expect(sso).toContainText('Magnitude 17.8');
+    await expect(sso.getByRole('link', { name: /JPL/ })).toHaveAttribute('href', /sstr=17684/);
+  });
+
+  test('explains why asteroids cannot be shown when the setting is off', async ({ page }) => {
+    const { dialog } = await open(page, 1200, 1800, 'solved');
+    await page.route('**/api/annotate/solar-system?**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ok({
+      status: 'disabled', epoch: null, epochSource: null, annotations: [], fainter: 0, message: null,
+    })) }));
+    const dock = dialog.locator('[data-annotation-dock]');
+    await expect(dock).toBeVisible();
+    await dock.getByRole('checkbox', { name: 'Asteroids and comets' }).check();
+    await expect(dock).toContainText('Turn on Asteroids and comets in Settings');
   });
 });

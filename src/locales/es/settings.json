@@ -332,6 +332,10 @@
       "autoMeasure": {
         "label": "Analizar fotogramas tras importar",
         "description": "Puntúa en segundo plano cada fotograma en bruto nuevo cuando termina una importación, para que la lista de subfotogramas ya esté completa al abrir una noche. Lee cada archivo FITS, por eso viene desactivado. Abrir una noche sigue analizándola bajo demanda."
+      },
+      "solarSystem": {
+        "label": "Asteroides y cometas",
+        "description": "Anotar puede mostrar los asteroides y cometas que había en una imagen cuando se tomó. Consulta al servicio gratuito SkyBoT del IMCCE (París) la posición en el cielo y la hora de captura de la imagen, solo cuando activa la capa en el visor, y guarda la respuesta. Requiere una imagen con resolución astrométrica y hora de captura conocida."
       }
     },
     "calibration": {
@@ -516,7 +520,8 @@
       "legacySurvey": "Segundo respaldo de imágenes del cielo donde SDSS no tiene cobertura. Cubre solo parte del cielo.",
       "nominatim": "Convierte las coordenadas de tu lugar de observación en un nombre de lugar.",
       "nebulisDownloads": "Paquetes de catálogo y actualizaciones de la app. Nebulis comprueba aquí si hay versiones nuevas y las descarga desde aquí.",
-      "nebulisPush": "Entrega las alertas al iPhone, solo si las activas."
+      "nebulisPush": "Entrega las alertas al iPhone, solo si las activas.",
+      "skybot": "Posiciones de asteroides y cometas en un momento dado, para la capa Asteroides y cometas de Anotar"
     }
   },
   "siteManager": {

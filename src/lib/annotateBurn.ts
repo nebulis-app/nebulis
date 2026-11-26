@@ -12,24 +12,27 @@
 import type { AnnotationData, FrameAnnotation } from './api/annotate';
 import { placeLabels } from './annotateLabels';
 
-export type RingKind = 'target' | 'galaxy' | 'cluster' | 'nebula';
+export type RingKind = 'target' | 'galaxy' | 'cluster' | 'nebula' | 'notable' | 'solarSystem';
 
 const GALAXY_TYPES = new Set(['G', 'GPair', 'GTrpl', 'GGroup']);
 const CLUSTER_TYPES = new Set(['OCl', 'GCl', '*Ass']);
 
-export function ringKind(a: Pick<FrameAnnotation, 'isTarget' | 'typeCode'>): RingKind {
+export function ringKind(a: Pick<FrameAnnotation, 'isTarget' | 'typeCode' | 'layer'>): RingKind {
+  if (a.layer) return a.layer;
   if (a.isTarget) return 'target';
   if (GALAXY_TYPES.has(a.typeCode)) return 'galaxy';
   if (CLUSTER_TYPES.has(a.typeCode)) return 'cluster';
   return 'nebula';
 }
 
-/** Tailwind's accent-400 / sky-300 / emerald-300 / rose-300, the colours the overlay shows in the default theme. */
+/** Tailwind's accent-400 / sky-300 / emerald-300 / rose-300 / violet-300 / orange-300, the colours the overlay shows in the default theme. */
 export const RING_HEX: Record<RingKind, string> = {
   target: '#fbbf24',
   galaxy: '#7dd3fc',
   cluster: '#6ee7b7',
   nebula: '#fda4af',
+  notable: '#c4b5fd',
+  solarSystem: '#fdba74',
 };
 
 /** Label height as a share of the picture's long side: 24 px on a 1920 px frame, 48 px on a 4K one. */

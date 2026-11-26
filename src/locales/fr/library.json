@@ -1558,6 +1558,60 @@
       "original": "Fichier d'origine",
       "originalHint": "Tel qu'il a été capturé, sans les noms.",
       "failed": "L'image annotée n'a pas pu être créée. Essayez avec l'original."
+    },
+    "layers": {
+      "notable": "Objets remarquables",
+      "solarSystem": "Astéroïdes et comètes"
+    },
+    "solarSystem": {
+      "loading": "Interrogation de SkyBoT (IMCCE)…",
+      "inexact": "Nécessite une image résolue astrométriquement : un champ estimé est trop imprécis pour des points.",
+      "disabled": "Activez d'abord Astéroïdes et comètes dans Réglages → Bibliothèque.",
+      "noTime": "Aucune heure de prise de vue unique n'est connue pour cette image (intégration de plusieurs nuits, ou export sans fichier FITS à côté).",
+      "unavailable": "SkyBoT est injoignable. Réessayez plus tard.",
+      "none": "Aucun astéroïde ni comète plus brillant que la magnitude 20.",
+      "found_one": "{{count}} astéroïde ou comète.",
+      "found_other": "{{count}} astéroïdes et comètes.",
+      "fainter_one": "{{count}} plus faible non affiché.",
+      "fainter_other": "{{count}} plus faibles non affichés.",
+      "motion": "Se déplace de {{value}}″ par heure",
+      "distance": "À {{value}} ua",
+      "jpl": "Base JPL des petits corps",
+      "credit": "Position à l'heure de la prise de vue, d'après SkyBoT (IMCCE).",
+      "family": {
+        "mainBelt": "Astéroïde de la ceinture principale",
+        "nearEarth": "Géocroiseur",
+        "comet": "Comète",
+        "trojan": "Troyen de Jupiter",
+        "transNeptunian": "Objet transneptunien",
+        "centaur": "Centaure",
+        "marsCrosser": "Aréocroiseur",
+        "hungaria": "Astéroïde de type Hungaria",
+        "planet": "Planète",
+        "other": "Corps du Système solaire"
+      }
+    },
+    "notable": {
+      "kind": {
+        "quasar": "Quasar",
+        "blackHole": "Trou noir",
+        "lens": "Lentille gravitationnelle",
+        "blazar": "Blazar",
+        "microquasar": "Microquasar"
+      },
+      "about": {
+        "3c273": "Le premier quasar identifié (1963), et le plus brillant du ciel. Cette faible étoile est le cœur d'une galaxie située à environ 2,4 milliards d'années-lumière, alimenté par un trou noir plus lumineux que toute sa galaxie.",
+        "cygx1": "Le premier trou noir confirmé. L'étoile visible, HDE 226868, est une supergéante bleue qui perd son gaz au profit d'un compagnon invisible d'environ 21 masses solaires, à 7 000 années-lumière.",
+        "m87star": "Le trou noir au cœur de M87, le premier jamais photographié (Event Horizon Telescope, 2019). Il pèse 6,5 milliards de soleils et alimente un jet de 5 000 années-lumière que les images profondes peuvent montrer.",
+        "sgrastar": "Le trou noir au centre de notre galaxie, d'environ 4 millions de masses solaires, à 26 000 années-lumière. La poussière le cache en lumière visible ; il est indiqué ici pour son emplacement.",
+        "twinquasar": "La première lentille gravitationnelle découverte (1979) : un seul quasar vu deux fois, à 6″ d'écart, parce qu'une galaxie au premier plan courbe sa lumière. Les deux images arrivent à environ 417 jours d'intervalle.",
+        "einsteincross": "Un quasar à 8 milliards d'années-lumière vu quatre fois autour du cœur d'une galaxie plus proche qui courbe sa lumière. Les quatre images sont à moins de 2″ les unes des autres.",
+        "mrk421": "L'un des blazars les plus proches, à environ 400 millions d'années-lumière : une galaxie dont le jet pointe presque droit vers nous, et l'une des premières sources observées en rayons gamma au TeV.",
+        "mrk501": "Un blazar proche, à environ 450 millions d'années-lumière, dont le jet pointe vers nous. Sa luminosité varie d'une nuit à l'autre.",
+        "bllac": "Le prototype de toute une classe de blazars. Longtemps cataloguée comme étoile variable, elle s'est révélée être le cœur d'une galaxie à 900 millions d'années-lumière.",
+        "oj287": "Un blazar à 3,5 milliards d'années-lumière, qui abriterait deux trous noirs en orbite. Il s'embrase environ tous les 12 ans et est photographié depuis les années 1890.",
+        "ss433": "Un microquasar de notre propre galaxie, à 18 000 années-lumière : une étoile qui alimente un compagnon compact lançant des jets au quart de la vitesse de la lumière."
+      }
     }
   }
 }

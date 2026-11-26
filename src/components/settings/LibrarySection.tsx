@@ -126,6 +126,17 @@ export function LibrarySection({
             label={t('librarySection.organization.autoMeasure.label')}
           />
         </Row>
+        <Row
+          label={t('librarySection.organization.solarSystem.label')}
+          description={t('librarySection.organization.solarSystem.description')}
+          isDark={isDark}
+        >
+          <Toggle
+            checked={form.annotateSolarSystem ?? false}
+            onChange={v => setForm(f => ({ ...f, annotateSolarSystem: v }))}
+            label={t('librarySection.organization.solarSystem.label')}
+          />
+        </Row>
       </Sec>
       </>
     );

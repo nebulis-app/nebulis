@@ -71,6 +71,13 @@ describe('ringKind', () => {
     expect(ringKind({ isTarget: false, typeCode: 'GCl' })).toBe('cluster');
     expect(ringKind({ isTarget: false, typeCode: 'EmN' })).toBe('nebula');
   });
+
+  it('gives notable objects and solar-system bodies their own colour, whatever their type', () => {
+    expect(ringKind({ isTarget: false, typeCode: 'quasar', layer: 'notable' })).toBe('notable');
+    expect(ringKind({ isTarget: false, typeCode: 'MB>Inner', layer: 'solarSystem' })).toBe('solarSystem');
+    const plan = planBurn(data([ann({ id: 'sso:17684', label: '(17684) 1997 AS16', layer: 'solarSystem', r: 20, rTrue: 20 })]), 1000, 1600);
+    expect(plan.rings[0].color).toBe(RING_HEX.solarSystem);
+  });
 });
 
 describe('export helpers', () => {

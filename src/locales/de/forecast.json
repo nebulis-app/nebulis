@@ -150,5 +150,53 @@
     "colClouds": "Mittlere Bewölkung",
     "colMoon": "Mond",
     "none": "k. A."
+  },
+  "issPasses": {
+    "title": "ISS-Überflüge",
+    "subtitle": "Wann die Internationale Raumstation diese Woche nach Einbruch der Dunkelheit über {{deg}}° über Ihren Himmel zieht.",
+    "loading": "Überflüge werden berechnet…",
+    "unavailable": "Die Bahn der Station ist gerade nicht verfügbar.",
+    "none": "Diese Woche kein sichtbarer Überflug über der Mindesthöhe.",
+    "stale": "Die Bahndaten sind {{days}} Tage alt: Die Zeiten können um Minuten abweichen.",
+    "path": "Von {{from}}, bis {{alt}}° im {{peak}}, nach {{to}}",
+    "magnitude": "Helligkeit {{mag}} mag",
+    "shadow": "Verschwindet im Schatten",
+    "shadowTitle": "Sie verschwindet vor dem Untergang im Erdschatten.",
+    "source": "Bahndaten von CelesTrak, {{hours}} h alt.",
+    "compass": {
+      "N": "Norden",
+      "NE": "Nordosten",
+      "E": "Osten",
+      "SE": "Südosten",
+      "S": "Süden",
+      "SW": "Südwesten",
+      "W": "Westen",
+      "NW": "Nordwesten"
+    }
+  },
+  "issTransits": {
+    "title": "ISS-Transits vor Mond und Sonne",
+    "subtitle": "Wo die Station diese Woche vor der Scheibe vorbeizieht. Der Streifen ist nur wenige Kilometer breit: kurz vorher noch einmal prüfen.",
+    "loading": "Transits werden gesucht…",
+    "radiusLabel": "Innerhalb von",
+    "radius": "{{km}} km",
+    "none": "Diese Woche kein Transit mit Zentrallinie innerhalb von {{km}} km.",
+    "body": {
+      "moon": "Mond",
+      "sun": "Sonne"
+    },
+    "durationAlt": "{{duration}} s, {{alt}}° hoch",
+    "inMinutes_one": "in {{count}} Minute",
+    "inMinutes_other": "in {{count}} Minuten",
+    "inHours_one": "in {{count}} Std. {{minutes}} Min.",
+    "inHours_other": "in {{count}} Std. {{minutes}} Min.",
+    "inDays_one": "in {{count}} Tag",
+    "inDays_other": "in {{count}} Tagen",
+    "inBand": "Sie stehen im Streifen ({{width}} km breit).",
+    "drive": "Zentrallinie {{distance}} km im {{dir}}; der Streifen ist {{width}} km breit.",
+    "openMap": "Zentrallinie auf einer Karte",
+    "solarSafety": "Nie ohne zertifizierten Sonnenfilter auf Teleskop und Sucher in die Sonne schauen.",
+    "recompute": "Aus {{hours}} h alten Bahndaten. Mit neueren Daten verschiebt sich der Streifen: 24 h und 2 h vorher erneut prüfen.",
+    "mapLabel": "Karte der Zentrallinie und ihres Streifens um Ihren Standort"
   }
 }

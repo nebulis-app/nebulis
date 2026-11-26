@@ -163,3 +163,95 @@ test.describe('Forecast Page: two-week outlook', () => {
     await expect(page.getByText(/long-range outlook is not available/i)).toBeVisible();
   });
 });
+
+test.describe('Forecast Page: ISS passes', () => {
+  /** Two visible passes tonight, the second fading into Earth's shadow. */
+  function passes(stale = false) {
+    const at = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+    const point = (t: string, az: number, alt: number) => ({ t, az, alt });
+    const pass = (h: number, endsInShadow: boolean) => ({
+      rise: point(at(h), 250, 10), peak: point(at(h + 0.05), 180, 62), set: point(at(h + 0.1), 100, 10),
+      visible: { start: point(at(h), 250, 10), peak: point(at(h + 0.05), 180, 62), end: point(at(h + 0.1), 100, 10) },
+      magnitude: -3.4, endsInShadow, startsInShadow: false,
+    });
+    return ok({
+      site: { id: 'site-1', name: 'Backyard', latitude: 37.77, longitude: -122.42, timezone: 'America/Los_Angeles' },
+      tle: { epoch: at(-20), ageHours: stale ? 100 : 20, stale, source: 'iss' },
+      minAltitude: 10,
+      passes: [pass(2, false), pass(26, true)],
+    });
+  }
+
+  test('lists the visible passes: when, from where, how high, how bright, and the one fading into shadow', async ({ page }) => {
+    await mockAllRoutes(page);
+    await page.route('**/api/sky-events/iss-passes**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(passes()) }));
+    await page.goto('/forecast');
+    const section = page.locator('[data-iss-passes]');
+    await expect(section.getByRole('heading', { name: 'ISS passes' })).toBeVisible();
+    await expect(section.locator('[data-iss-pass]')).toHaveCount(2);
+    await expect(section.locator('[data-iss-pass]').first()).toContainText('From west, up to 62° in the south, to east');
+    await expect(section.locator('[data-iss-pass]').first()).toContainText('Magnitude -3.4');
+    await expect(section.getByText('Fades into shadow')).toHaveCount(1);
+    await expect(section).toContainText('Orbit data from CelesTrak, 20 h old.');
+  });
+
+  test('warns when the orbit data is old', async ({ page }) => {
+    await mockAllRoutes(page);
+    await page.route('**/api/sky-events/iss-passes**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(passes(true)) }));
+    await page.goto('/forecast');
+    await expect(page.locator('[data-iss-passes]')).toContainText('The orbit data is 4 days old: times may be minutes off.');
+  });
+});
+
+test.describe('Forecast Page: ISS transits', () => {
+  /** A lunar transit with the site in the band, and a solar one 12 km to the north-west. */
+  function transits() {
+    const at = (h: number) => new Date(Date.now() + h * 3_600_000);
+    const line = (h: number, dLat: number, dLon: number) => Array.from({ length: 21 }, (_, i) => ({
+      t: new Date(at(h).getTime() + (i - 10) * 500).toISOString(), lat: 37.77 + dLat + (i - 10) * 0.01, lon: -122.42 + dLon + (i - 10) * 0.012,
+    }));
+    return {
+      ok: true,
+      data: {
+        site: { id: 'site-1', name: 'Backyard', latitude: 37.77, longitude: -122.42, timezone: 'America/Los_Angeles' },
+        tle: { epoch: at(-7).toISOString(), ageHours: 7, stale: false, source: 'iss' },
+        radiusKm: 50,
+        transits: [
+          { body: 'moon', time: new Date(Math.floor(at(5).getTime() / 1000) * 1000 + 300).toISOString(), durationSec: 1.78,
+            nearest: { lat: 37.78, lon: -122.41, distanceKm: 1.4, bearingDeg: 40 }, bandHalfWidthKm: 3.8, siteInBand: true,
+            bodyAltitude: 26.6, bodyAzimuth: 245, issRangeKm: 837, centerline: line(5, 0, 0) },
+          { body: 'sun', time: at(30).toISOString(), durationSec: 1.94,
+            nearest: { lat: 37.85, lon: -122.52, distanceKm: 12.3, bearingDeg: 315 }, bandHalfWidthKm: 4.95, siteInBand: false,
+            bodyAltitude: 19.1, bodyAzimuth: 199, issRangeKm: 1051, centerline: line(30, 0.08, -0.1) },
+        ],
+      },
+    };
+  }
+
+  test('lists each transit with its time to the tenth, where to stand, a map, and the solar warning on the Sun', async ({ page }) => {
+    await mockAllRoutes(page);
+    let radiusAsked = '';
+    await page.route('**/api/sky-events/iss-transits**', r => {
+      radiusAsked = new URL(r.request().url()).searchParams.get('radiusKm') ?? '';
+      return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(transits()) });
+    });
+    await page.goto('/forecast');
+    const section = page.locator('[data-iss-transits]');
+    await expect(section.getByRole('heading', { name: 'ISS transits of the Moon and the Sun' })).toBeVisible();
+    const moon = section.locator('[data-iss-transit="moon"]');
+    await expect(moon).toContainText(/\d{2}:\d{2}:\d{2}\.3/);
+    await expect(moon).toContainText('1.8 s, 27° high');
+    await expect(moon).toContainText('You are inside the band (7.6 km wide).');
+    await expect(moon.locator('[data-transit-map]')).toBeVisible();
+    await expect(moon).not.toContainText('solar filter');
+    const sun = section.locator('[data-iss-transit="sun"]');
+    await expect(sun).toContainText('Centre line 12.3 km to the northwest; the band is 9.9 km wide.');
+    await expect(sun).toContainText('certified solar filter');
+    await expect(sun.getByRole('link', { name: 'Centre line on a map' })).toHaveAttribute('href', /mlat=37\.85&mlon=-122\.52/);
+    await expect(section).toContainText('From orbit data 7 h old.');
+    expect(radiusAsked).toBe('50');
+    await section.getByRole('combobox').selectOption('100');
+    await expect.poll(() => radiusAsked).toBe('100');
+  });
+});
+

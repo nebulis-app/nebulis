@@ -150,5 +150,53 @@
     "colClouds": "Nébulosité médiane",
     "colMoon": "Lune",
     "none": "n. d."
+  },
+  "issPasses": {
+    "title": "Passages de l'ISS",
+    "subtitle": "Quand la Station spatiale internationale traverse votre ciel après la tombée de la nuit cette semaine, au-dessus de {{deg}}°.",
+    "loading": "Calcul des passages…",
+    "unavailable": "L'orbite de la station n'est pas disponible pour le moment.",
+    "none": "Aucun passage visible au-dessus du seuil cette semaine.",
+    "stale": "Les données d'orbite datent de {{days}} jours : les heures peuvent varier de quelques minutes.",
+    "path": "Depuis le {{from}}, jusqu'à {{alt}}° au {{peak}}, vers le {{to}}",
+    "magnitude": "Magnitude {{mag}}",
+    "shadow": "Disparaît dans l'ombre",
+    "shadowTitle": "Elle disparaît dans l'ombre de la Terre avant de se coucher.",
+    "source": "Données d'orbite de CelesTrak, vieilles de {{hours}} h.",
+    "compass": {
+      "N": "nord",
+      "NE": "nord-est",
+      "E": "est",
+      "SE": "sud-est",
+      "S": "sud",
+      "SW": "sud-ouest",
+      "W": "ouest",
+      "NW": "nord-ouest"
+    }
+  },
+  "issTransits": {
+    "title": "Transits de l'ISS devant la Lune et le Soleil",
+    "subtitle": "Où la station passe devant le disque cette semaine. La bande ne fait que quelques kilomètres : vérifiez encore peu avant.",
+    "loading": "Recherche des transits…",
+    "radiusLabel": "À moins de",
+    "radius": "{{km}} km",
+    "none": "Aucun transit dont la ligne centrale passe à moins de {{km}} km cette semaine.",
+    "body": {
+      "moon": "Lune",
+      "sun": "Soleil"
+    },
+    "durationAlt": "{{duration}} s, à {{alt}}° de hauteur",
+    "inMinutes_one": "dans {{count}} minute",
+    "inMinutes_other": "dans {{count}} minutes",
+    "inHours_one": "dans {{count}} h {{minutes}} min",
+    "inHours_other": "dans {{count}} h {{minutes}} min",
+    "inDays_one": "dans {{count}} jour",
+    "inDays_other": "dans {{count}} jours",
+    "inBand": "Vous êtes dans la bande ({{width}} km de large).",
+    "drive": "Ligne centrale à {{distance}} km au {{dir}} ; la bande fait {{width}} km de large.",
+    "openMap": "Ligne centrale sur une carte",
+    "solarSafety": "Ne regardez jamais le Soleil sans filtre solaire certifié sur le télescope et le chercheur.",
+    "recompute": "D'après des données d'orbite vieilles de {{hours}} h. La bande se déplace avec des données plus récentes : vérifiez encore 24 h et 2 h avant.",
+    "mapLabel": "Carte de la ligne centrale et de sa bande autour de votre site"
   }
 }

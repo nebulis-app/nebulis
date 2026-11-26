@@ -509,7 +509,7 @@
       "openMeteo": "Prévisions et météo passée pour vos lieux, plus la recherche de lieux",
       "sevenTimer": "Prévisions de seeing et de transparence pour les nuits de prise de vue",
       "sunCalc": "Phase lunaire, crépuscule et positions du soleil et de la lune pour vos sites",
-      "celestrak": "Éléments orbitaux des satellites actifs, utilisés dans la vérification des traînées",
+      "celestrak": "Éléments orbitaux des satellites actifs, utilisés dans la vérification des traînées, et ceux de la station pour les passages de l'ISS (demandés au plus toutes les 4 heures)",
       "esri": "Tuiles de carte pour la visionneuse de positions d'observation",
       "darkskysites": "Renvoie la classe de Bortle de votre lieu à partir du composite satellite VIIRS mensuel. Nebulis envoie les coordonnées du lieu d'observation sélectionné et met la réponse en cache pendant 24 heures.",
       "sdss": "Images du ciel de secours quand le relevé DSS2 est inaccessible. Ne couvre qu'une partie du ciel.",
@@ -1693,6 +1693,18 @@
           "label": "Mise à jour disponible",
           "help": "Une fois par nouvelle version de Nebulis."
         }
+      },
+      "iss": {
+        "pass": {
+          "short": "Passage de l'ISS",
+          "label": "Passage de l'ISS",
+          "help": "Envoyé peu avant que la Station spatiale internationale traverse votre ciel après la tombée de la nuit, une fois par passage. Choisissez combien de temps avant, et à quelle hauteur un passage doit monter."
+        },
+        "transit": {
+          "short": "Transit de l'ISS",
+          "label": "Transit de l'ISS devant la Lune ou le Soleil",
+          "help": "Envoyé la veille, puis 2 heures avant avec les données d'orbite les plus récentes, quand la station passe devant la Lune ou le Soleil près de votre site. Choisissez jusqu'où vous iriez en voiture."
+        }
       }
     },
     "language": "Langue des messages",
@@ -1773,7 +1785,14 @@
       "leadHours_other": "{{count}} heures",
       "leadMinutes_one": "{{count}} minute",
       "leadMinutes_other": "{{count}} minutes",
-      "dewRow": "Alerte rosée : {{time}} avant la rosée"
+      "dewRow": "Alerte rosée : {{time}} avant la rosée",
+      "issLeadLabel": "Combien de temps avant un passage de l'ISS",
+      "issMinAltLabel": "Passages à partir de",
+      "issMinAlt": "{{deg}}° et plus",
+      "issRow": "Passage de l'ISS : {{time}} avant, {{deg}}° et plus",
+      "issTransitRadiusLabel": "Ligne centrale à moins de",
+      "issTransitRadius": "{{km}} km",
+      "issTransitRow": "Transit de l'ISS : ligne centrale à moins de {{km}} km"
     }
   },
   "search": {

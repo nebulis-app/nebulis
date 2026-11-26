@@ -28,6 +28,21 @@ type Vars = Record<string, string | number>;
 
 const STRINGS = {
   en: {
+    transitTitleMoon: 'ISS crosses the Moon in {when}',
+    transitTitleSun: 'ISS crosses the Sun in {when}',
+    transitTime: 'At {time}, for {duration} s.',
+    transitInBand: 'You are inside the band, {distance} km from the centre line.',
+    transitDrive: 'The centre line is {distance} km to the {dir}: the band is {width} km wide.',
+    transitDay: 'Times from orbit data {hours} h old: they will be worked out again 2 hours before.',
+    transitFinal: 'Worked out again with orbit data {hours} h old. Check once more right before.',
+    transitSolar: 'Solar filter on the telescope and the finder, always.',
+    issTitle: 'ISS in {minutes} min: {site}',
+    issBody: 'From {from} at {start}, highest {alt}° {peak} at {top}, then {to} at {end}',
+    issShadow: 'It fades into Earth\'s shadow before it sets.',
+    issMag: 'Magnitude {mag}',
+    issStale: 'Orbit data {days} days old: times may be minutes off.',
+    issCompass: 'N,NE,E,SE,S,SW,W,NW',
+    issPeakDir: 'in the {dir}',
     importFinishedTitle: '{count} new files from {origin}',
     importFinishedBody: '{objects}',
     importFinishedNoObjects: 'Open the library to see them.',
@@ -63,6 +78,21 @@ const STRINGS = {
     decimal: '.',
   },
   fr: {
+    transitTitleMoon: 'L\'ISS passe devant la Lune dans {when}',
+    transitTitleSun: 'L\'ISS passe devant le Soleil dans {when}',
+    transitTime: 'À {time}, pendant {duration} s.',
+    transitInBand: 'Vous êtes dans la bande, à {distance} km de la ligne centrale.',
+    transitDrive: 'La ligne centrale est à {distance} km au {dir} : la bande fait {width} km de large.',
+    transitDay: 'Heures tirées de données d\'orbite vieilles de {hours} h : elles seront recalculées 2 heures avant.',
+    transitFinal: 'Recalculé avec des données d\'orbite vieilles de {hours} h. Vérifiez encore juste avant.',
+    transitSolar: 'Filtre solaire sur le télescope et le chercheur, toujours.',
+    issTitle: 'ISS dans {minutes} min : {site}',
+    issBody: 'Depuis le {from} à {start}, au plus haut {alt}° {peak} à {top}, puis vers le {to} à {end}',
+    issShadow: 'Elle disparaît dans l\'ombre de la Terre avant de se coucher.',
+    issMag: 'Magnitude {mag}',
+    issStale: 'Données d\'orbite vieilles de {days} jours : les heures peuvent varier de quelques minutes.',
+    issCompass: 'N,NE,E,SE,S,SO,O,NO',
+    issPeakDir: 'au {dir}',
     importFinishedTitle: '{count} nouveaux fichiers depuis {origin}',
     importFinishedBody: '{objects}',
     importFinishedNoObjects: 'Ouvrez la bibliothèque pour les voir.',
@@ -98,6 +128,21 @@ const STRINGS = {
     decimal: ',',
   },
   de: {
+    transitTitleMoon: 'ISS vor dem Mond in {when}',
+    transitTitleSun: 'ISS vor der Sonne in {when}',
+    transitTime: 'Um {time}, für {duration} s.',
+    transitInBand: 'Sie stehen im Streifen, {distance} km von der Zentrallinie.',
+    transitDrive: 'Die Zentrallinie liegt {distance} km im {dir}: Der Streifen ist {width} km breit.',
+    transitDay: 'Zeiten aus {hours} h alten Bahndaten: Sie werden 2 Stunden vorher neu berechnet.',
+    transitFinal: 'Mit {hours} h alten Bahndaten neu berechnet. Prüfen Sie es kurz vorher noch einmal.',
+    transitSolar: 'Sonnenfilter auf Teleskop und Sucher, immer.',
+    issTitle: 'ISS in {minutes} min: {site}',
+    issBody: 'Ab {from} um {start}, am höchsten {alt}° {peak} um {top}, dann {to} um {end}',
+    issShadow: 'Sie verschwindet vor dem Untergang im Erdschatten.',
+    issMag: 'Helligkeit {mag} mag',
+    issStale: 'Bahndaten {days} Tage alt: Die Zeiten können um Minuten abweichen.',
+    issCompass: 'N,NO,O,SO,S,SW,W,NW',
+    issPeakDir: 'im {dir}',
     importFinishedTitle: '{count} neue Dateien von {origin}',
     importFinishedBody: '{objects}',
     importFinishedNoObjects: 'Öffnen Sie die Bibliothek, um sie zu sehen.',
@@ -133,6 +178,21 @@ const STRINGS = {
     decimal: ',',
   },
   es: {
+    transitTitleMoon: 'La ISS cruza la Luna en {when}',
+    transitTitleSun: 'La ISS cruza el Sol en {when}',
+    transitTime: 'A las {time}, durante {duration} s.',
+    transitInBand: 'Está dentro de la franja, a {distance} km de la línea central.',
+    transitDrive: 'La línea central está a {distance} km al {dir}: la franja mide {width} km de ancho.',
+    transitDay: 'Horas calculadas con datos de órbita de hace {hours} h: se recalcularán 2 horas antes.',
+    transitFinal: 'Recalculado con datos de órbita de hace {hours} h. Compruébelo otra vez justo antes.',
+    transitSolar: 'Filtro solar en el telescopio y el buscador, siempre.',
+    issTitle: 'ISS en {minutes} min: {site}',
+    issBody: 'Desde el {from} a las {start}, máxima altura {alt}° {peak} a las {top}, luego hacia el {to} a las {end}',
+    issShadow: 'Se desvanece en la sombra de la Tierra antes de ponerse.',
+    issMag: 'Magnitud {mag}',
+    issStale: 'Datos de órbita de hace {days} días: las horas pueden variar unos minutos.',
+    issCompass: 'N,NE,E,SE,S,SO,O,NO',
+    issPeakDir: 'al {dir}',
     importFinishedTitle: '{count} archivos nuevos desde {origin}',
     importFinishedBody: '{objects}',
     importFinishedNoObjects: 'Abre la biblioteca para verlos.',
@@ -168,6 +228,21 @@ const STRINGS = {
     decimal: ',',
   },
   nl: {
+    transitTitleMoon: 'ISS vóór de maan over {when}',
+    transitTitleSun: 'ISS vóór de zon over {when}',
+    transitTime: 'Om {time}, gedurende {duration} s.',
+    transitInBand: 'U staat binnen de strook, {distance} km van de centrale lijn.',
+    transitDrive: 'De centrale lijn ligt {distance} km naar het {dir}: de strook is {width} km breed.',
+    transitDay: 'Tijden uit baangegevens van {hours} uur oud: ze worden 2 uur vooraf opnieuw berekend.',
+    transitFinal: 'Opnieuw berekend met baangegevens van {hours} uur oud. Controleer het vlak vooraf nog eens.',
+    transitSolar: 'Zonnefilter op de telescoop en de zoeker, altijd.',
+    issTitle: 'ISS over {minutes} min: {site}',
+    issBody: 'Vanuit het {from} om {start}, op zijn hoogst {alt}° {peak} om {top}, dan naar het {to} om {end}',
+    issShadow: 'Hij verdwijnt in de schaduw van de aarde voordat hij ondergaat.',
+    issMag: 'Magnitude {mag}',
+    issStale: 'Baangegevens {days} dagen oud: de tijden kunnen minuten afwijken.',
+    issCompass: 'N,NO,O,ZO,Z,ZW,W,NW',
+    issPeakDir: 'in het {dir}',
     importFinishedTitle: '{count} nieuwe bestanden van {origin}',
     importFinishedBody: '{objects}',
     importFinishedNoObjects: 'Open de bibliotheek om ze te bekijken.',
@@ -324,6 +399,18 @@ function clearNightBody(d: ClearNightAlertData, lang: AlertLanguage, options: Al
   return lines.filter((l): l is string => l !== null).join('\n');
 }
 
+/** One of eight compass points for an azimuth, from a comma list in the message language (N first, clockwise). */
+export function compassPoint(azimuth: number, points: string): string {
+  const names = points.split(',');
+  return names[Math.round((((azimuth % 360) + 360) % 360) / 45) % 8] ?? '';
+}
+
+/** Seconds and tenths of an instant ("56.0"), for a transit that lasts a second or two. The same in every time zone:
+ *  they all differ from UTC by whole minutes. */
+function formatSeconds(iso: string): string {
+  return ((((Date.parse(iso) / 1000) % 60) + 60) % 60).toFixed(1).padStart(4, '0');
+}
+
 export function formatAlert(event: AlertEvent, lang: AlertLanguage, options: AlertFormatOptions = {}): AlertMessage {
   const s = STRINGS[lang];
   switch (event.type) {
@@ -362,6 +449,34 @@ export function formatAlert(event: AlertEvent, lang: AlertLanguage, options: Ale
       if (d.lowTempC !== null) lines.push(fill(s.dewLow, { temp: formatTemperature(d.lowTempC, options.temperatureUnit ?? 'celsius') }));
       // The first line is the point of the warning, so a phone shows it under the title.
       return { title: fill(s.dewTitle, { site: d.siteName }), body: lines.join('\n'), tags: ['droplet'], url: null, lead: lines[0] ?? null };
+    }
+    case 'iss.pass': {
+      const d = event.data;
+      const dir = (az: number) => compassPoint(az, s.issCompass);
+      const lines = [fill(s.issBody, {
+        from: dir(d.startAz), start: formatClock(d.start, d.timeZone),
+        alt: Math.round(d.maxAlt), peak: fill(s.issPeakDir, { dir: dir(d.peakAz) }), top: formatClock(d.peak, d.timeZone),
+        to: dir(d.endAz), end: formatClock(d.end, d.timeZone),
+      })];
+      if (d.magnitude !== null) lines.push(fill(s.issMag, { mag: d.magnitude.toFixed(1) }));
+      if (d.endsInShadow) lines.push(s.issShadow);
+      if (d.staleDays !== null) lines.push(fill(s.issStale, { days: d.staleDays }));
+      return { title: fill(s.issTitle, { minutes: d.leadMinutes, site: d.siteName }), body: lines.join('\n'), tags: ['satellite'], url: null, lead: lines[0] ?? null };
+    }
+    case 'iss.transit': {
+      const d = event.data;
+      const minutes = Math.max(1, Math.round((Date.parse(d.time) - Date.parse(event.occurredAt)) / 60_000));
+      const when = minutes >= 120 ? `${Math.round(minutes / 60)} h` : `${minutes} min`;
+      const title = fill(d.body === 'moon' ? s.transitTitleMoon : s.transitTitleSun, { when });
+      const lines = [
+        fill(s.transitTime, { time: `${formatClock(d.time, d.timeZone)}:${formatSeconds(d.time)}`, duration: d.durationSec.toFixed(1) }),
+        d.siteInBand
+          ? fill(s.transitInBand, { distance: d.distanceKm.toFixed(1) })
+          : fill(s.transitDrive, { distance: d.distanceKm.toFixed(1), dir: compassPoint(d.bearingDeg, s.issCompass), width: (2 * d.bandHalfWidthKm).toFixed(1) }),
+        fill(d.stage === 'day' ? s.transitDay : s.transitFinal, { hours: Math.round(d.tleAgeHours) }),
+      ];
+      if (d.body === 'sun') lines.push(s.transitSolar);
+      return { title, body: lines.join('\n'), tags: ['satellite'], url: null, lead: lines[0] ?? null };
     }
     case 'update.available':
       return {

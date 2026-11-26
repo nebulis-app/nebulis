@@ -6,12 +6,16 @@
  *     `import.finished` / `import.failed` directly;
  *   - the evening clear-night check (clearNight.ts);
  *   - dew warnings, each destination at its own lead time before the dew (dewWarning.ts);
+ *   - ISS passes, each destination at its own lead time and minimum altitude (issPass.ts);
+ *   - ISS transits of the Moon and the Sun, a day and two hours ahead, within each destination's radius (issTransit.ts);
  *   - the update checker, through onUpdateAvailable (appUpdate/state.ts),
  *     announced once per version.
  */
 import { onUpdateAvailable, type UpdateStatus } from '../appUpdate/state.js';
 import { startClearNightScheduler } from './clearNight.js';
 import { startDewWarningScheduler } from './dewWarning.js';
+import { startIssPassScheduler } from './issPass.js';
+import { startIssTransitScheduler } from './issTransit.js';
 import { emitAlert } from './delivery.js';
 import { getAlertState, setAlertState } from './store.js';
 
@@ -31,4 +35,6 @@ export function startAlerts(): void {
   onUpdateAvailable(announceUpdate);
   startClearNightScheduler();
   startDewWarningScheduler();
+  startIssPassScheduler();
+  startIssTransitScheduler();
 }

@@ -509,7 +509,7 @@
       "openMeteo": "Forecast and past weather for your sites, plus place search",
       "sevenTimer": "Seeing and transparency forecasts for imaging nights",
       "sunCalc": "Moon phase, twilight, and sun and moon positions for your sites",
-      "celestrak": "Orbital elements for active satellites, used in trail checks",
+      "celestrak": "Orbital elements for active satellites, used in trail checks, and the station's own for ISS passes (asked at most every 4 hours)",
       "esri": "Map tiles for the observation location viewer",
       "darkskysites": "Returns your site's Bortle class from the monthly VIIRS satellite composite. Nebulis sends the coordinates of the observing site you have selected, and caches the answer for 24 hours.",
       "sdss": "Backup sky pictures when the DSS2 survey cannot be reached. Covers only part of the sky.",
@@ -1693,6 +1693,18 @@
           "label": "Update available",
           "help": "Once per new Nebulis version."
         }
+      },
+      "iss": {
+        "pass": {
+          "short": "ISS pass",
+          "label": "ISS pass",
+          "help": "Sent shortly before the International Space Station crosses your sky after dark, once per pass. Choose how far ahead, and how high a pass must get."
+        },
+        "transit": {
+          "short": "ISS transit",
+          "label": "ISS transit of the Moon or the Sun",
+          "help": "Sent a day ahead, then again 2 hours ahead with the latest orbit data, when the station crosses the Moon or the Sun near your site. Choose how far you would drive."
+        }
       }
     },
     "language": "Message language",
@@ -1773,7 +1785,14 @@
       "leadHours_other": "{{count}} hours",
       "leadMinutes_one": "{{count}} minute",
       "leadMinutes_other": "{{count}} minutes",
-      "dewRow": "Dew warning: {{time}} before the dew"
+      "dewRow": "Dew warning: {{time}} before the dew",
+      "issLeadLabel": "How far ahead of an ISS pass",
+      "issMinAltLabel": "Passes from",
+      "issMinAlt": "{{deg}}° and higher",
+      "issRow": "ISS pass: {{time}} before, {{deg}}° and higher",
+      "issTransitRadiusLabel": "Centre line within",
+      "issTransitRadius": "{{km}} km",
+      "issTransitRow": "ISS transit: centre line within {{km}} km"
     }
   },
   "search": {

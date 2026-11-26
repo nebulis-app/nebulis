@@ -15,6 +15,12 @@ import {
   ALERT_LANGUAGES,
   DEW_LEAD_MAX_MINUTES,
   DEW_LEAD_MIN_MINUTES,
+  ISS_LEAD_MAX_MINUTES,
+  ISS_LEAD_MIN_MINUTES,
+  ISS_MIN_ALTITUDE_MAX,
+  ISS_MIN_ALTITUDE_MIN,
+  ISS_TRANSIT_RADIUS_MAX_KM,
+  ISS_TRANSIT_RADIUS_MIN_KM,
   EVENING_HHMM,
   type AlertChannel,
   type AlertConfig,
@@ -43,6 +49,12 @@ export const AlertDetailsPatchSchema = z.object({
   plan: z.boolean().optional().describe('Include what is planned for tonight'),
   dewLeadMinutes: z.number().int().min(DEW_LEAD_MIN_MINUTES).max(DEW_LEAD_MAX_MINUTES).optional()
     .describe('Minutes before the expected dew to send the dew warning'),
+  issLeadMinutes: z.number().int().min(ISS_LEAD_MIN_MINUTES).max(ISS_LEAD_MAX_MINUTES).optional()
+    .describe('Minutes before a visible ISS pass to send its alert'),
+  issMinAltitude: z.number().int().min(ISS_MIN_ALTITUDE_MIN).max(ISS_MIN_ALTITUDE_MAX).optional()
+    .describe('Only ISS passes reaching at least this altitude, degrees'),
+  issTransitRadiusKm: z.number().int().min(ISS_TRANSIT_RADIUS_MIN_KM).max(ISS_TRANSIT_RADIUS_MAX_KM).optional()
+    .describe('Only ISS transits whose centre line passes within this distance of the site, km'),
 });
 
 export const AlertChannelBodySchema = z.object({
@@ -90,6 +102,9 @@ export const AlertDetailsSchema = z.object({
   dew: z.boolean(),
   plan: z.boolean(),
   dewLeadMinutes: z.number().int(),
+  issLeadMinutes: z.number().int(),
+  issMinAltitude: z.number().int(),
+  issTransitRadiusKm: z.number().int(),
 });
 
 export const AlertChannelSchema = z.object({

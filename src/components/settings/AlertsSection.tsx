@@ -244,6 +244,12 @@ export function AlertsSection({ isDark }: { isDark: boolean }) {
                         {c.events.includes('night.dew') && (
                           <p className={`mt-1.5 text-[0.7188rem] ${subtle}`}>{t('alerts.detail.dewRow', { time: leadLabel(c.details?.dewLeadMinutes ?? 60, t) })}</p>
                         )}
+                        {c.events.includes('iss.transit') && (
+                          <p className={`mt-1.5 text-[0.7188rem] ${subtle}`}>{t('alerts.detail.issTransitRow', { km: c.details?.issTransitRadiusKm ?? 50 })}</p>
+                        )}
+                        {c.events.includes('iss.pass') && (
+                          <p className={`mt-1.5 text-[0.7188rem] ${subtle}`}>{t('alerts.detail.issRow', { time: leadLabel(c.details?.issLeadMinutes ?? 10, t), deg: c.details?.issMinAltitude ?? 30 })}</p>
+                        )}
                         {c.lastSentAt && (
                           <p className={`mt-1.5 inline-flex items-center gap-1.5 text-[0.7188rem] ${
                             c.lastStatus === 'error' ? (isDark ? 'text-amber-300' : 'text-amber-700') : subtle

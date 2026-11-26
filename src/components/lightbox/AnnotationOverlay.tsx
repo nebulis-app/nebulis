@@ -19,6 +19,8 @@ const RING_CLASS: Record<RingKind, string> = {
   galaxy: 'stroke-sky-300',
   cluster: 'stroke-emerald-300',
   nebula: 'stroke-rose-300',
+  notable: 'stroke-violet-300',
+  solarSystem: 'stroke-orange-300',
 };
 
 /**

@@ -1558,6 +1558,60 @@
       "original": "Originaldatei",
       "originalHint": "Genau so aufgenommen, ohne die Namen.",
       "failed": "Das beschriftete Bild konnte nicht erstellt werden. Versuche es mit dem Original."
+    },
+    "layers": {
+      "notable": "Besondere Objekte",
+      "solarSystem": "Asteroiden und Kometen"
+    },
+    "solarSystem": {
+      "loading": "IMCCE SkyBoT wird gefragt…",
+      "inexact": "Erfordert ein astrometrisch gelöstes Bild: Ein geschätztes Feld ist für Punkte zu ungenau.",
+      "disabled": "Schalten Sie zuerst Asteroiden und Kometen unter Einstellungen → Bibliothek ein.",
+      "noTime": "Für dieses Bild ist keine einzelne Aufnahmezeit bekannt (eine Integration mehrerer Nächte oder ein Export ohne FITS-Datei daneben).",
+      "unavailable": "SkyBoT ist nicht erreichbar. Versuchen Sie es später erneut.",
+      "none": "Kein Asteroid oder Komet heller als Größenklasse 20.",
+      "found_one": "{{count}} Asteroid oder Komet.",
+      "found_other": "{{count}} Asteroiden und Kometen.",
+      "fainter_one": "{{count}} schwächerer nicht angezeigt.",
+      "fainter_other": "{{count}} schwächere nicht angezeigt.",
+      "motion": "Bewegt sich {{value}}″ pro Stunde",
+      "distance": "{{value}} AE entfernt",
+      "jpl": "JPL-Kleinkörperdatenbank",
+      "credit": "Position zur Aufnahmezeit, laut IMCCE SkyBoT.",
+      "family": {
+        "mainBelt": "Hauptgürtel-Asteroid",
+        "nearEarth": "Erdnaher Asteroid",
+        "comet": "Komet",
+        "trojan": "Jupiter-Trojaner",
+        "transNeptunian": "Transneptunisches Objekt",
+        "centaur": "Zentaur",
+        "marsCrosser": "Marsbahnkreuzer",
+        "hungaria": "Hungaria-Asteroid",
+        "planet": "Planet",
+        "other": "Körper des Sonnensystems"
+      }
+    },
+    "notable": {
+      "kind": {
+        "quasar": "Quasar",
+        "blackHole": "Schwarzes Loch",
+        "lens": "Gravitationslinse",
+        "blazar": "Blazar",
+        "microquasar": "Mikroquasar"
+      },
+      "about": {
+        "3c273": "Der erste je identifizierte Quasar (1963) und der hellste am Himmel. Dieser schwache Stern ist der Kern einer etwa 2,4 Milliarden Lichtjahre entfernten Galaxie, angetrieben von einem Schwarzen Loch, das seine ganze Galaxie überstrahlt.",
+        "cygx1": "Das erste bestätigte Schwarze Loch. Der sichtbare Stern HDE 226868 ist ein blauer Überriese, der Gas an einen unsichtbaren Begleiter von etwa 21 Sonnenmassen verliert, 7.000 Lichtjahre entfernt.",
+        "m87star": "Das Schwarze Loch im Herzen von M87, das erste je abgebildete (Event Horizon Telescope, 2019). Es wiegt 6,5 Milliarden Sonnen und treibt einen 5.000 Lichtjahre langen Jet an, den tiefe Aufnahmen zeigen können.",
+        "sgrastar": "Das Schwarze Loch im Zentrum unserer Galaxie, mit etwa 4 Millionen Sonnenmassen, 26.000 Lichtjahre entfernt. Staub verbirgt es im sichtbaren Licht; es ist hier wegen seiner Lage markiert.",
+        "twinquasar": "Die erste entdeckte Gravitationslinse (1979): ein Quasar, zweimal gesehen, 6″ voneinander entfernt, weil eine Galaxie im Vordergrund sein Licht ablenkt. Die beiden Bilder treffen etwa 417 Tage versetzt ein.",
+        "einsteincross": "Ein 8 Milliarden Lichtjahre entfernter Quasar, viermal um den Kern einer näheren Galaxie gesehen, die sein Licht ablenkt. Die vier Bilder liegen weniger als 2″ auseinander.",
+        "mrk421": "Einer der nächsten Blazare, etwa 400 Millionen Lichtjahre entfernt: eine Galaxie, deren Jet fast genau auf uns zeigt, und eine der ersten im TeV-Gammabereich beobachteten Quellen.",
+        "mrk501": "Ein naher Blazar, etwa 450 Millionen Lichtjahre entfernt, dessen Jet auf uns zeigt. Seine Helligkeit ändert sich von Nacht zu Nacht.",
+        "bllac": "Der Prototyp einer ganzen Klasse von Blazaren. Lange als veränderlicher Stern katalogisiert, erwies er sich als Kern einer 900 Millionen Lichtjahre entfernten Galaxie.",
+        "oj287": "Ein 3,5 Milliarden Lichtjahre entfernter Blazar, in dem vermutlich zwei Schwarze Löcher einander umkreisen. Er flammt etwa alle 12 Jahre auf und wird seit den 1890er-Jahren fotografiert.",
+        "ss433": "Ein Mikroquasar in unserer eigenen Galaxie, 18.000 Lichtjahre entfernt: ein Stern, der einen kompakten Begleiter speist, der Jets mit einem Viertel der Lichtgeschwindigkeit ausstößt."
+      }
     }
   }
 }

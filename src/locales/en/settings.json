@@ -332,6 +332,10 @@
       "autoMeasure": {
         "label": "Analyze frames after import",
         "description": "Scores every new raw frame in the background once an import has finished, so the Subframes list is already filled in when you open a night. It reads each FITS file, so it is off by default. Opening a night still analyzes it on demand either way."
+      },
+      "solarSystem": {
+        "label": "Asteroids and comets",
+        "description": "Annotate can show the asteroids and comets that were in a picture when it was taken. It asks the free IMCCE SkyBoT service in Paris about the picture's sky position and capture time, only when you turn the layer on in the viewer, and keeps the answer. Needs a plate-solved picture with a known capture time."
       }
     },
     "calibration": {
@@ -516,7 +520,8 @@
       "legacySurvey": "Second backup for sky pictures where SDSS has no coverage. Covers only part of the sky.",
       "nominatim": "Turns the coordinates of your observing site into a place name.",
       "nebulisDownloads": "Catalog packs and app updates. Nebulis checks here for new versions and downloads them from here.",
-      "nebulisPush": "Delivers iPhone alerts, only when you turn them on."
+      "nebulisPush": "Delivers iPhone alerts, only when you turn them on.",
+      "skybot": "Positions of asteroids and comets at a given time, for the Asteroids and comets layer of Annotate"
     }
   },
   "siteManager": {

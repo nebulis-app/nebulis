@@ -15,7 +15,7 @@ import { Router, Request, Response } from 'express';
 import { requireAdmin } from '../middleware/auth.js';
 import { queryString } from '../lib/queryHelpers.js';
 import { log } from '../lib/logger.js';
-import { getAnnotations, startSolve, AnnotateInputError } from '../lib/annotate/annotateService.js';
+import { getAnnotations, getSolarSystem, startSolve, AnnotateInputError } from '../lib/annotate/annotateService.js';
 import { getSolverStatus, installSolver } from '../lib/annotate/astap.js';
 import { getAutoSolveStatus, tickAutoSolve } from '../lib/annotate/autoSolve.js';
 
@@ -61,6 +61,21 @@ annotateRouter.get('/', async (req: Request, res: Response) => {
   }
   try {
     res.apiSuccess(await getAnnotations(filePath));
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// Asteroids and comets at the picture's capture time. Separate from GET / so that one stays offline and instant:
+// this one may ask IMCCE SkyBoT, and only when the viewer turned the layer on.
+annotateRouter.get('/solar-system', async (req: Request, res: Response) => {
+  const filePath = queryString(req.query.path);
+  if (!filePath) {
+    res.apiError(400, 'MISSING_PATH', 'Query parameter "path" is required');
+    return;
+  }
+  try {
+    res.apiSuccess(await getSolarSystem(filePath));
   } catch (err) {
     fail(res, err);
   }

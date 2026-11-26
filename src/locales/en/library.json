@@ -1558,6 +1558,60 @@
       "original": "Original file",
       "originalHint": "Exactly as it was captured, without the names.",
       "failed": "The annotated picture couldn't be made. Try the original instead."
+    },
+    "layers": {
+      "notable": "Notable objects",
+      "solarSystem": "Asteroids and comets"
+    },
+    "solarSystem": {
+      "loading": "Asking IMCCE SkyBoT…",
+      "inexact": "Needs a plate-solved picture: an estimated field is too loose for points.",
+      "disabled": "Turn on Asteroids and comets in Settings → Library first.",
+      "noTime": "No single capture time is known for this picture (an integration of several nights, or an export without a FITS file beside it).",
+      "unavailable": "SkyBoT could not be reached. Try again later.",
+      "none": "No asteroid or comet brighter than magnitude 20.",
+      "found_one": "{{count}} asteroid or comet.",
+      "found_other": "{{count}} asteroids and comets.",
+      "fainter_one": "{{count}} fainter one not shown.",
+      "fainter_other": "{{count}} fainter ones not shown.",
+      "motion": "Moving {{value}}″ per hour",
+      "distance": "{{value}} AU away",
+      "jpl": "JPL Small-Body Database",
+      "credit": "Position at the capture time, from IMCCE SkyBoT.",
+      "family": {
+        "mainBelt": "Main-belt asteroid",
+        "nearEarth": "Near-Earth asteroid",
+        "comet": "Comet",
+        "trojan": "Jupiter trojan",
+        "transNeptunian": "Trans-Neptunian object",
+        "centaur": "Centaur",
+        "marsCrosser": "Mars-crosser asteroid",
+        "hungaria": "Hungaria asteroid",
+        "planet": "Planet",
+        "other": "Solar-system body"
+      }
+    },
+    "notable": {
+      "kind": {
+        "quasar": "Quasar",
+        "blackHole": "Black hole",
+        "lens": "Gravitational lens",
+        "blazar": "Blazar",
+        "microquasar": "Microquasar"
+      },
+      "about": {
+        "3c273": "The first quasar ever identified (1963), and the brightest in the sky. That faint star is the core of a galaxy about 2.4 billion light-years away, powered by a black hole that outshines its whole galaxy.",
+        "cygx1": "The first black hole ever confirmed. The star you see, HDE 226868, is a blue supergiant losing gas to an unseen companion of about 21 solar masses, 7,000 light-years away.",
+        "m87star": "The black hole at the heart of M87, the first ever imaged (Event Horizon Telescope, 2019). It weighs 6.5 billion suns and drives a jet 5,000 light-years long that deep pictures can show.",
+        "sgrastar": "The black hole at the centre of our galaxy, of about 4 million solar masses, 26,000 light-years away. Dust hides it from visible light; it is marked here for where it is.",
+        "twinquasar": "The first gravitational lens discovered (1979): one quasar seen twice, 6″ apart, because a galaxy in front bends its light. The two images arrive about 417 days apart.",
+        "einsteincross": "A quasar 8 billion light-years away seen four times around the core of a nearer galaxy that bends its light. The four images are under 2″ apart.",
+        "mrk421": "One of the closest blazars, about 400 million light-years away: a galaxy whose jet points almost straight at us, and one of the first sources seen at TeV gamma rays.",
+        "mrk501": "A nearby blazar, about 450 million light-years away, whose jet points at us. Its brightness changes from night to night.",
+        "bllac": "The prototype of a whole class of blazars. Long catalogued as a variable star, it turned out to be the core of a galaxy 900 million light-years away.",
+        "oj287": "A blazar 3.5 billion light-years away, thought to hold two black holes in orbit. It flares about every 12 years, and has been photographed since the 1890s.",
+        "ss433": "A microquasar in our own galaxy, 18,000 light-years away: a star feeding a compact companion that fires jets at a quarter of the speed of light."
+      }
     }
   }
 }

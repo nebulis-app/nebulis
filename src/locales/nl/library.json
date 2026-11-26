@@ -1558,6 +1558,60 @@
       "original": "Originele bestand",
       "originalHint": "Precies zoals vastgelegd, zonder de namen.",
       "failed": "De geannoteerde afbeelding kon niet worden gemaakt. Probeer het origineel."
+    },
+    "layers": {
+      "notable": "Bijzondere objecten",
+      "solarSystem": "Planetoïden en kometen"
+    },
+    "solarSystem": {
+      "loading": "IMCCE SkyBoT wordt gevraagd…",
+      "inexact": "Vereist een astrometrisch opgeloste foto: een geschat veld is te onnauwkeurig voor punten.",
+      "disabled": "Zet eerst Planetoïden en kometen aan bij Instellingen → Bibliotheek.",
+      "noTime": "Voor deze foto is geen enkele opnametijd bekend (een integratie van meerdere nachten, of een export zonder FITS-bestand ernaast).",
+      "unavailable": "SkyBoT is niet bereikbaar. Probeer het later opnieuw.",
+      "none": "Geen planetoïde of komeet helderder dan magnitude 20.",
+      "found_one": "{{count}} planetoïde of komeet.",
+      "found_other": "{{count}} planetoïden en kometen.",
+      "fainter_one": "{{count}} zwakkere niet getoond.",
+      "fainter_other": "{{count}} zwakkere niet getoond.",
+      "motion": "Beweegt {{value}}″ per uur",
+      "distance": "{{value}} AE ver",
+      "jpl": "JPL-database van kleine hemellichamen",
+      "credit": "Positie op het opnametijdstip, volgens IMCCE SkyBoT.",
+      "family": {
+        "mainBelt": "Planetoïde uit de hoofdgordel",
+        "nearEarth": "Aardscheerder",
+        "comet": "Komeet",
+        "trojan": "Trojaan van Jupiter",
+        "transNeptunian": "Transneptunisch object",
+        "centaur": "Centaur",
+        "marsCrosser": "Marskruiser",
+        "hungaria": "Hungaria-planetoïde",
+        "planet": "Planeet",
+        "other": "Hemellichaam van het zonnestelsel"
+      }
+    },
+    "notable": {
+      "kind": {
+        "quasar": "Quasar",
+        "blackHole": "Zwart gat",
+        "lens": "Zwaartekrachtlens",
+        "blazar": "Blazar",
+        "microquasar": "Microquasar"
+      },
+      "about": {
+        "3c273": "De eerste quasar die ooit werd herkend (1963), en de helderste aan de hemel. Die zwakke ster is de kern van een sterrenstelsel op zo'n 2,4 miljard lichtjaar, aangedreven door een zwart gat dat zijn hele sterrenstelsel overstraalt.",
+        "cygx1": "Het eerste bevestigde zwarte gat. De zichtbare ster, HDE 226868, is een blauwe superreus die gas verliest aan een onzichtbare begeleider van zo'n 21 zonsmassa's, op 7.000 lichtjaar.",
+        "m87star": "Het zwarte gat in het hart van M87, het eerste dat ooit werd afgebeeld (Event Horizon Telescope, 2019). Het weegt 6,5 miljard zonnen en drijft een jet van 5.000 lichtjaar aan die diepe opnamen kunnen tonen.",
+        "sgrastar": "Het zwarte gat in het centrum van ons sterrenstelsel, van zo'n 4 miljoen zonsmassa's, op 26.000 lichtjaar. Stof verbergt het in zichtbaar licht; het staat hier aangegeven om waar het zich bevindt.",
+        "twinquasar": "De eerste ontdekte zwaartekrachtlens (1979): één quasar die twee keer te zien is, 6″ uit elkaar, omdat een sterrenstelsel op de voorgrond zijn licht afbuigt. De twee beelden komen zo'n 417 dagen na elkaar aan.",
+        "einsteincross": "Een quasar op 8 miljard lichtjaar die vier keer te zien is rond de kern van een dichterbij gelegen sterrenstelsel dat zijn licht afbuigt. De vier beelden liggen minder dan 2″ uit elkaar.",
+        "mrk421": "Een van de dichtstbijzijnde blazars, op zo'n 400 miljoen lichtjaar: een sterrenstelsel waarvan de jet bijna recht op ons gericht is, en een van de eerste bronnen die in TeV-gammastraling werden waargenomen.",
+        "mrk501": "Een nabije blazar, op zo'n 450 miljoen lichtjaar, waarvan de jet op ons gericht is. Zijn helderheid verandert van nacht tot nacht.",
+        "bllac": "Het prototype van een hele klasse blazars. Lang gecatalogiseerd als veranderlijke ster, bleek het de kern van een sterrenstelsel op 900 miljoen lichtjaar te zijn.",
+        "oj287": "Een blazar op 3,5 miljard lichtjaar, waarin vermoedelijk twee zwarte gaten om elkaar heen draaien. Hij laait ongeveer elke 12 jaar op en wordt al sinds de jaren 1890 gefotografeerd.",
+        "ss433": "Een microquasar in ons eigen sterrenstelsel, op 18.000 lichtjaar: een ster die een compacte begeleider voedt die jets uitstoot met een kwart van de lichtsnelheid."
+      }
     }
   }
 }

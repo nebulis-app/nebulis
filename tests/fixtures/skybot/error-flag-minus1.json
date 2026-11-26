@@ -1,0 +1,6 @@
+{
+ "flag": -1,
+ "ticket": 188290644192713302,
+ "status": 200,
+ "message": "SkyBoT asteroid conesearch -> numIntAstromJ2000_para[1]: computeEphemeris: \nProgram received signal SIGBUS: Access to an undefined portion of a memory object.\n\nBacktrace for this error:\n\nProgram recei"
+}

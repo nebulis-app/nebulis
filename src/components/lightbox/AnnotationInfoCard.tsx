@@ -8,6 +8,7 @@ import { getCatalogObjectInfo } from '../../lib/api/catalog';
 import { getCatalogThumbnailUrl } from '../../lib/catalogImage';
 import { formatAliases, formatDesignation } from '../../lib/formatDesignation';
 import type { ZoomPan } from './useZoomPan';
+import { ssoFamily } from '../../lib/ssoFamily';
 
 const LINK =
   'inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[0.7188rem] font-medium text-white/85 '
@@ -89,7 +90,16 @@ export function AnnotationInfoCard({ annotation: a, zp, onClose }: { annotation:
     queryFn: () => getCatalogObjectInfo(a.id),
     staleTime: 10 * 60_000,
     retry: false,
+    // Notable objects and solar-system bodies are not catalog entries: their card is built from what came with the mark.
+    enabled: !a.layer,
   });
+  if (a.layer) {
+    return (
+      <CardShell cardRef={cardRef} pos={pos} label={a.label}>
+        <LayerCardBody annotation={a} onClose={onClose} />
+      </CardShell>
+    );
+  }
   const links = externalLinks(a, info?.wikiUrl ?? null);
 
   const facts = [
@@ -105,19 +115,7 @@ export function AnnotationInfoCard({ annotation: a, zp, onClose }: { annotation:
     .slice(0, 6);
 
   return (
-    <div
-      ref={cardRef}
-      role="dialog"
-      aria-label={a.label}
-      onPointerDown={e => e.stopPropagation()}
-      onDoubleClick={e => e.stopPropagation()}
-      onWheel={e => e.stopPropagation()}
-      style={pos ? { left: pos.left, top: pos.top } : undefined}
-      className={`absolute z-30 max-h-[70%] cursor-default select-text overflow-y-auto rounded-xl bg-black/75 p-3
-        text-xs text-white/80 ring-1 ring-inset ring-white/10 backdrop-blur-md ${
-        pos ? 'w-80 max-w-[calc(100%-1rem)]' : 'inset-x-2 bottom-2 sm:inset-x-auto sm:bottom-auto sm:right-2 sm:top-2 sm:w-80'
-      }`}
-    >
+    <CardShell cardRef={cardRef} pos={pos} label={a.label}>
       <div className="flex items-start gap-3">
         <img
           src={getCatalogThumbnailUrl(a.id, null, 160, 160)}
@@ -182,6 +180,99 @@ export function AnnotationInfoCard({ annotation: a, zp, onClose }: { annotation:
           <ExternalLink className="h-3 w-3" aria-hidden="true" />
         </a>
       </div>
+    </CardShell>
+  );
+}
+
+function CardShell({ cardRef, pos, label, children }: {
+  cardRef: React.RefObject<HTMLDivElement | null>;
+  pos: { left: number; top: number } | null;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      ref={cardRef}
+      role="dialog"
+      aria-label={label}
+      onPointerDown={e => e.stopPropagation()}
+      onDoubleClick={e => e.stopPropagation()}
+      onWheel={e => e.stopPropagation()}
+      style={pos ? { left: pos.left, top: pos.top } : undefined}
+      className={`absolute z-30 max-h-[70%] cursor-default select-text overflow-y-auto rounded-xl bg-black/75 p-3
+        text-xs text-white/80 ring-1 ring-inset ring-white/10 backdrop-blur-md ${
+        pos ? 'w-80 max-w-[calc(100%-1rem)]' : 'inset-x-2 bottom-2 sm:inset-x-auto sm:bottom-auto sm:right-2 sm:top-2 sm:w-80'
+      }`}
+    >
+      {children}
     </div>
+  );
+}
+
+const NOTABLE_KINDS = new Set(['quasar', 'blackHole', 'lens', 'blazar', 'microquasar']);
+
+/** The card of a notable object (text from the locale files) or of an asteroid or comet (what SkyBoT reported). */
+function LayerCardBody({ annotation: a, onClose }: { annotation: FrameAnnotation; onClose: () => void }) {
+  const { t } = useTranslation('library');
+  const notable = a.layer === 'notable';
+  const notableId = notable ? a.id.replace(/^notable:/, '') : null;
+  const sso = a.sso;
+
+  const subtitle = notable
+    ? (NOTABLE_KINDS.has(a.typeCode) ? t(`annotate.notable.kind.${a.typeCode}`) : null)
+    : t(`annotate.solarSystem.family.${ssoFamily(sso?.bodyClass ?? '')}`);
+  const facts = notable ? [] : [
+    sso?.bodyClass || null,
+    sso?.vmag != null ? t('annotate.info.magnitude', { value: sso.vmag }) : null,
+    sso?.motionArcsecPerHour != null ? t('annotate.solarSystem.motion', { value: Math.round(sso.motionArcsecPerHour) }) : null,
+    sso?.distanceAu != null ? t('annotate.solarSystem.distance', { value: sso.distanceAu.toFixed(2) }) : null,
+  ].filter((f): f is string => !!f);
+  const about = notableId ? t(`annotate.notable.about.${notableId}`, { defaultValue: '' }) : '';
+
+  return (
+    <>
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-white">{a.label}</p>
+          {a.designation && <p className="text-white/55">{a.designation}</p>}
+          {subtitle && <p className={notable ? 'text-violet-300' : 'text-orange-300'}>{subtitle}</p>}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          title={t('annotate.info.close')}
+          aria-label={t('annotate.info.close')}
+          className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-white/60 outline-none transition
+            hover:bg-white/15 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60"
+        >
+          <X className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+      </div>
+
+      {facts.length > 0 && <p className="mt-2 leading-snug text-white/60">{facts.join(' · ')}</p>}
+      {about && <p className="mt-2 leading-relaxed text-white/80">{about}</p>}
+      {!notable && <p className="mt-2 leading-snug text-white/50">{t('annotate.solarSystem.credit')}</p>}
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {notable && (
+          <a href={`https://simbad.cds.unistra.fr/simbad/sim-id?Ident=${encodeURIComponent(a.designation ?? a.label)}`} target="_blank" rel="noopener noreferrer" className={LINK}>
+            {t('annotate.info.simbad')}
+            <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          </a>
+        )}
+        {notable && (
+          <a href={`https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(a.label)}`} target="_blank" rel="noopener noreferrer" className={LINK}>
+            {t('annotate.info.wikipedia')}
+            <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          </a>
+        )}
+        {sso?.link && (
+          <a href={sso.link} target="_blank" rel="noopener noreferrer" className={LINK}>
+            {t('annotate.solarSystem.jpl')}
+            <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          </a>
+        )}
+      </div>
+    </>
   );
 }

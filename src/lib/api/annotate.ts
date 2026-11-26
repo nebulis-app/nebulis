@@ -18,6 +18,31 @@ export interface FrameAnnotation {
   /** Bigger than a ring may be on this frame: the ring marks a region. */
   oversized: boolean;
   isTarget: boolean;
+  /** Absent for catalog deep-sky objects. Mirrors FrameAnnotation in server/lib/annotate/catalogQuery.ts. */
+  layer?: 'notable' | 'solarSystem';
+  sso?: SolarSystemDetails;
+}
+
+export interface SolarSystemDetails {
+  number: number | null;
+  /** SkyBoT class: `MB>Inner`, `NEA>Apollo`, `Comet>JFC`… */
+  bodyClass: string;
+  vmag: number | null;
+  motionArcsecPerHour: number | null;
+  distanceAu: number | null;
+  link: string | null;
+}
+
+/** Mirrors SolarSystemStatus in server/lib/annotate/annotateService.ts. */
+export type SolarSystemStatus = 'ok' | 'disabled' | 'inexact' | 'no-time' | 'unavailable';
+
+export interface SolarSystemData {
+  status: SolarSystemStatus;
+  epoch: string | null;
+  epochSource: 'fits' | 'file' | null;
+  annotations: FrameAnnotation[];
+  fainter: number;
+  message: string | null;
 }
 
 export interface SolverStatus {
@@ -54,6 +79,9 @@ const q = (path: string) => `path=${encodeURIComponent(path)}`;
 
 export const getAnnotations = (path: string) =>
   fetchJSON<AnnotationData>(`/annotate?${q(path)}`);
+
+export const getSolarSystemAnnotations = (path: string) =>
+  fetchJSON<SolarSystemData>(`/annotate/solar-system?${q(path)}`);
 
 export const startAnnotationSolve = (path: string) =>
   fetchJSON<SolveJobState>(`/annotate/solve?${q(path)}`, { method: 'POST' });

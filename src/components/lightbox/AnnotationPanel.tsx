@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { ChevronsLeft, Download, Info, Loader2, RotateCw, ScanSearch } from 'lucide-react';
-import type { AnnotateQuality } from '../../lib/api/annotate';
+import type { AnnotateQuality, SolarSystemData } from '../../lib/api/annotate';
 import type { useImageAnnotations } from './useImageAnnotations';
 
 type AnnotationState = ReturnType<typeof useImageAnnotations>;
@@ -11,6 +11,33 @@ const BADGE: Record<AnnotateQuality, string> = {
   approximate: 'bg-accent-500/20 text-accent-300',
   unavailable: 'bg-white/10 text-white/60',
 };
+
+type Translate = ReturnType<typeof useTranslation<'library'>>['t'];
+
+/** One line on the asteroid and comet layer: what was found, or why nothing could be looked up. */
+function solarSystemStatusText(
+  t: Translate,
+  quality: AnnotateQuality,
+  result: SolarSystemData | null,
+  loading: boolean,
+  error: unknown,
+): string {
+  if (quality !== 'solved' && quality !== 'header') return t('annotate.solarSystem.inexact');
+  if (loading) return t('annotate.solarSystem.loading');
+  if (error || !result) return t('annotate.solarSystem.unavailable');
+  switch (result.status) {
+    case 'disabled': return t('annotate.solarSystem.disabled');
+    case 'inexact': return t('annotate.solarSystem.inexact');
+    case 'no-time': return t('annotate.solarSystem.noTime');
+    case 'unavailable': return t('annotate.solarSystem.unavailable');
+    case 'ok': {
+      const found = result.annotations.length > 0
+        ? t('annotate.solarSystem.found', { count: result.annotations.length })
+        : t('annotate.solarSystem.none');
+      return result.fainter > 0 ? `${found} ${t('annotate.solarSystem.fainter', { count: result.fainter })}` : found;
+    }
+  }
+}
 
 const BTN =
   'inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[0.7188rem] font-medium '
@@ -36,6 +63,7 @@ export function AnnotationPanel({ annotations, canInstall, zoomedPastEstimate = 
 }) {
   const { t } = useTranslation('library');
   const { data, isLoading, error, install, installPending, retrySolve, hiddenIds, setShown, setAllShown, selectedId, select } = annotations;
+  const { layers, setLayer, hasNotable, solarSystem, solarSystemLoading, solarSystemError } = annotations;
 
   const installing = !!data && (data.solver.state === 'downloading' || data.solver.state === 'extracting');
   const percent = data ? Math.round(data.solver.progress * 100) : 0;
@@ -91,6 +119,27 @@ export function AnnotationPanel({ annotations, canInstall, zoomedPastEstimate = 
             data.annotations.length > 0
               ? <p className="text-white/55">{t('annotate.foundCount', { count: data.annotations.length })}</p>
               : <p className="text-white/55">{t('annotate.none')}</p>
+          )}
+          {data.quality !== 'unavailable' && (
+            <div className="space-y-0.5">
+              {hasNotable && (
+                <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-white/5">
+                  <input type="checkbox" checked={layers.notable} onChange={e => setLayer('notable', e.target.checked)}
+                    className="h-3.5 w-3.5 flex-shrink-0 accent-violet-400" />
+                  <span className="text-white/85">{t('annotate.layers.notable')}</span>
+                </label>
+              )}
+              <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-white/5">
+                <input type="checkbox" checked={layers.solarSystem} onChange={e => setLayer('solarSystem', e.target.checked)}
+                  className="h-3.5 w-3.5 flex-shrink-0 accent-orange-400" />
+                <span className="text-white/85">{t('annotate.layers.solarSystem')}</span>
+              </label>
+              {layers.solarSystem && (
+                <p className="px-1 text-[0.6875rem] leading-snug text-white/55" role="status">
+                  {solarSystemStatusText(t, data.quality, solarSystem, solarSystemLoading, solarSystemError)}
+                </p>
+              )}
+            </div>
           )}
           {data.quality !== 'unavailable' && data.annotations.length > 0 && (
             <div>

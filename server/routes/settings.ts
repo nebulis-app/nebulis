@@ -110,6 +110,7 @@ const SettingsUpdateBodySchema = z.object({
   objectPageLayout: z.enum(OBJECT_PAGE_LAYOUTS).optional(),
   annotateAutoSolve: z.boolean().optional(),
   autoMeasureFrames: z.boolean().optional(),
+  annotateSolarSystem: z.boolean().optional(),
 });
 
 // The full Settings shape, as returned by GET/PUT. Derived (not hand-copied)
@@ -195,6 +196,7 @@ const SettingsSchema = z.object({
   objectPageLayout: z.enum(OBJECT_PAGE_LAYOUTS),
   annotateAutoSolve: z.boolean(),
   autoMeasureFrames: z.boolean(),
+  annotateSolarSystem: z.boolean(),
 });
 
 type Settings = z.infer<typeof SettingsSchema>;
@@ -251,6 +253,7 @@ const defaultSettings: Settings = {
   objectPageLayout: 'media',
   annotateAutoSolve: true,
   autoMeasureFrames: false,
+  annotateSolarSystem: false,
 };
 
 // The persistable field list is the request schema's own key set, read off the

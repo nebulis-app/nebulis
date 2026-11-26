@@ -1406,6 +1406,32 @@ export const spec = {
           rTrue:       { type: 'number', description: 'True angular radius in pixels' },
           oversized:   { type: 'boolean' },
           isTarget:    { type: 'boolean' },
+          layer:       { type: 'string', enum: ['notable', 'solarSystem'], description: 'Absent for catalog deep-sky objects. notable: a quasar, black hole, lens or blazar from the built-in list; solarSystem: an asteroid or comet' },
+          sso: {
+            type: 'object',
+            description: 'Set on solarSystem marks: what IMCCE SkyBoT reported for the body',
+            required: ['number', 'bodyClass', 'vmag', 'motionArcsecPerHour', 'distanceAu', 'link'],
+            properties: {
+              number:              nullable({ type: 'integer' }),
+              bodyClass:           { type: 'string', description: 'SkyBoT class, e.g. MB>Inner, NEA>Apollo, Comet>JFC' },
+              vmag:                nullable({ type: 'number' }),
+              motionArcsecPerHour: nullable({ type: 'number' }),
+              distanceAu:          nullable({ type: 'number', description: 'Distance from the observer' }),
+              link:                nullable({ type: 'string', format: 'uri' }),
+            },
+          },
+        },
+      },
+      AnnotateSolarSystemResult: {
+        type: 'object',
+        required: ['status', 'epoch', 'epochSource', 'annotations', 'fainter', 'message'],
+        properties: {
+          status:      { type: 'string', enum: ['ok', 'disabled', 'inexact', 'no-time', 'unavailable'], description: 'disabled: the setting is off; inexact: no plate solve or header WCS; no-time: no single capture time; unavailable: SkyBoT failed (see message)' },
+          epoch:       nullable({ type: 'string', format: 'date-time', description: 'The capture instant asked about, UTC' }),
+          epochSource: nullable({ type: 'string', enum: ['fits', 'file'], description: 'fits: DATE-OBS of the FITS twin; file: capture date and time from the file name, in the site zone' }),
+          annotations: { type: 'array', items: { $ref: '#/components/schemas/AnnotateFrameAnnotation' } },
+          fainter:     { type: 'integer', description: 'Bodies in the field fainter than magnitude 20, not drawn' },
+          message:     nullable({ type: 'string' }),
         },
       },
       AnnotateResult: {
@@ -3786,6 +3812,7 @@ export const spec = {
           planetariumProcessedOnlyDefault: { type: 'boolean', description: 'Planetarium opens with the processed-only filter on' },
           annotateAutoSolve: { type: 'boolean', default: true, description: 'Plate-solve new stacked images in the background while the library is idle, so Annotate has results ready' },
           autoMeasureFrames: { type: 'boolean', default: false, description: 'Analyze new raw sub-frames in the background after an import, once the library is idle, so the Subframes list is already scored when opened' },
+          annotateSolarSystem: { type: 'boolean', default: false, description: 'Let Annotate ask IMCCE SkyBoT which asteroids and comets were in a picture at its capture time (a third-party service, asked only when the layer is turned on)' },
           onboardingCompleted: { type: 'boolean' },
           prefetchCatalogAssets: { type: 'boolean', description: 'Toggles the bulk background prefetch job that warms catalog imagery/descriptions in the cache' },
           planetariumShowInfo: { type: 'boolean' },
@@ -7554,6 +7581,21 @@ export const spec = {
         parameters: [{ name: 'path', in: 'query', required: true, schema: { type: 'string' }, description: 'Library-relative path' }],
         responses: {
           200: jsonResponse('Annotations, quality and solver state', 'AnnotateResult'),
+          400: { description: 'MISSING_PATH or INVALID_INPUT' },
+          404: { description: 'NOT_FOUND' },
+          415: { description: 'INVALID_INPUT. Unsupported file type.' },
+          500: { description: 'ANNOTATE_FAILED' },
+        },
+      },
+    },
+    '/annotate/solar-system': {
+      get: {
+        summary: 'Asteroids and comets in one picture',
+        tags: ['Annotate'],
+        description: 'Asks IMCCE SkyBoT which asteroids and comets were in the picture at its capture time, once per picture (the answer is kept). Needs the annotateSolarSystem setting, a plate solve or header WCS, and a capture time. A SkyBoT failure is a 200 with status unavailable.',
+        parameters: [{ name: 'path', in: 'query', required: true, schema: { type: 'string' }, description: 'Library-relative path' }],
+        responses: {
+          200: jsonResponse('Solar-system marks and how they were found', 'AnnotateSolarSystemResult'),
           400: { description: 'MISSING_PATH or INVALID_INPUT' },
           404: { description: 'NOT_FOUND' },
           415: { description: 'INVALID_INPUT. Unsupported file type.' },

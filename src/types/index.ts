@@ -91,6 +91,8 @@ export interface Settings {
   annotateAutoSolve: boolean;
   /** Analyze new raw frames in the background once an import has finished. Default off. */
   autoMeasureFrames: boolean;
+  /** Let Annotate ask IMCCE SkyBoT for the asteroids and comets in a picture. Default off. */
+  annotateSolarSystem: boolean;
   /** Admin opt-in: serve the PixInsight update repository at /plugins/pixinsight/. Default off. */
   pixinsightEnabled: boolean;
   /** Object page layout: 'nights' (grid of observations) or 'media' (every picture on one page). Default 'nights'. */

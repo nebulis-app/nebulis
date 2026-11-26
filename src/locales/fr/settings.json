@@ -332,6 +332,10 @@
       "autoMeasure": {
         "label": "Analyser les images après l’import",
         "description": "Évalue en arrière-plan chaque nouvelle image brute une fois l’import terminé, pour que la liste des sous-images soit déjà remplie à l’ouverture d’une nuit. Chaque fichier FITS est lu, c’est donc désactivé par défaut. Ouvrir une nuit l’analyse toujours à la demande."
+      },
+      "solarSystem": {
+        "label": "Astéroïdes et comètes",
+        "description": "Annoter peut montrer les astéroïdes et comètes présents dans une image au moment de la prise de vue. Le service gratuit SkyBoT de l'IMCCE (Paris) est interrogé sur la position et l'heure de l'image, uniquement quand vous activez la couche dans la visionneuse, et la réponse est conservée. Nécessite une image résolue astrométriquement dont l'heure de prise de vue est connue."
       }
     },
     "calibration": {
@@ -516,7 +520,8 @@
       "legacySurvey": "Deuxième secours pour les images du ciel là où SDSS n'a pas de couverture. Ne couvre qu'une partie du ciel.",
       "nominatim": "Transforme les coordonnées de votre lieu d'observation en nom de lieu.",
       "nebulisDownloads": "Paquets de catalogue et mises à jour de l'app. Nebulis y cherche les nouvelles versions et les télécharge depuis ce serveur.",
-      "nebulisPush": "Envoie les alertes à l'iPhone, uniquement si vous les activez."
+      "nebulisPush": "Envoie les alertes à l'iPhone, uniquement si vous les activez.",
+      "skybot": "Positions des astéroïdes et comètes à une date donnée, pour la couche Astéroïdes et comètes d'Annoter"
     }
   },
   "siteManager": {

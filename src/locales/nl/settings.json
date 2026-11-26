@@ -332,6 +332,10 @@
       "autoMeasure": {
         "label": "Frames analyseren na import",
         "description": "Beoordeelt elke nieuwe ruwe frame op de achtergrond zodra een import klaar is, zodat de lijst met subframes al gevuld is als je een nacht opent. Elk FITS-bestand wordt gelezen, daarom staat dit standaard uit. Een nacht openen analyseert hem nog steeds op aanvraag."
+      },
+      "solarSystem": {
+        "label": "Planetoïden en kometen",
+        "description": "Annoteren kan de planetoïden en kometen tonen die bij de opname in beeld stonden. Daarvoor wordt de gratis dienst SkyBoT van het IMCCE (Parijs) gevraagd naar de hemelpositie en opnametijd van de foto, alleen als u de laag in de viewer aanzet, en het antwoord wordt bewaard. Vereist een astrometrisch opgeloste foto met bekende opnametijd."
       }
     },
     "calibration": {
@@ -516,7 +520,8 @@
       "legacySurvey": "Tweede reserve voor beelden van de hemel waar SDSS geen dekking heeft. Dekt maar een deel van de hemel.",
       "nominatim": "Zet de coördinaten van je waarneemlocatie om in een plaatsnaam.",
       "nebulisDownloads": "Catalogus-pakketten en app-updates. Nebulis controleert hier op nieuwe versies en downloadt ze hier.",
-      "nebulisPush": "Bezorgt iPhone-meldingen, alleen als je ze inschakelt."
+      "nebulisPush": "Bezorgt iPhone-meldingen, alleen als je ze inschakelt.",
+      "skybot": "Posities van planetoïden en kometen op een gegeven tijdstip, voor de laag Planetoïden en kometen van Annoteren"
     }
   },
   "siteManager": {

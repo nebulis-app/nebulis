@@ -1453,6 +1453,11 @@ db.exec(`
   if (!solveCols.some(c => c.name === 'annotateAutoSolve')) {
     db.prepare('ALTER TABLE appSettings ADD COLUMN annotateAutoSolve INTEGER NOT NULL DEFAULT 1').run();
   }
+  // Settings → Library → "Asteroids and comets". Off by default: it asks a third-party service (IMCCE SkyBoT) about
+  // the sky in a picture, which nothing else in Annotate does.
+  if (!solveCols.some(c => c.name === 'annotateSolarSystem')) {
+    db.prepare('ALTER TABLE appSettings ADD COLUMN annotateSolarSystem INTEGER NOT NULL DEFAULT 0').run();
+  }
 }
 
 // Settings → Library → "Analyze frames after import". Off by default: measuring reads every FITS frame, so it is

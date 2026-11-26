@@ -19,6 +19,8 @@ import {
   ISS_LEAD_MIN_MINUTES,
   ISS_MIN_ALTITUDE_MAX,
   ISS_MIN_ALTITUDE_MIN,
+  ISS_TRANSIT_RADIUS_MAX_KM,
+  ISS_TRANSIT_RADIUS_MIN_KM,
   EVENING_HHMM,
   type AlertChannel,
   type AlertConfig,
@@ -51,6 +53,8 @@ export const AlertDetailsPatchSchema = z.object({
     .describe('Minutes before a visible ISS pass to send its alert'),
   issMinAltitude: z.number().int().min(ISS_MIN_ALTITUDE_MIN).max(ISS_MIN_ALTITUDE_MAX).optional()
     .describe('Only ISS passes reaching at least this altitude, degrees'),
+  issTransitRadiusKm: z.number().int().min(ISS_TRANSIT_RADIUS_MIN_KM).max(ISS_TRANSIT_RADIUS_MAX_KM).optional()
+    .describe('Only ISS transits whose centre line passes within this distance of the site, km'),
 });
 
 export const AlertChannelBodySchema = z.object({
@@ -100,6 +104,7 @@ export const AlertDetailsSchema = z.object({
   dewLeadMinutes: z.number().int(),
   issLeadMinutes: z.number().int(),
   issMinAltitude: z.number().int(),
+  issTransitRadiusKm: z.number().int(),
 });
 
 export const AlertChannelSchema = z.object({

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { ALERT_EVENTS, DEW_LEAD_CHOICES, ISS_LEAD_CHOICES, ISS_MIN_ALTITUDE_CHOICES, type AlertDetails, type AlertEventType } from '../../lib/api/alerts';
+import { ALERT_EVENTS, DEW_LEAD_CHOICES, ISS_LEAD_CHOICES, ISS_MIN_ALTITUDE_CHOICES, ISS_TRANSIT_RADIUS_CHOICES, type AlertDetails, type AlertEventType } from '../../lib/api/alerts';
 import { getInputClass } from './SettingsUI';
 import { leadLabel } from './alertLead';
 
@@ -89,6 +89,22 @@ export function AlertEventChoices({
                   </select>
                 </label>
               </div>
+            )}
+            {e === 'iss.transit' && events.includes('iss.transit') && (
+              <label className="mt-2 ml-6 flex flex-wrap items-center gap-2.5 border-l pl-3.5 border-slate-700/50">
+                <span className={`text-[0.7812rem] ${strong}`}>{t('alerts.detail.issTransitRadiusLabel')}</span>
+                <select
+                  value={details.issTransitRadiusKm ?? 50}
+                  disabled={disabled}
+                  onChange={ev => onChange({ events, details: { ...details, issTransitRadiusKm: Number(ev.target.value) } })}
+                  className={`${getInputClass(isDark)} !w-auto !py-1 !px-2.5 !text-[0.7812rem]`}
+                  aria-label={t('alerts.detail.issTransitRadiusLabel')}
+                >
+                  {[...new Set<number>([...ISS_TRANSIT_RADIUS_CHOICES, details.issTransitRadiusKm ?? 50])].sort((x, y) => x - y).map(km => (
+                    <option key={km} value={km}>{t('alerts.detail.issTransitRadius', { km })}</option>
+                  ))}
+                </select>
+              </label>
             )}
             {e === 'night.clear' && events.includes('night.clear') && (
               <div className="mt-2 ml-6 space-y-2 border-l pl-3.5 border-slate-700/50" role="group" aria-label={t('alerts.detail.group')}>

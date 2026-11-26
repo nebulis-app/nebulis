@@ -173,5 +173,30 @@
       "W": "west",
       "NW": "northwest"
     }
+  },
+  "issTransits": {
+    "title": "ISS transits of the Moon and the Sun",
+    "subtitle": "Where the station crosses the disc in the next week. The band is only a few kilometres wide: check again shortly before.",
+    "loading": "Searching for transits…",
+    "radiusLabel": "Within",
+    "radius": "{{km}} km",
+    "none": "No transit with its centre line within {{km}} km this week.",
+    "body": {
+      "moon": "Moon",
+      "sun": "Sun"
+    },
+    "durationAlt": "{{duration}} s, {{alt}}° high",
+    "inMinutes_one": "in {{count}} minute",
+    "inMinutes_other": "in {{count}} minutes",
+    "inHours_one": "in {{count}} h {{minutes}} min",
+    "inHours_other": "in {{count}} h {{minutes}} min",
+    "inDays_one": "in {{count}} day",
+    "inDays_other": "in {{count}} days",
+    "inBand": "You are inside the band ({{width}} km wide).",
+    "drive": "Centre line {{distance}} km to the {{dir}}; the band is {{width}} km wide.",
+    "openMap": "Centre line on a map",
+    "solarSafety": "Never look at the Sun without a certified solar filter on the telescope and the finder.",
+    "recompute": "From orbit data {{hours}} h old. The band moves with newer data: check again 24 h and 2 h before.",
+    "mapLabel": "Map of the centre line and its band around your site"
   }
 }

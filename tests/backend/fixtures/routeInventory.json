@@ -2261,6 +2261,13 @@
   },
   {
     "method": "GET",
+    "path": "/sky-events/iss-transits",
+    "guards": [
+      "<anonymous>"
+    ]
+  },
+  {
+    "method": "GET",
     "path": "/storage",
     "guards": [
       "<anonymous>"

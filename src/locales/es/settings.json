@@ -1699,6 +1699,11 @@
           "short": "Paso de la ISS",
           "label": "Paso de la ISS",
           "help": "Se envía poco antes de que la Estación Espacial Internacional cruce su cielo después del anochecer, una vez por paso. Elija con cuánta antelación y a qué altura debe llegar un paso."
+        },
+        "transit": {
+          "short": "Tránsito de la ISS",
+          "label": "Tránsito de la ISS por la Luna o el Sol",
+          "help": "Se envía la víspera y de nuevo 2 horas antes con los datos de órbita más recientes, cuando la estación cruza la Luna o el Sol cerca de su sitio. Elija hasta dónde conduciría."
         }
       }
     },
@@ -1784,7 +1789,10 @@
       "issLeadLabel": "Con cuánta antelación a un paso de la ISS",
       "issMinAltLabel": "Pasos desde",
       "issMinAlt": "{{deg}}° o más",
-      "issRow": "Paso de la ISS: {{time}} antes, desde {{deg}}°"
+      "issRow": "Paso de la ISS: {{time}} antes, desde {{deg}}°",
+      "issTransitRadiusLabel": "Línea central a menos de",
+      "issTransitRadius": "{{km}} km",
+      "issTransitRow": "Tránsito de la ISS: línea central a menos de {{km}} km"
     }
   },
   "search": {

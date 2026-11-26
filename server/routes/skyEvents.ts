@@ -13,6 +13,7 @@ import {
 import { addDaysToDateKey, localDateKey, zonedDateTimeToUtc } from '../lib/timezone.js';
 import { DEFAULT_MIN_ALTITUDE, PassCalculator, type IssPass } from '../lib/iss/passes.js';
 import { getIssTle } from '../lib/iss/tle.js';
+import { TransitFinder, type IssTransit } from '../lib/iss/transits.js';
 
 const router = Router();
 
@@ -154,6 +155,65 @@ router.get('/iss-passes', async (req: Request, res: Response) => {
     tle: { epoch: tle.epoch, ageHours: tle.ageHours, stale: tle.stale, source: tle.source },
     minAltitude: minAlt,
     passes: q.all === '1' ? passes : passes.filter(p => p.visible !== null),
+  });
+});
+
+const TransitQuerySchema = z.object({
+  siteId: z.string().min(1).optional(),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lon: z.coerce.number().min(-180).max(180).optional(),
+  days: z.coerce.number().int().min(1).max(10).optional(),
+  radiusKm: z.coerce.number().min(5).max(300).optional(),
+});
+
+const transitCache = new Map<string, { at: number; transits: IssTransit[] }>();
+
+// GET /api/v1/sky-events/iss-transits?siteId=…&radiusKm=50&days=7
+// ISS transits of the Moon and the Sun whose centre line passes within radiusKm of the site: when (to 0.1 s), how long,
+// where the centre line passes and how far and which way to drive, how wide the band is, and the centre line around the
+// site for a map. Uses the station's elements like /iss-passes; their epoch and age come with the answer, since a
+// transit band moves by kilometres with a day-old TLE.
+router.get('/iss-transits', async (req: Request, res: Response) => {
+  const parsed = TransitQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.apiError(400, 'INVALID_QUERY', parsed.error.issues[0]?.message ?? 'Invalid query');
+    return;
+  }
+  const q = parsed.data;
+  if ((q.lat === undefined) !== (q.lon === undefined)) {
+    res.apiError(400, 'INVALID_COORDS', 'Send both lat and lon, or neither');
+    return;
+  }
+  const site = resolveSite({ siteId: q.siteId, lat: q.lat, lon: q.lon });
+  if (site.latitude === null || site.longitude === null) {
+    res.apiError(400, 'INVALID_COORDS', 'Set an observing site first');
+    return;
+  }
+  const timezone = await observerTimezoneForCoordinates(site.latitude, site.longitude, site.timezone || null);
+  const days = q.days ?? 7;
+  const radiusKm = q.radiusKm ?? 50;
+  const tle = await getIssTle({ allowFetch: true });
+  const siteOut = { id: site.id, name: site.name, latitude: site.latitude, longitude: site.longitude, timezone };
+  if (!tle) {
+    res.apiSuccess({ site: siteOut, tle: null, radiusKm, transits: [] });
+    return;
+  }
+  const from = new Date(Math.floor(Date.now() / 60_000) * 60_000);
+  const to = new Date(from.getTime() + days * 86_400_000);
+  const key = `${tle.epoch}|${site.latitude.toFixed(3)}|${site.longitude.toFixed(3)}|${days}|${radiusKm}|${Math.floor(from.getTime() / ISS_CACHE_MS)}`;
+  let transits = transitCache.get(key)?.transits;
+  if (!transits) {
+    const finder = new TransitFinder(tle.record.line1, tle.record.line2, { lat: site.latitude, lon: site.longitude });
+    transits = [...finder.find('moon', from, to, radiusKm), ...finder.find('sun', from, to, radiusKm)]
+      .sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
+    transitCache.set(key, { at: Date.now(), transits });
+    for (const [k, v] of transitCache) if (Date.now() - v.at > ISS_CACHE_MS) transitCache.delete(k);
+  }
+  res.apiSuccess({
+    site: siteOut,
+    tle: { epoch: tle.epoch, ageHours: tle.ageHours, stale: tle.stale, source: tle.source },
+    radiusKm,
+    transits,
   });
 });
 

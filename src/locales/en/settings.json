@@ -1699,6 +1699,11 @@
           "short": "ISS pass",
           "label": "ISS pass",
           "help": "Sent shortly before the International Space Station crosses your sky after dark, once per pass. Choose how far ahead, and how high a pass must get."
+        },
+        "transit": {
+          "short": "ISS transit",
+          "label": "ISS transit of the Moon or the Sun",
+          "help": "Sent a day ahead, then again 2 hours ahead with the latest orbit data, when the station crosses the Moon or the Sun near your site. Choose how far you would drive."
         }
       }
     },
@@ -1784,7 +1789,10 @@
       "issLeadLabel": "How far ahead of an ISS pass",
       "issMinAltLabel": "Passes from",
       "issMinAlt": "{{deg}}° and higher",
-      "issRow": "ISS pass: {{time}} before, {{deg}}° and higher"
+      "issRow": "ISS pass: {{time}} before, {{deg}}° and higher",
+      "issTransitRadiusLabel": "Centre line within",
+      "issTransitRadius": "{{km}} km",
+      "issTransitRow": "ISS transit: centre line within {{km}} km"
     }
   },
   "search": {

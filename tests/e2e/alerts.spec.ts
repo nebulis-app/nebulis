@@ -222,6 +222,21 @@ test.describe('Settings → Alerts: iPhones', () => {
     expect(put?.body).toMatchObject({ details: { issLeadMinutes: 15, issMinAltitude: 45 } });
   });
 
+  test('the ISS transit alert asks how far the centre line may pass, and saves it for that iPhone', async ({ page }) => {
+    const server = await mockAlerts(page, [], [phone]);
+    await openAlerts(page);
+    await page.getByRole('button', { name: 'Choose alerts for My iPhone' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Alerts for My iPhone' });
+    await dialog.getByRole('checkbox', { name: /ISS transit of the Moon or the Sun/ }).check();
+    const radius = dialog.getByRole('combobox', { name: 'Centre line within' });
+    await expect(radius).toHaveValue('50');
+    await radius.selectOption('100');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    const put = server.requests.find(r => r.method === 'PUT' && r.path === '/api/alerts/devices/ph-1');
+    expect((put?.body as { events: string[] }).events).toContain('iss.transit');
+    expect(put?.body).toMatchObject({ details: { issTransitRadiusKm: 100 } });
+  });
+
   test('the row says how far ahead and how high an ISS alert goes', async ({ page }) => {
     await mockAlerts(page, [], [{ ...phone, events: ['iss.pass'], details: { dew: false, plan: false, issLeadMinutes: 5, issMinAltitude: 60 } }]);
     await openAlerts(page);

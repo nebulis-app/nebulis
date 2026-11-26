@@ -11,7 +11,7 @@ export type AlertChannelKind = (typeof ALERT_CHANNEL_KINDS)[number];
 
 /** Events a channel can subscribe to. `test` is not subscribable: it goes to
  *  the one channel being tested. */
-export const ALERT_EVENTS = ['import.finished', 'import.failed', 'night.clear', 'night.dew', 'update.available', 'iss.pass'] as const;
+export const ALERT_EVENTS = ['import.finished', 'import.failed', 'night.clear', 'night.dew', 'update.available', 'iss.pass', 'iss.transit'] as const;
 export type AlertEventType = (typeof ALERT_EVENTS)[number];
 
 export const ALERT_LANGUAGES = ['en', 'fr', 'de', 'es', 'nl'] as const;
@@ -137,6 +137,7 @@ export type AlertEvent =
   | { type: 'night.dew'; occurredAt: string; data: DewAlertData }
   | { type: 'update.available'; occurredAt: string; data: UpdateAlertData }
   | { type: 'iss.pass'; occurredAt: string; data: IssPassAlertData }
+  | { type: 'iss.transit'; occurredAt: string; data: IssTransitAlertData }
   | { type: 'test'; occurredAt: string; data: Record<string, never> };
 
 /** Extra lines a person can add to the clear-night alert, chosen per channel and per phone. Both are off until chosen. */
@@ -162,6 +163,26 @@ export interface IssPassAlertData {
   staleDays: number | null;
 }
 
+/** An ISS transit of the Moon or the Sun whose centre line passes near the active site. */
+export interface IssTransitAlertData {
+  siteName: string;
+  timeZone: string;
+  body: 'moon' | 'sun';
+  /** At the centre line's closest point to the site, ISO UTC to the tenth of a second. */
+  time: string;
+  durationSec: number;
+  /** From the site to the centre line, and which way (degrees from north). */
+  distanceKm: number;
+  bearingDeg: number;
+  /** The site is inside the band already. */
+  siteInBand: boolean;
+  bandHalfWidthKm: number;
+  /** `day`: the first notice, about a day ahead. `final`: worked out again with the latest elements, about 2 hours ahead. */
+  stage: 'day' | 'final';
+  /** Age of the orbital elements the times come from, hours. */
+  tleAgeHours: number;
+}
+
 export interface AlertDetails {
   /** Dew risk and the night's low temperature. */
   dew: boolean;
@@ -173,7 +194,13 @@ export interface AlertDetails {
   issLeadMinutes: number;
   /** For ISS passes: only passes reaching at least this altitude, degrees. */
   issMinAltitude: number;
+  /** For ISS transits: only transits whose centre line passes within this distance of the site, km. */
+  issTransitRadiusKm: number;
 }
+
+export const ISS_TRANSIT_RADIUS_DEFAULT_KM = 50;
+export const ISS_TRANSIT_RADIUS_MIN_KM = 5;
+export const ISS_TRANSIT_RADIUS_MAX_KM = 300;
 
 /** ISS passes: told 10 minutes ahead, for passes reaching 30° or more, unless asked otherwise. */
 export const ISS_LEAD_DEFAULT_MINUTES = 10;
@@ -188,7 +215,7 @@ export const DEW_LEAD_DEFAULT_MINUTES = 60;
 export const DEW_LEAD_MIN_MINUTES = 15;
 export const DEW_LEAD_MAX_MINUTES = 360;
 export const NO_ALERT_DETAILS: AlertDetails = {
-  dew: false, plan: false, dewLeadMinutes: DEW_LEAD_DEFAULT_MINUTES, issLeadMinutes: 10, issMinAltitude: 30,
+  dew: false, plan: false, dewLeadMinutes: DEW_LEAD_DEFAULT_MINUTES, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50,
 };
 
 export interface AlertConfig {

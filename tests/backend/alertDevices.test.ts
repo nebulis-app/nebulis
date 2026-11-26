@@ -307,10 +307,10 @@ describe('the extra lines of a clear night, chosen for each phone', () => {
 
   it('merges switches one at a time and refuses anything that is not a switch', async () => {
     const id = json(await register()).id;
-    expect(json(await call('PUT', `/devices/${id}`, { details: { plan: true } })).details).toEqual({ dew: false, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30 });
-    expect(json(await call('PUT', `/devices/${id}`, { details: { dew: true } })).details).toEqual({ dew: true, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30 });
-    expect(json(await call('PUT', `/devices/${id}`, { name: 'Kitchen' })).details).toEqual({ dew: true, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30 });
-    expect(json(await call('PUT', `/devices/${id}`, { details: { dew: false } })).details).toEqual({ dew: false, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30 });
+    expect(json(await call('PUT', `/devices/${id}`, { details: { plan: true } })).details).toEqual({ dew: false, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50 });
+    expect(json(await call('PUT', `/devices/${id}`, { details: { dew: true } })).details).toEqual({ dew: true, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50 });
+    expect(json(await call('PUT', `/devices/${id}`, { name: 'Kitchen' })).details).toEqual({ dew: true, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50 });
+    expect(json(await call('PUT', `/devices/${id}`, { details: { dew: false } })).details).toEqual({ dew: false, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50 });
     expect((await call('PUT', `/devices/${id}`, { details: { plan: 1 } })).status).toBe(422);
   });
 
@@ -328,10 +328,10 @@ describe('the extra lines of a clear night, chosen for each phone', () => {
 
   it('a new phone starts with none, and a phone registering again keeps the ones that were set', async () => {
     const id = json(await register()).id;
-    expect(getAlertDevice(id)?.details).toEqual({ dew: false, plan: false, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30 });
+    expect(getAlertDevice(id)?.details).toEqual({ dew: false, plan: false, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50 });
     await call('PUT', `/devices/${id}`, { details: { plan: true } });
     await register({ name: 'Renamed on the phone' });
-    expect(getAlertDevice(id)?.details).toEqual({ dew: false, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30 });
+    expect(getAlertDevice(id)?.details).toEqual({ dew: false, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50 });
   });
 
   it('sends each phone the lines it asked for, and the planner link only to the one with the plan line', async () => {

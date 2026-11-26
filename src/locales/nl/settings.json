@@ -1699,6 +1699,11 @@
           "short": "ISS-overgang",
           "label": "ISS-overgang",
           "help": "Verstuurd kort voordat het Internationaal Ruimtestation na het donker worden over uw hemel trekt, één keer per overgang. Kies hoe lang vooraf en hoe hoog een overgang moet komen."
+        },
+        "transit": {
+          "short": "ISS-transit",
+          "label": "ISS-transit voor de maan of de zon",
+          "help": "Een dag vooraf verstuurd, en 2 uur vooraf opnieuw met de nieuwste baangegevens, wanneer het station dicht bij uw locatie voor de maan of de zon langs trekt. Kies hoe ver u zou rijden."
         }
       }
     },
@@ -1784,7 +1789,10 @@
       "issLeadLabel": "Hoe lang voor een ISS-overgang",
       "issMinAltLabel": "Overgangen vanaf",
       "issMinAlt": "{{deg}}° en hoger",
-      "issRow": "ISS-overgang: {{time}} vooraf, vanaf {{deg}}°"
+      "issRow": "ISS-overgang: {{time}} vooraf, vanaf {{deg}}°",
+      "issTransitRadiusLabel": "Centrale lijn binnen",
+      "issTransitRadius": "{{km}} km",
+      "issTransitRow": "ISS-transit: centrale lijn binnen {{km}} km"
     }
   },
   "search": {

@@ -173,5 +173,30 @@
       "W": "westen",
       "NW": "noordwesten"
     }
+  },
+  "issTransits": {
+    "title": "ISS-transits voor de maan en de zon",
+    "subtitle": "Waar het station deze week voor de schijf langs trekt. De strook is maar een paar kilometer breed: controleer het vlak vooraf nog eens.",
+    "loading": "Transits worden gezocht…",
+    "radiusLabel": "Binnen",
+    "radius": "{{km}} km",
+    "none": "Deze week geen transit met de centrale lijn binnen {{km}} km.",
+    "body": {
+      "moon": "Maan",
+      "sun": "Zon"
+    },
+    "durationAlt": "{{duration}} s, {{alt}}° hoog",
+    "inMinutes_one": "over {{count}} minuut",
+    "inMinutes_other": "over {{count}} minuten",
+    "inHours_one": "over {{count}} u {{minutes}} min",
+    "inHours_other": "over {{count}} u {{minutes}} min",
+    "inDays_one": "over {{count}} dag",
+    "inDays_other": "over {{count}} dagen",
+    "inBand": "U staat binnen de strook ({{width}} km breed).",
+    "drive": "Centrale lijn {{distance}} km naar het {{dir}}; de strook is {{width}} km breed.",
+    "openMap": "Centrale lijn op een kaart",
+    "solarSafety": "Kijk nooit naar de zon zonder gecertificeerd zonnefilter op de telescoop en de zoeker.",
+    "recompute": "Uit baangegevens van {{hours}} uur oud. Met nieuwere gegevens verschuift de strook: controleer 24 u en 2 u vooraf opnieuw.",
+    "mapLabel": "Kaart van de centrale lijn en de strook rond uw locatie"
   }
 }

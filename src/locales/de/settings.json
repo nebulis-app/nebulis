@@ -1699,6 +1699,11 @@
           "short": "ISS-Überflug",
           "label": "ISS-Überflug",
           "help": "Wird kurz bevor die Internationale Raumstation nach Einbruch der Dunkelheit über Ihren Himmel zieht gesendet, einmal pro Überflug. Wählen Sie, wie lange vorher und wie hoch ein Überflug steigen muss."
+        },
+        "transit": {
+          "short": "ISS-Transit",
+          "label": "ISS-Transit vor Mond oder Sonne",
+          "help": "Wird einen Tag vorher gesendet und 2 Stunden vorher mit den neuesten Bahndaten erneut, wenn die Station nahe Ihrem Standort vor Mond oder Sonne zieht. Wählen Sie, wie weit Sie fahren würden."
         }
       }
     },
@@ -1784,7 +1789,10 @@
       "issLeadLabel": "Wie lange vor einem ISS-Überflug",
       "issMinAltLabel": "Überflüge ab",
       "issMinAlt": "{{deg}}° und höher",
-      "issRow": "ISS-Überflug: {{time}} vorher, ab {{deg}}°"
+      "issRow": "ISS-Überflug: {{time}} vorher, ab {{deg}}°",
+      "issTransitRadiusLabel": "Zentrallinie innerhalb von",
+      "issTransitRadius": "{{km}} km",
+      "issTransitRow": "ISS-Transit: Zentrallinie innerhalb von {{km}} km"
     }
   },
   "search": {

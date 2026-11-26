@@ -158,7 +158,7 @@ describe('alerts routes', () => {
     const id = made.body.data.id;
     expect((await call('PUT', `/channels/${id}`, { details: { dewLeadMinutes: 120 } })).body.data.details.dewLeadMinutes).toBe(120);
     // Changing something else leaves it; changing the switches leaves it too.
-    expect((await call('PUT', `/channels/${id}`, { details: { dew: true } })).body.data.details).toEqual({ dew: true, plan: false, dewLeadMinutes: 120, issLeadMinutes: 10, issMinAltitude: 30 });
+    expect((await call('PUT', `/channels/${id}`, { details: { dew: true } })).body.data.details).toEqual({ dew: true, plan: false, dewLeadMinutes: 120, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50 });
     for (const bad of [14, 361, 90.5, '60', null]) {
       expect((await call('PUT', `/channels/${id}`, { details: { dewLeadMinutes: bad } })).status).toBe(422);
     }
@@ -169,16 +169,16 @@ describe('alerts routes', () => {
   it('keeps the extra clear-night lines on each channel, one switch at a time', async () => {
     const made = await call('POST', '/channels', { name: 'Ntfy', kind: 'ntfy', url: `${receiverUrl}/t`, events: ['night.clear'], details: { plan: true } });
     expect(made.status).toBe(201);
-    expect(made.body.data.details).toEqual({ dew: false, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30 });
+    expect(made.body.data.details).toEqual({ dew: false, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50 });
     const id = made.body.data.id;
     // Turning one on never turns the other off, and an unrelated change leaves both as they are.
-    expect((await call('PUT', `/channels/${id}`, { details: { dew: true } })).body.data.details).toEqual({ dew: true, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30 });
-    expect((await call('PUT', `/channels/${id}`, { name: 'Renamed' })).body.data.details).toEqual({ dew: true, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30 });
-    expect((await call('PUT', `/channels/${id}`, { details: { plan: false } })).body.data.details).toEqual({ dew: true, plan: false, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30 });
+    expect((await call('PUT', `/channels/${id}`, { details: { dew: true } })).body.data.details).toEqual({ dew: true, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50 });
+    expect((await call('PUT', `/channels/${id}`, { name: 'Renamed' })).body.data.details).toEqual({ dew: true, plan: true, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50 });
+    expect((await call('PUT', `/channels/${id}`, { details: { plan: false } })).body.data.details).toEqual({ dew: true, plan: false, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50 });
     expect((await call('PUT', `/channels/${id}`, { details: { dew: 'yes' } })).status).toBe(422);
     // A channel made without any reads as off, which is how every existing one behaves.
     const plain = await call('POST', '/channels', { name: 'Plain', kind: 'ntfy', url: `${receiverUrl}/p`, events: [] });
-    expect(plain.body.data.details).toEqual({ dew: false, plan: false, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30 });
+    expect(plain.body.data.details).toEqual({ dew: false, plan: false, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50 });
   });
 });
 

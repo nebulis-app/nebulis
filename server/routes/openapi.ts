@@ -7568,6 +7568,53 @@ export const spec = {
         },
       },
     },
+    '/sky-events/iss-transits': {
+      get: {
+        summary: 'ISS transits of the Moon and the Sun near the site',
+        tags: ['Sky'],
+        description: [
+          'ISS transits of the Moon and the Sun whose centre line passes within radiusKm (default 50) of the site over the next',
+          'days (default 7, up to 10): the time at the centre line\'s closest point (0.1 s), the duration there, the point and',
+          'the distance and bearing from the site, the band half-width, whether the site is inside the band, the body\'s altitude',
+          'and azimuth, and the centre line around the site (every 0.5 s) for a map. May ask CelesTrak for the station\'s',
+          'elements like /iss-passes; recompute shortly before, since the band moves by kilometres with older elements.',
+        ].join('\n'),
+        parameters: [
+          { name: 'siteId', in: 'query', schema: { type: 'string' } },
+          { name: 'lat', in: 'query', schema: { type: 'number' } },
+          { name: 'lon', in: 'query', schema: { type: 'number' } },
+          { name: 'days', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 10, default: 7 } },
+          { name: 'radiusKm', in: 'query', schema: { type: 'number', minimum: 5, maximum: 300, default: 50 } },
+        ],
+        responses: {
+          200: {
+            description: 'The transits',
+            content: { 'application/json': { schema: { type: 'object', properties: { ok: { type: 'boolean' }, data: {
+              type: 'object',
+              required: ['site', 'tle', 'radiusKm', 'transits'],
+              properties: {
+                site: { type: 'object' },
+                tle: nullable({ type: 'object', properties: { epoch: { type: 'string', format: 'date-time' }, ageHours: { type: 'number' }, stale: { type: 'boolean' }, source: { type: 'string', enum: ['iss', 'catalog'] } } }),
+                radiusKm: { type: 'number' },
+                transits: { type: 'array', items: { type: 'object', required: ['body', 'time', 'durationSec', 'nearest', 'bandHalfWidthKm', 'siteInBand', 'bodyAltitude', 'bodyAzimuth', 'issRangeKm', 'centerline'], properties: {
+                  body: { type: 'string', enum: ['moon', 'sun'] },
+                  time: { type: 'string', format: 'date-time' },
+                  durationSec: { type: 'number' },
+                  nearest: { type: 'object', properties: { lat: { type: 'number' }, lon: { type: 'number' }, distanceKm: { type: 'number' }, bearingDeg: { type: 'number' } } },
+                  bandHalfWidthKm: { type: 'number' },
+                  siteInBand: { type: 'boolean' },
+                  bodyAltitude: { type: 'number' },
+                  bodyAzimuth: { type: 'number' },
+                  issRangeKm: { type: 'number' },
+                  centerline: { type: 'array', items: { type: 'object', properties: { t: { type: 'string', format: 'date-time' }, lat: { type: 'number' }, lon: { type: 'number' } } } },
+                } } },
+              },
+            } } } } },
+          },
+          400: { description: 'INVALID_QUERY or INVALID_COORDS' },
+        },
+      },
+    },
     '/sky-events': {
       get: {
         summary: 'Sky events judged from an observing site',

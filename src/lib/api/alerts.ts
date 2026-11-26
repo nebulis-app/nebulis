@@ -11,7 +11,7 @@ import { fetchJSON } from './client';
 export const ALERT_CHANNEL_KINDS = ['ntfy', 'discord', 'slack', 'webhook'] as const;
 export type AlertChannelKind = (typeof ALERT_CHANNEL_KINDS)[number];
 
-export const ALERT_EVENTS = ['night.clear', 'night.dew', 'iss.pass', 'import.finished', 'import.failed', 'update.available'] as const;
+export const ALERT_EVENTS = ['night.clear', 'night.dew', 'iss.pass', 'iss.transit', 'import.finished', 'import.failed', 'update.available'] as const;
 export type AlertEventType = (typeof ALERT_EVENTS)[number];
 
 export const ALERT_LANGUAGES = ['en', 'fr', 'de', 'es', 'nl'] as const;
@@ -27,7 +27,11 @@ export interface AlertDetails {
   issLeadMinutes: number;
   /** For ISS passes: only passes reaching at least this altitude, degrees. */
   issMinAltitude: number;
+  /** For ISS transits: only transits whose centre line passes within this distance of the site, km. */
+  issTransitRadiusKm: number;
 }
+
+export const ISS_TRANSIT_RADIUS_CHOICES = [10, 25, 50, 100, 200] as const;
 
 /** How far ahead of an ISS pass, in minutes, and how high it must get, in degrees. */
 export const ISS_LEAD_CHOICES = [5, 10, 15, 30] as const;
@@ -37,7 +41,7 @@ export const ISS_MIN_ALTITUDE_CHOICES = [10, 20, 30, 45, 60] as const;
 export const DEW_LEAD_CHOICES = [30, 60, 120, 180] as const;
 
 /** Nothing extra: how every channel and phone starts. */
-export const NO_ALERT_DETAILS: AlertDetails = { dew: false, plan: false, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30 };
+export const NO_ALERT_DETAILS: AlertDetails = { dew: false, plan: false, dewLeadMinutes: 60, issLeadMinutes: 10, issMinAltitude: 30, issTransitRadiusKm: 50 };
 
 export interface AlertChannel {
   id: string;

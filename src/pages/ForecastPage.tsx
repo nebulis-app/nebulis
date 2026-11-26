@@ -27,6 +27,7 @@ import { LightPollutionPill } from '../components/forecast/LightPollutionPill';
 import { NightOutlookCard } from '../components/forecast/NightOutlookCard';
 import { EnsembleOutlook } from '../components/forecast/EnsembleOutlook';
 import { IssPasses } from '../components/forecast/IssPasses';
+import { IssTransits } from '../components/forecast/IssTransits';
 import { RatingLegend } from '../components/ui/RatingLegend';
 import { hoursForNight, resolveImagingWindow } from '../lib/forecastNights';
 
@@ -298,6 +299,7 @@ export function ForecastPage() {
 
       {/* ISS passes over the site this week: also its own request. */}
       {locationSet && <IssPasses siteId={effectiveSiteId} isDark={isDark} timeZone={tz} />}
+      {locationSet && <IssTransits siteId={effectiveSiteId} isDark={isDark} timeZone={tz} />}
     </div>
   );
 }

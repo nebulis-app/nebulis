@@ -30,6 +30,9 @@ import {
   ISS_MIN_ALTITUDE_DEFAULT,
   ISS_MIN_ALTITUDE_MAX,
   ISS_MIN_ALTITUDE_MIN,
+  ISS_TRANSIT_RADIUS_DEFAULT_KM,
+  ISS_TRANSIT_RADIUS_MAX_KM,
+  ISS_TRANSIT_RADIUS_MIN_KM,
   EVENING_HHMM,
   NO_ALERT_DETAILS,
 } from './types.js';
@@ -99,6 +102,7 @@ export function parseDetails(raw: string | null | undefined): AlertDetails {
       dew: v?.dew === true, plan: v?.plan === true, dewLeadMinutes: leadOrDefault(v?.dewLeadMinutes),
       issLeadMinutes: intInRange(v?.issLeadMinutes, ISS_LEAD_MIN_MINUTES, ISS_LEAD_MAX_MINUTES, ISS_LEAD_DEFAULT_MINUTES),
       issMinAltitude: intInRange(v?.issMinAltitude, ISS_MIN_ALTITUDE_MIN, ISS_MIN_ALTITUDE_MAX, ISS_MIN_ALTITUDE_DEFAULT),
+      issTransitRadiusKm: intInRange(v?.issTransitRadiusKm, ISS_TRANSIT_RADIUS_MIN_KM, ISS_TRANSIT_RADIUS_MAX_KM, ISS_TRANSIT_RADIUS_DEFAULT_KM),
     };
   } catch {
     return { ...NO_ALERT_DETAILS };
@@ -124,6 +128,8 @@ export function mergeDetails(current: AlertDetails, patch: Partial<AlertDetails>
       : intInRange(patch.issLeadMinutes, ISS_LEAD_MIN_MINUTES, ISS_LEAD_MAX_MINUTES, ISS_LEAD_DEFAULT_MINUTES),
     issMinAltitude: patch?.issMinAltitude === undefined ? current.issMinAltitude
       : intInRange(patch.issMinAltitude, ISS_MIN_ALTITUDE_MIN, ISS_MIN_ALTITUDE_MAX, ISS_MIN_ALTITUDE_DEFAULT),
+    issTransitRadiusKm: patch?.issTransitRadiusKm === undefined ? current.issTransitRadiusKm
+      : intInRange(patch.issTransitRadiusKm, ISS_TRANSIT_RADIUS_MIN_KM, ISS_TRANSIT_RADIUS_MAX_KM, ISS_TRANSIT_RADIUS_DEFAULT_KM),
   };
 }
 

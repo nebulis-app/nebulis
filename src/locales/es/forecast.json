@@ -173,5 +173,30 @@
       "W": "oeste",
       "NW": "noroeste"
     }
+  },
+  "issTransits": {
+    "title": "Tránsitos de la ISS por la Luna y el Sol",
+    "subtitle": "Dónde cruza la estación el disco esta semana. La franja mide solo unos kilómetros: compruébelo otra vez poco antes.",
+    "loading": "Buscando tránsitos…",
+    "radiusLabel": "A menos de",
+    "radius": "{{km}} km",
+    "none": "Ningún tránsito con la línea central a menos de {{km}} km esta semana.",
+    "body": {
+      "moon": "Luna",
+      "sun": "Sol"
+    },
+    "durationAlt": "{{duration}} s, a {{alt}}° de altura",
+    "inMinutes_one": "en {{count}} minuto",
+    "inMinutes_other": "en {{count}} minutos",
+    "inHours_one": "en {{count}} h {{minutes}} min",
+    "inHours_other": "en {{count}} h {{minutes}} min",
+    "inDays_one": "en {{count}} día",
+    "inDays_other": "en {{count}} días",
+    "inBand": "Está dentro de la franja ({{width}} km de ancho).",
+    "drive": "Línea central a {{distance}} km al {{dir}}; la franja mide {{width}} km de ancho.",
+    "openMap": "Línea central en un mapa",
+    "solarSafety": "No mire nunca al Sol sin un filtro solar certificado en el telescopio y el buscador.",
+    "recompute": "Con datos de órbita de hace {{hours}} h. La franja se desplaza con datos más recientes: compruébelo 24 h y 2 h antes.",
+    "mapLabel": "Mapa de la línea central y su franja alrededor de su sitio"
   }
 }

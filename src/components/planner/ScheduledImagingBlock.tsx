@@ -14,7 +14,7 @@
  */
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import { AlertTriangle, ArrowUp, Frame, GripVertical, Info, Moon, X } from 'lucide-react';
+import { AlertTriangle, ArrowUp, FlipHorizontal2, Frame, GripVertical, Info, Moon, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { IntegrationRemainingChips } from './IntegrationRemainingChips';
 import { formatHm, SNAP_MINUTES, TIMELINE_GUTTER_PX } from './scheduleGeometry';
@@ -23,6 +23,7 @@ import type { PlannedSession } from '../../lib/api/plannedSessions';
 import type { VisibilityVerdict } from '../../lib/visibilityCheck';
 import type { MoonVerdict } from '../../lib/moonProximity';
 import type { BlockDragData } from './dragData';
+import type { BlockFlip } from '../../lib/meridianFlip';
 import { PlanOutcomeActions, PlanOutcomeChip, PlanOutcomeIcon } from './PlanOutcomeBadge';
 
 const MIN_IMAGING_ALT = 20;
@@ -61,6 +62,8 @@ interface ScheduledImagingBlockProps {
   /** The same closest approach judged for narrowband, when the block is not
    *  narrowband already: lets it say a narrowband filter would be fine. */
   narrowbandVerdict?: MoonVerdict;
+  /** The meridian flip inside this block, when the planner's rig flips and the target crosses during it. */
+  flip?: BlockFlip | null;
   hasOverlap: boolean;
   laneIndex: number;
   laneCount: number;
@@ -92,6 +95,7 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
   moonVerdict,
   moonReason,
   narrowbandVerdict,
+  flip = null,
   hasOverlap,
   laneIndex,
   laneCount,
@@ -159,9 +163,11 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
         ? narrowbandWouldDo ? `${moonReason} · ${t('scheduledImagingBlock.narrowbandOk')}` : moonReason
         : lowInSky && minAlt != null
           ? t('scheduledImagingBlock.lowInSky', { deg: Math.round(minAlt) })
-          : hasOverlap
-            ? t('scheduledImagingBlock.overlapsAnother')
-            : '';
+          : flip?.suggestion
+            ? t(`scheduledImagingBlock.flip.${flip.suggestion.kind}`, { time: formatHm(flip.suggestion.at, observerTimezone) })
+            : hasOverlap
+              ? t('scheduledImagingBlock.overlapsAnother')
+              : '';
 
   return (
     <div
@@ -187,6 +193,19 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
           reach past the block's edge and still be grabbed from just outside it. */}
       <div className="absolute inset-0 overflow-hidden rounded-xl">
       <div className={`absolute bottom-0 left-0 top-0 w-1.5 ${stripeColor}`} />
+
+      {/* The meridian flip: a line at the crossing and the pause after it, behind the block's text. */}
+      {flip && (
+        <div
+          data-meridian-flip
+          className="pointer-events-none absolute left-1.5 right-0 border-t border-dashed border-sky-300/70 bg-sky-300/10"
+          style={{
+            top: `${((flip.at.getTime() - start.getTime()) / 60_000) * pxPerMinute}px`,
+            height: `${Math.max(1, flip.pauseMinutes * pxPerMinute)}px`,
+          }}
+          title={t('scheduledImagingBlock.flip.title', { time: formatHm(flip.at, observerTimezone), minutes: flip.pauseMinutes })}
+        />
+      )}
 
       <div
         {...(isSaving ? {} : listeners)}
@@ -241,6 +260,14 @@ export const ScheduledImagingBlock = memo(function ScheduledImagingBlock({
                 <Chip tone={moonVerdict === 'warning' ? 'bad' : 'warn'}>
                   <Moon className="h-2.5 w-2.5" />
                   {narrowbandWouldDo ? t('scheduledImagingBlock.moonNbOk') : t('scheduledImagingBlock.moon')}
+                </Chip>
+              )}
+              {flip && (
+                <Chip tone="ok">
+                  <span className="inline-flex items-center gap-1" title={t('scheduledImagingBlock.flip.imaging', { minutes: Math.round(flip.imagingMinutes) })}>
+                    <FlipHorizontal2 className="h-2.5 w-2.5" />
+                    {t('scheduledImagingBlock.flip.chip', { time: formatHm(flip.at, observerTimezone), minutes: flip.pauseMinutes })}
+                  </span>
                 </Chip>
               )}
               {hasOverlap && (

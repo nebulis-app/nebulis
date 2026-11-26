@@ -122,6 +122,13 @@
     "bandShort": {
       "broadband": "BB",
       "narrowband": "SB"
+    },
+    "flip": {
+      "title": "Meridiaanflip om {{time}}, daarna ongeveer {{minutes}} min om om te slaan en te herstarten",
+      "chip": "Flip {{time}} · −{{minutes}} min",
+      "imaging": "{{minutes}} min opname na aftrek van de flippauze",
+      "endAtFlip": "Na de meridiaanflip blijft weinig over: eindigen om {{time}} voorkomt hem.",
+      "startAfterFlip": "Voor de meridiaanflip ligt weinig: beginnen om {{time}} voorkomt hem."
     }
   },
   "libraryPanel": {

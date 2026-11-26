@@ -122,6 +122,13 @@
     "bandShort": {
       "broadband": "LB",
       "narrowband": "BE"
+    },
+    "flip": {
+      "title": "Retournement au méridien à {{time}}, puis environ {{minutes}} min pour retourner et reprendre",
+      "chip": "Retournement {{time}} · −{{minutes}} min",
+      "imaging": "{{minutes}} min de pose une fois la pause du retournement retirée",
+      "endAtFlip": "Il reste peu de temps après le retournement : finir à {{time}} l'évite.",
+      "startAfterFlip": "Il y a peu de temps avant le retournement : commencer à {{time}} l'évite."
     }
   },
   "libraryPanel": {

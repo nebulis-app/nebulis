@@ -990,7 +990,17 @@
     "photoChange": "Foto wijzigen",
     "photoRemove": "Verwijderen",
     "photoUploading": "Uploaden…",
-    "photoAlt": "Foto van {{name}}"
+    "photoAlt": "Foto van {{name}}",
+    "rigMount": "Montering",
+    "rigMountUnset": {
+      "equatorial": "Niet opgegeven (equatoriaal aangenomen)",
+      "altaz": "Niet opgegeven (geen flip aangenomen)"
+    },
+    "rigMountEquatorial": "Equatoriaal",
+    "rigMountAltaz": "Alt-az",
+    "rigMountHelp": "Op een equatoriale montering markeert de planner de meridiaanflip in elk blok en trekt de pauze af van de opnametijd.",
+    "rigFlipPause": "Pauze bij de flip (minuten)",
+    "rigFlipPauseInvalid": "Een geheel aantal minuten van 0 tot 60, of leeg voor 10."
   },
   "subtitle": {
     "general": "Uiterlijk en eenheden.",

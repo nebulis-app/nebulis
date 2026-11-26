@@ -341,3 +341,49 @@ test.describe('Settings Page', () => {
     await expect(page.getByRole('button', { name: /sync now/i })).toBeVisible();
   });
 });
+
+test.describe('Telescope rig: mount and meridian flip', () => {
+  const ASIAIR = {
+    ...ACTIVE_TELESCOPE,
+    id: 'rig-1', name: 'Garden rig', model: 'ASIAIR', kind: 'asiair', connectionType: 'local',
+    opticalConfigs: [], activeOpticalConfigId: null,
+    rig: { sensorType: 'mono', filters: ['Ha'], mount: null, flipPauseMinutes: null },
+  };
+
+  test('an ASIAIR is assumed equatorial, and the mount and pause are saved with the rig', async ({ page }) => {
+    await mockAllRoutes(page);
+    await page.goto('/settings');
+    await page.route('**/api/telescopes', r => r.fulfill(json([ASIAIR])));
+    let putBody: Record<string, unknown> | null = null;
+    await page.route('**/api/telescopes/rig-1/rig', r => {
+      putBody = r.request().postDataJSON() as Record<string, unknown>;
+      return r.fulfill(json({ ...ASIAIR.rig, mount: 'equatorial', flipPauseMinutes: 5 }));
+    });
+    await page.reload();
+    await openTelescopeEditor(page, 'Import');
+
+    const mount = page.getByRole('group', { name: 'Mount' });
+    await expect(mount.getByRole('button', { name: 'Not said (equatorial assumed)' })).toHaveAttribute('aria-pressed', 'true');
+    const pause = page.getByLabel('Pause at the flip (minutes)');
+    await expect(pause).toBeVisible();
+
+    await mount.getByRole('button', { name: 'Alt-az', exact: true }).click();
+    await expect(pause).toHaveCount(0);
+
+    await mount.getByRole('button', { name: 'Equatorial', exact: true }).click();
+    await page.getByLabel('Pause at the flip (minutes)').fill('5');
+    await page.getByRole('button', { name: 'Save', exact: true }).last().click();
+    await expect.poll(() => putBody).not.toBeNull();
+    expect(putBody).toMatchObject({ sensorType: 'mono', filters: ['Ha'], mount: 'equatorial', flipPauseMinutes: 5 });
+  });
+
+  test('a pause outside 0 to 60 minutes cannot be saved', async ({ page }) => {
+    await mockAllRoutes(page);
+    await page.goto('/settings');
+    await page.route('**/api/telescopes', r => r.fulfill(json([ASIAIR])));
+    await page.reload();
+    await openTelescopeEditor(page, 'Import');
+    await page.getByLabel('Pause at the flip (minutes)').fill('90');
+    await expect(page.getByText('A whole number of minutes from 0 to 60, or blank for 10.')).toBeVisible();
+  });
+});

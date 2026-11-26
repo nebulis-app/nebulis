@@ -1455,6 +1455,18 @@ db.exec(`
   }
 }
 
+// Settings → Telescopes → a custom rig's mount, for the planner's meridian flip. Null mount reads as the kind's
+// default (an ASIAIR drives an equatorial mount, another rig is not assumed to); null pause reads as 10 minutes.
+{
+  const rigCols = db.prepare<[], { name: string }>('PRAGMA table_info(telescopeRigSettings)').all();
+  if (!rigCols.some(c => c.name === 'mount')) {
+    db.prepare("ALTER TABLE telescopeRigSettings ADD COLUMN mount TEXT CHECK (mount IN ('equatorial', 'altaz'))").run();
+  }
+  if (!rigCols.some(c => c.name === 'flipPauseMinutes')) {
+    db.prepare('ALTER TABLE telescopeRigSettings ADD COLUMN flipPauseMinutes INTEGER').run();
+  }
+}
+
 // Settings → Library → "Analyze frames after import". Off by default: measuring reads every FITS frame, so it is
 // opt-in. Opening a night's frame list still measures that night on demand.
 {

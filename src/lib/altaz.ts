@@ -23,7 +23,7 @@ function gmstHours(date: Date): number {
 }
 
 /** Local Sidereal Time in decimal hours (east longitude positive). */
-function lstHours(date: Date, lon: number): number {
+export function lstHours(date: Date, lon: number): number {
   return (gmstHours(date) + lon / 15 + 24) % 24;
 }
 

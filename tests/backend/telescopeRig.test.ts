@@ -46,14 +46,34 @@ beforeEach(() => {
 
 describe('rig settings', () => {
   it('reads as unknown until the owner says', () => {
-    expect(getRig(SCOPE)).toEqual({ sensorType: null, filters: [] });
+    expect(getRig(SCOPE)).toEqual({ sensorType: null, filters: [], mount: null, flipPauseMinutes: null });
   });
 
   it('round-trips and replaces', () => {
-    expect(setRig(SCOPE, { sensorType: 'mono', filters: ['Ha', 'OIII', 'SII'] })).toEqual({ sensorType: 'mono', filters: ['Ha', 'OIII', 'SII'] });
-    expect(getRig(SCOPE)).toEqual({ sensorType: 'mono', filters: ['Ha', 'OIII', 'SII'] });
+    const mono = { sensorType: 'mono' as const, filters: ['Ha', 'OIII', 'SII'], mount: null, flipPauseMinutes: null };
+    expect(setRig(SCOPE, { sensorType: 'mono', filters: ['Ha', 'OIII', 'SII'] })).toEqual(mono);
+    expect(getRig(SCOPE)).toEqual(mono);
     setRig(SCOPE, { sensorType: 'color', filters: ['L-eXtreme'] });
-    expect(getRig(SCOPE)).toEqual({ sensorType: 'color', filters: ['L-eXtreme'] });
+    expect(getRig(SCOPE)).toEqual({ sensorType: 'color', filters: ['L-eXtreme'], mount: null, flipPauseMinutes: null });
+  });
+
+  it('keeps the mount when a save leaves it out, and replaces it when one says it', () => {
+    setRig(SCOPE, { sensorType: 'mono', filters: [], mount: 'equatorial', flipPauseMinutes: 6 });
+    setRig(SCOPE, { sensorType: 'color', filters: ['Ha'] });
+    expect(getRig(SCOPE)).toMatchObject({ sensorType: 'color', mount: 'equatorial', flipPauseMinutes: 6 });
+    setRig(SCOPE, { sensorType: 'color', filters: ['Ha'], mount: 'altaz', flipPauseMinutes: null });
+    expect(getRig(SCOPE)).toMatchObject({ mount: 'altaz', flipPauseMinutes: null });
+  });
+
+  it('refuses a flip pause that is not 0 to 60 whole minutes', () => {
+    expect(() => setRig(SCOPE, { sensorType: null, filters: [], flipPauseMinutes: 61 })).toThrow(RangeError);
+    expect(() => setRig(SCOPE, { sensorType: null, filters: [], flipPauseMinutes: 2.5 })).toThrow(RangeError);
+    expect(() => setRig(SCOPE, { sensorType: null, filters: [], flipPauseMinutes: -1 })).toThrow(RangeError);
+    expect(setRig(SCOPE, { sensorType: null, filters: [], flipPauseMinutes: 0 }).flipPauseMinutes).toBe(0);
+  });
+
+  it('rejects a mount that is not equatorial or alt-az', () => {
+    expect(() => db.prepare(`INSERT INTO telescopeRigSettings (profileId, filtersJson, mount, updatedAt) VALUES (?, '[]', 'dobsonian', 'x')`).run(SCOPE)).toThrow();
   });
 
   it('goes with the telescope when it is deleted', () => {
@@ -64,7 +84,7 @@ describe('rig settings', () => {
 
   it('reads a damaged filter list as none instead of throwing', () => {
     db.prepare(`INSERT INTO telescopeRigSettings (profileId, sensorType, filtersJson, updatedAt) VALUES (?, 'mono', '{not json', 'x')`).run(SCOPE);
-    expect(getRig(SCOPE)).toEqual({ sensorType: 'mono', filters: [] });
+    expect(getRig(SCOPE)).toEqual({ sensorType: 'mono', filters: [], mount: null, flipPauseMinutes: null });
   });
 
   it('rejects a sensor type that is not colour or mono', () => {

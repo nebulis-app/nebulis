@@ -990,7 +990,17 @@
     "photoChange": "Foto ändern",
     "photoRemove": "Entfernen",
     "photoUploading": "Wird hochgeladen…",
-    "photoAlt": "Foto von {{name}}"
+    "photoAlt": "Foto von {{name}}",
+    "rigMount": "Montierung",
+    "rigMountUnset": {
+      "equatorial": "Nicht angegeben (parallaktisch angenommen)",
+      "altaz": "Nicht angegeben (kein Umschlag angenommen)"
+    },
+    "rigMountEquatorial": "Parallaktisch",
+    "rigMountAltaz": "Azimutal",
+    "rigMountHelp": "Bei einer parallaktischen Montierung markiert der Planer den Meridian-Flip in jedem Block und zieht die Pause von der Belichtungszeit ab.",
+    "rigFlipPause": "Pause beim Flip (Minuten)",
+    "rigFlipPauseInvalid": "Eine ganze Zahl von Minuten zwischen 0 und 60, oder leer für 10."
   },
   "subtitle": {
     "general": "Erscheinungsbild und Einheiten.",

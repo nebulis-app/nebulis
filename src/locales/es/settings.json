@@ -990,7 +990,17 @@
     "photoChange": "Cambiar foto",
     "photoRemove": "Quitar",
     "photoUploading": "Subiendo…",
-    "photoAlt": "Foto de {{name}}"
+    "photoAlt": "Foto de {{name}}",
+    "rigMount": "Montura",
+    "rigMountUnset": {
+      "equatorial": "Sin indicar (se supone ecuatorial)",
+      "altaz": "Sin indicar (se supone sin volteo)"
+    },
+    "rigMountEquatorial": "Ecuatorial",
+    "rigMountAltaz": "Altacimutal",
+    "rigMountHelp": "En una montura ecuatorial, el planificador marca el volteo de meridiano en cada bloque y descuenta la pausa del tiempo de captura.",
+    "rigFlipPause": "Pausa en el volteo (minutos)",
+    "rigFlipPauseInvalid": "Un número entero de minutos entre 0 y 60, o vacío para 10."
   },
   "subtitle": {
     "general": "Apariencia y unidades.",

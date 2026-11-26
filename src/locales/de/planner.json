@@ -122,6 +122,13 @@
     "bandShort": {
       "broadband": "BB",
       "narrowband": "SB"
+    },
+    "flip": {
+      "title": "Meridian-Flip um {{time}}, danach etwa {{minutes}} min zum Umschlagen und Neustarten",
+      "chip": "Flip {{time}} · −{{minutes}} min",
+      "imaging": "{{minutes}} min Belichtung nach Abzug der Flip-Pause",
+      "endAtFlip": "Nach dem Meridian-Flip bleibt wenig übrig: Ein Ende um {{time}} vermeidet ihn.",
+      "startAfterFlip": "Vor dem Meridian-Flip liegt wenig: Ein Beginn um {{time}} vermeidet ihn."
     }
   },
   "libraryPanel": {

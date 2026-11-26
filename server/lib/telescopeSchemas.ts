@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { parseShareName, validateHostAddress } from './smb.shared.js';
 import { TELESCOPE_KINDS } from './types/telescopeKind.js';
 import { TRANSPORT_KINDS } from './telescopeTransports.js';
-import { MAX_RIG_FILTERS, MAX_RIG_FILTER_LENGTH } from './telescopeRig.js';
+import { MAX_FLIP_PAUSE_MINUTES, MAX_RIG_FILTERS, MAX_RIG_FILTER_LENGTH } from './telescopeRig.js';
 import type { TelescopeProfile } from './telescopes.js';
 import type { TelescopeTransport } from './telescopeTransports.js';
 import type { TelescopeOpticalConfig } from './telescopeOpticalConfigs.js';
@@ -141,6 +141,10 @@ export const ProbeIdentityBodySchema = z.object({
 export const RigBodySchema = z.object({
   sensorType: z.enum(['color', 'mono']).nullable(),
   filters: z.array(z.string().max(MAX_RIG_FILTER_LENGTH)).max(MAX_RIG_FILTERS),
+  mount: z.enum(['equatorial', 'altaz']).nullable().optional()
+    .describe('What the rig rides on, for the planner\'s meridian flip. Omitted keeps the saved value; null means not said.'),
+  flipPauseMinutes: z.number().int().min(0).max(MAX_FLIP_PAUSE_MINUTES).nullable().optional()
+    .describe('Minutes lost at the flip. Omitted keeps the saved value; null means the default of 10.'),
 });
 
 // ─── Response shapes ─────────────────────────────────────────────────
@@ -181,6 +185,8 @@ export const TelescopeOpticalConfigResponseSchema = z.object({
 export const TelescopeRigResponseSchema = z.object({
   sensorType: z.enum(['color', 'mono']).nullable(),
   filters: z.array(z.string()),
+  mount: z.enum(['equatorial', 'altaz']).nullable(),
+  flipPauseMinutes: z.number().int().nullable(),
 });
 
 /** The profile as `POST` and `PUT /telescopes` return it. */

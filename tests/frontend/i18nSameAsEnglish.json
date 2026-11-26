@@ -51,5 +51,7 @@
   "catalogs:explore.catalogs.ngc": "Catalog name",
   "catalogs:explore.catalogs.ic": "Catalog name",
   "catalogs:explore.catalogs.caldwell": "Catalog name",
-  "catalogs:explore.catalogs.sharpless": "Catalog name"
+  "catalogs:explore.catalogs.sharpless": "Catalog name",
+  "planner:scheduledImagingBlock.flip.chip": "\"Flip\" is the usual word for the meridian flip in German and Dutch astrophotography; the rest is a time and minutes",
+  "settings:addTelescopeModal.rigMountAltaz": "\"Alt-az\" is the usual short name for an altazimuth mount in Dutch"
 }

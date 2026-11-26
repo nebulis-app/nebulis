@@ -35,6 +35,7 @@ import type { PlannedSession } from '../../lib/api/plannedSessions';
 import type { ForecastHour } from '../../lib/api/planner';
 import type { BlockVisibilityResult } from '../../lib/visibilityCheck';
 import type { MoonProximityResult } from '../../lib/moonProximity';
+import type { BlockFlip } from '../../lib/meridianFlip';
 
 interface ScheduleTimelineProps {
   nightStart: Date;
@@ -47,6 +48,8 @@ interface ScheduleTimelineProps {
   sessions: PlannedSession[];
   visibilityById: Map<number, BlockVisibilityResult>;
   moonById: Map<number, MoonProximityResult>;
+  /** The meridian flip inside each block, for a rig that flips. Absent ids have none. */
+  flipById?: Map<number, BlockFlip>;
   /** Thumbnail URL per session id, so blocks show the object rather than text alone. */
   thumbnailById?: Map<number, string>;
   /** Provisional Y delta during a body-drag (px), keyed by session id. */
@@ -159,6 +162,7 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
     thumbnailById,
     dragDeltaById,
     resizeDeltaById,
+    flipById,
     forecastHours = [],
     moonIllumination = 0,
     onSelectWeatherHour,
@@ -458,6 +462,8 @@ export const ScheduleTimeline = forwardRef<HTMLDivElement, ScheduleTimelineProps
                 moonVerdict={moonById.get(s.id)?.verdict ?? 'ok'}
                 moonReason={moonById.get(s.id)?.reason ?? ''}
                 narrowbandVerdict={moonById.get(s.id)?.narrowbandVerdict}
+                // Left out mid-drag or mid-resize: it is computed from the saved times, not the provisional ones.
+                flip={resize || dragDeltaById.get(s.id) ? null : flipById?.get(s.id) ?? null}
                 hasOverlap={overlapById.get(s.id) ?? false}
                 laneIndex={laneIndex.get(s.id) ?? 0}
                 laneCount={laneCount.get(s.id) ?? 1}

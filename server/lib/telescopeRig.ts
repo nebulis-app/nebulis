@@ -13,26 +13,36 @@ import db from './db.js';
 import { getFilterAliasMap, normalizeFilterName } from './library/integration.js';
 
 export type SensorType = 'color' | 'mono';
+export type MountType = 'equatorial' | 'altaz';
 
 export interface TelescopeRig {
   /** Null until the owner says; the panel then asks instead of guessing. */
   sensorType: SensorType | null;
   /** Filter names as the owner calls them, e.g. "Ha", "L-eXtreme". */
   filters: string[];
+  /** What the rig rides on, for the planner's meridian flip. Null until the owner says (the planner then assumes an
+   *  ASIAIR is on an equatorial mount and another rig is not). */
+  mount: MountType | null;
+  /** Minutes lost at the flip (slew, re-centre, guiding restart). Null reads as `DEFAULT_FLIP_PAUSE_MINUTES`. */
+  flipPauseMinutes: number | null;
 }
+
+export const DEFAULT_FLIP_PAUSE_MINUTES = 10;
+export const MAX_FLIP_PAUSE_MINUTES = 60;
 
 export const MAX_RIG_FILTERS = 16;
 export const MAX_RIG_FILTER_LENGTH = 64;
 
-const EMPTY_RIG: TelescopeRig = { sensorType: null, filters: [] };
+const EMPTY_RIG: TelescopeRig = { sensorType: null, filters: [], mount: null, flipPauseMinutes: null };
 
 const stmts = {
-  get: db.prepare<[string], { sensorType: string | null; filtersJson: string }>(
-    'SELECT sensorType, filtersJson FROM telescopeRigSettings WHERE profileId = ?',
+  get: db.prepare<[string], { sensorType: string | null; filtersJson: string; mount: string | null; flipPauseMinutes: number | null }>(
+    'SELECT sensorType, filtersJson, mount, flipPauseMinutes FROM telescopeRigSettings WHERE profileId = ?',
   ),
   upsert: db.prepare(
-    `INSERT INTO telescopeRigSettings (profileId, sensorType, filtersJson, updatedAt) VALUES (?, ?, ?, ?)
-     ON CONFLICT(profileId) DO UPDATE SET sensorType = excluded.sensorType, filtersJson = excluded.filtersJson, updatedAt = excluded.updatedAt`,
+    `INSERT INTO telescopeRigSettings (profileId, sensorType, filtersJson, mount, flipPauseMinutes, updatedAt) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(profileId) DO UPDATE SET sensorType = excluded.sensorType, filtersJson = excluded.filtersJson,
+       mount = excluded.mount, flipPauseMinutes = excluded.flipPauseMinutes, updatedAt = excluded.updatedAt`,
   ),
   usedFilters: db.prepare<[string], { filter: string; n: number }>(
     `SELECT ci.filter AS filter, COUNT(*) AS n
@@ -65,18 +75,33 @@ export function cleanRigFilters(filters: readonly string[]): string[] {
 export function getRig(profileId: string): TelescopeRig {
   const row = stmts.get.get(profileId);
   if (!row) return { ...EMPTY_RIG, filters: [] };
+  const mount = row.mount === 'equatorial' || row.mount === 'altaz' ? row.mount : null;
+  const pause = typeof row.flipPauseMinutes === 'number' && Number.isFinite(row.flipPauseMinutes) ? row.flipPauseMinutes : null;
   let filters: string[] = [];
   try {
     const parsed: unknown = JSON.parse(row.filtersJson);
     if (Array.isArray(parsed)) filters = parsed.filter((x): x is string => typeof x === 'string');
   } catch { /* a damaged value reads as no filters */ }
-  return { sensorType: row.sensorType === 'color' || row.sensorType === 'mono' ? row.sensorType : null, filters };
+  return { sensorType: row.sensorType === 'color' || row.sensorType === 'mono' ? row.sensorType : null, filters, mount, flipPauseMinutes: pause };
 }
 
-export function setRig(profileId: string, rig: TelescopeRig): TelescopeRig {
+/**
+ * Saves the rig. `mount` and `flipPauseMinutes` are optional so a caller that only edits the camera and filters
+ * (an older client, say) keeps what was saved for the mount.
+ */
+export function setRig(
+  profileId: string,
+  rig: Pick<TelescopeRig, 'sensorType' | 'filters'> & Partial<Pick<TelescopeRig, 'mount' | 'flipPauseMinutes'>>,
+): TelescopeRig {
   const filters = cleanRigFilters(rig.filters);
-  stmts.upsert.run(profileId, rig.sensorType, JSON.stringify(filters), new Date().toISOString());
-  return { sensorType: rig.sensorType, filters };
+  const before = getRig(profileId);
+  const mount = rig.mount !== undefined ? rig.mount : before.mount;
+  const pause = rig.flipPauseMinutes !== undefined ? rig.flipPauseMinutes : before.flipPauseMinutes;
+  if (pause !== null && (!Number.isInteger(pause) || pause < 0 || pause > MAX_FLIP_PAUSE_MINUTES)) {
+    throw new RangeError(`The flip pause is a whole number of minutes from 0 to ${MAX_FLIP_PAUSE_MINUTES}`);
+  }
+  stmts.upsert.run(profileId, rig.sensorType, JSON.stringify(filters), mount, pause, new Date().toISOString());
+  return { sensorType: rig.sensorType, filters, mount, flipPauseMinutes: pause };
 }
 
 /**

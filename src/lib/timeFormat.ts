@@ -107,11 +107,17 @@ function secondsIntoHour(d: Date, timeZone?: string): number {
 export function hourTicks(nightStart: Date, nightEnd: Date, timeZone?: string): Date[] {
   const ticks: Date[] = [];
   const into = secondsIntoHour(nightStart, timeZone);
+  // A clock change of half an hour (Lord Howe Island's, both ways) can leave a step that should land on :00 on :30
+  // instead: snap on to the next :00 of the local clock.
+  const onTheHour = (ms: number): number => {
+    const off = secondsIntoHour(new Date(ms), timeZone);
+    return off === 0 ? ms : ms + (3600 - off) * 1000;
+  };
   // First hour boundary at or after nightStart.
-  let t = into === 0 ? nightStart.getTime() : nightStart.getTime() + (3600 - into) * 1000;
+  let t = onTheHour(into === 0 ? nightStart.getTime() : nightStart.getTime() + (3600 - into) * 1000);
   while (t <= nightEnd.getTime()) {
     ticks.push(new Date(t));
-    t += 3_600_000;
+    t = onTheHour(t + 3_600_000);
   }
   return ticks;
 }

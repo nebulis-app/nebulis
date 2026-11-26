@@ -156,11 +156,34 @@ describe('hourTicks', () => {
             expect(t.getTime()).toBeGreaterThanOrEqual(start.getTime());
             expect(t.getTime()).toBeLessThanOrEqual(end.getTime());
             expect(formatHm(t, zone).endsWith(':00')).toBe(true);
-            if (i > 0) expect(t.getTime() - ticks[i - 1].getTime()).toBe(HOUR);
+            // An hour apart, except across Lord Howe Island's half-hour clock change, where the next :00 is an hour and a
+            // half away.
+            if (i > 0) expect([HOUR, 1.5 * HOUR]).toContain(t.getTime() - ticks[i - 1].getTime());
           });
         },
       ),
       { numRuns: 200 },
     );
+  });
+
+  it("stays on the hour across Lord Howe Island's half-hour clock change", () => {
+    // 4 October 2026, 02:00 local: the clock jumps to 02:30 (UTC+10:30 to +11). Found by the property above.
+    const start = new Date(1790998079000);
+    // The property's window ended at 02:30 local, where the old code put a tick labelled 02:30.
+    expect(hourTicks(start, new Date(start.getTime() + 43321000), 'Australia/Lord_Howe').map(t => formatHm(t, 'Australia/Lord_Howe')))
+      .not.toContain('02:30');
+    // An hour further, the next tick is 03:00, an hour and a half after 01:00.
+    const ticks = hourTicks(start, new Date(start.getTime() + 43321000 + HOUR), 'Australia/Lord_Howe');
+    expect(ticks.map(t => formatHm(t, 'Australia/Lord_Howe')).slice(-3)).toEqual(['00:00', '01:00', '03:00']);
+    expect(ticks[ticks.length - 1].getTime() - ticks[ticks.length - 2].getTime()).toBe(1.5 * HOUR);
+  });
+
+  it("stays on the hour when Lord Howe Island turns its clock back half an hour", () => {
+    // 4 April 2027, 02:00 local: back to 01:30 (UTC+11 to +10:30). Found by the property above, with more runs.
+    const start = new Date(1806760801000);
+    expect(hourTicks(start, new Date(start.getTime() + 3_599_000), 'Australia/Lord_Howe')).toEqual([]);
+    const labels = hourTicks(new Date(start.getTime() - 2 * HOUR), new Date(start.getTime() + 2 * HOUR), 'Australia/Lord_Howe')
+      .map(t => formatHm(t, 'Australia/Lord_Howe'));
+    expect(labels).toEqual(['00:00', '01:00', '02:00']);
   });
 });

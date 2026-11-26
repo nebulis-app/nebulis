@@ -35,7 +35,7 @@ import { getAllProfiles } from '../telescopes.js';
 import { getOpticalConfigsForProfile, type TelescopeOpticalConfig } from '../telescopeOpticalConfigs.js';
 import { resolveContainedObjectDir } from './objects.js';
 import { listObjectFiles, getObjectLayout } from './libraryLayout.js';
-import { resolverFor, getLibraryFilesForObject, sessionDateForRow } from './libraryFiles.js';
+import { resolverFor, getLibraryFilesForObject, sessionDateForRow, dominantTelescopeForSession } from './libraryFiles.js';
 import { resolveLibraryFile } from './fileResolver.js';
 
 export type OpticsSource = 'manual' | 'fits' | 'only';
@@ -273,6 +273,28 @@ export function resolveSessionOptics(
 export function rigKey(telescopeId: string | null, optics: SessionOptics): string {
   const train = optics.configId ?? (optics.fileFocalMm !== null ? `${Math.round(optics.fileFocalMm)}mm` : '-');
   return `${telescopeId ?? '-'}|${train}`;
+}
+
+/**
+ * The optical train a session was shot through, as a key, when one is known: the telescope plus the configuration the
+ * session resolves to (chosen, matched by FITS focal length, or the telescope's only one). Null when no configuration
+ * applies, so the caller keeps its own way of telling trains apart. Reads at most one FITS header per session, ever
+ * (the focal length is cached on the session).
+ */
+export function sessionTrainKey(
+  objectId: string,
+  date: string,
+  configsByProfile: Map<string, TelescopeOpticalConfig[]> = opticalConfigsByProfile(),
+): string | null {
+  const telescopeId = dominantTelescopeForSession(objectId, date);
+  if (!telescopeId || (configsByProfile.get(telescopeId)?.length ?? 0) === 0) return null;
+  const row = stmts.read.get(objectId, date);
+  const optics = resolveSessionOptics(
+    telescopeId,
+    row ? { opticalConfigId: row.opticalConfigId, fileFocalMm: fitsFocalForSession(objectId, date, row) } : null,
+    configsByProfile,
+  );
+  return optics.configId ? `${telescopeId}|${optics.configId}` : null;
 }
 
 /**

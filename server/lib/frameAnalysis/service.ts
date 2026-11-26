@@ -10,6 +10,8 @@ import { isRecord } from '../typeGuards.js';
 import { getCatalogEntry } from '../catalogLookup.js';
 import { parseDecToDegs, parseRaToDegs } from '../fitsWcs.js';
 import { getLibraryObjectNames } from '../library/objects.js';
+import { getLibraryFileRow, sessionDateForRow } from '../library/libraryFiles.js';
+import { opticalConfigsByProfile, sessionTrainKey } from '../library/sessionOptics.js';
 import { normalizeCatalogId, parseFilename } from '../telescopeFiles.js';
 import { FRAME_METRICS_VERSION, FrameDecodeError, type FrameMetrics, type TargetSpec } from './measure.js';
 import { coerceMetrics } from './metricsRecord.js';
@@ -162,27 +164,54 @@ export interface FrameAnalysisReport {
 }
 
 /**
- * Frames are compared only with frames taken the same way: the same filter and exposure, through the same camera at
- * the same focal length (a library can hold one object shot with several telescopes, or a smart telescope and a
- * rig), at the same frame size (binning, crop). FOCALLEN is often rounded or entered by hand, so focal lengths
- * within 5 % of the shortest one in their group count as the same train (see `focalGroups` in ranking.ts).
+ * Frames are compared only with frames taken the same way: the same filter and exposure, through the same optical
+ * train (a library can hold one object shot with several telescopes, or one OTA with and without a reducer), at the
+ * same frame size (binning, crop).
+ *
+ * The train is the one recorded for the session (Settings → Telescopes → optical configurations, chosen per night or
+ * matched by focal length; see sessionOptics.ts) when there is one: two nights with and without the reducer then
+ * never mix, even when their headers look alike. Without one it is read from the headers, as before: the same camera
+ * at the same focal length, where FOCALLEN, often rounded or entered by hand, counts as the same within 5 % of the
+ * shortest one in its group (see `focalGroups` in ranking.ts).
  */
-function setKey(filter: string | null, exposure: string | null, m: FrameMetrics, focalOf: (focal: number) => number): string {
-  const focal = m.rig.focal !== null ? focalOf(m.rig.focal) : '';
-  return [(filter ?? '').trim().toLowerCase(), (exposure ?? '').trim(), (m.rig.camera ?? '').toLowerCase(), focal, `${m.width}x${m.height}`].join('|');
+export function comparisonKey(
+  filter: string | null,
+  exposure: string | null,
+  m: Pick<FrameMetrics, 'rig' | 'width' | 'height'>,
+  focalOf: (focal: number) => number,
+  train: string | null = null,
+): string {
+  const how = train !== null
+    ? [`train:${train}`]
+    : [(m.rig.camera ?? '').toLowerCase(), m.rig.focal !== null ? focalOf(m.rig.focal) : ''];
+  return [(filter ?? '').trim().toLowerCase(), (exposure ?? '').trim(), ...how, `${m.width}x${m.height}`].join('|');
+}
+
+/** The train of each (object, night) a report touches, looked up once. */
+function trainLookup(): (objectId: string, date: string | null) => string | null {
+  const configs = opticalConfigsByProfile();
+  const cache = new Map<string, string | null>();
+  return (objectId, date) => {
+    if (!date) return null;
+    const key = `${objectId}|${date}`;
+    if (!cache.has(key)) cache.set(key, sessionTrainKey(objectId, date, configs));
+    return cache.get(key) ?? null;
+  };
 }
 
 interface OtherNightFrame {
   filter: string | null;
   exposure: string | null;
   metrics: FrameMetrics;
+  /** The optical train of the frame's night, or null when none is recorded (or the frame has no library row). */
+  train: string | null;
 }
 
 /**
  * The stored measurements of the objects' frames from other nights, read straight from the store (no file is
  * opened). A frame measured by an older analyzer is left out, as it would be re-measured.
  */
-function otherNightsMetrics(objectIds: string[], exclude: Set<string>): OtherNightFrame[] {
+function otherNightsMetrics(objectIds: string[], exclude: Set<string>, trainOf: ReturnType<typeof trainLookup>): OtherNightFrame[] {
   const out: OtherNightFrame[] = [];
   const folders = new Set<string>();
   const wanted = new Set(objectIds);
@@ -198,7 +227,9 @@ function otherNightsMetrics(objectIds: string[], exclude: Set<string>): OtherNig
       let metrics: FrameMetrics | null = null;
       try { metrics = coerceMetrics(JSON.parse(row.metricsJson)); } catch { metrics = null; }
       if (!metrics) continue;
-      out.push({ filter: parsed.filter || null, exposure: parsed.exposure || null, metrics });
+      const fileRow = getLibraryFileRow(row.relPath);
+      const train = fileRow ? trainOf(fileRow.objectId, sessionDateForRow(fileRow)) : null;
+      out.push({ filter: parsed.filter || null, exposure: parsed.exposure || null, metrics, train });
     }
   }
   return out;
@@ -209,7 +240,8 @@ function otherNightsMetrics(objectIds: string[], exclude: Set<string>): OtherNig
  * each measured frame. Nothing is measured here: the caller asks for the missing ones one at a time.
  */
 export function buildSessionReport(objectIds: string[], date: string): FrameAnalysisReport {
-  const files = objectIds.flatMap(id => getLocalFiles(id, date))
+  const objectOfPath = new Map<string, string>();
+  const files = objectIds.flatMap(id => getLocalFiles(id, date).map(f => { objectOfPath.set(f.path, id); return f; }))
     .filter(f => f.fileType === 'sub' && f.type === 'fits' && !f.isThumbnail)
     .sort((a, b) => (a.timestamp ?? a.name).localeCompare(b.timestamp ?? b.name));
 
@@ -225,27 +257,30 @@ export function buildSessionReport(objectIds: string[], date: string): FrameAnal
   });
 
   const measuredRows = frames.filter(r => r.metrics !== null);
-  const otherNights = otherNightsMetrics(objectIds, new Set(frames.map(f => f.path)));
+  const trainOf = trainLookup();
+  const otherNights = otherNightsMetrics(objectIds, new Set(frames.map(f => f.path)), trainOf);
   const focalOf = focalGroups([...measuredRows.map(r => r.metrics!.rig.focal), ...otherNights.map(o => o.metrics.rig.focal)]
     .filter((f): f is number => f !== null));
   const history = new Map<string, FrameMetrics[]>();
   for (const o of otherNights) {
-    const key = setKey(o.filter, o.exposure, o.metrics, focalOf);
+    const key = comparisonKey(o.filter, o.exposure, o.metrics, focalOf, o.train);
     const list = history.get(key);
     if (list) list.push(o.metrics); else history.set(key, [o.metrics]);
   }
   // Frames are only comparable through the same filter for the same time: a D2 frame brings far less light than
   // a D1 one, a 60 s frame less than a 180 s one, and judged together the weaker set would read as clouded.
   const groups = new Map<string, FrameAnalysisRow[]>();
+  const keyOf = (row: FrameAnalysisRow) =>
+    comparisonKey(row.file.filter, row.file.exposure, row.metrics!, focalOf, trainOf(objectOfPath.get(row.path) ?? objectIds[0] ?? '', date));
   for (const row of measuredRows) {
-    const key = setKey(row.file.filter, row.file.exposure, row.metrics!, focalOf);
+    const key = keyOf(row);
     const list = groups.get(key);
     if (list) list.push(row); else groups.set(key, [row]);
   }
   let reference: FrameReference | null = null;
   let largest = 0;
   for (const rows of groups.values()) {
-    const key = setKey(rows[0].file.filter, rows[0].file.exposure, rows[0].metrics!, focalOf);
+    const key = keyOf(rows[0]);
     const ranked = rankFrames(rows.flatMap(r => (r.metrics ? [r.metrics] : [])), history.get(key) ?? []);
     rows.forEach((row, i) => { row.verdict = ranked.verdicts[i]; });
     // The summary line describes the night's main set.

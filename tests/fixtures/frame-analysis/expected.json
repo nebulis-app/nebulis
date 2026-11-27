@@ -1,5 +1,5 @@
 {
-  "version": 7,
+  "version": 8,
   "files": {
     "clean.fits": {
       "sha256": "07b93c699e6aa996405af20272b2484c3f63111daad2e7c5c12dc0ecf8c27a42",
@@ -25,7 +25,8 @@
           "scale": null
         },
         "ra": null,
-        "dec": null
+        "dec": null,
+        "wcsSource": null
       }
     },
     "trailed.fits": {
@@ -36,7 +37,7 @@
         "starCount": 55,
         "fwhm": 5.062904490843717,
         "elongation": 2.4668474550109365,
-        "orientation": 0.18338797978405744,
+        "orientation": 0.1833879797840573,
         "background": 1000,
         "noise": 7.488722353935241,
         "gradient": 0.003,
@@ -52,7 +53,8 @@
           "scale": null
         },
         "ra": null,
-        "dec": null
+        "dec": null,
+        "wcsSource": null
       }
     },
     "streak.fits": {
@@ -82,7 +84,8 @@
           "scale": null
         },
         "ra": null,
-        "dec": null
+        "dec": null,
+        "wcsSource": null
       }
     },
     "sparse.fits": {
@@ -109,7 +112,8 @@
           "scale": null
         },
         "ra": null,
-        "dec": null
+        "dec": null,
+        "wcsSource": null
       }
     },
     "bayer-pointed.fits": {
@@ -136,7 +140,8 @@
           "scale": null
         },
         "ra": 83.82,
-        "dec": -5.39
+        "dec": -5.39,
+        "wcsSource": null
       }
     }
   }

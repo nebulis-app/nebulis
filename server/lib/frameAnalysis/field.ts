@@ -230,9 +230,16 @@ function placeTarget(g: Grid, spec: TargetSpec): { at: { x: number; y: number };
   }
   const scale = g.rig.scale;
   if (scale === null || !(scale > 0) || g.ra === null || g.dec === null) return null;
-  const offset = separationArcsec(g.ra, g.dec, spec.ra, spec.dec);
-  if (offset > Math.max(spec.radiusArcmin * 60 * 0.2, 4 * scale * BLOCK)) return null;
+  if (!pointedAtTarget(scale, g.ra, g.dec, spec)) return null;
   return { at: { x: g.width / 2, y: g.height / 2 }, scale };
+}
+
+/**
+ * Whether a frame without a plate solution was pointed at the object closely enough to take it at the centre: within
+ * a fifth of the object's radius, or 4 blocks of sky for a small one. `scale` is arcseconds per grid pixel.
+ */
+export function pointedAtTarget(scale: number, ra: number, dec: number, spec: TargetSpec): boolean {
+  return separationArcsec(ra, dec, spec.ra, spec.dec) <= Math.max(spec.radiusArcmin * 60 * 0.2, 4 * scale * BLOCK);
 }
 
 /**

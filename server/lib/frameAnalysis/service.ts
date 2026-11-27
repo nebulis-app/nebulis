@@ -13,6 +13,8 @@ import { getLibraryObjectNames } from '../library/objects.js';
 import { normalizeCatalogId, parseFilename } from '../telescopeFiles.js';
 import { FRAME_METRICS_VERSION, FrameDecodeError, type FrameMetrics, type TargetSpec } from './measure.js';
 import { coerceMetrics } from './metricsRecord.js';
+import { borrowedWcsFor, type PointingSolver } from './pointingWcs.js';
+import { getSolverStatus, solve } from '../annotate/astap.js';
 import { measureOffThread } from './measureOffThread.js';
 import { rankFrames, isFrameKept, focalGroups, type FrameReference, type FrameVerdict } from './ranking.js';
 
@@ -79,6 +81,16 @@ export function targetForFile(relPath: string): TargetSpec | null {
   return { ra, dec, radiusArcmin: entry.majorAxisArcmin / 2 };
 }
 
+/** ASTAP, when it is installed, to solve one frame of a field nothing else can place (see pointingWcs.ts). */
+function astapSolver(): PointingSolver | null {
+  if (!getSolverStatus().ready) return null;
+  return async (abs, p) => {
+    const longSideDeg = p.scale !== null ? (p.scale * Math.max(p.width, p.height)) / 3600 : undefined;
+    const wcs = await solve({ kind: 'fits', abs, width: p.width, height: p.height }, { raDeg: p.ra, decDeg: p.dec, longSideDeg });
+    return { crval1: wcs.crval1, crval2: wcs.crval2, crpix1: wcs.crpix1, crpix2: wcs.crpix2, cd: [wcs.cd.cd11, wcs.cd.cd12, wcs.cd.cd21, wcs.cd.cd22] };
+  };
+}
+
 /**
  * The measurement of one library file, from the store when the file is unchanged, otherwise read and stored.
  * The reading and the star search run on a worker thread; this thread only touches the database.
@@ -93,7 +105,11 @@ export async function measureLibraryFile(relPath: string, force = false): Promis
   try {
     let target: TargetSpec | null = null;
     try { target = targetForFile(relPath); } catch { /* no catalog place: measured without a target */ }
-    metrics = await measureOffThread(file.abs, target);
+    // A frame with no plate solution of its own borrows one from its night's frames of the same field, so the object
+    // can be found off-centre (pointingWcs.ts).
+    let borrowed = null;
+    try { borrowed = target ? await borrowedWcsFor(file.abs, target, astapSolver()) : null; } catch { borrowed = null; }
+    metrics = await measureOffThread(file.abs, target, borrowed);
   } catch (err) {
     if (err instanceof FrameDecodeError) throw new FrameFileError('UNREADABLE', err.message);
     throw err;

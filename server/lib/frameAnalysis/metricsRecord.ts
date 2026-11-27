@@ -53,5 +53,6 @@ export function coerceMetrics(value: unknown): FrameMetrics | null {
     streak, saturatedFraction, target, spots, rig,
     ra: numberOrNull(value.ra),
     dec: numberOrNull(value.dec),
+    wcsSource: value.wcsSource === 'header' || value.wcsSource === 'borrowed' ? value.wcsSource : null,
   };
 }

@@ -150,5 +150,28 @@
     "colClouds": "Nubosidad mediana",
     "colMoon": "Luna",
     "none": "n. d."
+  },
+  "issPasses": {
+    "title": "Pasos de la ISS",
+    "subtitle": "Cuándo cruza su cielo la Estación Espacial Internacional después del anochecer esta semana, por encima de {{deg}}°.",
+    "loading": "Calculando los pasos…",
+    "unavailable": "La órbita de la estación no está disponible ahora mismo.",
+    "none": "Ningún paso visible por encima del umbral esta semana.",
+    "stale": "Los datos de órbita tienen {{days}} días: las horas pueden variar unos minutos.",
+    "path": "Desde el {{from}}, hasta {{alt}}° al {{peak}}, hacia el {{to}}",
+    "magnitude": "Magnitud {{mag}}",
+    "shadow": "Se desvanece en la sombra",
+    "shadowTitle": "Desaparece en la sombra de la Tierra antes de ponerse.",
+    "source": "Datos de órbita de CelesTrak, de hace {{hours}} h.",
+    "compass": {
+      "N": "norte",
+      "NE": "noreste",
+      "E": "este",
+      "SE": "sureste",
+      "S": "sur",
+      "SW": "suroeste",
+      "W": "oeste",
+      "NW": "noroeste"
+    }
   }
 }

@@ -26,6 +26,7 @@ import { ImagingWindow } from '../components/forecast/ImagingWindow';
 import { LightPollutionPill } from '../components/forecast/LightPollutionPill';
 import { NightOutlookCard } from '../components/forecast/NightOutlookCard';
 import { EnsembleOutlook } from '../components/forecast/EnsembleOutlook';
+import { IssPasses } from '../components/forecast/IssPasses';
 import { RatingLegend } from '../components/ui/RatingLegend';
 import { hoursForNight, resolveImagingWindow } from '../lib/forecastNights';
 
@@ -294,6 +295,9 @@ export function ForecastPage() {
           A separate request, so it shows even when the detailed forecast
           could not be had. */}
       {locationSet && <EnsembleOutlook siteId={effectiveSiteId} isDark={isDark} accent={accent} />}
+
+      {/* ISS passes over the site this week: also its own request. */}
+      {locationSet && <IssPasses siteId={effectiveSiteId} isDark={isDark} timeZone={tz} />}
     </div>
   );
 }

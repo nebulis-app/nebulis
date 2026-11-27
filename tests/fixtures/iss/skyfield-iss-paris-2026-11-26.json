@@ -1,0 +1,952 @@
+{
+ "tle": [
+  "ISS (ZARYA)             ",
+  "1 25544U 98067A   26329.91216986  .00004667  00000+0  90971-4 0  9996",
+  "2 25544  51.6316 219.7524 0007469  65.5575 294.6192 15.49587810596824"
+ ],
+ "site": {
+  "latitude": 48.85,
+  "longitude": 2.35,
+  "elevationM": 35
+ },
+ "from": "2026-11-26T00:00:00Z",
+ "to": "2026-11-29T00:00:00Z",
+ "events": [
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-26T11:59:07.1Z",
+   "alt": 0.0,
+   "az": 192.31,
+   "sunlit": true,
+   "sunAlt": 20.0
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-26T12:03:36.7Z",
+   "alt": 12.43,
+   "az": 135.35,
+   "sunlit": true,
+   "sunAlt": 19.92
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-26T12:08:07.6Z",
+   "alt": -0.0,
+   "az": 78.54,
+   "sunlit": true,
+   "sunAlt": 19.83
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-26T13:34:27.5Z",
+   "alt": 0.0,
+   "az": 236.58,
+   "sunlit": true,
+   "sunAlt": 15.46
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-26T13:39:49.9Z",
+   "alt": 59.69,
+   "az": 152.98,
+   "sunlit": true,
+   "sunAlt": 15.04
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-26T13:45:13.9Z",
+   "alt": -0.0,
+   "az": 69.67,
+   "sunlit": true,
+   "sunAlt": 14.59
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-26T15:11:16.8Z",
+   "alt": 0.0,
+   "az": 268.51,
+   "sunlit": true,
+   "sunAlt": 5.55
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-26T15:16:40.3Z",
+   "alt": 53.58,
+   "az": 352.48,
+   "sunlit": true,
+   "sunAlt": 4.87
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-26T15:22:05.0Z",
+   "alt": -0.0,
+   "az": 76.68,
+   "sunlit": true,
+   "sunAlt": 4.19
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-26T16:48:17.7Z",
+   "alt": 0.0,
+   "az": 286.64,
+   "sunlit": true,
+   "sunAlt": -7.94
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-26T16:53:43.1Z",
+   "alt": 62.22,
+   "az": 12.82,
+   "sunlit": true,
+   "sunAlt": -8.77
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-26T16:59:08.3Z",
+   "alt": -0.0,
+   "az": 98.72,
+   "sunlit": false,
+   "sunAlt": -9.6
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-26T18:25:06.8Z",
+   "alt": 0.0,
+   "az": 289.69,
+   "sunlit": true,
+   "sunAlt": -23.32
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-26T18:30:25.6Z",
+   "alt": 39.94,
+   "az": 211.82,
+   "sunlit": false,
+   "sunAlt": -24.19
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-26T18:35:43.6Z",
+   "alt": -0.0,
+   "az": 133.75,
+   "sunlit": false,
+   "sunAlt": -25.06
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-26T20:02:33.8Z",
+   "alt": 0.0,
+   "az": 275.19,
+   "sunlit": true,
+   "sunAlt": -39.25
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-26T20:06:27.0Z",
+   "alt": 7.34,
+   "az": 228.93,
+   "sunlit": false,
+   "sunAlt": -39.87
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-26T20:10:19.8Z",
+   "alt": -0.0,
+   "az": 182.57,
+   "sunlit": false,
+   "sunAlt": -40.49
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-27T11:11:59.3Z",
+   "alt": 0.01,
+   "az": 177.81,
+   "sunlit": true,
+   "sunAlt": 19.74
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-27T11:15:52.4Z",
+   "alt": 7.43,
+   "az": 131.13,
+   "sunlit": true,
+   "sunAlt": 19.8
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-27T11:19:46.2Z",
+   "alt": -0.0,
+   "az": 84.62,
+   "sunlit": true,
+   "sunAlt": 19.86
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-27T12:46:36.6Z",
+   "alt": 0.0,
+   "az": 226.6,
+   "sunlit": true,
+   "sunAlt": 18.32
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-27T12:51:53.9Z",
+   "alt": 40.42,
+   "az": 148.32,
+   "sunlit": true,
+   "sunAlt": 18.06
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-27T12:57:12.6Z",
+   "alt": -0.0,
+   "az": 70.28,
+   "sunlit": true,
+   "sunAlt": 17.78
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-27T14:23:12.2Z",
+   "alt": 0.0,
+   "az": 261.57,
+   "sunlit": true,
+   "sunAlt": 10.9
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-27T14:28:36.5Z",
+   "alt": 61.78,
+   "az": 347.45,
+   "sunlit": true,
+   "sunAlt": 10.34
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-27T14:34:02.0Z",
+   "alt": -0.0,
+   "az": 73.46,
+   "sunlit": true,
+   "sunAlt": 9.76
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-27T16:00:15.0Z",
+   "alt": 0.0,
+   "az": 283.47,
+   "sunlit": true,
+   "sunAlt": -1.03
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-27T16:05:39.1Z",
+   "alt": 53.8,
+   "az": 7.5,
+   "sunlit": true,
+   "sunAlt": -1.79
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-27T16:11:03.5Z",
+   "alt": -0.0,
+   "az": 91.74,
+   "sunlit": true,
+   "sunAlt": -2.56
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-27T17:37:05.6Z",
+   "alt": 0.0,
+   "az": 290.33,
+   "sunlit": true,
+   "sunAlt": -15.63
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-27T17:42:29.5Z",
+   "alt": 58.93,
+   "az": 207.02,
+   "sunlit": true,
+   "sunAlt": -16.49
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-27T17:47:52.6Z",
+   "alt": -0.0,
+   "az": 123.76,
+   "sunlit": false,
+   "sunAlt": -17.35
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-27T19:14:12.0Z",
+   "alt": 0.0,
+   "az": 281.31,
+   "sunlit": true,
+   "sunAlt": -31.46
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-27T19:18:42.3Z",
+   "alt": 12.29,
+   "az": 224.79,
+   "sunlit": false,
+   "sunAlt": -32.2
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-27T19:23:12.2Z",
+   "alt": -0.01,
+   "az": 168.05,
+   "sunlit": false,
+   "sunAlt": -32.94
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-28T10:25:17.6Z",
+   "alt": 0.01,
+   "az": 159.9,
+   "sunlit": true,
+   "sunAlt": 17.93
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-28T10:28:10.6Z",
+   "alt": 3.36,
+   "az": 127.05,
+   "sunlit": true,
+   "sunAlt": 18.07
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-28T10:31:03.8Z",
+   "alt": -0.0,
+   "az": 94.32,
+   "sunlit": true,
+   "sunAlt": 18.21
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-28T11:58:52.2Z",
+   "alt": 0.0,
+   "az": 215.84,
+   "sunlit": true,
+   "sunAlt": 19.65
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-28T12:03:59.9Z",
+   "alt": 27.3,
+   "az": 143.82,
+   "sunlit": true,
+   "sunAlt": 19.57
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-28T12:09:09.2Z",
+   "alt": -0.0,
+   "az": 71.91,
+   "sunlit": true,
+   "sunAlt": 19.46
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-28T13:35:08.6Z",
+   "alt": 0.0,
+   "az": 253.78,
+   "sunlit": true,
+   "sunAlt": 15.12
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-28T13:40:33.6Z",
+   "alt": 76.41,
+   "az": 342.76,
+   "sunlit": true,
+   "sunAlt": 14.69
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-28T13:45:59.7Z",
+   "alt": -0.0,
+   "az": 71.23,
+   "sunlit": true,
+   "sunAlt": 14.25
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-28T15:12:10.5Z",
+   "alt": 0.0,
+   "az": 279.3,
+   "sunlit": true,
+   "sunAlt": 5.21
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-28T15:17:33.8Z",
+   "alt": 50.09,
+   "az": 2.38,
+   "sunlit": true,
+   "sunAlt": 4.54
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-28T15:22:57.6Z",
+   "alt": -0.0,
+   "az": 85.66,
+   "sunlit": true,
+   "sunAlt": 3.86
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-28T16:49:04.4Z",
+   "alt": 0.0,
+   "az": 290.0,
+   "sunlit": true,
+   "sunAlt": -8.24
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-28T16:54:30.3Z",
+   "alt": 82.73,
+   "az": 201.85,
+   "sunlit": true,
+   "sunAlt": -9.06
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-28T16:59:55.5Z",
+   "alt": -0.0,
+   "az": 114.48,
+   "sunlit": false,
+   "sunAlt": -9.89
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-28T18:25:59.7Z",
+   "alt": 0.0,
+   "az": 285.45,
+   "sunlit": true,
+   "sunAlt": -23.61
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-28T18:30:54.0Z",
+   "alt": 18.74,
+   "az": 220.51,
+   "sunlit": true,
+   "sunAlt": -24.41
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-28T18:35:47.7Z",
+   "alt": -0.0,
+   "az": 155.32,
+   "sunlit": false,
+   "sunAlt": -25.22
+  },
+  {
+   "minAlt": 0.0,
+   "event": "rise",
+   "t": "2026-11-28T20:06:20.6Z",
+   "alt": 0.0,
+   "az": 238.78,
+   "sunlit": false,
+   "sunAlt": -40.01
+  },
+  {
+   "minAlt": 0.0,
+   "event": "culminate",
+   "t": "2026-11-28T20:06:32.0Z",
+   "alt": 0.01,
+   "az": 236.73,
+   "sunlit": false,
+   "sunAlt": -40.04
+  },
+  {
+   "minAlt": 0.0,
+   "event": "set",
+   "t": "2026-11-28T20:06:43.6Z",
+   "alt": -0.0,
+   "az": 234.64,
+   "sunlit": false,
+   "sunAlt": -40.07
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-26T12:02:08.3Z",
+   "alt": 10.0,
+   "az": 161.81,
+   "sunlit": true,
+   "sunAlt": 19.95
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-26T12:03:36.7Z",
+   "alt": 12.43,
+   "az": 135.35,
+   "sunlit": true,
+   "sunAlt": 19.92
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-26T12:05:05.5Z",
+   "alt": 10.0,
+   "az": 108.84,
+   "sunlit": true,
+   "sunAlt": 19.89
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-26T13:36:32.9Z",
+   "alt": 10.0,
+   "az": 233.2,
+   "sunlit": true,
+   "sunAlt": 15.3
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-26T13:39:49.9Z",
+   "alt": 59.69,
+   "az": 152.98,
+   "sunlit": true,
+   "sunAlt": 15.04
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-26T13:43:07.7Z",
+   "alt": 10.0,
+   "az": 72.98,
+   "sunlit": true,
+   "sunAlt": 14.77
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-26T15:13:23.5Z",
+   "alt": 10.0,
+   "az": 273.63,
+   "sunlit": true,
+   "sunAlt": 5.29
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-26T15:16:40.3Z",
+   "alt": 53.58,
+   "az": 352.48,
+   "sunlit": true,
+   "sunAlt": 4.87
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-26T15:19:57.8Z",
+   "alt": 10.0,
+   "az": 71.55,
+   "sunlit": true,
+   "sunAlt": 4.46
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-26T16:50:23.8Z",
+   "alt": 10.0,
+   "az": 290.43,
+   "sunlit": true,
+   "sunAlt": -8.26
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-26T16:53:43.1Z",
+   "alt": 62.22,
+   "az": 12.82,
+   "sunlit": true,
+   "sunAlt": -8.77
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-26T16:57:02.2Z",
+   "alt": 10.0,
+   "az": 94.96,
+   "sunlit": false,
+   "sunAlt": -9.28
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-26T18:27:15.9Z",
+   "alt": 10.0,
+   "az": 282.52,
+   "sunlit": true,
+   "sunAlt": -23.67
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-26T18:30:25.6Z",
+   "alt": 39.94,
+   "az": 211.82,
+   "sunlit": false,
+   "sunAlt": -24.19
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-26T18:33:35.1Z",
+   "alt": 9.97,
+   "az": 140.98,
+   "sunlit": false,
+   "sunAlt": -24.71
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-27T12:48:45.1Z",
+   "alt": 10.02,
+   "az": 219.44,
+   "sunlit": true,
+   "sunAlt": 18.22
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-27T12:51:53.9Z",
+   "alt": 40.42,
+   "az": 148.32,
+   "sunlit": true,
+   "sunAlt": 18.06
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-27T12:55:03.5Z",
+   "alt": 10.0,
+   "az": 77.32,
+   "sunlit": true,
+   "sunAlt": 17.9
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-27T14:25:18.0Z",
+   "alt": 10.0,
+   "az": 265.39,
+   "sunlit": true,
+   "sunAlt": 10.68
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-27T14:28:36.5Z",
+   "alt": 61.78,
+   "az": 347.45,
+   "sunlit": true,
+   "sunAlt": 10.34
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-27T14:31:55.7Z",
+   "alt": 10.0,
+   "az": 69.61,
+   "sunlit": true,
+   "sunAlt": 9.98
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-27T16:02:21.9Z",
+   "alt": 10.0,
+   "az": 288.56,
+   "sunlit": true,
+   "sunAlt": -1.33
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-27T16:05:39.1Z",
+   "alt": 53.8,
+   "az": 7.5,
+   "sunlit": true,
+   "sunAlt": -1.79
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-27T16:08:56.5Z",
+   "alt": 10.0,
+   "az": 86.67,
+   "sunlit": true,
+   "sunAlt": -2.25
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-27T17:39:11.6Z",
+   "alt": 10.0,
+   "az": 286.9,
+   "sunlit": true,
+   "sunAlt": -15.96
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-27T17:42:29.5Z",
+   "alt": 58.93,
+   "az": 207.02,
+   "sunlit": true,
+   "sunAlt": -16.49
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-27T17:45:46.9Z",
+   "alt": 10.0,
+   "az": 127.25,
+   "sunlit": false,
+   "sunAlt": -17.02
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-27T19:17:15.6Z",
+   "alt": 10.0,
+   "az": 250.53,
+   "sunlit": false,
+   "sunAlt": -31.96
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-27T19:18:42.3Z",
+   "alt": 12.29,
+   "az": 224.79,
+   "sunlit": false,
+   "sunAlt": -32.2
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-27T19:20:08.9Z",
+   "alt": 10.0,
+   "az": 199.0,
+   "sunlit": false,
+   "sunAlt": -32.44
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-28T12:01:07.4Z",
+   "alt": 10.02,
+   "az": 203.85,
+   "sunlit": true,
+   "sunAlt": 19.61
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-28T12:03:59.9Z",
+   "alt": 27.3,
+   "az": 143.82,
+   "sunlit": true,
+   "sunAlt": 19.57
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-28T12:06:53.4Z",
+   "alt": 10.0,
+   "az": 83.75,
+   "sunlit": true,
+   "sunAlt": 19.51
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-28T13:37:13.5Z",
+   "alt": 10.0,
+   "az": 255.7,
+   "sunlit": true,
+   "sunAlt": 14.96
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-28T13:40:33.6Z",
+   "alt": 76.41,
+   "az": 342.76,
+   "sunlit": true,
+   "sunAlt": 14.69
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-28T13:43:54.2Z",
+   "alt": 10.0,
+   "az": 69.27,
+   "sunlit": true,
+   "sunAlt": 14.42
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-28T15:14:18.0Z",
+   "alt": 10.0,
+   "az": 285.06,
+   "sunlit": true,
+   "sunAlt": 4.95
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-28T15:17:33.8Z",
+   "alt": 50.09,
+   "az": 2.38,
+   "sunlit": true,
+   "sunAlt": 4.54
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-28T15:20:50.0Z",
+   "alt": 10.0,
+   "az": 79.92,
+   "sunlit": true,
+   "sunAlt": 4.13
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-28T16:51:09.5Z",
+   "alt": 10.0,
+   "az": 289.6,
+   "sunlit": true,
+   "sunAlt": -8.55
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-28T16:54:30.3Z",
+   "alt": 82.73,
+   "az": 201.85,
+   "sunlit": true,
+   "sunAlt": -9.06
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-28T16:57:50.7Z",
+   "alt": 10.0,
+   "az": 114.93,
+   "sunlit": true,
+   "sunAlt": -9.57
+  },
+  {
+   "minAlt": 10.0,
+   "event": "rise",
+   "t": "2026-11-28T18:28:28.5Z",
+   "alt": 10.0,
+   "az": 267.13,
+   "sunlit": true,
+   "sunAlt": -24.02
+  },
+  {
+   "minAlt": 10.0,
+   "event": "culminate",
+   "t": "2026-11-28T18:30:54.0Z",
+   "alt": 18.74,
+   "az": 220.51,
+   "sunlit": true,
+   "sunAlt": -24.41
+  },
+  {
+   "minAlt": 10.0,
+   "event": "set",
+   "t": "2026-11-28T18:33:19.3Z",
+   "alt": 10.0,
+   "az": 173.76,
+   "sunlit": false,
+   "sunAlt": -24.81
+  }
+ ],
+ "shadowEntries": [
+  {
+   "rise": "2026-11-26T16:50:23.8Z",
+   "shadowEntry": "2026-11-26T16:56:55.3Z"
+  },
+  {
+   "rise": "2026-11-26T18:27:15.9Z",
+   "shadowEntry": "2026-11-26T18:29:52.1Z"
+  },
+  {
+   "rise": "2026-11-27T17:39:11.6Z",
+   "shadowEntry": "2026-11-27T17:44:09.6Z"
+  },
+  {
+   "rise": "2026-11-28T18:28:28.5Z",
+   "shadowEntry": "2026-11-28T18:31:35.7Z"
+  }
+ ]
+}

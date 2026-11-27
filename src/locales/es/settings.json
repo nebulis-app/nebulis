@@ -509,7 +509,7 @@
       "openMeteo": "Previsión y tiempo pasado de tus lugares, más la búsqueda de lugares",
       "sevenTimer": "Pronósticos de seeing y transparencia para noches de fotografiado",
       "sunCalc": "Fase lunar, crepúsculo y posiciones del sol y la luna para tus sitios",
-      "celestrak": "Elementos orbitales de satélites activos, usados en la comprobación de rastros",
+      "celestrak": "Elementos orbitales de los satélites activos, usados en la comprobación de trazas, y los de la estación para los pasos de la ISS (solicitados como máximo cada 4 horas)",
       "esri": "Teselas de mapa para el visor de ubicaciones de observación",
       "darkskysites": "Devuelve la clase Bortle de tu ubicación a partir del compuesto satelital VIIRS mensual. Nebulis envía las coordenadas del lugar de observación seleccionado y guarda la respuesta en caché durante 24 horas.",
       "sdss": "Imágenes del cielo de respaldo cuando no se puede acceder al sondeo DSS2. Cubre solo parte del cielo.",
@@ -1693,6 +1693,13 @@
           "label": "Actualización disponible",
           "help": "Una vez por cada nueva versión de Nebulis."
         }
+      },
+      "iss": {
+        "pass": {
+          "short": "Paso de la ISS",
+          "label": "Paso de la ISS",
+          "help": "Se envía poco antes de que la Estación Espacial Internacional cruce su cielo después del anochecer, una vez por paso. Elija con cuánta antelación y a qué altura debe llegar un paso."
+        }
       }
     },
     "language": "Idioma de los mensajes",
@@ -1773,7 +1780,11 @@
       "leadHours_other": "{{count}} horas",
       "leadMinutes_one": "{{count}} minuto",
       "leadMinutes_other": "{{count}} minutos",
-      "dewRow": "Aviso de rocío: {{time}} antes del rocío"
+      "dewRow": "Aviso de rocío: {{time}} antes del rocío",
+      "issLeadLabel": "Con cuánta antelación a un paso de la ISS",
+      "issMinAltLabel": "Pasos desde",
+      "issMinAlt": "{{deg}}° o más",
+      "issRow": "Paso de la ISS: {{time}} antes, desde {{deg}}°"
     }
   },
   "search": {

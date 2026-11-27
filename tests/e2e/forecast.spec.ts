@@ -163,3 +163,43 @@ test.describe('Forecast Page: two-week outlook', () => {
     await expect(page.getByText(/long-range outlook is not available/i)).toBeVisible();
   });
 });
+
+test.describe('Forecast Page: ISS passes', () => {
+  /** Two visible passes tonight, the second fading into Earth's shadow. */
+  function passes(stale = false) {
+    const at = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+    const point = (t: string, az: number, alt: number) => ({ t, az, alt });
+    const pass = (h: number, endsInShadow: boolean) => ({
+      rise: point(at(h), 250, 10), peak: point(at(h + 0.05), 180, 62), set: point(at(h + 0.1), 100, 10),
+      visible: { start: point(at(h), 250, 10), peak: point(at(h + 0.05), 180, 62), end: point(at(h + 0.1), 100, 10) },
+      magnitude: -3.4, endsInShadow, startsInShadow: false,
+    });
+    return ok({
+      site: { id: 'site-1', name: 'Backyard', latitude: 37.77, longitude: -122.42, timezone: 'America/Los_Angeles' },
+      tle: { epoch: at(-20), ageHours: stale ? 100 : 20, stale, source: 'iss' },
+      minAltitude: 10,
+      passes: [pass(2, false), pass(26, true)],
+    });
+  }
+
+  test('lists the visible passes: when, from where, how high, how bright, and the one fading into shadow', async ({ page }) => {
+    await mockAllRoutes(page);
+    await page.route('**/api/sky-events/iss-passes**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(passes()) }));
+    await page.goto('/forecast');
+    const section = page.locator('[data-iss-passes]');
+    await expect(section.getByRole('heading', { name: 'ISS passes' })).toBeVisible();
+    await expect(section.locator('[data-iss-pass]')).toHaveCount(2);
+    await expect(section.locator('[data-iss-pass]').first()).toContainText('From west, up to 62° in the south, to east');
+    await expect(section.locator('[data-iss-pass]').first()).toContainText('Magnitude -3.4');
+    await expect(section.getByText('Fades into shadow')).toHaveCount(1);
+    await expect(section).toContainText('Orbit data from CelesTrak, 20 h old.');
+  });
+
+  test('warns when the orbit data is old', async ({ page }) => {
+    await mockAllRoutes(page);
+    await page.route('**/api/sky-events/iss-passes**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(passes(true)) }));
+    await page.goto('/forecast');
+    await expect(page.locator('[data-iss-passes]')).toContainText('The orbit data is 4 days old: times may be minutes off.');
+  });
+});
+

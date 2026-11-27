@@ -7518,6 +7518,56 @@ export const spec = {
     },
 
     // ── Sky events ────────────────────────────────────────────────────
+    '/sky-events/iss-passes': {
+      get: {
+        summary: 'ISS passes over the site',
+        tags: ['Sky'],
+        description: [
+          'ISS passes over the resolved site for the next days (default 7, up to 10): rise, peak and set above the floor',
+          '(minAlt, default 10°), the visible stretch (Sun below -6°, station sunlit), its estimated magnitude, and whether',
+          'it ends in or starts from Earth\'s shadow. Only visible passes unless all=1. May ask CelesTrak for the station\'s',
+          'elements, at most every 4 hours; elements older than 3 days are flagged `stale`. `tle` is null when no elements',
+          'are available at all.',
+        ].join('\n'),
+        parameters: [
+          { name: 'siteId', in: 'query', schema: { type: 'string' } },
+          { name: 'lat', in: 'query', schema: { type: 'number' } },
+          { name: 'lon', in: 'query', schema: { type: 'number' } },
+          { name: 'days', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 10, default: 7 } },
+          { name: 'minAlt', in: 'query', schema: { type: 'number', minimum: 0, maximum: 80, default: 10 } },
+          { name: 'all', in: 'query', schema: { type: 'string', enum: ['0', '1'] } },
+        ],
+        responses: {
+          200: {
+            description: 'The passes',
+            content: { 'application/json': { schema: { type: 'object', properties: { ok: { type: 'boolean' }, data: {
+              type: 'object',
+              required: ['site', 'tle', 'minAltitude', 'passes'],
+              properties: {
+                site: { type: 'object' },
+                tle: nullable({ type: 'object', required: ['epoch', 'ageHours', 'stale', 'source'], properties: {
+                  epoch: { type: 'string', format: 'date-time' },
+                  ageHours: { type: 'number' },
+                  stale: { type: 'boolean' },
+                  source: { type: 'string', enum: ['iss', 'catalog'] },
+                } }),
+                minAltitude: { type: 'number' },
+                passes: { type: 'array', items: { type: 'object', required: ['rise', 'peak', 'set', 'visible', 'magnitude', 'endsInShadow', 'startsInShadow'], properties: {
+                  rise: { type: 'object', required: ['t', 'az', 'alt'], properties: { t: { type: 'string', format: 'date-time' }, az: { type: 'number' }, alt: { type: 'number' } } },
+                  peak: { type: 'object', required: ['t', 'az', 'alt'], properties: { t: { type: 'string', format: 'date-time' }, az: { type: 'number' }, alt: { type: 'number' } } },
+                  set: { type: 'object', required: ['t', 'az', 'alt'], properties: { t: { type: 'string', format: 'date-time' }, az: { type: 'number' }, alt: { type: 'number' } } },
+                  visible: nullable({ type: 'object', properties: { start: { type: 'object', required: ['t', 'az', 'alt'], properties: { t: { type: 'string', format: 'date-time' }, az: { type: 'number' }, alt: { type: 'number' } } }, end: { type: 'object', required: ['t', 'az', 'alt'], properties: { t: { type: 'string', format: 'date-time' }, az: { type: 'number' }, alt: { type: 'number' } } }, peak: { type: 'object', required: ['t', 'az', 'alt'], properties: { t: { type: 'string', format: 'date-time' }, az: { type: 'number' }, alt: { type: 'number' } } } } }),
+                  magnitude: nullable({ type: 'number', description: 'Estimate at its brightest while visible' }),
+                  endsInShadow: { type: 'boolean' },
+                  startsInShadow: { type: 'boolean' },
+                } } },
+              },
+            } } } } },
+          },
+          400: { description: 'INVALID_QUERY or INVALID_COORDS' },
+        },
+      },
+    },
     '/sky-events': {
       get: {
         summary: 'Sky events judged from an observing site',

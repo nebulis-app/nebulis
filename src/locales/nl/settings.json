@@ -509,7 +509,7 @@
       "openMeteo": "Weersverwachting en eerder weer voor je locaties, plus het zoeken naar plaatsen",
       "sevenTimer": "Verwachtingen voor seeing en transparantie tijdens opnamenachten",
       "sunCalc": "Maanfase, schemering en posities van zon en maan voor je locaties",
-      "celestrak": "Baanelementen van actieve satellieten voor het controleren van satellietsporen",
+      "celestrak": "Baanelementen van actieve satellieten, gebruikt bij sporencontroles, en die van het station voor ISS-overgangen (hoogstens elke 4 uur opgevraagd)",
       "esri": "Kaarttegels voor de weergave van waarneemlocaties",
       "darkskysites": "Bepaalt de Bortle-klasse van je waarneemlocatie uit de maandelijkse samengestelde VIIRS-satellietbeelden. Nebulis verstuurt de coördinaten van de geselecteerde waarneemlocatie en bewaart het antwoord 24 uur in de cache.",
       "sdss": "Reservebeelden van de hemel als de DSS2-survey niet bereikbaar is. Dekt maar een deel van de hemel.",
@@ -1693,6 +1693,13 @@
           "label": "Update beschikbaar",
           "help": "Eén keer per nieuwe Nebulis-versie."
         }
+      },
+      "iss": {
+        "pass": {
+          "short": "ISS-overgang",
+          "label": "ISS-overgang",
+          "help": "Verstuurd kort voordat het Internationaal Ruimtestation na het donker worden over uw hemel trekt, één keer per overgang. Kies hoe lang vooraf en hoe hoog een overgang moet komen."
+        }
       }
     },
     "language": "Taal van de meldingen",
@@ -1773,7 +1780,11 @@
       "leadHours_other": "{{count}} uur",
       "leadMinutes_one": "{{count}} minuut",
       "leadMinutes_other": "{{count}} minuten",
-      "dewRow": "Dauwwaarschuwing: {{time}} voor de dauw"
+      "dewRow": "Dauwwaarschuwing: {{time}} voor de dauw",
+      "issLeadLabel": "Hoe lang voor een ISS-overgang",
+      "issMinAltLabel": "Overgangen vanaf",
+      "issMinAlt": "{{deg}}° en hoger",
+      "issRow": "ISS-overgang: {{time}} vooraf, vanaf {{deg}}°"
     }
   },
   "search": {

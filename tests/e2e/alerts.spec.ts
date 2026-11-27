@@ -203,6 +203,31 @@ test.describe('Settings → Alerts: iPhones', () => {
     expect(put?.body).toMatchObject({ details: { dewLeadMinutes: 120 } });
   });
 
+  test('the ISS pass alert asks how far ahead and how high, and saves both for that iPhone', async ({ page }) => {
+    const server = await mockAlerts(page, [], [phone]);
+    await openAlerts(page);
+    await page.getByRole('button', { name: 'Choose alerts for My iPhone' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Alerts for My iPhone' });
+    await expect(dialog.getByRole('combobox', { name: 'How far ahead of an ISS pass' })).toHaveCount(0);
+    await dialog.getByRole('checkbox', { name: /ISS pass/ }).check();
+    const lead = dialog.getByRole('combobox', { name: 'How far ahead of an ISS pass' });
+    const height = dialog.getByRole('combobox', { name: 'Passes from' });
+    await expect(lead).toHaveValue('10');
+    await expect(height).toHaveValue('30');
+    await lead.selectOption('15');
+    await height.selectOption('45');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    const put = server.requests.find(r => r.method === 'PUT' && r.path === '/api/alerts/devices/ph-1');
+    expect((put?.body as { events: string[] }).events).toContain('iss.pass');
+    expect(put?.body).toMatchObject({ details: { issLeadMinutes: 15, issMinAltitude: 45 } });
+  });
+
+  test('the row says how far ahead and how high an ISS alert goes', async ({ page }) => {
+    await mockAlerts(page, [], [{ ...phone, events: ['iss.pass'], details: { dew: false, plan: false, issLeadMinutes: 5, issMinAltitude: 60 } }]);
+    await openAlerts(page);
+    await expect(page.getByText('ISS pass: 5 minutes before, 60° and higher')).toBeVisible();
+  });
+
   test('a stored lead time that is not in the list still shows, and the row says it', async ({ page }) => {
     await mockAlerts(page, [], [{ ...phone, events: ['night.dew'], details: { dew: false, plan: false, dewLeadMinutes: 90 } }]);
     await openAlerts(page);

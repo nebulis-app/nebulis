@@ -69,7 +69,7 @@ import {
 } from './captureInfo.js';
 import { getAllProfiles } from '../telescopes.js';
 import { type ObservingSite } from '../observingSites.js';
-import { sessionLocation, type SessionLocation } from './sessionLocation.js';
+import { sessionLocation, resolvedFromFiles, type SessionLocation } from './sessionLocation.js';
 
 // ─── Session weather ────────────────────────────────────────────────────────
 
@@ -302,7 +302,7 @@ function weatherIsStale(
   location: SessionLocation,
 ): boolean {
   if (location.lat === null || location.lon === null) return false;
-  if (row.weatherLat === null || row.weatherLon === null) return location.source === 'fits';
+  if (row.weatherLat === null || row.weatherLon === null) return resolvedFromFiles(location);
   // Open-Meteo resolves to a grid cell, so only a real move matters. 0.01° is
   // about a kilometre, well inside one cell.
   return Math.abs(row.weatherLat - location.lat) > 0.01
@@ -1519,7 +1519,9 @@ export function getObservationLocations(): ObservationLocation[] {
     // Annotated instead of `as const`-ing each arm: the declared type is what
     // ObservationLocation.source already says, so the literals check against
     // it rather than being asserted into it.
-    const source: ObservationLocation['source'] = loc.source === 'fits' ? 'fits' : 'settings';
+    // 'fits' on the wire means "the files placed it" (a FITS header, a DWARF
+    // stacked.jpg's GPS, or a saved site those coordinates matched).
+    const source: ObservationLocation['source'] = resolvedFromFiles(loc) ? 'fits' : 'settings';
 
     out.push({
       objectId,
@@ -1652,9 +1654,10 @@ export function getLocalObservationDetail(objectId: string, date: string) {
     // files, or from the default site when the files carry none. Reported
     // unresolved so the client can tell an explicit tag apart from a fallback.
     siteId: location.siteId,
-    /** 'fits' = the capture files recorded these coordinates; 'site' = they came
-     *  from an observing site. Lets the UI avoid implying the user picked a
-     *  location they never chose. */
+    /** 'fits' / 'exif' = the capture files recorded these coordinates (a FITS
+     *  header, or a DWARF stacked.jpg's GPS); 'site' = they came from an
+     *  observing site. Lets the UI avoid implying the user picked a location
+     *  they never chose. */
     locationSource: location.source,
     /** The name to show for the location. A transient "From image data" site is
      *  not in the site list, so the client cannot look this up itself. */
@@ -1662,6 +1665,13 @@ export function getLocalObservationDetail(objectId: string, date: string) {
     /** What the capture files recorded, reported even when a site tag outranks
      *  it, so the UI can offer a way back to it. */
     fileCoordinates: location.fileCoords,
+    /** Which kind of file `fileCoordinates` came from. */
+    fileCoordinatesSource: location.fileCoordsSource,
+    /** Altitude the files recorded, in metres (a DWARF writes it with its GPS). */
+    fileElevationM: location.fileElevationM,
+    /** The saved site the file coordinates fell within 50 m of, when the
+     *  session is untagged. The location then is that site, chosen by the files. */
+    matchedSite: location.matchedSite,
   };
 }
 

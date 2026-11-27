@@ -221,6 +221,8 @@
     },
     "observedFromPanel": {
       "fromImageData": "Aus Bilddaten",
+      "fromTelescopeGps": "Vom GPS des Teleskops",
+      "matchedFromFile": "GPS · {{distance}} m entfernt",
       "default": "Standard",
       "updateFailed": "Der Standort konnte nicht aktualisiert werden.",
       "defaultSite": "Standardort"

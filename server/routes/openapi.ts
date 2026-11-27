@@ -3588,7 +3588,7 @@ export const spec = {
       },
       ObservationDetail: {
         type: 'object',
-        required: ['id', 'objectId', 'objectName', 'catalogId', 'type', 'constellation', 'date', 'startTime', 'endTime', 'fileCount', 'stackedCount', 'fitsCount', 'subFrameCount', 'processedCount', 'thumbnailUrl', 'ra', 'dec', 'magnitude', 'distanceLy', 'description', 'wikiUrl', 'sizeArcmin', 'hasNotes', 'sessionImage', 'capture', 'captureRuns', 'files', 'note', 'coordinates', 'weather', 'telescopeId', 'optics', 'rigKey', 'siteId', 'locationSource', 'locationLabel', 'fileCoordinates'],
+        required: ['id', 'objectId', 'objectName', 'catalogId', 'type', 'constellation', 'date', 'startTime', 'endTime', 'fileCount', 'stackedCount', 'fitsCount', 'subFrameCount', 'processedCount', 'thumbnailUrl', 'ra', 'dec', 'magnitude', 'distanceLy', 'description', 'wikiUrl', 'sizeArcmin', 'hasNotes', 'sessionImage', 'capture', 'captureRuns', 'files', 'note', 'coordinates', 'weather', 'telescopeId', 'optics', 'rigKey', 'siteId', 'locationSource', 'locationLabel', 'fileCoordinates', 'fileCoordinatesSource', 'fileElevationM', 'matchedSite'],
         properties: {
           id:            { type: 'string' },
           objectId:      { type: 'string' },
@@ -3624,9 +3624,26 @@ export const spec = {
           optics:        { $ref: '#/components/schemas/ObservationOptics' },
           rigKey:        { type: 'string' },
           siteId:        nullable({ type: 'string', description: 'Null when the location was not explicitly tagged' }),
-          locationSource: { type: 'string', enum: ['fits', 'site'] },
+          locationSource: { type: 'string', enum: ['fits', 'exif', 'site'], description: "'exif' = the GPS a DWARF writes into stacked.jpg" },
           locationLabel: { type: 'string' },
           fileCoordinates: { oneOf: [{ $ref: '#/components/schemas/ObservationCoordinates' }, { type: 'null' }] },
+          fileCoordinatesSource: nullable({ type: 'string', enum: ['fits', 'exif'] }),
+          fileElevationM: nullable({ type: 'number', description: 'Altitude the capture files recorded, in metres' }),
+          matchedSite: {
+            oneOf: [
+              {
+                type: 'object',
+                description: 'Saved observing site within 50 m of the file coordinates; the session resolves to it while untagged',
+                required: ['id', 'name', 'distanceM'],
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  distanceM: { type: 'number' },
+                },
+              },
+              { type: 'null' },
+            ],
+          },
         },
       },
 

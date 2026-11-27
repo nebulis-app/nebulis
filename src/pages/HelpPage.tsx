@@ -21,6 +21,8 @@ import {
   UserCog,
   Link2,
   Archive as ArchiveIcon,
+  Cloud,
+  ExternalLink,
   Bell,
   ScanSearch,
   Activity,
@@ -148,6 +150,7 @@ type SectionId =
   | 'manual-import'
   | 'linked-folders'
   | 'archive'
+  | 'archive-gdrive'
   | 'mobile-devices'
   | 'alerts'
   | 'pixinsight'
@@ -177,6 +180,7 @@ const NAV: ({ id: SectionId; labelKey: string; icon?: LucideIcon; indent?: boole
   { id: 'manual-import', labelKey: 'nav.manualImport', icon: HardDrive },
   { id: 'linked-folders', labelKey: 'nav.linkedFolders', icon: Link2 },
   { id: 'archive', labelKey: 'nav.archive', icon: ArchiveIcon },
+  { id: 'archive-gdrive', labelKey: 'nav.archiveGdrive', icon: Cloud },
   { id: 'mobile-devices', labelKey: 'nav.mobileDevices', icon: Smartphone },
   { id: 'alerts', labelKey: 'nav.alerts', icon: Bell },
   { id: 'pixinsight', labelKey: 'nav.pixinsight', icon: Puzzle },
@@ -1288,6 +1292,9 @@ function renderSection(id: SectionId, isDark: boolean, navigate: (id: SectionId)
         </div>
       );
 
+    case 'archive-gdrive':
+      return <ArchiveGdriveGuide isDark={isDark} t={t} />;
+
     case 'pixinsight':
       return (
         <GuideCard icon={Puzzle} title={t('pixinsight.title')} lead={t('pixinsight.lead')} isDark={isDark}>
@@ -1860,6 +1867,103 @@ function Code({ children, isDark }: { children?: ReactNode; isDark: boolean }) {
     <code className={`px-1.5 py-0.5 rounded text-xs font-mono ${isDark ? 'bg-slate-800 text-accent-400' : 'bg-slate-100 text-accent-700'}`}>
       {children}
     </code>
+  );
+}
+
+/** Google Cloud Console pages for each setup step, in order. */
+const GDRIVE_SETUP_LINKS = [
+  'https://console.cloud.google.com/projectcreate',
+  'https://console.cloud.google.com/apis/library/drive.googleapis.com',
+  'https://console.cloud.google.com/auth/overview',
+  'https://console.cloud.google.com/auth/audience',
+  'https://console.cloud.google.com/auth/clients/create',
+] as const;
+
+function ArchiveGdriveGuide({ isDark, t }: { isDark: boolean; t: TFunc }) {
+  const strong = <strong className={isDark ? 'text-slate-200' : 'text-slate-800'} />;
+  const linkClass = `inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+    isDark ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+  }`;
+  return (
+    <div className="space-y-6">
+      <GuideCard icon={Cloud} title={t('archiveGdrive.title')} lead={t('archiveGdrive.lead')} isDark={isDark}>
+        <Terms
+          isDark={isDark}
+          items={[
+            { t: t('archiveGdrive.libraryTerm'), d: t('archiveGdrive.libraryDesc') },
+            { t: t('archiveGdrive.galleryTerm'), d: t('archiveGdrive.galleryDesc') },
+            { t: t('archiveGdrive.databaseTerm'), d: t('archiveGdrive.databaseDesc') },
+          ]}
+        />
+        <Note isDark={isDark}>{t('archiveGdrive.layoutNote')}</Note>
+      </GuideCard>
+
+      <GuideCard icon={Cloud} title={t('archiveGdrive.setup.title')} lead={t('archiveGdrive.setup.lead')} isDark={isDark}>
+        <p className={`text-sm leading-relaxed mb-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('archiveGdrive.setup.before')}</p>
+        <Steps
+          isDark={isDark}
+          steps={GDRIVE_SETUP_LINKS.map((href, i) => ({
+            title: t(`archiveGdrive.setup.step${i + 1}Title`),
+            body: (
+              <>
+                <p>
+                  <Trans i18nKey={`archiveGdrive.setup.step${i + 1}Body`} ns="help" components={{ b: strong }} />
+                </p>
+                <a href={href} target="_blank" rel="noopener noreferrer" className={linkClass}>
+                  {t(`archiveGdrive.setup.step${i + 1}Link`)}
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </>
+            ),
+          }))}
+        />
+        <Note isDark={isDark}>{t('archiveGdrive.setup.note')}</Note>
+      </GuideCard>
+
+      <GuideCard icon={Cloud} title={t('archiveGdrive.connect.title')} lead={t('archiveGdrive.connect.lead')} isDark={isDark}>
+        <Steps
+          isDark={isDark}
+          steps={[
+            { title: t('archiveGdrive.connect.step1Title'), body: t('archiveGdrive.connect.step1Body') },
+            {
+              title: t('archiveGdrive.connect.step2Title'),
+              body: (
+                <p>
+                  <Trans i18nKey="archiveGdrive.connect.step2Body" ns="help" components={{ c: <Code isDark={isDark} /> }} />
+                </p>
+              ),
+            },
+            { title: t('archiveGdrive.connect.step3Title'), body: t('archiveGdrive.connect.step3Body') },
+            { title: t('archiveGdrive.connect.step4Title'), body: t('archiveGdrive.connect.step4Body') },
+          ]}
+        />
+        <Note isDark={isDark}>{t('archiveGdrive.connect.foldersNote')}</Note>
+      </GuideCard>
+
+      <GuideCard icon={Cloud} title={t('archiveGdrive.limits.title')} lead={t('archiveGdrive.limits.lead')} isDark={isDark}>
+        <Terms
+          isDark={isDark}
+          label={t('archiveGdrive.limits.unavailableLabel')}
+          items={[
+            { t: t('archiveGdrive.limits.pruneTerm'), d: t('archiveGdrive.limits.pruneDesc') },
+            { t: t('archiveGdrive.limits.removeTerm'), d: t('archiveGdrive.limits.removeDesc') },
+            { t: t('archiveGdrive.limits.browseTerm'), d: t('archiveGdrive.limits.browseDesc') },
+          ]}
+        />
+        <Terms
+          isDark={isDark}
+          label={t('archiveGdrive.limits.troubleLabel')}
+          items={[
+            { t: t('archiveGdrive.limits.invalidClientTerm'), d: t('archiveGdrive.limits.invalidClientDesc') },
+            { t: t('archiveGdrive.limits.blockedTerm'), d: t('archiveGdrive.limits.blockedDesc') },
+            { t: t('archiveGdrive.limits.apiTerm'), d: t('archiveGdrive.limits.apiDesc') },
+            { t: t('archiveGdrive.limits.weeklyTerm'), d: t('archiveGdrive.limits.weeklyDesc') },
+            { t: t('archiveGdrive.limits.missingTerm'), d: t('archiveGdrive.limits.missingDesc') },
+          ]}
+        />
+        <Note isDark={isDark}>{t('archiveGdrive.limits.signOutNote')}</Note>
+      </GuideCard>
+    </div>
   );
 }
 

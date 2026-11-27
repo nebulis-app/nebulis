@@ -16,6 +16,8 @@
     "danger": "Advanced",
     "about": "About",
     "archive": "Archive",
+    "archiveDisk": "External disk",
+    "gdrive": "Google Drive",
     "linked": "Linked folders",
     "cleanup": "Cleanup",
     "features": "Integrations",
@@ -410,7 +412,8 @@
     "unknownVersion": "Unknown version",
     "kind": {
       "upgrade": "upgrade",
-      "manual": "manual"
+      "manual": "manual",
+      "cloud": "cloud"
     },
     "download": "Download",
     "delete": "Delete",
@@ -1781,5 +1784,97 @@
     "placeholder": "Search settings…",
     "clear": "Clear search",
     "noResults": "No matching settings"
+  },
+  "archiveGdrive": {
+    "clientId": "OAuth client ID",
+    "clientSecret": "OAuth client secret",
+    "secretStored": "Stored. Leave empty to keep it.",
+    "waiting": "Waiting for Google…",
+    "cancel": "Cancel",
+    "signedIn": "Signed in to Google Drive",
+    "signedInAs": "Signed in as {{account}}",
+    "disconnect": "Sign out",
+    "failed": "Could not talk to Google Drive.",
+    "retry": "Try again",
+    "clientIdPlaceholder": "1234567890-abc.apps.googleusercontent.com",
+    "intro": "Connect your Google account. Nebulis then keeps the backup in a Nebulis folder at the top of My Drive, which you can move wherever you like.",
+    "connect": "Sign in with Google",
+    "enterCode": "On any device (phone, computer), open the address below and enter this code:",
+    "unverifiedHint": "If Google says the app is not verified, click Advanced, then Go to…: it is the app you just created yourself.",
+    "folderTitle": "Backup folder",
+    "preparingFolder": "Preparing the Nebulis folder in your Drive…",
+    "folderCreated": "Created the folder “{{name}}” at the top of My Drive.",
+    "folderFound": "Using the folder “{{name}}” in your Drive.",
+    "folderMoveHint": "You can move or rename this folder in Google Drive whenever you like: Nebulis finds it by its id, not its name. Nebulis sees only the files and folders it created, never the rest of your Drive.",
+    "limits": "Drive keeps earlier versions of a file Nebulis replaces, and Nebulis never deletes library files from Drive. The only clean-up is the database snapshots taken by backup runs: the newest 30 are kept and older ones go to the Drive bin.",
+    "guide": {
+      "title": "First time? How to get a client ID and secret (about 10 minutes)",
+      "why": "Google requires every app that uses Drive to have its own “OAuth client”. You create it once, for free, in Google Cloud Console with the Google account you want to back up to. Follow these five steps in order; each link opens the right page.",
+      "project": {
+        "title": "Create a project",
+        "body": "Create a new project just for Nebulis rather than reusing one: the API and the client stay together, and deleting the project later removes Nebulis’s access in one go. Name it <b>Nebulis</b> and click <b>Create</b>. Accept Google’s terms if asked. Check that <b>Nebulis</b> is selected at the top left of the page for the next steps.",
+        "link": "Create a project"
+      },
+      "driveApi": {
+        "title": "Turn on the Google Drive API",
+        "body": "With <b>Nebulis</b> selected at the top left, click <b>Enable</b>. Don’t skip it: signing in works without it, but Nebulis then cannot list or create any folder. It must be on in the same project as the client, and can take a few minutes to take effect.",
+        "link": "Open the Google Drive API"
+      },
+      "branding": {
+        "title": "Describe the app",
+        "body": "Click <b>Get started</b>. App name: <b>Nebulis</b>; support email: your address. Audience: choose <b>External</b>. Contact information: your address again. Accept the policy and click <b>Create</b>.",
+        "link": "Open Google Auth Platform"
+      },
+      "audience": {
+        "title": "Publish the app",
+        "body": "Under <b>Publishing status</b>, click <b>Publish app</b> and confirm. No review is needed, because Nebulis only asks for access to the files it creates. Without this step the app stays in “Testing”: you then have to add your address under <b>Test users</b>, and Google signs you out every 7 days.",
+        "link": "Open Audience"
+      },
+      "clients": {
+        "title": "Create the client",
+        "body": "Application type: <b>TVs and Limited Input devices</b> (no other type works). Name: <b>Nebulis</b>. Click <b>Create</b>, then copy the <b>Client ID</b> and the <b>Client secret</b> into the fields below. Copy the secret right away: Google may not show it again.",
+        "link": "Create an OAuth client"
+      },
+      "free": "This is free: personal use of the Drive API costs nothing, and no payment details are needed."
+    }
+  },
+  "gdriveBackup": {
+    "title": "Google Drive backup",
+    "description": "An off-site copy of the library, the gallery and the Nebulis database, in your Google Drive.",
+    "statusOn": "Google Drive backup is on",
+    "statusOff": "Google Drive backup is off",
+    "turnOn": "Turn on",
+    "turnOff": "Turn off",
+    "turnedOn": "Google Drive backup is on. Start a first run with Back up now, or let the schedule do it.",
+    "turnedOff": "Google Drive backup is off. The folder and its files stay in Drive.",
+    "connectFirst": "Connect Google Drive first.",
+    "runNow": "Back up now",
+    "cancelRun": "Stop",
+    "started": "The backup has started. You can leave this page.",
+    "progress": "{{done}} of {{total}} files ({{bytes}} of {{totalBytes}})",
+    "lastResult": "Last run ({{when}}): {{result}}",
+    "lastAttempt": "Last attempt ({{when}}): {{result}}",
+    "lastComplete": "Last complete backup: {{when}}",
+    "noCompleteYet": "No complete backup yet.",
+    "notCompleted": "not completed",
+    "neverRun": "No backup has run yet.",
+    "foreign": "This Google Drive folder already holds the backup of another Nebulis install ({{id}}). Taking it over makes it this install’s backup; its files stay where they are.",
+    "takeOver": "Take it over",
+    "alongside": "This backup runs on its own, alongside the disk archive: both can be on and run at the same time. The disk archive is where captures go to free this computer; Google Drive is an off-site copy that only ever adds.",
+    "connection": "Google account",
+    "whatToCopy": "What to copy",
+    "schedule": "Schedule",
+    "nextRun": "Next backup: {{when}} ({{zone}})",
+    "serverTimeZone": "Your observing site has no time zone, so the schedule uses the server’s ({{zone}}). Choose the site’s place again in Settings → Observing sites to set it.",
+    "save": "Save",
+    "saved": "Saved.",
+    "state": {
+      "match": "{{path}}. Found by its id, so it can be moved or renamed in Google Drive.",
+      "absent": "Ready: {{path}}. Turning the backup on marks this folder as this install’s backup.",
+      "offline": "The backup folder cannot be reached: not signed in, or the folder was deleted.",
+      "foreign": "This folder holds another install’s backup.",
+      "invalid": "The marker file in this folder cannot be read. Remove it in Google Drive if you are sure.",
+      "unreadable": "The marker file in this folder cannot be read. Remove it in Google Drive if you are sure."
+    }
   }
 }

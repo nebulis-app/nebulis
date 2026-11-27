@@ -16,6 +16,8 @@
     "danger": "Avancé",
     "about": "À propos",
     "archive": "Archive",
+    "archiveDisk": "Disque externe",
+    "gdrive": "Google Drive",
     "linked": "Dossiers liés",
     "cleanup": "Nettoyage",
     "features": "Intégrations",
@@ -410,7 +412,8 @@
     "unknownVersion": "Version inconnue",
     "kind": {
       "upgrade": "mise à jour",
-      "manual": "manuelle"
+      "manual": "manuelle",
+      "cloud": "cloud"
     },
     "download": "Télécharger",
     "delete": "Supprimer",
@@ -1781,5 +1784,97 @@
     "placeholder": "Rechercher un réglage…",
     "clear": "Effacer la recherche",
     "noResults": "Aucun réglage correspondant"
+  },
+  "archiveGdrive": {
+    "clientId": "ID client OAuth",
+    "clientSecret": "Code secret du client OAuth",
+    "secretStored": "Enregistré. Laissez vide pour le conserver.",
+    "waiting": "En attente de Google…",
+    "cancel": "Annuler",
+    "signedIn": "Connecté à Google Drive",
+    "signedInAs": "Connecté en tant que {{account}}",
+    "disconnect": "Se déconnecter",
+    "failed": "Impossible de communiquer avec Google Drive.",
+    "retry": "Réessayer",
+    "clientIdPlaceholder": "1234567890-abc.apps.googleusercontent.com",
+    "intro": "Connectez votre compte Google. Nebulis range ensuite la sauvegarde dans un dossier Nebulis à la racine de Mon Drive, que vous pourrez déplacer où vous voulez.",
+    "connect": "Se connecter avec Google",
+    "enterCode": "Sur n’importe quel appareil (téléphone, ordinateur), ouvrez l’adresse ci-dessous et saisissez ce code :",
+    "unverifiedHint": "Si Google indique que l’application n’est pas validée, cliquez sur Paramètres avancés, puis Accéder à… : c’est l’application que vous venez de créer vous-même.",
+    "folderTitle": "Dossier de sauvegarde",
+    "preparingFolder": "Préparation du dossier Nebulis dans votre Drive…",
+    "folderCreated": "Dossier « {{name}} » créé à la racine de Mon Drive.",
+    "folderFound": "Utilisation du dossier « {{name}} » de votre Drive.",
+    "folderMoveHint": "Vous pouvez déplacer ou renommer ce dossier dans Google Drive quand vous le souhaitez : Nebulis le retrouve par son identifiant, pas par son nom. Nebulis ne voit que les fichiers et dossiers qu’il a créés, jamais le reste de votre Drive.",
+    "limits": "Drive conserve les versions précédentes d’un fichier remplacé par Nebulis, et Nebulis ne supprime jamais de fichiers de la bibliothèque dans Drive. Le seul nettoyage concerne les instantanés de base de données pris par les sauvegardes : les 30 plus récents sont conservés, les plus anciens vont à la corbeille de Drive.",
+    "guide": {
+      "title": "Première fois ? Comment obtenir un ID client et un code secret (environ 10 minutes)",
+      "why": "Google exige que chaque application qui utilise Drive ait son propre « client OAuth ». Vous le créez une seule fois, gratuitement, dans la console Google Cloud, avec le compte Google sur lequel vous voulez sauvegarder. Suivez ces cinq étapes dans l’ordre ; chaque lien ouvre la bonne page.",
+      "project": {
+        "title": "Créer un projet",
+        "body": "Créez un nouveau projet réservé à Nebulis plutôt que d’en réutiliser un : l’API et le client restent ensemble, et supprimer le projet plus tard retire d’un coup l’accès de Nebulis. Nommez-le <b>Nebulis</b> et cliquez sur <b>Créer</b>. Acceptez les conditions de Google si elles s’affichent. Vérifiez que <b>Nebulis</b> est sélectionné en haut à gauche de la page pour les étapes suivantes.",
+        "link": "Créer un projet"
+      },
+      "driveApi": {
+        "title": "Activer l’API Google Drive",
+        "body": "Avec <b>Nebulis</b> sélectionné en haut à gauche, cliquez sur <b>Activer</b>. Ne sautez pas cette étape : la connexion fonctionne sans elle, mais Nebulis ne peut alors ni lister ni créer de dossier. L’API doit être activée dans le même projet que le client, et peut mettre quelques minutes à prendre effet.",
+        "link": "Ouvrir l’API Google Drive"
+      },
+      "branding": {
+        "title": "Décrire l’application",
+        "body": "Cliquez sur <b>Commencer</b>. Nom de l’application : <b>Nebulis</b> ; adresse e-mail d’assistance : la vôtre. Cible : choisissez <b>Externe</b>. Coordonnées : de nouveau votre adresse. Acceptez le règlement et cliquez sur <b>Créer</b>.",
+        "link": "Ouvrir Google Auth Platform"
+      },
+      "audience": {
+        "title": "Publier l’application",
+        "body": "Sous <b>État de publication</b>, cliquez sur <b>Publier l’application</b> et confirmez. Aucune validation n’est nécessaire, car Nebulis ne demande l’accès qu’aux fichiers qu’il crée. Sans cette étape, l’application reste « En test » : il faut alors ajouter votre adresse dans <b>Utilisateurs test</b>, et Google vous déconnecte tous les 7 jours.",
+        "link": "Ouvrir Cible"
+      },
+      "clients": {
+        "title": "Créer le client",
+        "body": "Type d’application : <b>TV et appareils à entrée limitée</b> (aucun autre type ne fonctionne). Nom : <b>Nebulis</b>. Cliquez sur <b>Créer</b>, puis copiez l’<b>ID client</b> et le <b>Code secret du client</b> dans les champs ci-dessous. Copiez le code secret tout de suite : Google peut ne plus l’afficher ensuite.",
+        "link": "Créer un client OAuth"
+      },
+      "free": "C’est gratuit : l’usage personnel de l’API Drive ne coûte rien, et aucun moyen de paiement n’est demandé."
+    }
+  },
+  "gdriveBackup": {
+    "title": "Sauvegarde Google Drive",
+    "description": "Une copie hors site de la bibliothèque, de la galerie et de la base de données Nebulis, dans votre Google Drive.",
+    "statusOn": "La sauvegarde Google Drive est activée",
+    "statusOff": "La sauvegarde Google Drive est désactivée",
+    "turnOn": "Activer",
+    "turnOff": "Désactiver",
+    "turnedOn": "La sauvegarde Google Drive est activée. Lancez une première sauvegarde avec Sauvegarder maintenant, ou laissez la planification s’en charger.",
+    "turnedOff": "La sauvegarde Google Drive est désactivée. Le dossier et ses fichiers restent dans Drive.",
+    "connectFirst": "Connectez d’abord Google Drive.",
+    "runNow": "Sauvegarder maintenant",
+    "cancelRun": "Arrêter",
+    "started": "La sauvegarde a démarré. Vous pouvez quitter cette page.",
+    "progress": "{{done}} fichiers sur {{total}} ({{bytes}} sur {{totalBytes}})",
+    "lastResult": "Dernière exécution ({{when}}) : {{result}}",
+    "lastAttempt": "Dernier essai ({{when}}) : {{result}}",
+    "lastComplete": "Dernière sauvegarde complète : {{when}}",
+    "noCompleteYet": "Aucune sauvegarde complète pour l’instant.",
+    "notCompleted": "non terminée",
+    "neverRun": "Aucune sauvegarde n’a encore été faite.",
+    "foreign": "Ce dossier Google Drive contient déjà la sauvegarde d’une autre installation de Nebulis ({{id}}). La reprendre en fait la sauvegarde de cette installation ; ses fichiers restent en place.",
+    "takeOver": "La reprendre",
+    "alongside": "Cette sauvegarde fonctionne seule, à côté de l’archive sur disque : les deux peuvent être activées et tourner en même temps. L’archive sur disque sert à libérer cet ordinateur ; Google Drive est une copie hors site qui ne fait qu’ajouter.",
+    "connection": "Compte Google",
+    "whatToCopy": "Quoi copier",
+    "schedule": "Planification",
+    "nextRun": "Prochaine sauvegarde : {{when}} ({{zone}})",
+    "serverTimeZone": "Votre site d’observation n’a pas de fuseau horaire : la planification utilise celui du serveur ({{zone}}). Choisissez à nouveau le lieu du site dans Paramètres → Sites d'observation pour le définir.",
+    "save": "Enregistrer",
+    "saved": "Enregistré.",
+    "state": {
+      "match": "{{path}}. Retrouvé par son identifiant : vous pouvez le déplacer ou le renommer dans Google Drive.",
+      "absent": "Prêt : {{path}}. L’activation marque ce dossier comme la sauvegarde de cette installation.",
+      "offline": "Le dossier de sauvegarde est inaccessible : pas de connexion, ou le dossier a été supprimé.",
+      "foreign": "Ce dossier contient la sauvegarde d’une autre installation.",
+      "invalid": "Le fichier marqueur de ce dossier est illisible. Supprimez-le dans Google Drive si vous êtes sûr.",
+      "unreadable": "Le fichier marqueur de ce dossier est illisible. Supprimez-le dans Google Drive si vous êtes sûr."
+    }
   }
 }

@@ -178,7 +178,29 @@ db.exec(`
     archiveNetworkDomain TEXT   NOT NULL DEFAULT '',
     archiveNetworkUsername TEXT NOT NULL DEFAULT '',
     archiveNetworkPasswordSealed TEXT NOT NULL DEFAULT '',
-    archiveNetworkSubpath TEXT   NOT NULL DEFAULT ''
+    archiveNetworkSubpath TEXT   NOT NULL DEFAULT '',
+    -- Google Drive backup, independent of the disk archive. Secrets are sealed;
+    -- see archive/gdrive/gdriveBackupConfig.ts.
+    archiveGdriveClientId TEXT NOT NULL DEFAULT '',
+    archiveGdriveClientSecretSealed TEXT NOT NULL DEFAULT '',
+    archiveGdriveRefreshTokenSealed TEXT NOT NULL DEFAULT '',
+    archiveGdriveAccount TEXT NOT NULL DEFAULT '',
+    archiveGdriveFolderPath TEXT NOT NULL DEFAULT '',
+    archiveGdriveFolderId TEXT NOT NULL DEFAULT '',
+    archiveGdriveEnabled INTEGER NOT NULL DEFAULT 0,
+    archiveGdriveArchiveId TEXT NOT NULL DEFAULT '',
+    archiveGdriveIncludeSubframes INTEGER NOT NULL DEFAULT 0,
+    archiveGdriveCopyMinAgeEnabled INTEGER NOT NULL DEFAULT 0,
+    archiveGdriveCopyMinAgeDays INTEGER NOT NULL DEFAULT 0,
+    archiveGdriveScheduleEnabled INTEGER NOT NULL DEFAULT 0,
+    archiveGdriveScheduleMode TEXT NOT NULL DEFAULT 'daily',
+    archiveGdriveScheduleHour INTEGER NOT NULL DEFAULT 3,
+    archiveGdriveScheduleMinute INTEGER NOT NULL DEFAULT 0,
+    archiveGdriveScheduleIntervalHours INTEGER NOT NULL DEFAULT 24,
+    archiveGdriveScheduleCron TEXT NOT NULL DEFAULT '',
+    archiveGdriveLastRunAt TEXT NOT NULL DEFAULT '',
+    archiveGdriveLastResult TEXT NOT NULL DEFAULT '',
+    archiveGdriveLastAttemptAt TEXT NOT NULL DEFAULT ''
   );
   INSERT OR IGNORE INTO appSettings (id) VALUES (1);
 
@@ -2194,6 +2216,14 @@ export function resetLibraryData(): void {
  *  so the call is wrapped here where it legitimately lives. */
 export function createManualDatabaseBackup(): { backup: DatabaseBackupInfo; pruned: number } {
   const backup = backupDatabaseNow(db, { version: getCurrentVersion().version, kind: 'manual' });
+  const pruned = pruneDatabaseBackups();
+  return { backup, pruned };
+}
+
+/** The snapshot a Google Drive backup run takes before uploading the database.
+ *  Its own retention pool (see dbBackup.ts), pruned like the others. */
+export function createCloudDatabaseBackup(): { backup: DatabaseBackupInfo; pruned: number } {
+  const backup = backupDatabaseNow(db, { version: getCurrentVersion().version, kind: 'cloud' });
   const pruned = pruneDatabaseBackups();
   return { backup, pruned };
 }

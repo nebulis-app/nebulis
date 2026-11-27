@@ -16,6 +16,8 @@
     "danger": "Avanzado",
     "about": "Acerca de",
     "archive": "Archivo",
+    "archiveDisk": "Disco externo",
+    "gdrive": "Google Drive",
     "linked": "Carpetas vinculadas",
     "cleanup": "Limpieza",
     "features": "Integraciones",
@@ -410,7 +412,8 @@
     "unknownVersion": "Versión desconocida",
     "kind": {
       "upgrade": "actualización",
-      "manual": "manual"
+      "manual": "manual",
+      "cloud": "nube"
     },
     "download": "Descargar",
     "delete": "Eliminar",
@@ -1781,5 +1784,97 @@
     "placeholder": "Buscar ajustes…",
     "clear": "Borrar búsqueda",
     "noResults": "Ningún ajuste coincide"
+  },
+  "archiveGdrive": {
+    "clientId": "ID de cliente OAuth",
+    "clientSecret": "Secreto del cliente OAuth",
+    "secretStored": "Guardado. Déjalo vacío para conservarlo.",
+    "waiting": "Esperando a Google…",
+    "cancel": "Cancelar",
+    "signedIn": "Sesión iniciada en Google Drive",
+    "signedInAs": "Sesión iniciada como {{account}}",
+    "disconnect": "Cerrar sesión",
+    "failed": "No se pudo comunicar con Google Drive.",
+    "retry": "Reintentar",
+    "clientIdPlaceholder": "1234567890-abc.apps.googleusercontent.com",
+    "intro": "Conecta tu cuenta de Google. Nebulis guarda entonces la copia en una carpeta Nebulis en la raíz de Mi unidad, que puedes mover donde quieras.",
+    "connect": "Iniciar sesión con Google",
+    "enterCode": "En cualquier dispositivo (móvil, ordenador), abre la dirección de abajo e introduce este código:",
+    "unverifiedHint": "Si Google dice que la aplicación no está verificada, haz clic en Configuración avanzada y luego en Ir a…: es la aplicación que acabas de crear tú mismo.",
+    "folderTitle": "Carpeta de la copia",
+    "preparingFolder": "Preparando la carpeta Nebulis en tu Drive…",
+    "folderCreated": "Se creó la carpeta «{{name}}» en la raíz de Mi unidad.",
+    "folderFound": "Se usará la carpeta «{{name}}» de tu Drive.",
+    "folderMoveHint": "Puedes mover o renombrar esta carpeta en Google Drive cuando quieras: Nebulis la encuentra por su ID, no por su nombre. Nebulis solo ve los archivos y carpetas que ha creado, nunca el resto de tu Drive.",
+    "limits": "Drive conserva las versiones anteriores de un archivo que Nebulis reemplaza, y Nebulis nunca elimina archivos de la biblioteca en Drive. La única limpieza afecta a las instantáneas de la base de datos de las copias: se conservan las 30 más recientes y las más antiguas van a la papelera de Drive.",
+    "guide": {
+      "title": "¿Primera vez? Cómo obtener un ID de cliente y un secreto (unos 10 minutos)",
+      "why": "Google exige que cada aplicación que usa Drive tenga su propio «cliente OAuth». Lo creas una sola vez, gratis, en la consola de Google Cloud con la cuenta de Google donde quieres guardar las copias. Sigue estos cinco pasos en orden; cada enlace abre la página correcta.",
+      "project": {
+        "title": "Crear un proyecto",
+        "body": "Crea un proyecto nuevo solo para Nebulis en lugar de reutilizar uno: la API y el cliente quedan juntos, y si más adelante eliminas el proyecto, el acceso de Nebulis desaparece de una vez. Llámalo <b>Nebulis</b> y haz clic en <b>Crear</b>. Acepta las condiciones de Google si te las pide. Comprueba que <b>Nebulis</b> está seleccionado arriba a la izquierda.",
+        "link": "Crear un proyecto"
+      },
+      "driveApi": {
+        "title": "Activar la API de Google Drive",
+        "body": "Con <b>Nebulis</b> seleccionado arriba a la izquierda, haz clic en <b>Habilitar</b>. No te lo saltes: el inicio de sesión funciona sin ello, pero Nebulis no podrá listar ni crear carpetas. Debe estar activada en el mismo proyecto que el cliente y puede tardar unos minutos en aplicarse.",
+        "link": "Abrir la API de Google Drive"
+      },
+      "branding": {
+        "title": "Describir la aplicación",
+        "body": "Haz clic en <b>Comenzar</b>. Nombre de la aplicación: <b>Nebulis</b>; correo de asistencia: el tuyo. Público: elige <b>Externo</b>. Datos de contacto: de nuevo tu dirección. Acepta la política y haz clic en <b>Crear</b>.",
+        "link": "Abrir Google Auth Platform"
+      },
+      "audience": {
+        "title": "Publicar la aplicación",
+        "body": "En <b>Estado de publicación</b>, haz clic en <b>Publicar aplicación</b> y confirma. No hace falta ninguna revisión, porque Nebulis solo pide acceso a los archivos que crea. Sin este paso la aplicación queda «En prueba»: tendrás que añadir tu dirección en <b>Usuarios de prueba</b>, y Google cerrará tu sesión cada 7 días.",
+        "link": "Abrir Público"
+      },
+      "clients": {
+        "title": "Crear el cliente",
+        "body": "Tipo de aplicación: <b>TV y dispositivos de entrada limitada</b> (ningún otro tipo funciona). Nombre: <b>Nebulis</b>. Haz clic en <b>Crear</b> y copia el <b>ID de cliente</b> y el <b>Secreto del cliente</b> en los campos de abajo. Copia el secreto enseguida: puede que Google no vuelva a mostrarlo.",
+        "link": "Crear un cliente OAuth"
+      },
+      "free": "Es gratis: el uso personal de la API de Drive no cuesta nada y no se piden datos de pago."
+    }
+  },
+  "gdriveBackup": {
+    "title": "Copia en Google Drive",
+    "description": "Una copia externa de la biblioteca, la galería y la base de datos de Nebulis, en tu Google Drive.",
+    "statusOn": "La copia en Google Drive está activada",
+    "statusOff": "La copia en Google Drive está desactivada",
+    "turnOn": "Activar",
+    "turnOff": "Desactivar",
+    "turnedOn": "La copia en Google Drive está activada. Lanza una primera copia con Copiar ahora, o deja que lo haga la programación.",
+    "turnedOff": "La copia en Google Drive está desactivada. La carpeta y sus archivos se quedan en Drive.",
+    "connectFirst": "Conecta primero Google Drive.",
+    "runNow": "Copiar ahora",
+    "cancelRun": "Detener",
+    "started": "La copia ha empezado. Puedes salir de esta página.",
+    "progress": "{{done}} de {{total}} archivos ({{bytes}} de {{totalBytes}})",
+    "lastResult": "Última ejecución ({{when}}): {{result}}",
+    "lastAttempt": "Último intento ({{when}}): {{result}}",
+    "lastComplete": "Última copia completa: {{when}}",
+    "noCompleteYet": "Aún no hay ninguna copia completa.",
+    "notCompleted": "sin terminar",
+    "neverRun": "Todavía no se ha hecho ninguna copia.",
+    "foreign": "Esta carpeta de Google Drive ya contiene la copia de otra instalación de Nebulis ({{id}}). Si la asumes, pasa a ser la copia de esta instalación; sus archivos se quedan donde están.",
+    "takeOver": "Asumirla",
+    "alongside": "Esta copia funciona por su cuenta, junto al archivo en disco: ambos pueden estar activados y ejecutarse a la vez. El archivo en disco sirve para liberar este ordenador; Google Drive es una copia externa que solo añade.",
+    "connection": "Cuenta de Google",
+    "whatToCopy": "Qué copiar",
+    "schedule": "Programación",
+    "nextRun": "Próxima copia: {{when}} ({{zone}})",
+    "serverTimeZone": "Su sitio de observación no tiene zona horaria, así que la programación usa la del servidor ({{zone}}). Vuelva a elegir el lugar en Configuración → Sitios de observación para fijarla.",
+    "save": "Guardar",
+    "saved": "Guardado.",
+    "state": {
+      "match": "{{path}}. Se encuentra por su id, así que puede moverlo o renombrarlo en Google Drive.",
+      "absent": "Lista: {{path}}. Al activar la copia, esta carpeta queda marcada como la copia de esta instalación.",
+      "offline": "No se puede acceder a la carpeta de la copia: sin sesión iniciada, o la carpeta se eliminó.",
+      "foreign": "Esta carpeta contiene la copia de otra instalación.",
+      "invalid": "No se puede leer el archivo de marca de esta carpeta. Elimínalo en Google Drive si estás seguro.",
+      "unreadable": "No se puede leer el archivo de marca de esta carpeta. Elimínalo en Google Drive si estás seguro."
+    }
   }
 }

@@ -55,6 +55,7 @@
     "TMP_NOT_FOUND": "Upload session not found. Please start over.",
     "UNSUPPORTED_PLATFORM": "Network share library locations are not supported on this platform.",
     "ARCHIVE_DISABLED": "The archive is turned off, so nothing was written or deleted. Turn it on in Settings, on the Archive tab.",
-    "ARCHIVE_RETENTION_DISABLED": "Pruning is turned off, so nothing was deleted. Turn it on in the archive settings."
+    "ARCHIVE_RETENTION_DISABLED": "Pruning is turned off, so nothing was deleted. Turn it on in the archive settings.",
+    "GDRIVE_API_DISABLED": "The Google Drive API is turned off in the Google Cloud project of this client. Turn it on (step 2 of the setup guide), wait a minute, then try again."
   }
 }

@@ -28,6 +28,7 @@ import { DatabaseBackupsSection } from '../components/settings/DatabaseBackupsSe
 import { LibraryCleanupSection } from '../components/settings/LibraryCleanupSection';
 import { LinkedFoldersSection } from '../components/settings/LinkedFoldersSection';
 import { ArchiveSection } from '../components/settings/ArchiveSection';
+import { GdriveBackupSection } from '../components/settings/GdriveBackupSection';
 import { SystemLogSection } from '../components/settings/SystemLogSection';
 import { AlertsSection } from '../components/settings/AlertsSection';
 import { DangerSection } from '../components/settings/DangerSection';
@@ -198,6 +199,7 @@ export function SettingsPage() {
         return <FeaturesSection isDark={isDark} form={form} setForm={setForm} onOpenApiKeys={() => navigateSection('api-keys')} />;
       case 'storage':
         if (resolvedSection === 'archive') return <ArchiveSection isDark={isDark} />;
+        if (resolvedSection === 'gdrive') return <GdriveBackupSection isDark={isDark} />;
         if (resolvedSection === 'linked') return <LinkedFoldersSection isDark={isDark} />;
         if (resolvedSection === 'cleanup') return <LibraryCleanupSection isDark={isDark} />;
         if (resolvedSection === 'maintenance') return <NightlyMaintenanceSection isDark={isDark} form={form} setForm={setForm} />;

@@ -47,7 +47,7 @@
  * a run that is reading it.
  */
 
-import { localDateKey, localParts, timeZoneOrLocal } from '../timezone.js';
+import { addDaysToDateKey, localDateKey, localParts, timeZoneOrLocal, zonedDateTimeToUtc } from '../timezone.js';
 import { isLibraryAvailable } from '../libraryPath.js';
 import { getSettingsData } from '../telescopes.js';
 import { isLibraryMigrating } from '../libraryMaintenance.js';
@@ -100,6 +100,16 @@ export function archiveScheduleTimeZone(): string {
   return typeof configured === 'string' && configured.length > 0 ? configured : timeZoneOrLocal(null);
 }
 
+/** The schedule's time zone and where it comes from: the observing site's, or, when
+ *  the site has none, the server's (UTC in most containers). A page states it, so a
+ *  schedule that runs an hour off is not a surprise. */
+export function archiveScheduleTimeZoneInfo(): { timeZone: string; source: 'site' | 'server' } {
+  const configured = getSettingsData().timezone;
+  return typeof configured === 'string' && configured.length > 0
+    ? { timeZone: configured, source: 'site' }
+    : { timeZone: timeZoneOrLocal(null), source: 'server' };
+}
+
 /** The schedule fields of a configuration. Kept next to `isArchiveDue` so the two
  *  cannot be read from different fields by accident. */
 export function scheduleOf(config: ArchiveConfig): ArchiveSchedule {
@@ -141,6 +151,80 @@ function lastRunDateKey(lastRunAt: string, timeZone: string): string | null {
 function localMinuteKey(date: Date, timeZone: string): string {
   const p = localParts(date, timeZone);
   return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+}
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+/** How far ahead `nextArchiveRun` looks for a custom expression. */
+const NEXT_RUN_HORIZON_MS = 8 * 24 * HOUR_MS;
+
+/**
+ * When a schedule will next start a run: the first minute at or after `now` at which
+ * `isArchiveDue` holds, give or take the scheduler's one-minute tick. Null for an
+ * expression that cannot be parsed or names no minute in the next eight days.
+ *
+ * Worked out per mode rather than by testing every minute, because each test formats
+ * a date in the time zone and a page asks for this on every poll.
+ */
+export function nextArchiveRun(
+  now: Date,
+  schedule: ArchiveSchedule,
+  lastRunAt: string,
+  timeZone: string,
+  parsedCron?: ParsedCron | null,
+): Date | null {
+  const minuteStart = new Date(Math.floor(now.getTime() / MINUTE_MS) * MINUTE_MS);
+  switch (schedule.mode) {
+    case 'daily': {
+      const today = localDateKey(now, timeZone);
+      const ranToday = lastRunDateKey(lastRunAt, timeZone) === today;
+      const at = (dateKey: string): Date => zonedDateTimeToUtc(dateKey, { hour: schedule.hour, minute: schedule.minute }, timeZone);
+      if (ranToday) return at(addDaysToDateKey(today, 1));
+      const todayAt = at(today);
+      // Past today's time and not run yet: due now, on the next tick.
+      return todayAt.getTime() <= now.getTime() ? minuteStart : todayAt;
+    }
+
+    case 'interval': {
+      const last = lastRunInstant(lastRunAt);
+      if (last === null) return minuteStart;
+      const due = last.getTime() + schedule.intervalHours * HOUR_MS;
+      return due <= now.getTime() ? minuteStart : new Date(due);
+    }
+
+    case 'custom': {
+      let cron = parsedCron ?? null;
+      if (cron === null) {
+        const parsed = parseCron(schedule.cron);
+        if (!parsed.ok) return null;
+        cron = parsed.cron;
+      }
+      const minutes = [...cron.minute].sort((a, b) => a - b);
+      const last = lastRunInstant(lastRunAt);
+      const lastKey = last === null ? null : localMinuteKey(last, timeZone);
+      // Hour by hour: in each local hour, try the first allowed minute not yet past.
+      // If even that one fails, the hour or the day does not match, so skip the hour.
+      let cursor = minuteStart.getTime();
+      const horizon = cursor + NEXT_RUN_HORIZON_MS;
+      while (cursor < horizon) {
+        const startMinute = localParts(new Date(cursor), timeZone).minute;
+        const hourStart = cursor - startMinute * MINUTE_MS;
+        for (const m of minutes) {
+          if (m < startMinute) continue;
+          const candidate = new Date(hourStart + m * MINUTE_MS);
+          if (!cronMatches(cron, candidate, timeZone)) {
+            break;
+          }
+          // The minute the last run already used is not asked a second time.
+          if (lastKey !== null && localMinuteKey(candidate, timeZone) === lastKey) continue;
+          return candidate;
+        }
+        // The hour did not match, or had no allowed minute left: try the next hour.
+        cursor = hourStart + HOUR_MS;
+      }
+      return null;
+    }
+  }
 }
 
 /**

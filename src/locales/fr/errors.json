@@ -55,6 +55,7 @@
     "TMP_NOT_FOUND": "Session de téléversement introuvable. Recommence depuis le début.",
     "UNSUPPORTED_PLATFORM": "Les emplacements de bibliothèque sur partage réseau ne sont pas pris en charge sur cette plateforme.",
     "ARCHIVE_DISABLED": "L'archive est désactivée, donc rien n'a été écrit ni supprimé. Activez-la dans les Réglages, onglet Archive.",
-    "ARCHIVE_RETENTION_DISABLED": "L'élagage est désactivé, donc rien n'a été supprimé. Activez-le dans les réglages de l'archive."
+    "ARCHIVE_RETENTION_DISABLED": "L'élagage est désactivé, donc rien n'a été supprimé. Activez-le dans les réglages de l'archive.",
+    "GDRIVE_API_DISABLED": "L’API Google Drive est désactivée dans le projet Google Cloud de ce client. Activez-la (étape 2 du guide de configuration), patientez une minute, puis réessayez."
   }
 }

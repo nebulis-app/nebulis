@@ -21,6 +21,7 @@ import { catalogRouter } from './routes/catalog.js';
 import { settingsRouter } from './routes/settings.js';
 import { openapiRouter } from './routes/openapi.js';
 import { storageRouter } from './routes/storage.js';
+import { uploadSnapshotsToGdriveInBackground } from './lib/archive/gdrive/driveArchive.js';
 import { notesRouter } from './routes/notes.js';
 import { objectNotesRouter } from './routes/objectNotes.js';
 import { telescopesRouter } from './routes/telescopes.js';
@@ -57,6 +58,7 @@ import { pixinsightRepoRouter } from './routes/pixinsightRepo.js';
 import { startPackUpdateChecker } from './lib/catalogPack/updater.js';
 import { startPlannerNightlyScheduler } from './lib/plannerNightlyPrefetch.js';
 import { startArchiveScheduler } from './lib/archive/archiveScheduler.js';
+import { startGdriveBackupScheduler } from './lib/archive/gdrive/gdriveBackupRunner.js';
 import { runPostImport } from './lib/library/postImport.js';
 import { startForecastRefresh } from './lib/forecastCache.js';
 import { startLinkedSourceScheduler } from './lib/library/linkedSourceScheduler.js';
@@ -155,6 +157,9 @@ if (startupBackupOutcome.status === 'created') {
       `to ${APP_VERSION}: ${backup.name}.`,
     metadata: { backupName: backup.name, sizeBytes: backup.sizeBytes, previousVersion, currentVersion: APP_VERSION, pruned },
   });
+  // Off the machine too, when the Google Drive backup is on. In the background:
+  // startup must not wait on the network.
+  uploadSnapshotsToGdriveInBackground('upgrade');
 } else if (startupBackupOutcome.status === 'failed') {
   logEvent({
     category: 'system',
@@ -900,6 +905,7 @@ scheduleAutoImport();
 // configuration on every tick, so changing the schedule in Settings takes effect
 // without a restart and nothing has to remember to re-arm it.
 startArchiveScheduler();
+startGdriveBackupScheduler();
 
 
 // Pre-download TLE satellite catalog in background so it's ready for trail detection
